@@ -17,10 +17,10 @@ Each stage is done when all its boxes are checked.
 
 ## Stage 2: Dogfood MVP
 
-- [ ] `lado start <repo>` launches a supervisor agent (Claude Code) in tmux
-- [ ] LADO MCP server with `spawn_worker`, `send_message`, `list_agents`
-- [ ] `lado ls` and `lado attach`
-- [ ] Agent state stored in `~/.lado/`
+- [x] `lado start <repo>` launches a supervisor agent (Claude Code) in tmux
+- [x] LADO MCP server with `spawn_worker`, `send_message`, `list_agents`
+- [x] `lado ls` and `lado attach`
+- [x] Agent state stored in `~/.lado/`
 - [ ] A supervisor can delegate a real LADO task to a worker end to end
 
 ## Stage 2.5: Task trackers

@@ -20,10 +20,28 @@ tag against the package version and publishes to PyPI.
 
 ## Layout
 
-- `src/lado/`: the Python package; `cli.py` is the `lado` entry point, one module per command
-  (`doctor.py`).
+- `src/lado/`: the Python package.
+  - `cli.py`: the `lado` command. `doctor.py`: environment checks.
+  - `runtime.py`: starts Claude Code agents in tmux (worker = own git worktree and branch) and
+    delivers messages to them.
+  - `tmux.py`: tmux calls, on a private server (`tmux -L lado`).
+  - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
+  - `hooks.py`: Claude Code hooks that report agent status and hand over queued messages.
+  - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
 - `tests/`: pytest tests.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
+
+## How agents talk
+
+- An agent's status (busy / idle / waiting) comes from its hooks, never from screen scraping.
+- A message to an idle agent is pasted into its window and counts as delivered only after
+  the agent's `UserPromptSubmit` hook sees it; otherwise it is queued again. A busy agent
+  gets its queued messages from its `Stop` hook when the turn ends.
+
+## Try it locally
+
+`uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` to keep test
+sessions apart from the LADO you work with.
 
 ## Rules
 

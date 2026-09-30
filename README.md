@@ -22,12 +22,12 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 
 ## Install
 
-Not published yet. When it is:
-
 ```bash
-pip install lado        # or: uv tool install lado
-lado --version
+uv tool install lado    # or: pip install lado
+lado doctor             # checks that tmux and Claude Code are installed
 ```
+
+There is nothing else to run yet; see [ROADMAP.md](ROADMAP.md).
 
 ## License
 

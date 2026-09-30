@@ -11,7 +11,7 @@ Each stage is done when all its boxes are checked.
 
 ## Stage 1: Walking skeleton
 
-- [ ] `lado doctor` checks the environment: Python, tmux, Claude Code
+- [x] `lado doctor` checks the environment: Python, tmux, Claude Code
 - [ ] Release to PyPI on a git tag (trusted publishing)
 - [ ] `uv tool install lado` works on a clean machine
 

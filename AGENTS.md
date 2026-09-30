@@ -15,9 +15,13 @@ uv run ruff check       # lint (add --fix to autofix)
 
 CI runs `ruff format --check`, `ruff check` and `pytest` on Python 3.10 and 3.13.
 
+Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
+tag against the package version and publishes to PyPI.
+
 ## Layout
 
-- `src/lado/`: the Python package; `cli.py` is the `lado` entry point.
+- `src/lado/`: the Python package; `cli.py` is the `lado` entry point, one module per command
+  (`doctor.py`).
 - `tests/`: pytest tests.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 

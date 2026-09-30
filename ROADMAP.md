@@ -34,3 +34,22 @@ Each stage is done when all its boxes are checked.
 - [ ] Work runs through an installed release of LADO; agents edit the working copy
 - [ ] Every bug or friction found is filed in the task tracker
 - [ ] Claude Code is used directly only when LADO is too broken to fix itself
+
+## Stage 4: Desktop app
+
+The agents still run in tmux; the app is a window onto them.
+
+- [ ] Local web UI (`lado ui`): sessions, agents with their status, messages
+- [ ] Agent terminals in the UI (a web terminal attached to the agent's tmux window)
+- [ ] Desktop app that bundles the UI and the LADO runtime (macOS first)
+- [ ] Notifications when an agent waits for the human
+
+## Stage 5: ACP runtime
+
+Drive agents over the Agent Client Protocol instead of tmux: structured events, permission
+requests handled by LADO, any ACP agent as a provider. Starts with research.
+
+- [ ] Research: Claude via ACP adapter (subscription auth, skills, hooks, plugins), other agents
+- [ ] Agent runtime interface with tmux and ACP implementations
+- [ ] UI renders ACP sessions and permission requests
+- [ ] Dogfooding moves to the ACP runtime

@@ -12,8 +12,8 @@ Each stage is done when all its boxes are checked.
 ## Stage 1: Walking skeleton
 
 - [x] `lado doctor` checks the environment: Python, tmux, Claude Code
-- [ ] Release to PyPI on a git tag (trusted publishing)
-- [ ] `uv tool install lado` works on a clean machine
+- [x] Release to PyPI on a git tag (trusted publishing)
+- [x] `uv tool install lado` works on a clean machine
 
 ## Stage 2: Dogfood MVP
 

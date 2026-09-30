@@ -1,0 +1,21 @@
+{
+  "name": "@ladohq/cli",
+  "version": "0.0.1",
+  "description": "Layered Agent Delegation & Orchestration: run teams of AI coding agents (early development)",
+  "bin": {
+    "lado": "index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ladohq/lado.git"
+  },
+  "homepage": "https://github.com/ladohq/lado",
+  "publishConfig": {
+    "access": "public"
+  }
+}

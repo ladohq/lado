@@ -68,6 +68,20 @@ tag against the package version and publishes to PyPI.
 `uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
+## Testing
+
+Four layers; each change gets tests at the lowest layer that can catch its bugs:
+
+1. **Unit** (`make test`): pure logic, tmux replaced by a recorder. Default for everything.
+2. **Integration** (`make test-integration`): real tmux, git, hooks, `lado mcp` and SQLite
+   with the fake agent instead of an LLM. Required for behaviour that crosses processes.
+3. **Plugin tests** (`make test-js`): provider plugins run under Node with a fake client.
+4. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
+   scenario per provider. Never in the default run. Kilo runs nightly in CI on free models;
+   Claude Code runs locally. Run it after changing a provider or before a release.
+
+Before a release: `make check` and `make test-live` pass.
+
 ## Design principles
 
 LADO borrows ideas from other orchestrators but must not repeat their mistakes:

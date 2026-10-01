@@ -121,7 +121,8 @@ def build(session: str, agent: str) -> MCPServer:
             `role` is one of the session's worker roles (default: the kits' default). `without`
             switches off skills or MCP servers for this worker, e.g. ["skill:x", "mcp:y"].
             `provider` is the agent CLI to run it with, e.g. "claude" or "kilo" (default: the
-            session's). The worker reports back with send_message when it is done or blocked.
+            session's). The worker reports back with send_message when it is done or blocked,
+            or with flow_advance when it finished a step of a run.
 
             With `run`, the worker works for that flow run, in the run's worktree and branch.
             If the run's current step waits for a worker, the step is its task: leave out

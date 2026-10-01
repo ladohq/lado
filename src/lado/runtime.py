@@ -29,7 +29,8 @@ from your current HEAD. Give it the goal, the relevant files and how to check th
 - read_messages: read the full text of the messages you got.
 - list_agents: see the agents, their role, status, branch and worktree.
 - finish_worker: once you merged a worker's branch, end that worker; its window, worktree \
-and branch are removed.
+and branch are removed. A worker of an open flow run only has its window closed: the \
+worktree and branch belong to the run.
 Workers report back with messages that arrive in your input as "[from <name>] ...".
 Do not relay worker or reviewer reports to the human. Talk to the human only when a \
 decision is needed (the question and your recommendation) or at a milestone (one or two \
@@ -215,9 +216,12 @@ def spawn_worker(
     role: str | None = None,
     without: list[str] | None = None,
     run: state.Run | None = None,
+    has_step: bool = False,
 ) -> state.Agent:
     """Start a worker with `role` from the session's kits (default: the kits' default_agent,
     else "worker"), minus the `without` items ("skill:y", "mcp:z") for this worker.
+    `has_step`: the task holds a step of `run`, which the worker reports with flow_advance;
+    any other task it reports with send_message.
 
     A worker gets its own worktree and branch; a worker for a flow `run` works in the
     run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""
@@ -257,8 +261,8 @@ def spawn_worker(
         exclude_worktrees(sess.repo)
         git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
     _add_agent(agent)
-    # A run's worker reports with flow_advance, as its instructions say.
-    first = task if run else task + REPORT_REMINDER
+    # A step is reported with flow_advance, as the run worker's instructions say.
+    first = task if has_step else task + REPORT_REMINDER
     launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent

@@ -257,14 +257,16 @@ def spawn_worker(
     )
     role = role or (current.agent if waiting_step else None)
     parts = [task.strip()] if task and task.strip() else []
-    if waiting_step and role == current.agent:
+    has_step = waiting_step and role == current.agent
+    if has_step:
         parts.append(step_text(run, flow))
     if not parts:
         raise LadoError(
             f'run "{run.name}" has no step for a {role or "worker"} now; give the worker a task'
         )
     _restore_worktree(_session(session).repo, run)
-    return runtime.spawn_worker(session, "\n\n".join(parts), name, provider, role, without, run)
+    task = "\n\n".join(parts)
+    return runtime.spawn_worker(session, task, name, provider, role, without, run, has_step)
 
 
 def _restore_worktree(repo: str, run: state.Run) -> None:

@@ -129,10 +129,10 @@ is not printed again.
 current branch: it closes the window, removes the worktree and branch, and drops the agent
 from `lado ls` (its messages and events stay in `lado log`, with a `finished` event).
 Messages it never got and bodies it never read are dropped, so a later worker of the same
-name starts fresh. It refuses an unmerged branch or uncommitted changes; `--discard` ends the worker anyway and
-throws that work away. The supervisor does the same with the MCP tool `finish_worker`.
-A worker of a flow run only has its window closed while the run is open: the worktree and
-branch belong to the run.
+name starts fresh. It refuses an unmerged branch or uncommitted changes; `--discard` ends
+the worker anyway and throws that work away. The supervisor does the same with the MCP
+tool `finish_worker`. A worker of a flow run only has its window closed while the run is
+open: the worktree and branch belong to the run.
 
 `lado stop <session>` kills the session's tmux windows and marks it stopped; its history,
 runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names

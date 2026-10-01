@@ -623,6 +623,14 @@ def test_a_run_worker_reports_each_step_only_with_flow_advance(session, fake_tmu
     assert "only for questions" in prompt
 
 
+def test_a_run_worker_without_a_step_is_told_to_report_its_task(session, fake_tmux):
+    """A task from the supervisor, with no step in it, is reported with send_message."""
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login", role="reviewer", task="Read the plan.")
+    first = fake_tmux[-1][-1][-1]
+    assert first == "Read the plan." + runtime.REPORT_REMINDER
+
+
 def test_a_session_without_flows_is_not_told_about_them(repo, fake_tmux):
     runtime.start_session(str(repo), "plain", None)
     supervisor = fake_tmux[0][-1]

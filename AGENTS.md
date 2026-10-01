@@ -61,21 +61,30 @@ schema change.
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`; `LADO_TMUX_SOCKET` overrides
     the socket name and is passed on to agents).
-  - `kits.py`: kits (agent roles, skills, MCP servers): lookup, `include`, `--without`,
+  - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup, `include`, `--without`,
     validation. A provider gets an `AgentSpec` (prompt, skill folders, MCP servers), never
     the kit itself. `builtin_kits/`: kits shipped with LADO (`default`: supervisor + worker).
     LADO's own instructions to agents stay in `runtime.py` and are appended to the role.
   - `sources.py`: kit sources (`lado sources`): a local folder read in place, or a git
     repository cloned into `LADO_HOME/sources/<name>`; registered in `LADO_HOME/sources.yaml`.
     Only the `Source` classes know a kind; `kits.py` asks a source for its directory.
-  - `mcp_server.py`: MCP tools for agents (`send_message`, `read_messages`, `list_agents`;
-    the supervisor also gets `spawn_worker` and `finish_worker`).
+  - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states)
+    and its validator. `runs.py`: flow runs: start (own worktree and branch, shared by the
+    run's workers), step messages from `lado`, `flow_advance`, loop limits, gates (the run
+    waits for the human), end (finish workers, remove the worktree if merged), cancel and
+    `lado flow-set`. A run keeps a snapshot of its flow.
+  - `mcp_server.py`: MCP tools for agents (`send_message`, `read_messages`, `list_agents`,
+    `flow_advance`, `flow_status`; the supervisor also gets `spawn_worker`, `finish_worker`,
+    `flow_start` and `flow_cancel`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
-    `finished`); events and messages go with their session. How long an agent has had its
-    status (`lado ls`, `list_agents`) comes from its latest `status` or `spawned` event.
+    `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
+    `flow_wait`, `flow_end`, `flow_cancel`, `flow_set`; their `run` column names the run);
+    events, messages and runs go with their session. How long an agent has had its
+    status (`lado ls`, `list_agents`) comes from its latest `status` or `spawned` event, how
+    long a run has been in its state from its latest event.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/live/`: live tests with real agent CLIs; `tests/js/`: Node tests of the Kilo plugin.
@@ -116,6 +125,12 @@ current branch: it closes the window, removes the worktree and branch, and drops
 from `lado ls` (its messages and events stay in `lado log`, with a `finished` event). It
 refuses an unmerged branch or uncommitted changes; `--discard` ends the worker anyway and
 throws that work away. The supervisor does the same with the MCP tool `finish_worker`.
+A worker of a flow run only has its window closed while the run is open: the worktree and
+branch belong to the run.
+
+`lado flow-set <session> <run> <state> --reason TEXT` puts a flow run into a state: the
+human's way past a gate or a loop limit. `lado ls` shows each open run with its state and
+who acts next.
 
 ## Testing
 

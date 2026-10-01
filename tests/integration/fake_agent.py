@@ -9,6 +9,9 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     read               call the LADO MCP tool read_messages
     spawn <task>       call the LADO MCP tool spawn_worker
     finish <name> [discard]  call the LADO MCP tool finish_worker
+    flow_start <flow> <task>  call the LADO MCP tool flow_start
+    spawnrun <run>     call the LADO MCP tool spawn_worker for a flow run
+    advance <run> <outcome>  call the LADO MCP tool flow_advance
     sleep <seconds>    work that long
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     exit               end the session
@@ -128,6 +131,12 @@ def work(text: str) -> bool:
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
         elif command[0] == "finish":
             call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
+        elif command[0] == "flow_start":
+            call_tool("flow_start", {"flow": command[1], "task": command[2]})
+        elif command[0] == "spawnrun":
+            call_tool("spawn_worker", {"run": command[1]})
+        elif command[0] == "advance":
+            call_tool("flow_advance", {"run": command[1], "outcome": command[2]})
     time.sleep(0.05)  # think
     return False
 

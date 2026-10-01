@@ -291,10 +291,11 @@ def _close(run: state.Run) -> None:
             "worktree and branch (with no workers left, remove them with git).",
         )
         return
-    for worker in workers:
-        runtime.close_worker(run.session, worker, "run ended")
+    # Git first: if it fails, the workers keep running and nothing is half done.
     runtime.git(repo, "worktree", "remove", run.worktree)
     runtime.git(repo, "branch", "-d", run.branch)
+    for worker in workers:
+        runtime.close_worker(run.session, worker, "run ended")
     _tell_supervisor(run, f"ended at {run.state}; worktree and branch removed")
 
 

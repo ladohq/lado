@@ -5,6 +5,9 @@ A source gives LADO a local directory to read kits from. Kinds:
     path    a local folder, read in place and never copied (for developing kits)
     git     a repository cloned into LADO_HOME/sources/<name>; ref: tag, branch or commit
 
+A source may name the folders its skills come from (`skills`, relative paths such as
+skills/engineering); other skills in it are not used.
+
 Sources are registered in LADO_HOME/sources.yaml, in the order they were added. Only the
 Source classes know what a kind means; everything else asks a source for its directory.
 """
@@ -22,7 +25,7 @@ import yaml
 from lado import state
 
 REGISTRY = "sources.yaml"
-SOURCE_KEYS = {"name", "kind", "location", "ref"}
+SOURCE_KEYS = {"name", "kind", "location", "ref", "skills"}
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")  # a source name is also a kit name (skill packs)
 VERSION_TAG = re.compile(r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
 # git@host:owner/repo: an scp-like git address.
@@ -38,6 +41,7 @@ class Source:
     name: str
     location: str
     ref: str | None = None
+    skills: tuple[str, ...] = ()  # folders to take skills from; empty: all of skills/
 
     kind: ClassVar[str]
 
@@ -67,7 +71,8 @@ class Source:
 
     def describe(self) -> str:
         ref = f" @{self.ref}" if self.ref else ""
-        return f"{self.kind} {self.location}{ref}"
+        skills = f" skills: {', '.join(self.skills)}" if self.skills else ""
+        return f"{self.kind} {self.location}{ref}{skills}"
 
 
 class PathSource(Source):
@@ -167,9 +172,12 @@ def registered() -> list[Source]:
             or entry.get("kind") not in KINDS
             or not isinstance(entry.get("name"), str)
             or not isinstance(entry.get("location"), str)
+            or not isinstance(entry.get("skills", []), list)
         ):
             raise SourceError(f"{path}: invalid source {entry!r}")
-        found.append(KINDS[entry["kind"]](entry["name"], entry["location"], entry.get("ref")))
+        skills = tuple(_skill_folder(str(f)) for f in entry.get("skills", []))
+        kind = KINDS[entry["kind"]]
+        found.append(kind(entry["name"], entry["location"], entry.get("ref"), skills))
     return found
 
 
@@ -181,8 +189,10 @@ def get(name: str) -> Source:
     raise SourceError(f'no source "{name}"; sources: {names}')
 
 
-def add(spec: str, name: str | None = None) -> Source:
-    """Register a git URL or a local folder, optionally with @ref, and fetch it."""
+def add(spec: str, name: str | None = None, skills: list[str] | None = None) -> Source:
+    """Register a git URL or a local folder, optionally with @ref, and fetch it. `skills`:
+    folders inside it to take skills from, instead of all of skills/."""
+    folders = tuple(_skill_folder(f) for f in skills or [])
     location, ref = _split_ref(spec)
     if _is_git(location):
         kind, default = "git", re.split(r"[/:]", location.rstrip("/"))[-1].removesuffix(".git")
@@ -199,7 +209,7 @@ def add(spec: str, name: str | None = None) -> Source:
     taken = registered()
     if any(s.name == name for s in taken):
         raise SourceError(f'a source named "{name}" already exists; choose another --name')
-    source = KINDS[kind](name, location, ref)
+    source = KINDS[kind](name, location, ref, folders)
     source.fetch()
     _save([*taken, source])
     return source
@@ -216,8 +226,20 @@ def _save(found: list[Source]) -> None:
     entries = []
     for s in found:
         entry = {"name": s.name, "kind": s.kind, "location": s.location}
-        entries.append({**entry, "ref": s.ref} if s.ref else entry)
+        if s.ref:
+            entry["ref"] = s.ref
+        if s.skills:
+            entry["skills"] = list(s.skills)
+        entries.append(entry)
     (state.home() / REGISTRY).write_text(yaml.safe_dump({"sources": entries}, sort_keys=False))
+
+
+def _skill_folder(folder: str) -> str:
+    """A folder inside the source: relative, without "..", in / form."""
+    path = Path(folder)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        raise SourceError(f'"{folder}": skills folders are relative paths inside the source')
+    return path.as_posix()
 
 
 def _split_ref(spec: str) -> tuple[str, str | None]:

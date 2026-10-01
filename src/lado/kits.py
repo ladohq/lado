@@ -13,8 +13,9 @@ the kit travels with it untouched. A kit is identified by the name and version i
 Kits are looked up by name in the project (<repo>/.lado/kits), then in LADO_HOME/kits, then
 in the registered sources (lado.sources) in the order they were added, then among the kits
 built into LADO; the first hit wins. A source holds kits in kits/<name>/, or one kit at its
-root, or is a skill pack: no kit.yaml, only SKILL.md folders anywhere under skills/. A skill
-pack is a kit named after the source, with skills and no agents. Several kits, with what
+root, or is a skill pack: no kit.yaml, only SKILL.md folders anywhere under skills/ (or under
+the folders the source names). A skill pack is a kit named after the source, with skills and
+no agents. Several kits, with what
 they include, combine into one Environment.
 """
 
@@ -233,11 +234,16 @@ def in_source(origin: sources.Source) -> list[Found]:
     elif (root / "kits").is_dir() and _skill_dirs(root / "skills"):
         raise KitError(f"{root / 'skills'}: skills of a source with kits belong in a kit")
     found += _in_folder(root / "kits", where, origin)
+    if found and origin.skills:
+        raise KitError(
+            f'source "{origin.name}" has kits; skills folders ({", ".join(origin.skills)}) '
+            "only choose the skills of a skill pack"
+        )
     if not found:
         stray = _stray_kit_file(root)
         if stray:
             raise KitError(f"{stray}: a source keeps kits in kits/<name>/ or one kit at its root")
-        if _skill_dirs(root / "skills"):
+        if _pack_skill_dirs(root, origin):
             found.append(Found(origin.name, where, root, origin, pack=True))
     seen: dict[str, Found] = {}
     for kit in found:
@@ -277,6 +283,18 @@ def _stray_kit_file(root: Path) -> Path | None:
         if KIT_FILE in files:
             return Path(folder, KIT_FILE)
     return None
+
+
+def _pack_skill_dirs(root: Path, origin: sources.Source) -> list[Path]:
+    """The skill folders of a skill pack: under skills/, or under the source's skills folders."""
+    if not origin.skills:
+        return _skill_dirs(root / "skills")
+    found = []
+    for folder in origin.skills:
+        if not (root / folder).is_dir():
+            raise KitError(f'source "{origin.name}": skills folder {root / folder} does not exist')
+        found += _skill_dirs(root / folder)
+    return found
 
 
 def _skill_dirs(base: Path) -> list[Path]:
@@ -345,10 +363,13 @@ def _load_pack(found: Found) -> Kit:
     errors: list[str] = []
     skills: dict[str, Skill] = {}
     root = found.path.resolve()
-    for path in _skill_dirs(root / "skills"):
+    for path in _pack_skill_dirs(root, found.origin):
         skill = _load_skill(path, found.name, errors)
         if skill and skill.name in skills:
-            errors.append(f'{path}: skill "{skill.name}" is also in {skills[skill.name].path}')
+            errors.append(
+                f'{path}: skill "{skill.name}" is also in {skills[skill.name].path}; '
+                "choose the folders to use with `lado kits add --skills <folder>`"
+            )
         elif skill:
             skills[skill.name] = skill
     if errors:

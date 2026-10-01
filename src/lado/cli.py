@@ -50,11 +50,11 @@ def cmd_kits_sources(args: argparse.Namespace) -> int:
 
 
 def cmd_kits_add(args: argparse.Namespace) -> int:
-    source = sources.add(args.source, args.name)
+    source = sources.add(args.source, args.name, args.skills)
     try:
         found = kits.in_source(source)
         if not found:
-            raise kits.KitError(f"no kits and no skills under skills/ in {source.path()}")
+            raise kits.KitError(f"no kits and no skills found in {source.path()}")
     except kits.KitError as exc:
         sources.remove(source.name)
         raise kits.KitError(f"{exc}\nsource not added") from None
@@ -120,8 +120,10 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
             else kits.find(args.kit, repo).load()
         )
         env = kits.resolve(repo, [kit])
-        problems = [p for k in env.kits for p in kits.lint(k)]
+        # What it includes is checked on its own; here its problems are only warnings.
+        problems = kits.lint(kit)
         doubts = [w for k in env.kits for w in kits.warnings(k)]
+        doubts += [p for k in env.kits if k.path != kit.path for p in kits.lint(k)]
     except kits.KitError as exc:
         print(exc, file=sys.stderr)
         return 1
@@ -248,6 +250,13 @@ def main(argv: list[str] | None = None) -> int:
         help="a git URL (cloned; ref: tag, branch or commit) or a folder (read in place)",
     )
     add.add_argument("--name", help="source name (default: repository or folder name)")
+    add.add_argument(
+        "--skills",
+        action="append",
+        metavar="FOLDER",
+        help="for a skill pack: take skills only from this folder inside it, e.g. "
+        "skills/engineering; repeatable (default: all of skills/)",
+    )
     add.set_defaults(func=cmd_kits_add)
     update = kits_sub.add_parser("update", help="fetch kit sources again (default: all)")
     update.add_argument("name", nargs="?")

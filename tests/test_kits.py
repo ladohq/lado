@@ -435,3 +435,28 @@ def test_version_must_be_semver_and_match_the_tag(tmp_path, repo):
     kit = kits.find("team", repo).load()
     assert kits.warnings(kit) == []
     assert kits.lint(kit) == [f"{kit.path / 'kit.yaml'}: version is missing; use X.Y.Z"]
+
+
+def test_skill_pack_with_skills_folders(tmp_path):
+    pack = make_pack(tmp_path / "pack", ["engineering/tdd", "productivity/grill", "misc/tdd"])
+    (found,) = kits.in_source(sources.add(str(pack), "whole"))
+    with pytest.raises(kits.KitError) as exc:
+        found.load()
+    message = str(exc.value)
+    assert f'{pack / "skills" / "misc" / "tdd"}: skill "tdd" is also in' in message
+    assert str((pack / "skills" / "engineering" / "tdd").resolve()) in message
+    assert "lado kits add --skills" in message
+
+    source = sources.add(str(pack), "picked", ["skills/engineering", "skills/productivity/"])
+    assert source.skills == ("skills/engineering", "skills/productivity")
+    assert sources.get("picked") == source  # kept in sources.yaml
+    (found,) = kits.in_source(source)
+    assert list(found.load().skills) == ["tdd", "grill"]
+
+    missing = sources.add(str(pack), "missing", ["skills/nope"])
+    with pytest.raises(kits.KitError, match="skills folder .*skills/nope does not exist"):
+        kits.in_source(missing)
+    with_kits = make_kit(tmp_path / "with-kits" / "kits", "k").parent.parent
+    filtered = sources.add(str(with_kits), skills=["kits"])
+    with pytest.raises(kits.KitError, match="only choose the skills of a skill pack"):
+        kits.in_source(filtered)

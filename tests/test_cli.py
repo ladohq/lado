@@ -139,7 +139,7 @@ def test_kits_add_refuses_a_source_without_kits(tmp_path, capsys):
     (tmp_path / "empty").mkdir()
     assert main(["kits", "add", str(tmp_path / "empty")]) == 1
     err = capsys.readouterr().err
-    assert "no kits and no skills under skills/" in err and "source not added" in err
+    assert "no kits and no skills found in" in err and "source not added" in err
     assert sources.registered() == []
     assert main(["kits", "add", "file:///nowhere/kits.git"]) == 1
     assert "lado: cannot get git file:///nowhere/kits.git" in capsys.readouterr().err
@@ -164,3 +164,34 @@ def test_kits_show_and_check_name_sources(tmp_path, repo, capsys):
     captured = capsys.readouterr()
     assert "warning: team: version 1.0.0 in kit.yaml, but team is at v2.0.0" in captured.err
     assert "team: OK (2 agents and 1 skills" in captured.out
+
+
+def test_kits_add_with_skills_folders(tmp_path, capsys):
+    pack = tmp_path / "pack"
+    for skill in ("engineering/tdd", "productivity/grilling", "deprecated/tdd"):
+        (pack / "skills" / skill).mkdir(parents=True)
+        name = skill.rsplit("/", 1)[-1]
+        (pack / "skills" / skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: d\n---\n"
+        )
+    assert main(["kits", "add", str(pack), "--name", "all"]) == 0
+    assert "  all              invalid; see: lado kits check all" in capsys.readouterr().out
+    args = ["--skills", "skills/engineering", "--skills", "skills/productivity"]
+    assert main(["kits", "add", str(pack), *args]) == 0
+    out = capsys.readouterr().out
+    assert f"skills: skills/engineering, skills/productivity, {pack.resolve()}" in out
+    assert "  pack             skill pack with 2 skills" in out
+    assert sources.get("pack").skills == ("skills/engineering", "skills/productivity")
+    assert main(["kits", "add", str(pack), "--name", "x", "--skills", "../up"]) == 1
+    assert "skills folders are relative paths inside the source" in capsys.readouterr().err
+
+
+def test_kits_check_warns_about_included_kits(repo, capsys):
+    base = _kit(repo, "base")
+    (base / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\nSee ~/notes.\n")
+    top = repo / ".lado" / "kits" / "top"
+    top.mkdir()
+    (top / "kit.yaml").write_text("name: top\nversion: 1.0.0\ninclude: [base]\n")
+    assert main(["kits", "--repo", str(repo), "check", "top"]) == 0
+    assert "warning: " in capsys.readouterr().err
+    assert main(["kits", "--repo", str(repo), "check", "base"]) == 1

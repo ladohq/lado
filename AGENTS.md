@@ -68,6 +68,30 @@ tag against the package version and publishes to PyPI.
 `uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
+## Design principles
+
+LADO borrows ideas from other orchestrators but must not repeat their mistakes:
+
+- **Events, not screens.** Agent status comes from hooks, plugins or a protocol, never from
+  reading the terminal.
+- **Neutral core.** Nothing above `providers/` depends on one agent CLI. A new feature works
+  with at least two providers or says clearly where it does not.
+- **No silent drops.** If a kit, role or option asks for something a provider cannot do,
+  fail or warn loudly. Never ignore it quietly.
+- **One source of truth.** Derive what exists from the files themselves; do not keep a
+  second list of the same things that can drift.
+- **Share, don't copy.** Reuse a skill or role through `include`, never by copying it.
+- **No hardcoded paths.** Resources refer to each other by relative paths or `${KIT_DIR}` /
+  `${SKILL_DIR}`, never by absolute or home-directory paths.
+- **Never touch the user's global agent config.** Configure each agent process on its own.
+- **Native over injected.** Use each CLI's own way of loading skills, MCP servers and hooks
+  instead of pasting their text into the prompt.
+- **Explicit lookup.** No hidden fallbacks to global locations; show where each resolved
+  piece came from.
+- **Only what is used.** Add a field, option or engine feature when a real kit needs it.
+- **Tested end to end.** Behaviour that crosses processes (tmux, hooks, MCP) gets an
+  integration test with the fake agent.
+
 ## Rules
 
 - **Deliver fast.** Build only what the current roadmap stage needs.

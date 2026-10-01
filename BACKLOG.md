@@ -75,3 +75,13 @@ says to run `lado sources update` or `lado sources remove`. Decide: keep failing
 when the wanted kit (or the lookup path to it) depends on the broken source and warn
 otherwise.
 Found: 2026-10-01, kit sources review.
+
+## Kilo updates itself and can break the global install
+
+Kilo auto-updates patch releases by default. On 2026-10-01, Kilo 7.8.3 was published while a
+Kilo live test ran; afterwards `/opt/homebrew/lib/node_modules/@kilocode/cli` was empty and
+`kilo` was gone until it was reinstalled by hand. An agent CLI must not change itself under a
+running LADO session (and the plugin API is version-sensitive). Wanted: the Kilo provider
+sets `KILO_DISABLE_AUTOUPDATE=1` (or `"autoupdate": false` in the agent's kilo.json), with a
+test; `lado doctor` keeps warning when the version is not the tested one.
+Found: 2026-10-01, live e2e for `lado log`.

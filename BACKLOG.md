@@ -77,3 +77,14 @@ running LADO session (and the plugin API is version-sensitive). Wanted: the Kilo
 sets `KILO_DISABLE_AUTOUPDATE=1` (or `"autoupdate": false` in the agent's kilo.json), with a
 test; `lado doctor` keeps warning when the version is not the tested one.
 Found: 2026-10-01, live e2e for `lado log`.
+
+## A newer LADO migrates the database under running older processes
+
+Running a newer LADO (e.g. the working copy with `uv run lado log`) against the real
+`~/.lado` silently migrates `lado.db` to its schema. Agents, hooks and MCP servers of the
+installed older version then refuse the "newer" database, so the running session breaks
+(MCP tools fail, hooks error). Wanted: before migrating, check for running sessions started
+by another LADO version and refuse with a clear message (or only migrate when no session is
+running); AGENTS.md already says to use a temp `LADO_HOME` for the working copy, but the
+tool should protect against the mistake.
+Found: 2026-10-01, trying `lado log` from the working copy after merging it.

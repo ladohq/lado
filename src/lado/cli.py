@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     stop.add_argument("name")
     stop.set_defaults(func=cmd_stop)
 
-    # Internal: started by Claude Code for LADO agents.
+    # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")
     hook = commands.add_parser("hook")
     hook.add_argument("event")

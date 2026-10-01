@@ -1,4 +1,4 @@
-"""MCP server that gives agents LADO tools. Claude Code starts one per agent over stdio.
+"""MCP server that gives agents LADO tools. Each agent's CLI starts one over stdio.
 
 The calling agent is identified by LADO_SESSION and LADO_AGENT, which lado.runtime writes
 into that agent's MCP config.

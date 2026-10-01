@@ -6,6 +6,8 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from lado import providers
+
 
 @dataclass
 class Check:
@@ -36,6 +38,7 @@ def check_tool(
 
 
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
+    agent = providers.get(providers.DEFAULT)
     return [
         Check("Python", True, platform.python_version()),
         check_tool(
@@ -45,13 +48,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
             "install it: `brew install tmux` or `sudo apt install tmux`",
             which,
         ),
-        check_tool(
-            "Claude Code",
-            "claude",
-            "--version",
-            "install it: https://docs.anthropic.com/en/docs/claude-code",
-            which,
-        ),
+        check_tool(agent.title, agent.command, "--version", agent.install_hint, which),
     ]
 
 

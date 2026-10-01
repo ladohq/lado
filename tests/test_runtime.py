@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from lado import hooks, runtime, state
+from lado import hooks, providers, runtime, state
 
 
 def test_slug():
@@ -56,6 +56,14 @@ def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
     assert runtime.spawn_worker("s", "another").name == "w2"
 
 
+def _hook(event, agent, payload=None):
+    """Run a Claude Code hook of agent `agent` in session "s"; returns its decoded output."""
+    claude = providers.get("claude")
+    neutral = claude.parse_event(event, json.dumps(payload or {}))
+    output = hooks.handle(claude, neutral, "s", agent) if neutral else None
+    return json.loads(output) if output else None
+
+
 def _session_with_worker(repo):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")
@@ -67,8 +75,8 @@ def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
     assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
     assert fake_tmux[-1] == ("send_text", "s", "w1", "[from supervisor] hi")
     assert state.get_agent("s", "w1").status == state.BUSY
-    hooks.handle("UserPromptSubmit", "s", "w1", {"prompt": "[from supervisor] hi"})
-    hooks.handle("Stop", "s", "w1", {})
+    _hook("UserPromptSubmit", "w1", {"prompt": "[from supervisor] hi"})
+    _hook("Stop", "w1")
     assert fake_tmux[-1][0] == "send_text"  # confirmed, so not delivered again
 
 
@@ -87,23 +95,23 @@ def test_stop_hook_redelivers_unconfirmed_message(repo, fake_tmux, monkeypatch):
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
     monkeypatch.setattr(hooks, "CONFIRM_TIMEOUT", -1)
-    hooks.handle("UserPromptSubmit", "s", "supervisor", {"prompt": "something else"})
-    out = hooks.handle("Stop", "s", "supervisor", {})
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+    out = _hook("Stop", "supervisor")
     assert out == {"decision": "block", "reason": "[from w1] report"}
 
 
 def test_message_to_busy_agent_arrives_via_stop_hook(repo, fake_tmux):
     _session_with_worker(repo)
-    hooks.handle("UserPromptSubmit", "s", "supervisor", {})
+    _hook("UserPromptSubmit", "supervisor")
     assert runtime.send_message("s", "w1", "supervisor", "done").startswith("queued")
     assert runtime.send_message("s", "w1", "supervisor", "branch lado/s/w1").startswith("queued")
-    out = hooks.handle("Stop", "s", "supervisor", {})
+    out = _hook("Stop", "supervisor")
     assert out == {
         "decision": "block",
         "reason": "[from w1] done\n\n[from w1] branch lado/s/w1",
     }
     assert state.get_agent("s", "supervisor").status == state.BUSY
-    assert hooks.handle("Stop", "s", "supervisor", {}) is None
+    assert _hook("Stop", "supervisor") is None
     assert state.get_agent("s", "supervisor").status == state.IDLE
 
 
@@ -117,15 +125,15 @@ def test_message_errors(repo, fake_tmux):
 
 def test_status_hooks(repo, fake_tmux):
     _session_with_worker(repo)
-    hooks.handle("SessionStart", "s", "supervisor", {})
-    hooks.handle("SessionStart", "s", "w1", {})
+    _hook("SessionStart", "supervisor")
+    _hook("SessionStart", "w1")
     assert state.get_agent("s", "supervisor").status == state.IDLE  # no task yet
     assert state.get_agent("s", "w1").status == state.BUSY  # started with a task
-    hooks.handle("Notification", "s", "w1", {"notification_type": "permission_prompt"})
+    _hook("Notification", "w1", {"notification_type": "permission_prompt"})
     assert state.get_agent("s", "w1").status == state.WAITING
-    hooks.handle("Notification", "s", "w1", {"notification_type": "idle_prompt"})
+    _hook("Notification", "w1", {"notification_type": "idle_prompt"})
     assert state.get_agent("s", "w1").status == state.WAITING
-    hooks.handle("SessionEnd", "s", "w1", {})
+    _hook("SessionEnd", "w1")
     assert state.get_agent("s", "w1").status == state.STOPPED
 
 
@@ -145,15 +153,6 @@ def test_hooks_from_an_earlier_launch_are_ignored(repo, fake_tmux, monkeypatch):
     monkeypatch.setattr("sys.stdin.read", lambda: "{}")
     hooks.main("SessionEnd", "s", "supervisor", old)  # the killed process exits late
     assert state.get_agent("s", "supervisor").status == state.STARTING
-
-
-def test_incompatible_database_is_reported(lado_home):
-    import sqlite3
-
-    lado_home.mkdir()
-    sqlite3.connect(lado_home / "lado.db").execute("CREATE TABLE sessions (name TEXT)")
-    with pytest.raises(RuntimeError, match="incompatible schema"):
-        state.list_sessions()
 
 
 def test_stop_session_keeps_worktrees(repo, fake_tmux):

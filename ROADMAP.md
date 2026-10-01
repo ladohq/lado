@@ -34,7 +34,7 @@ Everything above the provider layer (sessions, messages, kits, flows) must not d
 which agent CLI runs. Agent status comes from events (hooks, plugins, ACP), never from
 reading the screen.
 
-- [ ] Provider interface with explicit capabilities; Claude Code moved onto it
+- [x] Provider interface with explicit capabilities; Claude Code moved onto it
 - [ ] Codex provider
 - [ ] Provider chosen per session and per worker; `lado doctor` checks every installed one
 

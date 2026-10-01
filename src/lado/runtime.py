@@ -1,17 +1,14 @@
-"""Agent runtime: starts Claude Code agents in tmux and delivers messages to them.
+"""Agent runtime: starts agents in tmux and delivers messages to them.
 
-Each agent gets its own MCP config (so the LADO MCP server knows who is calling) and its
-own settings with hooks (so LADO learns when the agent is busy, idle or waiting).
+Each agent's provider (lado.providers) gives it its own MCP config (so the LADO MCP server
+knows who is calling) and hooks (so LADO learns when the agent is busy, idle or waiting).
 """
 
-import json
 import re
-import shlex
 import subprocess
-import sys
 from pathlib import Path
 
-from lado import state, tmux
+from lado import providers, state, tmux
 
 SUPERVISOR = "supervisor"
 WORKER = "worker"
@@ -20,7 +17,7 @@ CONFIRM_TIMEOUT = 15  # seconds for a typed message to show up as a prompt
 
 SUPERVISOR_PROMPT = """\
 You are the supervisor of LADO session "{session}". The human talks to you in this window.
-You coordinate worker agents. Each worker is a separate Claude Code instance with its own \
+You coordinate worker agents. Each worker is a separate coding agent with its own \
 git worktree and branch, created from your current HEAD.
 
 Use the `lado` MCP tools:
@@ -68,11 +65,6 @@ def repo_root(path: str) -> str:
         raise LadoError(f"{path} is not inside a git repository") from exc
 
 
-def lado_command(*args: str) -> list[str]:
-    # The same interpreter that runs this code, so agents use the same LADO install.
-    return [sys.executable, "-m", "lado.cli", *args]
-
-
 def start_session(path: str, name: str | None, permission_mode: str | None) -> state.Session:
     repo = repo_root(path)
     session = slug(name or Path(repo).name)
@@ -80,13 +72,16 @@ def start_session(path: str, name: str | None, permission_mode: str | None) -> s
         if tmux.has_session(session):
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
         state.delete_session(session)  # left over from a tmux server that is gone
-    sess = state.Session(session, repo, permission_mode)
+    sess = state.Session(session, repo, permission_mode, providers.DEFAULT)
     state.add_session(sess)
-    agent = state.Agent(session, SUPERVISOR, SUPERVISOR, repo, None, None, state.STARTING)
+    agent = state.Agent(
+        session, SUPERVISOR, SUPERVISOR, repo, None, None, state.STARTING, sess.provider
+    )
     state.add_agent(agent)
     prompt = SUPERVISOR_PROMPT.format(session=session)
     try:
-        tmux.new_session(session, SUPERVISOR, repo, _env(agent), _claude(sess, agent, prompt))
+        cmd = providers.get(agent.provider).launch_command(agent, sess, prompt)
+        tmux.new_session(session, SUPERVISOR, repo, providers.agent_env(agent), cmd)
     except tmux.TmuxError:
         state.delete_session(session)
         raise
@@ -105,18 +100,21 @@ def spawn_worker(session: str, task: str, name: str | None = None) -> state.Agen
     worktree = Path(sess.repo) / ".lado" / "worktrees" / session / worker
     _exclude_lado_dir(sess.repo)
     git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
-    agent = state.Agent(session, worker, WORKER, str(worktree), branch, task, state.STARTING)
+    agent = state.Agent(
+        session, worker, WORKER, str(worktree), branch, task, state.STARTING, sess.provider
+    )
     state.add_agent(agent)
     prompt = WORKER_PROMPT.format(name=worker, session=session, branch=branch)
-    cmd = _claude(sess, agent, prompt, first_message=task + REPORT_REMINDER)
-    tmux.new_window(session, worker, str(worktree), _env(agent), cmd)
+    provider = providers.get(agent.provider)
+    cmd = provider.launch_command(agent, sess, prompt, first_message=task + REPORT_REMINDER)
+    tmux.new_window(session, worker, str(worktree), providers.agent_env(agent), cmd)
     return agent
 
 
 def send_message(session: str, sender: str, recipient: str, text: str) -> str:
     """Queue a message and deliver it now if the recipient is idle.
 
-    A busy recipient gets it from its Stop hook when its current turn ends (see lado.hooks).
+    A busy recipient gets it from its turn-end hook when its current turn ends (see lado.hooks).
     """
     if len(text) > MAX_MESSAGE:
         raise LadoError(
@@ -130,7 +128,7 @@ def send_message(session: str, sender: str, recipient: str, text: str) -> str:
     state.queue_message(session, sender, recipient, text)
     # A typed message the agent never received leaves it marked busy without it being so.
     lost = state.requeue_unconfirmed(session, recipient, CONFIRM_TIMEOUT)
-    # Queue first, read the status second: the Stop hook does the reverse, so a message is
+    # Queue first, read the status second: the turn-end hook does the reverse, so a message is
     # never left behind by an agent that went idle in between.
     status = state.get_agent(session, recipient).status
     if status != state.IDLE and not lost:
@@ -140,7 +138,7 @@ def send_message(session: str, sender: str, recipient: str, text: str) -> str:
 
 def deliver_pending(session: str, recipient: str) -> bool:
     """Type the recipient's pending messages into its window. They stay "sent" until its
-    UserPromptSubmit hook confirms them."""
+    prompt-submit hook confirms them."""
     pending = state.take_pending(session, recipient, state.SENT)
     if not pending:
         return False
@@ -176,56 +174,3 @@ def _exclude_lado_dir(repo: str) -> None:
     if "/.lado/" not in lines:
         exclude.parent.mkdir(parents=True, exist_ok=True)
         exclude.write_text("\n".join([*lines, "/.lado/"]) + "\n")
-
-
-def _env(agent: state.Agent) -> dict[str, str]:
-    return {
-        "LADO_HOME": str(state.home()),
-        "LADO_SESSION": agent.session,
-        "LADO_AGENT": agent.name,
-    }
-
-
-def _claude(
-    sess: state.Session, agent: state.Agent, prompt: str, first_message: str | None = None
-) -> list[str]:
-    config_dir = state.home() / "agents" / agent.session / agent.name
-    config_dir.mkdir(parents=True, exist_ok=True)
-    env = _env(agent)
-
-    mcp_config = config_dir / "mcp.json"
-    server = lado_command("mcp")
-    mcp = {"mcpServers": {"lado": {"command": server[0], "args": server[1:], "env": env}}}
-    mcp_config.write_text(json.dumps(mcp, indent=2))
-
-    def hook(event: str) -> list[dict]:
-        command = lado_command(
-            "hook",
-            event,
-            "--session",
-            agent.session,
-            "--agent",
-            agent.name,
-            "--instance",
-            agent.instance,
-        )
-        return [{"hooks": [{"type": "command", "command": shlex.join(command)}]}]
-
-    settings = config_dir / "settings.json"
-    events = ("SessionStart", "UserPromptSubmit", "Stop", "Notification", "SessionEnd")
-    settings.write_text(json.dumps({"hooks": {e: hook(e) for e in events}}, indent=2))
-
-    cmd = [
-        "claude",
-        "--mcp-config",
-        str(mcp_config),
-        "--settings",
-        str(settings),
-        "--append-system-prompt",
-        prompt,
-    ]
-    if sess.permission_mode:
-        cmd += ["--permission-mode", sess.permission_mode]
-    if first_message:
-        cmd += ["--", first_message]
-    return cmd

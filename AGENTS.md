@@ -22,12 +22,16 @@ tag against the package version and publishes to PyPI.
 
 - `src/lado/`: the Python package.
   - `cli.py`: the `lado` command. `doctor.py`: environment checks.
-  - `runtime.py`: starts Claude Code agents in tmux (worker = own git worktree and branch) and
-    delivers messages to them.
+  - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
+    messages to them.
+  - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
+    neutral hook events; `claude.py`: Claude Code). A provider writes the agent's config,
+    builds its command and translates its hook events.
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`).
   - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
-  - `hooks.py`: Claude Code hooks that report agent status and hand over queued messages.
+  - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
+    Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`.
 - `tests/`: pytest tests.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
@@ -35,8 +39,8 @@ tag against the package version and publishes to PyPI.
 
 - An agent's status (busy / idle / waiting) comes from its hooks, never from screen scraping.
 - A message to an idle agent is pasted into its window and counts as delivered only after
-  the agent's `UserPromptSubmit` hook sees it; otherwise it is queued again. A busy agent
-  gets its queued messages from its `Stop` hook when the turn ends.
+  the agent's prompt-submit hook sees it; otherwise it is queued again. A busy agent
+  gets its queued messages from its turn-end hook when the turn ends.
 
 ## Try it locally
 

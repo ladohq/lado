@@ -13,13 +13,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     name TEXT PRIMARY KEY,
     repo TEXT NOT NULL,
     permission_mode TEXT,
+    provider TEXT NOT NULL DEFAULT 'claude',  -- default for the session's agents
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS agents (
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS agents (
     task TEXT,
     status TEXT NOT NULL,
     instance TEXT NOT NULL,  -- new on every launch; hooks of older launches are ignored
+    provider TEXT NOT NULL DEFAULT 'claude',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (session, name)
 );
@@ -46,6 +48,14 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 """
 
+# Statements that upgrade a database from the version in the key to the next one.
+MIGRATIONS = {
+    1: [
+        "ALTER TABLE sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'",
+        "ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'",
+    ],
+}
+
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
 STARTING = "starting"
 BUSY = "busy"
@@ -54,7 +64,7 @@ WAITING = "waiting"  # waiting for the human, e.g. a permission prompt
 STOPPED = "stopped"
 
 # Message states. A message typed into an agent's window is only "sent" until the agent's
-# UserPromptSubmit hook confirms it; a modal dialog in the TUI can swallow the text.
+# prompt-submit hook confirms it; a modal dialog in the TUI can swallow the text.
 PENDING = "pending"
 SENT = "sent"
 DELIVERED = "delivered"
@@ -69,6 +79,7 @@ class Agent:
     branch: str | None
     task: str | None
     status: str
+    provider: str = "claude"
     instance: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
 
 
@@ -77,6 +88,7 @@ class Session:
     name: str
     repo: str
     permission_mode: str | None
+    provider: str = "claude"
 
 
 @dataclass
@@ -99,6 +111,8 @@ def connect() -> Iterator[sqlite3.Connection]:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version in MIGRATIONS:
+        version = _migrate(conn)
     if version != SCHEMA_VERSION:
         tables = conn.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()
         if version or tables[0]:
@@ -115,18 +129,32 @@ def connect() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def _migrate(conn: sqlite3.Connection) -> int:
+    """Apply MIGRATIONS in one transaction. Returns the new schema version."""
+    conn.execute("BEGIN IMMEDIATE")
+    # Read the version again inside the lock: another process may have just migrated.
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    while version in MIGRATIONS:
+        for statement in MIGRATIONS[version]:
+            conn.execute(statement)
+        version += 1
+    conn.execute(f"PRAGMA user_version = {version}")
+    conn.execute("COMMIT")
+    return version
+
+
 def add_session(session: Session) -> None:
     with connect() as db:
         db.execute(
-            "INSERT INTO sessions (name, repo, permission_mode) VALUES (?, ?, ?)",
-            (session.name, session.repo, session.permission_mode),
+            "INSERT INTO sessions (name, repo, permission_mode, provider) VALUES (?, ?, ?, ?)",
+            (session.name, session.repo, session.permission_mode, session.provider),
         )
 
 
 def get_session(name: str) -> Session | None:
     with connect() as db:
         row = db.execute("SELECT * FROM sessions WHERE name = ?", (name,)).fetchone()
-    return Session(row["name"], row["repo"], row["permission_mode"]) if row else None
+    return _session(row) if row else None
 
 
 def delete_session(name: str) -> None:
@@ -137,14 +165,15 @@ def delete_session(name: str) -> None:
 def list_sessions() -> list[Session]:
     with connect() as db:
         rows = db.execute("SELECT * FROM sessions ORDER BY created_at, rowid").fetchall()
-    return [Session(r["name"], r["repo"], r["permission_mode"]) for r in rows]
+    return [_session(r) for r in rows]
 
 
 def add_agent(agent: Agent) -> None:
     with connect() as db:
         db.execute(
-            "INSERT INTO agents (session, name, role, cwd, branch, task, status, instance)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO agents"
+            " (session, name, role, cwd, branch, task, status, provider, instance)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 agent.session,
                 agent.name,
@@ -153,6 +182,7 @@ def add_agent(agent: Agent) -> None:
                 agent.branch,
                 agent.task,
                 agent.status,
+                agent.provider,
                 agent.instance,
             ),
         )
@@ -241,5 +271,10 @@ def _agent(row: sqlite3.Row) -> Agent:
         branch=row["branch"],
         task=row["task"],
         status=row["status"],
+        provider=row["provider"],
         instance=row["instance"],
     )
+
+
+def _session(row: sqlite3.Row) -> Session:
+    return Session(row["name"], row["repo"], row["permission_mode"], row["provider"])

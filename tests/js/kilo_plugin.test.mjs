@@ -1,9 +1,9 @@
 // Tests for the Kilo plugin (src/lado/providers/kilo_plugin.js). Run: node --test tests/js/*.test.mjs
 import assert from "node:assert/strict"
-import { existsSync, mkdtempSync, readFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { beforeEach, test } from "node:test"
+import { dirname, join } from "node:path"
+import { afterEach, beforeEach, test } from "node:test"
 import { fileURLToPath } from "node:url"
 
 import { LadoPlugin } from "../../src/lado/providers/kilo_plugin.js"
@@ -13,6 +13,10 @@ let log
 
 beforeEach(() => {
   log = join(mkdtempSync(join(tmpdir(), "lado-kilo-")), "hooks.jsonl")
+})
+
+afterEach(() => {
+  rmSync(dirname(log), { recursive: true, force: true })
 })
 
 // A hook argv that records its call; `reply` is what the hook prints.

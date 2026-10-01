@@ -46,6 +46,10 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Integration tests (real tmux, git and agent processes, no LLM) run with `-m integration`.
-addopts = "-m 'not integration'"
-markers = ["integration: real tmux, git and subprocesses with a fake agent; no LLM"]
+# Integration tests (real tmux, git and agent processes, no LLM) run with `-m integration`,
+# live tests (real agent CLIs and models) with `-m live`.
+addopts = "-m 'not integration and not live'"
+markers = [
+    "integration: real tmux, git and subprocesses with a fake agent; no LLM",
+    "live: real agent CLIs and real models; costs tokens or needs network",
+]

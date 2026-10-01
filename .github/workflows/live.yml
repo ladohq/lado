@@ -1,0 +1,26 @@
+name: Live
+
+# Live e2e test with the real Kilo CLI on a free model (no secrets). The latest Kilo on
+# purpose: it catches changes in Kilo's plugin API before users hit them.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  kilo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+      - run: sudo apt-get install -y tmux
+      - run: npm install -g @kilocode/cli@latest
+      - run: kilo --version
+      - run: uv sync --locked
+      - run: uv run pytest -m live -k kilo -v

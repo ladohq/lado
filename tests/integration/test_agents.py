@@ -4,9 +4,9 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
+import agent_helpers
 import pytest
 
 from lado import runtime, state, tmux
@@ -17,28 +17,7 @@ SESSION = "itest"
 
 
 def wait_for(check, what: str, timeout: float = 10):
-    """Poll `check` until it returns something true, and return that."""
-    deadline = time.monotonic() + timeout
-    while not (result := check()):
-        if time.monotonic() > deadline:
-            pytest.fail(f"timed out waiting for {what}\n{_diagnostics()}")
-        time.sleep(0.05)
-    return result
-
-
-def _diagnostics() -> str:
-    """The agents' windows and the hook log, to see why a wait failed."""
-    out = []
-    for agent in state.list_agents(SESSION):
-        out.append(f"--- {agent.name} ({agent.status})")
-        try:
-            out.append(tmux.capture(SESSION, agent.name).rstrip())
-        except tmux.TmuxError as exc:
-            out.append(str(exc))
-    log = state.home() / "hooks.log"
-    if log.exists():
-        out += ["--- hooks.log", log.read_text()]
-    return "\n".join(out)
+    return agent_helpers.wait_for(check, what, SESSION, timeout)
 
 
 def status(agent: str) -> str:

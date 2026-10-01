@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from agent_helpers import init_repo
 
 # Tests never use the user's LADO tmux server (socket "lado").
 TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
@@ -41,12 +42,7 @@ def lado_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def repo(tmp_path):
-    path = tmp_path / "My Repo"
-    path.mkdir()
-    git = ["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t"]
-    subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
-    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
-    return path
+    return init_repo(tmp_path / "My Repo")
 
 
 @pytest.fixture

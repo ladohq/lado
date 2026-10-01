@@ -127,7 +127,7 @@ def test_kits_show(repo, capsys):
 def test_kits_check(repo, capsys, monkeypatch):
     kit = _kit(repo, "team")
     assert main(["kits", "check", str(kit)]) == 0
-    assert "team: OK (3 agents and 0 skills" in capsys.readouterr().out
+    assert "team: OK (3 agents, 0 skills" in capsys.readouterr().out
     monkeypatch.chdir(repo)
     assert main(["kits", "check", "team"]) == 0
     assert main(["kits", "check", "default"]) == 0
@@ -217,7 +217,7 @@ def test_kits_show_and_check_name_sources(tmp_path, repo, capsys):
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
     captured = capsys.readouterr()
     assert "warning: team: version 1.0.0 in kit.yaml, but team is at v2.0.0" in captured.err
-    assert "team: OK (2 agents and 1 skills" in captured.out
+    assert "team: OK (2 agents, 1 skills" in captured.out
 
 
 def test_kits_add_with_skills_folders(tmp_path, capsys):
@@ -249,6 +249,37 @@ def test_kits_check_warns_about_included_kits(repo, capsys):
     assert main(["kits", "--repo", str(repo), "check", "top"]) == 0
     assert "warning: " in capsys.readouterr().err
     assert main(["kits", "--repo", str(repo), "check", "base"]) == 1
+
+
+SHIP = """\
+name: ship
+description: build and ship
+start: build
+states:
+  build: {agent: rev, do: Build it., outcomes: {done: end}}
+  end: {end: true}
+"""
+
+
+def test_kits_show_lists_flows_with_their_source(repo, capsys):
+    kit = _kit(repo, "team")
+    (kit / "flows").mkdir()
+    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    assert main(["kits", "--repo", str(repo), "show", "team"]) == 0
+    out = capsys.readouterr().out
+    assert f"Flows:\n  ship  from team (project): {kit.resolve()}/flows/ship.yaml" in out
+    assert "    build and ship" in out
+
+
+def test_kits_check_refuses_a_flow_with_a_missing_role(repo, capsys):
+    kit = _kit(repo, "team")
+    (kit / "flows").mkdir()
+    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: tester"))
+    assert main(["kits", "--repo", str(repo), "check", "team"]) == 1
+    assert 'state "build": no role "tester" in this session' in capsys.readouterr().err
+    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
+    assert "team: OK (3 agents, 0 skills and 1 flows" in capsys.readouterr().out
 
 
 def test_source_commands_are_not_under_kits(capsys):

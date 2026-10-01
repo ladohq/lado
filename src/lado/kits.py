@@ -5,9 +5,9 @@ A kit is a directory:
     kit.yaml            name, version, description, include (other kits), default_agent
     agents/<name>.md    YAML frontmatter + the role prompt
     skills/<name>/      a SKILL.md folder, always handled as a whole
-    workflows/          reserved for flows; not loaded yet
+    flows/<name>.yaml   a flow (lado.flows)
 
-Agents and skills are found in their folders; kit.yaml does not list them. Anything else in
+Agents, skills and flows are found in their folders; kit.yaml does not list them. Anything else in
 the kit travels with it untouched. A kit is identified by the name and version in kit.yaml.
 
 Kits are looked up by name in the project (<repo>/.lado/kits), then in LADO_HOME/kits, then
@@ -28,7 +28,8 @@ from pathlib import Path
 
 import yaml
 
-from lado import sources, state
+from lado import flows, sources, state
+from lado.flows import Flow
 from lado.providers.base import McpServer
 
 KIT_FILE = "kit.yaml"
@@ -39,7 +40,7 @@ BUILTIN = Path(__file__).with_name("builtin_kits")
 KIT_KEYS = {"name", "version", "description", "include", "default_agent"}
 AGENT_KEYS = {"name", "description", "supervisor", "skills", "mcp"}
 MCP_KEYS = {"command", "env"}
-WITHOUT_KINDS = ("agent", "skill", "mcp")
+WITHOUT_KINDS = ("agent", "skill", "mcp", "flow")
 
 NAME = sources.NAME
 SEMVER = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
@@ -93,6 +94,7 @@ class Kit:
     skills: dict[str, Skill]
     origin: sources.Source | None = None  # the source the kit was found in
     pack: bool = False  # a skill pack: SKILL.md folders without a kit.yaml
+    flows: dict[str, Flow] = field(default_factory=dict)
 
     @property
     def source(self) -> str:
@@ -143,6 +145,22 @@ class Environment:
     skills: dict[str, Skill]
     default_agent: str | None
     without: list[str] = field(default_factory=list)
+    flows: dict[str, Flow] = field(default_factory=dict)
+
+    def flow(self, name: str) -> Flow:
+        """Flow `name`, once every role it names is an agent of this environment."""
+        found = self.flows.get(name)
+        if found is None:
+            raise KitError(f'no flow "{name}"; flows: {", ".join(self.flows) or "none"}')
+        roles = ", ".join(self.agents) or "none"
+        errors = [
+            f'{found.path}: state "{s.name}": no role "{s.agent}" in this session; roles: {roles}'
+            for s in found.states.values()
+            if s.kind == flows.WORK and s.agent not in self.agents
+        ]
+        if errors:
+            raise KitError("\n".join(errors))
+        return found
 
     def supervisor(self) -> AgentDef:
         found = [a for a in self.agents.values() if a.supervisor]
@@ -172,9 +190,11 @@ class Environment:
         """Agent `name` with its skills and MCP servers, minus `without` (skill: and mcp:
         items, on top of the session's)."""
         excluded = parse_without(without)
-        if excluded["agent"]:
-            raise KitError("an agent cannot be switched off for one agent; use skill: or mcp:")
-        _check_known(excluded, self.skills, self._all_mcp(), set())
+        if excluded["agent"] or excluded["flow"]:
+            raise KitError(
+                "an agent or flow cannot be switched off for one agent; use skill: or mcp:"
+            )
+        _check_known(excluded, self.skills, self._all_mcp(), set(), set())
         agent = self.agents[name]
         wanted = list(self.skills) if agent.skills is None else agent.skills
         skills = {s: self.skills[s] for s in wanted if s in self.skills}
@@ -343,6 +363,7 @@ def load(
     kit_name = name if isinstance(name, str) else path.name
     skills = _load_skills(path, kit_name, errors)
     agents = _load_agents(path, kit_name, errors)
+    kit_flows = _load_flows(path, kit_name, errors)
     if errors:
         raise KitError("\n".join(errors))
     return Kit(
@@ -356,6 +377,7 @@ def load(
         agents=agents,
         skills=skills,
         origin=origin,
+        flows=kit_flows,
     )
 
 
@@ -412,6 +434,7 @@ def resolve(
     env_kits = list(taken.values())
     agents = _merge(env_kits, "agents", "agent")
     skills = _merge(env_kits, "skills", "skill")
+    env_flows = _merge(env_kits, "flows", "flow")
     defaults = {k.default_agent: k for k in env_kits if k.default_agent}
     if len(defaults) > 1:
         sources = ", ".join(f'"{d}" ({k.source})' for d, k in defaults.items())
@@ -420,9 +443,11 @@ def resolve(
 
     without = list(without)
     excluded = parse_without(without)
-    _check_known(excluded, skills, {m for a in agents.values() for m in a.mcp}, set(agents))
+    mcp = {m for a in agents.values() for m in a.mcp}
+    _check_known(excluded, skills, mcp, set(agents), set(env_flows))
     agents = {n: a for n, a in agents.items() if n not in excluded["agent"]}
     skills = {n: s for n, s in skills.items() if n not in excluded["skill"]}
+    env_flows = {n: f for n, f in env_flows.items() if n not in excluded["flow"]}
     for agent in agents.values():
         for skill in agent.skills or []:
             if skill not in skills and skill not in excluded["skill"]:
@@ -432,7 +457,7 @@ def resolve(
             agents[agent.name] = dataclasses.replace(agent, mcp=mcp)
     if default_agent and default_agent not in agents and default_agent not in excluded["agent"]:
         raise KitError(f'default_agent "{default_agent}" is not an agent of the kits')
-    return Environment(env_kits, agents, skills, default_agent, without)
+    return Environment(env_kits, agents, skills, default_agent, without, env_flows)
 
 
 def parse_without(items: Iterable[str]) -> dict[str, set[str]]:
@@ -440,7 +465,9 @@ def parse_without(items: Iterable[str]) -> dict[str, set[str]]:
     for item in items:
         kind, _, name = item.partition(":")
         if kind not in excluded or not name:
-            raise KitError(f'"{item}": expected agent:<name>, skill:<name> or mcp:<name>')
+            raise KitError(
+                f'"{item}": expected agent:<name>, skill:<name>, mcp:<name> or flow:<name>'
+            )
         excluded[kind].add(name)
     return excluded
 
@@ -497,9 +524,13 @@ def _merge(kits: list[Kit], attr: str, what: str) -> dict:
 
 
 def _check_known(
-    excluded: dict[str, set[str]], skills: Mapping, mcp: set[str], agents: set[str]
+    excluded: dict[str, set[str]],
+    skills: Mapping,
+    mcp: set[str],
+    agents: set[str],
+    flow_names: set[str],
 ) -> None:
-    known = {"agent": agents, "skill": set(skills), "mcp": mcp}
+    known = {"agent": agents, "skill": set(skills), "mcp": mcp, "flow": flow_names}
     for kind, names in excluded.items():
         for name in sorted(names - known[kind]):
             have = ", ".join(sorted(known[kind])) or "none"
@@ -551,6 +582,23 @@ def _load_agents(kit: Path, kit_name: str, errors: list[str]) -> dict[str, Agent
         if agent:
             agents[agent.name] = agent
     return agents
+
+
+def _load_flows(kit: Path, kit_name: str, errors: list[str]) -> dict[str, Flow]:
+    found = {}
+    folder = kit / "flows"
+    for path in sorted(folder.iterdir()) if folder.is_dir() else []:
+        if path.suffix != ".yaml":
+            errors.append(f"{path}: flows/ holds <name>.yaml files")
+            continue
+        count = len(errors)
+        data = _yaml_file(path, errors)
+        if len(errors) > count:
+            continue
+        flow = flows.parse(data, path.stem, kit_name, str(path), errors)
+        if flow:
+            found[flow.name] = flow
+    return found
 
 
 def _load_agent(path: Path, kit: Path, kit_name: str, errors: list[str]) -> AgentDef | None:

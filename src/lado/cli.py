@@ -104,6 +104,11 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
     where = {kit.name: kit.where for kit in env.kits}
     for skill in env.skills.values():
         print(f"  {skill.name}  from {skill.kit} ({where[skill.kit]}): {skill.path}")
+    if env.flows:
+        print("Flows:")
+    for flow in env.flows.values():
+        print(f"  {flow.name}  from {flow.kit} ({where[flow.kit]}): {flow.path}")
+        print(f"    {flow.description}")
     if env.without:
         print(f"Switched off: {', '.join(env.without)}")
     env.supervisor()  # a session needs exactly one
@@ -121,6 +126,8 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
             else kits.find(args.kit, repo).load()
         )
         env = kits.resolve(repo, [kit])
+        for name in kit.flows:
+            env.flow(name)  # its roles exist in the kit with what it includes
         # What it includes is checked on its own; here its problems are only warnings.
         problems = kits.lint(kit)
         doubts = [w for k in env.kits for w in kits.warnings(k)]
@@ -134,8 +141,8 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
         print(problem, file=sys.stderr)
     if problems:
         return 1
-    agents, skills = len(env.agents), len(env.skills)
-    print(f"{kit.name}: OK ({agents} agents and {skills} skills with what it includes)")
+    counts = f"{len(env.agents)} agents, {len(env.skills)} skills and {len(env.flows)} flows"
+    print(f"{kit.name}: OK ({counts} with what it includes)")
     return 0
 
 
@@ -233,7 +240,7 @@ def _without_arg(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=[],
         metavar="KIND:NAME",
-        help="switch off agent:<name>, skill:<name> or mcp:<name>; repeatable",
+        help="switch off agent:<name>, skill:<name>, mcp:<name> or flow:<name>; repeatable",
     )
 
 

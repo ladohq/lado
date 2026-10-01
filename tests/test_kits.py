@@ -238,7 +238,7 @@ def test_without(repo, project):
         ("skill:nope", "cannot switch off skill:nope: no such skill; there are: s"),
         ("mcp:nope", "no such mcp; there are: none"),
         ("agent:nope", "no such agent; there are: supervisor, worker"),
-        ("tool:x", "expected agent:<name>, skill:<name> or mcp:<name>"),
+        ("tool:x", "expected agent:<name>, skill:<name>, mcp:<name> or flow:<name>"),
         ("skill", "expected agent:<name>"),
     ],
 )
@@ -462,3 +462,81 @@ def test_skill_pack_with_skills_folders(tmp_path):
     filtered = sources.add(str(with_kits), skills=["kits"])
     with pytest.raises(kits.KitError, match="only choose the skills of a skill pack"):
         kits.in_source(filtered)
+
+
+FLOW = """\
+name: {name}
+description: the {name} flow
+start: build
+states:
+  build:
+    agent: {role}
+    do: Build it.
+    outcomes: {{done: finish}}
+  finish:
+    end: true
+"""
+
+
+def make_flow(kit, name, role="worker"):
+    (kit / "flows").mkdir(exist_ok=True)
+    (kit / "flows" / f"{name}.yaml").write_text(FLOW.format(name=name, role=role))
+
+
+def test_flows_are_found_in_the_flows_folder(project):
+    kit = make_kit(project, "k")
+    make_flow(kit, "ship")
+    flow = kits.load(kit).flows["ship"]
+    assert (flow.kit, flow.description, flow.path) == (
+        "k",
+        "the ship flow",
+        str(kit.resolve() / "flows" / "ship.yaml"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("write", "error"),
+    [
+        (lambda f: (f / "ship.yaml").write_text("name: [x\n"), "ship.yaml: invalid YAML"),
+        (lambda f: (f / "notes.txt").write_text(""), "flows/ holds <name>.yaml files"),
+        (lambda f: (f / "ship.yaml").write_text("name: other\n"), "differs from the file name"),
+    ],
+)
+def test_flow_load_errors(project, write, error):
+    kit = make_kit(project, "k")
+    (kit / "flows").mkdir()
+    write(kit / "flows")
+    with pytest.raises(kits.KitError, match=error):
+        kits.load(kit)
+
+
+def test_flows_come_through_include_and_can_be_switched_off(repo, project):
+    make_flow(make_kit(project, "base", include=["default"]), "ship")
+    make_flow(make_kit(project, "team", include=["base"]), "hotfix")
+    env = kits.resolve(repo, ["team"])
+    assert sorted(env.flows) == ["hotfix", "ship"]
+    env = kits.resolve(repo, ["team"], ["flow:ship"])
+    assert list(env.flows) == ["hotfix"]
+    with pytest.raises(kits.KitError, match="cannot switch off flow:nope: no such flow"):
+        kits.resolve(repo, ["team"], ["flow:nope"])
+    with pytest.raises(kits.KitError, match="cannot be switched off for one agent"):
+        env.resolve("worker", ["flow:hotfix"])
+
+
+def test_same_flow_name_in_two_kits_names_both(repo, project):
+    make_flow(make_kit(project, "a"), "ship")
+    make_flow(make_kit(project, "b"), "ship")
+    with pytest.raises(kits.KitError, match='flow "ship" is defined by two kits: a .* and b'):
+        kits.resolve(repo, ["a", "b"])
+
+
+def test_a_flow_role_must_exist_in_the_environment(repo, project):
+    kit = make_kit(project, "k", include=["default"], agents={"rev": ({}, "")})
+    make_flow(kit, "ship", role="rev")
+    env = kits.resolve(repo, ["k"])
+    assert env.flow("ship").name == "ship"
+    env = kits.resolve(repo, ["k"], ["agent:rev"])
+    with pytest.raises(kits.KitError, match='state "build": no role "rev" in this session'):
+        env.flow("ship")
+    with pytest.raises(kits.KitError, match='no flow "nope"; flows: ship'):
+        env.flow("nope")

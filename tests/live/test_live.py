@@ -175,8 +175,12 @@ def finish_worker(repo, worker: state.Agent) -> None:
     assert runtime.git(str(repo), "branch", "--list", worker.branch) == ""
     assert state.get_agent(SESSION, "w1") is None
     check_gone(processes, "finish_worker")
-    event = state.list_events(SESSION)[-1]
-    assert (event.agent, event.kind, event.detail) == ("w1", state.FINISHED, "merged")
+    # Hooks fired by w1 while it died, from its removed worktree, were ignored without errors.
+    hooks_log = state.home() / "hooks.log"
+    assert not hooks_log.exists(), hooks_log.read_text()
+    # w1's late hooks add nothing after `finished`; the supervisor may still change status.
+    event = [e for e in state.list_events(SESSION) if e.agent == "w1"][-1]
+    assert (event.kind, event.detail) == (state.FINISHED, "merged")
 
 
 def check_gone(processes: set[int], after: str) -> None:

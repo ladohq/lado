@@ -62,6 +62,14 @@ def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
     assert runtime.spawn_worker("s", "another").name == "w2"
 
 
+def test_worker_is_told_a_text_report_is_lost(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.spawn_worker("s", "task")
+    cmd = fake_tmux[-1][-1]
+    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    assert "The supervisor cannot see your screen" in prompt
+
+
 def _hook(event, agent, payload=None):
     """Run a Claude Code hook of agent `agent` in session "s"; returns its decoded output."""
     claude = providers.get("claude")

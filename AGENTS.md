@@ -82,6 +82,10 @@ tag against the package version and publishes to PyPI.
 - A message to an idle agent is pasted into its window and counts as delivered only after
   the agent's prompt-submit hook sees it; otherwise it is queued again. A busy agent
   gets its queued messages from its turn-end hook when the turn ends.
+- Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
+  (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
+  `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so
+  is self-updating (Kilo: `autoupdate: false` and `KILO_DISABLE_AUTOUPDATE=1`).
 
 ## Try it locally
 

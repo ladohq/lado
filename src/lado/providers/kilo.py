@@ -69,6 +69,9 @@ class KiloProvider(base.Provider):
             "skills": {"paths": [str(base.link_skills(config_dir / "skills", spec.skills))]},
             "plugin": [[PLUGIN.as_uri(), {"hooks": {e: base.hook_argv(agent, e) for e in events}}]],
             "permission": permission,
+            # An update during a session can break the global install (it emptied it once,
+            # with 7.8.3) and the plugin API: the agent's Kilo must not update itself.
+            "autoupdate": False,
         }
         config_file = config_dir / "kilo.json"
         config_file.write_text(json.dumps(config, indent=2))
@@ -81,7 +84,11 @@ class KiloProvider(base.Provider):
         elif mode == "plan":
             argv += ["--agent", "plan"]
         # A running `kilo daemon` would serve the agent with its own config, not this one.
-        env = {"KILO_NO_DAEMON": "1", "KILO_CONFIG": str(config_file)}
+        env = {
+            "KILO_NO_DAEMON": "1",
+            "KILO_CONFIG": str(config_file),
+            "KILO_DISABLE_AUTOUPDATE": "1",
+        }
         return base.Launch(argv, env)
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:

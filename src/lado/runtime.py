@@ -35,6 +35,8 @@ WORKER_INSTRUCTIONS = """\
 You are worker "{name}" in LADO session "{session}", working in your own git worktree on \
 branch {branch}. Commit your work on that branch.
 Report to your supervisor with the `lado` MCP tool send_message(to="supervisor", ...).
+The supervisor cannot see your screen: calling that tool is the only way to reach it, and a
+report you only write as text is lost.
 Messages from other agents arrive in your input as "[from <name>] ...".
 """
 

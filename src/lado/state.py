@@ -15,17 +15,40 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
-# What happened to an agent, for `lado log`.
+# What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
     agent TEXT NOT NULL,
-    kind TEXT NOT NULL,  -- spawned | status | finished
+    kind TEXT NOT NULL,  -- spawned | status | finished | flow_start | flow | ...
     detail TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))  -- UTC
+)"""
+EVENTS_RUN = "ALTER TABLE events ADD COLUMN run TEXT"  # the flow run the event is about
+AGENTS_RUN = "ALTER TABLE agents ADD COLUMN run TEXT"  # the flow run a worker works for
+
+# Flow runs (lado.runs). Their transitions are events with the run's name.
+RUNS = """
+CREATE TABLE IF NOT EXISTS runs (
+    session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
+    name TEXT NOT NULL,  -- <flow>/<slug>
+    flow TEXT NOT NULL,
+    snapshot TEXT NOT NULL,  -- JSON: the flow as it was when the run started
+    kit TEXT NOT NULL,  -- JSON: name, version and source of the flow's kit
+    task TEXT NOT NULL,
+    state TEXT NOT NULL,
+    visits TEXT NOT NULL DEFAULT '{}',  -- JSON: state -> times entered
+    status TEXT NOT NULL,  -- active | waiting | ended | cancelled
+    reason TEXT NOT NULL DEFAULT '',  -- why it waits for the human, or was cancelled
+    note TEXT NOT NULL DEFAULT '',  -- the previous step's note: one line
+    note_body TEXT NOT NULL DEFAULT '',
+    worktree TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    PRIMARY KEY (session, name)
 )"""
 
 SCHEMA = """
@@ -63,7 +86,7 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
-SCHEMA += EVENTS + ";\n"
+SCHEMA += ";\n".join([EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS]) + ";\n"
 
 SUMMARY_LIMIT = 200  # characters in a message summary
 
@@ -84,6 +107,7 @@ MIGRATIONS = {
         "ALTER TABLE messages ADD COLUMN summary TEXT NOT NULL DEFAULT ''",
         "UPDATE messages SET state = 'read' WHERE state = 'delivered'",
     ],
+    5: [AGENTS_RUN, EVENTS_RUN, RUNS],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -105,6 +129,20 @@ DROPPED = "dropped"  # its recipient was finished before it got the message
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
 STATUS = "status"  # detail: the new status
 FINISHED = "finished"  # a worker was ended; detail: "merged" or "discarded"
+# Flow run events (lado.runs); their run column names the run.
+FLOW_START = "flow_start"
+FLOW = "flow"  # a transition; detail: "<from> -<outcome>-> <to>"
+FLOW_WAIT = "flow_wait"  # the run waits for the human; detail: why
+FLOW_END = "flow_end"
+FLOW_CANCEL = "flow_cancel"
+FLOW_SET = "flow_set"  # the human forced the run into a state
+
+# Run statuses.
+ACTIVE = "active"
+WAITING = "waiting"  # for the human: a gate or a loop limit
+ENDED = "ended"
+CANCELLED = "cancelled"
+OPEN = (ACTIVE, WAITING)
 
 
 @dataclass
@@ -118,6 +156,7 @@ class Agent:
     status: str
     provider: str = "claude"
     instance: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    run: str | None = None  # the flow run it works for
 
 
 @dataclass
@@ -156,6 +195,28 @@ class Event:
     kind: str
     detail: str
     created_at: str  # UTC, "YYYY-MM-DD HH:MM:SS.SSS"
+    run: str | None = None
+
+
+@dataclass
+class Run:
+    """A flow run: one task going through the states of a flow (lado.runs)."""
+
+    session: str
+    name: str  # <flow>/<slug>
+    flow: str
+    snapshot: dict  # the flow as it was at the start
+    kit: dict  # name, version, source of the flow's kit
+    task: str
+    state: str
+    worktree: str
+    branch: str
+    visits: dict[str, int] = field(default_factory=dict)
+    status: str = ACTIVE
+    reason: str = ""  # why it waits for the human, or was cancelled
+    note: str = ""  # the previous step's note, one line
+    note_body: str = ""
+    created_at: str = ""
 
 
 def home() -> Path:
@@ -240,8 +301,8 @@ def add_agent(agent: Agent) -> None:
     with connect() as db:
         db.execute(
             "INSERT INTO agents"
-            " (session, name, role, cwd, branch, task, status, provider, instance)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " (session, name, role, cwd, branch, task, status, provider, instance, run)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 agent.session,
                 agent.name,
@@ -252,6 +313,7 @@ def add_agent(agent: Agent) -> None:
                 agent.status,
                 agent.provider,
                 agent.instance,
+                agent.run,
             ),
         )
 
@@ -291,15 +353,24 @@ def set_status(session: str, name: str, status: str) -> None:
         db.execute("COMMIT")
 
 
-def add_event(session: str, agent: str, kind: str, detail: str = "") -> None:
+def add_event(
+    session: str, agent: str, kind: str, detail: str = "", run: str | None = None
+) -> None:
     with connect() as db:
-        _add_event(db, session, agent, kind, detail)
+        _add_event(db, session, agent, kind, detail, run)
 
 
-def _add_event(db: sqlite3.Connection, session: str, agent: str, kind: str, detail: str) -> None:
+def _add_event(
+    db: sqlite3.Connection,
+    session: str,
+    agent: str,
+    kind: str,
+    detail: str,
+    run: str | None = None,
+) -> None:
     db.execute(
-        "INSERT INTO events (session, agent, kind, detail) VALUES (?, ?, ?, ?)",
-        (session, agent, kind, detail),
+        "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
+        (session, agent, kind, detail, run),
     )
 
 
@@ -307,11 +378,101 @@ def list_events(session: str, after: int = 0) -> list[Event]:
     """The session's events with an id above `after`, oldest first."""
     with connect() as db:
         rows = db.execute(
-            "SELECT id, agent, kind, detail, created_at FROM events"
+            "SELECT id, agent, kind, detail, created_at, run FROM events"
             " WHERE session = ? AND id > ? ORDER BY id",
             (session, after),
         ).fetchall()
     return [Event(*r) for r in rows]
+
+
+def add_run(run: Run, actor: str, detail: str) -> None:
+    """Store a new run and its flow_start event by `actor`, in one transaction."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            "INSERT INTO runs (session, name, flow, snapshot, kit, task, state, visits, status,"
+            " reason, note, note_body, worktree, branch) VALUES"
+            " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                run.session,
+                run.name,
+                run.flow,
+                json.dumps(run.snapshot),
+                json.dumps(run.kit),
+                run.task,
+                run.state,
+                json.dumps(run.visits),
+                run.status,
+                run.reason,
+                run.note,
+                run.note_body,
+                run.worktree,
+                run.branch,
+            ),
+        )
+        _add_event(db, run.session, actor, FLOW_START, detail, run.name)
+        db.execute("COMMIT")
+
+
+def get_run(session: str, name: str) -> Run | None:
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM runs WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
+    return _run(row) if row else None
+
+
+def list_runs(session: str, open_only: bool = False) -> list[Run]:
+    """The session's runs, oldest first; with `open_only` only active and waiting ones."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM runs WHERE session = ? ORDER BY created_at, rowid", (session,)
+        ).fetchall()
+    runs = [_run(r) for r in rows]
+    return [r for r in runs if r.status in OPEN] if open_only else runs
+
+
+def update_run(before: Run, after: Run, events: list[tuple[str, str, str]]) -> bool:
+    """Write `after` and the events (actor, kind, detail) in one transaction, but only if
+    the run is still in the state and status of `before`. Returns whether it was written."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        cur = db.execute(
+            "UPDATE runs SET state = ?, visits = ?, status = ?, reason = ?, note = ?,"
+            " note_body = ? WHERE session = ? AND name = ? AND state = ? AND status = ?",
+            (
+                after.state,
+                json.dumps(after.visits),
+                after.status,
+                after.reason,
+                after.note,
+                after.note_body,
+                before.session,
+                before.name,
+                before.state,
+                before.status,
+            ),
+        )
+        if cur.rowcount:
+            for actor, kind, detail in events:
+                _add_event(db, before.session, actor, kind, detail, before.name)
+        db.execute("COMMIT")
+    return bool(cur.rowcount)
+
+
+def run_since(session: str) -> dict[str, datetime.datetime]:
+    """When each run got into its current state: its latest event (UTC)."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT run, created_at FROM events WHERE id IN"
+            " (SELECT MAX(id) FROM events WHERE session = ? AND run IS NOT NULL GROUP BY run)",
+            (session,),
+        ).fetchall()
+    return {r["run"]: _utc(r["created_at"]) for r in rows}
+
+
+def _utc(created_at: str) -> datetime.datetime:
+    return datetime.datetime.fromisoformat(created_at).replace(tzinfo=datetime.timezone.utc)
 
 
 def status_since(session: str) -> dict[str, datetime.datetime]:
@@ -322,12 +483,7 @@ def status_since(session: str) -> dict[str, datetime.datetime]:
             " (SELECT MAX(id) FROM events WHERE session = ? AND kind IN (?, ?) GROUP BY agent)",
             (session, STATUS, SPAWNED),
         ).fetchall()
-    return {
-        r["agent"]: datetime.datetime.fromisoformat(r["created_at"]).replace(
-            tzinfo=datetime.timezone.utc
-        )
-        for r in rows
-    }
+    return {r["agent"]: _utc(r["created_at"]) for r in rows}
 
 
 MESSAGE_COLUMNS = "id, sender, summary, body, recipient, state, created_at"
@@ -437,6 +593,27 @@ def _agent(row: sqlite3.Row) -> Agent:
         status=row["status"],
         provider=row["provider"],
         instance=row["instance"],
+        run=row["run"],
+    )
+
+
+def _run(row: sqlite3.Row) -> Run:
+    return Run(
+        session=row["session"],
+        name=row["name"],
+        flow=row["flow"],
+        snapshot=json.loads(row["snapshot"]),
+        kit=json.loads(row["kit"]),
+        task=row["task"],
+        state=row["state"],
+        worktree=row["worktree"],
+        branch=row["branch"],
+        visits=json.loads(row["visits"]),
+        status=row["status"],
+        reason=row["reason"],
+        note=row["note"],
+        note_body=row["note_body"],
+        created_at=row["created_at"],
     )
 
 

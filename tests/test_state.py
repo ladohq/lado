@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import re
 import sqlite3
@@ -215,3 +216,67 @@ def test_read_messages_returns_unread_bodies_once(lado_home):
         "not mine": state.PENDING,
         "still pending": state.PENDING,
     }
+
+
+def test_version_5_database_gets_runs(lado_home):
+    db = _schema_v4(lado_home)
+    for statement in state.MIGRATIONS[4]:
+        db.execute(statement)
+    db.execute("PRAGMA user_version = 5")
+    db.commit()
+    assert state.get_agent("s", "supervisor").run is None
+    assert state.list_runs("s") == []
+    state.add_event("s", "supervisor", "finished", "done")
+    assert state.list_events("s")[-1].run is None
+
+
+def _run(name="feature/x", **changes):
+    run = state.Run(
+        session="s",
+        name=name,
+        flow="feature",
+        snapshot={"name": "feature"},
+        kit={"name": "k", "version": "1.0.0", "source": "project: /k"},
+        task="add x",
+        state="design",
+        worktree="/r/.lado/worktrees/s/feature-x",
+        branch="lado/s/feature-x",
+    )
+    return dataclasses.replace(run, **changes)
+
+
+def test_a_run_is_stored_with_its_start_event(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_run(_run(), "supervisor", "feature/x: started")
+    run = state.get_run("s", "feature/x")
+    assert run == _run(created_at=run.created_at)
+    assert (run.status, run.visits, run.reason) == (state.ACTIVE, {}, "")
+    [event] = state.list_events("s")
+    assert (event.agent, event.kind, event.run) == ("supervisor", state.FLOW_START, "feature/x")
+    assert state.run_since("s")["feature/x"] == datetime.datetime.fromisoformat(
+        event.created_at
+    ).replace(tzinfo=datetime.timezone.utc)
+
+
+def test_a_run_changes_only_from_the_state_it_was_read_in(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_run(_run(), "supervisor", "started")
+    before = state.get_run("s", "feature/x")
+    after = dataclasses.replace(before, state="build", visits={"build": 1})
+    assert state.update_run(before, after, [("w1", state.FLOW, "design -ready-> build")])
+    assert state.get_run("s", "feature/x").visits == {"build": 1}
+    # Someone else moved it on meanwhile: nothing is written.
+    stale = dataclasses.replace(before, state="review")
+    assert not state.update_run(before, stale, [("w2", state.FLOW, "lost")])
+    assert state.get_run("s", "feature/x").state == "build"
+    assert [e.detail for e in state.list_events("s")] == ["started", "design -ready-> build"]
+
+
+def test_runs_go_with_their_session(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_run(_run(), "supervisor", "started")
+    state.add_run(_run("feature/y", status=state.ENDED), "supervisor", "started")
+    assert [r.name for r in state.list_runs("s")] == ["feature/x", "feature/y"]
+    assert [r.name for r in state.list_runs("s", open_only=True)] == ["feature/x"]
+    state.delete_session("s")
+    assert state.list_runs("s") == []

@@ -22,6 +22,7 @@ make test               # unit tests (uv run pytest)
 make test-integration   # uv run pytest -m integration: real tmux, git and processes, no LLM
 make test-js            # node --test: the Kilo plugin
 make check              # lint and all three test suites; run before a release
+make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=kilo|claude
 ```
 
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
@@ -29,8 +30,14 @@ instead of a real agent CLI. They use a temp `LADO_HOME` and their own tmux serv
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. Tests never use the default
 `lado` tmux socket.
 
+Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
+is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`
+(override with `LADO_LIVE_CLAUDE_MODEL` / `LADO_LIVE_KILO_MODEL`). The Claude test uses a fixed
+repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
+folder for it.
+
 CI runs `ruff format --check`, `ruff check`, the unit and integration tests on Python 3.10 and
-3.13, and the Node tests.
+3.13, and the Node tests. The Live workflow runs the Kilo live test nightly with the latest Kilo.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
 tag against the package version and publishes to PyPI.
@@ -57,7 +64,8 @@ tag against the package version and publishes to PyPI.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
-  `tests/js/`: Node tests of the Kilo plugin.
+  `tests/live/`: live tests with real agent CLIs; `tests/js/`: Node tests of the Kilo plugin.
+  `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk
@@ -81,8 +89,10 @@ Four layers; each change gets tests at the lowest layer that can catch its bugs:
    with the fake agent instead of an LLM. Required for behaviour that crosses processes.
 3. **Plugin tests** (`make test-js`): provider plugins run under Node with a fake client.
 4. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
-   scenario per provider. Never in the default run. Kilo runs nightly in CI on free models;
-   Claude Code runs locally. Run it after changing a provider or before a release.
+   scenario per provider: a worker commits a file, reports to the supervisor and gets a
+   message; then the session stops and no process is left. Never in the default run. Kilo
+   runs nightly in CI on a free model; Claude Code runs locally. Run it after changing a
+   provider or before a release.
 
 Before a release: `make check` and `make test-live` pass.
 

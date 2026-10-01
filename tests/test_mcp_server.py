@@ -29,6 +29,7 @@ def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
         "name": "w1",
         "finished": "discarded",
         "removed": {"window": "w1", "worktree": worker.cwd, "branch": "lado/s/w1"},
+        "dropped_messages": 0,
     }
     assert state.get_agent("s", "w1") is None
 

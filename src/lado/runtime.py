@@ -6,6 +6,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from lado import kits, providers, state, tmux
@@ -141,7 +142,19 @@ def spawn_worker(
     return agent
 
 
-def finish_worker(session: str, name: str, discard: bool = False) -> state.Agent:
+@dataclass
+class Finished:
+    worker: state.Agent
+    how: str  # "merged" or "discarded"
+    dropped: int  # messages it never got
+
+    def detail(self) -> str:
+        if not self.dropped:
+            return self.how
+        return f"{self.how}; {self.dropped} message{'s' if self.dropped > 1 else ''} dropped"
+
+
+def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
     """End a worker whose branch is merged: close its window, remove its worktree and branch
     and forget it, so the name can be used again. Its messages and events stay in the log.
 
@@ -162,12 +175,17 @@ def finish_worker(session: str, name: str, discard: bool = False) -> state.Agent
         raise LadoError(f'no worker "{name}"; workers: {workers}')
     if not discard:
         _check_finished(sess.repo, worker)
-    tmux.kill_window(session, name)
+    # Git first: if it fails, the worker keeps running and nothing is half done.
     git(sess.repo, "worktree", "remove", *(["--force"] if discard else []), worker.cwd)
     git(sess.repo, "branch", "-D" if discard else "-d", worker.branch)
-    state.add_event(session, name, state.FINISHED, "discarded" if discard else "merged")
+    tmux.kill_window(session, name)
     state.delete_agent(session, name)
-    return worker
+    # Forgotten first, so no new message can be queued for it: a later worker with the
+    # same name must not get what was meant for this one.
+    dropped = state.drop_undelivered(session, name)
+    finished = Finished(worker, "discarded" if discard else "merged", dropped)
+    state.add_event(session, name, state.FINISHED, finished.detail())
+    return finished
 
 
 def _check_finished(repo: str, worker: state.Agent) -> None:

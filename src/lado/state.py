@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS messages (
     sender TEXT NOT NULL,
     recipient TEXT NOT NULL,
     text TEXT NOT NULL,
-    state TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | delivered
+    state TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | delivered | dropped
     sent_at REAL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -88,6 +88,7 @@ STOPPED = "stopped"
 PENDING = "pending"
 SENT = "sent"
 DELIVERED = "delivered"
+DROPPED = "dropped"  # its recipient was finished before it got the message
 
 # Event kinds.
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
@@ -343,6 +344,16 @@ def confirm_sent(session: str, recipient: str, prompt: str) -> None:
         ).fetchall()
         confirmed = [(DELIVERED, r["id"]) for r in rows if r["text"].strip() in prompt]
         db.executemany("UPDATE messages SET state = ? WHERE id = ?", confirmed)
+
+
+def drop_undelivered(session: str, recipient: str) -> int:
+    """Mark the recipient's pending and unconfirmed messages dropped. Returns how many."""
+    with connect() as db:
+        cur = db.execute(
+            "UPDATE messages SET state = ? WHERE session = ? AND recipient = ? AND state IN (?, ?)",
+            (DROPPED, session, recipient, PENDING, SENT),
+        )
+        return cur.rowcount
 
 
 def requeue_unconfirmed(session: str, recipient: str, older_than: float) -> int:

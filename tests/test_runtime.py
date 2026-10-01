@@ -315,7 +315,7 @@ def test_finish_worker_removes_a_merged_worker(repo, fake_tmux):
     worker = state.get_agent("s", "w1")
     _commit(worker.cwd)
     runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
-    finished = runtime.finish_worker("s", "w1")
+    finished = runtime.finish_worker("s", "w1").worker
     assert (finished.name, finished.branch, finished.cwd) == ("w1", "lado/s/w1", worker.cwd)
     assert ("kill_window", "s", "w1") in fake_tmux
     assert not Path(worker.cwd).exists()
@@ -369,6 +369,36 @@ def test_finish_worker_discard_throws_the_work_away(repo, fake_tmux):
     assert state.get_agent("s", "w1") is None
     last = state.list_events("s")[-1]
     assert (last.agent, last.kind, last.detail) == ("w1", "finished", "discarded")
+
+
+@pytest.mark.parametrize("discard", [False, True])
+def test_finish_worker_keeps_the_window_when_git_fails(repo, fake_tmux, discard):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    runtime.git(str(repo), "worktree", "lock", worker.cwd)  # `remove` refuses a locked one
+    with pytest.raises(runtime.LadoError, match="locked"):
+        runtime.finish_worker("s", "w1", discard=discard)
+    assert not any(c[0] == "kill_window" for c in fake_tmux)
+    assert state.get_agent("s", "w1") is not None
+    runtime.git(str(repo), "worktree", "unlock", worker.cwd)
+    runtime.finish_worker("s", "w1", discard=discard)
+    assert ("kill_window", "s", "w1") in fake_tmux
+
+
+def test_finish_worker_drops_its_undelivered_messages(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "w1")  # busy, so messages wait for its turn to end
+    runtime.send_message("s", "supervisor", "w1", "old task")
+    state.set_status("s", "w1", state.IDLE)
+    runtime.send_message("s", "supervisor", "w1", "typed, never confirmed")
+    finished = runtime.finish_worker("s", "w1", discard=True)
+    assert finished.dropped == 2
+    last = state.list_events("s")[-1]
+    assert (last.kind, last.detail) == ("finished", "discarded; 2 messages dropped")
+    runtime.spawn_worker("s", "new task", name="w1")
+    monkeypatch.setattr(hooks, "CONFIRM_TIMEOUT", -1)
+    assert _hook("Stop", "w1") is None  # nothing meant for the old w1
+    assert [m.state for m in state.list_messages("s")] == [state.DROPPED, state.DROPPED]
 
 
 def test_hooks_of_a_finished_worker_are_ignored(repo, fake_tmux, monkeypatch):

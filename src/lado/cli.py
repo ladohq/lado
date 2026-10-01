@@ -187,11 +187,11 @@ def cmd_stop(args: argparse.Namespace) -> int:
 
 
 def cmd_finish(args: argparse.Namespace) -> int:
-    worker = runtime.finish_worker(args.session, args.agent, args.discard)
-    how = "discarded" if args.discard else "merged"
+    finished = runtime.finish_worker(args.session, args.agent, args.discard)
+    worker = finished.worker
     print(
-        f'Finished worker "{worker.name}" ({how}): removed window, worktree {worker.cwd} '
-        f"and branch {worker.branch}"
+        f'Finished worker "{worker.name}" ({finished.detail()}): removed window, '
+        f"worktree {worker.cwd} and branch {worker.branch}"
     )
     return 0
 

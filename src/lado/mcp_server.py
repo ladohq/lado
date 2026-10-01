@@ -85,14 +85,17 @@ def build(session: str, agent: str) -> MCPServer:
             window, remove its worktree and branch. Its messages and events stay in the log.
 
             It refuses while the branch is not merged or the worktree has uncommitted changes.
-            `discard=True` ends the worker anyway and throws that work away.
+            `discard=True` ends the worker anyway and throws that work away. Messages it has
+            not received yet are dropped; the result counts them.
             """
             with _reasons():
-                worker = runtime.finish_worker(session, name, discard)
+                finished = runtime.finish_worker(session, name, discard)
+            worker = finished.worker
             return {
                 "name": worker.name,
-                "finished": "discarded" if discard else "merged",
+                "finished": finished.how,
                 "removed": {"window": worker.name, "worktree": worker.cwd, "branch": worker.branch},
+                "dropped_messages": finished.dropped,
             }
 
     return server

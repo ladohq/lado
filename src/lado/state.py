@@ -1,4 +1,4 @@
-"""Persistent state: sessions, agents and their message inbox, in one SQLite file.
+"""Persistent state: sessions, agents, their message inbox and events, in one SQLite file.
 
 Several processes use it at once (the CLI, one MCP server and hooks per agent), so every
 call opens its own short-lived connection and SQLite does the locking.
@@ -14,7 +14,18 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+
+# What happened to an agent, for `lado log`.
+EVENTS = """
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
+    agent TEXT NOT NULL,
+    kind TEXT NOT NULL,  -- spawned | status | finished
+    detail TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))  -- UTC
+)"""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -50,6 +61,7 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
+SCHEMA += EVENTS + ";\n"
 
 # Statements that upgrade a database from the version in the key to the next one.
 MIGRATIONS = {
@@ -61,6 +73,7 @@ MIGRATIONS = {
         """ALTER TABLE sessions ADD COLUMN kits TEXT NOT NULL DEFAULT '["default"]'""",
         "ALTER TABLE sessions ADD COLUMN switched_off TEXT NOT NULL DEFAULT '[]'",
     ],
+    3: [EVENTS],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -75,6 +88,11 @@ STOPPED = "stopped"
 PENDING = "pending"
 SENT = "sent"
 DELIVERED = "delivered"
+
+# Event kinds.
+SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
+STATUS = "status"  # detail: the new status
+FINISHED = "finished"  # reserved: a worker reports its work done
 
 
 @dataclass
@@ -105,6 +123,18 @@ class Message:
     id: int
     sender: str
     text: str
+    recipient: str = ""
+    state: str = ""
+    created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS.SSS"; older rows have whole seconds
+
+
+@dataclass
+class Event:
+    id: int
+    agent: str
+    kind: str
+    detail: str
+    created_at: str  # UTC, "YYYY-MM-DD HH:MM:SS.SSS"
 
 
 def home() -> Path:
@@ -222,19 +252,60 @@ def list_agents(session: str) -> list[Agent]:
 
 
 def set_status(session: str, name: str, status: str) -> None:
+    """Set the agent's status and, if it changed, record a "status" event."""
     with connect() as db:
-        db.execute(
-            "UPDATE agents SET status = ? WHERE session = ? AND name = ?", (status, session, name)
+        db.execute("BEGIN IMMEDIATE")
+        cur = db.execute(
+            "UPDATE agents SET status = ? WHERE session = ? AND name = ? AND status != ?",
+            (status, session, name, status),
         )
+        if cur.rowcount:
+            _add_event(db, session, name, STATUS, status)
+        db.execute("COMMIT")
+
+
+def add_event(session: str, agent: str, kind: str, detail: str = "") -> None:
+    with connect() as db:
+        _add_event(db, session, agent, kind, detail)
+
+
+def _add_event(db: sqlite3.Connection, session: str, agent: str, kind: str, detail: str) -> None:
+    db.execute(
+        "INSERT INTO events (session, agent, kind, detail) VALUES (?, ?, ?, ?)",
+        (session, agent, kind, detail),
+    )
+
+
+def list_events(session: str, after: int = 0) -> list[Event]:
+    """The session's events with an id above `after`, oldest first."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id, agent, kind, detail, created_at FROM events"
+            " WHERE session = ? AND id > ? ORDER BY id",
+            (session, after),
+        ).fetchall()
+    return [Event(*r) for r in rows]
 
 
 def queue_message(session: str, sender: str, recipient: str, text: str) -> int:
     with connect() as db:
         cur = db.execute(
-            "INSERT INTO messages (session, sender, recipient, text) VALUES (?, ?, ?, ?)",
+            "INSERT INTO messages (session, sender, recipient, text, created_at)"
+            " VALUES (?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (session, sender, recipient, text),
         )
         return cur.lastrowid or 0
+
+
+def list_messages(session: str, after: int = 0) -> list[Message]:
+    """The session's messages with an id above `after`, oldest first."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id, sender, text, recipient, state, created_at FROM messages"
+            " WHERE session = ? AND id > ? ORDER BY id",
+            (session, after),
+        ).fetchall()
+    return [Message(*r) for r in rows]
 
 
 def take_pending(session: str, recipient: str, mark: str) -> list[Message]:

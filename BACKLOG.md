@@ -34,14 +34,6 @@ Wanted: a neutral LADO permission setting that each provider translates, with an
 values a provider cannot honour.
 Found: 2026-10-01, Kilo provider review.
 
-## `lado log`: show messages between agents
-
-There is no way to see who sent what to whom in a session; today it means reading the
-`messages` table in `~/.lado/lado.db` by hand.
-Wanted: `lado log <session>` prints the session's messages in order (time, sender ->
-recipient, state, text), with `--follow` to keep printing new ones and a filter by agent.
-Found: 2026-10-01, checking whether two workers talked to each other.
-
 ## First message to a just-started Kilo agent is lost
 
 Kilo's plugin reports `plugin.init` (agent idle) before the TUI accepts input, so a message

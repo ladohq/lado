@@ -1,3 +1,4 @@
+import re
 import sqlite3
 
 import pytest
@@ -81,3 +82,47 @@ def test_session_kits_round_trip(lado_home):
     state.add_session(state.Session("s", "/r", None, "kilo", ["a", "b"], ["skill:x"]))
     sess = state.get_session("s")
     assert (sess.kits, sess.without) == (["a", "b"], ["skill:x"])
+
+
+def _schema_v3(lado_home):
+    lado_home.mkdir()
+    db = sqlite3.connect(lado_home / "lado.db")
+    db.executescript(SCHEMA_V1)
+    for version in (1, 2):
+        for statement in state.MIGRATIONS[version]:
+            db.execute(statement)
+    db.execute("PRAGMA user_version = 3")
+    db.commit()
+
+
+def test_version_3_database_gets_events(lado_home):
+    _schema_v3(lado_home)
+    state.add_event("s", "supervisor", "finished", "done")
+    [event] = state.list_events("s")
+    assert (event.agent, event.kind, event.detail) == ("supervisor", "finished", "done")
+
+
+def _agent(name="w1", status=state.STARTING):
+    return state.Agent("s", name, "worker", "/r", None, None, status)
+
+
+def test_status_change_is_an_event_once(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_agent(_agent())
+    state.set_status("s", "w1", state.BUSY)
+    state.set_status("s", "w1", state.BUSY)
+    state.set_status("s", "w1", state.IDLE)
+    assert [(e.agent, e.kind, e.detail) for e in state.list_events("s")] == [
+        ("w1", "status", "busy"),
+        ("w1", "status", "idle"),
+    ]
+    assert state.get_agent("s", "w1").status == state.IDLE
+
+
+def test_events_have_sub_second_times_and_go_with_the_session(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_event("s", "w1", "finished", "")
+    [event] = state.list_events("s")
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", event.created_at)
+    state.delete_session("s")
+    assert state.list_events("s") == []

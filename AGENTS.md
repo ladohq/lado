@@ -66,7 +66,10 @@ tag against the package version and publishes to PyPI.
   - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
-    Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`.
+    Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
+    table records what each agent did (`spawned`, `status` changes via `set_status`,
+    `finished`); events and messages go with their session.
+  - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/live/`: live tests with real agent CLIs; `tests/js/`: Node tests of the Kilo plugin.
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
@@ -83,6 +86,12 @@ tag against the package version and publishes to PyPI.
 
 `uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
+
+`lado log <session>` shows what happened in a session: messages between agents (with their
+delivery state) and agent events (spawned, status changes). `--agent NAME` keeps one agent's
+lines, `-n N` the last N entries, `--follow` keeps printing new ones until Ctrl-C.
+With `--follow` a message is printed once, with the state it had then; a later delivery
+is not printed again.
 
 ## Testing
 

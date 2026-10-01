@@ -94,7 +94,7 @@ def start_session(
     )
     spec = _spec(agent_cli, env, role.name, agent, _supervisor_instructions(env, session))
     state.add_session(sess)
-    state.add_agent(agent)
+    _add_agent(agent)
     try:
         launch = agent_cli.launch_command(agent, sess, spec)
         tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
@@ -133,7 +133,7 @@ def spawn_worker(
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, without or [])
     _exclude_worktrees(sess.repo)
     git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
-    state.add_agent(agent)
+    _add_agent(agent)
     launch = agent_cli.launch_command(agent, sess, spec, first_message=task + REPORT_REMINDER)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent
@@ -223,6 +223,12 @@ def _spec(
         skills={name: skill.path for name, skill in resolved.skills.items()},
         mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers()},
     )
+
+
+def _add_agent(agent: state.Agent) -> None:
+    state.add_agent(agent)
+    detail = f"role {agent.role}, provider {agent.provider}"
+    state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 
 def _env(agent: state.Agent, launch: providers.Launch) -> dict[str, str]:

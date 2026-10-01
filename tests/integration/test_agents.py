@@ -103,3 +103,26 @@ def test_stop_kills_agents_and_keeps_worktrees(repo):
     assert not tmux.has_session(SESSION)
     assert state.get_session(SESSION) is None
     assert Path(worker.cwd, ".git").exists()
+
+
+def test_log_shows_spawns_statuses_and_messages(repo):
+    start(repo)
+    runtime.spawn_worker(SESSION, "sleep 0")
+    wait_status("w1", state.IDLE)
+    runtime.send_message(SESSION, "supervisor", "w1", "hello w1")
+    wait_for(lambda: message_states("w1") == [state.DELIVERED], "delivery")
+    wait_status("w1", state.IDLE)
+    result = subprocess.run(
+        [sys.executable, "-m", "lado.cli", "log", SESSION, "--agent", "w1"],
+        capture_output=True,
+        text=True,
+        env=os.environ,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = [line.split(" ", 1)[1] for line in result.stdout.splitlines() if line[:1] != " "]
+    assert lines[0] == "w1: spawned (role worker, provider fake)"
+    assert "w1: busy" in lines
+    assert "w1: idle" in lines
+    assert "supervisor → w1 [delivered]" in lines
+    assert "    hello w1" in result.stdout.splitlines()

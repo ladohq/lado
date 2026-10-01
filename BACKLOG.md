@@ -89,3 +89,12 @@ Wanted: switch off Claude Code's built-in agent messaging for LADO agents (e.g. 
 tool in the agent's settings), or name the LADO tool so it cannot be confused; then a live
 check that the report goes through LADO.
 Found: 2026-10-01, live e2e for finish_worker.
+
+## No way to reach a busy agent urgently
+
+A message to a busy agent waits until its turn ends. A hint from the supervisor that would
+save a worker many minutes (e.g. the known cause of a failure it is debugging) arrives only
+after the worker has finished that long turn. Wanted: an "urgent" flag on send_message that
+types the message into the busy agent's window at once (Claude Code and Kilo accept input
+while working and handle it at the next step), with the same confirmation via prompt-submit.
+Found: 2026-10-01, provider fixes task.

@@ -57,3 +57,12 @@ config under `~/.lado/agents/`. Secrets should stay in the process environment: 
 to the agent's env and let each CLI expand them (Claude `${VAR}` in mcp.json, Kilo
 `{env:VAR}`), or start the MCP server through a LADO wrapper that reads them.
 Found: 2026-10-01, kits review.
+
+## Claude Code's "trust this folder?" dialog blocks a new session
+
+In a repo Claude Code has not seen before, it asks whether to trust the folder, and no flag
+skips the question. Until the human answers, the supervisor stays "starting" and a message
+pasted in is swallowed (it is resent after the confirm timeout). `lado start` (or
+`lado doctor <repo>`) should detect an untrusted repo and tell the user, and the agent's
+status could show that it waits for the human.
+Found: 2026-10-01, live e2e tests.

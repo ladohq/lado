@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lado import state
+from lado import state, tmux
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
@@ -83,6 +83,8 @@ def agent_env(agent: state.Agent) -> dict[str, str]:
         "LADO_HOME": str(state.home()),
         "LADO_SESSION": agent.session,
         "LADO_AGENT": agent.name,
+        # Hooks and the MCP server type messages into agents' windows on the same tmux server.
+        "LADO_TMUX_SOCKET": tmux.socket(),
     }
 
 

@@ -1,6 +1,7 @@
 """Thin wrapper over the tmux CLI.
 
-LADO runs its own tmux server (socket `lado`), so it never touches the user's tmux sessions.
+LADO runs its own tmux server (socket `lado`, or LADO_TMUX_SOCKET), so it never touches the
+user's tmux sessions.
 """
 
 import os
@@ -8,7 +9,7 @@ import subprocess
 import time
 import uuid
 
-SOCKET = "lado"
+DEFAULT_SOCKET = "lado"
 TIMEOUT = 10
 
 # Set by Claude Code in its child processes. A `claude` started with them believes it is
@@ -35,13 +36,17 @@ def clean_env() -> dict[str, str]:
     }
 
 
+def socket() -> str:
+    return os.environ.get("LADO_TMUX_SOCKET") or DEFAULT_SOCKET
+
+
 def _arg(value: str) -> str:
     # tmux reads an argument ending in ";" as a command separator.
     return value[:-1] + "\\;" if value.endswith(";") else value
 
 
 def run(*args: str, input: str | None = None) -> str:
-    cmd = ["tmux", "-L", SOCKET, *(_arg(a) for a in args)]
+    cmd = ["tmux", "-L", socket(), *(_arg(a) for a in args)]
     try:
         result = subprocess.run(
             cmd,
@@ -103,4 +108,4 @@ def capture(session: str, window: str) -> str:
 
 
 def attach_argv(session: str) -> list[str]:
-    return ["tmux", "-L", SOCKET, "attach-session", "-t", f"={session}"]
+    return ["tmux", "-L", socket(), "attach-session", "-t", f"={session}"]

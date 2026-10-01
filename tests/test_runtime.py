@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from lado import hooks, providers, runtime, state
+from lado import hooks, providers, runtime, state, tmux
 
 
 def test_slug():
@@ -20,6 +20,7 @@ def test_start_session_launches_supervisor(repo, fake_tmux, lado_home):
         "LADO_HOME": str(lado_home),
         "LADO_SESSION": "my-repo",
         "LADO_AGENT": "supervisor",
+        "LADO_TMUX_SOCKET": tmux.socket(),
     }
     assert cmd[0] == "claude"
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"

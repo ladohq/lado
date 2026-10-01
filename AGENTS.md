@@ -13,7 +13,24 @@ uv run ruff format      # format
 uv run ruff check       # lint (add --fix to autofix)
 ```
 
-CI runs `ruff format --check`, `ruff check` and `pytest` on Python 3.10 and 3.13.
+The Makefile wraps these (`make help` lists the targets):
+
+```bash
+make lint               # ruff format --check + ruff check
+make fmt                # ruff format + ruff check --fix
+make test               # unit tests (uv run pytest)
+make test-integration   # uv run pytest -m integration: real tmux, git and processes, no LLM
+make test-js            # node --test: the Kilo plugin
+make check              # lint and all three test suites; run before a release
+```
+
+Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
+instead of a real agent CLI. They use a temp `LADO_HOME` and their own tmux server
+(`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. Tests never use the default
+`lado` tmux socket.
+
+CI runs `ruff format --check`, `ruff check`, the unit and integration tests on Python 3.10 and
+3.13, and the Node tests.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
 tag against the package version and publishes to PyPI.
@@ -29,12 +46,14 @@ tag against the package version and publishes to PyPI.
     `kilo_plugin.js`, the Kilo plugin that runs LADO's hooks). A provider writes the agent's
     config, returns its argv and env and translates its hook events. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
-  - `tmux.py`: tmux calls, on a private server (`tmux -L lado`).
+  - `tmux.py`: tmux calls, on a private server (`tmux -L lado`; `LADO_TMUX_SOCKET` overrides
+    the socket name and is passed on to agents).
   - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`.
-- `tests/`: pytest tests.
+- `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
+  `tests/js/`: Node tests of the Kilo plugin.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk
@@ -46,8 +65,8 @@ tag against the package version and publishes to PyPI.
 
 ## Try it locally
 
-`uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` to keep test
-sessions apart from the LADO you work with.
+`uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` and
+`LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
 ## Rules
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from lado import hooks, providers, runtime, state
+from lado import hooks, providers, runtime, state, tmux
 from lado.providers import Event, kilo
 
 
@@ -88,6 +88,7 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
         "LADO_HOME": str(lado_home),
         "LADO_SESSION": "s",
         "LADO_AGENT": "w1",
+        "LADO_TMUX_SOCKET": tmux.socket(),
     }
     [[plugin, options]] = config["plugin"]
     assert plugin == kilo.PLUGIN.as_uri()

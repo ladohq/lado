@@ -1,0 +1,83 @@
+"""A fake agent CLI as a LADO provider, for integration tests. Not shipped with LADO.
+
+The fake agent (fake_agent.py) runs its hooks and MCP server in their own processes, which
+must know the fake providers too. So run as a script, this file is `lado` with them registered.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+from lado import cli, providers, state
+from lado.providers import base
+
+LADO = Path(__file__).resolve()
+AGENT = LADO.with_name("fake_agent.py")
+
+# The fake agent reports the neutral events under their own names.
+EVENTS = (
+    base.SESSION_START,
+    base.PROMPT_SUBMIT,
+    base.TURN_END,
+    base.WAITING,
+    base.SESSION_END,
+)
+
+
+def lado_command(*args: str) -> list[str]:
+    return [sys.executable, str(LADO), *args]
+
+
+class FakeProvider(base.Provider):
+    title = "Fake agent"
+    command = sys.executable
+    install_hint = "part of the LADO tests"
+
+    def __init__(self, name: str, deliver_on_turn_end: bool):
+        self.name = name
+        self.capabilities = base.Capabilities(
+            status_events=True, permission_event=False, deliver_on_turn_end=deliver_on_turn_end
+        )
+
+    def launch_command(
+        self,
+        agent: state.Agent,
+        session: state.Session,
+        prompt: str,
+        first_message: str | None = None,
+    ) -> base.Launch:
+        config_dir = base.config_dir(agent)
+        hook = ["--session", agent.session, "--agent", agent.name, "--instance", agent.instance]
+        config = {
+            "hooks": {e: lado_command("hook", e, *hook) for e in EVENTS},
+            "mcp": {"command": lado_command("mcp"), "env": base.agent_env(agent)},
+            "continue_on_turn_end": self.capabilities.deliver_on_turn_end,
+            "first_message": first_message,
+            "inputs": str(config_dir / "inputs.jsonl"),
+        }
+        config_file = config_dir / "fake.json"
+        config_file.write_text(json.dumps(config, indent=2))
+        return base.Launch([sys.executable, str(AGENT), str(config_file)])
+
+    def parse_event(self, native: str, payload: str) -> base.Event | None:
+        if native not in EVENTS:
+            return None
+        data = json.loads(payload) if payload.strip() else {}
+        return base.Event(native, data.get("prompt", ""))
+
+    def continue_output(self, text: str) -> str | None:
+        return text
+
+
+# "fake" gets queued messages from its turn-end hook, like Claude Code; "fake-paste" has
+# them typed into its window.
+FAKES = (FakeProvider("fake", True), FakeProvider("fake-paste", False))
+
+
+def register(registry: dict[str, base.Provider]) -> None:
+    registry.update({p.name: p for p in FAKES})
+
+
+if __name__ == "__main__":
+    register(providers._PROVIDERS)
+    sys.exit(cli.main())

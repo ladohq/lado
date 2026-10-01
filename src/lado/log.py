@@ -68,7 +68,8 @@ def format_entry(entry: Entry) -> str:
     if entry.kind == state.STATUS:
         return f"{at} {entry.agent}: {entry.detail}"
     detail = f" ({entry.detail})" if entry.detail else ""
-    return f"{at} {entry.agent}: {entry.kind}{detail}"
+    run = f" {entry.run}" if entry.run else ""
+    return f"{at} {entry.agent}: {entry.kind}{run}{detail}"
 
 
 def _agents(entry: Entry) -> tuple[str, ...]:

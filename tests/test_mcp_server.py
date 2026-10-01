@@ -17,13 +17,23 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     runtime.spawn_worker("s", "task")
     supervisor_tools = [
         "finish_worker",
+        "flow_advance",
+        "flow_cancel",
+        "flow_start",
+        "flow_status",
         "list_agents",
         "read_messages",
         "send_message",
         "spawn_worker",
     ]
     assert _tools("s", "supervisor") == supervisor_tools
-    assert _tools("s", "w1") == ["list_agents", "read_messages", "send_message"]
+    assert _tools("s", "w1") == [
+        "flow_advance",
+        "flow_status",
+        "list_agents",
+        "read_messages",
+        "send_message",
+    ]
 
 
 def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake_tmux):
@@ -101,6 +111,54 @@ def test_spawn_worker_takes_a_provider(repo, fake_tmux):
     agents = asyncio.run(server.call_tool("list_agents", {}))
     assert "kilo" in str(agents)
     assert state.get_agent("s", "w1").provider == "kilo"
+
+
+SHIP = """\
+name: ship
+description: build it, then the supervisor merges it
+start: build
+states:
+  build: {agent: worker, do: Build it., outcomes: {done: merge}}
+  merge: {agent: supervisor, do: Merge it., outcomes: {merged: end}}
+  end: {end: true}
+"""
+
+
+def _call(session, agent, tool, args=None):
+    result = asyncio.run(mcp_server.build(session, agent).call_tool(tool, args or {}))
+    if result.structured_content is None:  # a dict comes as JSON text
+        return json.loads(result.content[0].text)
+    return result.structured_content["result"]
+
+
+def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux):
+    kit = repo / ".lado" / "kits" / "k"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: k\ninclude: [default]\n")
+    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    runtime.start_session(str(repo), "s", None, kit_names=["k"])
+    run = _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
+    assert (run["run"], run["state"], run["acting"]) == ("ship/x", "build", "worker (not spawned)")
+    worker = _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
+    assert (worker["run"], worker["worktree"]) == ("ship/x", run["worktree"])
+    [agent] = [a for a in _call("s", "supervisor", "list_agents") if a["name"] == "w1"]
+    assert agent["run"] == "ship/x"
+    with pytest.raises(ToolError, match='unknown outcome "ok" for step build; valid: done'):
+        _call("s", "w1", "flow_advance", {"run": "ship/x", "outcome": "ok"})
+    args = {"run": "ship/x", "outcome": "done", "note_summary": "built", "note_body": "x.py"}
+    after = _call("s", "w1", "flow_advance", args)
+    assert (after["state"], after["acting"], after["note"]) == ("merge", "supervisor", "built")
+    [status] = _call("s", "w1", "flow_status")
+    assert status["outcomes"] == {"merged": "end"}
+    cancelled = _call("s", "supervisor", "flow_cancel", {"run": "ship/x", "reason": "stop"})
+    assert cancelled["finished_workers"] == ["w1"]
+    assert cancelled["kept"] == {"worktree": run["worktree"], "branch": run["branch"]}
+
+
+def test_spawn_worker_needs_a_task_without_a_run(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    with pytest.raises(ToolError, match="give the worker a task"):
+        _call("s", "supervisor", "spawn_worker", {})
 
 
 def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):

@@ -340,6 +340,24 @@ def test_status_shows_a_worker_its_own_run(session):
     ]
 
 
+def test_the_supervisor_is_told_the_flows_and_a_run_worker_how_to_report(session, fake_tmux):
+    supervisor = fake_tmux[0][-1]
+    prompt = supervisor[supervisor.index("--append-system-prompt") + 1]
+    assert "  - feature: New feature, reviewed." in prompt
+    assert "Flows are optional" in prompt and "flow_start" in prompt
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")
+    worker = fake_tmux[-1][-1]
+    prompt = worker[worker.index("--append-system-prompt") + 1]
+    assert 'flow_advance(run="feature/login", outcome=...)' in prompt
+
+
+def test_a_session_without_flows_is_not_told_about_them(repo, fake_tmux):
+    runtime.start_session(str(repo), "plain", None)
+    supervisor = fake_tmux[0][-1]
+    assert "flow_start" not in supervisor[supervisor.index("--append-system-prompt") + 1]
+
+
 def test_start_refuses_unknown_flows_and_missing_roles(session, repo):
     with pytest.raises(kits.KitError, match='no flow "nope"; flows: feature'):
         runs.start(session, "nope", "x")

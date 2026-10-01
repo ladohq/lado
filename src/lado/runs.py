@@ -187,7 +187,7 @@ def status(session: str, caller: str, run_name: str | None = None) -> list[dict]
         if run_name is None:
             return []
     found = [_run(session, run_name)] if run_name else state.list_runs(session, open_only=True)
-    return [_describe(r) for r in found]
+    return [describe(r) for r in found]
 
 
 def step_text(run: state.Run, flow: flows.Flow) -> str:
@@ -347,7 +347,7 @@ def _workers(run: state.Run) -> list[state.Agent]:
     return [a for a in state.list_agents(run.session) if a.run == run.name]
 
 
-def _describe(run: state.Run) -> dict:
+def describe(run: state.Run) -> dict:
     current = flow_of(run).states[run.state]
     return {
         "run": run.name,

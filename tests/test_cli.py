@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from agent_helpers import init_repo, publish
 
-from lado import __version__, runtime, sources, state
+from lado import __version__, runs, runtime, sources, state
 from lado.cli import format_duration, main
 
 
@@ -256,9 +256,66 @@ name: ship
 description: build and ship
 start: build
 states:
-  build: {agent: rev, do: Build it., outcomes: {done: end}}
+  build: {agent: rev, do: Build it., outcomes: {done: check}}
+  check: {gate: approval, ask: 'Ship it?', outcomes: {approved: end, rejected: build}}
   end: {end: true}
 """
+
+
+def _session_with_run(repo):
+    kit = _kit(repo, "team")
+    (kit / "flows").mkdir()
+    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    main(["start", str(repo), "--name", "s", "--kit", "team", "--no-attach"])
+    return runs.start("s", "ship", "Add x", name="x")
+
+
+def test_ls_shows_open_runs_with_who_acts(repo, fake_tmux, capsys):
+    _session_with_run(repo)
+    capsys.readouterr()
+    main(["ls"])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[-1].split() == ["run", "ship/x", "build", "→", "rev", "(not", "spawned)", "0s"]
+    runs.force("s", "ship/x", "check", "skip the build")
+    main(["ls"])
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert line.split()[:3] == ["run", "ship/x", "check"]
+    assert "waiting for human: Ship it?" in line
+
+
+def test_flow_set_moves_a_run_and_is_logged(repo, fake_tmux, capsys):
+    _session_with_run(repo)
+    assert main(["flow-set", "s", "ship/x", "check", "--reason", "built by hand"]) == 0
+    assert "ship/x: build -> check (waiting for human: Ship it?)" in capsys.readouterr().out
+    assert main(["flow-set", "s", "ship/x", "end", "--reason", "approved"]) == 0
+    assert "ship/x: check -> end (ended)" in capsys.readouterr().out
+    assert main(["flow-set", "s", "ship/x", "build", "--reason", "x"]) == 1
+    assert 'run "ship/x" is ended' in capsys.readouterr().err
+    main(["log", "s"])
+    log = capsys.readouterr().out
+    assert "human: flow_set ship/x (build -> check: built by hand)" in log
+    assert "lado: flow_end ship/x (at end)" in log
+
+
+def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
+    run = _session_with_run(repo)
+    runs.spawn_worker("s", "ship/x")
+    runs.spawn_worker("s", "ship/x", role="rev", task="Help.")
+    assert main(["finish", "s", "w2"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        f'Finished worker "w2" (closed): closed its window; run ship/x keeps {run.worktree}' in out
+    )
+    assert main(["stop", "s"]) == 0
+    out = capsys.readouterr().out
+    assert out.count(f"kept worktree {run.worktree}") == 1
+
+
+def test_flow_set_needs_a_reason(repo, fake_tmux, capsys):
+    _session_with_run(repo)
+    with pytest.raises(SystemExit):
+        main(["flow-set", "s", "ship/x", "check"])
+    capsys.readouterr()
 
 
 def test_kits_show_lists_flows_with_their_source(repo, capsys):

@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from lado import __version__, doctor, kits, log, providers, runtime, sources, state, tmux
+from lado import __version__, doctor, kits, log, providers, runs, runtime, sources, state, tmux
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -167,6 +167,28 @@ def cmd_ls(args: argparse.Namespace) -> int:
             took = format_duration((now - when).total_seconds()) if when else "-"
             line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<9}"
             print(f"{line} {took:<6}  {agent.branch or ''}".rstrip())
+        run_since = state.run_since(sess.name)
+        for run in state.list_runs(sess.name, open_only=True):
+            when = run_since.get(run.name)
+            took = format_duration((now - when).total_seconds()) if when else "-"
+            if run.status == state.WAITING:
+                who = f"waiting for human: {run.reason}"
+            else:
+                who = f"→ {runs.acting(run)}"
+            print(f"  run {run.name}  {run.state}  {who}  {took}")
+    return 0
+
+
+def cmd_flow_set(args: argparse.Namespace) -> int:
+    before = state.get_run(args.session, args.run)
+    run = runs.force(args.session, args.run, args.state, args.reason)
+    if run.status == state.WAITING:
+        now = f"waiting for human: {run.reason}"
+    elif run.status == state.ENDED:
+        now = "ended"
+    else:
+        now = f"→ {runs.acting(run)}"
+    print(f"{run.name}: {before.state} -> {run.state} ({now})")
     return 0
 
 
@@ -199,11 +221,15 @@ def cmd_attach(args: argparse.Namespace) -> int:
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
+    run_trees = {r.worktree: r.branch for r in state.list_runs(args.name)}
     workers = runtime.stop_session(args.name)
     print(f'Stopped session "{args.name}".')
-    for w in workers:
-        print(f"  kept worktree {w.cwd} (branch {w.branch})")
-    if workers:
+    # A run's workers share its worktree; a run may keep one with no workers left.
+    kept = {w.cwd: w.branch for w in workers}
+    kept.update({tree: branch for tree, branch in run_trees.items() if Path(tree).exists()})
+    for tree, branch in kept.items():
+        print(f"  kept worktree {tree} (branch {branch})")
+    if kept:
         print("Remove a worktree with: git worktree remove <path>")
     return 0
 
@@ -211,10 +237,11 @@ def cmd_stop(args: argparse.Namespace) -> int:
 def cmd_finish(args: argparse.Namespace) -> int:
     finished = runtime.finish_worker(args.session, args.agent, args.discard)
     worker = finished.worker
-    print(
-        f'Finished worker "{worker.name}" ({finished.detail()}): removed window, '
-        f"worktree {worker.cwd} and branch {worker.branch}"
-    )
+    if finished.removed_worktree:
+        removed = f"removed window, worktree {worker.cwd} and branch {worker.branch}"
+    else:
+        removed = f"closed its window; run {worker.run} keeps {worker.cwd}"
+    print(f'Finished worker "{worker.name}" ({finished.detail()}): {removed}')
     return 0
 
 
@@ -345,6 +372,15 @@ def main(argv: list[str] | None = None) -> int:
         help="also end it if its work is not merged or not committed, and throw that work away",
     )
     finish.set_defaults(func=cmd_finish)
+
+    flow_set = commands.add_parser(
+        "flow-set", help="put a flow run into a state, e.g. past a gate or a loop limit"
+    )
+    flow_set.add_argument("session")
+    flow_set.add_argument("run", help="the run's name, <flow>/<name> (see lado ls)")
+    flow_set.add_argument("state", help="a state of the run's flow")
+    flow_set.add_argument("--reason", required=True, help="why; the next step is told")
+    flow_set.set_defaults(func=cmd_flow_set)
 
     # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")

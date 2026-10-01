@@ -45,6 +45,21 @@ report you only write as text is lost.
 Messages from other agents arrive in your input as "[from <name>] ...".
 """
 
+FLOW_INSTRUCTIONS = """\
+Flows are optional algorithms from the kits for one task: steps, who does each and the \
+allowed outcomes. Use one when its description fits the task:
+{flows}
+- flow_start(flow, task): start a run of a flow. It gets its own git worktree and branch \
+from your current HEAD, shared by all its workers. LADO then sends each step, as a message \
+from "lado", to the agent that acts in it: to you for supervisor steps, otherwise to the \
+run's worker with the step's role. When a step needs a worker the run does not have, LADO \
+asks you to start it with spawn_worker(role=..., run=...); it gets the step as its task.
+- flow_advance(run, outcome, note_summary, note_body): report the outcome of your own step.
+- flow_status: the runs, their state, who acts and the allowed outcomes.
+- flow_cancel(run, reason): stop a run; its worktree and branch are kept.
+When a run waits for the human (a gate or a loop limit), tell the human; they move it on.
+"""
+
 RUN_WORKER_INSTRUCTIONS = """\
 You are worker "{name}" in LADO session "{session}", working for the flow run "{run}" in \
 the run's git worktree on branch {branch}, shared with the run's other workers. Commit \
@@ -384,7 +399,11 @@ def _supervisor_instructions(env: kits.Environment, session: str) -> str:
     roles = "\n".join(f"  - {a.name}: {a.description}" for a in env.roles()) or "  (none)"
     default = env.default_agent or (kits.DEFAULT_ROLE if kits.DEFAULT_ROLE in env.agents else "")
     default_role = f' (default: "{default}")' if default else ""
-    return SUPERVISOR_INSTRUCTIONS.format(session=session, roles=roles, default_role=default_role)
+    text = SUPERVISOR_INSTRUCTIONS.format(session=session, roles=roles, default_role=default_role)
+    if env.flows:
+        listed = "\n".join(f"  - {f.name}: {f.description}" for f in env.flows.values())
+        text += FLOW_INSTRUCTIONS.format(flows=listed)
+    return text
 
 
 def _spec(

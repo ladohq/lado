@@ -57,7 +57,9 @@ asks you to start it with spawn_worker(role=..., run=...); it gets the step as i
 - flow_advance(run, outcome, note_summary, note_body): report the outcome of your own step.
 - flow_status: the runs, their state, who acts and the allowed outcomes.
 - flow_cancel(run, reason): stop a run; its worktree and branch are kept.
-When a run waits for the human (a gate or a loop limit), tell the human; they move it on.
+When a run waits for the human (a gate or a loop limit), only the human can answer it, \
+with `lado answer` (LADO asks them in a popup); no tool of yours does. The run's next step \
+arrives once they answer.
 """
 
 RUN_WORKER_INSTRUCTIONS = """\

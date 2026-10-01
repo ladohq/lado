@@ -2,7 +2,9 @@
 
 The supervisor starts a run; LADO then tells the acting agent of each work state its step,
 takes the outcome it reports with flow_advance and moves the run on. A run stops for the
-human at a gate or when a state would be entered more often than its max_visits allow.
+human at a gate or when a state would be entered more often than its max_visits allow:
+then it has an open gate (state.Gate), which only the human answers (`answer`, from
+`lado answer`); no agent tool does. LADO opens a tmux popup with `lado answer` for it.
 
 A run has one git worktree and branch; all its workers work in it. Supervisor steps are
 done in the session's repo. When the run ends, its workers are finished and its worktree
@@ -16,14 +18,19 @@ worker.
 import dataclasses
 from pathlib import Path
 
-from lado import flows, kits, runtime, state, tmux
+from lado import flows, kits, providers, runtime, state, tmux
 from lado.runtime import SUPERVISOR, LadoError
 
-LADO = "lado"  # the sender of LADO's own messages
+LADO = state.LADO
 HUMAN = "human"  # the actor of what the human does from the CLI
 NOTE_LIMIT = state.SUMMARY_LIMIT
 SLUG_WORDS = 4
 SLUG_LENGTH = 30
+
+# What the human can answer at a gate. An approval gate's options name its outcomes.
+LOOP = "loop"  # the kind of gate a loop limit opens
+APPROVE = {"approve": "approved", "reject": "rejected"}
+CONTINUE, CANCEL = "continue", "cancel"
 
 Events = list[tuple[str, str, str]]  # (actor, kind, detail)
 
@@ -57,12 +64,12 @@ def start(session: str, flow_name: str, task: str, name: str | None = None) -> s
         worktree=str(Path(sess.repo) / ".lado" / "worktrees" / session / folder),
         branch=f"lado/{session}/{folder}",
     )
-    started, events = _enter(run, flow, flow.start)
+    started, events, gate = _enter(run, flow, flow.start)
     runtime.exclude_worktrees(sess.repo)
     runtime.git(sess.repo, "worktree", "add", "-b", run.branch, run.worktree, "HEAD")
     version = f" {kit.version}" if kit.version else ""
     detail = f"flow {flow.name} from kit {kit.name}{version}: {task.splitlines()[0][:100]}"
-    state.add_run(started, [(SUPERVISOR, state.FLOW_START, detail), *events])
+    state.add_run(started, [(SUPERVISOR, state.FLOW_START, detail), *events], gate)
     _arrived(started, flow, SUPERVISOR)
     return started
 
@@ -78,6 +85,12 @@ def advance(
     """Move the run on by `outcome` of its current step, reported by the agent acting in
     it. The note goes to the next step."""
     run = _run(session, run_name)
+    if run.status == state.WAITING:
+        gate = state.open_gate(session, run.name)
+        if gate:
+            raise LadoError(
+                f'run "{run.name}" waits for the human (gate #{gate.id}): answer with lado answer'
+            )
     if run.status != state.ACTIVE:
         raise LadoError(f'run "{run.name}" is {_status_text(run)}; it cannot be advanced now')
     flow = flow_of(run)
@@ -94,9 +107,88 @@ def advance(
         )
     target = current.outcomes[outcome]
     noted = dataclasses.replace(run, note=note, note_body=note_body or "")
-    after, events = _enter(noted, flow, target)
+    after, events, gate = _enter(noted, flow, target)
     transition = (caller, state.FLOW, f"{run.state} -{outcome}-> {target}")
-    return _commit(run, after, [transition, *events], flow, caller)
+    return _commit(run, after, [transition, *events], flow, caller, gate)
+
+
+def answer(
+    session: str, gate: str, option: str, comment: str | None = None, by: str = HUMAN
+) -> state.Run:
+    """The human's answer to an open gate, given by its id or its run's name: moves the run
+    on like flow_advance, with the answer and comment as the next step's note. At a loop
+    limit, continue enters the state anyway and cancel cancels the run."""
+    found = find_gate(session, gate)
+    run = _run(session, found.run)
+    word = canonical_option(found, option)
+    comment = (comment or "").strip()
+    closes = (by, word, comment)
+    if found.kind == LOOP and word == CANCEL:
+        _cancel(run, f"loop limit: {comment}" if comment else "loop limit", by, closes)
+        _tell_supervisor(run, f"cancelled by the human at {found.state} (loop limit)", comment)
+        return _run(session, run.name)
+    flow = flow_of(run)
+    if found.kind == LOOP:
+        outcome, target = word, found.state
+    else:
+        outcome = APPROVE.get(word, word) if found.kind == "approval" else word
+        target = flow.states[found.state].outcomes[outcome]
+    note, note_body = _answer_note(outcome, comment, found)
+    noted = dataclasses.replace(run, note=note, note_body=note_body)
+    after, events, opens = _enter(noted, flow, target, limit=found.kind != LOOP)
+    transition = (by, state.FLOW, f"{run.state} -{outcome}-> {target}")
+    after = _commit(run, after, [transition, *events], flow, by, opens, closes)
+    if after.status == state.ACTIVE:
+        # A worker got the step; the supervisor only hears that the run moved on.
+        if _acting_agent(after, flow.states[after.state]) not in (None, SUPERVISOR):
+            _tell_supervisor(after, f"human answered {word} at {found.state}")
+    return after
+
+
+def find_gate(session: str, ref: str) -> state.Gate:
+    """The open gate `ref` names: a gate id, or a run whose gate it is."""
+    if ref.isdigit():
+        gate = state.get_gate(int(ref))
+        if gate is None:
+            raise LadoError(f"no gate #{ref}")
+        if gate.session != session:
+            raise LadoError(f'gate #{ref} belongs to session "{gate.session}", not "{session}"')
+    else:
+        run = _run(session, ref)
+        gate = state.open_gate(session, run.name)
+        if gate is None:
+            raise LadoError(f'run "{run.name}" has no open gate; it is {_status_text(run)}')
+    if gate.answer is not None:
+        raise LadoError(f"gate #{gate.id} is closed already: {gate.answer} by {gate.answered_by}")
+    return gate
+
+
+def canonical_option(gate: state.Gate, given: str) -> str:
+    """The option `given` names, in any case; an approval also takes its outcome names."""
+    names = {o.lower(): o for o in gate.options}
+    if gate.kind == "approval":
+        names.update({outcome: word for word, outcome in APPROVE.items()})
+    wanted = given.strip()
+    if wanted.lower() not in names:
+        options = ", ".join(gate.options)
+        raise LadoError(f'no option "{wanted}" for gate #{gate.id}; options: {options}')
+    return names[wanted.lower()]
+
+
+def _answer_note(outcome: str, comment: str, gate: state.Gate) -> tuple[str, str]:
+    """The next step's note: "<outcome>: <comment>", and in the body the whole comment if
+    the note could not hold it, and the note that led to the gate."""
+    first = comment.splitlines()[0] if comment else ""
+    note = f"{outcome}: {first}" if first else outcome
+    body = []
+    if len(note) > NOTE_LIMIT:
+        note = note[: NOTE_LIMIT - 1] + "…"
+        body.append(comment)
+    elif comment != first:
+        body.append(comment)
+    if gate.note or gate.note_body:
+        body.append(f"Note before the gate: {gate.note}\n{gate.note_body}".rstrip())
+    return note, "\n\n".join(body)
 
 
 def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
@@ -113,9 +205,10 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     if not reason:
         raise LadoError("give a reason")
     noted = dataclasses.replace(run, note=f"set by the human: {reason}"[:NOTE_LIMIT], note_body="")
-    after, events = _enter(noted, flow, target, limit=False)
+    after, events, gate = _enter(noted, flow, target, limit=False)
     forced = (HUMAN, state.FLOW_SET, f"{run.state} -> {target}: {reason}")
-    return _commit(run, after, [forced, *events], flow, HUMAN)
+    closes = (HUMAN, "overridden", reason)
+    return _commit(run, after, [forced, *events], flow, HUMAN, gate, closes)
 
 
 def cancel(session: str, run_name: str, reason: str) -> list[runtime.Finished]:
@@ -125,10 +218,14 @@ def cancel(session: str, run_name: str, reason: str) -> list[runtime.Finished]:
     if run.status not in state.OPEN:
         raise LadoError(f'run "{run.name}" is {run.status} already')
     reason = reason.strip() or "no reason given"
+    return _cancel(run, reason, SUPERVISOR, (SUPERVISOR, "cancelled", reason))
+
+
+def _cancel(run: state.Run, reason: str, by: str, closes: state.Close) -> list[runtime.Finished]:
     after = dataclasses.replace(run, status=state.CANCELLED, reason=reason)
-    if not state.update_run(run, after, [(SUPERVISOR, state.FLOW_CANCEL, reason)]):
+    if not state.update_run(run, after, [(by, state.FLOW_CANCEL, reason)], closes=closes):
         raise LadoError(f'run "{run.name}" changed meanwhile; see flow_status')
-    return [runtime.close_worker(session, w, "run cancelled") for w in _workers(after)]
+    return [runtime.close_worker(run.session, w, "run cancelled") for w in _workers(after)]
 
 
 def spawn_worker(
@@ -218,17 +315,17 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
 
 def _enter(
     run: state.Run, flow: flows.Flow, target: str, limit: bool = True
-) -> tuple[state.Run, Events]:
-    """The run after entering `target`, and LADO's events about it. A state entered as
-    often as its max_visits allow (and `limit`) is not entered: the run waits for the
-    human instead."""
+) -> tuple[state.Run, Events, state.Gate | None]:
+    """The run after entering `target`, LADO's events about it and the gate it waits at,
+    if it does. A state entered as often as its max_visits allow (and `limit`) is not
+    entered: the run waits for the human instead."""
     entered = flow.states[target]
     visits = run.visits.get(target, 0)
     if limit and entered.max_visits is not None and visits >= entered.max_visits:
         reason = f"loop limit reached at {target}"
-        return dataclasses.replace(run, status=state.WAITING, reason=reason), [
-            (LADO, state.FLOW_WAIT, reason)
-        ]
+        after = dataclasses.replace(run, status=state.WAITING, reason=reason)
+        question = f"{reason}: what next?"
+        return after, [], _new_gate(after, target, LOOP, question, [CONTINUE, CANCEL])
     after = dataclasses.replace(
         run,
         state=target,
@@ -238,17 +335,29 @@ def _enter(
     )
     if entered.kind == flows.GATE:
         after.status, after.reason = state.WAITING, entered.ask
-        return after, [(LADO, state.FLOW_WAIT, f"at {target}: {entered.ask}")]
+        options = list(APPROVE) if entered.gate == "approval" else list(entered.outcomes)
+        return after, [], _new_gate(after, target, entered.gate, entered.ask, options)
     if entered.kind == flows.END:
         after.status = state.ENDED
-        return after, [(LADO, state.FLOW_END, f"at {target}")]
-    return after, []
+        return after, [(LADO, state.FLOW_END, f"at {target}")], None
+    return after, [], None
+
+
+def _new_gate(run: state.Run, at: str, kind: str, question: str, options: list[str]) -> state.Gate:
+    """A gate for the run, with the note of the step that led to it."""
+    return state.Gate(run.session, run.name, at, kind, question, options, run.note, run.note_body)
 
 
 def _commit(
-    before: state.Run, after: state.Run, events: Events, flow: flows.Flow, caller: str
+    before: state.Run,
+    after: state.Run,
+    events: Events,
+    flow: flows.Flow,
+    caller: str,
+    opens: state.Gate | None = None,
+    closes: state.Close | None = None,
 ) -> state.Run:
-    if not state.update_run(before, after, events):
+    if not state.update_run(before, after, events, opens, closes):
         raise LadoError(f'run "{before.name}" changed meanwhile; see flow_status')
     _arrived(after, flow, caller)
     return after
@@ -267,16 +376,28 @@ def _arrived(run: state.Run, flow: flows.Flow, caller: str) -> None:
 
 def _act_on_arrival(run: state.Run, flow: flows.Flow, caller: str) -> None:
     if run.status == state.WAITING:
+        gate = state.open_gate(run.session, run.name)
         _tell_supervisor(
             run,
-            f"waiting for the human at {run.state}: {run.reason}",
-            f"The human moves the run on with: lado flow-set {run.session} {run.name} "
-            "<state> --reason TEXT",
+            f"waiting for the human at {gate.state} (gate #{gate.id})",
+            f"{gate.question}\nOnly the human answers it: lado answer {run.session} {gate.id}",
         )
+        _popup(run.session, gate)
     elif run.status == state.ENDED:
         _close(run, caller)
     else:
         _deliver_step(run, flow)
+
+
+def _popup(session: str, gate: state.Gate) -> None:
+    """Ask the human in a popup on the clients attached to the session. The popup's
+    `lado answer` goes on with the session's other open gates, so one title fits all: a
+    client that shows a popup already keeps it. The popup gets the tmux session's
+    environment, which has the supervisor's LADO_AGENT: it is the human's, so without."""
+    unset = ["env", "-u", "LADO_AGENT", "-u", "LADO_SESSION"]
+    argv = unset + providers.lado_command("answer", session, str(gate.id))
+    env = {"LADO_HOME": str(state.home()), "LADO_TMUX_SOCKET": tmux.socket()}
+    tmux.popup(session, f"lado {session}: waiting for you", argv, env)
 
 
 def _deliver_step(run: state.Run, flow: flows.Flow) -> None:
@@ -370,6 +491,7 @@ def _workers(run: state.Run) -> list[state.Agent]:
 
 def describe(run: state.Run) -> dict:
     current = flow_of(run).states[run.state]
+    gate = state.open_gate(run.session, run.name) if run.status == state.WAITING else None
     return {
         "run": run.name,
         "flow": run.flow,
@@ -379,6 +501,7 @@ def describe(run: state.Run) -> dict:
         "reason": run.reason,
         "acting": acting(run),
         "outcomes": current.outcomes if run.status == state.ACTIVE else {},
+        "gate": gate and {"id": gate.id, "question": gate.question, "options": gate.options},
         "visits": run.visits,
         "note": run.note,
         "worktree": run.worktree,

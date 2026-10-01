@@ -5,12 +5,14 @@ user's tmux sessions.
 """
 
 import os
+import shlex
 import subprocess
 import time
 import uuid
 
 DEFAULT_SOCKET = "lado"
 TIMEOUT = 10
+POPUP_WIDTH, POPUP_HEIGHT = "80%", "60%"
 
 # Set by Claude Code in its child processes. A `claude` started with them believes it is
 # nested inside another Claude Code session, so the LADO tmux server must not inherit them.
@@ -111,6 +113,31 @@ def send_text(session: str, window: str, text: str) -> None:
     run("paste-buffer", "-p", "-d", "-b", buffer, "-t", target)
     time.sleep(0.05)  # let the paste land before Enter, or Enter can end up inside it
     run("send-keys", "-t", target, "Enter")
+
+
+def popup(session: str, title: str, argv: list[str], env: dict[str, str]) -> int:
+    """Open a popup running `argv` on each client attached to the session; it closes when
+    `argv` exits. Returns on how many clients. Does not wait for the popups: tmux would
+    block until they close. A client that shows a popup already keeps it and its command:
+    tmux does not stack popups, it only applies the new options (such as the title) to the
+    open one."""
+    try:
+        clients = run("list-clients", "-t", f"={session}", "-F", "#{client_name}").split()
+    except TmuxError:
+        return 0  # the session is gone
+    title = title.replace("#", "##")  # -T is a format
+    for client in clients:
+        cmd = ["tmux", "-L", socket(), "display-popup", "-c", client, "-E", "-T", title]
+        cmd += ["-w", POPUP_WIDTH, "-h", POPUP_HEIGHT, *_env_args(env), shlex.join(argv)]
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=clean_env(),
+            start_new_session=True,
+        )
+    return len(clients)
 
 
 def capture(session: str, window: str) -> str:

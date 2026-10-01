@@ -18,6 +18,9 @@ A flow is a file flows/<name>.yaml in a kit:
       done:
         end: true
 
+An approval gate has exactly the outcomes `approved` and `rejected`; the human answers it
+with approve or reject. A choice gate offers its outcome names.
+
 This module only reads and checks the format; lado.runs runs flows. Whether each `agent`
 role exists depends on the kits a session combines, so lado.kits checks that.
 """
@@ -33,6 +36,7 @@ STATE_KEYS = {
     END: {"end"},
 }
 GATES = ("approval", "choice")
+APPROVAL = ("approved", "rejected")  # the outcomes of an approval gate, exactly these
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -146,7 +150,10 @@ def _state(name: object, raw: object, error) -> State | None:
             error(f"{where}: gate must be approval or choice")
         if not _text(ask):
             error(f"{where}: ask is missing")
-        if outcomes is None or gate not in GATES or not _text(ask):
+        approval = outcomes is None or gate != "approval" or set(outcomes) == set(APPROVAL)
+        if not approval:
+            error(f"{where}: an approval gate has the outcomes {' and '.join(APPROVAL)}")
+        if outcomes is None or gate not in GATES or not _text(ask) or not approval:
             return None
         return State(name, GATE, outcomes, gate=gate, ask=ask.strip())
     agent, do, visits = raw.get("agent"), raw.get("do"), raw.get("max_visits")

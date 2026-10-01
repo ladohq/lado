@@ -292,3 +292,99 @@ def test_runs_go_with_their_session(lado_home):
     assert [r.name for r in state.list_runs("s", open_only=True)] == ["feature/x"]
     state.delete_session("s")
     assert state.list_runs("s") == []
+
+
+def test_version_6_database_gets_gates(lado_home):
+    db = _schema_v4(lado_home)
+    for version in (4, 5):
+        for statement in state.MIGRATIONS[version]:
+            db.execute(statement)
+    db.execute("PRAGMA user_version = 6")
+    db.commit()
+    assert state.open_gates() == []
+    assert state.get_gate(1) is None
+
+
+def _gate(**changes):
+    gate = state.Gate(
+        session="s",
+        run="feature/x",
+        state="design_ok",
+        kind="approval",
+        question="Approve the design?",
+        options=["approve", "reject"],
+        note="design ready",
+        note_body="see plan.md",
+    )
+    return dataclasses.replace(gate, **changes)
+
+
+def _waiting(lado_home):
+    """A run that waits at an open gate."""
+    state.add_session(state.Session("s", "/r", None))
+    state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
+    before = state.get_run("s", "feature/x")
+    after = dataclasses.replace(before, state="design_ok", status=state.WAITING)
+    gate = _gate()
+    assert state.update_run(before, after, [("supervisor", state.FLOW, "go")], opens=gate)
+    return after, gate
+
+
+def test_a_gate_opens_with_the_run_that_waits_at_it(lado_home):
+    run, gate = _waiting(lado_home)
+    assert gate.id
+    stored = state.get_gate(gate.id)
+    assert stored == dataclasses.replace(gate, created_at=stored.created_at)
+    assert (stored.answer, stored.answered_at) == (None, None)
+    assert state.open_gates() == [stored]
+    assert state.open_gates("other") == []
+    assert state.open_gate("s", "feature/x") == stored
+    events = [(e.agent, e.kind, e.detail, e.run) for e in state.list_events("s")][1:]
+    assert events == [
+        ("supervisor", state.FLOW, "go", "feature/x"),
+        (
+            "lado",
+            state.GATE_OPEN,
+            f"#{gate.id} approval at design_ok: Approve the design?",
+            "feature/x",
+        ),
+    ]
+
+
+def test_a_run_has_one_open_gate(lado_home):
+    run, _ = _waiting(lado_home)
+    again = dataclasses.replace(run, visits={"design_ok": 2})
+    with pytest.raises(sqlite3.IntegrityError):
+        state.update_run(run, again, [], opens=_gate())
+    assert state.get_run("s", "feature/x").visits == run.visits  # rolled back
+    assert len(state.open_gates()) == 1
+
+
+def test_the_gate_closes_with_the_runs_next_write(lado_home):
+    run, gate = _waiting(lado_home)
+    after = dataclasses.replace(run, state="design", status=state.ACTIVE)
+    stale = dataclasses.replace(run, state="other")
+    assert not state.update_run(stale, after, [], closes=("human", "approve", "fine"))
+    assert state.get_gate(gate.id).answer is None
+    assert state.update_run(
+        run, after, [("human", state.FLOW, "on")], closes=("human", "approve", "fine")
+    )
+    closed = state.get_gate(gate.id)
+    assert (closed.answer, closed.comment, closed.answered_by) == ("approve", "fine", "human")
+    assert closed.answered_at
+    assert state.open_gates() == []
+    assert state.open_gate("s", "feature/x") is None
+    events = [(e.agent, e.kind, e.detail) for e in state.list_events("s")][-2:]
+    assert events == [
+        ("human", state.GATE_ANSWER, f"#{gate.id} approve: fine"),
+        ("human", state.FLOW, "on"),
+    ]
+
+
+def test_a_new_run_can_start_at_a_gate_and_gates_go_with_their_session(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    gate = _gate()
+    state.add_run(_run(status=state.WAITING), [("supervisor", state.FLOW_START, "x")], gate)
+    assert state.open_gates() == [state.get_gate(gate.id)]
+    state.delete_session("s")
+    assert state.get_gate(gate.id) is None

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from lado import kits, runs, runtime, state
+from lado import kits, runs, runtime, state, tmux
 
 FEATURE = """\
 name: feature
@@ -29,7 +29,7 @@ states:
   gated:
     gate: approval
     ask: Ship it?
-    outcomes: {approved: done}
+    outcomes: {approved: done, rejected: implement}
   done:
     end: true
 """
@@ -223,10 +223,21 @@ def test_max_visits_stops_the_run_for_the_human(session):
     )
     assert run.visits["review"] == 2
     assert runs.acting(run) == "human"
-    assert messages("supervisor")[-1].summary == (
-        "flow feature/login: waiting for the human at review: loop limit reached at review"
+    [gate] = state.open_gates(session)
+    assert (gate.run, gate.state, gate.kind, gate.options) == (
+        "feature/login",
+        "review",
+        "loop",
+        ["continue", "cancel"],
     )
-    with pytest.raises(runtime.LadoError, match="waiting for the human: loop limit reached"):
+    assert gate.question == "loop limit reached at review: what next?"
+    told = messages("supervisor")[-1]
+    assert told.summary == f"flow feature/login: waiting for the human at review (gate #{gate.id})"
+    assert f"lado answer {session} {gate.id}" in told.body
+    error = (
+        f'run "feature/login" waits for the human \\(gate #{gate.id}\\): answer with lado answer'
+    )
+    with pytest.raises(runtime.LadoError, match=error):
         runs.advance(session, "w2", "feature/login", "approved")
 
 
@@ -234,8 +245,9 @@ def test_the_human_moves_a_run_past_a_stop(session):
     advance_to_review(session)
     run = runs.force(session, "feature/login", "gated", "try the gate")
     assert (run.state, run.status, run.reason) == ("gated", state.WAITING, "Ship it?")
+    [gate] = state.open_gates(session)
     assert messages("supervisor")[-1].summary == (
-        "flow feature/login: waiting for the human at gated: Ship it?"
+        f"flow feature/login: waiting for the human at gated (gate #{gate.id})"
     )
     run = runs.force(session, "feature/login", "implement", "rework the form")
     assert (run.state, run.status, run.note) == (
@@ -249,8 +261,175 @@ def test_the_human_moves_a_run_past_a_stop(session):
         ("human", "review -> gated: try the gate"),
         ("human", "gated -> implement: rework the form"),
     ]
+    # No stale gate is left behind.
+    assert state.open_gates(session) == []
+    closed = state.get_gate(gate.id)
+    assert (closed.answer, closed.comment, closed.answered_by) == (
+        "overridden",
+        "rework the form",
+        "human",
+    )
     with pytest.raises(runtime.LadoError, match='no state "nope" in flow feature'):
         runs.force(session, "feature/login", "nope", "x")
+
+
+def to_gate(session):
+    """A run waiting at gate "gated", led there by the supervisor's note."""
+    to_merge(session)
+    return runs.advance(session, "supervisor", "feature/login", "hold", "ready to ship", "a\nb")
+
+
+def test_a_gate_opens_with_the_note_that_led_to_it_and_a_popup(session, fake_tmux):
+    run = to_gate(session)
+    assert (run.state, run.status) == ("gated", state.WAITING)
+    [gate] = state.open_gates(session)
+    assert (gate.kind, gate.question, gate.options) == (
+        "approval",
+        "Ship it?",
+        ["approve", "reject"],
+    )
+    assert (gate.note, gate.note_body) == ("ready to ship", "a\nb")
+    [popup] = [c for c in fake_tmux if c[0] == "popup"]
+    _, where, title, argv, env = popup
+    # One title for all gates: tmux keeps an open popup and only gives it the new title.
+    assert (where, title) == (session, f"lado {session}: waiting for you")
+    assert argv[-3:] == ["answer", session, str(gate.id)]
+    # The tmux session's environment has the supervisor's LADO_AGENT: not the popup's.
+    assert argv[:5] == ["env", "-u", "LADO_AGENT", "-u", "LADO_SESSION"]
+    assert env == {"LADO_HOME": str(state.home()), "LADO_TMUX_SOCKET": tmux.socket()}
+    assert [m.summary for m in messages("supervisor")][-1] == (
+        f"flow feature/login: waiting for the human at gated (gate #{gate.id})"
+    )
+    assert runs.describe(run)["gate"] == {
+        "id": gate.id,
+        "question": "Ship it?",
+        "options": ["approve", "reject"],
+    }
+
+
+def test_rejecting_sends_the_answer_and_the_earlier_note_to_the_next_step(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    run = runs.answer(session, str(gate.id), "reject", "the form is too big")
+    assert (run.state, run.status, run.note) == (
+        "implement",
+        state.ACTIVE,
+        "rejected: the form is too big",
+    )
+    assert run.note_body == "Note before the gate: ready to ship\na\nb"
+    step = messages("w1")[-1]
+    assert step.summary == "flow feature/login: step implement"
+    assert "Note from the previous step: rejected: the form is too big" in step.body
+    # The step went to a worker: the supervisor hears what the human answered.
+    assert messages("supervisor")[-1].summary == (
+        "flow feature/login: human answered reject at gated"
+    )
+    closed = state.get_gate(gate.id)
+    assert (closed.answer, closed.comment, closed.answered_by) == (
+        "reject",
+        "the form is too big",
+        "human",
+    )
+    kinds = [(e.agent, e.kind) for e in state.list_events(session)][-2:]
+    assert kinds == [("human", state.GATE_ANSWER), ("human", state.FLOW)]
+    assert state.list_events(session)[-1].detail == "gated -rejected-> implement"
+
+
+@pytest.mark.parametrize("option", ["approve", "approved", " Approve "])
+def test_approving_takes_the_approved_outcome(session, repo, option):
+    run = to_gate(session)
+    commit(run)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    run = runs.answer(session, "feature/login", option)
+    assert (run.state, run.status, run.note) == ("done", state.ENDED, "approved")
+    # Ending tells the supervisor already; no second line about the answer.
+    assert messages("supervisor")[-1].summary == (
+        "flow feature/login: ended at done; worktree and branch removed"
+    )
+
+
+def test_a_choice_gate_offers_its_outcomes(session, team):
+    write(
+        team / "flows" / "pick.yaml",
+        "name: pick\ndescription: d\nstart: which\nstates:\n"
+        "  which: {gate: choice, ask: 'Which way?', outcomes: {left: build, right: end}}\n"
+        "  build: {agent: supervisor, do: Build it., outcomes: {done: end}}\n"
+        "  end: {end: true}\n",
+    )
+    runs.start(session, "pick", "x", name="x")
+    [gate] = state.open_gates(session)
+    assert (gate.kind, gate.options, gate.note) == ("choice", ["left", "right"], "")
+    with pytest.raises(runtime.LadoError, match='no option "up" for gate #1; options: left, right'):
+        runs.answer(session, "1", "up")
+    run = runs.answer(session, "1", "left", "go\nslowly")
+    assert (run.state, run.note, run.note_body) == ("build", "left: go", "go\nslowly")
+    # The supervisor's own step says it all.
+    assert [m.summary for m in messages("supervisor")][-2:] == [
+        "flow pick/x: waiting for the human at which (gate #1)",
+        "flow pick/x: step build",
+    ]
+
+
+def to_loop_limit(session):
+    advance_to_review(session)
+    runs.advance(session, "w2", "feature/login", "again")
+    return runs.advance(session, "w2", "feature/login", "again", "still red")
+
+
+def test_continue_at_a_loop_limit_enters_the_state_anyway(session):
+    to_loop_limit(session)
+    [gate] = state.open_gates(session)
+    assert gate.note == "still red"
+    run = runs.answer(session, "feature/login", "continue", "one more try")
+    assert (run.state, run.status, run.visits["review"]) == ("review", state.ACTIVE, 3)
+    assert (run.note, run.note_body) == (
+        "continue: one more try",
+        "Note before the gate: still red",
+    )
+    assert messages("w2")[-1].summary == "flow feature/login: step review"
+    assert state.list_events(session)[-1].detail == "review -continue-> review"
+    # The limit stops it again next time.
+    run = runs.advance(session, "w2", "feature/login", "again")
+    assert run.status == state.WAITING
+
+
+def test_cancel_at_a_loop_limit_cancels_the_run(session):
+    to_loop_limit(session)
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "cancel", "not worth it")
+    run = state.get_run(session, "feature/login")
+    assert (run.status, run.reason) == (state.CANCELLED, "loop limit: not worth it")
+    assert [a.name for a in state.list_agents(session)] == ["supervisor"]
+    assert state.get_gate(gate.id).answer == "cancel"
+    assert messages("supervisor")[-1].summary == (
+        "flow feature/login: cancelled by the human at review (loop limit)"
+    )
+    cancelled = [e for e in state.list_events(session) if e.kind == state.FLOW_CANCEL]
+    assert [(e.agent, e.detail) for e in cancelled] == [("human", "loop limit: not worth it")]
+
+
+def test_answer_errors(session):
+    to_gate(session)
+    with pytest.raises(runtime.LadoError, match="no gate #99"):
+        runs.answer(session, "99", "approve")
+    with pytest.raises(
+        runtime.LadoError, match='no option "ok" for gate #1; options: approve, reject'
+    ):
+        runs.answer(session, "1", "ok")
+    with pytest.raises(runtime.LadoError, match='gate #1 belongs to session "s", not "other"'):
+        runs.answer("other", "1", "approve")
+    runs.answer(session, "1", "reject")
+    with pytest.raises(runtime.LadoError, match="gate #1 is closed already: reject by human"):
+        runs.answer(session, "1", "approve")
+    with pytest.raises(runtime.LadoError, match='run "feature/login" has no open gate'):
+        runs.answer(session, "feature/login", "approve")
+
+
+def test_cancelling_a_waiting_run_closes_its_gate(session):
+    to_gate(session)
+    runs.cancel(session, "feature/login", "dropped")
+    assert state.open_gates() == []
+    assert state.get_gate(1).answer == "cancelled"
 
 
 def to_merge(session):
@@ -361,13 +540,14 @@ def test_a_run_can_start_at_a_gate(session, team):
     write(
         team / "flows" / "ship.yaml",
         "name: ship\ndescription: d\nstart: gated\nstates:\n"
-        "  gated: {gate: approval, ask: 'Ship it?', outcomes: {approved: done}}\n"
+        "  gated: {gate: approval, ask: 'Ship it?', outcomes: {approved: done, rejected: done}}\n"
         "  done: {end: true}\n",
     )
     run = runs.start(session, "ship", "x")
     assert (run.state, run.status, run.reason) == ("gated", state.WAITING, "Ship it?")
     kinds = [e.kind for e in state.list_events(session) if e.run == run.name]
-    assert kinds == [state.FLOW_START, state.FLOW_WAIT]
+    assert kinds == [state.FLOW_START, state.GATE_OPEN]
+    assert state.open_gate(session, run.name).question == "Ship it?"
 
 
 def test_status_shows_a_worker_its_own_run(session):

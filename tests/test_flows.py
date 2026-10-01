@@ -97,6 +97,14 @@ def _broken(change):
         (lambda d: d["states"]["design_ok"].update(gate="vote"), "gate must be approval or choice"),
         (lambda d: d["states"]["design_ok"].pop("ask"), 'state "design_ok": ask is missing'),
         (
+            lambda d: d["states"]["design_ok"]["outcomes"].pop("rejected"),
+            'state "design_ok": an approval gate has the outcomes approved and rejected',
+        ),
+        (
+            lambda d: d["states"]["design_ok"]["outcomes"].update(later="design"),
+            'state "design_ok": an approval gate has the outcomes approved and rejected',
+        ),
+        (
             lambda d: d["states"]["design_ok"].update(max_visits=2),
             'state "design_ok": unknown keys max_visits',
         ),

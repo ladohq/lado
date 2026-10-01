@@ -72,19 +72,22 @@ schema change.
     and its validator. `runs.py`: flow runs: start (own worktree and branch, shared by the
     run's workers), step messages from `lado`, `flow_advance`, loop limits, gates (the run
     waits for the human), end (finish workers, remove the worktree if merged), cancel and
-    `lado flow-set`. A run keeps a snapshot of its flow.
+    `lado flow-set`. A run keeps a snapshot of its flow. A waiting run has one open gate
+    record (`state.Gate`); `runs.answer` is the only way to answer it, called from
+    `lado answer`, never from an MCP tool; the answering surface (popup, CLI) stays outside
+    that core.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `read_messages`, `list_agents`,
     `flow_advance`, `flow_status`; the supervisor also gets `spawn_worker`, `finish_worker`,
-    `flow_start` and `flow_cancel`).
+    `flow_start` and `flow_cancel`). No tool answers a gate.
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
-    `flow_wait`, `flow_end`, `flow_cancel`, `flow_set`; their `run` column names the run);
-    events, messages and runs go with their session. How long an agent has had its
-    status (`lado ls`, `list_agents`) comes from its latest `status` or `spawned` event, how
-    long a run has been in its state from its latest event.
+    `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
+    names the run); events, messages, runs and gates go with their session. How long an
+    agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
+    `spawned` event, how long a run has been in its state from its latest event.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/live/`: live tests with real agent CLIs; `tests/js/`: Node tests of the Kilo plugin.
@@ -128,9 +131,29 @@ throws that work away. The supervisor does the same with the MCP tool `finish_wo
 A worker of a flow run only has its window closed while the run is open: the worktree and
 branch belong to the run.
 
+Gates: a run that enters a gate state, or would enter a state more often than its
+`max_visits`, waits for the human with an open gate (`lado ls`: `gate #<id> waiting:
+<question>`). An approval gate has exactly the outcomes `approved` and `rejected` and is
+answered `approve` / `reject`; a choice gate with one of its outcome names; a loop limit with
+`continue` (enter the state anyway, the visit counts) or `cancel` (cancel the run). The
+supervisor gets one line, `flow <run>: waiting for the human at <state> (gate #<id>)`. The
+answer and its comment become the next step's note, after which the note that led to the gate
+follows in the body; when a worker gets the next step, the supervisor gets one line
+`flow <run>: human answered <option> at <state>`.
+
+`lado answer <session> <gate-id|run> <option> [-m COMMENT]` answers a gate. Without the
+option it asks: with no arguments about the open gates of all sessions (a list to pick from
+when there are several), and after each answer it goes on with the open gates of that session
+until none is left or the human presses Enter on an empty line. When a gate opens, LADO opens
+a tmux popup (`display-popup -E`) running `lado answer <session> <gate-id>` on each client
+attached to the session; with no client attached, nothing opens and the gate waits in
+`lado ls`. tmux does not stack popups: a second gate is asked about in the open popup after
+the first answer. Closing the popup leaves the gate open. `lado answer` and `lado flow-set`
+refuse to run inside an agent (`LADO_AGENT` set).
+
 `lado flow-set <session> <run> <state> --reason TEXT` puts a flow run into a state: the
-human's way past a gate or a loop limit. `lado ls` shows each open run with its state and
-who acts next.
+human's override, past a gate or a loop limit; it closes the run's open gate as `overridden`.
+`lado ls` shows each open run with its state and who acts next.
 
 ## Testing
 

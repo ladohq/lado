@@ -278,15 +278,110 @@ def test_ls_shows_open_runs_with_who_acts(repo, fake_tmux, capsys):
     assert lines[-1].split() == ["run", "ship/x", "build", "→", "rev", "(not", "spawned)", "0s"]
     runs.force("s", "ship/x", "check", "skip the build")
     main(["ls"])
-    line = capsys.readouterr().out.splitlines()[-1]
-    assert line.split()[:3] == ["run", "ship/x", "check"]
-    assert "waiting for human: Ship it?" in line
+    run, gate = capsys.readouterr().out.splitlines()[-2:]
+    assert run.split()[:8] == ["run", "ship/x", "check", "waiting", "for", "human:", "gate", "#1"]
+    assert gate == "    gate #1 waiting: Ship it?"
+    runs.answer("s", "1", "reject")
+    main(["ls"])
+    assert "gate #1" not in capsys.readouterr().out
+
+
+def _at_gate(repo, capsys):
+    _session_with_run(repo)
+    runs.force("s", "ship/x", "check", "built by hand")
+    capsys.readouterr()
+
+
+def test_answer_with_all_arguments_answers_the_gate(repo, fake_tmux, capsys):
+    _at_gate(repo, capsys)
+    assert main(["answer", "s", "1", "reject", "-m", "too big"]) == 0
+    assert capsys.readouterr().out == (
+        "gate #1: reject. ship/x: check -> build (→ rev (not spawned))\n"
+    )
+    assert state.get_run("s", "ship/x").note == "rejected: too big"
+    assert main(["answer", "s", "1", "approve"]) == 1
+    assert "gate #1 is closed already: reject by human" in capsys.readouterr().err
+
+
+def test_answer_refuses_unknown_options_and_agents(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    assert main(["answer", "s", "ship/x", "maybe"]) == 1
+    assert 'no option "maybe" for gate #1; options: approve, reject' in capsys.readouterr().err
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    for argv in (
+        ["answer", "s", "1", "approve"],
+        ["flow-set", "s", "ship/x", "end", "--reason", "x"],
+    ):
+        assert main(argv) == 1
+        assert 'is for the human; agent "w1" cannot use it' in capsys.readouterr().err
+    assert state.open_gate("s", "ship/x").id == 1
+
+
+def _typing(monkeypatch, *lines):
+    """Stdin with these lines, then its end."""
+    answers = iter(lines)
+
+    def fake_input(prompt=""):
+        print(prompt, end="")
+        try:
+            return next(answers)
+        except StopIteration:
+            raise EOFError from None
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+
+def test_answer_asks_about_the_only_open_gate(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    runs.answer("s", "1", "reject", "first")
+    runs.spawn_worker("s", "ship/x")
+    runs.advance("s", "w1", "ship/x", "done", "built it", "all\ntests pass")
+    capsys.readouterr()
+    _typing(monkeypatch, "x", "2", "still too big")
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert "Gate #2, session s, run ship/x at check:\nShip it?\n" in out
+    assert "Note: built it\n  all\n  tests pass\n" in out
+    assert "  1) approve\n  2) reject\n" in out
+    assert 'no option "x" for gate #2' in out
+    assert "gate #2: reject. ship/x: check -> build (→ w1)" in out
+    assert out.endswith("No more open gates.\n")
+    assert state.get_run("s", "ship/x").note == "rejected: still too big"
+
+
+def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    runs.start("s", "ship", "Add y", name="y")
+    runs.force("s", "ship/y", "check", "built by hand")
+    capsys.readouterr()
+    _typing(monkeypatch, "2", "approve", "2")
+    assert main(["answer", "-m", "ship y"]) == 0
+    out = capsys.readouterr().out
+    assert "  1) #1 s ship/x at check: Ship it?\n  2) #2 s ship/y at check: Ship it?\n" in out
+    assert "gate #2: approve. ship/y: check -> end (ended)" in out
+    assert state.get_gate(2).comment == "ship y"
+    # On with the gates left; -m was for the first answer, so the comment is asked for, and
+    # the end of input leaves gate #1 open.
+    assert "Gate #1, session s, run ship/x at check:" in out
+    assert out.endswith("Comment for the next step (Enter for none): \nGate #1 stays open.\n")
+    assert [g.id for g in state.open_gates()] == [1]
+
+
+def test_answer_names_a_gate_and_goes_on_with_its_session(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    _typing(monkeypatch)
+    assert main(["answer", "s", "7"]) == 0
+    out = capsys.readouterr().out
+    # A popup for a gate that is gone shows why, then the session's open gates.
+    assert out.startswith("lado: no gate #7\n\nGate #1, session s")
+    assert main(["answer", "other"]) == 0
+    assert capsys.readouterr().out == "No open gates.\n"
 
 
 def test_flow_set_moves_a_run_and_is_logged(repo, fake_tmux, capsys):
     _session_with_run(repo)
     assert main(["flow-set", "s", "ship/x", "check", "--reason", "built by hand"]) == 0
-    assert "ship/x: build -> check (waiting for human: Ship it?)" in capsys.readouterr().out
+    assert "ship/x: build -> check (waiting for human: gate #1)" in capsys.readouterr().out
     assert main(["flow-set", "s", "ship/x", "end", "--reason", "approved"]) == 0
     assert "ship/x: check -> end (ended)" in capsys.readouterr().out
     assert main(["flow-set", "s", "ship/x", "build", "--reason", "x"]) == 1

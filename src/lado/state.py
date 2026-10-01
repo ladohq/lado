@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -50,6 +50,28 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
     PRIMARY KEY (session, name)
 )"""
+
+# Questions to the human from waiting runs (lado.runs). A run has at most one open gate.
+GATES = """
+CREATE TABLE IF NOT EXISTS gates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
+    run TEXT NOT NULL,
+    state TEXT NOT NULL,  -- the gate state, or the state a loop limit kept the run out of
+    kind TEXT NOT NULL,  -- approval | choice | loop
+    question TEXT NOT NULL,
+    options TEXT NOT NULL,  -- JSON list of the answers the human can give
+    note TEXT NOT NULL DEFAULT '',  -- the note of the step that led here
+    note_body TEXT NOT NULL DEFAULT '',
+    answer TEXT,  -- an option, or how the gate was closed otherwise; NULL while open
+    comment TEXT NOT NULL DEFAULT '',
+    answered_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    answered_at TEXT
+)"""
+GATES_OPEN = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS gates_open ON gates (session, run) WHERE answer IS NULL"
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -86,7 +108,7 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
-SCHEMA += ";\n".join([EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS]) + ";\n"
+SCHEMA += ";\n".join([EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS, GATES, GATES_OPEN]) + ";\n"
 
 SUMMARY_LIMIT = 200  # characters in a message summary
 
@@ -108,6 +130,7 @@ MIGRATIONS = {
         "UPDATE messages SET state = 'read' WHERE state = 'delivered'",
     ],
     5: [AGENTS_RUN, EVENTS_RUN, RUNS],
+    6: [GATES, GATES_OPEN],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -132,10 +155,13 @@ FINISHED = "finished"  # a worker was ended; detail: "merged" or "discarded"
 # Flow run events (lado.runs); their run column names the run.
 FLOW_START = "flow_start"
 FLOW = "flow"  # a transition; detail: "<from> -<outcome>-> <to>"
-FLOW_WAIT = "flow_wait"  # the run waits for the human; detail: why
 FLOW_END = "flow_end"
 FLOW_CANCEL = "flow_cancel"
 FLOW_SET = "flow_set"  # the human forced the run into a state
+GATE_OPEN = "gate_open"  # the run waits for the human; detail: "#<id> <kind> at <state>: ..."
+GATE_ANSWER = "gate_answer"  # the gate closed; detail: "#<id> <answer>[: <comment>]"
+
+LADO = "lado"  # the sender of LADO's own messages and the actor of its own events
 
 # Run statuses.
 ACTIVE = "active"
@@ -217,6 +243,29 @@ class Run:
     note: str = ""  # the previous step's note, one line
     note_body: str = ""
     created_at: str = ""
+
+
+@dataclass
+class Gate:
+    """A question to the human from a waiting run; open while `answer` is None."""
+
+    session: str
+    run: str
+    state: str  # the gate state, or the state a loop limit kept the run out of
+    kind: str  # approval | choice | loop
+    question: str
+    options: list[str]
+    note: str = ""  # the note of the step that led here
+    note_body: str = ""
+    id: int = 0
+    answer: str | None = None  # an option, or how it was closed otherwise
+    comment: str = ""
+    answered_by: str = ""
+    created_at: str = ""
+    answered_at: str | None = None
+
+
+Close = tuple[str, str, str]  # who closes a run's open gate, the answer and a comment
 
 
 def home() -> Path:
@@ -385,8 +434,9 @@ def list_events(session: str, after: int = 0) -> list[Event]:
     return [Event(*r) for r in rows]
 
 
-def add_run(run: Run, events: list[tuple[str, str, str]]) -> None:
-    """Store a new run and its events (actor, kind, detail) in one transaction."""
+def add_run(run: Run, events: list[tuple[str, str, str]], opens: Gate | None = None) -> None:
+    """Store a new run, its events (actor, kind, detail) and the gate it waits at, if
+    any, in one transaction."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         db.execute(
@@ -412,6 +462,8 @@ def add_run(run: Run, events: list[tuple[str, str, str]]) -> None:
         )
         for actor, kind, detail in events:
             _add_event(db, run.session, actor, kind, detail, run.name)
+        if opens:
+            _open_gate(db, opens)
         db.execute("COMMIT")
 
 
@@ -433,11 +485,18 @@ def list_runs(session: str, open_only: bool = False) -> list[Run]:
     return [r for r in runs if r.status in OPEN] if open_only else runs
 
 
-def update_run(before: Run, after: Run, events: list[tuple[str, str, str]]) -> bool:
+def update_run(
+    before: Run,
+    after: Run,
+    events: list[tuple[str, str, str]],
+    opens: Gate | None = None,
+    closes: Close | None = None,
+) -> bool:
     """Write `after` and the events (actor, kind, detail) in one transaction, but only if
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
-    was written."""
+    was written. In the same transaction `closes` closes the run's open gate, and the
+    gate `opens` is stored (its id set)."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -459,10 +518,72 @@ def update_run(before: Run, after: Run, events: list[tuple[str, str, str]]) -> b
             ),
         )
         if cur.rowcount:
+            if closes:
+                _close_gate(db, before.session, before.name, *closes)
             for actor, kind, detail in events:
                 _add_event(db, before.session, actor, kind, detail, before.name)
+            if opens:
+                _open_gate(db, opens)
         db.execute("COMMIT")
     return bool(cur.rowcount)
+
+
+def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:
+    cur = db.execute(
+        "INSERT INTO gates (session, run, state, kind, question, options, note, note_body)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            gate.session,
+            gate.run,
+            gate.state,
+            gate.kind,
+            gate.question,
+            json.dumps(gate.options),
+            gate.note,
+            gate.note_body,
+        ),
+    )
+    gate.id = cur.lastrowid or 0
+    detail = f"#{gate.id} {gate.kind} at {gate.state}: {gate.question}"
+    _add_event(db, gate.session, LADO, GATE_OPEN, detail, gate.run)
+
+
+def _close_gate(
+    db: sqlite3.Connection, session: str, run: str, actor: str, answer: str, comment: str
+) -> None:
+    row = db.execute(
+        "SELECT id FROM gates WHERE session = ? AND run = ? AND answer IS NULL", (session, run)
+    ).fetchone()
+    if row is None:
+        return
+    db.execute(
+        "UPDATE gates SET answer = ?, comment = ?, answered_by = ?,"
+        " answered_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
+        (answer, comment, actor, row["id"]),
+    )
+    detail = f"#{row['id']} {answer}" + (f": {comment}" if comment else "")
+    _add_event(db, session, actor, GATE_ANSWER, detail, run)
+
+
+def get_gate(gate_id: int) -> Gate | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM gates WHERE id = ?", (gate_id,)).fetchone()
+    return _gate(row) if row else None
+
+
+def open_gates(session: str | None = None) -> list[Gate]:
+    """The open gates of `session` (default: of all sessions), oldest first."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM gates WHERE answer IS NULL AND (? IS NULL OR session = ?) ORDER BY id",
+            (session, session),
+        ).fetchall()
+    return [_gate(r) for r in rows]
+
+
+def open_gate(session: str, run: str) -> Gate | None:
+    """The run's open gate, if it has one."""
+    return next((g for g in open_gates(session) if g.run == run), None)
 
 
 def run_since(session: str) -> dict[str, datetime.datetime]:
@@ -619,6 +740,25 @@ def _run(row: sqlite3.Row) -> Run:
         note=row["note"],
         note_body=row["note_body"],
         created_at=row["created_at"],
+    )
+
+
+def _gate(row: sqlite3.Row) -> Gate:
+    return Gate(
+        session=row["session"],
+        run=row["run"],
+        state=row["state"],
+        kind=row["kind"],
+        question=row["question"],
+        options=json.loads(row["options"]),
+        note=row["note"],
+        note_body=row["note_body"],
+        id=row["id"],
+        answer=row["answer"],
+        comment=row["comment"],
+        answered_by=row["answered_by"],
+        created_at=row["created_at"],
+        answered_at=row["answered_at"],
     )
 
 

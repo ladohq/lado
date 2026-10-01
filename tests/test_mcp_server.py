@@ -155,6 +155,25 @@ def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux)
     assert cancelled["kept"] == {"worktree": run["worktree"], "branch": run["branch"]}
 
 
+def test_no_agent_can_answer_a_gate(repo, fake_tmux):
+    kit = repo / ".lado" / "kits" / "k"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: k\ninclude: [default]\n")
+    gated = SHIP.replace("{done: merge}", "{done: check}") + (
+        "  check: {gate: approval, ask: 'Go?', outcomes: {approved: merge, rejected: build}}\n"
+    )
+    (kit / "flows" / "ship.yaml").write_text(gated)
+    runtime.start_session(str(repo), "s", None, kit_names=["k"])
+    _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
+    _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
+    waiting = _call("s", "w1", "flow_advance", {"run": "ship/x", "outcome": "done"})
+    assert waiting["gate"] == {"id": 1, "question": "Go?", "options": ["approve", "reject"]}
+    for agent in ("w1", "supervisor"):
+        with pytest.raises(ToolError, match=r"waits for the human \(gate #1\): answer with lado"):
+            _call("s", agent, "flow_advance", {"run": "ship/x", "outcome": "approved"})
+    assert state.open_gate("s", "ship/x").id == 1
+
+
 def test_spawn_worker_needs_a_task_without_a_run(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     with pytest.raises(ToolError, match="give the worker a task"):

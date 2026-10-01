@@ -33,6 +33,53 @@ def test_send_text_pastes_multiline_text(tmp_path):
     assert not tmux.has_session(session)
 
 
+def _screen(session, window, text, timeout=5):
+    """The window's screen once `text` shows on it."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        screen = tmux.capture(session, window)
+        if text in screen:
+            return screen
+        time.sleep(0.05)
+    raise AssertionError(f"{text!r} not on the screen:\n{screen}")
+
+
+def test_popup_opens_on_the_clients_attached_to_the_session(tmp_path):
+    session = f"test-{uuid.uuid4().hex[:6]}"
+    viewer = f"viewer-{uuid.uuid4().hex[:6]}"
+    tmux.new_session(session, "main", str(tmp_path), {}, ["sleep", "60"])
+    try:
+        assert tmux.popup(session, "nobody", ["true"], {}) == 0  # no client attached
+        # A client: a tmux attached to the session, running in a window of its own.
+        attach = ["env", "-u", "TMUX", *tmux.attach_argv(session)]
+        tmux.new_session(viewer, "v", str(tmp_path), {}, attach)
+        deadline = time.time() + 5
+        while time.time() < deadline and not tmux.run("list-clients", "-t", f"={session}"):
+            time.sleep(0.05)
+        out = tmp_path / "answer.txt"
+        script = f'echo "asks $LADO_X"; read a; echo "$a" > "{out}"'
+        assert tmux.popup(session, "lado #1", ["sh", "-c", script], {"LADO_X": "y"}) == 1
+        screen = _screen(viewer, "v", "asks y")
+        assert "lado #1" in screen
+        # A second popup while one is open does not run: the open one stays.
+        assert tmux.popup(session, "lado #1", ["sh", "-c", "echo other; sleep 5"], {}) == 1
+        time.sleep(0.3)
+        screen = tmux.capture(viewer, "v")
+        assert "asks y" in screen and "other" not in screen
+        tmux.run("send-keys", "-t", f"{viewer}:v", "approve", "Enter")
+        deadline = time.time() + 5
+        while time.time() < deadline and not out.exists():
+            time.sleep(0.05)
+        assert out.read_text() == "approve\n"
+        # The agent's window got nothing.
+        assert "approve" not in tmux.capture(session, "main")
+    finally:
+        if tmux.has_session(viewer):
+            tmux.kill_session(viewer)
+        tmux.kill_session(session)
+    assert tmux.popup(session, "gone", ["true"], {}) == 0
+
+
 def _windows(session):
     return tmux.run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
 

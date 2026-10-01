@@ -171,25 +171,128 @@ def cmd_ls(args: argparse.Namespace) -> int:
         for run in state.list_runs(sess.name, open_only=True):
             when = run_since.get(run.name)
             took = format_duration((now - when).total_seconds()) if when else "-"
-            if run.status == state.WAITING:
-                who = f"waiting for human: {run.reason}"
-            else:
-                who = f"→ {runs.acting(run)}"
-            print(f"  run {run.name}  {run.state}  {who}  {took}")
+            print(f"  run {run.name}  {run.state}  {_run_now(run)}  {took}")
+            gate = state.open_gate(sess.name, run.name)
+            if gate:
+                print(f"    gate #{gate.id} waiting: {gate.question}")
     return 0
+
+
+def _run_now(run: state.Run) -> str:
+    """Where the run is now: who acts, the gate it waits at, or how it closed."""
+    if run.status == state.WAITING:
+        gate = state.open_gate(run.session, run.name)
+        return f"waiting for human: {f'gate #{gate.id}' if gate else run.reason}"
+    if run.status == state.ACTIVE:
+        return f"→ {runs.acting(run)}"
+    return f"{run.status}: {run.reason}" if run.reason else run.status
+
+
+def _human_only(command: str) -> None:
+    """Agents have LADO_AGENT set: they must not answer for the human."""
+    agent = os.environ.get("LADO_AGENT")
+    if agent:
+        raise runtime.LadoError(f'lado {command} is for the human; agent "{agent}" cannot use it')
 
 
 def cmd_flow_set(args: argparse.Namespace) -> int:
+    _human_only("flow-set")
     before = state.get_run(args.session, args.run)
     run = runs.force(args.session, args.run, args.state, args.reason)
-    if run.status == state.WAITING:
-        now = f"waiting for human: {run.reason}"
-    elif run.status == state.ENDED:
-        now = "ended"
-    else:
-        now = f"→ {runs.acting(run)}"
-    print(f"{run.name}: {before.state} -> {run.state} ({now})")
+    print(f"{run.name}: {before.state} -> {run.state} ({_run_now(run)})")
     return 0
+
+
+def cmd_answer(args: argparse.Namespace) -> int:
+    _human_only("answer")
+    if args.option:
+        _answer(args.session, args.gate, args.option, args.comment)
+        return 0
+    if args.gate:
+        try:
+            first = runs.find_gate(args.session, args.gate)
+        except runtime.LadoError as exc:
+            # E.g. a popup for a gate answered meanwhile: on with the session's gates.
+            print(f"lado: {exc}")
+            first = None
+    else:
+        first = None
+    session, answered = args.session, False
+    while True:
+        gates = [first] if first else state.open_gates(session)
+        first = None
+        if not gates:
+            print("No more open gates." if answered else "No open gates.")
+            return 0
+        gate = gates[0] if len(gates) == 1 else _pick(gates)
+        if gate is None:
+            return 0
+        option = _choose(gate)
+        comment, args.comment = args.comment, None  # -m is for the first answer only
+        if option is not None and comment is None:
+            comment = _input("Comment for the next step (Enter for none): ")
+        if option is None or comment is None:
+            print(f"Gate #{gate.id} stays open.")
+            return 0
+        try:
+            _answer(gate.session, str(gate.id), option, comment)
+            answered = True
+        except runtime.LadoError as exc:
+            print(f"lado: {exc}")
+            first = gate if state.get_gate(gate.id).answer is None else None
+        # Then the session's other open gates: a popup asks about them all.
+        session = gate.session
+
+
+def _answer(session: str, ref: str, option: str, comment: str | None) -> None:
+    gate = runs.find_gate(session, ref)
+    before = state.get_run(session, gate.run)
+    run = runs.answer(session, str(gate.id), option, comment)
+    word = state.get_gate(gate.id).answer
+    print(f"gate #{gate.id}: {word}. {run.name}: {before.state} -> {run.state} ({_run_now(run)})")
+
+
+def _input(prompt: str) -> str | None:
+    """A line the human typed; None when they end the input or press Ctrl-C."""
+    try:
+        return input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+
+
+def _pick(gates: list[state.Gate]) -> state.Gate | None:
+    print("Open gates:")
+    for n, gate in enumerate(gates, 1):
+        print(f"  {n}) #{gate.id} {gate.session} {gate.run} at {gate.state}: {gate.question}")
+    while True:
+        picked = _input("Which one? (number, Enter to quit): ")
+        if not picked:
+            return None
+        if picked.isdigit() and 1 <= int(picked) <= len(gates):
+            return gates[int(picked) - 1]
+
+
+def _choose(gate: state.Gate) -> str | None:
+    """The option the human picks for the gate, by number or name; None to leave it."""
+    print(f"\nGate #{gate.id}, session {gate.session}, run {gate.run} at {gate.state}:")
+    print(gate.question)
+    if gate.note or gate.note_body:
+        body = "".join(f"\n  {line}" for line in gate.note_body.splitlines())
+        print(f"Note: {gate.note}{body}")
+    print("Options:")
+    for n, option in enumerate(gate.options, 1):
+        print(f"  {n}) {option}")
+    while True:
+        chosen = _input("Answer (number or name, Enter to leave it open): ")
+        if not chosen:
+            return None
+        if chosen.isdigit() and 1 <= int(chosen) <= len(gate.options):
+            return gate.options[int(chosen) - 1]
+        try:
+            return runs.canonical_option(gate, chosen)
+        except runtime.LadoError as exc:
+            print(f"lado: {exc}")
 
 
 def format_duration(seconds: float) -> str:
@@ -381,6 +484,16 @@ def main(argv: list[str] | None = None) -> int:
     flow_set.add_argument("state", help="a state of the run's flow")
     flow_set.add_argument("--reason", required=True, help="why; the next step is told")
     flow_set.set_defaults(func=cmd_flow_set)
+
+    answer = commands.add_parser(
+        "answer",
+        help="answer a flow run that waits for the human; asks when options are left out",
+    )
+    answer.add_argument("session", nargs="?", help="default: open gates of all sessions")
+    answer.add_argument("gate", nargs="?", help="the gate's number, or its run's name")
+    answer.add_argument("option", nargs="?", help="e.g. approve, reject, continue, cancel")
+    answer.add_argument("-m", dest="comment", metavar="COMMENT", help="for the next step")
+    answer.set_defaults(func=cmd_answer)
 
     # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")

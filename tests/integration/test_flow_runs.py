@@ -25,7 +25,18 @@ name: gated
 description: the human says go
 start: check
 states:
-  check: {gate: approval, ask: 'Go?', outcomes: {approved: end}}
+  check: {gate: approval, ask: 'Go?', outcomes: {approved: end, rejected: end}}
+  end: {end: true}
+"""
+
+
+REVIEWED = """\
+name: reviewed
+description: a worker builds it, the human approves it
+start: build
+states:
+  build: {agent: worker, do: sleep 0, outcomes: {done: check}}
+  check: {gate: approval, ask: 'Ship it?', outcomes: {approved: end, rejected: build}}
   end: {end: true}
 """
 
@@ -37,6 +48,7 @@ def flow_kit(repo):
     (kit / "kit.yaml").write_text("name: itflow\ninclude: [default]\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     (kit / "flows" / "gated.yaml").write_text(GATED)
+    (kit / "flows" / "reviewed.yaml").write_text(REVIEWED)
     runtime.start_session(str(repo), SESSION, None, "fake", ["itflow"])
     wait_status("supervisor", state.IDLE)
     return kit
@@ -102,10 +114,66 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
 def test_a_run_waits_at_a_gate_until_the_human_sets_it(repo, flow_kit):
     name = "gated/check-it"
     supervisor_runs("flow_start gated check it")
-    wait_for(lambda: got("supervisor", f"flow {name}: waiting for the human at check: Go?"), "wait")
-    assert "waiting for human: Go?" in lado_cli("ls").stdout
+    wait_for(
+        lambda: got("supervisor", f"flow {name}: waiting for the human at check (gate #1)"), "wait"
+    )
+    assert "gate #1 waiting: Go?" in lado_cli("ls").stdout
     result = lado_cli("flow-set", SESSION, name, "end", "--reason", "looks fine")
     assert result.returncode == 0, result.stderr
     assert run_state(name).status == state.ENDED
     assert not Path(run_state(name).worktree).exists()
     assert name not in lado_cli("ls").stdout
+    assert "gate #1" not in lado_cli("ls").stdout
+    assert (
+        f"human: gate_answer {name} (#1 overridden: looks fine)" in lado_cli("log", SESSION).stdout
+    )
+
+
+def to_the_gate(name: str) -> None:
+    """Start a run of "reviewed" whose worker reports its build done: the run waits."""
+    supervisor_runs("flow_start reviewed check it")
+    wait_for(lambda: got("supervisor", f"flow {name}: step build needs a worker"), "ask")
+    supervisor_runs(f"spawnrun {name}")
+    wait_status("w1", state.IDLE)
+    runtime.send_message(SESSION, "human", "w1", f"advance {name} done")
+    waiting = f"[from lado] flow {name}: waiting for the human at check (gate #1)"
+    wait_for(lambda: got("supervisor", waiting), "the gate")
+
+
+def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):
+    name = "reviewed/check-it"
+    to_the_gate(name)
+    assert "gate #1 waiting: Ship it?" in lado_cli("ls").stdout
+    result = lado_cli("answer", SESSION, "1", "reject", "-m", "add a test")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"gate #1: reject. {name}: check -> build (→ w1)\n"
+    step = [m for m in state.list_messages(SESSION) if m.recipient == "w1"][-1]
+    assert step.summary == f"flow {name}: step build"
+    assert "Note from the previous step: rejected: add a test" in step.body
+    wait_for(lambda: got("w1", f"[from lado] flow {name}: step build"), "the step")
+    told = f"[from lado] flow {name}: human answered reject at check"
+    wait_for(lambda: got("supervisor", told), "the supervisor told")
+    log = lado_cli("log", SESSION).stdout
+    assert f"lado: gate_open {name} (#1 approval at check: Ship it?)" in log
+    assert f"human: gate_answer {name} (#1 reject: add a test)" in log
+    assert f"human: flow {name} (check -rejected-> build)" in log
+
+
+def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):
+    name = "reviewed/check-it"
+    # The human's terminal: a tmux client attached to the session.
+    attach = ["env", "-u", "TMUX", *tmux.attach_argv(SESSION)]
+    tmux.new_session("viewer", "v", str(repo), {}, attach)
+    wait_for(lambda: tmux.run("list-clients", "-t", f"={SESSION}").strip(), "the client")
+    # The gate opens in w1's MCP server process; it opens the popup.
+    to_the_gate(name)
+    wait_for(lambda: "1) approve" in tmux.capture("viewer", "v"), "the popup")
+    assert "Ship it?" in tmux.capture("viewer", "v")
+    tmux.run("send-keys", "-t", "viewer:v", "1", "Enter")
+    tmux.run("send-keys", "-t", "viewer:v", "Enter")  # no comment
+    wait_for(lambda: run_state(name).status == state.ENDED, "the answer")
+    gate = state.get_gate(1)
+    assert (gate.answer, gate.answered_by) == ("approve", "human")
+    # The popup closes when no gate is left.
+    wait_for(lambda: "1) approve" not in tmux.capture("viewer", "v"), "the popup closed")
+    assert all(text.strip() != "1" for text in inputs("w1") + inputs("supervisor"))

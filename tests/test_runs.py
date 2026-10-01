@@ -1,3 +1,4 @@
+import re
 import shutil
 from pathlib import Path
 
@@ -706,6 +707,23 @@ def test_a_run_without_worktree_and_branch_cannot_get_a_worker(session, repo):
     with pytest.raises(runtime.LadoError, match=f"neither its worktree {run.worktree} nor"):
         runs.spawn_worker(session, "feature/login")
     assert [a.name for a in state.list_agents(session)] == ["supervisor"]
+
+
+def test_nothing_starts_or_moves_in_a_stopped_session(session):
+    run = to_implement(session)
+    runtime.stop_session(session)
+    stopped = f'session "{session}" is stopped; resume it with `lado start`'
+    for call in (
+        lambda: runtime.spawn_worker(session, "task"),
+        lambda: runs.spawn_worker(session, run.name),
+        lambda: runs.start(session, "feature", "x"),
+        lambda: runs.advance(session, "supervisor", run.name, "done"),
+        lambda: runs.cancel(session, run.name, "x"),
+    ):
+        with pytest.raises(runtime.LadoError, match=re.escape(stopped)):
+            call()
+    assert state.get_run(session, run.name) == run
+    assert len(state.list_runs(session)) == 1
 
 
 def test_a_gate_is_answered_after_resume_but_not_while_stopped(session, repo):

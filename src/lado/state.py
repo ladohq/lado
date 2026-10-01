@@ -152,7 +152,7 @@ PENDING = "pending"
 SENT = "sent"
 DELIVERED = "delivered"
 READ = "read"  # its recipient got the body with read_messages
-DROPPED = "dropped"  # its recipient was finished before it got the message
+DROPPED = "dropped"  # its recipient was finished or stopped before it got (or read) it
 
 # Event kinds.
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
@@ -354,7 +354,8 @@ def delete_session(name: str) -> None:
 
 def stop_session(name: str) -> tuple[list[Agent], int]:
     """Mark the session stopped and forget its agents, so their names can be used again;
-    their messages and events stay. Messages they never got are dropped. Returns the agents
+    their messages and events stay. Messages they never got, and bodies they never read,
+    are dropped. Returns the agents
     and how many messages were dropped."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -365,9 +366,12 @@ def stop_session(name: str) -> tuple[list[Agent], int]:
             if row["status"] != STOPPED:
                 _add_event(db, name, row["name"], STATUS, STOPPED)
         db.execute("DELETE FROM agents WHERE session = ?", (name,))
+        # A body delivered but never read is dropped too: a new agent of the same name
+        # starts fresh.
         dropped = db.execute(
-            "UPDATE messages SET state = ? WHERE session = ? AND state IN (?, ?)",
-            (DROPPED, name, PENDING, SENT),
+            "UPDATE messages SET state = ? WHERE session = ?"
+            " AND (state IN (?, ?) OR (state = ? AND body != ''))",
+            (DROPPED, name, PENDING, SENT, DELIVERED),
         ).rowcount
         db.execute(
             "UPDATE sessions SET stopped_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE name = ?",

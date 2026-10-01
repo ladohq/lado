@@ -219,9 +219,7 @@ def spawn_worker(
 
     A worker gets its own worktree and branch; a worker for a flow `run` works in the
     run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""
-    sess = state.get_session(session)
-    if sess is None:
-        raise LadoError(f'unknown session "{session}"')
+    sess = running_session(session)
     agent_cli = _provider(provider or sess.provider)
     env = kits.resolve(sess.repo, sess.kits, sess.without)
     role_def = env.worker_role(role)
@@ -260,6 +258,20 @@ def spawn_worker(
     launch = agent_cli.launch_command(agent, sess, spec, first_message=task + REPORT_REMINDER)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent
+
+
+def running_session(session: str) -> state.Session:
+    """The session, unless it is unknown or stopped: a stopped session has no agents to
+    start work or take a run's next step."""
+    sess = state.get_session(session)
+    if sess is None:
+        raise LadoError(f'unknown session "{session}"')
+    if sess.stopped_at:
+        raise LadoError(
+            f'session "{session}" is stopped; resume it with `lado start` first, its open '
+            "runs and gates wait"
+        )
+    return sess
 
 
 @dataclass

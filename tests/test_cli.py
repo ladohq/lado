@@ -448,8 +448,9 @@ def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
     assert lines[2] == "    gate #1 waiting: Ship it?"
     assert main(["log", "s"]) == 0
     assert "lado: session_stop (3 messages dropped)" in capsys.readouterr().out
-    assert main(["answer", "s", "1", "approve"]) == 1
-    assert 'session "s" is stopped' in capsys.readouterr().err
+    for argv in (["answer", "s", "1", "approve"], ["answer", "s", "1"], ["answer", "s"]):
+        assert main(argv) == 1
+        assert 'session "s" is stopped; resume it with `lado start`' in capsys.readouterr().err
     assert main(["answer"]) == 0  # a stopped session's gates wait for its resume
     assert capsys.readouterr().out == "No open gates.\n"
 

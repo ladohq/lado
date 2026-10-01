@@ -135,8 +135,8 @@ branch belong to the run.
 
 `lado stop <session>` kills the session's tmux windows and marks it stopped; its history,
 runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names
-are free again; `lado log` keeps what they did), and messages they never got are dropped,
-with the count in the output. `lado ls` shows the session as `(stopped)` with its open runs
+are free again; `lado log` keeps what they did), and messages they never got or whose body
+they never read are dropped, with the count in the output: new agents start fresh. `lado ls` shows the session as `(stopped)` with its open runs
 and gates; `lado log` works as before. `lado start` with the same name resumes it (also when
 its tmux server died without `lado stop`): the repo must be the same, and `--kit`,
 `--without`, `--provider` and `--permission-mode`, when given, replace the stored ones
@@ -146,8 +146,9 @@ gate (answer with `lado answer`), the supervisor's own step (its step message fo
 worker to start with `spawn_worker(run=...)`. Such a worker opens in the run's worktree on
 its branch, made again from the branch if the folder is gone. An open run that needs a role
 the resumed session lacks is reported on stderr and in that body; `flow_cancel` or
-`lado flow-set` move it on. While a session is stopped, `lado answer` and `lado flow-set`
-refuse its runs. The next default worker name skips names whose branch is still there.
+`lado flow-set` move it on. While a session is stopped, nothing starts or moves in it:
+`lado answer`, `lado flow-set`, spawning workers and starting, advancing or cancelling runs
+are refused (`runtime.running_session`); `lado answer` with no session skips its gates. The next default worker name skips names whose branch is still there.
 `lado forget <session>` deletes a stopped session with its history; it refuses a running
 one, and one with open runs unless `--force`; worktrees and branches stay on disk and are
 listed.

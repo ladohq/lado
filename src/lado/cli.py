@@ -218,6 +218,9 @@ def cmd_flow_set(args: argparse.Namespace) -> int:
 
 def cmd_answer(args: argparse.Namespace) -> int:
     _human_only("answer")
+    named = state.get_session(args.session) if args.session else None
+    if named and named.stopped_at:
+        runtime.running_session(named.name)  # says it is stopped and how to resume it
     if args.option:
         _answer(args.session, args.gate, args.option, args.comment)
         return 0

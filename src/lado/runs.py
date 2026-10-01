@@ -38,7 +38,7 @@ Events = list[tuple[str, str, str]]  # (actor, kind, detail)
 def start(session: str, flow_name: str, task: str, name: str | None = None) -> state.Run:
     """Start a run of flow `flow_name` on `task`, named <flow>/<slug of name or task>, in a
     worktree and branch of its own from the repo's HEAD. Enters the start state."""
-    sess = _session(session)
+    sess = runtime.running_session(session)
     env = kits.resolve(sess.repo, sess.kits, sess.without)
     flow = env.flow(flow_name)
     task = task.strip()
@@ -84,6 +84,7 @@ def advance(
 ) -> state.Run:
     """Move the run on by `outcome` of its current step, reported by the agent acting in
     it. The note goes to the next step."""
+    runtime.running_session(session)
     run = _run(session, run_name)
     if run.status == state.WAITING:
         gate = state.open_gate(session, run.name)
@@ -119,7 +120,7 @@ def answer(
     on like flow_advance, with the answer and comment as the next step's note. At a loop
     limit, continue enters the state anyway and cancel cancels the run."""
     found = find_gate(session, gate)
-    _check_running(session)
+    runtime.running_session(session)
     run = _run(session, found.run)
     word = canonical_option(found, option)
     comment = (comment or "").strip()
@@ -194,7 +195,7 @@ def _answer_note(outcome: str, comment: str, gate: state.Gate) -> tuple[str, str
 
 def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     """The human puts an open run into state `target`, past any gate or loop limit."""
-    _check_running(session)
+    runtime.running_session(session)
     run = _run(session, run_name)
     if run.status not in state.OPEN:
         raise LadoError(f'run "{run.name}" is {run.status}')
@@ -216,6 +217,7 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
 def cancel(session: str, run_name: str, reason: str) -> list[runtime.Finished]:
     """The supervisor closes an open run: its workers are finished, its worktree and
     branch are kept. Returns the finished workers."""
+    runtime.running_session(session)
     run = _run(session, run_name)
     if run.status not in state.OPEN:
         raise LadoError(f'run "{run.name}" is {run.status} already')
@@ -242,6 +244,7 @@ def spawn_worker(
     """Start a worker for an open run, in the run's worktree. If the run's current step is
     for its role and no worker has it yet, the step is the worker's task (after `task`, if
     one is given). `role` defaults to the role of the current step."""
+    runtime.running_session(session)
     run = _run(session, run_name)
     if run.status not in state.OPEN:
         raise LadoError(f'run "{run.name}" is {run.status}; start workers for open runs')
@@ -618,12 +621,3 @@ def _session(session: str) -> state.Session:
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
     return sess
-
-
-def _check_running(session: str) -> None:
-    """Moving a run on tells its agents: a stopped session has none."""
-    if _session(session).stopped_at:
-        raise LadoError(
-            f'session "{session}" is stopped; resume it with `lado start` first, its open '
-            "runs and gates wait"
-        )

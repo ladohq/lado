@@ -192,8 +192,8 @@ def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
     wait_for(lambda: any(t.startswith(resumed) for t in inputs("supervisor")), "the resume")
     wait_status("supervisor", state.IDLE)
     supervisor_runs("read")
-    # Bodies delivered to the old supervisor and never read come along: the resume is last.
-    told = seen("supervisor")["read"][-1]
+    # Bodies the old supervisor never read were dropped at the stop: it starts fresh.
+    [told] = seen("supervisor")["read"]
     assert told["summary"] == "session resumed: 2 open runs"
     assert f'spawn_worker(role="worker", run="{ship}")' in told["body"]
     assert f"lado answer {SESSION} {gate.id}" in told["body"]

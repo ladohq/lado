@@ -223,11 +223,44 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     runtime.stop_session(SESSION)
     assert not tmux.has_session(SESSION)
     check_gone(processes, "stop")
+    check_resume(live_provider, repo)
     # Kilo updates itself unless told not to; LADO's agents must not (the Kilo provider
     # switches it off, so the test needs no KILO_DISABLE_AUTOUPDATE from outside).
     if live_provider == "kilo":
         assert cli_version(live_provider) == version
     print(f"{live_provider}: {time.monotonic() - started:.0f}s")
+
+
+def check_resume(provider: str, repo) -> None:
+    """`lado start` again: the stopped session resumes, and the new supervisor's first input
+    is LADO's resume message, given on its command line. Then stop it for good."""
+    started = runtime.start_session(str(repo), SESSION, None)
+    assert (started.resumed, started.changes, started.problems) == (True, [], [])
+    resumed = "[from lado] session resumed: 0 open runs"
+    assert state.get_agent(SESSION, "supervisor").task == resumed
+    resume_event = state.list_events(SESSION)[-2]
+    assert resume_event.kind == state.SESSION_RESUME
+
+    def answered() -> bool:
+        answer_dialogs(provider, SESSION, "supervisor")
+        idle = [
+            e
+            for e in state.list_events(SESSION, resume_event.id)
+            if (e.agent, e.kind, e.detail) == ("supervisor", state.STATUS, state.IDLE)
+        ]
+        return bool(idle) and resumed in tmux.capture(SESSION, "supervisor")
+
+    wait_for(answered, "the supervisor to take the resume message", 120)
+    ls = subprocess.run(
+        [sys.executable, "-m", "lado.cli", "ls"], capture_output=True, text=True, env=os.environ
+    )
+    listed = f"{SESSION}  {started.session.repo}\n"
+    assert listed in ls.stdout and "(stopped)" not in ls.stdout, ls.stdout
+    processes = agent_processes()
+    runtime.stop_session(SESSION)
+    assert not tmux.has_session(SESSION)
+    check_gone(processes, "the stop after the resume")
+    assert not (state.home() / "hooks.log").exists()
 
 
 def finish_worker(repo, worker: state.Agent) -> None:

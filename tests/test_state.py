@@ -411,17 +411,28 @@ def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(l
     state.add_agent(_agent("supervisor", state.IDLE))
     state.add_agent(_agent("w1", state.BUSY))
     state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
-    for recipient, mark in (("w1", state.DELIVERED), ("supervisor", state.SENT), ("w1", None)):
-        state.queue_message("s", "lado", recipient, "hi")
+    state.queue_message("s", "w1", "supervisor", "read", "its body")
+    state.take_pending("s", "supervisor", state.DELIVERED)
+    state.read_messages("s", "supervisor")
+    # A body delivered but never read must not reach a new agent of the same name.
+    for recipient, mark, body in (
+        ("w1", state.DELIVERED, ""),
+        ("w1", state.DELIVERED, "unread"),
+        ("supervisor", state.SENT, ""),
+        ("w1", None, ""),
+    ):
+        state.queue_message("s", "lado", recipient, "hi", body)
         if mark:
             state.take_pending("s", recipient, mark)
     agents, dropped = state.stop_session("s")
     assert [a.name for a in agents] == ["supervisor", "w1"]
-    assert dropped == 2
+    assert dropped == 3
     assert state.get_session("s").stopped_at
     assert state.list_agents("s") == []
     assert [m.state for m in state.list_messages("s")] == [
+        state.READ,
         state.DELIVERED,
+        state.DROPPED,
         state.DROPPED,
         state.DROPPED,
     ]
@@ -430,7 +441,7 @@ def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(l
     assert events == [
         ("supervisor", state.STATUS, state.STOPPED),
         ("w1", state.STATUS, state.STOPPED),
-        ("lado", state.SESSION_STOP, "2 messages dropped"),
+        ("lado", state.SESSION_STOP, "3 messages dropped"),
     ]
 
 

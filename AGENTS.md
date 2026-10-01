@@ -37,7 +37,8 @@ repo path and answers Claude Code's workspace trust dialog, so Claude Code recor
 folder for it.
 
 CI runs `ruff format --check`, `ruff check`, the unit and integration tests on Python 3.10 and
-3.13, and the Node tests. The Live workflow runs the Kilo live test nightly with the latest Kilo.
+3.13, and the Node tests.
+Live tests are not in CI: run them locally.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
 tag against the package version and publishes to PyPI.
@@ -90,9 +91,8 @@ Four layers; each change gets tests at the lowest layer that can catch its bugs:
 3. **Plugin tests** (`make test-js`): provider plugins run under Node with a fake client.
 4. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
-   message; then the session stops and no process is left. Never in the default run. Kilo
-   runs nightly in CI on a free model; Claude Code runs locally. Run it after changing a
-   provider or before a release.
+   message; then the session stops and no process is left. Never in the default run and
+   not in CI: run it locally after changing a provider or before a release.
 
 Before a release: `make check` and `make test-live` pass.
 

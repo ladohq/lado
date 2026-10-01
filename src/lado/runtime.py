@@ -65,14 +65,17 @@ def repo_root(path: str) -> str:
         raise LadoError(f"{path} is not inside a git repository") from exc
 
 
-def start_session(path: str, name: str | None, permission_mode: str | None) -> state.Session:
+def start_session(
+    path: str, name: str | None, permission_mode: str | None, provider: str | None = None
+) -> state.Session:
+    agent_cli = _provider(provider or providers.DEFAULT)
     repo = repo_root(path)
     session = slug(name or Path(repo).name)
     if state.get_session(session):
         if tmux.has_session(session):
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
         state.delete_session(session)  # left over from a tmux server that is gone
-    sess = state.Session(session, repo, permission_mode, providers.DEFAULT)
+    sess = state.Session(session, repo, permission_mode, agent_cli.name)
     state.add_session(sess)
     agent = state.Agent(
         session, SUPERVISOR, SUPERVISOR, repo, None, None, state.STARTING, sess.provider
@@ -80,18 +83,21 @@ def start_session(path: str, name: str | None, permission_mode: str | None) -> s
     state.add_agent(agent)
     prompt = SUPERVISOR_PROMPT.format(session=session)
     try:
-        cmd = providers.get(agent.provider).launch_command(agent, sess, prompt)
-        tmux.new_session(session, SUPERVISOR, repo, providers.agent_env(agent), cmd)
+        launch = agent_cli.launch_command(agent, sess, prompt)
+        tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
     except tmux.TmuxError:
         state.delete_session(session)
         raise
     return sess
 
 
-def spawn_worker(session: str, task: str, name: str | None = None) -> state.Agent:
+def spawn_worker(
+    session: str, task: str, name: str | None = None, provider: str | None = None
+) -> state.Agent:
     sess = state.get_session(session)
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
+    agent_cli = _provider(provider or sess.provider)
     taken = {a.name for a in state.list_agents(session)}
     worker = slug(name) if name else _next_name(taken)
     if worker in taken:
@@ -101,13 +107,12 @@ def spawn_worker(session: str, task: str, name: str | None = None) -> state.Agen
     _exclude_lado_dir(sess.repo)
     git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
     agent = state.Agent(
-        session, worker, WORKER, str(worktree), branch, task, state.STARTING, sess.provider
+        session, worker, WORKER, str(worktree), branch, task, state.STARTING, agent_cli.name
     )
     state.add_agent(agent)
     prompt = WORKER_PROMPT.format(name=worker, session=session, branch=branch)
-    provider = providers.get(agent.provider)
-    cmd = provider.launch_command(agent, sess, prompt, first_message=task + REPORT_REMINDER)
-    tmux.new_window(session, worker, str(worktree), providers.agent_env(agent), cmd)
+    launch = agent_cli.launch_command(agent, sess, prompt, first_message=task + REPORT_REMINDER)
+    tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent
 
 
@@ -158,6 +163,17 @@ def stop_session(session: str) -> list[state.Agent]:
     workers = [a for a in state.list_agents(session) if a.role == WORKER]
     state.delete_session(session)
     return workers
+
+
+def _provider(name: str) -> providers.Provider:
+    try:
+        return providers.get(name)
+    except ValueError as exc:
+        raise LadoError(str(exc)) from None
+
+
+def _env(agent: state.Agent, launch: providers.Launch) -> dict[str, str]:
+    return {**providers.agent_env(agent), **launch.env}
 
 
 def _next_name(taken: set[str]) -> str:

@@ -25,8 +25,10 @@ tag against the package version and publishes to PyPI.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
-    neutral hook events; `claude.py`: Claude Code). A provider writes the agent's config,
-    builds its command and translates its hook events.
+    `Launch`, neutral hook events; `claude.py`: Claude Code; `kilo.py`: Kilo CLI, with
+    `kilo_plugin.js`, the Kilo plugin that runs LADO's hooks). A provider writes the agent's
+    config, returns its argv and env and translates its hook events. The provider is chosen
+    per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`).
   - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.

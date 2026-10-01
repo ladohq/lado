@@ -1,6 +1,7 @@
 """`lado doctor`: check that the machine has what LADO needs."""
 
 import platform
+import re
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -15,6 +16,7 @@ class Check:
     ok: bool
     detail: str
     hint: str = ""
+    warning: bool = False  # worth a look, but LADO works
 
 
 def _tool_version(path: str, flag: str) -> str:
@@ -37,8 +39,26 @@ def check_tool(
     return Check(name, True, _tool_version(path, flag))
 
 
+def check_provider(provider: providers.Provider, which: Callable[[str], str | None]) -> Check:
+    """Only the default provider is required; the others are optional."""
+    check = check_tool(provider.title, provider.command, "--version", provider.install_hint, which)
+    if not check.ok:
+        if provider.name != providers.DEFAULT:
+            check.ok, check.warning = True, True
+            check.hint += f" (needed only for --provider {provider.name})"
+        return check
+    version = re.search(r"\d+\.\d+\.\d+", check.detail)
+    tested = provider.tested_version
+    if tested and not (version and version[0].startswith(tested + ".")):
+        check.warning = True
+        check.hint = (
+            f"LADO is tested with {provider.title} {tested}.x; with other versions "
+            "agent status and message delivery may break"
+        )
+    return check
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
-    agent = providers.get(providers.DEFAULT)
     return [
         Check("Python", True, platform.python_version()),
         check_tool(
@@ -48,14 +68,14 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
             "install it: `brew install tmux` or `sudo apt install tmux`",
             which,
         ),
-        check_tool(agent.title, agent.command, "--version", agent.install_hint, which),
+        *(check_provider(providers.get(name), which) for name in providers.names()),
     ]
 
 
 def main() -> int:
     checks = run_checks()
     for check in checks:
-        mark = "ok  " if check.ok else "FAIL"
+        mark = "FAIL" if not check.ok else "warn" if check.warning else "ok  "
         print(f"[{mark}] {check.name}: {check.detail}")
         if check.hint:
             print(f"       {check.hint}")

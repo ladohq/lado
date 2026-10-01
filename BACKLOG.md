@@ -78,3 +78,13 @@ after the worker has finished that long turn. Wanted: an "urgent" flag on send_m
 types the message into the busy agent's window at once (Claude Code and Kilo accept input
 while working and handle it at the next step), with the same confirmation via prompt-submit.
 Found: 2026-10-01, provider fixes task.
+
+## A delivered message can carry the human's unsent draft
+
+The supervisor's window is both the human's chat and the agents' inbox. When a message is
+pasted into an idle supervisor (paste + Enter) while the human is typing there, the half-written
+text is submitted together with it. Decided (2026-10-01): live with it for now. It goes away
+when the human writes through LADO's own input (UI composer, stage 7: messages from the human
+and from agents are queued and delivered one at a time) or with the ACP runtime (stage 8: LADO
+drives the agent's input itself). Make sure the UI has a composer that goes through LADO.
+Found: 2026-10-01, dogfooding.

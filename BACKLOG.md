@@ -66,3 +66,12 @@ pasted in is swallowed (it is resent after the confirm timeout). `lado start` (o
 `lado doctor <repo>`) should detect an untrusted repo and tell the user, and the agent's
 status could show that it waits for the human.
 Found: 2026-10-01, live e2e tests.
+
+## A broken kit source blocks every kit lookup
+
+If any registered source is broken (folder or clone missing, two kits with one name, bad
+layout), every kit lookup fails, even `lado start` with the built-in `default` kit. The error
+says to run `lado kits update` or `remove`. Decide: keep failing everywhere, or fail only
+when the wanted kit (or the lookup path to it) depends on the broken source and warn
+otherwise.
+Found: 2026-10-01, kit sources review.

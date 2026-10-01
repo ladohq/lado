@@ -26,6 +26,22 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     assert _tools("s", "w1") == ["list_agents", "read_messages", "send_message"]
 
 
+def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.spawn_worker("s", "task")
+    with state.connect() as db:
+        db.execute(
+            "UPDATE events SET created_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-90 seconds')"
+            " WHERE agent = 'w1'"
+        )
+        db.execute("DELETE FROM events WHERE agent = 'supervisor'")
+    result = asyncio.run(mcp_server.build("s", "w1").call_tool("list_agents", {}))
+    supervisor, worker = result.structured_content["result"]
+    assert (supervisor["status_since"], supervisor["status_for_seconds"]) == (None, None)
+    assert worker["status_since"] == state.status_since("s")["w1"].isoformat()
+    assert 90 <= worker["status_for_seconds"] < 100
+
+
 def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")

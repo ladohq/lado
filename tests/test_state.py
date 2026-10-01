@@ -1,3 +1,4 @@
+import datetime
 import re
 import sqlite3
 
@@ -117,6 +118,36 @@ def test_status_change_is_an_event_once(lado_home):
         ("w1", "status", "idle"),
     ]
     assert state.get_agent("s", "w1").status == state.IDLE
+
+
+def _event_at(agent, kind, created_at, detail=""):
+    with state.connect() as db:
+        db.execute(
+            "INSERT INTO events (session, agent, kind, detail, created_at) VALUES (?, ?, ?, ?, ?)",
+            ("s", agent, kind, detail, created_at),
+        )
+
+
+def test_status_since_is_the_latest_status_event_or_the_spawn(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
+    _event_at("w1", state.STATUS, "2026-10-01 10:00:05.250", state.BUSY)
+    _event_at("w1", state.STATUS, "2026-10-01 10:07:00.000", state.IDLE)
+    _event_at("w1", state.FINISHED, "2026-10-01 11:00:00.000", "merged")
+    _event_at("w2", state.SPAWNED, "2026-10-01 10:30:00.000")
+    utc = datetime.timezone.utc
+    assert state.status_since("s") == {
+        "w1": datetime.datetime(2026, 10, 1, 10, 7, tzinfo=utc),
+        "w2": datetime.datetime(2026, 10, 1, 10, 30, tzinfo=utc),
+    }
+
+
+def test_status_since_of_a_reused_name_starts_at_its_new_spawn(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
+    _event_at("w1", state.STATUS, "2026-10-01 10:05:00.000", state.IDLE)
+    _event_at("w1", state.SPAWNED, "2026-10-01 12:00:00.000")
+    assert state.status_since("s")["w1"].hour == 12
 
 
 def test_events_have_sub_second_times_and_go_with_the_session(lado_home):

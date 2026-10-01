@@ -1,6 +1,7 @@
 """Command-line entry point for LADO."""
 
 import argparse
+import datetime
 import os
 import sys
 from pathlib import Path
@@ -152,12 +153,26 @@ def cmd_ls(args: argparse.Namespace) -> int:
     for sess in sessions:
         alive = "" if tmux.has_session(sess.name) else "  (tmux session is gone)"
         print(f"{sess.name}  {sess.repo}{alive}")
+        since = state.status_since(sess.name)
+        now = datetime.datetime.now(datetime.timezone.utc)
         for agent in state.list_agents(sess.name):
-            branch = f"  {agent.branch}" if agent.branch else ""
-            print(
-                f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<9}{branch}"
-            )
+            when = since.get(agent.name)
+            took = format_duration((now - when).total_seconds()) if when else "-"
+            line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<9}"
+            print(f"{line} {took:<6}  {agent.branch or ''}".rstrip())
     return 0
+
+
+def format_duration(seconds: float) -> str:
+    """A short duration: 45s, 12m, 3h05m, 2d4h (rounded down, never negative)."""
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m"
+    if s < 86400:
+        return f"{s // 3600}h{s % 3600 // 60:02d}m"
+    return f"{s // 86400}d{s % 86400 // 3600}h"
 
 
 def cmd_log(args: argparse.Namespace) -> int:

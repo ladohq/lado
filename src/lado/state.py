@@ -4,6 +4,7 @@ Several processes use it at once (the CLI, one MCP server and hooks per agent), 
 call opens its own short-lived connection and SQLite does the locking.
 """
 
+import datetime
 import json
 import os
 import sqlite3
@@ -311,6 +312,22 @@ def list_events(session: str, after: int = 0) -> list[Event]:
             (session, after),
         ).fetchall()
     return [Event(*r) for r in rows]
+
+
+def status_since(session: str) -> dict[str, datetime.datetime]:
+    """When each agent got its current status: its latest "status" or "spawned" event (UTC)."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT agent, created_at FROM events WHERE id IN"
+            " (SELECT MAX(id) FROM events WHERE session = ? AND kind IN (?, ?) GROUP BY agent)",
+            (session, STATUS, SPAWNED),
+        ).fetchall()
+    return {
+        r["agent"]: datetime.datetime.fromisoformat(r["created_at"]).replace(
+            tzinfo=datetime.timezone.utc
+        )
+        for r in rows
+    }
 
 
 MESSAGE_COLUMNS = "id, sender, summary, body, recipient, state, created_at"

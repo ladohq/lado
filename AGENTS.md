@@ -69,7 +69,8 @@ tag against the package version and publishes to PyPI.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
-    `finished`); events and messages go with their session.
+    `finished`); events and messages go with their session. How long an agent has had its
+    status (`lado ls`, `list_agents`) comes from its latest `status` or `spawned` event.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/live/`: live tests with real agent CLIs; `tests/js/`: Node tests of the Kilo plugin.

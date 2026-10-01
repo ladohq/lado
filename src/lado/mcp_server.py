@@ -4,6 +4,7 @@ The calling agent is identified by LADO_SESSION and LADO_AGENT, which lado.runti
 into that agent's MCP config.
 """
 
+import datetime
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -29,19 +30,28 @@ def build(session: str, agent: str) -> MCPServer:
 
     @server.tool()
     def list_agents() -> list[dict]:
-        """List the agents in this session: role, provider, status, branch and worktree."""
-        return [
-            {
-                "name": a.name,
-                "role": a.role,
-                "provider": a.provider,
-                "status": a.status,
-                "branch": a.branch,
-                "worktree": a.cwd,
-                "task": (a.task or "")[:200],
-            }
-            for a in state.list_agents(session)
-        ]
+        """List the agents in this session: role, provider, status (with since when and for
+        how many seconds), branch and worktree."""
+        since = state.status_since(session)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        agents = []
+        for a in state.list_agents(session):
+            when = since.get(a.name)
+            took = max(0, int((now - when).total_seconds())) if when else None
+            agents.append(
+                {
+                    "name": a.name,
+                    "role": a.role,
+                    "provider": a.provider,
+                    "status": a.status,
+                    "status_since": when.isoformat() if when else None,
+                    "status_for_seconds": took,
+                    "branch": a.branch,
+                    "worktree": a.cwd,
+                    "task": (a.task or "")[:200],
+                }
+            )
+        return agents
 
     @server.tool()
     def send_message(to: str, summary: str, body: str | None = None) -> str:

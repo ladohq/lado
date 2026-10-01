@@ -6,7 +6,7 @@ import pytest
 from agent_helpers import init_repo, publish
 
 from lado import __version__, runtime, sources, state
-from lado.cli import main
+from lado.cli import format_duration, main
 
 
 def test_version_flag_prints_version():
@@ -24,6 +24,42 @@ def test_start_with_provider_and_ls_shows_it(repo, fake_tmux, capsys):
     assert state.get_session("s").provider == "kilo"
     main(["ls"])
     assert "supervisor   supervisor kilo" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "seconds, shown",
+    [
+        (-3, "0s"),
+        (0, "0s"),
+        (59, "59s"),
+        (60, "1m"),
+        (3599, "59m"),
+        (3600, "1h00m"),
+        (3 * 3600 + 5 * 60 + 59, "3h05m"),
+        (86399, "23h59m"),
+        (86400, "1d0h"),
+        (2 * 86400 + 4 * 3600 + 3599, "2d4h"),
+    ],
+)
+def test_duration_is_short(seconds, shown):
+    assert format_duration(seconds) == shown
+
+
+def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys):
+    main(["start", str(repo), "--name", "s", "--no-attach"])
+    runtime.spawn_worker("s", "task")
+    with state.connect() as db:
+        db.execute(
+            "UPDATE events SET created_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-11105 seconds')"
+            " WHERE agent = 'supervisor'"
+        )
+        db.execute("DELETE FROM events WHERE agent = 'w1'")
+    capsys.readouterr()
+    main(["ls"])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].split() == ["supervisor", "supervisor", "claude", "starting", "3h05m"]
+    assert lines[2].split() == ["w1", "worker", "claude", "starting", "-", "lado/s/w1"]
+    assert lines[1].index("3h05m") == lines[2].index("-")
 
 
 def test_finish_ends_a_worker(repo, fake_tmux, capsys):

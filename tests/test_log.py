@@ -104,3 +104,9 @@ def test_messages_have_sub_second_times(lado_home):
     state.queue_message("s", "a", "b", "hi")
     [message] = state.list_messages("s")
     assert len(message.created_at) == len("2026-10-01 10:00:00.000")
+
+
+def test_log_n_must_not_be_negative(session, capsys):
+    with pytest.raises(SystemExit):
+        main(["log", session, "-n", "-1"])
+    assert "N must be 0 or more" in capsys.readouterr().err

@@ -90,6 +90,8 @@ tag against the package version and publishes to PyPI.
 `lado log <session>` shows what happened in a session: messages between agents (with their
 delivery state) and agent events (spawned, status changes). `--agent NAME` keeps one agent's
 lines, `-n N` the last N entries, `--follow` keeps printing new ones until Ctrl-C.
+With `--follow` a message is printed once, with the state it had then; a later delivery
+is not printed again.
 
 ## Testing
 

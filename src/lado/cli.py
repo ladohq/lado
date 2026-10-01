@@ -195,6 +195,13 @@ def _attach(name: str) -> int:
     os.execvpe(argv[0], argv, env)
 
 
+def _count(value: str) -> int:
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError("N must be 0 or more")
+    return n
+
+
 def _without_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--without",
@@ -281,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     log_cmd = commands.add_parser("log", help="show a session's messages and agent events")
     log_cmd.add_argument("session")
     log_cmd.add_argument("--agent", help="only lines where this agent sends, gets or acts")
-    log_cmd.add_argument("-n", type=int, metavar="N", help="show only the last N entries")
+    log_cmd.add_argument("-n", type=_count, metavar="N", help="show only the last N entries")
     log_cmd.add_argument(
         "-f", "--follow", action="store_true", help="keep printing new entries until Ctrl-C"
     )

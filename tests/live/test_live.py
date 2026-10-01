@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 import time
 
 import agent_helpers
@@ -73,6 +74,24 @@ def answer_dialogs(provider: str, session: str, window: str) -> None:
         tmux.run("send-keys", "-t", f"{session}:{window}", "Down", "Enter")
 
 
+def check_log(provider: str) -> None:
+    """`lado log` shows w1's spawn, its statuses and its report, in that order."""
+    result = subprocess.run(
+        [sys.executable, "-m", "lado.cli", "log", SESSION, "--agent", "w1"],
+        capture_output=True,
+        text=True,
+        env=os.environ,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    print(result.stdout)
+    lines = [line.split(" ", 1)[1] for line in result.stdout.splitlines() if line[:1] != " "]
+    assert lines[0].startswith("w1: spawned (role ")
+    assert lines[0].endswith(f", provider {provider})")
+    assert lines.index("w1: busy") < len(lines) - 1 - lines[::-1].index("w1: idle")
+    assert any(line.startswith("w1 → supervisor [delivered]") for line in lines)
+
+
 def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider):
     repo = live_repo
     started = time.monotonic()
@@ -101,6 +120,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
         60,
     )
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
+    check_log(live_provider)
 
     processes = agent_processes()
     runtime.stop_session(SESSION)

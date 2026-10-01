@@ -8,6 +8,11 @@ Tasks and bugs found while using LADO, until the external task tracker is connec
 Providers start the agent CLI with its own default model. Kilo without an account picks a free
 "auto" model; there is no way to say which model a session or a worker uses.
 Wanted: a model option per session and per worker, translated by each provider.
+Postponed (2026-10-01): model names differ per provider and change with every release, so
+first decide how a kit names a model without tying it to one provider (aliases such as
+fast / strong mapped per provider? a per-provider map?). Draft design: `model:` in a role,
+`spawn_worker(model=...)` so the supervisor can pick a cheaper model per task, `lado start
+--model`; no hand-kept model lists; the model shown in `lado ls` and the `spawned` event.
 Found: 2026-10-01, Kilo provider smoke test.
 
 ## Workers may distrust messages from other agents

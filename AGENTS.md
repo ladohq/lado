@@ -43,6 +43,11 @@ Live tests are not in CI: run them locally.
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
 tag against the package version and publishes to PyPI.
 
+Versions (0.x): bump the minor (0.7.0) for new features, an MCP tool or CLI change that older
+agents cannot use, or a database schema migration; running sessions must be restarted after
+such an upgrade. Bump the patch (0.7.1) for fixes and docs only: no new feature, no API or
+schema change.
+
 ## Layout
 
 - `src/lado/`: the Python package.

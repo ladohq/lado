@@ -3,6 +3,11 @@
 Goal: reach a version of LADO that can be used to develop LADO itself, as fast as possible.
 Each stage is done when all its boxes are checked.
 
+LADO's value over a single agent CLI: a team of agents shaped by kits (which roles, skills and
+tools are active), driven by flows (steps and human gates enforced by LADO, not by the model),
+and a human who answers gates asynchronously instead of sitting in one chat. LADO treats agent
+CLIs equally: Claude Code is the first provider, not the only one.
+
 ## Stage 0: Repository setup
 
 - [x] uv, ruff and pytest configured; `uv.lock` committed
@@ -23,33 +28,58 @@ Each stage is done when all its boxes are checked.
 - [x] Agent state stored in `~/.lado/`
 - [ ] A supervisor can delegate a real LADO task to a worker end to end
 
-## Stage 2.5: Task trackers
+## Stage 3: Providers
 
-- [ ] Common task-tracker interface; the active tracker is chosen in config
-- [ ] YouGile adapter
-- [ ] Jira adapter
+Everything above the provider layer (sessions, messages, kits, flows) must not depend on
+which agent CLI runs. Agent status comes from events (hooks, plugins, ACP), never from
+reading the screen.
 
-## Stage 3: Develop LADO inside LADO
+- [ ] Provider interface with explicit capabilities; Claude Code moved onto it
+- [ ] Codex provider
+- [ ] Provider chosen per session and per worker; `lado doctor` checks every installed one
+
+## Stage 4: Kits
+
+A kit is a provider-neutral bundle: roles (agent prompts), skills (`SKILL.md` folders),
+MCP servers and flows. Kits can be combined and parts switched on or off.
+
+- [ ] Kit format and `lado start --kit`; several kits combine into one environment
+- [ ] Switch single roles, skills and MCP servers on or off per session and per agent
+- [ ] Skills placed where each provider looks for them in the agent's worktree
+- [ ] `lado-dev` kit used to develop LADO
+
+## Stage 5: Flows
+
+A flow is optional and comes with a kit: steps, who does them, allowed outcomes, human gates,
+required artifacts. LADO enforces the rules; how to do each step is up to the agent.
+
+- [ ] Flow engine with steps, outcomes, human gates and required artifacts
+- [ ] Artifacts stored per session and readable by agents and the human
+- [ ] `lado inbox`: answer gates and questions from all agents in one place
+- [ ] Notifications when an agent waits for the human
+
+## Stage 6: Develop LADO inside LADO
 
 - [ ] Work runs through an installed release of LADO; agents edit the working copy
+- [ ] Task trackers (YouGile, Jira) as kits with skills; the active tracker is chosen in config
 - [ ] Every bug or friction found is filed in the task tracker
-- [ ] Claude Code is used directly only when LADO is too broken to fix itself
+- [ ] Agent CLIs are used directly only when LADO is too broken to fix itself
 
-## Stage 4: Desktop app
+## Stage 7: Desktop app
 
 The agents still run in tmux; the app is a window onto them.
 
-- [ ] Local web UI (`lado ui`): sessions, agents with their status, messages
+- [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates
 - [ ] Agent terminals in the UI (a web terminal attached to the agent's tmux window)
 - [ ] Desktop app that bundles the UI and the LADO runtime (macOS first)
-- [ ] Notifications when an agent waits for the human
 
-## Stage 5: ACP runtime
+## Stage 8: ACP runtime
 
 Drive agents over the Agent Client Protocol instead of tmux: structured events, permission
-requests handled by LADO, any ACP agent as a provider. Starts with research.
+requests handled by LADO, any ACP agent as a provider (OpenCode, Kilo, Gemini CLI, Copilot,
+Cursor; Claude Code and Codex through adapters).
 
-- [ ] Research: Claude via ACP adapter (subscription auth, skills, hooks, plugins), other agents
-- [ ] Agent runtime interface with tmux and ACP implementations
+- [ ] Research: Claude and Codex via ACP adapters (subscription auth, skills, hooks)
+- [ ] ACP runtime behind the same provider interface as tmux
 - [ ] UI renders ACP sessions and permission requests
 - [ ] Dogfooding moves to the ACP runtime

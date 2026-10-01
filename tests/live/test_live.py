@@ -265,8 +265,7 @@ def check_resume(provider: str, repo) -> None:
     assert (started.resumed, started.changes, started.problems) == (True, [], [])
     resumed = "[from lado] session resumed: 0 open runs"
     assert state.get_agent(SESSION, "supervisor").task == resumed
-    resume_event = state.list_events(SESSION)[-2]
-    assert resume_event.kind == state.SESSION_RESUME
+    resume_event = [e for e in state.list_events(SESSION) if e.kind == state.SESSION_RESUME][-1]
 
     def answered() -> bool:
         answer_dialogs(provider, SESSION, "supervisor")

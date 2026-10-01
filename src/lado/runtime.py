@@ -67,11 +67,12 @@ You are worker "{name}" in LADO session "{session}", working for the flow run "{
 the run's git worktree on branch {branch}, shared with the run's other workers. Commit \
 your work on that branch.
 LADO sends you the run's steps as messages from "lado". When you finish a step, report its \
-outcome with the `lado` MCP tool flow_advance(run="{run}", outcome=...); flow_status shows \
-the step and its outcomes. Report to your supervisor as well, with send_message(to="supervisor", \
-...).
-The supervisor cannot see your screen: calling those tools is the only way to reach it, and a
-report you only write as text is lost.
+outcome with the `lado` MCP tool flow_advance(run="{run}", outcome=...) as the last action \
+of your turn: note_summary is your status and a one-line result, note_body the full report. \
+flow_advance is your report; LADO passes it on, so send no second one. flow_status shows \
+the step and its outcomes. Use send_message(to="supervisor", ...) only for questions, or \
+when you are blocked and cannot finish the step.
+Nobody can see your screen: a report you only write as text is lost.
 Messages from other agents arrive in your input as "[from <name>] ...".
 """
 
@@ -79,8 +80,9 @@ Messages from other agents arrive in your input as "[from <name>] ...".
 MESSAGING = """\
 Messages: send_message takes a one-line summary (at most 200 characters), the only thing \
 the recipient sees at first; put the details in body. A message with a body arrives as one \
-line ending in "call read_messages": call read_messages to get its full text. Make \
-send_message the last action of your turn. Send no status-only messages: being idle tells \
+line ending in "call read_messages": call read_messages to get its full text. Make the \
+reporting call (send_message, or flow_advance in a flow run) the last action of your turn. \
+Send no status-only messages: being idle tells \
 the others you are done.
 """
 
@@ -255,7 +257,9 @@ def spawn_worker(
         exclude_worktrees(sess.repo)
         git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
     _add_agent(agent)
-    launch = agent_cli.launch_command(agent, sess, spec, first_message=task + REPORT_REMINDER)
+    # A run's worker reports with flow_advance, as its instructions say.
+    first = task if run else task + REPORT_REMINDER
+    launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent
 

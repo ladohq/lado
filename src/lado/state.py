@@ -153,6 +153,10 @@ SENT = "sent"
 DELIVERED = "delivered"
 READ = "read"  # its recipient got the body with read_messages
 DROPPED = "dropped"  # its recipient was finished or stopped before it got (or read) it
+# What an agent has not received yet: messages not delivered, and bodies not read. When the
+# agent is finished or stopped, they are dropped: a new agent of the same name starts fresh.
+UNRECEIVED = "(state IN (?, ?) OR (state = ? AND body != ''))"
+UNRECEIVED_ARGS = (PENDING, SENT, DELIVERED)
 
 # Event kinds.
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
@@ -366,12 +370,9 @@ def stop_session(name: str) -> tuple[list[Agent], int]:
             if row["status"] != STOPPED:
                 _add_event(db, name, row["name"], STATUS, STOPPED)
         db.execute("DELETE FROM agents WHERE session = ?", (name,))
-        # A body delivered but never read is dropped too: a new agent of the same name
-        # starts fresh.
         dropped = db.execute(
-            "UPDATE messages SET state = ? WHERE session = ?"
-            " AND (state IN (?, ?) OR (state = ? AND body != ''))",
-            (DROPPED, name, PENDING, SENT, DELIVERED),
+            f"UPDATE messages SET state = ? WHERE session = ? AND {UNRECEIVED}",
+            (DROPPED, name, *UNRECEIVED_ARGS),
         ).rowcount
         db.execute(
             "UPDATE sessions SET stopped_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE name = ?",
@@ -761,11 +762,12 @@ def confirm_sent(
 
 
 def drop_undelivered(session: str, recipient: str) -> int:
-    """Mark the recipient's pending and unconfirmed messages dropped. Returns how many."""
+    """Mark the recipient's pending and unconfirmed messages, and the bodies it never read,
+    dropped. Returns how many."""
     with connect() as db:
         cur = db.execute(
-            "UPDATE messages SET state = ? WHERE session = ? AND recipient = ? AND state IN (?, ?)",
-            (DROPPED, session, recipient, PENDING, SENT),
+            f"UPDATE messages SET state = ? WHERE session = ? AND recipient = ? AND {UNRECEIVED}",
+            (DROPPED, session, recipient, *UNRECEIVED_ARGS),
         )
         return cur.rowcount
 

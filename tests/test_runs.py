@@ -608,6 +608,21 @@ def test_the_supervisor_is_told_the_flows_and_a_run_worker_how_to_report(session
     assert 'flow_advance(run="feature/login", outcome=...)' in prompt
 
 
+def test_a_run_worker_reports_each_step_only_with_flow_advance(session, fake_tmux):
+    """flow_advance is a run worker's report: nothing asks it to send_message one too."""
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")
+    worker = fake_tmux[-1][-1]
+    prompt = worker[worker.index("--append-system-prompt") + 1]
+    first = worker[-1]
+    assert first.startswith("Run feature/login (flow feature), step implement.")
+    assert "send_message" not in first
+    assert "as well" not in prompt
+    assert "flow_advance is your report" in prompt
+    assert "as the last action of your turn" in prompt
+    assert "only for questions" in prompt
+
+
 def test_a_session_without_flows_is_not_told_about_them(repo, fake_tmux):
     runtime.start_session(str(repo), "plain", None)
     supervisor = fake_tmux[0][-1]

@@ -560,6 +560,20 @@ def test_finish_worker_drops_its_undelivered_messages(repo, fake_tmux, monkeypat
     assert [m.state for m in state.list_messages("s")] == [state.DROPPED, state.DROPPED]
 
 
+def test_finish_worker_drops_the_bodies_it_never_read(repo, fake_tmux):
+    _session_with_worker(repo)
+    for summary, body in [("details inside", "the body"), ("no body", "")]:
+        state.set_status("s", "w1", state.IDLE)
+        runtime.send_message("s", "supervisor", "w1", summary, body)
+        _hook("UserPromptSubmit", "w1", {"prompt": fake_tmux[-1][3]})
+    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
+    finished = runtime.finish_worker("s", "w1", discard=True)
+    assert finished.dropped == 1
+    runtime.spawn_worker("s", "new task", name="w1")
+    assert state.read_messages("s", "w1") == []  # nothing meant for the old w1
+    assert [m.state for m in state.list_messages("s")] == [state.DROPPED, state.DELIVERED]
+
+
 def test_hooks_of_a_finished_worker_are_ignored(repo, fake_tmux, monkeypatch):
     _session_with_worker(repo)
     old = state.get_agent("s", "w1").instance

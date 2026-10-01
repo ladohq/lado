@@ -1,6 +1,7 @@
 """One short scenario per real agent CLI: a worker does a tiny task, reports, gets a message
 and is finished after its branch is merged."""
 
+import json
 import os
 import subprocess
 import sys
@@ -9,7 +10,8 @@ import time
 import agent_helpers
 import pytest
 
-from lado import runtime, state, tmux
+from lado import providers, runtime, state, tmux
+from lado.providers import base
 
 pytestmark = pytest.mark.live
 
@@ -121,9 +123,43 @@ def check_log(provider: str) -> None:
     assert any(line.startswith("w1 → supervisor [delivered]") for line in lines)
 
 
+def claude_tools(repo, settings: str) -> list[str]:
+    """The tools a Claude Code agent with these settings sees, from the CLI's init event."""
+    cmd = ["claude", "-p", "Reply OK.", "--settings", settings]
+    cmd += ["--output-format", "stream-json", "--verbose"]
+    with subprocess.Popen(cmd, cwd=repo, stdout=subprocess.PIPE, text=True) as proc:
+        try:
+            for line in proc.stdout:
+                event = json.loads(line)
+                if (event.get("type"), event.get("subtype")) == ("system", "init"):
+                    return event["tools"]
+        finally:
+            proc.kill()
+    pytest.fail("claude printed no init event")
+
+
+def check_agent_config(provider: str, repo, worker: state.Agent) -> None:
+    """Claude Code: w1 does not see Claude Code's own tools for messaging agents, only
+    LADO's send_message, which carried its report."""
+    if provider == "claude":
+        # Without w1's hooks: they would report this probe's session as w1's.
+        settings = json.loads((base.config_dir(worker) / "settings.json").read_text())
+        probe = repo.parent / "probe-settings.json"
+        probe.write_text(json.dumps({"permissions": settings["permissions"]}))
+        tools = claude_tools(repo, str(probe))
+        assert "Read" in tools
+        assert not {"SendMessage", "ListAgents"} & set(tools), tools
+
+
+def cli_version(provider: str) -> str:
+    command = providers.get(provider).command
+    return subprocess.run([command, "--version"], capture_output=True, text=True).stdout
+
+
 def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider):
     repo = live_repo
     started = time.monotonic()
+    version = cli_version(live_provider)
     kit = passive_kit(repo)
     runtime.start_session(
         str(repo), SESSION, "bypassPermissions", live_provider, [kit], ["agent:supervisor"]
@@ -145,6 +181,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
 
     hello = runtime.git(str(repo), "show", f"{worker.branch}:hello.txt")
     assert hello.strip() == "OK"
+    check_agent_config(live_provider, repo, worker)
 
     runtime.send_message(SESSION, "supervisor", "w1", FOLLOW_UP)
     wait_for(
@@ -161,6 +198,10 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     runtime.stop_session(SESSION)
     assert not tmux.has_session(SESSION)
     check_gone(processes, "stop")
+    # Kilo updates itself unless told not to; LADO's agents must not (the Kilo provider
+    # switches it off, so the test needs no KILO_DISABLE_AUTOUPDATE from outside).
+    if live_provider == "kilo":
+        assert cli_version(live_provider) == version
     print(f"{live_provider}: {time.monotonic() - started:.0f}s")
 
 

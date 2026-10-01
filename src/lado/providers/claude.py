@@ -15,6 +15,12 @@ EVENTS = {
     "SessionEnd": base.SESSION_END,
 }
 
+# Claude Code's own tools for messaging and listing agents (its subagents, teammates and
+# other local sessions). An agent that picks them instead of LADO's send_message and
+# list_agents talks to nobody, so they are denied. A deny rule removes them from the
+# agent's tool list, also with --permission-mode bypassPermissions (checked with 2.1.286).
+BUILT_IN_MESSAGING = ["SendMessage", "ListAgents"]
+
 
 class ClaudeProvider(base.Provider):
     name = "claude"
@@ -39,6 +45,10 @@ class ClaudeProvider(base.Provider):
             name: {"command": s.command[0], "args": s.command[1:], "env": s.env}
             for name, s in spec.mcp.items()
         }
+        # Claude Code defers MCP tools behind its ToolSearch tool; a weak model then may not
+        # find send_message and never report. alwaysLoad puts LADO's tools in the prompt.
+        if "lado" in servers:
+            servers["lado"]["alwaysLoad"] = True
         mcp_config.write_text(json.dumps({"mcpServers": servers}, indent=2))
 
         def hook(event: str) -> list[dict]:
@@ -47,7 +57,11 @@ class ClaudeProvider(base.Provider):
 
         settings = config_dir / "settings.json"
         events = [*EVENTS, "Notification"]
-        settings.write_text(json.dumps({"hooks": {e: hook(e) for e in events}}, indent=2))
+        config = {
+            "hooks": {e: hook(e) for e in events},
+            "permissions": {"deny": BUILT_IN_MESSAGING},
+        }
+        settings.write_text(json.dumps(config, indent=2))
 
         cmd = [
             self.command,

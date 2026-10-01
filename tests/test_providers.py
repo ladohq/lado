@@ -100,6 +100,12 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
     assert config["permission"] == {"external_directory": {f"{lado_home}/**": "allow"}}
 
 
+def test_kilo_agent_does_not_update_itself(repo):
+    launch, config = _kilo_launch(repo)
+    assert launch.env["KILO_DISABLE_AUTOUPDATE"] == "1"
+    assert config["autoupdate"] is False
+
+
 @pytest.mark.parametrize(
     ("mode", "flags", "edit"),
     [
@@ -203,6 +209,8 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
     assert mcp["db"] == {"command": "db-server", "args": ["--port", "1"], "env": {"T": "x"}}
     assert mcp["lado"]["args"][-1] == "mcp"
+    # LADO's tools are in the prompt from the start, not deferred behind tool search.
+    assert mcp["lado"]["alwaysLoad"] is True
     added = Path(cmd[cmd.index("--add-dir") + 1])
     link = added / ".claude" / "skills" / "notes"
     assert link.is_symlink() and link.resolve() == skill_dir.resolve()
@@ -211,6 +219,15 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
     cmd = claude.launch_command(agent, sess, providers.AgentSpec("the role")).argv
     assert "--add-dir" not in cmd and not added.exists()
     assert cmd[cmd.index("--append-system-prompt") + 1] == "the role"
+
+
+def test_claude_agent_cannot_use_built_in_agent_messaging(repo):
+    sess = state.Session("s", str(repo), "bypassPermissions")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
+    cmd = providers.get("claude").launch_command(agent, sess, spec).argv
+    settings = json.loads(open(cmd[cmd.index("--settings") + 1]).read())
+    assert settings["permissions"]["deny"] == ["SendMessage", "ListAgents"]
 
 
 def test_kilo_gets_skills_and_kit_mcp(repo, skill_dir):

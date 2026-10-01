@@ -59,16 +59,6 @@ when the wanted kit (or the lookup path to it) depends on the broken source and 
 otherwise.
 Found: 2026-10-01, kit sources review.
 
-## Kilo updates itself and can break the global install
-
-Kilo auto-updates patch releases by default. On 2026-10-01, Kilo 7.8.3 was published while a
-Kilo live test ran; afterwards `/opt/homebrew/lib/node_modules/@kilocode/cli` was empty and
-`kilo` was gone until it was reinstalled by hand. An agent CLI must not change itself under a
-running LADO session (and the plugin API is version-sensitive). Wanted: the Kilo provider
-sets `KILO_DISABLE_AUTOUPDATE=1` (or `"autoupdate": false` in the agent's kilo.json), with a
-test; `lado doctor` keeps warning when the version is not the tested one.
-Found: 2026-10-01, live e2e for `lado log`.
-
 ## A newer LADO migrates the database under running older processes
 
 Running a newer LADO (e.g. the working copy with `uv run lado log`) against the real
@@ -79,13 +69,3 @@ by another LADO version and refuse with a clear message (or only migrate when no
 running); AGENTS.md already says to use a temp `LADO_HOME` for the working copy, but the
 tool should protect against the mistake.
 Found: 2026-10-01, trying `lado log` from the working copy after merging it.
-
-## Claude Code's own SendMessage tool shadows LADO's send_message
-
-Claude Code 2.1.286 has a built-in `SendMessage` tool for its own agent teams. In one live run
-a Haiku worker called it instead of the LADO MCP tool to report to "supervisor"; it answered
-"no agent named 'supervisor' is reachable", the worker gave up and the report never came.
-Wanted: switch off Claude Code's built-in agent messaging for LADO agents (e.g. disallow the
-tool in the agent's settings), or name the LADO tool so it cannot be confused; then a live
-check that the report goes through LADO.
-Found: 2026-10-01, live e2e for finish_worker.

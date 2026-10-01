@@ -99,6 +99,12 @@ def test_a_supervisor_step_is_sent_to_the_supervisor(session):
     assert "ready -> implement" in step.body
 
 
+def test_a_task_longer_than_a_message_is_refused(session):
+    with pytest.raises(runtime.LadoError, match="write the details to a file"):
+        runs.start(session, "feature", "x" * (runtime.MAX_MESSAGE + 1))
+    assert state.list_runs(session) == []
+
+
 def test_run_names_are_unique(session):
     assert runs.start(session, "feature", "x", name="login").name == "feature/login"
     with pytest.raises(runtime.LadoError, match='a run "feature/login" already exists'):
@@ -186,6 +192,19 @@ def test_a_supervisor_step_is_only_for_the_supervisor(session):
         runs.advance(session, "w1", "feature/login", "ready")
 
 
+def test_an_error_after_the_transition_says_the_run_moved_on(session):
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")  # w1, developer
+    runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait.")  # w2
+    state.set_status(session, "w2", state.STOPPED)
+    with pytest.raises(runtime.LadoError) as error:
+        runs.advance(session, "w1", "feature/login", "done")
+    assert str(error.value).startswith(
+        'run "feature/login" moved on to review (active), but: no running agent "w2"'
+    )
+    assert state.get_run(session, "feature/login").state == "review"
+
+
 def test_a_self_loop_enters_the_state_again(session):
     advance_to_review(session)
     run = runs.advance(session, "w2", "feature/login", "again")
@@ -262,6 +281,27 @@ def test_end_finishes_the_workers_and_removes_a_merged_worktree(session, repo, f
     assert state.list_runs(session, open_only=True) == []
 
 
+def test_a_worker_that_ends_the_run_is_closed_last(session, repo, team, fake_tmux):
+    # Its own MCP server runs in its window: closing that window ends the call.
+    write(
+        team / "flows" / "quick.yaml",
+        "name: quick\ndescription: d\nstart: build\nstates:\n"
+        "  build: {agent: developer, do: Build it., outcomes: {done: end}}\n"
+        "  end: {end: true}\n",
+    )
+    runs.start(session, "quick", "x", name="x")
+    runs.spawn_worker(session, "quick/x")  # w1, developer
+    runs.spawn_worker(session, "quick/x", role="reviewer", task="Watch.")  # w2
+    state.set_status(session, "supervisor", state.IDLE)
+    runs.advance(session, "w1", "quick/x", "done")
+    calls = [c[:3] for c in fake_tmux if c[0] in ("send_text", "kill_window")]
+    assert calls[-3:] == [
+        ("send_text", session, "supervisor"),
+        ("kill_window", session, "w2"),
+        ("kill_window", session, "w1"),
+    ]
+
+
 def test_end_keeps_an_unmerged_worktree_and_says_why(session, repo):
     run = to_merge(session)
     commit(run)
@@ -295,6 +335,11 @@ def test_finishing_a_worker_of_an_open_run_closes_only_its_window(session):
     assert (finished.how, finished.removed_worktree) == (runtime.CLOSED, False)
     assert Path(run.worktree).exists()
     assert state.get_agent(session, "w1") is None
+    finished = runtime.finish_worker(session, "w2", discard=True)
+    assert finished.detail() == (
+        "closed; discard does not apply: the run keeps its worktree; 1 message dropped"
+    )
+    assert Path(run.worktree).exists()
 
 
 def test_cancel_finishes_the_workers_and_keeps_the_worktree(session, repo, fake_tmux):

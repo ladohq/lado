@@ -16,7 +16,7 @@ worker.
 import dataclasses
 from pathlib import Path
 
-from lado import flows, kits, runtime, state
+from lado import flows, kits, runtime, state, tmux
 from lado.runtime import SUPERVISOR, LadoError
 
 LADO = "lado"  # the sender of LADO's own messages
@@ -37,6 +37,12 @@ def start(session: str, flow_name: str, task: str, name: str | None = None) -> s
     task = task.strip()
     if not task:
         raise LadoError("task is empty; say what the run is for")
+    if len(task) > runtime.MAX_MESSAGE:
+        # It goes into every step's message.
+        raise LadoError(
+            f"task is {len(task)} characters, the limit is {runtime.MAX_MESSAGE}; "
+            "write the details to a file and give its path"
+        )
     run_name = _new_name(session, flow.name, name, task)
     folder = runtime.slug(run_name)
     kit = next(k for k in env.kits if k.name == flow.kit)
@@ -57,7 +63,7 @@ def start(session: str, flow_name: str, task: str, name: str | None = None) -> s
     version = f" {kit.version}" if kit.version else ""
     detail = f"flow {flow.name} from kit {kit.name}{version}: {task.splitlines()[0][:100]}"
     state.add_run(started, [(SUPERVISOR, state.FLOW_START, detail), *events])
-    _arrived(started, flow)
+    _arrived(started, flow, SUPERVISOR)
     return started
 
 
@@ -90,7 +96,7 @@ def advance(
     noted = dataclasses.replace(run, note=note, note_body=note_body or "")
     after, events = _enter(noted, flow, target)
     transition = (caller, state.FLOW, f"{run.state} -{outcome}-> {target}")
-    return _commit(run, after, [transition, *events], flow)
+    return _commit(run, after, [transition, *events], flow, caller)
 
 
 def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
@@ -109,7 +115,7 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     noted = dataclasses.replace(run, note=f"set by the human: {reason}"[:NOTE_LIMIT], note_body="")
     after, events = _enter(noted, flow, target, limit=False)
     forced = (HUMAN, state.FLOW_SET, f"{run.state} -> {target}: {reason}")
-    return _commit(run, after, [forced, *events], flow)
+    return _commit(run, after, [forced, *events], flow, HUMAN)
 
 
 def cancel(session: str, run_name: str, reason: str) -> list[runtime.Finished]:
@@ -239,15 +245,27 @@ def _enter(
     return after, []
 
 
-def _commit(before: state.Run, after: state.Run, events: Events, flow: flows.Flow) -> state.Run:
+def _commit(
+    before: state.Run, after: state.Run, events: Events, flow: flows.Flow, caller: str
+) -> state.Run:
     if not state.update_run(before, after, events):
         raise LadoError(f'run "{before.name}" changed meanwhile; see flow_status')
-    _arrived(after, flow)
+    _arrived(after, flow, caller)
     return after
 
 
-def _arrived(run: state.Run, flow: flows.Flow) -> None:
-    """Tell whoever acts now: the step's agent, or the supervisor; close an ended run."""
+def _arrived(run: state.Run, flow: flows.Flow, caller: str) -> None:
+    """Tell whoever acts now: the step's agent, or the supervisor; close an ended run.
+    The transition is stored already, so an error says that the run did move on."""
+    try:
+        _act_on_arrival(run, flow, caller)
+    except (LadoError, tmux.TmuxError) as exc:
+        raise LadoError(
+            f'run "{run.name}" moved on to {run.state} ({run.status}), but: {exc}'
+        ) from exc
+
+
+def _act_on_arrival(run: state.Run, flow: flows.Flow, caller: str) -> None:
     if run.status == state.WAITING:
         _tell_supervisor(
             run,
@@ -256,7 +274,7 @@ def _arrived(run: state.Run, flow: flows.Flow) -> None:
             "<state> --reason TEXT",
         )
     elif run.status == state.ENDED:
-        _close(run)
+        _close(run, caller)
     else:
         _deliver_step(run, flow)
 
@@ -275,9 +293,10 @@ def _deliver_step(run: state.Run, flow: flows.Flow) -> None:
     runtime.post(run.session, LADO, who, f"flow {run.name}: step {run.state}", step_text(run, flow))
 
 
-def _close(run: state.Run) -> None:
+def _close(run: state.Run, caller: str) -> None:
     """Finish an ended run's workers and remove its worktree and branch, if its branch is
-    merged and its worktree clean. Otherwise keep them all and say why."""
+    merged and its worktree clean. Otherwise keep them all and say why. `caller` is the
+    agent (or the human) whose action ended the run."""
     repo = _session(run.session).repo
     workers = _workers(run)
     problem = _unfinished(repo, run)
@@ -294,9 +313,10 @@ def _close(run: state.Run) -> None:
     # Git first: if it fails, the workers keep running and nothing is half done.
     runtime.git(repo, "worktree", "remove", run.worktree)
     runtime.git(repo, "branch", "-d", run.branch)
-    for worker in workers:
-        runtime.close_worker(run.session, worker, "run ended")
     _tell_supervisor(run, f"ended at {run.state}; worktree and branch removed")
+    # The caller last: this code runs in its MCP server, which goes with its window.
+    for worker in sorted(workers, key=lambda w: w.name == caller):
+        runtime.close_worker(run.session, worker, "run ended")
 
 
 def _unfinished(repo: str, run: state.Run) -> str:

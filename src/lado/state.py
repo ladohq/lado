@@ -435,12 +435,15 @@ def list_runs(session: str, open_only: bool = False) -> list[Run]:
 
 def update_run(before: Run, after: Run, events: list[tuple[str, str, str]]) -> bool:
     """Write `after` and the events (actor, kind, detail) in one transaction, but only if
-    the run is still in the state and status of `before`. Returns whether it was written."""
+    the run still has the state, status and visits of `before`: entering a state counts a
+    visit, so even a self-loop changes what the next writer compares. Returns whether it
+    was written."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
             "UPDATE runs SET state = ?, visits = ?, status = ?, reason = ?, note = ?,"
-            " note_body = ? WHERE session = ? AND name = ? AND state = ? AND status = ?",
+            " note_body = ? WHERE session = ? AND name = ? AND state = ? AND status = ?"
+            " AND visits = ?",
             (
                 after.state,
                 json.dumps(after.visits),
@@ -452,6 +455,7 @@ def update_run(before: Run, after: Run, events: list[tuple[str, str, str]]) -> b
                 before.name,
                 before.state,
                 before.status,
+                json.dumps(before.visits),
             ),
         )
         if cur.rowcount:

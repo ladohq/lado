@@ -272,6 +272,16 @@ def test_a_run_changes_only_from_the_state_it_was_read_in(lado_home):
     assert [e.detail for e in state.list_events("s")] == ["started", "design -ready-> build"]
 
 
+def test_two_self_loops_from_the_same_read_write_once(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_run(_run(visits={"design": 1}), [("supervisor", state.FLOW_START, "started")])
+    before = state.get_run("s", "feature/x")
+    again = dataclasses.replace(before, visits={"design": 2})
+    assert state.update_run(before, again, [("supervisor", state.FLOW, "design -again-> design")])
+    assert not state.update_run(before, again, [("w1", state.FLOW, "design -again-> design")])
+    assert len(state.list_events("s")) == 2
+
+
 def test_runs_go_with_their_session(lado_home):
     state.add_session(state.Session("s", "/r", None))
     state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])

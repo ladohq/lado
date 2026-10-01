@@ -248,6 +248,8 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
         workers = ", ".join(a.name for a in state.list_agents(session) if a.branch) or "none"
         raise LadoError(f'no worker "{name}"; workers: {workers}')
     if worker.run and _run_keeps_worktree(session, worker):
+        if discard:
+            return close_worker(session, worker, f"{CLOSED}; {DISCARD_NOT_APPLIED}")
         return close_worker(session, worker, CLOSED)
     if not discard:
         _check_finished(sess.repo, worker)
@@ -258,6 +260,7 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
 
 
 CLOSED = "closed"  # a run's worker: its window is closed, the run keeps the worktree
+DISCARD_NOT_APPLIED = "discard does not apply: the run keeps its worktree"
 
 
 def close_worker(session: str, worker: state.Agent, how: str) -> Finished:

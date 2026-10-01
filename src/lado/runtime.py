@@ -25,10 +25,14 @@ from your current HEAD. Give it the goal, the relevant files and how to check th
 `role` picks the kind of worker{default_role}. Roles:
 {roles}
 - send_message: talk to another agent, e.g. to answer a worker's question.
+- read_messages: read the full text of the messages you got.
 - list_agents: see the agents, their role, status, branch and worktree.
 - finish_worker: once you merged a worker's branch, end that worker; its window, worktree \
 and branch are removed.
 Workers report back with messages that arrive in your input as "[from <name>] ...".
+Do not relay worker or reviewer reports to the human. Talk to the human only when a \
+decision is needed (the question and your recommendation) or at a milestone (one or two \
+lines). The details stay in `lado log {session}`.
 """
 
 WORKER_INSTRUCTIONS = """\
@@ -40,8 +44,20 @@ report you only write as text is lost.
 Messages from other agents arrive in your input as "[from <name>] ...".
 """
 
+# How every agent sends and reads messages, appended to the instructions above.
+MESSAGING = """\
+Messages: send_message takes a one-line summary (at most 200 characters), the only thing \
+the recipient sees at first; put the details in body. A message with a body arrives as one \
+line ending in "call read_messages": call read_messages to get its full text. Make \
+send_message the last action of your turn. Send no status-only messages: being idle tells \
+the others you are done.
+"""
+
 WORKTREES_EXCLUDE = "/.lado/worktrees/"
-REPORT_REMINDER = '\n\nWhen you are done, report back with send_message(to="supervisor").'
+REPORT_REMINDER = (
+    '\n\nWhen you are done, report back with send_message(to="supervisor"): summary = your '
+    "status and a one-line result, body = the full report."
+)
 
 
 class LadoError(RuntimeError):
@@ -208,21 +224,26 @@ def _check_finished(repo: str, worker: state.Agent) -> None:
         )
 
 
-def send_message(session: str, sender: str, recipient: str, text: str) -> str:
-    """Queue a message and deliver it now if the recipient is idle.
+def send_message(
+    session: str, sender: str, recipient: str, summary: str, body: str | None = None
+) -> str:
+    """Queue a message and deliver it now if the recipient is idle. Only the one-line
+    summary is typed; the recipient reads the body with read_messages.
 
     A busy recipient gets it from its turn-end hook when its current turn ends (see lado.hooks).
     """
-    if len(text) > MAX_MESSAGE:
+    _check_summary(summary)
+    body = body or ""
+    if len(body) > MAX_MESSAGE:
         raise LadoError(
-            f"message is {len(text)} characters, the limit is {MAX_MESSAGE}; "
+            f"body is {len(body)} characters, the limit is {MAX_MESSAGE}; "
             "write the details to a file and send its path"
         )
     agent = state.get_agent(session, recipient)
     if agent is None or agent.status == state.STOPPED:
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
         raise LadoError(f'no running agent "{recipient}"; running agents: {names}')
-    state.queue_message(session, sender, recipient, text)
+    state.queue_message(session, sender, recipient, summary, body)
     # A typed message the agent never received leaves it marked busy without it being so.
     lost = state.requeue_unconfirmed(session, recipient, CONFIRM_TIMEOUT)
     # Queue first, read the status second: the turn-end hook does the reverse, so a message is
@@ -244,8 +265,29 @@ def deliver_pending(session: str, recipient: str) -> bool:
     return True
 
 
+def _check_summary(summary: str) -> None:
+    if not summary.strip():
+        raise LadoError("summary is empty; say in one line what the message is about")
+    if "\n" in summary or "\r" in summary:
+        raise LadoError("summary must be one line; put the details in body")
+    if len(summary) > state.SUMMARY_LIMIT:
+        raise LadoError(
+            f"summary is {len(summary)} characters, the limit is {state.SUMMARY_LIMIT}; "
+            "put the details in body"
+        )
+
+
+def format_message(message: state.Message) -> str:
+    """The one line typed for a message; its body is left for read_messages."""
+    line = f"[from {message.sender}] {message.title}"
+    if not message.body:
+        return line
+    lines = len(message.body.splitlines())
+    return f"{line} (#{message.id}, {lines} line{'s' if lines != 1 else ''}: call read_messages)"
+
+
 def format_messages(messages: list[state.Message]) -> str:
-    return "\n\n".join(f"[from {m.sender}] {m.text}" for m in messages)
+    return "\n".join(format_message(m) for m in messages)
 
 
 def stop_session(session: str) -> list[state.Agent]:
@@ -288,7 +330,7 @@ def _spec(
             f"{', '.join(resolved.skills)}; switch them off with --without skill:<name>"
         )
     return providers.AgentSpec(
-        prompt=f"{resolved.agent.body}\n\n{instructions}",
+        prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}",
         skills={name: skill.path for name, skill in resolved.skills.items()},
         mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers()},
     )

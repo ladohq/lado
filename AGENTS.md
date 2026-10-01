@@ -63,8 +63,8 @@ tag against the package version and publishes to PyPI.
   - `sources.py`: kit sources (`lado sources`): a local folder read in place, or a git
     repository cloned into `LADO_HOME/sources/<name>`; registered in `LADO_HOME/sources.yaml`.
     Only the `Source` classes know a kind; `kits.py` asks a source for its directory.
-  - `mcp_server.py`: MCP tools for agents (`send_message`, `list_agents`; the supervisor
-    also gets `spawn_worker` and `finish_worker`).
+  - `mcp_server.py`: MCP tools for agents (`send_message`, `read_messages`, `list_agents`;
+    the supervisor also gets `spawn_worker` and `finish_worker`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
@@ -79,8 +79,14 @@ tag against the package version and publishes to PyPI.
 ## How agents talk
 
 - An agent's status (busy / idle / waiting) comes from its hooks, never from screen scraping.
+- A message is a one-line `summary` (at most 200 characters; a longer or multi-line one is
+  refused) and an optional `body` with the details. Only one short line per message reaches
+  the recipient: `[from <sender>] <summary>`, plus ` (#<id>, <n> lines: call read_messages)`
+  when there is a body. `read_messages` returns the caller's delivered, unread bodies and
+  marks them `read`. The supervisor's window is also the human's chat, so it stays quiet:
+  the supervisor does not relay reports, and the details are in `lado log`.
 - A message to an idle agent is pasted into its window and counts as delivered only after
-  the agent's prompt-submit hook sees it; otherwise it is queued again. A busy agent
+  the agent's prompt-submit hook sees its line; otherwise it is queued again. A busy agent
   gets its queued messages from its turn-end hook when the turn ends.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
@@ -92,8 +98,9 @@ tag against the package version and publishes to PyPI.
 `uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
-`lado log <session>` shows what happened in a session: messages between agents (with their
-delivery state) and agent events (spawned, status changes). `--agent NAME` keeps one agent's
+`lado log <session>` shows what happened in a session: messages between agents (one line
+with their delivery state and summary, the body indented below) and agent events (spawned,
+status changes). `--agent NAME` keeps one agent's
 lines, `-n N` the last N entries, `--follow` keeps printing new ones until Ctrl-C.
 With `--follow` a message is printed once, with the state it had then; a later delivery
 is not printed again.

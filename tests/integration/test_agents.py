@@ -34,6 +34,11 @@ def inputs(agent: str) -> list[str]:
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
+def seen(agent: str) -> dict:
+    """What the fake agent wrote to its "seen" file."""
+    return json.loads((state.home() / "agents" / SESSION / agent / "seen.json").read_text())
+
+
 def message_states(recipient: str) -> list[str]:
     with state.connect() as db:
         rows = db.execute(
@@ -57,10 +62,10 @@ def test_supervisor_starts_and_becomes_idle(repo):
 
 def test_message_to_idle_agent_is_pasted_and_confirmed(repo):
     start(repo)
-    assert runtime.send_message(SESSION, "human", "supervisor", "hello\nthere") == "sent"
+    assert runtime.send_message(SESSION, "human", "supervisor", "hello", "there\nagain") == "sent"
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] hello\nthere"]  # one paste, one input
+    assert inputs("supervisor") == ["[from human] hello (#1, 2 lines: call read_messages)"]
 
 
 @pytest.mark.parametrize("provider", ["fake", "fake-paste"])
@@ -69,9 +74,14 @@ def test_message_to_busy_agent_arrives_when_its_turn_ends(repo, provider):
     assert runtime.send_message(SESSION, "human", "supervisor", "sleep 1") == "sent"
     reply = runtime.send_message(SESSION, "human", "supervisor", "hello")
     assert reply.startswith("queued; supervisor is busy")
-    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
+    runtime.send_message(SESSION, "human", "supervisor", "there")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 3, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] sleep 1", "[from human] hello"]
+    # One short line per message, the queued ones in one input.
+    assert inputs("supervisor") == [
+        "[from human] sleep 1",
+        "[from human] hello\n[from human] there",
+    ]
 
 
 def test_spawned_worker_reports_back_to_supervisor(repo):
@@ -85,6 +95,26 @@ def test_spawned_worker_reports_back_to_supervisor(repo):
     assert inputs("w1")[0].startswith("send supervisor finished\n")
     wait_status("w1", state.IDLE)
     wait_status("supervisor", state.IDLE)
+
+
+def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
+    start(repo)
+    report = "send supervisor DONE: work.txt added | Status: DONE\\nFiles: work.txt\\nChecks: ok"
+    runtime.spawn_worker(SESSION, report)
+    line = "[from w1] DONE: work.txt added (#1, 3 lines: call read_messages)"
+    wait_for(lambda: line in inputs("supervisor"), "the report", timeout=20)
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
+    wait_status("supervisor", state.IDLE)
+    supervisor_runs("read")
+    [message] = seen("supervisor")["read"]
+    assert (message["id"], message["from"], message["summary"]) == (1, "w1", "DONE: work.txt added")
+    assert message["body"] == "Status: DONE\nFiles: work.txt\nChecks: ok"
+    assert message_states("supervisor")[0] == state.READ
+    supervisor_runs("read")
+    assert seen("supervisor")["read"] == []
+    log = lado_cli("log", SESSION, "--agent", "w1").stdout.splitlines()
+    at = log.index(next(x for x in log if "w1 → supervisor [read] DONE: work.txt added" in x))
+    assert log[at + 1 : at + 4] == ["    Status: DONE", "    Files: work.txt", "    Checks: ok"]
 
 
 def test_stop_kills_agents_and_keeps_worktrees(repo):
@@ -188,5 +218,4 @@ def test_log_shows_spawns_statuses_and_messages(repo):
     assert lines[0] == "w1: spawned (role worker, provider fake)"
     assert "w1: busy" in lines
     assert "w1: idle" in lines
-    assert "supervisor → w1 [delivered]" in lines
-    assert "    hello w1" in result.stdout.splitlines()
+    assert "supervisor → w1 [delivered] hello w1" in lines

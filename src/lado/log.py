@@ -63,8 +63,8 @@ def show(
 def format_entry(entry: Entry) -> str:
     at = _local_time(entry.created_at)
     if isinstance(entry, state.Message):
-        text = "".join(f"\n    {line}" for line in entry.text.splitlines())
-        return f"{at} {entry.sender} → {entry.recipient} [{entry.state}]{text}"
+        body = "".join(f"\n    {line}" for line in entry.body.splitlines())
+        return f"{at} {entry.sender} → {entry.recipient} [{entry.state}] {entry.title}{body}"
     if entry.kind == state.STATUS:
         return f"{at} {entry.agent}: {entry.detail}"
     detail = f" ({entry.detail})" if entry.detail else ""

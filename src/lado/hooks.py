@@ -10,7 +10,7 @@ import sys
 import traceback
 
 from lado import providers, runtime, state
-from lado.runtime import CONFIRM_TIMEOUT, format_messages
+from lado.runtime import CONFIRM_TIMEOUT, format_message, format_messages
 
 
 def handle(
@@ -23,7 +23,7 @@ def handle(
             state.set_status(session, agent, state.BUSY if current.task else state.IDLE)
     elif event.kind == providers.PROMPT_SUBMIT:
         state.set_status(session, agent, state.BUSY)
-        state.confirm_sent(session, agent, event.prompt)
+        state.confirm_sent(session, agent, event.prompt, format_message)
     elif event.kind == providers.WAITING:
         state.set_status(session, agent, state.WAITING)
     elif event.kind == providers.TURN_END:

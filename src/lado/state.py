@@ -9,12 +9,12 @@ import os
 import sqlite3
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # What happened to an agent, for `lado log`.
 EVENTS = """
@@ -55,13 +55,16 @@ CREATE TABLE IF NOT EXISTS messages (
     session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
     sender TEXT NOT NULL,
     recipient TEXT NOT NULL,
-    text TEXT NOT NULL,
-    state TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | delivered | dropped
+    summary TEXT NOT NULL DEFAULT '',  -- one line; '' in messages from before version 5
+    body TEXT NOT NULL DEFAULT '',  -- the full text, read with read_messages; '' for none
+    state TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | delivered | read | dropped
     sent_at REAL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
 SCHEMA += EVENTS + ";\n"
+
+SUMMARY_LIMIT = 200  # characters in a message summary
 
 # Statements that upgrade a database from the version in the key to the next one.
 MIGRATIONS = {
@@ -74,6 +77,12 @@ MIGRATIONS = {
         "ALTER TABLE sessions ADD COLUMN switched_off TEXT NOT NULL DEFAULT '[]'",
     ],
     3: [EVENTS],
+    # Before version 5 a message was one text, typed in full: a delivered one was read.
+    4: [
+        "ALTER TABLE messages RENAME COLUMN text TO body",
+        "ALTER TABLE messages ADD COLUMN summary TEXT NOT NULL DEFAULT ''",
+        "UPDATE messages SET state = 'read' WHERE state = 'delivered'",
+    ],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -88,6 +97,7 @@ STOPPED = "stopped"
 PENDING = "pending"
 SENT = "sent"
 DELIVERED = "delivered"
+READ = "read"  # its recipient got the body with read_messages
 DROPPED = "dropped"  # its recipient was finished before it got the message
 
 # Event kinds.
@@ -123,10 +133,19 @@ class Session:
 class Message:
     id: int
     sender: str
-    text: str
+    summary: str
+    body: str = ""
     recipient: str = ""
     state: str = ""
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS.SSS"; older rows have whole seconds
+
+    @property
+    def title(self) -> str:
+        """The summary; for a message from before summaries, the first line of its body."""
+        if self.summary:
+            return self.summary
+        first = self.body.strip().split("\n", 1)[0]
+        return first if len(first) <= SUMMARY_LIMIT else first[: SUMMARY_LIMIT - 1] + "…"
 
 
 @dataclass
@@ -294,12 +313,15 @@ def list_events(session: str, after: int = 0) -> list[Event]:
     return [Event(*r) for r in rows]
 
 
-def queue_message(session: str, sender: str, recipient: str, text: str) -> int:
+MESSAGE_COLUMNS = "id, sender, summary, body, recipient, state, created_at"
+
+
+def queue_message(session: str, sender: str, recipient: str, summary: str, body: str = "") -> int:
     with connect() as db:
         cur = db.execute(
-            "INSERT INTO messages (session, sender, recipient, text, created_at)"
-            " VALUES (?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-            (session, sender, recipient, text),
+            "INSERT INTO messages (session, sender, recipient, summary, body, created_at)"
+            " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (session, sender, recipient, summary, body),
         )
         return cur.lastrowid or 0
 
@@ -308,11 +330,27 @@ def list_messages(session: str, after: int = 0) -> list[Message]:
     """The session's messages with an id above `after`, oldest first."""
     with connect() as db:
         rows = db.execute(
-            "SELECT id, sender, text, recipient, state, created_at FROM messages"
-            " WHERE session = ? AND id > ? ORDER BY id",
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND id > ? ORDER BY id",
             (session, after),
         ).fetchall()
     return [Message(*r) for r in rows]
+
+
+def read_messages(session: str, recipient: str) -> list[Message]:
+    """Mark the recipient's delivered messages that have a body read and return them, oldest
+    first. Each one is returned once."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            f"SELECT {MESSAGE_COLUMNS} FROM messages"
+            " WHERE session = ? AND recipient = ? AND state = ? AND body != '' ORDER BY id",
+            (session, recipient, DELIVERED),
+        ).fetchall()
+        db.executemany(
+            "UPDATE messages SET state = ? WHERE id = ?", [(READ, r["id"]) for r in rows]
+        )
+        db.execute("COMMIT")
+    return [Message(*r[:5], READ, r["created_at"]) for r in rows]
 
 
 def take_pending(session: str, recipient: str, mark: str) -> list[Message]:
@@ -323,7 +361,7 @@ def take_pending(session: str, recipient: str, mark: str) -> list[Message]:
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         rows = db.execute(
-            "SELECT id, sender, text FROM messages"
+            f"SELECT {MESSAGE_COLUMNS} FROM messages"
             " WHERE session = ? AND recipient = ? AND state = ? ORDER BY id",
             (session, recipient, PENDING),
         ).fetchall()
@@ -332,17 +370,21 @@ def take_pending(session: str, recipient: str, mark: str) -> list[Message]:
             [(mark, time.time(), r["id"]) for r in rows],
         )
         db.execute("COMMIT")
-    return [Message(r["id"], r["sender"], r["text"]) for r in rows]
+    return [Message(*r[:5], mark, r["created_at"]) for r in rows]
 
 
-def confirm_sent(session: str, recipient: str, prompt: str) -> None:
-    """Mark sent messages whose text is in the prompt the agent just received as delivered."""
+def confirm_sent(
+    session: str, recipient: str, prompt: str, typed: Callable[[Message], str]
+) -> None:
+    """Mark sent messages as delivered whose typed line, `typed(message)`, is in the prompt
+    the agent just received."""
     with connect() as db:
         rows = db.execute(
-            "SELECT id, text FROM messages WHERE session = ? AND recipient = ? AND state = ?",
+            f"SELECT {MESSAGE_COLUMNS} FROM messages"
+            " WHERE session = ? AND recipient = ? AND state = ?",
             (session, recipient, SENT),
         ).fetchall()
-        confirmed = [(DELIVERED, r["id"]) for r in rows if r["text"].strip() in prompt]
+        confirmed = [(DELIVERED, r["id"]) for r in rows if typed(Message(*r)) in prompt]
         db.executemany("UPDATE messages SET state = ? WHERE id = ?", confirmed)
 
 

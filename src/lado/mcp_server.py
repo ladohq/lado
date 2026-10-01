@@ -44,13 +44,33 @@ def build(session: str, agent: str) -> MCPServer:
         ]
 
     @server.tool()
-    def send_message(to: str, text: str) -> str:
+    def send_message(to: str, summary: str, body: str | None = None) -> str:
         """Send a message to another agent in this session, e.g. to="supervisor".
 
-        It is delivered right away if the agent is idle, otherwise when its current turn ends.
+        `summary` is one line (at most 200 characters) and is all the recipient sees at
+        first; put the details in `body`, which it reads with read_messages. It is delivered
+        right away if the agent is idle, otherwise when its current turn ends.
         """
         with _reasons():
-            return runtime.send_message(session, agent, to, text)
+            return runtime.send_message(session, agent, to, summary, body)
+
+    @server.tool()
+    def read_messages() -> list[dict]:
+        """Read the bodies of the messages you got that you have not read yet, oldest first.
+
+        A message with a body arrives as one line ending in "call read_messages". Each body
+        is returned once; with nothing unread the list is empty.
+        """
+        return [
+            {
+                "id": m.id,
+                "from": m.sender,
+                "summary": m.title,
+                "body": m.body,
+                "time": f"{m.created_at} UTC",
+            }
+            for m in state.read_messages(session, agent)
+        ]
 
     me = state.get_agent(session, agent)
     if me and me.name == runtime.SUPERVISOR:

@@ -126,3 +126,60 @@ def test_events_have_sub_second_times_and_go_with_the_session(lado_home):
     assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", event.created_at)
     state.delete_session("s")
     assert state.list_events("s") == []
+
+
+def _schema_v4(lado_home):
+    _schema_v3(lado_home)
+    db = sqlite3.connect(lado_home / "lado.db")
+    for statement in state.MIGRATIONS[3]:
+        db.execute(statement)
+    db.execute("PRAGMA user_version = 4")
+    db.commit()
+    return db
+
+
+def test_version_4_messages_keep_their_text_as_body(lado_home):
+    db = _schema_v4(lado_home)
+    db.execute(
+        "INSERT INTO messages (session, sender, recipient, text, state)"
+        " VALUES ('s', 'w1', 'supervisor', 'done\nall tests pass', 'delivered'),"
+        " ('s', 'w1', 'supervisor', 'later', 'pending')"
+    )
+    db.commit()
+    old, queued = state.list_messages("s")
+    assert (old.summary, old.body, old.state) == ("", "done\nall tests pass", state.READ)
+    assert (queued.summary, queued.body, queued.state) == ("", "later", state.PENDING)
+    # Delivered before 0.7, the full text was typed: nothing left to read.
+    assert state.read_messages("s", "supervisor") == []
+
+
+def test_old_message_gets_a_summary_from_its_first_line():
+    assert state.Message(1, "w1", "", "done\nmore").title == "done"
+    long = state.Message(1, "w1", "", "x" * 300)
+    assert long.title == "x" * 199 + "…"
+    assert state.Message(1, "w1", "now", "details").title == "now"
+
+
+def test_read_messages_returns_unread_bodies_once(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    one = state.queue_message("s", "w1", "supervisor", "done", "the report")
+    state.queue_message("s", "w1", "supervisor", "no body")
+    later = state.queue_message("s", "w2", "supervisor", "blocked", "why")
+    state.queue_message("s", "w1", "w2", "not mine", "body")
+    state.take_pending("s", "supervisor", state.DELIVERED)
+    state.queue_message("s", "w1", "supervisor", "still pending", "body")
+    read = state.read_messages("s", "supervisor")
+    assert [(m.id, m.sender, m.summary, m.body) for m in read] == [
+        (one, "w1", "done", "the report"),
+        (later, "w2", "blocked", "why"),
+    ]
+    assert read[0].created_at
+    assert state.read_messages("s", "supervisor") == []
+    states = {m.summary: m.state for m in state.list_messages("s")}
+    assert states == {
+        "done": state.READ,
+        "no body": state.DELIVERED,
+        "blocked": state.READ,
+        "not mine": state.PENDING,
+        "still pending": state.PENDING,
+    }

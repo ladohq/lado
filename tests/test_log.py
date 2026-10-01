@@ -26,7 +26,7 @@ def session(lado_home):
     state.add_session(state.Session("s", "/r", None))
     state.add_event("s", "w1", state.SPAWNED, "role developer, provider claude")
     _at("events", 1, "2026-10-01 10:00:00.100")
-    state.queue_message("s", "supervisor", "w1", "fix it\nplease")
+    state.queue_message("s", "supervisor", "w1", "fix it", "in a.py\nplease")
     _at("messages", 1, "2026-10-01 10:00:00.200")
     state.add_event("s", "w1", state.STATUS, "busy")
     _at("events", 2, "2026-10-01 10:00:00.300")
@@ -39,13 +39,12 @@ def session(lado_home):
 
 FEED = """\
 10:00:00 w1: spawned (role developer, provider claude)
-10:00:00 supervisor → w1 [pending]
-    fix it
+10:00:00 supervisor → w1 [pending] fix it
+    in a.py
     please
 10:00:00 w1: busy
 10:00:01 supervisor: idle
-10:00:05 w1 → supervisor [pending]
-    done
+10:00:05 w1 → supervisor [pending] done
 """
 
 
@@ -57,19 +56,26 @@ def test_log_prints_events_and_messages_in_time_order(session, capsys):
 def test_log_agent_keeps_its_messages_and_events(session, capsys):
     assert main(["log", session, "--agent", "supervisor"]) == 0
     assert capsys.readouterr().out == (
-        "10:00:00 supervisor → w1 [pending]\n"
-        "    fix it\n"
+        "10:00:00 supervisor → w1 [pending] fix it\n"
+        "    in a.py\n"
         "    please\n"
         "10:00:01 supervisor: idle\n"
-        "10:00:05 w1 → supervisor [pending]\n"
-        "    done\n"
+        "10:00:05 w1 → supervisor [pending] done\n"
     )
 
 
 def test_log_n_shows_the_last_entries(session, capsys):
     assert main(["log", session, "-n", "2"]) == 0
     assert capsys.readouterr().out == (
-        "10:00:01 supervisor: idle\n10:00:05 w1 → supervisor [pending]\n    done\n"
+        "10:00:01 supervisor: idle\n10:00:05 w1 → supervisor [pending] done\n"
+    )
+
+
+def test_message_from_before_summaries_shows_its_first_line_and_body():
+    old = state.Message(1, "w1", "", "done\nall tests pass", "supervisor", state.READ)
+    old.created_at = "2026-10-01 10:00:00.000"
+    assert log.format_entry(old) == (
+        "10:00:00 w1 → supervisor [read] done\n    done\n    all tests pass"
     )
 
 

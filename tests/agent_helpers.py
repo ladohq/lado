@@ -71,13 +71,11 @@ def diagnostics(session: str) -> str:
     log = state.home() / "hooks.log"
     if log.exists():
         out += ["--- hooks.log", log.read_text()]
-    with state.connect() as db:
-        rows = db.execute(
-            "SELECT sender, recipient, state, text FROM messages WHERE session = ? ORDER BY id",
-            (session,),
-        ).fetchall()
     out.append("--- messages")
-    out += [f"{r['sender']} -> {r['recipient']} [{r['state']}] {r['text'][:200]!r}" for r in rows]
+    out += [
+        f"{m.sender} -> {m.recipient} [{m.state}] {m.title!r} {m.body[:200]!r}"
+        for m in state.list_messages(session)
+    ]
     out.append("--- events")
     out += [f"{e.agent}: {e.kind} {e.detail}" for e in state.list_events(session)]
     return "\n".join(out)

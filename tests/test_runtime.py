@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -70,6 +71,24 @@ def test_worker_is_told_a_text_report_is_lost(repo, fake_tmux):
     assert "The supervisor cannot see your screen" in prompt
 
 
+def _prompt(cmd):
+    return cmd[cmd.index("--append-system-prompt") + 1]
+
+
+def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.spawn_worker("s", "task")
+    for _, _, window, _, _, cmd in fake_tmux:
+        prompt = _prompt(cmd)
+        assert "one-line summary" in prompt, window
+        assert "body" in prompt and "call read_messages" in prompt, window
+        assert "last action of your turn" in prompt, window
+        assert "being idle tells" in prompt, window
+    supervisor = _prompt(fake_tmux[0][-1])
+    assert "Do not relay worker or reviewer reports to the human" in supervisor
+    assert "lado log" in supervisor
+
+
 def _hook(event, agent, payload=None):
     """Run a Claude Code hook of agent `agent` in session "s"; returns its decoded output."""
     claude = providers.get("claude")
@@ -101,7 +120,7 @@ def test_typed_message_that_never_arrived_is_delivered_again(repo, fake_tmux, mo
     # A dialog swallowed the text: no UserPromptSubmit, the agent looks busy forever.
     monkeypatch.setattr(runtime, "CONFIRM_TIMEOUT", -1)
     assert runtime.send_message("s", "w1", "supervisor", "ping") == "sent"
-    assert fake_tmux[-1][3] == "[from w1] report\n\n[from w1] ping"
+    assert fake_tmux[-1][3] == "[from w1] report\n[from w1] ping"
 
 
 def test_stop_hook_redelivers_unconfirmed_message(repo, fake_tmux, monkeypatch):
@@ -122,11 +141,37 @@ def test_message_to_busy_agent_arrives_via_stop_hook(repo, fake_tmux):
     out = _hook("Stop", "supervisor")
     assert out == {
         "decision": "block",
-        "reason": "[from w1] done\n\n[from w1] branch lado/s/w1",
+        "reason": "[from w1] done\n[from w1] branch lado/s/w1",
     }
     assert state.get_agent("s", "supervisor").status == state.BUSY
     assert _hook("Stop", "supervisor") is None
     assert state.get_agent("s", "supervisor").status == state.IDLE
+
+
+def test_only_the_summary_is_typed_and_the_body_waits(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    body = "Status: DONE\nFiles: a.py\nChecks: make check green"
+    assert runtime.send_message("s", "w1", "supervisor", "DONE: tests pass", body) == "sent"
+    [message] = state.list_messages("s")
+    line = f"[from w1] DONE: tests pass (#{message.id}, 3 lines: call read_messages)"
+    assert fake_tmux[-1] == ("send_text", "s", "supervisor", line)
+    assert (message.summary, message.body) == ("DONE: tests pass", body)
+    _hook("UserPromptSubmit", "supervisor", {"prompt": line})
+    assert state.list_messages("s")[0].state == state.DELIVERED
+
+
+def test_stop_hook_carries_one_short_line_per_message(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "DONE: added x", "line one\nline two")
+    runtime.send_message("s", "w1", "supervisor", "one more thing", "a single line")
+    first, second = state.list_messages("s")
+    out = _hook("Stop", "supervisor")
+    assert out["reason"] == (
+        f"[from w1] DONE: added x (#{first.id}, 2 lines: call read_messages)\n"
+        f"[from w1] one more thing (#{second.id}, 1 line: call read_messages)"
+    )
 
 
 def test_message_errors(repo, fake_tmux):
@@ -134,7 +179,23 @@ def test_message_errors(repo, fake_tmux):
     with pytest.raises(runtime.LadoError, match="running agents: supervisor, w1"):
         runtime.send_message("s", "w1", "nobody", "hi")
     with pytest.raises(runtime.LadoError, match="write the details to a file"):
-        runtime.send_message("s", "w1", "supervisor", "x" * 9000)
+        runtime.send_message("s", "w1", "supervisor", "done", "x" * 9000)
+
+
+@pytest.mark.parametrize(
+    ("summary", "reason"),
+    [
+        ("", "summary is empty"),
+        ("  ", "summary is empty"),
+        ("done\nall tests pass", "summary must be one line; put the details in body"),
+        ("x" * 201, "summary is 201 characters, the limit is 200; put the details in body"),
+    ],
+)
+def test_summary_must_be_one_short_line(repo, fake_tmux, summary, reason):
+    _session_with_worker(repo)
+    with pytest.raises(runtime.LadoError, match=re.escape(reason)):
+        runtime.send_message("s", "w1", "supervisor", summary, "body")
+    assert state.list_messages("s") == []
 
 
 def test_status_hooks(repo, fake_tmux):

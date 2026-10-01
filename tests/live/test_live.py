@@ -57,13 +57,12 @@ def status(agent: str) -> str:
 
 
 def messages(sender: str, recipient: str) -> list[tuple[str, str]]:
-    with state.connect() as db:
-        rows = db.execute(
-            "SELECT text, state FROM messages "
-            "WHERE session = ? AND sender = ? AND recipient = ? ORDER BY id",
-            (SESSION, sender, recipient),
-        ).fetchall()
-    return [(r["text"], r["state"]) for r in rows]
+    """(summary, state) of each message from `sender` to `recipient`."""
+    return [
+        (m.summary, m.state)
+        for m in state.list_messages(SESSION)
+        if (m.sender, m.recipient) == (sender, recipient)
+    ]
 
 
 def agent_processes(target: str = "") -> set[int]:
@@ -105,7 +104,17 @@ def answer_dialogs(provider: str, session: str, window: str) -> None:
         tmux.run("send-keys", "-t", f"{session}:{window}", "Down", "Enter")
 
 
-def check_log(provider: str) -> None:
+def check_report() -> str:
+    """w1 reported with a one-line summary, which reached the supervisor. The passive
+    supervisor does not call read_messages, so a body stays unread."""
+    report = next(m for m in state.list_messages(SESSION) if m.sender == "w1")
+    print(f"report: {report.summary!r}, body: {report.body!r}")
+    assert report.summary and "\n" not in report.summary
+    assert report.state == state.DELIVERED
+    return report.summary
+
+
+def check_log(provider: str, summary: str) -> None:
     """`lado log` shows w1's spawn, its statuses and its report, in that order."""
     result = subprocess.run(
         [sys.executable, "-m", "lado.cli", "log", SESSION, "--agent", "w1"],
@@ -120,7 +129,7 @@ def check_log(provider: str) -> None:
     assert lines[0].startswith("w1: spawned (role ")
     assert lines[0].endswith(f", provider {provider})")
     assert lines.index("w1: busy") < len(lines) - 1 - lines[::-1].index("w1: idle")
-    assert any(line.startswith("w1 → supervisor [delivered]") for line in lines)
+    assert f"w1 → supervisor [delivered] {summary}" in lines
 
 
 def claude_tools(repo, settings: str, permission_mode: str) -> list[str]:
@@ -181,6 +190,12 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     wait_for(lambda: status("w1") == state.BUSY, "w1 to be busy", 60)
     wait_for(lambda: messages("w1", "supervisor"), "w1's report", 240)
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 60)
+    wait_for(
+        lambda: messages("w1", "supervisor")[0][1] == state.DELIVERED,
+        "w1's report to be delivered",
+        60,
+    )
+    summary = check_report()
 
     hello = runtime.git(str(repo), "show", f"{worker.branch}:hello.txt")
     assert hello.strip() == "OK"
@@ -193,7 +208,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
         60,
     )
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
-    check_log(live_provider)
+    check_log(live_provider, summary)
 
     finish_worker(repo, worker)
 

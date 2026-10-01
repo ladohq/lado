@@ -15,9 +15,36 @@ def _tools(session, agent):
 def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")
-    supervisor_tools = ["finish_worker", "list_agents", "send_message", "spawn_worker"]
+    supervisor_tools = [
+        "finish_worker",
+        "list_agents",
+        "read_messages",
+        "send_message",
+        "spawn_worker",
+    ]
     assert _tools("s", "supervisor") == supervisor_tools
-    assert _tools("s", "w1") == ["list_agents", "send_message"]
+    assert _tools("s", "w1") == ["list_agents", "read_messages", "send_message"]
+
+
+def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.spawn_worker("s", "task")
+    worker = mcp_server.build("s", "w1")
+    report = {"to": "supervisor", "summary": "DONE: x added", "body": "Files: x.py\nChecks: ok"}
+    asyncio.run(worker.call_tool("send_message", report))
+    state.take_pending("s", "supervisor", state.DELIVERED)
+    supervisor = mcp_server.build("s", "supervisor")
+    result = asyncio.run(supervisor.call_tool("read_messages", {}))
+    [message] = result.structured_content["result"]
+    assert message.pop("time")
+    assert message == {
+        "id": 1,
+        "from": "w1",
+        "summary": "DONE: x added",
+        "body": "Files: x.py\nChecks: ok",
+    }
+    again = asyncio.run(supervisor.call_tool("read_messages", {}))
+    assert again.structured_content == {"result": []}
 
 
 def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
@@ -38,7 +65,8 @@ def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
     ("tool", "args", "reason"),
     [
         ("finish_worker", {"name": "supervisor"}, "end the whole session with `lado stop s`"),
-        ("send_message", {"to": "nobody", "text": "hi"}, 'no running agent "nobody"'),
+        ("send_message", {"to": "nobody", "summary": "hi"}, 'no running agent "nobody"'),
+        ("send_message", {"to": "w1", "summary": "a\nb"}, "summary must be one line"),
         ("spawn_worker", {"task": "t", "role": "boss"}, 'no worker role "boss"'),
     ],
 )

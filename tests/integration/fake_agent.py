@@ -4,15 +4,18 @@ Usage: fake_agent.py <config.json> (written by fake_provider.FakeProvider).
 
 It reports its lifecycle through the hooks in the config and works on each input typed or
 pasted into its terminal. Every input line is a command, after an optional "[from <name>] ":
-    send <to> <text>   call the LADO MCP tool send_message
+    send <to> <summary>[ | <body>]  call the LADO MCP tool send_message; "\\n" in the body
+                       is a line break
+    read               call the LADO MCP tool read_messages
     spawn <task>       call the LADO MCP tool spawn_worker
     finish <name> [discard]  call the LADO MCP tool finish_worker
     sleep <seconds>    work that long
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     exit               end the session
 Other lines are ignored. Each input is logged to the config's "inputs" file, and the output
-of `run` to its "seen" file. At start the agent writes what it was given (prompt, skills found
-in its skills folder, MCP servers) to "seen", as a real agent CLI would load them.
+of `run` and the messages from `read` to its "seen" file. At start the agent writes what it
+was given (prompt, skills found in its skills folder, MCP servers) to "seen", as a real agent
+CLI would load them.
 """
 
 import asyncio
@@ -62,8 +65,9 @@ def run_skill_file(skill: str, file: str) -> None:
     report(run={"file": f"{skill}/{file}", "output": result.stdout.strip()})
 
 
-def call_tool(name: str, arguments: dict) -> None:
-    """Call a tool of the LADO MCP server, started over stdio like an agent CLI does."""
+def call_tool(name: str, arguments: dict):
+    """Call a tool of the LADO MCP server, started over stdio like an agent CLI does.
+    Returns its structured result."""
     mcp = config["mcp"]["lado"]
     server = StdioServerParameters(
         command=mcp["command"][0], args=mcp["command"][1:], env=mcp["env"]
@@ -75,6 +79,15 @@ def call_tool(name: str, arguments: dict) -> None:
 
     result = asyncio.run(call())
     print(f"{name}: {result.content}", flush=True)
+    return (result.structured_content or {}).get("result")
+
+
+def send(to: str, text: str) -> None:
+    summary, _, body = text.partition(" | ")
+    arguments = {"to": to, "summary": summary}
+    if body:
+        arguments["body"] = body.replace("\\n", "\n")
+    call_tool("send_message", arguments)
 
 
 def read_input() -> str | None:
@@ -106,7 +119,9 @@ def work(text: str) -> bool:
         if command[0] == "sleep":
             time.sleep(float(command[1]))
         elif command[0] == "send":
-            call_tool("send_message", {"to": command[1], "text": command[2]})
+            send(command[1], command[2])
+        elif command[0] == "read":
+            report(read=call_tool("read_messages", {}))
         elif command[0] == "run":
             run_skill_file(command[1], command[2])
         elif command[0] == "spawn":

@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from lado import __version__, doctor, kits, providers, runtime, sources, state, tmux
+from lado import __version__, doctor, kits, log, providers, runtime, sources, state, tmux
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -160,6 +160,11 @@ def cmd_ls(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_log(args: argparse.Namespace) -> int:
+    log.show(args.session, args.agent, args.n, args.follow)
+    return 0
+
+
 def cmd_attach(args: argparse.Namespace) -> int:
     name = args.name
     if name is None:
@@ -272,6 +277,15 @@ def main(argv: list[str] | None = None) -> int:
     remove.set_defaults(func=cmd_sources_remove)
 
     commands.add_parser("ls", help="list sessions and agents").set_defaults(func=cmd_ls)
+
+    log_cmd = commands.add_parser("log", help="show a session's messages and agent events")
+    log_cmd.add_argument("session")
+    log_cmd.add_argument("--agent", help="only lines where this agent sends, gets or acts")
+    log_cmd.add_argument("-n", type=int, metavar="N", help="show only the last N entries")
+    log_cmd.add_argument(
+        "-f", "--follow", action="store_true", help="keep printing new entries until Ctrl-C"
+    )
+    log_cmd.set_defaults(func=cmd_log)
 
     attach = commands.add_parser("attach", help="attach to a session's tmux windows")
     attach.add_argument("name", nargs="?")

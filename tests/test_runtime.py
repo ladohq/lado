@@ -289,3 +289,12 @@ def test_git_exclude_keeps_project_kits_visible(repo, fake_tmux, team_kit):
     assert "worktrees" not in status.stdout
     runtime.spawn_worker("s", "t")
     assert exclude.read_text() == "# mine\n/.lado/worktrees/\n"
+
+
+def test_start_and_spawn_record_spawned_events(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, "kilo")
+    runtime.spawn_worker("s", "task", provider="claude")
+    assert [(e.agent, e.kind, e.detail) for e in state.list_events("s")] == [
+        ("supervisor", "spawned", "role supervisor, provider kilo"),
+        ("w1", "spawned", "role worker, provider claude"),
+    ]

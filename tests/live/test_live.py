@@ -1,5 +1,6 @@
-"""One short scenario per real agent CLI: a worker does a tiny task, reports, gets a message
-and is finished after its branch is merged."""
+"""Two short scenarios per real agent CLI: a worker does a tiny task, reports, gets a message
+and is finished after its branch is merged; and a flow run's worker does its step and
+reports the outcome, which ends the run."""
 
 import json
 import os
@@ -10,7 +11,7 @@ import time
 import agent_helpers
 import pytest
 
-from lado import providers, runtime, state, tmux
+from lado import providers, runs, runtime, state, tmux
 from lado.providers import base
 
 pytestmark = pytest.mark.live
@@ -41,13 +42,51 @@ git commands, no file edits.
 """
 
 
+# One worker step, then the end. The test plays the supervisor's part (start the run, spawn
+# its worker) itself; the worker reports the outcome with flow_advance.
+TINY_FLOW = """\
+name: tiny
+description: One worker step, then the end; for the live test.
+start: step
+states:
+  step:
+    agent: worker
+    do: >-
+      Create a file flow.txt containing exactly OK and commit it on your branch. Then call
+      flow_advance with the outcome done. Do nothing else.
+    outcomes: {done: end}
+  end:
+    end: true
+"""
+
+
 def passive_kit(repo) -> str:
-    """A project kit: the default kit's worker with a supervisor that does nothing."""
+    """A project kit: the default kit's worker with a supervisor that does nothing, and the
+    flow `tiny`."""
     kit = repo / ".lado" / "kits" / "live"
     (kit / "agents").mkdir(parents=True)
+    (kit / "flows").mkdir()
     (kit / "kit.yaml").write_text("name: live\ninclude: [default]\n")
     (kit / "agents" / "passive.md").write_text(PASSIVE_SUPERVISOR)
+    (kit / "flows" / "tiny.yaml").write_text(TINY_FLOW)
     return kit.name
+
+
+def start_session(repo, provider: str) -> None:
+    """Start the session with the passive supervisor and wait until it is idle."""
+    kit = passive_kit(repo)
+    runtime.start_session(
+        str(repo), SESSION, "bypassPermissions", provider, [kit], ["agent:supervisor"]
+    )
+    assert state.get_agent(SESSION, "supervisor").role == "passive"
+
+    def supervisor_idle() -> bool:
+        if status("supervisor") == state.IDLE:
+            return True
+        answer_dialogs(provider, SESSION, "supervisor")
+        return False
+
+    wait_for(supervisor_idle, "the supervisor to be idle", 60)
 
 
 def wait_for(check, what: str, timeout: float):
@@ -179,19 +218,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     repo = live_repo
     started = time.monotonic()
     version = cli_version(live_provider)
-    kit = passive_kit(repo)
-    runtime.start_session(
-        str(repo), SESSION, "bypassPermissions", live_provider, [kit], ["agent:supervisor"]
-    )
-    assert state.get_agent(SESSION, "supervisor").role == "passive"
-
-    def supervisor_idle() -> bool:
-        if status("supervisor") == state.IDLE:
-            return True
-        answer_dialogs(live_provider, SESSION, "supervisor")
-        return False
-
-    wait_for(supervisor_idle, "the supervisor to be idle", 60)
+    start_session(repo, live_provider)
 
     worker = runtime.spawn_worker(SESSION, TASK, name="w1")
     wait_for(lambda: status("w1") == state.BUSY, "w1 to be busy", 60)
@@ -293,3 +320,48 @@ def check_gone(processes: set[int], after: str) -> None:
             text=True,
         )
         pytest.fail(f"processes left after {after}:\n{ps.stdout}")
+
+
+def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
+    """The run's worker gets its step as its task, does it and reports the outcome with
+    flow_advance; the run ends. Its branch is not merged yet, so LADO keeps the worktree,
+    the branch and the worker and tells the supervisor; finishing the worker after the
+    merge removes them."""
+    repo = live_repo
+    started = time.monotonic()
+    start_session(repo, live_provider)
+
+    run = runs.start(SESSION, "tiny", "Add flow.txt for the live test.")
+    worker = runs.spawn_worker(SESSION, run.name, name="w1")
+    assert worker.task.startswith(f"Run {run.name} (flow tiny), step step.")
+    assert worker.cwd == run.worktree
+
+    ended = wait_for(
+        lambda: (r := state.get_run(SESSION, run.name)).status == state.ENDED and r,
+        "the run to end",
+        240,
+    )
+    assert ended.state == "end"
+    moves = [(e.agent, e.detail) for e in state.list_events(SESSION) if e.kind == state.FLOW]
+    assert moves == [("w1", "step -done-> end")]
+    assert runtime.git(str(repo), "show", f"{run.branch}:flow.txt").strip() == "OK"
+    kept = f"flow {run.name}: ended at end; kept its worktree and branch"
+    assert kept in [summary for summary, _ in messages(state.LADO, "supervisor")]
+    assert state.get_agent(SESSION, "w1") is not None
+    wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 120)
+
+    # The human merges; finishing the run's last worker takes the worktree and branch.
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    processes = agent_processes(f"{SESSION}:w1")
+    runtime.finish_worker(SESSION, "w1")
+    assert not os.path.exists(run.worktree)
+    assert runtime.git(str(repo), "branch", "--list", run.branch) == ""
+    assert state.get_agent(SESSION, "w1") is None
+    check_gone(processes, "finish_worker")
+
+    processes = agent_processes()
+    runtime.stop_session(SESSION)
+    check_gone(processes, "stop")
+    hooks_log = state.home() / "hooks.log"
+    assert not hooks_log.exists(), hooks_log.read_text()
+    print(f"{live_provider} flow: {time.monotonic() - started:.0f}s")

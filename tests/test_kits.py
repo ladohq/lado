@@ -34,7 +34,9 @@ def test_builtin_default_kit():
     assert env.supervisor().name == "supervisor"
     assert [a.name for a in env.roles()] == ["worker"]
     assert env.worker_role(None).name == "worker"
-    assert "merge it into your branch" in env.supervisor().body
+    gate = " ".join(env.supervisor().body.split())
+    assert "Wait for the human's explicit OK before you merge it and call finish_worker" in gate
+    assert "Without that OK, do not merge or finish the worker." in gate
     assert env.kits[0].where == "built-in"
 
 

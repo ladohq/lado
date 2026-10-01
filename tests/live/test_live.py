@@ -20,8 +20,13 @@ TASK = (
     "Create a file hello.txt containing exactly OK, commit it on your branch, "
     "then report to the supervisor with send_message. Do nothing else."
 )
+RECEIVED = (state.DELIVERED, state.READ)
 CLAUDE_TRUST = "Yes, I trust this folder"
-FOLLOW_UP = "Thanks, nothing more to do. Reply with the single word ACK and do not use any tools."
+# The follow-up has a body, so w1 must call read_messages to get it.
+FOLLOW_UP = "Thanks, one last note for you"
+FOLLOW_UP_BODY = (
+    "Nothing more to do. Reply with the single word ACK and do not use any other tools."
+)
 # The test merges and finishes w1 itself, so the supervisor must not: the default
 # supervisor role merges what a worker reports and may then finish the worker.
 PASSIVE_SUPERVISOR = """\
@@ -106,11 +111,11 @@ def answer_dialogs(provider: str, session: str, window: str) -> None:
 
 def check_report() -> str:
     """w1 reported with a one-line summary, which reached the supervisor. The passive
-    supervisor does not call read_messages, so a body stays unread."""
+    supervisor may or may not read the body."""
     report = next(m for m in state.list_messages(SESSION) if m.sender == "w1")
-    print(f"report: {report.summary!r}, body: {report.body!r}")
+    print(f"report: {report.summary!r}, body: {report.body!r}, {report.state}")
     assert report.summary and "\n" not in report.summary
-    assert report.state == state.DELIVERED
+    assert report.state in RECEIVED
     return report.summary
 
 
@@ -129,7 +134,9 @@ def check_log(provider: str, summary: str) -> None:
     assert lines[0].startswith("w1: spawned (role ")
     assert lines[0].endswith(f", provider {provider})")
     assert lines.index("w1: busy") < len(lines) - 1 - lines[::-1].index("w1: idle")
-    assert f"w1 → supervisor [delivered] {summary}" in lines
+    assert any(f"w1 → supervisor [{s}] {summary}" in lines for s in RECEIVED)
+    assert f"supervisor → w1 [read] {FOLLOW_UP}" in lines
+    assert f"    {FOLLOW_UP_BODY}" in result.stdout.splitlines()
 
 
 def claude_tools(repo, settings: str, permission_mode: str) -> list[str]:
@@ -191,7 +198,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     wait_for(lambda: messages("w1", "supervisor"), "w1's report", 240)
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 60)
     wait_for(
-        lambda: messages("w1", "supervisor")[0][1] == state.DELIVERED,
+        lambda: messages("w1", "supervisor")[0][1] in RECEIVED,
         "w1's report to be delivered",
         60,
     )
@@ -201,11 +208,11 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     assert hello.strip() == "OK"
     check_agent_config(live_provider, repo, worker)
 
-    runtime.send_message(SESSION, "supervisor", "w1", FOLLOW_UP)
+    runtime.send_message(SESSION, "supervisor", "w1", FOLLOW_UP, FOLLOW_UP_BODY)
     wait_for(
-        lambda: (FOLLOW_UP, state.DELIVERED) in messages("supervisor", "w1"),
-        "the follow-up to be delivered",
-        60,
+        lambda: (FOLLOW_UP, state.READ) in messages("supervisor", "w1"),
+        "w1 to read the follow-up with read_messages",
+        120,
     )
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
     check_log(live_provider, summary)

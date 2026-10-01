@@ -155,6 +155,7 @@ def test_version_4_messages_keep_their_text_as_body(lado_home):
 
 def test_old_message_gets_a_summary_from_its_first_line():
     assert state.Message(1, "w1", "", "done\nmore").title == "done"
+    assert state.Message(1, "w1", "", "done \t\nmore").title == "done"
     long = state.Message(1, "w1", "", "x" * 300)
     assert long.title == "x" * 199 + "…"
     assert state.Message(1, "w1", "now", "details").title == "now"

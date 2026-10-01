@@ -144,7 +144,7 @@ class Message:
         """The summary; for a message from before summaries, the first line of its body."""
         if self.summary:
             return self.summary
-        first = self.body.strip().split("\n", 1)[0]
+        first = self.body.strip().split("\n", 1)[0].rstrip()
         return first if len(first) <= SUMMARY_LIMIT else first[: SUMMARY_LIMIT - 1] + "…"
 
 

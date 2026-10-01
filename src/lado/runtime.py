@@ -6,6 +6,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 
 import re
 import subprocess
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -232,6 +233,7 @@ def send_message(
 
     A busy recipient gets it from its turn-end hook when its current turn ends (see lado.hooks).
     """
+    summary = summary.strip()
     _check_summary(summary)
     body = body or ""
     if len(body) > MAX_MESSAGE:
@@ -266,10 +268,16 @@ def deliver_pending(session: str, recipient: str) -> bool:
 
 
 def _check_summary(summary: str) -> None:
-    if not summary.strip():
+    """Refuse a summary that cannot be typed as one line. It must be stripped already: the
+    agent CLI trims what is typed, and the typed line must match the prompt it confirms."""
+    if not summary:
         raise LadoError("summary is empty; say in one line what the message is about")
-    if "\n" in summary or "\r" in summary:
+    if len(summary.splitlines()) > 1:
         raise LadoError("summary must be one line; put the details in body")
+    if any(unicodedata.category(c) == "Cc" for c in summary):
+        raise LadoError(
+            "summary must be one line without control characters; put the details in body"
+        )
     if len(summary) > state.SUMMARY_LIMIT:
         raise LadoError(
             f"summary is {len(summary)} characters, the limit is {state.SUMMARY_LIMIT}; "

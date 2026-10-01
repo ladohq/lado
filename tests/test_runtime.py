@@ -161,6 +161,15 @@ def test_only_the_summary_is_typed_and_the_body_waits(repo, fake_tmux):
     assert state.list_messages("s")[0].state == state.DELIVERED
 
 
+def test_summary_is_stripped_so_a_trimmed_prompt_confirms_it(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    runtime.send_message("s", "w1", "supervisor", " done \t")
+    assert fake_tmux[-1][3] == "[from w1] done"
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "[from w1] done"})
+    assert state.list_messages("s")[0].state == state.DELIVERED
+
+
 def test_stop_hook_carries_one_short_line_per_message(repo, fake_tmux):
     _session_with_worker(repo)
     _hook("UserPromptSubmit", "supervisor")
@@ -188,6 +197,9 @@ def test_message_errors(repo, fake_tmux):
         ("", "summary is empty"),
         ("  ", "summary is empty"),
         ("done\nall tests pass", "summary must be one line; put the details in body"),
+        ("done\tall", "summary must be one line without control characters"),
+        ("done\x1b[31m", "summary must be one line without control characters"),
+        ("done all", "summary must be one line"),
         ("x" * 201, "summary is 201 characters, the limit is 200; put the details in body"),
     ],
 )

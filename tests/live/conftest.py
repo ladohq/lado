@@ -44,10 +44,12 @@ def with_model(provider_class: type[base.Provider], model: str) -> base.Provider
     class WithModel(provider_class):
         def launch_command(self, *args, **kwargs) -> base.Launch:
             launch = super().launch_command(*args, **kwargs)
-            argv = [launch.argv[0], "--model", model, *launch.argv[1:]]
+            argv = [launch.argv[0], "--model", self.model, *launch.argv[1:]]
             return base.Launch(argv, launch.env)
 
-    return WithModel()
+    provider = WithModel()
+    provider.model = model  # also for checks that run the CLI themselves
+    return provider
 
 
 def _claude_unusable() -> str | None:

@@ -123,11 +123,13 @@ def check_log(provider: str) -> None:
     assert any(line.startswith("w1 → supervisor [delivered]") for line in lines)
 
 
-def claude_tools(repo, settings: str) -> list[str]:
+def claude_tools(repo, settings: str, permission_mode: str) -> list[str]:
     """The tools a Claude Code agent with these settings sees, from the CLI's init event."""
-    cmd = ["claude", "-p", "Reply OK.", "--settings", settings]
-    cmd += ["--output-format", "stream-json", "--verbose"]
-    with subprocess.Popen(cmd, cwd=repo, stdout=subprocess.PIPE, text=True) as proc:
+    model = providers.get("claude").model  # the test model, see conftest.with_model
+    cmd = ["claude", "-p", "Reply OK.", "--settings", settings, "--model", model]
+    cmd += ["--permission-mode", permission_mode, "--output-format", "stream-json", "--verbose"]
+    out, no_input = subprocess.PIPE, subprocess.DEVNULL
+    with subprocess.Popen(cmd, cwd=repo, stdin=no_input, stdout=out, text=True) as proc:
         try:
             for line in proc.stdout:
                 event = json.loads(line)
@@ -146,7 +148,8 @@ def check_agent_config(provider: str, repo, worker: state.Agent) -> None:
         settings = json.loads((base.config_dir(worker) / "settings.json").read_text())
         probe = repo.parent / "probe-settings.json"
         probe.write_text(json.dumps({"permissions": settings["permissions"]}))
-        tools = claude_tools(repo, str(probe))
+        mode = state.get_session(SESSION).permission_mode
+        tools = claude_tools(repo, str(probe), mode)
         assert "Read" in tools
         assert not {"SendMessage", "ListAgents"} & set(tools), tools
 

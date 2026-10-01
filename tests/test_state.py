@@ -364,11 +364,13 @@ def test_the_gate_closes_with_the_runs_next_write(lado_home):
     run, gate = _waiting(lado_home)
     after = dataclasses.replace(run, state="design", status=state.ACTIVE)
     stale = dataclasses.replace(run, state="other")
-    assert not state.update_run(stale, after, [], closes=("human", "approve", "fine"))
+    answer = ("human", "approve", "fine", gate.id)
+    assert not state.update_run(stale, after, [], closes=answer)
     assert state.get_gate(gate.id).answer is None
-    assert state.update_run(
-        run, after, [("human", state.FLOW, "on")], closes=("human", "approve", "fine")
-    )
+    # An answer to a gate that is not the open one writes nothing.
+    assert not state.update_run(run, after, [], closes=("human", "approve", "", gate.id + 1))
+    assert state.get_run("s", "feature/x").state == "design_ok"
+    assert state.update_run(run, after, [("human", state.FLOW, "on")], closes=answer)
     closed = state.get_gate(gate.id)
     assert (closed.answer, closed.comment, closed.answered_by) == ("approve", "fine", "human")
     assert closed.answered_at
@@ -379,6 +381,10 @@ def test_the_gate_closes_with_the_runs_next_write(lado_home):
         ("human", state.GATE_ANSWER, f"#{gate.id} approve: fine"),
         ("human", state.FLOW, "on"),
     ]
+    # Answering it again writes nothing; an override closes whatever is open, if anything.
+    again = dataclasses.replace(after, state="design_ok", status=state.WAITING)
+    assert not state.update_run(after, again, [], closes=answer)
+    assert state.update_run(after, again, [], closes=("human", "overridden", "x", None))
 
 
 def test_a_new_run_can_start_at_a_gate_and_gates_go_with_their_session(lado_home):

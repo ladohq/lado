@@ -367,6 +367,18 @@ def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, mo
     assert [g.id for g in state.open_gates()] == [1]
 
 
+def test_answer_that_failed_exits_non_zero(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+
+    def refused(*args):
+        raise runtime.LadoError("gate #1 is closed already: approve by human")
+
+    monkeypatch.setattr(runs, "answer", refused)
+    _typing(monkeypatch, "1", "")
+    assert main(["answer"]) == 1
+    assert "lado: gate #1 is closed already" in capsys.readouterr().out
+
+
 def test_answer_names_a_gate_and_goes_on_with_its_session(repo, fake_tmux, capsys, monkeypatch):
     _at_gate(repo, capsys)
     _typing(monkeypatch)

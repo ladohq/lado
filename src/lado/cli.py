@@ -217,28 +217,29 @@ def cmd_answer(args: argparse.Namespace) -> int:
             first = None
     else:
         first = None
-    session, answered = args.session, False
+    session, answered, failed = args.session, False, 0
     while True:
         gates = [first] if first else state.open_gates(session)
         first = None
         if not gates:
             print("No more open gates." if answered else "No open gates.")
-            return 0
+            return failed
         gate = gates[0] if len(gates) == 1 else _pick(gates)
         if gate is None:
-            return 0
+            return failed
         option = _choose(gate)
         comment, args.comment = args.comment, None  # -m is for the first answer only
         if option is not None and comment is None:
             comment = _input("Comment for the next step (Enter for none): ")
         if option is None or comment is None:
             print(f"Gate #{gate.id} stays open.")
-            return 0
+            return failed
         try:
             _answer(gate.session, str(gate.id), option, comment)
             answered = True
         except runtime.LadoError as exc:
             print(f"lado: {exc}")
+            failed = 1
             first = gate if state.get_gate(gate.id).answer is None else None
         # Then the session's other open gates: a popup asks about them all.
         session = gate.session

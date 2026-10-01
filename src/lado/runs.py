@@ -29,7 +29,7 @@ SLUG_LENGTH = 30
 
 # What the human can answer at a gate. An approval gate's options name its outcomes.
 LOOP = "loop"  # the kind of gate a loop limit opens
-APPROVE = {"approve": "approved", "reject": "rejected"}
+APPROVE = dict(zip(("approve", "reject"), flows.APPROVAL, strict=True))  # option -> outcome
 CONTINUE, CANCEL = "continue", "cancel"
 
 Events = list[tuple[str, str, str]]  # (actor, kind, detail)
@@ -122,7 +122,7 @@ def answer(
     run = _run(session, found.run)
     word = canonical_option(found, option)
     comment = (comment or "").strip()
-    closes = (by, word, comment)
+    closes = (by, word, comment, found.id)  # nothing is written unless it is still open
     if found.kind == LOOP and word == CANCEL:
         _cancel(run, f"loop limit: {comment}" if comment else "loop limit", by, closes)
         _tell_supervisor(run, f"cancelled by the human at {found.state} (loop limit)", comment)
@@ -207,7 +207,7 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     noted = dataclasses.replace(run, note=f"set by the human: {reason}"[:NOTE_LIMIT], note_body="")
     after, events, gate = _enter(noted, flow, target, limit=False)
     forced = (HUMAN, state.FLOW_SET, f"{run.state} -> {target}: {reason}")
-    closes = (HUMAN, "overridden", reason)
+    closes = (HUMAN, "overridden", reason, None)
     return _commit(run, after, [forced, *events], flow, HUMAN, gate, closes)
 
 
@@ -218,13 +218,13 @@ def cancel(session: str, run_name: str, reason: str) -> list[runtime.Finished]:
     if run.status not in state.OPEN:
         raise LadoError(f'run "{run.name}" is {run.status} already')
     reason = reason.strip() or "no reason given"
-    return _cancel(run, reason, SUPERVISOR, (SUPERVISOR, "cancelled", reason))
+    return _cancel(run, reason, SUPERVISOR, (SUPERVISOR, "cancelled", reason, None))
 
 
 def _cancel(run: state.Run, reason: str, by: str, closes: state.Close) -> list[runtime.Finished]:
     after = dataclasses.replace(run, status=state.CANCELLED, reason=reason)
     if not state.update_run(run, after, [(by, state.FLOW_CANCEL, reason)], closes=closes):
-        raise LadoError(f'run "{run.name}" changed meanwhile; see flow_status')
+        raise _changed(run, closes)
     return [runtime.close_worker(run.session, w, "run cancelled") for w in _workers(after)]
 
 
@@ -358,9 +358,17 @@ def _commit(
     closes: state.Close | None = None,
 ) -> state.Run:
     if not state.update_run(before, after, events, opens, closes):
-        raise LadoError(f'run "{before.name}" changed meanwhile; see flow_status')
+        raise _changed(before, closes)
     _arrived(after, flow, caller)
     return after
+
+
+def _changed(run: state.Run, closes: state.Close | None) -> LadoError:
+    """Why a write was refused: the gate it answers was answered first, or the run moved."""
+    gate = state.get_gate(closes[3]) if closes and closes[3] else None
+    if gate and gate.answer is not None:
+        return LadoError(f"gate #{gate.id} is closed already: {gate.answer} by {gate.answered_by}")
+    return LadoError(f'run "{run.name}" changed meanwhile; see flow_status')
 
 
 def _arrived(run: state.Run, flow: flows.Flow, caller: str) -> None:

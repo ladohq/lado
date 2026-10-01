@@ -425,6 +425,35 @@ def test_answer_errors(session):
         runs.answer(session, "feature/login", "approve")
 
 
+@pytest.mark.parametrize("answers", [("reject", "approve"), ("continue", "cancel")])
+def test_an_answer_that_lost_a_race_is_refused(session, monkeypatch, answers):
+    """Two popups, or a popup and the CLI: the second answer was read before the first
+    one moved the run on."""
+    first, second = answers
+    to_gate(session) if first == "reject" else to_loop_limit(session)
+    find_gate = runs.find_gate
+
+    def answered_meanwhile(session, ref):
+        gate = find_gate(session, ref)
+        monkeypatch.setattr(runs, "find_gate", find_gate)
+        runs.answer(session, ref, first)
+        return gate
+
+    monkeypatch.setattr(runs, "find_gate", answered_meanwhile)
+    moved = state.get_run(session, "feature/login")
+    with pytest.raises(runtime.LadoError, match=f"gate #1 is closed already: {first} by human"):
+        runs.answer(session, "1", second)
+    run = state.get_run(session, "feature/login")
+    assert (run.state, run.status, run.visits) != (moved.state, moved.status, moved.visits)
+    flow = [
+        e.detail for e in state.list_events(session) if e.kind in (state.FLOW, state.FLOW_CANCEL)
+    ]
+    assert flow[-1] == (
+        "gated -rejected-> implement" if first == "reject" else "review -continue-> review"
+    )
+    assert state.get_gate(1).answer == first
+
+
 def test_cancelling_a_waiting_run_closes_its_gate(session):
     to_gate(session)
     runs.cancel(session, "feature/login", "dropped")

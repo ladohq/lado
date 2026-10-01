@@ -265,7 +265,9 @@ class Gate:
     answered_at: str | None = None
 
 
-Close = tuple[str, str, str]  # who closes a run's open gate, the answer and a comment
+# Who closes a run's open gate, the answer, a comment, and the id of the gate that must be
+# the open one (an answer), or None to close whichever is open, if any (an override).
+Close = tuple[str, str, str, int | None]
 
 
 def home() -> Path:
@@ -495,8 +497,9 @@ def update_run(
     """Write `after` and the events (actor, kind, detail) in one transaction, but only if
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
-    was written. In the same transaction `closes` closes the run's open gate, and the
-    gate `opens` is stored (its id set)."""
+    was written. In the same transaction `closes` closes the run's open gate (nothing is
+    written if it names a gate that is not open), and the gate `opens` is stored (its id
+    set)."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -517,9 +520,10 @@ def update_run(
                 json.dumps(before.visits),
             ),
         )
+        if cur.rowcount and closes and not _close_gate(db, before.session, before.name, *closes):
+            db.execute("ROLLBACK")
+            return False
         if cur.rowcount:
-            if closes:
-                _close_gate(db, before.session, before.name, *closes)
             for actor, kind, detail in events:
                 _add_event(db, before.session, actor, kind, detail, before.name)
             if opens:
@@ -549,13 +553,20 @@ def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:
 
 
 def _close_gate(
-    db: sqlite3.Connection, session: str, run: str, actor: str, answer: str, comment: str
-) -> None:
+    db: sqlite3.Connection,
+    session: str,
+    run: str,
+    actor: str,
+    answer: str,
+    comment: str,
+    gate_id: int | None,
+) -> bool:
+    """Close the run's open gate. Returns False if `gate_id` is given and is not it."""
     row = db.execute(
         "SELECT id FROM gates WHERE session = ? AND run = ? AND answer IS NULL", (session, run)
     ).fetchone()
-    if row is None:
-        return
+    if row is None or (gate_id is not None and row["id"] != gate_id):
+        return gate_id is None
     db.execute(
         "UPDATE gates SET answer = ?, comment = ?, answered_by = ?,"
         " answered_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
@@ -563,6 +574,7 @@ def _close_gate(
     )
     detail = f"#{row['id']} {answer}" + (f": {comment}" if comment else "")
     _add_event(db, session, actor, GATE_ANSWER, detail, run)
+    return True
 
 
 def get_gate(gate_id: int) -> Gate | None:

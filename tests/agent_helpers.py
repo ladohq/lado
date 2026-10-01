@@ -78,4 +78,6 @@ def diagnostics(session: str) -> str:
         ).fetchall()
     out.append("--- messages")
     out += [f"{r['sender']} -> {r['recipient']} [{r['state']}] {r['text'][:200]!r}" for r in rows]
+    out.append("--- events")
+    out += [f"{e.agent}: {e.kind} {e.detail}" for e in state.list_events(session)]
     return "\n".join(out)

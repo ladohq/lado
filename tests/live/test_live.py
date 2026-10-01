@@ -20,6 +20,27 @@ TASK = (
 )
 CLAUDE_TRUST = "Yes, I trust this folder"
 FOLLOW_UP = "Thanks, nothing more to do. Reply with the single word ACK and do not use any tools."
+# The test merges and finishes w1 itself, so the supervisor must not: the default
+# supervisor role merges what a worker reports and may then finish the worker.
+PASSIVE_SUPERVISOR = """\
+---
+name: passive
+description: Only acknowledges messages; for the live test.
+supervisor: true
+---
+You are a passive supervisor in an automated test. When a message arrives, reply with the
+single word ACK. Never use any tool: no spawn_worker, finish_worker or send_message, no
+git commands, no file edits.
+"""
+
+
+def passive_kit(repo) -> str:
+    """A project kit: the default kit's worker with a supervisor that does nothing."""
+    kit = repo / ".lado" / "kits" / "live"
+    (kit / "agents").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: live\ninclude: [default]\n")
+    (kit / "agents" / "passive.md").write_text(PASSIVE_SUPERVISOR)
+    return kit.name
 
 
 def wait_for(check, what: str, timeout: float):
@@ -27,7 +48,10 @@ def wait_for(check, what: str, timeout: float):
 
 
 def status(agent: str) -> str:
-    return state.get_agent(SESSION, agent).status
+    current = state.get_agent(SESSION, agent)
+    if current is None:
+        pytest.fail(f"agent {agent} is gone\n{agent_helpers.diagnostics(SESSION)}")
+    return current.status
 
 
 def messages(sender: str, recipient: str) -> list[tuple[str, str]]:
@@ -100,7 +124,11 @@ def check_log(provider: str) -> None:
 def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider):
     repo = live_repo
     started = time.monotonic()
-    runtime.start_session(str(repo), SESSION, "bypassPermissions", live_provider)
+    kit = passive_kit(repo)
+    runtime.start_session(
+        str(repo), SESSION, "bypassPermissions", live_provider, [kit], ["agent:supervisor"]
+    )
+    assert state.get_agent(SESSION, "supervisor").role == "passive"
 
     def supervisor_idle() -> bool:
         if status("supervisor") == state.IDLE:

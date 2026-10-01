@@ -48,6 +48,10 @@ tag against the package version and publishes to PyPI.
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`; `LADO_TMUX_SOCKET` overrides
     the socket name and is passed on to agents).
+  - `kits.py`: kits (agent roles, skills, MCP servers): lookup, `include`, `--without`,
+    validation. A provider gets an `AgentSpec` (prompt, skill folders, MCP servers), never
+    the kit itself. `builtin_kits/`: kits shipped with LADO (`default`: supervisor + worker).
+    LADO's own instructions to agents stay in `runtime.py` and are appended to the role.
   - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).

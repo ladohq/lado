@@ -36,24 +36,35 @@ class FakeProvider(base.Provider):
     def __init__(self, name: str, deliver_on_turn_end: bool):
         self.name = name
         self.capabilities = base.Capabilities(
-            status_events=True, permission_event=False, deliver_on_turn_end=deliver_on_turn_end
+            status_events=True,
+            permission_event=False,
+            deliver_on_turn_end=deliver_on_turn_end,
+            skills=True,
         )
 
     def launch_command(
         self,
         agent: state.Agent,
         session: state.Session,
-        prompt: str,
+        spec: base.AgentSpec,
         first_message: str | None = None,
     ) -> base.Launch:
         config_dir = base.config_dir(agent)
         hook = ["--session", agent.session, "--agent", agent.name, "--instance", agent.instance]
+        # The LADO MCP server has to know the fake providers too.
+        lado = base.McpServer(lado_command("mcp"), spec.mcp["lado"].env)
         config = {
             "hooks": {e: lado_command("hook", e, *hook) for e in EVENTS},
-            "mcp": {"command": lado_command("mcp"), "env": base.agent_env(agent)},
+            "prompt": spec.prompt,
+            "skills": str(base.link_skills(config_dir / "skills", spec.skills)),
+            "mcp": {
+                name: {"command": s.command, "env": s.env}
+                for name, s in {**spec.mcp, "lado": lado}.items()
+            },
             "continue_on_turn_end": self.capabilities.deliver_on_turn_end,
             "first_message": first_message,
             "inputs": str(config_dir / "inputs.jsonl"),
+            "seen": str(config_dir / "seen.json"),
         }
         config_file = config_dir / "fake.json"
         config_file.write_text(json.dumps(config, indent=2))

@@ -63,3 +63,21 @@ def test_newer_database_is_reported(lado_home):
     sqlite3.connect(lado_home / "lado.db").execute("PRAGMA user_version = 99")
     with pytest.raises(RuntimeError, match="version 99"):
         state.list_sessions()
+
+
+def test_version_2_database_gets_kits(lado_home):
+    lado_home.mkdir()
+    db = sqlite3.connect(lado_home / "lado.db")
+    db.executescript(SCHEMA_V1)
+    for statement in state.MIGRATIONS[1]:
+        db.execute(statement)
+    db.execute("PRAGMA user_version = 2")
+    db.commit()
+    sess = state.get_session("s")
+    assert (sess.kits, sess.without) == (["default"], [])
+
+
+def test_session_kits_round_trip(lado_home):
+    state.add_session(state.Session("s", "/r", None, "kilo", ["a", "b"], ["skill:x"]))
+    sess = state.get_session("s")
+    assert (sess.kits, sess.without) == (["a", "b"], ["skill:x"])

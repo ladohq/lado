@@ -1,6 +1,7 @@
 """Claude Code as a LADO provider."""
 
 import json
+import shutil
 
 from lado import state
 from lado.providers import base
@@ -21,21 +22,24 @@ class ClaudeProvider(base.Provider):
     command = "claude"
     install_hint = "install it: https://docs.anthropic.com/en/docs/claude-code"
     capabilities = base.Capabilities(
-        status_events=True, permission_event=True, deliver_on_turn_end=True
+        status_events=True, permission_event=True, deliver_on_turn_end=True, skills=True
     )
 
     def launch_command(
         self,
         agent: state.Agent,
         session: state.Session,
-        prompt: str,
+        spec: base.AgentSpec,
         first_message: str | None = None,
     ) -> base.Launch:
         config_dir = base.config_dir(agent)
 
         mcp_config = config_dir / "mcp.json"
-        mcp = {"mcpServers": {"lado": base.mcp_server(agent)}}
-        mcp_config.write_text(json.dumps(mcp, indent=2))
+        servers = {
+            name: {"command": s.command[0], "args": s.command[1:], "env": s.env}
+            for name, s in spec.mcp.items()
+        }
+        mcp_config.write_text(json.dumps({"mcpServers": servers}, indent=2))
 
         def hook(event: str) -> list[dict]:
             command = base.hook_command(agent, event)
@@ -52,8 +56,17 @@ class ClaudeProvider(base.Provider):
             "--settings",
             str(settings),
             "--append-system-prompt",
-            prompt,
+            spec.prompt,
         ]
+        # Claude Code loads the skills in <dir>/.claude/skills of every --add-dir directory
+        # (checked with Claude Code 2.1.286; symlinked skill folders work, and their scripts
+        # run from there). Nothing is written into the worktree or ~/.claude.
+        skills_root = config_dir / "skills"
+        if spec.skills:
+            base.link_skills(skills_root / ".claude" / "skills", spec.skills)
+            cmd += ["--add-dir", str(skills_root)]
+        elif skills_root.exists():
+            shutil.rmtree(skills_root)
         if session.permission_mode:
             cmd += ["--permission-mode", session.permission_mode]
         if first_message:

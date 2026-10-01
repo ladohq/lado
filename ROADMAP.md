@@ -43,9 +43,9 @@ reading the screen.
 A kit is a provider-neutral bundle: roles (agent prompts), skills (`SKILL.md` folders),
 MCP servers and flows. Kits can be combined and parts switched on or off.
 
-- [ ] Kit format and `lado start --kit`; several kits combine into one environment
-- [ ] Switch single roles, skills and MCP servers on or off per session and per agent
-- [ ] Skills placed where each provider looks for them in the agent's worktree
+- [x] Kit format and `lado start --kit`; several kits combine into one environment
+- [x] Switch single roles, skills and MCP servers on or off per session and per agent
+- [x] Skills placed where each provider looks for them in the agent's worktree
 - [ ] `lado-dev` kit used to develop LADO
 
 ## Stage 5: Flows

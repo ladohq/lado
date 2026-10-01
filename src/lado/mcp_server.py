@@ -39,17 +39,30 @@ def build(session: str, agent: str) -> MCPServer:
         return runtime.send_message(session, agent, to, text)
 
     me = state.get_agent(session, agent)
-    if me and me.role == runtime.SUPERVISOR:
+    if me and me.name == runtime.SUPERVISOR:
 
         @server.tool()
-        def spawn_worker(task: str, name: str | None = None, provider: str | None = None) -> dict:
+        def spawn_worker(
+            task: str,
+            name: str | None = None,
+            provider: str | None = None,
+            role: str | None = None,
+            without: list[str] | None = None,
+        ) -> dict:
             """Start a new worker agent on `task` in its own git worktree and branch.
 
+            `role` is one of the session's worker roles (default: the kits' default). `without`
+            switches off skills or MCP servers for this worker, e.g. ["skill:x", "mcp:y"].
             `provider` is the agent CLI to run it with, e.g. "claude" or "kilo" (default: the
             session's). The worker reports back with send_message when it is done or blocked.
             """
-            worker = runtime.spawn_worker(session, task, name, provider)
-            return {"name": worker.name, "branch": worker.branch, "worktree": worker.cwd}
+            worker = runtime.spawn_worker(session, task, name, provider, role, without)
+            return {
+                "name": worker.name,
+                "role": worker.role,
+                "branch": worker.branch,
+                "worktree": worker.cwd,
+            }
 
     return server
 

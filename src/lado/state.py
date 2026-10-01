@@ -4,6 +4,7 @@ Several processes use it at once (the CLI, one MCP server and hooks per agent), 
 call opens its own short-lived connection and SQLite does the locking.
 """
 
+import json
 import os
 import sqlite3
 import time
@@ -13,7 +14,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -21,12 +22,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     repo TEXT NOT NULL,
     permission_mode TEXT,
     provider TEXT NOT NULL DEFAULT 'claude',  -- default for the session's agents
+    kits TEXT NOT NULL DEFAULT '["default"]',  -- JSON list of kit names
+    switched_off TEXT NOT NULL DEFAULT '[]',  -- JSON list of "agent:x", "skill:y", "mcp:z"
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS agents (
     session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    role TEXT NOT NULL,
+    role TEXT NOT NULL,  -- the agent's name in the session's kits
     cwd TEXT NOT NULL,
     branch TEXT,
     task TEXT,
@@ -53,6 +56,10 @@ MIGRATIONS = {
     1: [
         "ALTER TABLE sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'",
         "ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'",
+    ],
+    2: [
+        """ALTER TABLE sessions ADD COLUMN kits TEXT NOT NULL DEFAULT '["default"]'""",
+        "ALTER TABLE sessions ADD COLUMN switched_off TEXT NOT NULL DEFAULT '[]'",
     ],
 }
 
@@ -89,6 +96,8 @@ class Session:
     repo: str
     permission_mode: str | None
     provider: str = "claude"
+    kits: list[str] = field(default_factory=lambda: ["default"])
+    without: list[str] = field(default_factory=list)  # switched-off agents, skills, MCP
 
 
 @dataclass
@@ -146,8 +155,16 @@ def _migrate(conn: sqlite3.Connection) -> int:
 def add_session(session: Session) -> None:
     with connect() as db:
         db.execute(
-            "INSERT INTO sessions (name, repo, permission_mode, provider) VALUES (?, ?, ?, ?)",
-            (session.name, session.repo, session.permission_mode, session.provider),
+            "INSERT INTO sessions (name, repo, permission_mode, provider, kits, switched_off)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                session.name,
+                session.repo,
+                session.permission_mode,
+                session.provider,
+                json.dumps(session.kits),
+                json.dumps(session.without),
+            ),
         )
 
 
@@ -277,4 +294,11 @@ def _agent(row: sqlite3.Row) -> Agent:
 
 
 def _session(row: sqlite3.Row) -> Session:
-    return Session(row["name"], row["repo"], row["permission_mode"], row["provider"])
+    return Session(
+        row["name"],
+        row["repo"],
+        row["permission_mode"],
+        row["provider"],
+        json.loads(row["kits"]),
+        json.loads(row["switched_off"]),
+    )

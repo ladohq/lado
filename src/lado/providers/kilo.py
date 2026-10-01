@@ -34,19 +34,19 @@ class KiloProvider(base.Provider):
     install_hint = "install it: `npm install -g @kilocode/cli`"
     tested_version = TESTED_VERSION
     capabilities = base.Capabilities(
-        status_events=True, permission_event=True, deliver_on_turn_end=True
+        status_events=True, permission_event=True, deliver_on_turn_end=True, skills=True
     )
 
     def launch_command(
         self,
         agent: state.Agent,
         session: state.Session,
-        prompt: str,
+        spec: base.AgentSpec,
         first_message: str | None = None,
     ) -> base.Launch:
         config_dir = base.config_dir(agent)
         role = config_dir / "role.md"
-        role.write_text(prompt)
+        role.write_text(spec.prompt)
 
         mode = session.permission_mode
         events = list(EVENTS)
@@ -60,12 +60,13 @@ class KiloProvider(base.Provider):
         config = {
             "instructions": [str(role)],
             "mcp": {
-                "lado": {
-                    "type": "local",
-                    "command": base.lado_command("mcp"),
-                    "environment": base.agent_env(agent),
-                }
+                name: {"type": "local", "command": s.command, "environment": s.env}
+                for name, s in spec.mcp.items()
             },
+            # Kilo finds <name>/SKILL.md under each path (checked with Kilo 7.8.1, symlinks
+            # included). The links live under LADO_HOME, which external_directory allows, so
+            # the agent can also read and run a skill's other files.
+            "skills": {"paths": [str(base.link_skills(config_dir / "skills", spec.skills))]},
             "plugin": [[PLUGIN.as_uri(), {"hooks": {e: base.hook_argv(agent, e) for e in events}}]],
             "permission": permission,
         }

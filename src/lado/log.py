@@ -51,11 +51,13 @@ def show(
     try:
         while follow:
             sleep(FOLLOW_INTERVAL)
-            if state.get_session(session) is None:
+            sess = state.get_session(session)
+            if sess:
+                for entry in feed.read():
+                    print(format_entry(entry), flush=True)
+            if sess is None or sess.stopped_at:
                 print(f'Session "{session}" stopped.')
                 return
-            for entry in feed.read():
-                print(format_entry(entry), flush=True)
     except KeyboardInterrupt:
         pass
 

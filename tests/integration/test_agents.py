@@ -131,7 +131,8 @@ def test_stop_kills_agents_and_keeps_worktrees(repo):
     assert result.returncode == 0, result.stderr
     assert f"kept worktree {worker.cwd}" in result.stdout
     assert not tmux.has_session(SESSION)
-    assert state.get_session(SESSION) is None
+    assert state.get_session(SESSION).stopped_at
+    assert state.list_agents(SESSION) == []
     assert Path(worker.cwd, ".git").exists()
 
 

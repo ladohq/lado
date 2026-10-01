@@ -101,6 +101,12 @@ def test_follow_prints_new_entries_until_interrupted(session, capsys):
 
 
 def test_follow_ends_when_the_session_is_stopped(session, capsys):
+    log.show("s", follow=True, sleep=lambda _: state.stop_session("s"))
+    out = capsys.readouterr().out
+    assert out.endswith(' lado: session_stop (2 messages dropped)\nSession "s" stopped.\n')
+
+
+def test_follow_ends_when_the_session_is_forgotten(session, capsys):
     log.show("s", follow=True, sleep=lambda _: state.delete_session("s"))
     assert capsys.readouterr().out.endswith('Session "s" stopped.\n')
 

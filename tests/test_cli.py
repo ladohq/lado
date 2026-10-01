@@ -418,6 +418,79 @@ def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
     assert out.count(f"kept worktree {run.worktree}") == 1
 
 
+def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
+    run = _session_with_run(repo)
+    runs.force("s", "ship/x", "check", "built by hand")
+    runtime.spawn_worker("s", "task")  # w1, starting: a message to it waits
+    runtime.send_message("s", "supervisor", "w1", "hi")
+    capsys.readouterr()
+    assert main(["stop", "s"]) == 0
+    out = capsys.readouterr().out
+    # The supervisor is starting as well: LADO's two messages to it about the run wait.
+    assert out.startswith('Stopped session "s"; 3 undelivered messages dropped.\n')
+    assert f"  kept worktree {run.worktree} (branch {run.branch})" in out
+    assert f"  kept worktree {repo}/.lado/worktrees/s/w1 (branch lado/s/w1)" in out
+    assert "History, open runs and gates are kept: lado start resumes the session" in out
+
+    assert main(["ls"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == f"s  {repo}  (stopped)"
+    assert lines[1].split()[:8] == [
+        "run",
+        "ship/x",
+        "check",
+        "waiting",
+        "for",
+        "human:",
+        "gate",
+        "#1",
+    ]
+    assert lines[2] == "    gate #1 waiting: Ship it?"
+    assert main(["log", "s"]) == 0
+    assert "lado: session_stop (3 messages dropped)" in capsys.readouterr().out
+    assert main(["answer", "s", "1", "approve"]) == 1
+    assert 'session "s" is stopped' in capsys.readouterr().err
+    assert main(["answer"]) == 0  # a stopped session's gates wait for its resume
+    assert capsys.readouterr().out == "No open gates.\n"
+
+    args = ["start", str(repo), "--name", "s", "--without", "agent:rev", "--no-attach"]
+    assert main(args) == 0
+    captured = capsys.readouterr()
+    assert captured.out.startswith(
+        f'Resumed session "s" in {repo}: 1 open run, the supervisor is told.\n'
+        "  changed without: none -> agent:rev\n"
+    )
+    assert captured.err == (
+        "lado: run ship/x: role rev is not in the session now; cancel the run with "
+        "flow_cancel, or move it on with lado flow-set\n"
+    )
+    assert main(["ls"]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == f"s  {repo}"
+
+
+def test_forget_drops_a_stopped_session(repo, fake_tmux, capsys):
+    run = _session_with_run(repo)
+    capsys.readouterr()
+    assert main(["forget", "s"]) == 1
+    assert 'session "s" is not stopped; stop it first with lado stop s' in capsys.readouterr().err
+    main(["stop", "s"])
+    capsys.readouterr()
+    assert main(["forget", "s"]) == 1
+    err = capsys.readouterr().err
+    assert 'session "s" has open runs: ship/x; forget it with --force' in err
+    assert main(["forget", "s", "--force"]) == 0
+    assert capsys.readouterr().out == (
+        'Forgot session "s" and its history; dropped open runs: ship/x.\n'
+        f"  left on disk: worktree {run.worktree} (branch {run.branch})\n"
+        "Remove a worktree with: git worktree remove <path>\n"
+    )
+    assert state.get_session("s") is None
+    assert Path(run.worktree).exists()
+    assert main(["log", "s"]) == 1
+    assert main(["forget", "s"]) == 1
+    assert 'unknown session "s"' in capsys.readouterr().err
+
+
 def test_flow_set_needs_a_reason(repo, fake_tmux, capsys):
     _session_with_run(repo)
     with pytest.raises(SystemExit):

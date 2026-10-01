@@ -4,7 +4,15 @@ the steps through the MCP tools, LADO delivers each step and cleans up at the en
 from pathlib import Path
 
 import pytest
-from test_agents import SESSION, inputs, lado_cli, supervisor_runs, wait_for, wait_status
+from test_agents import (
+    SESSION,
+    inputs,
+    lado_cli,
+    seen,
+    supervisor_runs,
+    wait_for,
+    wait_status,
+)
 
 from lado import runtime, state, tmux
 
@@ -157,6 +165,56 @@ def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):
     assert f"lado: gate_open {name} (#1 approval at check: Ship it?)" in log
     assert f"human: gate_answer {name} (#1 reject: add a test)" in log
     assert f"human: flow {name} (check -rejected-> build)" in log
+
+
+def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
+    ship, gated = "ship/add-a-file", "gated/check-it"
+    supervisor_runs("flow_start ship add a file")
+    supervisor_runs(f"spawnrun {ship}")
+    wait_status("w1", state.IDLE)
+    run = run_state(ship)
+    Path(run.worktree, "work.txt").write_text("done\n")
+    runtime.git(run.worktree, "add", "work.txt")
+    runtime.git(run.worktree, "commit", "-q", "-m", "work before the stop")
+    supervisor_runs("flow_start gated check it")
+    wait_for(lambda: got("supervisor", f"flow {gated}: waiting for the human"), "the gate")
+    gate = state.open_gate(SESSION, gated)
+
+    result = lado_cli("stop", SESSION)
+    assert result.returncode == 0, result.stderr
+    assert not tmux.has_session(SESSION)
+    assert f"{SESSION}  {repo}  (stopped)" in lado_cli("ls").stdout
+
+    # `lado start` in-process: the fake provider exists only here. Kits and provider are kept.
+    started = runtime.start_session(str(repo), SESSION, None)
+    assert (started.resumed, started.changes, started.problems) == (True, [], [])
+    resumed = "[from lado] session resumed: 2 open runs"
+    wait_for(lambda: any(t.startswith(resumed) for t in inputs("supervisor")), "the resume")
+    wait_status("supervisor", state.IDLE)
+    supervisor_runs("read")
+    # Bodies delivered to the old supervisor and never read come along: the resume is last.
+    told = seen("supervisor")["read"][-1]
+    assert told["summary"] == "session resumed: 2 open runs"
+    assert f'spawn_worker(role="worker", run="{ship}")' in told["body"]
+    assert f"lado answer {SESSION} {gate.id}" in told["body"]
+
+    # A new worker takes over the run's worktree and branch, with the earlier commit.
+    supervisor_runs(f"spawnrun {ship}")
+    wait_status("w1", state.IDLE)
+    worker = state.get_agent(SESSION, "w1")
+    assert (worker.cwd, worker.branch) == (run.worktree, run.branch)
+    assert "work before the stop" in runtime.git(worker.cwd, "log", "--format=%s")
+    assert inputs("w1")[-1].startswith(f"Run {ship} (flow ship), step build.")
+    runtime.send_message(SESSION, "human", "w1", f"advance {ship} done")
+    wait_for(lambda: got("supervisor", f"[from lado] flow {ship}: step merge"), "the merge step")
+
+    # The gate opened before the stop is answered after it.
+    result = lado_cli("answer", SESSION, str(gate.id), "approve")
+    assert result.returncode == 0, result.stderr
+    assert run_state(gated).status == state.ENDED
+    log = lado_cli("log", SESSION).stdout
+    assert "lado: session_stop" in log and "lado: session_resume" in log
+    assert not (state.home() / "hooks.log").exists()
 
 
 def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):

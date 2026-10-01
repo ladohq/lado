@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -72,6 +72,9 @@ CREATE TABLE IF NOT EXISTS gates (
 GATES_OPEN = (
     "CREATE UNIQUE INDEX IF NOT EXISTS gates_open ON gates (session, run) WHERE answer IS NULL"
 )
+# When `lado stop` stopped the session; NULL while it runs. A stopped session keeps its
+# history and open runs until `lado start` resumes it or `lado forget` drops it.
+SESSIONS_STOPPED = "ALTER TABLE sessions ADD COLUMN stopped_at TEXT"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -108,7 +111,9 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
-SCHEMA += ";\n".join([EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS, GATES, GATES_OPEN]) + ";\n"
+SCHEMA += (
+    ";\n".join([EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS, GATES, GATES_OPEN, SESSIONS_STOPPED]) + ";\n"
+)
 
 SUMMARY_LIMIT = 200  # characters in a message summary
 
@@ -131,6 +136,7 @@ MIGRATIONS = {
     ],
     5: [AGENTS_RUN, EVENTS_RUN, RUNS],
     6: [GATES, GATES_OPEN],
+    7: [SESSIONS_STOPPED],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -160,6 +166,9 @@ FLOW_CANCEL = "flow_cancel"
 FLOW_SET = "flow_set"  # the human forced the run into a state
 GATE_OPEN = "gate_open"  # the run waits for the human; detail: "#<id> <kind> at <state>: ..."
 GATE_ANSWER = "gate_answer"  # the gate closed; detail: "#<id> <answer>[: <comment>]"
+# Session events, by LADO.
+SESSION_STOP = "session_stop"  # detail: what was dropped
+SESSION_RESUME = "session_resume"  # detail: what changed
 
 LADO = "lado"  # the sender of LADO's own messages and the actor of its own events
 
@@ -193,6 +202,7 @@ class Session:
     provider: str = "claude"
     kits: list[str] = field(default_factory=lambda: ["default"])
     without: list[str] = field(default_factory=list)  # switched-off agents, skills, MCP
+    stopped_at: str | None = None  # UTC; None while it runs
 
 
 @dataclass
@@ -340,6 +350,53 @@ def get_session(name: str) -> Session | None:
 def delete_session(name: str) -> None:
     with connect() as db:
         db.execute("DELETE FROM sessions WHERE name = ?", (name,))
+
+
+def stop_session(name: str) -> tuple[list[Agent], int]:
+    """Mark the session stopped and forget its agents, so their names can be used again;
+    their messages and events stay. Messages they never got are dropped. Returns the agents
+    and how many messages were dropped."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            "SELECT * FROM agents WHERE session = ? ORDER BY created_at, rowid", (name,)
+        ).fetchall()
+        for row in rows:
+            if row["status"] != STOPPED:
+                _add_event(db, name, row["name"], STATUS, STOPPED)
+        db.execute("DELETE FROM agents WHERE session = ?", (name,))
+        dropped = db.execute(
+            "UPDATE messages SET state = ? WHERE session = ? AND state IN (?, ?)",
+            (DROPPED, name, PENDING, SENT),
+        ).rowcount
+        db.execute(
+            "UPDATE sessions SET stopped_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE name = ?",
+            (name,),
+        )
+        detail = f"{dropped} message{'' if dropped == 1 else 's'} dropped"
+        _add_event(db, name, LADO, SESSION_STOP, detail)
+        db.execute("COMMIT")
+    return [_agent(r) for r in rows], dropped
+
+
+def resume_session(session: Session, detail: str) -> None:
+    """Mark the stopped session running again, with the settings of `session`; `detail`
+    says what changed."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?,"
+            " stopped_at = NULL WHERE name = ?",
+            (
+                session.permission_mode,
+                session.provider,
+                json.dumps(session.kits),
+                json.dumps(session.without),
+                session.name,
+            ),
+        )
+        _add_event(db, session.name, LADO, SESSION_RESUME, detail)
+        db.execute("COMMIT")
 
 
 def list_sessions() -> list[Session]:
@@ -782,4 +839,5 @@ def _session(row: sqlite3.Row) -> Session:
         row["provider"],
         json.loads(row["kits"]),
         json.loads(row["switched_off"]),
+        row["stopped_at"],
     )

@@ -3,6 +3,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import agent_helpers
 import pytest
 
 from lado import hooks, kits, providers, runtime, state, tmux
@@ -14,8 +15,8 @@ def test_slug():
 
 
 def test_start_session_launches_supervisor(repo, fake_tmux, lado_home):
-    sess = runtime.start_session(str(repo), None, "acceptEdits")
-    assert sess.name == "my-repo"
+    started = runtime.start_session(str(repo), None, "acceptEdits")
+    assert (started.session.name, started.resumed) == ("my-repo", False)
     [(kind, session, window, cwd, env, cmd)] = fake_tmux
     assert (kind, session, window, cwd) == ("new_session", "my-repo", "supervisor", str(repo))
     assert env == {
@@ -242,12 +243,87 @@ def test_hooks_from_an_earlier_launch_are_ignored(repo, fake_tmux, monkeypatch):
     assert state.get_agent("s", "supervisor").status == state.STARTING
 
 
-def test_stop_session_keeps_worktrees(repo, fake_tmux):
+def test_stop_session_keeps_worktrees_and_history(repo, fake_tmux):
     _session_with_worker(repo)
-    workers = runtime.stop_session("s")
-    assert [w.name for w in workers] == ["w1"]
-    assert state.get_session("s") is None
+    runtime.send_message("s", "supervisor", "w1", "hi")  # w1 is starting: queued
+    stopped = runtime.stop_session("s")
+    assert [w.name for w in stopped.workers] == ["w1"]
+    assert stopped.dropped == 1
+    assert state.get_session("s").stopped_at
+    assert state.list_agents("s") == []
+    assert [m.state for m in state.list_messages("s")] == [state.DROPPED]
     assert ("kill_session", "s") in fake_tmux
+    assert Path(repo, ".lado/worktrees/s/w1/.git").exists()
+    with pytest.raises(runtime.LadoError, match='session "s" is stopped already'):
+        runtime.stop_session("s")
+    with pytest.raises(runtime.LadoError, match='unknown session "nope"'):
+        runtime.stop_session("nope")
+
+
+def _launched_with(cmd):
+    """The first message a fake-tmux claude command line was started with."""
+    return cmd[-1] if cmd[-2] == "--" else None
+
+
+def test_start_resumes_a_stopped_session(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None)
+    assert (started.resumed, started.changes, started.problems) == (True, [], [])
+    assert started.session.stopped_at is None
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert _launched_with(fake_tmux[-1][-1]) == "[from lado] session resumed: 0 open runs"
+    assert [(m.sender, m.recipient, m.state) for m in state.list_messages("s")][-1] == (
+        "lado",
+        "supervisor",
+        state.DELIVERED,
+    )
+    kinds = [e.kind for e in state.list_events("s")]
+    assert kinds[-2:] == [state.SESSION_RESUME, state.SPAWNED]
+    # w1's branch is still there: the next worker gets another name.
+    assert runtime.spawn_worker("s", "task").name == "w2"
+
+
+def test_start_resumes_a_session_whose_tmux_server_is_gone(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.send_message("s", "supervisor", "w1", "hi")
+    fake_tmux.append(("kill_session", "s"))  # the tmux server died, no lado stop
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.resumed
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert state.list_messages("s")[0].state == state.DROPPED
+    assert state.SESSION_STOP in [e.kind for e in state.list_events("s")]
+
+
+def test_resume_refuses_another_repo(repo, tmp_path, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    other = agent_helpers.init_repo(tmp_path / "other")
+    with pytest.raises(runtime.LadoError, match=f'session "s" was started in {repo}') as error:
+        runtime.start_session(str(other), "s", None)
+    assert "lado forget s" in str(error.value) and "--name" in str(error.value)
+    assert state.get_session("s").stopped_at
+
+
+def test_resume_replaces_the_settings_given_and_keeps_the_others(repo, fake_tmux, team_kit):
+    runtime.start_session(str(repo), "s", "plan", kit_names=["team"])
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, "kilo", without=["skill:style"])
+    assert started.changes == ["provider: claude -> kilo", "without: none -> skill:style"]
+    sess = state.get_session("s")
+    assert (sess.provider, sess.kits, sess.without, sess.permission_mode) == (
+        "kilo",
+        ["team"],
+        ["skill:style"],
+        "plan",
+    )
+    assert (
+        state.list_events("s")[-2].detail
+        == "provider: claude -> kilo; without: none -> skill:style"
+    )
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    assert started.changes == ["kits: team -> default, team"]
 
 
 def _write(path, text):
@@ -272,7 +348,9 @@ def team_kit(repo):
 
 
 def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tmux, team_kit):
-    sess = runtime.start_session(str(repo), "s", None, kit_names=["team"], without=["skill:style"])
+    sess = runtime.start_session(
+        str(repo), "s", None, kit_names=["team"], without=["skill:style"]
+    ).session
     assert (sess.kits, sess.without) == (["team"], ["skill:style"])
     stored = state.get_session("s")
     assert (stored.kits, stored.without) == (["team"], ["skill:style"])

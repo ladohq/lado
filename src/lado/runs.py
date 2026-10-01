@@ -119,6 +119,7 @@ def answer(
     on like flow_advance, with the answer and comment as the next step's note. At a loop
     limit, continue enters the state anyway and cancel cancels the run."""
     found = find_gate(session, gate)
+    _check_running(session)
     run = _run(session, found.run)
     word = canonical_option(found, option)
     comment = (comment or "").strip()
@@ -193,6 +194,7 @@ def _answer_note(outcome: str, comment: str, gate: state.Gate) -> tuple[str, str
 
 def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     """The human puts an open run into state `target`, past any gate or loop limit."""
+    _check_running(session)
     run = _run(session, run_name)
     if run.status not in state.OPEN:
         raise LadoError(f'run "{run.name}" is {run.status}')
@@ -258,7 +260,69 @@ def spawn_worker(
         raise LadoError(
             f'run "{run.name}" has no step for a {role or "worker"} now; give the worker a task'
         )
+    _restore_worktree(_session(session).repo, run)
     return runtime.spawn_worker(session, "\n\n".join(parts), name, provider, role, without, run)
+
+
+def _restore_worktree(repo: str, run: state.Run) -> None:
+    """Make the run's worktree again from its branch if it is gone, e.g. removed by hand
+    while the session was stopped."""
+    if Path(run.worktree).exists():
+        return
+    if not runtime.git(repo, "branch", "--list", run.branch):
+        raise LadoError(
+            f'run "{run.name}" has neither its worktree {run.worktree} nor its branch '
+            f"{run.branch}; cancel it with flow_cancel"
+        )
+    runtime.git(repo, "worktree", "prune")  # git still lists the removed folder
+    runtime.git(repo, "worktree", "add", run.worktree, run.branch)
+
+
+def resume(sess: state.Session, env: kits.Environment) -> list[str]:
+    """Queue LADO's messages for the new supervisor of a resumed session: one about the
+    open runs, then the steps of the runs at a supervisor state again. Returns a line for
+    each run that needs a role the session has no more."""
+    supervisor = env.supervisor().name
+    lines, problems, steps = [], [], []
+    open_runs = state.list_runs(sess.name, open_only=True)
+    for run in open_runs:
+        flow = flow_of(run)
+        current = flow.states[run.state]
+        gate = state.open_gate(sess.name, run.name) if run.status == state.WAITING else None
+        if gate:
+            what = (
+                f"waits for the human at gate #{gate.id}: {gate.question} Only the human "
+                f"answers it, with: lado answer {sess.name} {gate.id}. Nothing to do until then."
+            )
+        elif run.status == state.WAITING:
+            what = f"waits for the human: {run.reason}"
+        elif current.agent == supervisor:
+            what = "your step; it follows as a message from lado."
+            steps.append(run)
+        else:
+            what = (
+                f'needs a {current.agent}. Start one with spawn_worker(role="{current.agent}", '
+                f'run="{run.name}"); it works in the run\'s worktree and gets the step as its '
+                "task."
+            )
+        lines.append(f"- {run.name} at {run.state}: {what}")
+        roles = {s.agent for s in flow.states.values() if s.kind == flows.WORK}
+        gone = sorted(roles - set(env.agents))
+        if gone:
+            problem = (
+                f"role{'s' if len(gone) > 1 else ''} {', '.join(gone)} "
+                f"{'are' if len(gone) > 1 else 'is'} not in the session now; cancel the run "
+                "with flow_cancel, or move it on with lado flow-set"
+            )
+            problems.append(f"run {run.name}: {problem}")
+            lines.append(f"  {problem[0].upper()}{problem[1:]}.")
+    count = len(open_runs)
+    summary = f"session resumed: {count} open run{'' if count == 1 else 's'}"
+    state.queue_message(sess.name, LADO, SUPERVISOR, summary, "\n".join(lines))
+    for run in steps:
+        summary = f"flow {run.name}: step {run.state}"
+        state.queue_message(sess.name, LADO, SUPERVISOR, summary, step_text(run, flow_of(run)))
+    return problems
 
 
 def flow_of(run: state.Run) -> flows.Flow:
@@ -554,3 +618,12 @@ def _session(session: str) -> state.Session:
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
     return sess
+
+
+def _check_running(session: str) -> None:
+    """Moving a run on tells its agents: a stopped session has none."""
+    if _session(session).stopped_at:
+        raise LadoError(
+            f'session "{session}" is stopped; resume it with `lado start` first, its open '
+            "runs and gates wait"
+        )

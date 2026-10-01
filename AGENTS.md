@@ -85,7 +85,9 @@ schema change.
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
-    names the run); events, messages, runs and gates go with their session. How long an
+    names the run) and the session's `session_stop` and `session_resume`; events, messages,
+    runs and gates go with their session, which `lado stop` only marks stopped
+    (`sessions.stopped_at`) and `lado forget` deletes. How long an
     agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
     `spawned` event, how long a run has been in its state from its latest event.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
@@ -130,6 +132,25 @@ refuses an unmerged branch or uncommitted changes; `--discard` ends the worker a
 throws that work away. The supervisor does the same with the MCP tool `finish_worker`.
 A worker of a flow run only has its window closed while the run is open: the worktree and
 branch belong to the run.
+
+`lado stop <session>` kills the session's tmux windows and marks it stopped; its history,
+runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names
+are free again; `lado log` keeps what they did), and messages they never got are dropped,
+with the count in the output. `lado ls` shows the session as `(stopped)` with its open runs
+and gates; `lado log` works as before. `lado start` with the same name resumes it (also when
+its tmux server died without `lado stop`): the repo must be the same, and `--kit`,
+`--without`, `--provider` and `--permission-mode`, when given, replace the stored ones
+(the output says what changed). The new supervisor starts with one message from `lado`,
+`session resumed: <n> open runs`, whose body says per open run what waits: the human at a
+gate (answer with `lado answer`), the supervisor's own step (its step message follows), or a
+worker to start with `spawn_worker(run=...)`. Such a worker opens in the run's worktree on
+its branch, made again from the branch if the folder is gone. An open run that needs a role
+the resumed session lacks is reported on stderr and in that body; `flow_cancel` or
+`lado flow-set` move it on. While a session is stopped, `lado answer` and `lado flow-set`
+refuse its runs. The next default worker name skips names whose branch is still there.
+`lado forget <session>` deletes a stopped session with its history; it refuses a running
+one, and one with open runs unless `--force`; worktrees and branches stay on disk and are
+listed.
 
 Gates: a run that enters a gate state, or would enter a state more often than its
 `max_visits`, waits for the human with an open gate (`lado ls`: `gate #<id> waiting:

@@ -7,7 +7,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 import re
 import subprocess
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from lado import kits, providers, state, tmux
@@ -114,6 +114,14 @@ def repo_root(path: str) -> str:
         raise LadoError(f"{path} is not inside a git repository") from exc
 
 
+@dataclass
+class Started:
+    session: state.Session
+    resumed: bool = False  # a stopped session started again, with its history and runs
+    changes: list[str] = field(default_factory=list)  # settings a resume replaced
+    problems: list[str] = field(default_factory=list)  # open runs that cannot go on as they are
+
+
 def start_session(
     path: str,
     name: str | None,
@@ -121,23 +129,33 @@ def start_session(
     provider: str | None = None,
     kit_names: list[str] | None = None,
     without: list[str] | None = None,
-) -> state.Session:
+) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
-    the `without` items ("agent:x", "skill:y", "mcp:z")."""
-    agent_cli = _provider(provider or providers.DEFAULT)
+    the `without` items ("agent:x", "skill:y", "mcp:z").
+
+    A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
+    its history, open runs and gates, and the settings given replace its stored ones. The
+    new supervisor starts with a message about the open runs (lado.runs.resume)."""
     repo = repo_root(path)
     session = slug(name or Path(repo).name)
-    if state.get_session(session):
-        if tmux.has_session(session):
+    old = state.get_session(session)
+    if old:
+        if not old.stopped_at and tmux.has_session(session):
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
-        state.delete_session(session)  # left over from a tmux server that is gone
+        if old.repo != repo:
+            raise LadoError(
+                f'session "{session}" was started in {old.repo}; to start a fresh session for '
+                f"{repo}, give it another name with --name, or drop the old one with "
+                f"`lado forget {session}`"
+            )
+    agent_cli = _provider(provider or (old.provider if old else providers.DEFAULT))
     sess = state.Session(
         session,
         repo,
-        permission_mode,
+        permission_mode or (old.permission_mode if old else None),
         agent_cli.name,
-        kit_names or [kits.DEFAULT_KIT],
-        without or [],
+        kit_names or (old.kits if old else [kits.DEFAULT_KIT]),
+        without if without is not None else (old.without if old else []),
     )
     env = kits.resolve(repo, sess.kits, sess.without)
     role = env.supervisor()
@@ -145,15 +163,46 @@ def start_session(
         session, SUPERVISOR, role.name, repo, None, None, state.STARTING, sess.provider
     )
     spec = _spec(agent_cli, env, role.name, agent, _supervisor_instructions(env, session))
-    state.add_session(sess)
+    started = Started(sess)
+    if old:
+        if not old.stopped_at:
+            state.stop_session(session)  # left over from a tmux server that is gone
+        started.resumed, started.changes = True, _changes(old, sess)
+        state.resume_session(sess, "; ".join(started.changes) or "same settings")
+        # Imported here: lado.runs builds on this module.
+        from lado import runs
+
+        started.problems = runs.resume(sess, env)
+        # LADO's messages about the open runs are its first input, so they cannot be lost
+        # while it starts.
+        agent.task = format_messages(state.take_pending(session, SUPERVISOR, state.DELIVERED))
+    else:
+        state.add_session(sess)
     _add_agent(agent)
     try:
-        launch = agent_cli.launch_command(agent, sess, spec)
+        launch = agent_cli.launch_command(agent, sess, spec, first_message=agent.task)
         tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
     except tmux.TmuxError:
-        state.delete_session(session)
+        if old:
+            state.stop_session(session)
+        else:
+            state.delete_session(session)
         raise
-    return sess
+    return started
+
+
+def _changes(old: state.Session, new: state.Session) -> list[str]:
+    """The settings a resume replaced, as "<what>: <old> -> <new>"."""
+    changes = []
+    for what, before, after in (
+        ("provider", old.provider, new.provider),
+        ("permission mode", old.permission_mode, new.permission_mode),
+        ("kits", ", ".join(old.kits), ", ".join(new.kits)),
+        ("without", ", ".join(old.without), ", ".join(new.without)),
+    ):
+        if before != after:
+            changes.append(f"{what}: {before or 'none'} -> {after or 'none'}")
+    return changes
 
 
 def spawn_worker(
@@ -177,7 +226,10 @@ def spawn_worker(
     env = kits.resolve(sess.repo, sess.kits, sess.without)
     role_def = env.worker_role(role)
     taken = {a.name for a in state.list_agents(session)}
-    worker = slug(name) if name else _next_name(taken)
+    # A worker of a stopped launch of the session may have left its branch.
+    branches = git(sess.repo, "branch", "--list", "--format=%(refname:short)", f"lado/{session}/*")
+    kept = {b.rsplit("/", 1)[1] for b in branches.split()}
+    worker = slug(name) if name else _next_name(taken | kept)
     if worker in taken:
         raise LadoError(f'an agent named "{worker}" already exists')
     if run:
@@ -384,13 +436,70 @@ def format_messages(messages: list[state.Message]) -> str:
     return "\n".join(format_message(m) for m in messages)
 
 
-def stop_session(session: str) -> list[state.Agent]:
-    """Kill the session's agents. Returns the workers, whose worktrees stay on disk."""
+@dataclass
+class Stopped:
+    workers: list[state.Agent]  # their worktrees stay on disk
+    dropped: int  # messages no agent got
+
+
+def stop_session(session: str) -> Stopped:
+    """Kill the session's agents and mark it stopped. Its history, runs and gates stay
+    until `lado start` resumes it or `lado forget` drops it; worktrees stay on disk."""
+    sess = state.get_session(session)
+    if sess is None:
+        raise LadoError(f'unknown session "{session}"')
+    if sess.stopped_at:
+        raise LadoError(
+            f'session "{session}" is stopped already; resume it with `lado start`, '
+            f"or drop it with `lado forget {session}`"
+        )
     if tmux.has_session(session):
         tmux.kill_session(session)
-    workers = [a for a in state.list_agents(session) if a.name != SUPERVISOR]
+    agents, dropped = state.stop_session(session)
+    return Stopped([a for a in agents if a.name != SUPERVISOR], dropped)
+
+
+@dataclass
+class Forgotten:
+    runs: list[str]  # the open runs dropped
+    worktrees: dict[str, str]  # worktree -> branch, left on disk
+
+
+def forget_session(session: str, force: bool = False) -> Forgotten:
+    """Delete a stopped session with its history, runs and gates. With open runs only if
+    `force`. Worktrees and branches stay on disk."""
+    sess = state.get_session(session)
+    if sess is None:
+        raise LadoError(f'unknown session "{session}"')
+    if not sess.stopped_at:
+        raise LadoError(
+            f'session "{session}" is not stopped; stop it first with lado stop {session}'
+        )
+    open_runs = [r.name for r in state.list_runs(session, open_only=True)]
+    if open_runs and not force:
+        raise LadoError(
+            f'session "{session}" has open runs: {", ".join(open_runs)}; forget it with --force '
+            "to drop them, or resume it with lado start"
+        )
+    worktrees = session_worktrees(sess.repo, session)
     state.delete_session(session)
-    return workers
+    return Forgotten(open_runs, worktrees)
+
+
+def session_worktrees(repo: str, session: str) -> dict[str, str]:
+    """The worktrees git has for the session's workers and runs: path -> branch."""
+    try:
+        listed = git(repo, "worktree", "list", "--porcelain")
+    except LadoError:
+        return {}  # the repo is gone
+    folder = str(Path(repo) / ".lado" / "worktrees" / session) + "/"
+    found, path = {}, ""
+    for line in listed.splitlines():
+        if line.startswith("worktree "):
+            path = line.removeprefix("worktree ")
+        elif line.startswith("branch ") and path.startswith(folder):
+            found[path] = line.removeprefix("branch refs/heads/")
+    return found
 
 
 def _provider(name: str) -> providers.Provider:

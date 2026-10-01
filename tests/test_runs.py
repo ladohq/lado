@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -622,3 +623,103 @@ def test_start_refuses_unknown_flows_and_missing_roles(session, repo):
     with pytest.raises(kits.KitError, match='no role "reviewer" in this session'):
         runs.start(session, "feature", "x")
     assert state.list_runs(session) == []
+
+
+def restart(session, repo, **settings):
+    """`lado stop`, then `lado start` again."""
+    runtime.stop_session(session)
+    return runtime.start_session(str(repo), session, None, **settings)
+
+
+def test_resume_tells_the_supervisor_what_each_open_run_waits_for(session, repo, fake_tmux):
+    to_gate(session)  # feature/login, at the gate
+    runs.start(session, "feature", "Plan it", name="plan")  # at design, the supervisor's
+    runs.start(session, "feature", "Build it", name="build")
+    runs.advance(session, "supervisor", "feature/build", "ready")  # needs a developer
+    gate = state.open_gate(session, "feature/login")
+    started = restart(session, repo)
+    assert started.problems == []
+    resumed, step = messages("supervisor")[-2:]
+    assert (resumed.sender, resumed.summary) == ("lado", "session resumed: 3 open runs")
+    assert resumed.body == (
+        f"- feature/login at gated: waits for the human at gate #{gate.id}: Ship it? Only "
+        f"the human answers it, with: lado answer {session} {gate.id}. Nothing to do until "
+        "then.\n"
+        "- feature/plan at design: your step; it follows as a message from lado.\n"
+        "- feature/build at implement: needs a developer. Start one with "
+        'spawn_worker(role="developer", run="feature/build"); it works in the run\'s '
+        "worktree and gets the step as its task."
+    )
+    assert (step.summary, step.state) == ("flow feature/plan: step design", state.DELIVERED)
+    assert "Design it with the human." in step.body
+    first = fake_tmux[-1][-1][-1]
+    assert first == (
+        f"[from lado] session resumed: 3 open runs (#{resumed.id}, 3 lines: call "
+        f"read_messages)\n[from lado] flow feature/plan: step design (#{step.id}, "
+        f"{len(step.body.splitlines())} lines: call read_messages)"
+    )
+    assert state.get_agent(session, "supervisor").task == first
+
+
+def test_resume_reports_runs_whose_roles_are_gone(session, repo):
+    to_implement(session)
+    started = restart(session, repo, without=["agent:reviewer"])
+    assert started.problems == [
+        "run feature/login: role reviewer is not in the session now; cancel the run with "
+        "flow_cancel, or move it on with lado flow-set"
+    ]
+    resumed = messages("supervisor")[-1]
+    assert resumed.body.endswith(
+        "\n  Role reviewer is not in the session now; cancel the run with flow_cancel, "
+        "or move it on with lado flow-set."
+    )
+    assert state.get_agent(session, "supervisor")  # the session started anyway
+
+
+def test_a_worker_after_resume_takes_over_the_runs_worktree(session, repo, fake_tmux):
+    run = to_implement(session)
+    runs.spawn_worker(session, "feature/login")
+    commit(run)
+    restart(session, repo)
+    worker = runs.spawn_worker(session, "feature/login")
+    assert (worker.name, worker.cwd, worker.branch) == ("w1", run.worktree, run.branch)
+    assert Path(run.worktree, "login.txt").exists()
+    assert fake_tmux[-1][-1][-1].startswith("Run feature/login (flow feature), step implement.")
+
+
+def test_a_missing_run_worktree_is_made_again_from_its_branch(session, repo):
+    run = to_implement(session)
+    commit(run)
+    restart(session, repo)
+    shutil.rmtree(run.worktree)
+    worker = runs.spawn_worker(session, "feature/login")
+    assert worker.cwd == run.worktree
+    assert Path(run.worktree, "login.txt").exists()
+    assert runtime.git(run.worktree, "rev-parse", "--abbrev-ref", "HEAD") == run.branch
+
+
+def test_a_run_without_worktree_and_branch_cannot_get_a_worker(session, repo):
+    run = to_implement(session)
+    restart(session, repo)
+    runtime.git(str(repo), "worktree", "remove", "--force", run.worktree)
+    runtime.git(str(repo), "branch", "-D", run.branch)
+    with pytest.raises(runtime.LadoError, match=f"neither its worktree {run.worktree} nor"):
+        runs.spawn_worker(session, "feature/login")
+    assert [a.name for a in state.list_agents(session)] == ["supervisor"]
+
+
+def test_a_gate_is_answered_after_resume_but_not_while_stopped(session, repo):
+    to_gate(session)
+    gate = state.open_gate(session, "feature/login")
+    runtime.stop_session(session)
+    with pytest.raises(runtime.LadoError, match=f'session "{session}" is stopped'):
+        runs.answer(session, str(gate.id), "reject")
+    with pytest.raises(runtime.LadoError, match=f'session "{session}" is stopped'):
+        runs.force(session, "feature/login", "implement", "x")
+    assert state.open_gate(session, "feature/login") == gate
+    runtime.start_session(str(repo), session, None)
+    run = runs.answer(session, str(gate.id), "reject", "one more test")
+    assert (run.state, runs.acting(run)) == ("implement", "developer (not spawned)")
+    assert messages("supervisor")[-1].summary == (
+        "flow feature/login: step implement needs a developer"
+    )

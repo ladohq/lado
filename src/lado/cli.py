@@ -10,10 +10,20 @@ from lado import __version__, doctor, kits, log, providers, runs, runtime, sourc
 
 
 def cmd_start(args: argparse.Namespace) -> int:
-    sess = runtime.start_session(
+    started = runtime.start_session(
         args.path, args.name, args.permission_mode, args.provider, args.kit, args.without
     )
-    print(f'Started session "{sess.name}" in {sess.repo}')
+    sess = started.session
+    if started.resumed:
+        count = len(state.list_runs(sess.name, open_only=True))
+        runs_told = f"{count} open run{'' if count == 1 else 's'}, the supervisor is told"
+        print(f'Resumed session "{sess.name}" in {sess.repo}: {runs_told}.')
+        for change in started.changes:
+            print(f"  changed {change}")
+        for problem in started.problems:
+            print(f"lado: {problem}", file=sys.stderr)
+    else:
+        print(f'Started session "{sess.name}" in {sess.repo}')
     if args.no_attach or not sys.stdout.isatty():
         print(f"Attach with: lado attach {sess.name}")
         return 0
@@ -158,7 +168,10 @@ def cmd_ls(args: argparse.Namespace) -> int:
     if not sessions:
         print("No sessions. Start one with: lado start <repo>")
     for sess in sessions:
-        alive = "" if tmux.has_session(sess.name) else "  (tmux session is gone)"
+        if sess.stopped_at:
+            alive = "  (stopped)"
+        else:
+            alive = "" if tmux.has_session(sess.name) else "  (tmux session is gone)"
         print(f"{sess.name}  {sess.repo}{alive}")
         since = state.status_since(sess.name)
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -218,8 +231,11 @@ def cmd_answer(args: argparse.Namespace) -> int:
     else:
         first = None
     session, answered, failed = args.session, False, 0
+    # A stopped session's gates wait for its resume: its runs have no agents to go on with.
+    stopped = {s.name for s in state.list_sessions() if s.stopped_at}
     while True:
         gates = [first] if first else state.open_gates(session)
+        gates = [g for g in gates if g.session not in stopped]
         first = None
         if not gates:
             print("No more open gates." if answered else "No open gates.")
@@ -316,7 +332,7 @@ def cmd_log(args: argparse.Namespace) -> int:
 def cmd_attach(args: argparse.Namespace) -> int:
     name = args.name
     if name is None:
-        sessions = state.list_sessions()
+        sessions = [s for s in state.list_sessions() if not s.stopped_at]
         if len(sessions) != 1:
             print("Name the session: lado attach <name> (see lado ls)", file=sys.stderr)
             return 1
@@ -325,17 +341,31 @@ def cmd_attach(args: argparse.Namespace) -> int:
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
-    run_trees = {r.worktree: r.branch for r in state.list_runs(args.name)}
-    workers = runtime.stop_session(args.name)
-    print(f'Stopped session "{args.name}".')
-    # A run's workers share its worktree; a run may keep one with no workers left.
-    kept = {w.cwd: w.branch for w in workers}
-    kept.update({tree: branch for tree, branch in run_trees.items() if Path(tree).exists()})
-    for tree, branch in kept.items():
-        print(f"  kept worktree {tree} (branch {branch})")
-    if kept:
-        print("Remove a worktree with: git worktree remove <path>")
+    stopped = runtime.stop_session(args.name)
+    n = stopped.dropped
+    dropped = f"; {n} undelivered message{'' if n == 1 else 's'} dropped" if n else ""
+    print(f'Stopped session "{args.name}"{dropped}.')
+    _kept(runtime.session_worktrees(state.get_session(args.name).repo, args.name), "kept")
+    print(
+        "History, open runs and gates are kept: lado start resumes the session, "
+        f"lado forget {args.name} drops them."
+    )
     return 0
+
+
+def cmd_forget(args: argparse.Namespace) -> int:
+    forgotten = runtime.forget_session(args.session, args.force)
+    dropped = f"; dropped open runs: {', '.join(forgotten.runs)}" if forgotten.runs else ""
+    print(f'Forgot session "{args.session}" and its history{dropped}.')
+    _kept(forgotten.worktrees, "left on disk:")
+    return 0
+
+
+def _kept(worktrees: dict[str, str], what: str) -> None:
+    for tree, branch in worktrees.items():
+        print(f"  {what} worktree {tree} (branch {branch})")
+    if worktrees:
+        print("Remove a worktree with: git worktree remove <path>")
 
 
 def cmd_finish(args: argparse.Namespace) -> int:
@@ -365,11 +395,11 @@ def _count(value: str) -> int:
     return n
 
 
-def _without_arg(parser: argparse.ArgumentParser) -> None:
+def _without_arg(parser: argparse.ArgumentParser, default: list[str] | None = None) -> None:
     parser.add_argument(
         "--without",
         action="append",
-        default=[],
+        default=default,
         metavar="KIND:NAME",
         help="switch off agent:<name>, skill:<name>, mcp:<name> or flow:<name>; repeatable",
     )
@@ -401,9 +431,9 @@ def main(argv: list[str] | None = None) -> int:
         "--kit",
         action="append",
         help=f"kit to take agents, skills and MCP servers from; repeat to combine kits "
-        f"(default: {kits.DEFAULT_KIT})",
+        f"(default: {kits.DEFAULT_KIT}; a resumed session keeps its kits)",
     )
-    _without_arg(start)
+    _without_arg(start)  # a resumed session keeps its own unless given
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
     start.set_defaults(func=cmd_start)
 
@@ -413,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     kits_sub = kits_cmd.add_subparsers(metavar="<command>")
     show = kits_sub.add_parser("show", help="what kits combine into: agents, skills, MCP")
     show.add_argument("names", nargs="+", metavar="name")
-    _without_arg(show)
+    _without_arg(show, [])
     show.set_defaults(func=cmd_kits_show)
     check = kits_sub.add_parser("check", help="validate a kit and what it includes")
     check.add_argument("kit", help="kit folder or name")
@@ -461,9 +491,18 @@ def main(argv: list[str] | None = None) -> int:
     attach.add_argument("name", nargs="?")
     attach.set_defaults(func=cmd_attach)
 
-    stop = commands.add_parser("stop", help="stop a session and all its agents")
+    stop = commands.add_parser(
+        "stop", help="stop a session and all its agents; lado start resumes it"
+    )
     stop.add_argument("name")
     stop.set_defaults(func=cmd_stop)
+
+    forget = commands.add_parser(
+        "forget", help="delete a stopped session with its history, runs and gates"
+    )
+    forget.add_argument("session")
+    forget.add_argument("--force", action="store_true", help="also if it has open runs")
+    forget.set_defaults(func=cmd_forget)
 
     finish = commands.add_parser(
         "finish", help="end a worker whose branch is merged: its window, worktree and branch"

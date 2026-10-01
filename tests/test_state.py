@@ -394,3 +394,51 @@ def test_a_new_run_can_start_at_a_gate_and_gates_go_with_their_session(lado_home
     assert state.open_gates() == [state.get_gate(gate.id)]
     state.delete_session("s")
     assert state.get_gate(gate.id) is None
+
+
+def test_version_7_database_gets_stopped_sessions(lado_home):
+    db = _schema_v4(lado_home)
+    for version in (4, 5, 6):
+        for statement in state.MIGRATIONS[version]:
+            db.execute(statement)
+    db.execute("PRAGMA user_version = 7")
+    db.commit()
+    assert state.get_session("s").stopped_at is None
+
+
+def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_agent(_agent("supervisor", state.IDLE))
+    state.add_agent(_agent("w1", state.BUSY))
+    state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
+    for recipient, mark in (("w1", state.DELIVERED), ("supervisor", state.SENT), ("w1", None)):
+        state.queue_message("s", "lado", recipient, "hi")
+        if mark:
+            state.take_pending("s", recipient, mark)
+    agents, dropped = state.stop_session("s")
+    assert [a.name for a in agents] == ["supervisor", "w1"]
+    assert dropped == 2
+    assert state.get_session("s").stopped_at
+    assert state.list_agents("s") == []
+    assert [m.state for m in state.list_messages("s")] == [
+        state.DELIVERED,
+        state.DROPPED,
+        state.DROPPED,
+    ]
+    assert state.get_run("s", "feature/x").status == state.ACTIVE
+    events = [(e.agent, e.kind, e.detail) for e in state.list_events("s")][1:]
+    assert events == [
+        ("supervisor", state.STATUS, state.STOPPED),
+        ("w1", state.STATUS, state.STOPPED),
+        ("lado", state.SESSION_STOP, "2 messages dropped"),
+    ]
+
+
+def test_a_resumed_session_gets_its_new_settings(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.stop_session("s")
+    state.resume_session(state.Session("s", "/r", "plan", "kilo", ["team"], ["skill:x"]), "kits")
+    sess = state.get_session("s")
+    assert sess == state.Session("s", "/r", "plan", "kilo", ["team"], ["skill:x"])
+    last = state.list_events("s")[-1]
+    assert (last.agent, last.kind, last.detail) == ("lado", state.SESSION_RESUME, "kits")

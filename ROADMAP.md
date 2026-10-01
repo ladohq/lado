@@ -26,7 +26,7 @@ CLIs equally: Claude Code is the first provider, not the only one.
 - [x] LADO MCP server with `spawn_worker`, `send_message`, `list_agents`
 - [x] `lado ls` and `lado attach`
 - [x] Agent state stored in `~/.lado/`
-- [ ] A supervisor can delegate a real LADO task to a worker end to end
+- [x] A supervisor can delegate a real LADO task to a worker end to end
 
 ## Stage 3: Providers
 

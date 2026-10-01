@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 
 import pytest
+from agent_helpers import init_repo, publish
 from test_agents import SESSION, wait_for, wait_status
 
-from lado import runtime, state
+from lado import runtime, sources, state
 
 pytestmark = pytest.mark.integration
 
@@ -67,3 +68,27 @@ def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
     assert runtime.send_message(SESSION, "human", "w1", "run notes scripts/hello.sh") == "sent"
     wait_for(lambda: seen("w1").get("run"), "the script's output")
     assert seen("w1")["run"] == {"file": "notes/scripts/hello.sh", "output": "hello from notes"}
+
+
+def test_kit_from_a_path_source_includes_a_skill_pack_from_git(tmp_path, repo):
+    pack = init_repo(tmp_path / "pack")
+    url = publish(
+        pack, {"skills/eng/tdd/SKILL.md": "---\nname: tdd\ndescription: test first\n---\n"}
+    )
+    sources.add(url)
+    dev = tmp_path / "dev"
+    write(
+        dev / "kits" / "team" / "kit.yaml", "name: team\nversion: 0.1.0\ninclude: [default, pack]\n"
+    )
+    sources.add(str(dev))
+
+    runtime.start_session(str(repo), SESSION, None, "fake", ["team"])
+    wait_status("supervisor", state.IDLE)
+    assert seen("supervisor")["skills"] == {"tdd": "test first"}
+    runtime.spawn_worker(SESSION, "sleep 0")
+    wait_status("w1", state.IDLE)
+    assert seen("w1")["skills"] == {"tdd": "test first"}
+    # Nothing was copied: the agent's skill links into the source's clone.
+    link = state.home() / "agents" / SESSION / "w1" / "skills" / "tdd"
+    clone = sources.get("pack").path()
+    assert link.is_symlink() and link.resolve() == (clone / "skills" / "eng" / "tdd").resolve()

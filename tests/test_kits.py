@@ -1,14 +1,17 @@
+import shutil
+
 import pytest
 import yaml
+from agent_helpers import init_repo, publish
 
-from lado import kits
+from lado import kits, sources
 
 
 def make_kit(base, name, agents=None, skills=(), **meta):
     """Write a kit into base/name. `agents`: name -> (frontmatter extras, body)."""
     path = base / name
     (path / "agents").mkdir(parents=True)
-    (path / "kit.yaml").write_text(yaml.safe_dump({"name": name, **meta}))
+    (path / "kit.yaml").write_text(yaml.safe_dump({"name": name, "version": "1.0.0", **meta}))
     for agent, (extra, body) in (agents or {}).items():
         front = yaml.safe_dump({"name": agent, "description": f"the {agent}", **extra})
         (path / "agents" / f"{agent}.md").write_text(f"---\n{front}---\n{body}\n")
@@ -41,10 +44,10 @@ def test_load_reads_agents_and_skills(project):
         "k",
         agents={"rev": ({"skills": ["a"]}, "Review. Tools in ${KIT_DIR}/bin; keep ${HOME}.")},
         skills=["a", "b"],
-        version="1.2",
+        version="1.2.0",
     )
     kit = kits.load(path)
-    assert (kit.name, kit.version, kit.path) == ("k", "1.2", path.resolve())
+    assert (kit.name, kit.version, kit.path) == ("k", "1.2.0", path.resolve())
     assert list(kit.skills) == ["a", "b"]
     assert kit.skills["a"].path == (path / "skills" / "a").resolve()
     rev = kit.agents["rev"]
@@ -56,6 +59,8 @@ def test_load_reads_agents_and_skills(project):
     ("change", "error"),
     [
         (lambda p: (p / "kit.yaml").write_text("name: k\nflows: []\n"), "unknown keys flows"),
+        (lambda p: (p / "kit.yaml").write_text("name: k\nversion: 1.2\n"), "must be X.Y.Z"),
+        (lambda p: (p / "kit.yaml").write_text("name: k\nversion: v1.2.0\n"), "must be X.Y.Z"),
         (lambda p: (p / "kit.yaml").write_text("name: [k\n"), "invalid YAML"),
         (lambda p: (p / "kit.yaml").write_text("name: other\n"), 'differs from the folder "k"'),
         (lambda p: (p / "kit.yaml").write_text("name: k\ninclude: x\n"), "include must be"),
@@ -145,16 +150,18 @@ def test_mcp_variables(project, monkeypatch):
 def test_lookup_order(repo, project, lado_home):
     user = lado_home / "kits"
     make_kit(user, "default", agents={"boss": ({"supervisor": True}, "user boss")})
-    assert kits.find("default", repo) == ("user", user / "default")
+    found = kits.find("default", repo)
+    assert (found.where, found.path) == ("user", user / "default")
     make_kit(project, "default", agents={"boss": ({"supervisor": True}, "project boss")})
-    assert kits.find("default", repo) == ("project", project / "default")
+    found = kits.find("default", repo)
+    assert (found.where, found.path) == ("project", project / "default")
     assert kits.resolve(repo, ["default"]).supervisor().body == "project boss"
-    assert kits.find("default", None)[0] == "user"
-    found = [(name, where, shadowed) for name, where, _, shadowed in kits.available(repo)]
+    assert kits.find("default", None).where == "user"
+    found = [(f.name, f.where, by) for f, by in kits.available(repo)]
     assert found == [
-        ("default", "project", False),
-        ("default", "user", True),
-        ("default", "built-in", True),
+        ("default", "project", None),
+        ("default", "user", "project"),
+        ("default", "built-in", "project"),
     ]
     with pytest.raises(kits.KitError, match=f'kit "nope" not found; looked in {project}'):
         kits.find("nope", repo)
@@ -283,5 +290,148 @@ def test_lint_finds_hardcoded_paths(project):
 
 
 def test_builtin_kits_are_clean():
-    for _, _, path, _ in kits.available(None):
-        assert kits.lint(kits.load(path)) == []
+    for found, _ in kits.available(None):
+        assert kits.lint(found.load()) == []
+
+
+SKILL_MD = "---\nname: tdd\ndescription: test first\n---\n"
+
+
+def make_pack(base, skills):
+    """A skill pack: SKILL.md folders under skills/, e.g. "eng/tdd"; no kit.yaml."""
+    for skill in skills:
+        name = skill.rsplit("/", 1)[-1]
+        (base / "skills" / skill).mkdir(parents=True)
+        (base / "skills" / skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: use {name}\n---\n"
+        )
+    return base
+
+
+def test_source_with_kits_folder_and_root_kit(tmp_path):
+    folder = tmp_path / "many"
+    make_kit(folder / "kits", "a")
+    make_kit(folder / "kits", "b")
+    found = kits.in_source(sources.add(str(folder)))
+    assert [(f.name, f.where, f.pack) for f in found] == [
+        ("a", "source many", False),
+        ("b", "source many", False),
+    ]
+    assert found[0].load().origin.name == "many"
+
+    # One kit at the root: its name comes from kit.yaml, not from the folder.
+    root = make_kit(tmp_path, "checkout", skills=["s"])
+    (root / "kit.yaml").write_text("name: solo\nversion: 2.0.0\n")
+    (found,) = kits.in_source(sources.add(str(root)))
+    kit = found.load()
+    assert (kit.name, kit.version, list(kit.skills), kit.where) == (
+        "solo",
+        "2.0.0",
+        ["s"],
+        "source checkout",
+    )
+
+
+def test_skill_pack_finds_nested_skills(tmp_path):
+    pack = make_pack(tmp_path / "Team Pack", ["eng/tdd", "eng/review", "writing"])
+    # Folders inside a skill belong to it.
+    make_pack(pack / "skills" / "writing", ["examples"])
+    (found,) = kits.in_source(sources.add(str(pack)))
+    kit = found.load()
+    assert (kit.name, kit.pack, kit.agents, kit.version) == ("team-pack", True, {}, "")
+    assert list(kit.skills) == ["review", "tdd", "writing"]
+    assert kit.skills["tdd"].path == (pack / "skills" / "eng" / "tdd").resolve()
+    assert kit.description == "skill pack, 3 skills"
+    assert kits.lint(kit) == []
+
+    make_pack(pack / "skills" / "other", ["tdd"])
+    with pytest.raises(kits.KitError, match='skill "tdd" is also in'):
+        found.load()
+
+
+@pytest.mark.parametrize(
+    ("layout", "error"),
+    [
+        (lambda p: make_kit(p / "deep" / "er", "k"), "a source keeps kits in kits/<name>/"),
+        (
+            lambda p: (make_kit(p / "kits", "k"), make_pack(p, ["s"])),
+            "skills of a source with kits belong in a kit",
+        ),
+        (
+            lambda p: (make_kit(p / "kits", "solo"), (p / "kit.yaml").write_text("name: solo\n")),
+            'has two kits named "solo"',
+        ),
+    ],
+)
+def test_source_layout_errors(tmp_path, layout, error):
+    folder = tmp_path / "src"
+    folder.mkdir()
+    layout(folder)
+    source = sources.add(str(folder))
+    with pytest.raises(kits.KitError, match=error):
+        kits.in_source(source)
+
+
+def test_missing_source_folder_is_an_error(tmp_path, repo):
+    folder = make_pack(tmp_path / "gone", ["s"])
+    sources.add(str(folder))
+    shutil.rmtree(folder)
+    with pytest.raises(kits.KitError, match='source "gone": .* does not exist; run `lado kits'):
+        kits.find("default", repo)
+
+
+def test_lookup_order_with_sources(tmp_path, repo, project, lado_home):
+    one, two = tmp_path / "one", tmp_path / "two"
+    for folder in (one, two):
+        make_kit(folder / "kits", "shared", description=folder.name)
+        make_kit(folder / "kits", "default", agents={"boss": ({"supervisor": True}, "")})
+    make_kit(lado_home / "kits", "default")
+    sources.add(str(one))
+    sources.add(str(two))
+    assert kits.find("shared", repo).path == one / "kits" / "shared"
+    assert kits.find("default", repo).where == "user"
+    found = [(f.name, f.where, by) for f, by in kits.available(repo)]
+    assert found == [
+        ("default", "user", None),
+        ("default", "source one", "user"),
+        ("shared", "source one", None),
+        ("default", "source two", "user"),
+        ("shared", "source two", "source one"),
+        ("default", "built-in", "user"),
+    ]
+    with pytest.raises(kits.KitError, match=f"looked in {project}, {lado_home / 'kits'}, {one}"):
+        kits.find("nope", repo)
+
+
+def test_include_across_sources(tmp_path, repo):
+    url = publish(init_repo(tmp_path / "pack"), {"skills/eng/tdd/SKILL.md": SKILL_MD})
+    pack = sources.add(url)
+    make_kit(tmp_path / "dev" / "kits", "team", agents={"w": ({}, "")}, include=["pack"])
+    sources.add(str(tmp_path / "dev"))
+    env = kits.resolve(repo, ["team"])
+    assert [(k.name, k.where) for k in env.kits] == [
+        ("pack", "source pack"),
+        ("team", "source dev"),
+    ]
+    assert env.skills["tdd"].path == (pack.path() / "skills" / "eng" / "tdd").resolve()
+    assert env.resolve("w").skills == {"tdd": env.skills["tdd"]}
+    assert env.kits[0].source == f"source pack @ {pack.revision()}: {pack.path().resolve()}"
+
+
+def test_version_must_be_semver_and_match_the_tag(tmp_path, repo):
+    work = init_repo(tmp_path / "team")
+    url = publish(work, {"kit.yaml": "name: team\nversion: 1.0.0\n"}, tag="v1.0.0")
+    source = sources.add(url)
+    kit = kits.find("team", repo).load()
+    assert kits.warnings(kit) == []
+    publish(work, {"kit.yaml": "name: team\nversion: 1.0.0\ndescription: d\n"}, tag="v1.1.0")
+    source.update()
+    assert kits.warnings(kits.find("team", repo).load()) == [
+        f"team: version 1.0.0 in kit.yaml, but team is at v1.1.0 ({source.describe()})"
+    ]
+    # Without a version tag on the commit there is nothing to compare.
+    publish(work, {"kit.yaml": "name: team\n"})
+    source.update()
+    kit = kits.find("team", repo).load()
+    assert kits.warnings(kit) == []
+    assert kits.lint(kit) == [f"{kit.path / 'kit.yaml'}: version is missing; use X.Y.Z"]

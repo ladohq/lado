@@ -1,7 +1,9 @@
 import subprocess
 import sys
 
-from lado import __version__, state
+from agent_helpers import init_repo, publish
+
+from lado import __version__, sources, state
 from lado.cli import main
 
 
@@ -30,7 +32,9 @@ def test_start_with_unknown_provider_fails(repo, fake_tmux, capsys):
 def _kit(repo, name, body="---\nname: rev\ndescription: reviews\n---\nReview.\n"):
     kit = repo / ".lado" / "kits" / name
     (kit / "agents").mkdir(parents=True)
-    (kit / "kit.yaml").write_text(f"name: {name}\ndescription: about {name}\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text(
+        f"name: {name}\nversion: 1.0.0\ndescription: about {name}\ninclude: [default]\n"
+    )
     (kit / "agents" / "rev.md").write_text(body)
     return kit
 
@@ -62,7 +66,7 @@ def test_kits_show(repo, capsys):
     kit = _kit(repo, "team")
     assert main(["kits", "--repo", str(repo), "show", "team", "--without", "agent:worker"]) == 0
     out = capsys.readouterr().out
-    assert f"team   (project: {kit.resolve()})" in out
+    assert f"team 1.0.0  (project: {kit.resolve()})" in out
     assert f"rev  from team: {kit.resolve()}/agents/rev.md" in out
     assert "supervisor  [supervisor]  from default" in out
     assert "  worker" not in out
@@ -86,3 +90,77 @@ def test_kits_check(repo, capsys, monkeypatch):
     assert main(["kits", "check", str(kit)]) == 1
     assert 'hardcoded path "~/notes."' in capsys.readouterr().err
     assert main(["kits", "check", "nope"]) == 1
+
+
+def test_kits_sources_add_update_remove(tmp_path, repo, capsys, monkeypatch):
+    monkeypatch.chdir(repo)
+    work = init_repo(tmp_path / "pack")
+    skill = "---\nname: {0}\ndescription: use {0}\n---\n"
+    url = publish(work, {"skills/eng/tdd/SKILL.md": skill.format("tdd")}, tag="v1.0.0")
+    assert main(["kits", "sources"]) == 0
+    assert "No sources." in capsys.readouterr().out
+
+    assert main(["kits", "add", f"{url}@v1.0.0"]) == 0
+    clone = sources.get("pack").path()
+    out = capsys.readouterr().out
+    assert f'Added source "pack": git {url} @v1.0.0 at ' in out and str(clone) in out
+    assert "  pack             skill pack with 1 skills" in out
+    dev = _kit(tmp_path, "team")
+    assert main(["kits", "add", str(tmp_path / ".lado"), "--name", "dev"]) == 0
+    assert "  team             1.0.0    about team" in capsys.readouterr().out
+
+    assert main(["kits", "sources"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith(f"pack             git {url} @v1.0.0  at ")
+    assert out[1] == f"dev              path {(tmp_path / '.lado').resolve()}"
+
+    _kit(repo, "team")
+    assert main(["kits"]) == 0
+    out = capsys.readouterr().out
+    assert f"team             source dev {dev.resolve()}  (shadowed by project)" in out
+    assert f"pack             source pack {clone}\n  -        skill pack, 1 skills" in out
+
+    publish(work, {"skills/plan/SKILL.md": skill.format("plan")}, tag="v1.1.0")
+    assert main(["kits", "update"]) == 0
+    out = capsys.readouterr().out
+    assert "pack: at " in out and "dev: nothing to update" in out
+    assert not (clone / "skills" / "plan").exists()  # still at v1.0.0
+
+    assert main(["kits", "add", url, "--name", "pack"]) == 1
+    assert 'a source named "pack" already exists' in capsys.readouterr().err
+    assert main(["kits", "remove", "pack"]) == 0
+    assert f'Removed source "pack"; deleted the clone {clone}.' in capsys.readouterr().out
+    assert not clone.exists()
+    assert main(["kits", "update", "pack"]) == 1
+    assert 'no source "pack"; sources: dev' in capsys.readouterr().err
+
+
+def test_kits_add_refuses_a_source_without_kits(tmp_path, capsys):
+    (tmp_path / "empty").mkdir()
+    assert main(["kits", "add", str(tmp_path / "empty")]) == 1
+    err = capsys.readouterr().err
+    assert "no kits and no skills under skills/" in err and "source not added" in err
+    assert sources.registered() == []
+    assert main(["kits", "add", "file:///nowhere/kits.git"]) == 1
+    assert "lado: cannot get git file:///nowhere/kits.git" in capsys.readouterr().err
+
+
+def test_kits_show_and_check_name_sources(tmp_path, repo, capsys):
+    work = init_repo(tmp_path / "team")
+    files = {
+        "kits/team/kit.yaml": "name: team\nversion: 1.0.0\ninclude: [default]\n",
+        "kits/team/skills/notes/SKILL.md": "---\nname: notes\ndescription: notes\n---\n",
+    }
+    url = publish(work, files, tag="v2.0.0")
+    assert main(["kits", "add", url]) == 0
+    source = sources.get("team")
+    kit_dir = source.path().resolve() / "kits" / "team"
+    capsys.readouterr()
+    assert main(["kits", "--repo", str(repo), "show", "team"]) == 0
+    out = capsys.readouterr().out
+    assert f"team 1.0.0  (source team @ {source.revision()}: {kit_dir})" in out
+    assert f"notes  from team (source team): {kit_dir}/skills/notes" in out
+    assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
+    captured = capsys.readouterr()
+    assert "warning: team: version 1.0.0 in kit.yaml, but team is at v2.0.0" in captured.err
+    assert "team: OK (2 agents and 1 skills" in captured.out

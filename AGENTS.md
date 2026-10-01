@@ -60,6 +60,9 @@ tag against the package version and publishes to PyPI.
     validation. A provider gets an `AgentSpec` (prompt, skill folders, MCP servers), never
     the kit itself. `builtin_kits/`: kits shipped with LADO (`default`: supervisor + worker).
     LADO's own instructions to agents stay in `runtime.py` and are appended to the role.
+  - `sources.py`: kit sources (`lado kits add`): a local folder read in place, or a git
+    repository cloned into `LADO_HOME/sources/<name>`; registered in `LADO_HOME/sources.yaml`.
+    Only the `Source` classes know a kind; `kits.py` asks a source for its directory.
   - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).

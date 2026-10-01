@@ -46,6 +46,7 @@ MCP servers and flows. Kits can be combined and parts switched on or off.
 - [x] Kit format and `lado start --kit`; several kits combine into one environment
 - [x] Switch single roles, skills and MCP servers on or off per session and per agent
 - [x] Skills placed where each provider looks for them in the agent's worktree
+- [x] Kit sources: git repositories and local folders (`lado kits add`), skill packs
 - [ ] `lado-dev` kit used to develop LADO
 
 ## Stage 5: Flows

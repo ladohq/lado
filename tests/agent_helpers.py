@@ -22,6 +22,24 @@ def init_repo(path: Path) -> Path:
     return path
 
 
+def publish(work: Path, files: dict[str, str], tag: str | None = None) -> str:
+    """Commit `files` in the repo `work` (made by init_repo), tag the commit, push it to a
+    bare repo beside it (created on first use) and return the bare repo's file:// URL."""
+    git = ["git", "-C", str(work)]
+    for name, text in files.items():
+        (work / name).parent.mkdir(parents=True, exist_ok=True)
+        (work / name).write_text(text)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "publish"], check=True)
+    if tag:
+        subprocess.run([*git, "tag", tag], check=True)
+    remote = work.with_name(work.name + ".git")
+    if not remote.exists():
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    subprocess.run([*git, "push", "-q", "--tags", str(remote), "main"], check=True)
+    return remote.as_uri()
+
+
 def refuse_unless_isolated() -> None:
     """These tests start and kill tmux servers and agents: never let them near a live LADO."""
     home = state.home().resolve()

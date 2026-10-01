@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from lado import __version__, doctor, kits, providers, runtime, state, tmux
+from lado import __version__, doctor, kits, providers, runtime, sources, state, tmux
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -22,16 +22,64 @@ def cmd_start(args: argparse.Namespace) -> int:
 def cmd_kits(args: argparse.Namespace) -> int:
     repo = _repo_or_none(args.repo)
     found = kits.available(repo)
-    for name, where, path, shadowed in found:
-        note = "  (shadowed by the one above)" if shadowed else ""
+    for kit, shadowed_by in found:
+        note = f"  (shadowed by {shadowed_by})" if shadowed_by else ""
         try:
-            kit = kits.load(path, where)
-            about = f"{kit.version:<8} {kit.description}"
+            about = _about(kit.load())
         except kits.KitError:
-            about = "invalid; see: lado kits check " + str(path)
-        print(f"{name:<16} {where:<9} {path}{note}\n  {about}")
+            about = "invalid; see: lado kits check " + str(kit.path)
+        print(f"{kit.name:<16} {kit.where:<9} {kit.path}{note}\n  {about}")
     if not found:
         print("No kits found.")
+    return 0
+
+
+def _about(kit: kits.Kit) -> str:
+    return f"{kit.version or '-':<8} {kit.description}"
+
+
+def cmd_kits_sources(args: argparse.Namespace) -> int:
+    found = sources.registered()
+    for source in found:
+        revision = source.revision()
+        at = f"  at {revision}" if revision else ""
+        print(f"{source.name:<16} {source.describe()}{at}")
+    if not found:
+        print("No sources. Add one with: lado kits add <git-url|folder>[@ref]")
+    return 0
+
+
+def cmd_kits_add(args: argparse.Namespace) -> int:
+    source = sources.add(args.source, args.name)
+    try:
+        found = kits.in_source(source)
+        if not found:
+            raise kits.KitError(f"no kits and no skills under skills/ in {source.path()}")
+    except kits.KitError as exc:
+        sources.remove(source.name)
+        raise kits.KitError(f"{exc}\nsource not added") from None
+    revision = source.revision()
+    at = f" at {revision}" if revision else ""
+    print(f'Added source "{source.name}": {source.describe()}{at}, {source.path()}')
+    for item in found:
+        try:
+            kit = item.load()
+            what = f"skill pack with {len(kit.skills)} skills" if kit.pack else _about(kit)
+        except kits.KitError:
+            what = f"invalid; see: lado kits check {item.name}"
+        print(f"  {item.name:<16} {what}")
+    return 0
+
+
+def cmd_kits_update(args: argparse.Namespace) -> int:
+    for source in [sources.get(args.name)] if args.name else sources.registered():
+        print(f"{source.name}: {source.update()}")
+    return 0
+
+
+def cmd_kits_remove(args: argparse.Namespace) -> int:
+    source, files = sources.remove(args.name)
+    print(f'Removed source "{source.name}"; {files}.')
     return 0
 
 
@@ -52,8 +100,9 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
         for mcp in resolved.mcp.values():
             print(f"    mcp {mcp.name}: {' '.join(mcp.command)}")
     print("Skills:")
+    where = {kit.name: kit.where for kit in env.kits}
     for skill in env.skills.values():
-        print(f"  {skill.name}  from {skill.kit}: {skill.path}")
+        print(f"  {skill.name}  from {skill.kit} ({where[skill.kit]}): {skill.path}")
     if env.without:
         print(f"Switched off: {', '.join(env.without)}")
     env.supervisor()  # a session needs exactly one
@@ -64,16 +113,20 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     target = Path(args.kit)
     repo = _repo_or_none(str(target) if target.is_dir() else args.repo)
     try:
+        # A folder may be any kit, e.g. a kit at the root of its repository.
         kit = (
-            kits.load(target)
+            kits.load(target, named_folder=False)
             if target.is_dir()
-            else kits.load(*reversed(kits.find(args.kit, repo)))
+            else kits.find(args.kit, repo).load()
         )
         env = kits.resolve(repo, [kit])
         problems = [p for k in env.kits for p in kits.lint(k)]
+        doubts = [w for k in env.kits for w in kits.warnings(k)]
     except kits.KitError as exc:
         print(exc, file=sys.stderr)
         return 1
+    for doubt in doubts:
+        print(f"warning: {doubt}", file=sys.stderr)
     for problem in problems:
         print(problem, file=sys.stderr)
     if problems:
@@ -177,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
     start.set_defaults(func=cmd_start)
 
-    kits_cmd = commands.add_parser("kits", help="list, show and check kits")
+    kits_cmd = commands.add_parser("kits", help="list, show and check kits; manage kit sources")
     kits_cmd.add_argument("--repo", default=".", help="repository for project kits")
     kits_cmd.set_defaults(func=cmd_kits)
     kits_sub = kits_cmd.add_subparsers(metavar="<command>")
@@ -188,6 +241,21 @@ def main(argv: list[str] | None = None) -> int:
     check = kits_sub.add_parser("check", help="validate a kit and what it includes")
     check.add_argument("kit", help="kit folder or name")
     check.set_defaults(func=cmd_kits_check)
+    add = kits_sub.add_parser("add", help="add a kit source: a git repository or a local folder")
+    add.add_argument(
+        "source",
+        metavar="<git-url|folder>[@ref]",
+        help="a git URL (cloned; ref: tag, branch or commit) or a folder (read in place)",
+    )
+    add.add_argument("--name", help="source name (default: repository or folder name)")
+    add.set_defaults(func=cmd_kits_add)
+    update = kits_sub.add_parser("update", help="fetch kit sources again (default: all)")
+    update.add_argument("name", nargs="?")
+    update.set_defaults(func=cmd_kits_update)
+    remove = kits_sub.add_parser("remove", help="remove a kit source (and its clone)")
+    remove.add_argument("name")
+    remove.set_defaults(func=cmd_kits_remove)
+    kits_sub.add_parser("sources", help="list kit sources").set_defaults(func=cmd_kits_sources)
 
     commands.add_parser("ls", help="list sessions and agents").set_defaults(func=cmd_ls)
 
@@ -223,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         return args.func(args)
-    except (runtime.LadoError, tmux.TmuxError, kits.KitError) as exc:
+    except (runtime.LadoError, tmux.TmuxError, kits.KitError, sources.SourceError) as exc:
         print(f"lado: {exc}", file=sys.stderr)
         return 1
 

@@ -8,9 +8,14 @@ A kit is a directory:
     workflows/          reserved for flows; not loaded yet
 
 Agents and skills are found in their folders; kit.yaml does not list them. Anything else in
-the kit travels with it untouched. Kits are looked up by name in the project
-(<repo>/.lado/kits), then in LADO_HOME/kits, then among the kits built into LADO; the first
-hit wins. Several kits, with what they include, combine into one Environment.
+the kit travels with it untouched. A kit is identified by the name and version in kit.yaml.
+
+Kits are looked up by name in the project (<repo>/.lado/kits), then in LADO_HOME/kits, then
+in the registered sources (lado.sources) in the order they were added, then among the kits
+built into LADO; the first hit wins. A source holds kits in kits/<name>/, or one kit at its
+root, or is a skill pack: no kit.yaml, only SKILL.md folders anywhere under skills/. A skill
+pack is a kit named after the source, with skills and no agents. Several kits, with what
+they include, combine into one Environment.
 """
 
 import dataclasses
@@ -22,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import state
+from lado import sources, state
 from lado.providers.base import McpServer
 
 KIT_FILE = "kit.yaml"
@@ -35,7 +40,8 @@ AGENT_KEYS = {"name", "description", "supervisor", "skills", "mcp"}
 MCP_KEYS = {"command", "env"}
 WITHOUT_KINDS = ("agent", "skill", "mcp")
 
-NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+NAME = sources.NAME
+SEMVER = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 # A path that only works on one machine: ~/..., or /dir/... at the start of a word.
 HARDCODED_PATH = re.compile(r"(?:^|(?<=[\s\"'`(=:,\[]))(~/|/[A-Za-z0-9._-]+/)[^\s\"'`)]*", re.M)
@@ -84,10 +90,30 @@ class Kit:
     default_agent: str | None
     agents: dict[str, AgentDef]
     skills: dict[str, Skill]
+    origin: sources.Source | None = None  # the source the kit was found in
+    pack: bool = False  # a skill pack: SKILL.md folders without a kit.yaml
 
     @property
     def source(self) -> str:
-        return f"{self.where}: {self.path}"
+        revision = self.origin.revision() if self.origin else None
+        return f"{self.where}{f' @ {revision}' if revision else ''}: {self.path}"
+
+
+@dataclass(frozen=True)
+class Found:
+    """A kit on the search path, not loaded yet."""
+
+    name: str
+    where: str  # project, user, source <name> or built-in
+    path: Path
+    origin: sources.Source | None = None
+    pack: bool = False
+    named_folder: bool = True  # in a kits folder, where the folder name is the kit name
+
+    def load(self) -> Kit:
+        if self.pack:
+            return _load_pack(self)
+        return load(self.path, self.where, self.named_folder, self.origin)
 
 
 @dataclass(frozen=True)
@@ -159,35 +185,120 @@ class Environment:
         return {m for a in self.agents.values() for m in a.mcp}
 
 
-def search_path(repo: str | Path | None) -> list[tuple[str, Path]]:
-    """Where kits are looked up, in order."""
-    dirs = [("user", state.home() / "kits"), ("built-in", BUILTIN)]
-    return [("project", Path(repo) / ".lado" / "kits"), *dirs] if repo else dirs
+def search_path(repo: str | Path | None) -> list[tuple[str, Path, sources.Source | None]]:
+    """Where kits are looked up, in order: (where, folder, the source if it is one)."""
+    places = [("project", Path(repo) / ".lado" / "kits", None)] if repo else []
+    places.append(("user", state.home() / "kits", None))
+    places += [(f"source {s.name}", s.path(), s) for s in _registered()]
+    return [*places, ("built-in", BUILTIN, None)]
 
 
-def find(name: str, repo: str | Path | None) -> tuple[str, Path]:
-    for where, base in search_path(repo):
-        if (base / name / KIT_FILE).is_file():
-            return where, base / name
-    looked = ", ".join(str(base) for _, base in search_path(repo))
-    raise KitError(f'kit "{name}" not found; looked in {looked}')
-
-
-def available(repo: str | Path | None) -> list[tuple[str, str, Path, bool]]:
-    """All kits on the search path: (name, where, path, shadowed by an earlier one)."""
-    found, seen = [], set()
-    for where, base in search_path(repo):
-        if not base.is_dir():
-            continue
-        for path in sorted(base.iterdir()):
-            if (path / KIT_FILE).is_file():
-                found.append((path.name, where, path, path.name in seen))
-                seen.add(path.name)
+def candidates(repo: str | Path | None) -> list[Found]:
+    """Every kit on the search path, in lookup order; a name may come more than once."""
+    found = []
+    for where, base, origin in search_path(repo):
+        found += in_source(origin) if origin else _in_folder(base, where)
     return found
 
 
-def load(path: str | Path, where: str = "path") -> Kit:
-    """Read and validate the kit in `path`. Raises KitError listing every problem found."""
+def find(name: str, repo: str | Path | None) -> Found:
+    for found in candidates(repo):
+        if found.name == name:
+            return found
+    looked = ", ".join(str(base) for _, base, _ in search_path(repo))
+    raise KitError(f'kit "{name}" not found; looked in {looked}')
+
+
+def available(repo: str | Path | None) -> list[tuple[Found, str | None]]:
+    """All kits on the search path, each with where the kit that shadows it is (or None)."""
+    winners: dict[str, Found] = {}
+    listed = []
+    for found in candidates(repo):
+        winner = winners.setdefault(found.name, found)
+        listed.append((found, None if winner is found else winner.where))
+    return listed
+
+
+def in_source(origin: sources.Source) -> list[Found]:
+    """The kits of a source: kits/<name>/, one kit at its root, or a skill pack."""
+    root, where = origin.path(), f"source {origin.name}"
+    if not root.is_dir():
+        raise KitError(
+            f'source "{origin.name}": {root} does not exist; '
+            f"run `lado kits update {origin.name}` or `lado kits remove {origin.name}`"
+        )
+    found = []
+    if (root / KIT_FILE).is_file():
+        found.append(Found(_kit_name(root), where, root, origin, named_folder=False))
+    elif (root / "kits").is_dir() and _skill_dirs(root / "skills"):
+        raise KitError(f"{root / 'skills'}: skills of a source with kits belong in a kit")
+    found += _in_folder(root / "kits", where, origin)
+    if not found:
+        stray = _stray_kit_file(root)
+        if stray:
+            raise KitError(f"{stray}: a source keeps kits in kits/<name>/ or one kit at its root")
+        if _skill_dirs(root / "skills"):
+            found.append(Found(origin.name, where, root, origin, pack=True))
+    seen: dict[str, Found] = {}
+    for kit in found:
+        if kit.name in seen:
+            raise KitError(
+                f'source "{origin.name}" has two kits named "{kit.name}": '
+                f"{seen[kit.name].path} and {kit.path}"
+            )
+        seen[kit.name] = kit
+    return found
+
+
+def _registered() -> list[sources.Source]:
+    try:
+        return sources.registered()
+    except sources.SourceError as exc:
+        raise KitError(str(exc)) from None
+
+
+def _in_folder(base: Path, where: str, origin: sources.Source | None = None) -> list[Found]:
+    if not base.is_dir():
+        return []
+    paths = sorted(p for p in base.iterdir() if (p / KIT_FILE).is_file())
+    return [Found(p.name, where, p, origin) for p in paths]
+
+
+def _kit_name(path: Path) -> str:
+    """The name in a kit's kit.yaml, or its folder's name when it has none (load says why)."""
+    meta = _yaml_file(path / KIT_FILE, [])
+    name = meta.get("name") if isinstance(meta, dict) else None
+    return name if isinstance(name, str) else path.name
+
+
+def _stray_kit_file(root: Path) -> Path | None:
+    for folder, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d != ".git")
+        if KIT_FILE in files:
+            return Path(folder, KIT_FILE)
+    return None
+
+
+def _skill_dirs(base: Path) -> list[Path]:
+    """SKILL.md folders anywhere under `base`; a skill folder is not searched further."""
+    found = []
+    for folder, dirs, files in os.walk(base):
+        if "SKILL.md" in files:
+            found.append(Path(folder))
+            dirs[:] = []
+        else:
+            dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+    return sorted(found)
+
+
+def load(
+    path: str | Path,
+    where: str = "path",
+    named_folder: bool = True,
+    origin: sources.Source | None = None,
+) -> Kit:
+    """Read and validate the kit in `path`. Raises KitError listing every problem found.
+    `named_folder`: the folder's name must be the kit's name (it is in a kits folder)."""
     path = Path(path).resolve()
     errors: list[str] = []
     meta = _yaml_file(path / KIT_FILE, errors)
@@ -199,8 +310,11 @@ def load(path: str | Path, where: str = "path") -> Kit:
     name = meta.get("name")
     if not isinstance(name, str) or not NAME.fullmatch(name):
         errors.append(f"{path / KIT_FILE}: name must be lowercase letters, digits, - or _")
-    elif name != path.name:
+    elif named_folder and name != path.name:
         errors.append(f'{path / KIT_FILE}: name "{name}" differs from the folder "{path.name}"')
+    version = meta.get("version")
+    if version is not None and not SEMVER.fullmatch(str(version)):
+        errors.append(f"{path / KIT_FILE}: version must be X.Y.Z or X.Y.Z-<prerelease>")
     include = meta.get("include", [])
     if not _str_list(include):
         errors.append(f"{path / KIT_FILE}: include must be a list of kit names")
@@ -217,12 +331,40 @@ def load(path: str | Path, where: str = "path") -> Kit:
         name=kit_name,
         path=path,
         where=where,
-        version=str(meta.get("version", "")),
+        version="" if version is None else str(version),
         description=str(meta.get("description", "")),
         include=list(include),
         default_agent=default_agent,
         agents=agents,
         skills=skills,
+        origin=origin,
+    )
+
+
+def _load_pack(found: Found) -> Kit:
+    errors: list[str] = []
+    skills: dict[str, Skill] = {}
+    root = found.path.resolve()
+    for path in _skill_dirs(root / "skills"):
+        skill = _load_skill(path, found.name, errors)
+        if skill and skill.name in skills:
+            errors.append(f'{path}: skill "{skill.name}" is also in {skills[skill.name].path}')
+        elif skill:
+            skills[skill.name] = skill
+    if errors:
+        raise KitError("\n".join(errors))
+    return Kit(
+        name=found.name,
+        path=root,
+        where=found.where,
+        version="",
+        description=f"skill pack, {len(skills)} skills",
+        include=[],
+        default_agent=None,
+        agents={},
+        skills=skills,
+        origin=found.origin,
+        pack=True,
     )
 
 
@@ -239,11 +381,11 @@ def resolve(
         for name in kit.include:
             if name in stack:
                 raise KitError(f"kits include each other: {' -> '.join([*stack, name])}")
-            visit(load(*reversed(find(name, repo))), [*stack, name])
+            visit(find(name, repo).load(), [*stack, name])
         taken[kit.path] = kit
 
     for item in kits:
-        kit = item if isinstance(item, Kit) else load(*reversed(find(item, repo)))
+        kit = item if isinstance(item, Kit) else find(item, repo).load()
         visit(kit, [kit.name])
 
     env_kits = list(taken.values())
@@ -284,8 +426,10 @@ def parse_without(items: Iterable[str]) -> dict[str, set[str]]:
 
 def lint(kit: Kit) -> list[str]:
     """Problems a kit can run with but should not have: paths that only work on one
-    machine. Use ${KIT_DIR} or a relative path instead."""
+    machine (use ${KIT_DIR} or a relative path instead), a missing version."""
     problems = []
+    if not kit.version and not kit.pack:
+        problems.append(f"{kit.path / KIT_FILE}: version is missing; use X.Y.Z")
     for agent in kit.agents.values():
         raw = _frontmatter(agent.path.read_text(), agent.path, [])[1]
         problems += _hardcoded(raw, str(agent.path))
@@ -297,6 +441,17 @@ def lint(kit: Kit) -> list[str]:
         skill_md = skill.path / "SKILL.md"
         problems += _hardcoded(skill_md.read_text(), str(skill_md))
     return problems
+
+
+def warnings(kit: Kit) -> list[str]:
+    """Doubts about a kit that do not stop it: its version differs from the source's."""
+    tags = kit.origin.versions() if kit.origin and kit.version else []
+    if tags and kit.version not in tags:
+        return [
+            f"{kit.name}: version {kit.version} in kit.yaml, but {kit.origin.name} is at "
+            f"{', '.join('v' + t for t in tags)} ({kit.origin.describe()})"
+        ]
+    return []
 
 
 def _hardcoded(text: str, where: str) -> list[str]:
@@ -337,24 +492,31 @@ def _load_skills(kit: Path, kit_name: str, errors: list[str]) -> dict[str, Skill
         if not path.is_dir():
             errors.append(f"{path}: skills/ holds one folder per skill")
             continue
-        skill_md = path / "SKILL.md"
-        if not skill_md.is_file():
-            errors.append(f"{path}: no SKILL.md")
-            continue
-        # SKILL.md is a standard format read by the agent CLIs: other keys are theirs.
-        meta, _ = _frontmatter(skill_md.read_text(), skill_md, errors)
-        if meta is None:
-            continue
-        name, description = meta.get("name"), meta.get("description")
-        if name != path.name:
-            errors.append(f'{skill_md}: name "{name}" differs from the folder "{path.name}"')
-        elif not NAME.fullmatch(name):
-            errors.append(f"{skill_md}: name must be lowercase letters, digits, - or _")
-        elif not isinstance(description, str) or not description.strip():
-            errors.append(f"{skill_md}: description is missing")
-        else:
-            skills[name] = Skill(name, description, path, kit_name)
+        skill = _load_skill(path, kit_name, errors)
+        if skill:
+            skills[skill.name] = skill
     return skills
+
+
+def _load_skill(path: Path, kit_name: str, errors: list[str]) -> Skill | None:
+    skill_md = path / "SKILL.md"
+    if not skill_md.is_file():
+        errors.append(f"{path}: no SKILL.md")
+        return None
+    # SKILL.md is a standard format read by the agent CLIs: other keys are theirs.
+    meta, _ = _frontmatter(skill_md.read_text(), skill_md, errors)
+    if meta is None:
+        return None
+    name, description = meta.get("name"), meta.get("description")
+    if name != path.name:
+        errors.append(f'{skill_md}: name "{name}" differs from the folder "{path.name}"')
+    elif not NAME.fullmatch(name):
+        errors.append(f"{skill_md}: name must be lowercase letters, digits, - or _")
+    elif not isinstance(description, str) or not description.strip():
+        errors.append(f"{skill_md}: description is missing")
+    else:
+        return Skill(name, description, path, kit_name)
+    return None
 
 
 def _load_agents(kit: Path, kit_name: str, errors: list[str]) -> dict[str, AgentDef]:

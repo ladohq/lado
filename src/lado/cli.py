@@ -186,6 +186,16 @@ def cmd_stop(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_finish(args: argparse.Namespace) -> int:
+    worker = runtime.finish_worker(args.session, args.agent, args.discard)
+    how = "discarded" if args.discard else "merged"
+    print(
+        f'Finished worker "{worker.name}" ({how}): removed window, worktree {worker.cwd} '
+        f"and branch {worker.branch}"
+    )
+    return 0
+
+
 def _attach(name: str) -> int:
     if not tmux.has_session(name):
         print(f'No running session "{name}" (see lado ls)', file=sys.stderr)
@@ -301,6 +311,18 @@ def main(argv: list[str] | None = None) -> int:
     stop = commands.add_parser("stop", help="stop a session and all its agents")
     stop.add_argument("name")
     stop.set_defaults(func=cmd_stop)
+
+    finish = commands.add_parser(
+        "finish", help="end a worker whose branch is merged: its window, worktree and branch"
+    )
+    finish.add_argument("session")
+    finish.add_argument("agent")
+    finish.add_argument(
+        "--discard",
+        action="store_true",
+        help="also end it if its work is not merged or not committed, and throw that work away",
+    )
+    finish.set_defaults(func=cmd_finish)
 
     # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")

@@ -92,7 +92,7 @@ DELIVERED = "delivered"
 # Event kinds.
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
 STATUS = "status"  # detail: the new status
-FINISHED = "finished"  # reserved: a worker reports its work done
+FINISHED = "finished"  # a worker was ended; detail: "merged" or "discarded"
 
 
 @dataclass
@@ -249,6 +249,12 @@ def list_agents(session: str) -> list[Agent]:
             "SELECT * FROM agents WHERE session = ? ORDER BY created_at, rowid", (session,)
         ).fetchall()
     return [_agent(r) for r in rows]
+
+
+def delete_agent(session: str, name: str) -> None:
+    """Forget the agent; its messages and events stay in the log."""
+    with connect() as db:
+        db.execute("DELETE FROM agents WHERE session = ? AND name = ?", (session, name))
 
 
 def set_status(session: str, name: str, status: str) -> None:

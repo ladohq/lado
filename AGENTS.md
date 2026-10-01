@@ -63,7 +63,8 @@ tag against the package version and publishes to PyPI.
   - `sources.py`: kit sources (`lado sources`): a local folder read in place, or a git
     repository cloned into `LADO_HOME/sources/<name>`; registered in `LADO_HOME/sources.yaml`.
     Only the `Source` classes know a kind; `kits.py` asks a source for its directory.
-  - `mcp_server.py`: MCP tools for agents (`spawn_worker`, `send_message`, `list_agents`).
+  - `mcp_server.py`: MCP tools for agents (`send_message`, `list_agents`; the supervisor
+    also gets `spawn_worker` and `finish_worker`).
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
@@ -92,6 +93,12 @@ delivery state) and agent events (spawned, status changes). `--agent NAME` keeps
 lines, `-n N` the last N entries, `--follow` keeps printing new ones until Ctrl-C.
 With `--follow` a message is printed once, with the state it had then; a later delivery
 is not printed again.
+
+`lado finish <session> <agent>` ends a worker whose branch is merged into the session repo's
+current branch: it closes the window, removes the worktree and branch, and drops the agent
+from `lado ls` (its messages and events stay in `lado log`, with a `finished` event). It
+refuses an unmerged branch or uncommitted changes; `--discard` ends the worker anyway and
+throws that work away. The supervisor does the same with the MCP tool `finish_worker`.
 
 ## Testing
 

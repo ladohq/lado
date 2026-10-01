@@ -56,4 +56,5 @@ def fake_tmux(monkeypatch):
     monkeypatch.setattr(tmux, "send_text", lambda *a: calls.append(("send_text", *a)))
     monkeypatch.setattr(tmux, "has_session", lambda s: any(c[0] == "new_session" for c in calls))
     monkeypatch.setattr(tmux, "kill_session", lambda s: calls.append(("kill_session", s)))
+    monkeypatch.setattr(tmux, "kill_window", lambda *a: calls.append(("kill_window", *a)))
     return calls

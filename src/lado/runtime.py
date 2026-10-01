@@ -25,6 +25,8 @@ from your current HEAD. Give it the goal, the relevant files and how to check th
 {roles}
 - send_message: talk to another agent, e.g. to answer a worker's question.
 - list_agents: see the agents, their role, status, branch and worktree.
+- finish_worker: once you merged a worker's branch, end that worker; its window, worktree \
+and branch are removed.
 Workers report back with messages that arrive in your input as "[from <name>] ...".
 """
 
@@ -137,6 +139,53 @@ def spawn_worker(
     launch = agent_cli.launch_command(agent, sess, spec, first_message=task + REPORT_REMINDER)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent
+
+
+def finish_worker(session: str, name: str, discard: bool = False) -> state.Agent:
+    """End a worker whose branch is merged: close its window, remove its worktree and branch
+    and forget it, so the name can be used again. Its messages and events stay in the log.
+
+    `discard` also ends a worker whose work is not merged or not committed, and throws that
+    work away.
+    """
+    sess = state.get_session(session)
+    if sess is None:
+        raise LadoError(f'unknown session "{session}"')
+    if name == SUPERVISOR:
+        raise LadoError(
+            f"the supervisor is not a worker and cannot be finished; "
+            f"end the whole session with `lado stop {session}`"
+        )
+    worker = state.get_agent(session, name)
+    if worker is None or worker.branch is None:
+        workers = ", ".join(a.name for a in state.list_agents(session) if a.branch) or "none"
+        raise LadoError(f'no worker "{name}"; workers: {workers}')
+    if not discard:
+        _check_finished(sess.repo, worker)
+    tmux.kill_window(session, name)
+    git(sess.repo, "worktree", "remove", *(["--force"] if discard else []), worker.cwd)
+    git(sess.repo, "branch", "-D" if discard else "-d", worker.branch)
+    state.add_event(session, name, state.FINISHED, "discarded" if discard else "merged")
+    state.delete_agent(session, name)
+    return worker
+
+
+def _check_finished(repo: str, worker: state.Agent) -> None:
+    """Refuse to end a worker whose work would be lost."""
+    try:
+        git(repo, "merge-base", "--is-ancestor", worker.branch, "HEAD")
+    except LadoError:
+        head = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+        raise LadoError(
+            f"branch {worker.branch} is not merged into {head} (the current branch of {repo}); "
+            "merge it first, or finish with discard to throw its work away"
+        ) from None
+    changes = git(worker.cwd, "status", "--porcelain")
+    if changes:
+        raise LadoError(
+            f'worker "{worker.name}" has uncommitted changes in {worker.cwd}:\n{changes}\n'
+            "have it commit them and merge again, or finish with discard to throw them away"
+        )
 
 
 def send_message(session: str, sender: str, recipient: str, text: str) -> str:

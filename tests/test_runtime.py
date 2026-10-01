@@ -298,3 +298,86 @@ def test_start_and_spawn_record_spawned_events(repo, fake_tmux):
         ("supervisor", "spawned", "role supervisor, provider kilo"),
         ("w1", "spawned", "role worker, provider claude"),
     ]
+
+
+def _commit(worktree, name="work.txt"):
+    Path(worktree, name).write_text("done\n")
+    runtime.git(worktree, "add", name)
+    runtime.git(worktree, "commit", "-q", "-m", f"add {name}")
+
+
+def _branches(repo):
+    return runtime.git(str(repo), "branch", "--format=%(refname:short)").split()
+
+
+def test_finish_worker_removes_a_merged_worker(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
+    finished = runtime.finish_worker("s", "w1")
+    assert (finished.name, finished.branch, finished.cwd) == ("w1", "lado/s/w1", worker.cwd)
+    assert ("kill_window", "s", "w1") in fake_tmux
+    assert not Path(worker.cwd).exists()
+    assert _branches(repo) == ["main"]
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    last = state.list_events("s")[-1]
+    assert (last.agent, last.kind, last.detail) == ("w1", "finished", "merged")
+    assert runtime.spawn_worker("s", "again", name="w1").branch == "lado/s/w1"
+
+
+def test_finish_worker_refuses_unknown_session_agent_and_supervisor(repo, fake_tmux):
+    _session_with_worker(repo)
+    with pytest.raises(runtime.LadoError, match='unknown session "nope"'):
+        runtime.finish_worker("nope", "w1")
+    with pytest.raises(runtime.LadoError, match='no worker "w9"; workers: w1'):
+        runtime.finish_worker("s", "w9")
+    for discard in (False, True):
+        with pytest.raises(runtime.LadoError, match="supervisor.*lado stop s"):
+            runtime.finish_worker("s", "supervisor", discard=discard)
+    assert len(state.list_agents("s")) == 2
+
+
+def test_finish_worker_refuses_unmerged_or_dirty_work(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    with pytest.raises(runtime.LadoError, match="lado/s/w1 is not merged into main.*discard"):
+        runtime.finish_worker("s", "w1")
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
+    Path(worker.cwd, "untracked.txt").write_text("x")
+    with pytest.raises(runtime.LadoError, match="(?s)uncommitted changes.*untracked.txt.*discard"):
+        runtime.finish_worker("s", "w1")
+    Path(worker.cwd, "untracked.txt").unlink()
+    Path(worker.cwd, "work.txt").write_text("changed")
+    with pytest.raises(runtime.LadoError, match="(?s)uncommitted changes.*work.txt"):
+        runtime.finish_worker("s", "w1")
+    assert not any(c[0] == "kill_window" for c in fake_tmux)
+    assert Path(worker.cwd).exists() and "lado/s/w1" in _branches(repo)
+    assert state.get_agent("s", "w1") is not None
+
+
+def test_finish_worker_discard_throws_the_work_away(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    Path(worker.cwd, "untracked.txt").write_text("x")
+    Path(worker.cwd, "work.txt").write_text("changed")
+    runtime.finish_worker("s", "w1", discard=True)
+    assert not Path(worker.cwd).exists()
+    assert _branches(repo) == ["main"]
+    assert state.get_agent("s", "w1") is None
+    last = state.list_events("s")[-1]
+    assert (last.agent, last.kind, last.detail) == ("w1", "finished", "discarded")
+
+
+def test_hooks_of_a_finished_worker_are_ignored(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    old = state.get_agent("s", "w1").instance
+    runtime.finish_worker("s", "w1", discard=True)
+    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
+    assert hooks.main("Stop", "s", "w1", old) == 0
+    assert state.get_agent("s", "w1") is None  # not recreated
+    runtime.spawn_worker("s", "again", name="w1")
+    assert hooks.main("SessionEnd", "s", "w1", old) == 0  # the killed process exits late
+    assert state.get_agent("s", "w1").status == state.STARTING

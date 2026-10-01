@@ -88,6 +88,16 @@ def kill_session(session: str) -> None:
     run("kill-session", "-t", f"={session}")
 
 
+def kill_window(session: str, window: str) -> None:
+    """Close the window and the program in it. A window that is already gone is fine."""
+    try:
+        names = run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
+    except TmuxError:
+        return  # the session is gone
+    if window in names:
+        run("kill-window", "-t", f"={session}:={window}")
+
+
 def send_text(session: str, window: str, text: str) -> None:
     """Type `text` into the program running in the window and press Enter.
 

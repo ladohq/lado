@@ -5,10 +5,23 @@ into that agent's MCP config.
 """
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
-from lado import runtime, state
+from lado import kits, runtime, state, tmux
+
+
+@contextmanager
+def _reasons() -> Iterator[None]:
+    """Pass LADO's errors on to the agent. The MCP server shows the agent only "Error
+    executing tool" for other exceptions, so it would not learn why or what to do."""
+    try:
+        yield
+    except (runtime.LadoError, kits.KitError, tmux.TmuxError) as exc:
+        raise ToolError(str(exc)) from exc
 
 
 def build(session: str, agent: str) -> MCPServer:
@@ -36,7 +49,8 @@ def build(session: str, agent: str) -> MCPServer:
 
         It is delivered right away if the agent is idle, otherwise when its current turn ends.
         """
-        return runtime.send_message(session, agent, to, text)
+        with _reasons():
+            return runtime.send_message(session, agent, to, text)
 
     me = state.get_agent(session, agent)
     if me and me.name == runtime.SUPERVISOR:
@@ -56,12 +70,29 @@ def build(session: str, agent: str) -> MCPServer:
             `provider` is the agent CLI to run it with, e.g. "claude" or "kilo" (default: the
             session's). The worker reports back with send_message when it is done or blocked.
             """
-            worker = runtime.spawn_worker(session, task, name, provider, role, without)
+            with _reasons():
+                worker = runtime.spawn_worker(session, task, name, provider, role, without)
             return {
                 "name": worker.name,
                 "role": worker.role,
                 "branch": worker.branch,
                 "worktree": worker.cwd,
+            }
+
+        @server.tool()
+        def finish_worker(name: str, discard: bool = False) -> dict:
+            """End a worker once its branch is merged into your current branch: close its
+            window, remove its worktree and branch. Its messages and events stay in the log.
+
+            It refuses while the branch is not merged or the worktree has uncommitted changes.
+            `discard=True` ends the worker anyway and throws that work away.
+            """
+            with _reasons():
+                worker = runtime.finish_worker(session, name, discard)
+            return {
+                "name": worker.name,
+                "finished": "discarded" if discard else "merged",
+                "removed": {"window": worker.name, "worktree": worker.cwd, "branch": worker.branch},
             }
 
     return server

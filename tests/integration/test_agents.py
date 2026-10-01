@@ -105,6 +105,70 @@ def test_stop_kills_agents_and_keeps_worktrees(repo):
     assert Path(worker.cwd, ".git").exists()
 
 
+def windows() -> list[str]:
+    return tmux.run("list-windows", "-t", f"={SESSION}", "-F", "#{window_name}").split()
+
+
+def lado_cli(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "lado.cli", *args],
+        capture_output=True,
+        text=True,
+        env=os.environ,
+        check=False,
+    )
+
+
+def supervisor_runs(command: str) -> None:
+    """Have the supervisor run `command` and wait until its turn is over."""
+    runtime.send_message(SESSION, "human", "supervisor", command)
+    wait_for(lambda: inputs("supervisor")[-1:] == [f"[from human] {command}"], command)
+    wait_status("supervisor", state.IDLE)
+
+
+def worker_commits() -> state.Agent:
+    """Spawn w1 and commit a file on its branch, as the worker would."""
+    worker = runtime.spawn_worker(SESSION, "sleep 0")
+    wait_status("w1", state.IDLE)
+    Path(worker.cwd, "work.txt").write_text("done\n")
+    runtime.git(worker.cwd, "add", "work.txt")
+    runtime.git(worker.cwd, "commit", "-q", "-m", "work")
+    return worker
+
+
+def test_supervisor_finishes_a_merged_worker(repo):
+    start(repo)
+    worker = worker_commits()
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
+    supervisor_runs("finish w1")
+    assert state.get_agent(SESSION, "w1") is None
+    assert windows() == ["supervisor"]
+    assert not Path(worker.cwd).exists()
+    assert runtime.git(str(repo), "branch", "--list", worker.branch) == ""
+    assert (repo / "work.txt").read_text() == "done\n"
+    result = lado_cli("log", SESSION, "--agent", "w1")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines()[-1].endswith(" w1: finished (merged)")
+    assert "w1" not in lado_cli("ls").stdout
+
+
+def test_unmerged_worker_is_finished_only_with_discard(repo):
+    start(repo)
+    worker = worker_commits()
+    supervisor_runs("finish w1")
+    assert "is not merged into main" in tmux.capture(SESSION, "supervisor")
+    assert windows() == ["supervisor", "w1"]
+    assert state.get_agent(SESSION, "w1").status == state.IDLE
+    result = lado_cli("finish", SESSION, "w1", "--discard")
+    assert result.returncode == 0, result.stderr
+    assert windows() == ["supervisor"]
+    assert not Path(worker.cwd).exists()
+    assert runtime.git(str(repo), "branch", "--list", worker.branch) == ""
+    assert state.list_events(SESSION)[-1].detail == "discarded"
+    assert state.get_agent(SESSION, "w1") is None
+    assert not (state.home() / "hooks.log").exists()
+
+
 def test_log_shows_spawns_statuses_and_messages(repo):
     start(repo)
     runtime.spawn_worker(SESSION, "sleep 0")

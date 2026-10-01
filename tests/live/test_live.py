@@ -1,4 +1,5 @@
-"""One short scenario per real agent CLI: a worker does a tiny task, reports and gets a message."""
+"""One short scenario per real agent CLI: a worker does a tiny task, reports, gets a message
+and is finished after its branch is merged."""
 
 import os
 import subprocess
@@ -39,15 +40,19 @@ def messages(sender: str, recipient: str) -> list[tuple[str, str]]:
     return [(r["text"], r["state"]) for r in rows]
 
 
-def agent_processes() -> set[int]:
-    """The test tmux server and every process below it: agents, hooks, MCP servers."""
-    server = tmux.run("display-message", "-p", "#{pid}").strip()
+def agent_processes(target: str = "") -> set[int]:
+    """The test tmux server and every process below it: agents, hooks, MCP servers. With
+    `target`, that window's process and every process below it."""
+    if target:
+        root = tmux.run("display-message", "-p", "-t", target, "#{pane_pid}").strip()
+    else:
+        root = tmux.run("display-message", "-p", "#{pid}").strip()
     table = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True)
     children: dict[int, list[int]] = {}
     for line in table.stdout.splitlines():
         pid, ppid = map(int, line.split())
         children.setdefault(ppid, []).append(pid)
-    found, todo = set(), [int(server)]
+    found, todo = set(), [int(root)]
     while todo:
         pid = todo.pop()
         found.add(pid)
@@ -122,9 +127,31 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
     check_log(live_provider)
 
+    finish_worker(repo, worker)
+
     processes = agent_processes()
     runtime.stop_session(SESSION)
     assert not tmux.has_session(SESSION)
+    check_gone(processes, "stop")
+    print(f"{live_provider}: {time.monotonic() - started:.0f}s")
+
+
+def finish_worker(repo, worker: state.Agent) -> None:
+    """Merge w1's branch and finish w1: its processes, window, worktree and branch go."""
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
+    processes = agent_processes(f"{SESSION}:w1")
+    runtime.finish_worker(SESSION, "w1")
+    windows = tmux.run("list-windows", "-t", f"={SESSION}", "-F", "#{window_name}").split()
+    assert windows == ["supervisor"]
+    assert not os.path.exists(worker.cwd)
+    assert runtime.git(str(repo), "branch", "--list", worker.branch) == ""
+    assert state.get_agent(SESSION, "w1") is None
+    check_gone(processes, "finish_worker")
+    event = state.list_events(SESSION)[-1]
+    assert (event.agent, event.kind, event.detail) == ("w1", state.FINISHED, "merged")
+
+
+def check_gone(processes: set[int], after: str) -> None:
     deadline = time.monotonic() + 30
     while (left := alive(processes)) and time.monotonic() < deadline:
         time.sleep(0.5)
@@ -134,5 +161,4 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
             capture_output=True,
             text=True,
         )
-        pytest.fail(f"processes left after stop:\n{ps.stdout}")
-    print(f"{live_provider}: {time.monotonic() - started:.0f}s")
+        pytest.fail(f"processes left after {after}:\n{ps.stdout}")

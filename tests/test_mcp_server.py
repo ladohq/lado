@@ -1,4 +1,8 @@
 import asyncio
+import json
+
+import pytest
+from mcp.server.mcpserver.exceptions import ToolError
 
 from lado import mcp_server, runtime, state
 
@@ -11,8 +15,38 @@ def _tools(session, agent):
 def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")
-    assert _tools("s", "supervisor") == ["list_agents", "send_message", "spawn_worker"]
+    supervisor_tools = ["finish_worker", "list_agents", "send_message", "spawn_worker"]
+    assert _tools("s", "supervisor") == supervisor_tools
     assert _tools("s", "w1") == ["list_agents", "send_message"]
+
+
+def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    worker = runtime.spawn_worker("s", "task")
+    server = mcp_server.build("s", "supervisor")
+    result = asyncio.run(server.call_tool("finish_worker", {"name": "w1", "discard": True}))
+    assert json.loads(result.content[0].text) == {
+        "name": "w1",
+        "finished": "discarded",
+        "removed": {"window": "w1", "worktree": worker.cwd, "branch": "lado/s/w1"},
+    }
+    assert state.get_agent("s", "w1") is None
+
+
+@pytest.mark.parametrize(
+    ("tool", "args", "reason"),
+    [
+        ("finish_worker", {"name": "supervisor"}, "end the whole session with `lado stop s`"),
+        ("send_message", {"to": "nobody", "text": "hi"}, 'no running agent "nobody"'),
+        ("spawn_worker", {"task": "t", "role": "boss"}, 'no worker role "boss"'),
+    ],
+)
+def test_tool_errors_tell_the_agent_why(repo, fake_tmux, tool, args, reason):
+    runtime.start_session(str(repo), "s", None)
+    server = mcp_server.build("s", "supervisor")
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool(tool, args))
+    assert reason in str(error.value)
 
 
 def test_spawn_worker_takes_a_provider(repo, fake_tmux):

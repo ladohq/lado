@@ -6,6 +6,7 @@ It reports its lifecycle through the hooks in the config and works on each input
 pasted into its terminal. Every input line is a command, after an optional "[from <name>] ":
     send <to> <text>   call the LADO MCP tool send_message
     spawn <task>       call the LADO MCP tool spawn_worker
+    finish <name> [discard]  call the LADO MCP tool finish_worker
     sleep <seconds>    work that long
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     exit               end the session
@@ -110,6 +111,8 @@ def work(text: str) -> bool:
             run_skill_file(command[1], command[2])
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
+        elif command[0] == "finish":
+            call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
     time.sleep(0.05)  # think
     return False
 

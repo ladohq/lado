@@ -1,10 +1,11 @@
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from agent_helpers import init_repo, publish
 
-from lado import __version__, sources, state
+from lado import __version__, runtime, sources, state
 from lado.cli import main
 
 
@@ -23,6 +24,19 @@ def test_start_with_provider_and_ls_shows_it(repo, fake_tmux, capsys):
     assert state.get_session("s").provider == "kilo"
     main(["ls"])
     assert "supervisor   supervisor kilo" in capsys.readouterr().out
+
+
+def test_finish_ends_a_worker(repo, fake_tmux, capsys):
+    main(["start", str(repo), "--name", "s", "--no-attach"])
+    worker = runtime.spawn_worker("s", "task")
+    (Path(worker.cwd) / "x.txt").write_text("x")
+    assert main(["finish", "s", "w1"]) == 1
+    assert 'lado: worker "w1" has uncommitted changes' in capsys.readouterr().err
+    assert main(["finish", "s", "w1", "--discard"]) == 0
+    out = capsys.readouterr().out
+    assert f'Finished worker "w1" (discarded): removed window, worktree {worker.cwd}' in out
+    assert "branch lado/s/w1" in out
+    assert state.get_agent("s", "w1") is None
 
 
 def test_start_with_unknown_provider_fails(repo, fake_tmux, capsys):

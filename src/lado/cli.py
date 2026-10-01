@@ -4,11 +4,11 @@ import argparse
 import os
 import sys
 
-from lado import __version__, doctor, runtime, state, tmux
+from lado import __version__, doctor, providers, runtime, state, tmux
 
 
 def cmd_start(args: argparse.Namespace) -> int:
-    sess = runtime.start_session(args.path, args.name, args.permission_mode)
+    sess = runtime.start_session(args.path, args.name, args.permission_mode, args.provider)
     print(f'Started session "{sess.name}" in {sess.repo}')
     if args.no_attach or not sys.stdout.isatty():
         print(f"Attach with: lado attach {sess.name}")
@@ -25,7 +25,9 @@ def cmd_ls(args: argparse.Namespace) -> int:
         print(f"{sess.name}  {sess.repo}{alive}")
         for agent in state.list_agents(sess.name):
             branch = f"  {agent.branch}" if agent.branch else ""
-            print(f"  {agent.name:<12} {agent.role:<10} {agent.status:<9}{branch}")
+            print(
+                f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<9}{branch}"
+            )
     return 0
 
 
@@ -67,14 +69,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"lado {__version__}")
     commands = parser.add_subparsers(dest="command", metavar="<command>")
 
-    commands.add_parser("doctor", help="check that tmux and Claude Code are installed")
+    commands.add_parser("doctor", help="check that tmux and the agent CLIs are installed")
 
     start = commands.add_parser("start", help="start a supervisor agent for a git repository")
     start.add_argument("path", nargs="?", default=".", help="repository (default: current dir)")
     start.add_argument("--name", help="session name (default: repository folder name)")
     start.add_argument(
+        "--provider",
+        help=f"agent CLI for the session's agents: {', '.join(providers.names())} "
+        f"(default: {providers.DEFAULT})",
+    )
+    start.add_argument(
         "--permission-mode",
-        help="Claude Code permission mode for all agents, e.g. acceptEdits",
+        help="permission mode for all agents: default, acceptEdits, bypassPermissions or plan",
     )
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
     start.set_defaults(func=cmd_start)

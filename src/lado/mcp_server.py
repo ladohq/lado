@@ -16,11 +16,12 @@ def build(session: str, agent: str) -> MCPServer:
 
     @server.tool()
     def list_agents() -> list[dict]:
-        """List the agents in this session with their role, status, branch and worktree."""
+        """List the agents in this session: role, provider, status, branch and worktree."""
         return [
             {
                 "name": a.name,
                 "role": a.role,
+                "provider": a.provider,
                 "status": a.status,
                 "branch": a.branch,
                 "worktree": a.cwd,
@@ -41,12 +42,13 @@ def build(session: str, agent: str) -> MCPServer:
     if me and me.role == runtime.SUPERVISOR:
 
         @server.tool()
-        def spawn_worker(task: str, name: str | None = None) -> dict:
+        def spawn_worker(task: str, name: str | None = None, provider: str | None = None) -> dict:
             """Start a new worker agent on `task` in its own git worktree and branch.
 
-            The worker reports back with send_message when it is done or blocked.
+            `provider` is the agent CLI to run it with, e.g. "claude" or "kilo" (default: the
+            session's). The worker reports back with send_message when it is done or blocked.
             """
-            worker = runtime.spawn_worker(session, task, name)
+            worker = runtime.spawn_worker(session, task, name, provider)
             return {"name": worker.name, "branch": worker.branch, "worktree": worker.cwd}
 
     return server

@@ -3,7 +3,7 @@
 import shlex
 import sys
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from lado import state
@@ -29,11 +29,21 @@ class Event:
     prompt: str = ""  # the input the agent received, for PROMPT_SUBMIT
 
 
+@dataclass(frozen=True)
+class Launch:
+    """How to start an agent: its argv and the environment its CLI needs on top of
+    agent_env."""
+
+    argv: list[str]
+    env: dict[str, str] = field(default_factory=dict)
+
+
 class Provider(ABC):
     name: str  # stored in the state, e.g. "claude"
     title: str  # for humans, e.g. "Claude Code"
     command: str  # the CLI executable
     install_hint: str  # shown by `lado doctor` when the command is missing
+    tested_version: str = ""  # version prefix LADO is tested with, e.g. "7.8"; "" for any
     capabilities: Capabilities
 
     @abstractmethod
@@ -43,8 +53,8 @@ class Provider(ABC):
         session: state.Session,
         prompt: str,
         first_message: str | None = None,
-    ) -> list[str]:
-        """Write the agent's config files (LADO MCP server, hooks) and return its argv.
+    ) -> Launch:
+        """Write the agent's config files (LADO MCP server, hooks) and return how to start it.
 
         `prompt` is the agent's role, added to the system prompt; `first_message`, if any,
         is its first input.
@@ -82,9 +92,9 @@ def config_dir(agent: state.Agent) -> Path:
     return path
 
 
-def hook_command(agent: state.Agent, event: str) -> str:
-    """Shell command that reports a native hook event of `agent` to LADO."""
-    command = lado_command(
+def hook_argv(agent: state.Agent, event: str) -> list[str]:
+    """Command that reports a native hook event of `agent` to LADO."""
+    return lado_command(
         "hook",
         event,
         "--session",
@@ -94,7 +104,11 @@ def hook_command(agent: state.Agent, event: str) -> str:
         "--instance",
         agent.instance,
     )
-    return shlex.join(command)
+
+
+def hook_command(agent: state.Agent, event: str) -> str:
+    """hook_argv as a shell command."""
+    return shlex.join(hook_argv(agent, event))
 
 
 def mcp_server(agent: state.Agent) -> dict:

@@ -16,7 +16,11 @@ def test_start_session_launches_supervisor(repo, fake_tmux, lado_home):
     assert sess.name == "my-repo"
     [(kind, session, window, cwd, env, cmd)] = fake_tmux
     assert (kind, session, window, cwd) == ("new_session", "my-repo", "supervisor", str(repo))
-    assert env["LADO_AGENT"] == "supervisor"
+    assert env == {
+        "LADO_HOME": str(lado_home),
+        "LADO_SESSION": "my-repo",
+        "LADO_AGENT": "supervisor",
+    }
     assert cmd[0] == "claude"
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())

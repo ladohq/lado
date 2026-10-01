@@ -8,11 +8,13 @@ from lado.providers.base import (
     WAITING,
     Capabilities,
     Event,
+    Launch,
     Provider,
     agent_env,
     lado_command,
 )
 from lado.providers.claude import ClaudeProvider
+from lado.providers.kilo import KiloProvider
 
 __all__ = [
     "PROMPT_SUBMIT",
@@ -22,6 +24,7 @@ __all__ = [
     "WAITING",
     "Capabilities",
     "Event",
+    "Launch",
     "Provider",
     "agent_env",
     "get",
@@ -31,7 +34,7 @@ __all__ = [
 
 DEFAULT = "claude"
 
-_PROVIDERS: dict[str, Provider] = {p.name: p for p in (ClaudeProvider(),)}
+_PROVIDERS: dict[str, Provider] = {p.name: p for p in (ClaudeProvider(), KiloProvider())}
 
 
 def get(name: str) -> Provider:

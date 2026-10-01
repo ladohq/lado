@@ -30,7 +30,7 @@ class ClaudeProvider(base.Provider):
         session: state.Session,
         prompt: str,
         first_message: str | None = None,
-    ) -> list[str]:
+    ) -> base.Launch:
         config_dir = base.config_dir(agent)
 
         mcp_config = config_dir / "mcp.json"
@@ -58,7 +58,7 @@ class ClaudeProvider(base.Provider):
             cmd += ["--permission-mode", session.permission_mode]
         if first_message:
             cmd += ["--", first_message]
-        return cmd
+        return base.Launch(cmd)
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         data = json.loads(payload) if payload.strip() else {}

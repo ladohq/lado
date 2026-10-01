@@ -33,3 +33,11 @@ bypassPermissions and plan; other values (e.g. dontAsk) are silently ignored.
 Wanted: a neutral LADO permission setting that each provider translates, with an error for
 values a provider cannot honour.
 Found: 2026-10-01, Kilo provider review.
+
+## First message to a just-started Kilo agent is lost
+
+Kilo's plugin reports `plugin.init` (agent idle) before the TUI accepts input, so a message
+pasted right after start is swallowed. It stays "sent" and is only typed again on the next
+`send_message` after CONFIRM_TIMEOUT. Wanted: mark a Kilo agent idle only when its TUI is
+ready, or retry unconfirmed messages without waiting for another send.
+Found: 2026-10-01, kits end-to-end check with Kilo 7.8.1.

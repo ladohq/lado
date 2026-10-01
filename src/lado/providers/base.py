@@ -1,6 +1,7 @@
 """The provider interface: what LADO needs from an agent CLI (Claude Code, Codex, ...)."""
 
 import shlex
+import shutil
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -21,12 +22,30 @@ class Capabilities:
     status_events: bool  # hooks report when the agent starts, works and stops
     permission_event: bool  # a hook reports that the agent waits for the human
     deliver_on_turn_end: bool  # the turn-end hook can hand the agent its queued messages
+    skills: bool  # the agent loads SKILL.md folders that LADO places for it
 
 
 @dataclass(frozen=True)
 class Event:
     kind: str  # one of the neutral events above
     prompt: str = ""  # the input the agent received, for PROMPT_SUBMIT
+
+
+@dataclass(frozen=True)
+class McpServer:
+    """A stdio MCP server: the command that starts it and its environment."""
+
+    command: list[str]
+    env: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AgentSpec:
+    """Everything an agent is given, independent of the CLI that runs it (see lado.kits)."""
+
+    prompt: str  # the role, added to the system prompt
+    skills: dict[str, Path] = field(default_factory=dict)  # name -> SKILL.md folder
+    mcp: dict[str, McpServer] = field(default_factory=dict)  # name -> server, incl. "lado"
 
 
 @dataclass(frozen=True)
@@ -51,13 +70,14 @@ class Provider(ABC):
         self,
         agent: state.Agent,
         session: state.Session,
-        prompt: str,
+        spec: AgentSpec,
         first_message: str | None = None,
     ) -> Launch:
-        """Write the agent's config files (LADO MCP server, hooks) and return how to start it.
+        """Write the agent's config files (MCP servers, skills, hooks) and return how to
+        start it.
 
-        `prompt` is the agent's role, added to the system prompt; `first_message`, if any,
-        is its first input.
+        `spec.prompt` is the agent's role, added to the system prompt; `first_message`, if
+        any, is its first input. LADO checks `spec` against `capabilities` before the call.
         """
 
     @abstractmethod
@@ -113,7 +133,20 @@ def hook_command(agent: state.Agent, event: str) -> str:
     return shlex.join(hook_argv(agent, event))
 
 
-def mcp_server(agent: state.Agent) -> dict:
-    """The LADO MCP server entry for the agent's MCP config."""
-    server = lado_command("mcp")
-    return {"command": server[0], "args": server[1:], "env": agent_env(agent)}
+def mcp_server(agent: state.Agent) -> McpServer:
+    """The LADO MCP server of the agent."""
+    return McpServer(lado_command("mcp"), agent_env(agent))
+
+
+def link_skills(target: Path, skills: dict[str, Path]) -> Path:
+    """Make `target` a folder of symlinks <name> -> skill folder, replacing what was there.
+
+    A skill stays one folder (SKILL.md, scripts/, ...), so links keep its files and their
+    modes as they are in the kit.
+    """
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+    for name, path in skills.items():
+        (target / name).symlink_to(path, target_is_directory=True)
+    return target

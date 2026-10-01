@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from lado import hooks, providers, runtime, state, tmux
-from lado.providers import Event, kilo
+from lado.providers import Event, base, kilo
 
 
 def test_registry():
@@ -48,10 +48,10 @@ def test_agents_get_the_session_provider(repo, fake_tmux):
 class _NoTurnEndDelivery(providers.Provider):
     name = "plain"
     capabilities = providers.Capabilities(
-        status_events=True, permission_event=False, deliver_on_turn_end=False
+        status_events=True, permission_event=False, deliver_on_turn_end=False, skills=False
     )
 
-    def launch_command(self, agent, session, prompt, first_message=None):
+    def launch_command(self, agent, session, spec, first_message=None):
         return providers.Launch([])
 
     def parse_event(self, native, payload):
@@ -69,8 +69,9 @@ def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tm
 
 def _kilo_launch(repo, permission_mode=None, first_message=None):
     sess = state.Session("s", str(repo), permission_mode, "kilo")
-    agent = state.Agent("s", "w1", runtime.WORKER, str(repo), None, None, state.STARTING, "kilo")
-    launch = providers.get("kilo").launch_command(agent, sess, "the role", first_message)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
+    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
+    launch = providers.get("kilo").launch_command(agent, sess, spec, first_message)
     config = json.loads(open(launch.env["KILO_CONFIG"]).read())
     return launch, config
 
@@ -173,3 +174,57 @@ def test_unknown_provider_is_refused(repo, fake_tmux):
     with pytest.raises(runtime.LadoError, match="known: claude, kilo"):
         runtime.spawn_worker("s", "task", provider="nope")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+
+
+def _spec_with_kit_parts(agent, skill_dir):
+    return providers.AgentSpec(
+        "the role",
+        skills={"notes": skill_dir},
+        mcp={
+            "lado": base.mcp_server(agent),
+            "db": providers.McpServer(["db-server", "--port", "1"], {"T": "x"}),
+        },
+    )
+
+
+@pytest.fixture
+def skill_dir(tmp_path):
+    path = tmp_path / "kit" / "skills" / "notes"
+    (path / "scripts").mkdir(parents=True)
+    (path / "SKILL.md").write_text("---\nname: notes\ndescription: d\n---\n")
+    return path
+
+
+def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
+    sess = state.Session("s", str(repo), None)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    claude = providers.get("claude")
+    cmd = claude.launch_command(agent, sess, _spec_with_kit_parts(agent, skill_dir)).argv
+    mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
+    assert mcp["db"] == {"command": "db-server", "args": ["--port", "1"], "env": {"T": "x"}}
+    assert mcp["lado"]["args"][-1] == "mcp"
+    added = Path(cmd[cmd.index("--add-dir") + 1])
+    link = added / ".claude" / "skills" / "notes"
+    assert link.is_symlink() and link.resolve() == skill_dir.resolve()
+    assert (link / "scripts").is_dir()
+    # Without skills, no --add-dir and no stale links.
+    cmd = claude.launch_command(agent, sess, providers.AgentSpec("the role")).argv
+    assert "--add-dir" not in cmd and not added.exists()
+    assert cmd[cmd.index("--append-system-prompt") + 1] == "the role"
+
+
+def test_kilo_gets_skills_and_kit_mcp(repo, skill_dir):
+    sess = state.Session("s", str(repo), None, "kilo")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
+    spec = _spec_with_kit_parts(agent, skill_dir)
+    launch = providers.get("kilo").launch_command(agent, sess, spec)
+    config = json.loads(open(launch.env["KILO_CONFIG"]).read())
+    assert config["mcp"]["db"] == {
+        "type": "local",
+        "command": ["db-server", "--port", "1"],
+        "environment": {"T": "x"},
+    }
+    [skills] = config["skills"]["paths"]
+    assert Path(skills, "notes").resolve() == skill_dir.resolve()
+    # The links are under LADO_HOME, which the agent may read.
+    assert Path(skills).is_relative_to(state.home())

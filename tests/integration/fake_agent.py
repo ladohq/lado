@@ -7,8 +7,11 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     send <to> <text>   call the LADO MCP tool send_message
     spawn <task>       call the LADO MCP tool spawn_worker
     sleep <seconds>    work that long
+    run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     exit               end the session
-Other lines are ignored. Each input is logged to the config's "inputs" file.
+Other lines are ignored. Each input is logged to the config's "inputs" file, and the output
+of `run` to its "seen" file. At start the agent writes what it was given (prompt, skills found
+in its skills folder, MCP servers) to "seen", as a real agent CLI would load them.
 """
 
 import asyncio
@@ -35,9 +38,32 @@ def hook(event: str, prompt: str = "") -> str:
     return result.stdout.strip()
 
 
+def report(**seen) -> None:
+    path = config["seen"]
+    data = json.load(open(path)) if os.path.exists(path) else {}
+    with open(path, "w") as out:
+        json.dump({**data, **seen}, out, indent=2)
+
+
+def load_skills() -> dict[str, str]:
+    """Skill name -> description, read from <skills>/<folder>/SKILL.md."""
+    skills = {}
+    for folder in sorted(os.listdir(config["skills"])):
+        text = open(os.path.join(config["skills"], folder, "SKILL.md")).read()
+        meta = dict(re.findall(r"^(name|description): *(.*)$", text.split("---")[1], re.M))
+        skills[meta["name"]] = meta["description"]
+    return skills
+
+
+def run_skill_file(skill: str, file: str) -> None:
+    path = os.path.join(config["skills"], skill, file)
+    result = subprocess.run([path], capture_output=True, text=True)
+    report(run={"file": f"{skill}/{file}", "output": result.stdout.strip()})
+
+
 def call_tool(name: str, arguments: dict) -> None:
     """Call a tool of the LADO MCP server, started over stdio like an agent CLI does."""
-    mcp = config["mcp"]
+    mcp = config["mcp"]["lado"]
     server = StdioServerParameters(
         command=mcp["command"][0], args=mcp["command"][1:], env=mcp["env"]
     )
@@ -80,6 +106,8 @@ def work(text: str) -> bool:
             time.sleep(float(command[1]))
         elif command[0] == "send":
             call_tool("send_message", {"to": command[1], "text": command[2]})
+        elif command[0] == "run":
+            run_skill_file(command[1], command[2])
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
     time.sleep(0.05)  # think
@@ -89,6 +117,7 @@ def work(text: str) -> bool:
 def main() -> None:
     signal.signal(signal.SIGHUP, lambda *_: os._exit(0))  # its tmux session was killed
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
+    report(prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"])
     hook("session_start")
     text = config["first_message"]
     while True:

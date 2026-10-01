@@ -8,37 +8,34 @@ import re
 import subprocess
 from pathlib import Path
 
-from lado import providers, state, tmux
+from lado import kits, providers, state, tmux
 
-SUPERVISOR = "supervisor"
-WORKER = "worker"
+SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 MAX_MESSAGE = 8000
 CONFIRM_TIMEOUT = 15  # seconds for a typed message to show up as a prompt
 
-SUPERVISOR_PROMPT = """\
-You are the supervisor of LADO session "{session}". The human talks to you in this window.
-You coordinate worker agents. Each worker is a separate coding agent with its own \
-git worktree and branch, created from your current HEAD.
-
+# What every agent must know about LADO, appended to its role prompt from the kit. Kits only
+# describe the role.
+SUPERVISOR_INSTRUCTIONS = """\
+You are agent "supervisor" in LADO session "{session}". The human talks to you in this window.
 Use the `lado` MCP tools:
-- spawn_worker: hand a well-scoped, self-contained task to a new worker. Include the goal, \
-the relevant files and how to check the result.
-- send_message: talk to a worker, e.g. to answer its question.
-- list_agents: see workers, their status, branch and worktree path.
-
-Delegate implementation work to workers instead of doing it yourself. Workers report back \
-with messages that arrive in your input as "[from <name>] ...". When a worker reports that \
-it is done, review its branch and merge it into your branch.
+- spawn_worker: start a worker agent on a task, in its own git worktree and a branch created \
+from your current HEAD. Give it the goal, the relevant files and how to check the result. \
+`role` picks the kind of worker{default_role}. Roles:
+{roles}
+- send_message: talk to another agent, e.g. to answer a worker's question.
+- list_agents: see the agents, their role, status, branch and worktree.
+Workers report back with messages that arrive in your input as "[from <name>] ...".
 """
 
-WORKER_PROMPT = """\
-You are worker "{name}" in LADO session "{session}". Your supervisor gave you a task.
-You work in your own git worktree on branch {branch}. Commit your work on that branch.
-When you finish, or if you are blocked, report to your supervisor with the `lado` MCP tool \
-send_message(to="supervisor", ...): a short summary, the branch, and anything they must check.
+WORKER_INSTRUCTIONS = """\
+You are worker "{name}" in LADO session "{session}", working in your own git worktree on \
+branch {branch}. Commit your work on that branch.
+Report to your supervisor with the `lado` MCP tool send_message(to="supervisor", ...).
 Messages from other agents arrive in your input as "[from <name>] ...".
 """
 
+WORKTREES_EXCLUDE = "/.lado/worktrees/"
 REPORT_REMINDER = '\n\nWhen you are done, report back with send_message(to="supervisor").'
 
 
@@ -66,8 +63,15 @@ def repo_root(path: str) -> str:
 
 
 def start_session(
-    path: str, name: str | None, permission_mode: str | None, provider: str | None = None
+    path: str,
+    name: str | None,
+    permission_mode: str | None,
+    provider: str | None = None,
+    kit_names: list[str] | None = None,
+    without: list[str] | None = None,
 ) -> state.Session:
+    """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
+    the `without` items ("agent:x", "skill:y", "mcp:z")."""
     agent_cli = _provider(provider or providers.DEFAULT)
     repo = repo_root(path)
     session = slug(name or Path(repo).name)
@@ -75,15 +79,24 @@ def start_session(
         if tmux.has_session(session):
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
         state.delete_session(session)  # left over from a tmux server that is gone
-    sess = state.Session(session, repo, permission_mode, agent_cli.name)
-    state.add_session(sess)
-    agent = state.Agent(
-        session, SUPERVISOR, SUPERVISOR, repo, None, None, state.STARTING, sess.provider
+    sess = state.Session(
+        session,
+        repo,
+        permission_mode,
+        agent_cli.name,
+        kit_names or [kits.DEFAULT_KIT],
+        without or [],
     )
+    env = kits.resolve(repo, sess.kits, sess.without)
+    role = env.supervisor()
+    agent = state.Agent(
+        session, SUPERVISOR, role.name, repo, None, None, state.STARTING, sess.provider
+    )
+    spec = _spec(agent_cli, env, role.name, agent, _supervisor_instructions(env, session))
+    state.add_session(sess)
     state.add_agent(agent)
-    prompt = SUPERVISOR_PROMPT.format(session=session)
     try:
-        launch = agent_cli.launch_command(agent, sess, prompt)
+        launch = agent_cli.launch_command(agent, sess, spec)
         tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
     except tmux.TmuxError:
         state.delete_session(session)
@@ -92,26 +105,36 @@ def start_session(
 
 
 def spawn_worker(
-    session: str, task: str, name: str | None = None, provider: str | None = None
+    session: str,
+    task: str,
+    name: str | None = None,
+    provider: str | None = None,
+    role: str | None = None,
+    without: list[str] | None = None,
 ) -> state.Agent:
+    """Start a worker with `role` from the session's kits (default: the kits' default_agent,
+    else "worker"), minus the `without` items ("skill:y", "mcp:z") for this worker."""
     sess = state.get_session(session)
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
     agent_cli = _provider(provider or sess.provider)
+    env = kits.resolve(sess.repo, sess.kits, sess.without)
+    role_def = env.worker_role(role)
     taken = {a.name for a in state.list_agents(session)}
     worker = slug(name) if name else _next_name(taken)
     if worker in taken:
         raise LadoError(f'an agent named "{worker}" already exists')
     branch = f"lado/{session}/{worker}"
     worktree = Path(sess.repo) / ".lado" / "worktrees" / session / worker
-    _exclude_lado_dir(sess.repo)
-    git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
     agent = state.Agent(
-        session, worker, WORKER, str(worktree), branch, task, state.STARTING, agent_cli.name
+        session, worker, role_def.name, str(worktree), branch, task, state.STARTING, agent_cli.name
     )
+    instructions = WORKER_INSTRUCTIONS.format(name=worker, session=session, branch=branch)
+    spec = _spec(agent_cli, env, role_def.name, agent, instructions, without or [])
+    _exclude_worktrees(sess.repo)
+    git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
     state.add_agent(agent)
-    prompt = WORKER_PROMPT.format(name=worker, session=session, branch=branch)
-    launch = agent_cli.launch_command(agent, sess, prompt, first_message=task + REPORT_REMINDER)
+    launch = agent_cli.launch_command(agent, sess, spec, first_message=task + REPORT_REMINDER)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent
 
@@ -160,7 +183,7 @@ def stop_session(session: str) -> list[state.Agent]:
     """Kill the session's agents. Returns the workers, whose worktrees stay on disk."""
     if tmux.has_session(session):
         tmux.kill_session(session)
-    workers = [a for a in state.list_agents(session) if a.role == WORKER]
+    workers = [a for a in state.list_agents(session) if a.name != SUPERVISOR]
     state.delete_session(session)
     return workers
 
@@ -170,6 +193,36 @@ def _provider(name: str) -> providers.Provider:
         return providers.get(name)
     except ValueError as exc:
         raise LadoError(str(exc)) from None
+
+
+def _supervisor_instructions(env: kits.Environment, session: str) -> str:
+    roles = "\n".join(f"  - {a.name}: {a.description}" for a in env.roles()) or "  (none)"
+    default = env.default_agent or (kits.DEFAULT_ROLE if kits.DEFAULT_ROLE in env.agents else "")
+    default_role = f' (default: "{default}")' if default else ""
+    return SUPERVISOR_INSTRUCTIONS.format(session=session, roles=roles, default_role=default_role)
+
+
+def _spec(
+    agent_cli: providers.Provider,
+    env: kits.Environment,
+    role: str,
+    agent: state.Agent,
+    instructions: str,
+    without: list[str] | None = None,
+) -> providers.AgentSpec:
+    """What `agent` is given: its role from the kits plus LADO's instructions, its skills
+    and MCP servers. Fails on anything its CLI cannot do."""
+    resolved = env.resolve(role, without or [])
+    if resolved.skills and not agent_cli.capabilities.skills:
+        raise LadoError(
+            f'{agent_cli.title} cannot load skills, but agent "{agent.name}" ({role}) gets '
+            f"{', '.join(resolved.skills)}; switch them off with --without skill:<name>"
+        )
+    return providers.AgentSpec(
+        prompt=f"{resolved.agent.body}\n\n{instructions}",
+        skills={name: skill.path for name, skill in resolved.skills.items()},
+        mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers()},
+    )
 
 
 def _env(agent: state.Agent, launch: providers.Launch) -> dict[str, str]:
@@ -183,10 +236,14 @@ def _next_name(taken: set[str]) -> str:
     return f"w{n}"
 
 
-def _exclude_lado_dir(repo: str) -> None:
-    """Keep `.lado/` (worker worktrees) out of `git status` without touching .gitignore."""
+def _exclude_worktrees(repo: str) -> None:
+    """Keep worker worktrees out of `git status` without touching .gitignore. The rest of
+    `.lado/` (project kits) stays visible, so it can be committed."""
     exclude = Path(repo, git(repo, "rev-parse", "--git-common-dir"), "info", "exclude")
     lines = exclude.read_text().splitlines() if exclude.exists() else []
-    if "/.lado/" not in lines:
-        exclude.parent.mkdir(parents=True, exist_ok=True)
-        exclude.write_text("\n".join([*lines, "/.lado/"]) + "\n")
+    if WORKTREES_EXCLUDE in lines and "/.lado/" not in lines:
+        return
+    # LADO 0.3 and earlier excluded all of .lado/.
+    lines = [line for line in lines if line not in ("/.lado/", WORKTREES_EXCLUDE)]
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text("\n".join([*lines, WORKTREES_EXCLUDE]) + "\n")

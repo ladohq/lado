@@ -38,18 +38,18 @@ def _about(kit: kits.Kit) -> str:
     return f"{kit.version or '-':<8} {kit.description}"
 
 
-def cmd_kits_sources(args: argparse.Namespace) -> int:
+def cmd_sources_list(args: argparse.Namespace) -> int:
     found = sources.registered()
     for source in found:
         revision = source.revision()
         at = f"  at {revision}" if revision else ""
         print(f"{source.name:<16} {source.describe()}{at}")
     if not found:
-        print("No sources. Add one with: lado kits add <git-url|folder>[@ref]")
+        print("No sources. Add one with: lado sources add <git-url|folder>[@ref]")
     return 0
 
 
-def cmd_kits_add(args: argparse.Namespace) -> int:
+def cmd_sources_add(args: argparse.Namespace) -> int:
     source = sources.add(args.source, args.name, args.skills)
     try:
         found = kits.in_source(source)
@@ -71,13 +71,13 @@ def cmd_kits_add(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_kits_update(args: argparse.Namespace) -> int:
+def cmd_sources_update(args: argparse.Namespace) -> int:
     for source in [sources.get(args.name)] if args.name else sources.registered():
         print(f"{source.name}: {source.update()}")
     return 0
 
 
-def cmd_kits_remove(args: argparse.Namespace) -> int:
+def cmd_sources_remove(args: argparse.Namespace) -> int:
     source, files = sources.remove(args.name)
     print(f'Removed source "{source.name}"; {files}.')
     return 0
@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
     start.set_defaults(func=cmd_start)
 
-    kits_cmd = commands.add_parser("kits", help="list, show and check kits; manage kit sources")
+    kits_cmd = commands.add_parser("kits", help="list, show and check kits")
     kits_cmd.add_argument("--repo", default=".", help="repository for project kits")
     kits_cmd.set_defaults(func=cmd_kits)
     kits_sub = kits_cmd.add_subparsers(metavar="<command>")
@@ -243,7 +243,13 @@ def main(argv: list[str] | None = None) -> int:
     check = kits_sub.add_parser("check", help="validate a kit and what it includes")
     check.add_argument("kit", help="kit folder or name")
     check.set_defaults(func=cmd_kits_check)
-    add = kits_sub.add_parser("add", help="add a kit source: a git repository or a local folder")
+    sources_cmd = commands.add_parser(
+        "sources", help="kit sources: git repositories and local folders that hold kits"
+    )
+    sources_cmd.set_defaults(func=cmd_sources_list)
+    sources_sub = sources_cmd.add_subparsers(metavar="<command>")
+    sources_sub.add_parser("list", help="list kit sources").set_defaults(func=cmd_sources_list)
+    add = sources_sub.add_parser("add", help="add a git repository or a local folder")
     add.add_argument(
         "source",
         metavar="<git-url|folder>[@ref]",
@@ -257,14 +263,13 @@ def main(argv: list[str] | None = None) -> int:
         help="for a skill pack: take skills only from this folder inside it, e.g. "
         "skills/engineering; repeatable (default: all of skills/)",
     )
-    add.set_defaults(func=cmd_kits_add)
-    update = kits_sub.add_parser("update", help="fetch kit sources again (default: all)")
+    add.set_defaults(func=cmd_sources_add)
+    update = sources_sub.add_parser("update", help="fetch sources again (default: all)")
     update.add_argument("name", nargs="?")
-    update.set_defaults(func=cmd_kits_update)
-    remove = kits_sub.add_parser("remove", help="remove a kit source (and its clone)")
+    update.set_defaults(func=cmd_sources_update)
+    remove = sources_sub.add_parser("remove", help="remove a source (and its clone)")
     remove.add_argument("name")
-    remove.set_defaults(func=cmd_kits_remove)
-    kits_sub.add_parser("sources", help="list kit sources").set_defaults(func=cmd_kits_sources)
+    remove.set_defaults(func=cmd_sources_remove)
 
     commands.add_parser("ls", help="list sessions and agents").set_defaults(func=cmd_ls)
 

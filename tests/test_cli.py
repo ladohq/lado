@@ -1,6 +1,7 @@
 import subprocess
 import sys
 
+import pytest
 from agent_helpers import init_repo, publish
 
 from lado import __version__, sources, state
@@ -97,20 +98,23 @@ def test_kits_sources_add_update_remove(tmp_path, repo, capsys, monkeypatch):
     work = init_repo(tmp_path / "pack")
     skill = "---\nname: {0}\ndescription: use {0}\n---\n"
     url = publish(work, {"skills/eng/tdd/SKILL.md": skill.format("tdd")}, tag="v1.0.0")
-    assert main(["kits", "sources"]) == 0
+    assert main(["sources", "list"]) == 0
     assert "No sources." in capsys.readouterr().out
 
-    assert main(["kits", "add", f"{url}@v1.0.0"]) == 0
+    assert main(["sources", "add", f"{url}@v1.0.0"]) == 0
     clone = sources.get("pack").path()
     out = capsys.readouterr().out
     assert f'Added source "pack": git {url} @v1.0.0 at ' in out and str(clone) in out
     assert "  pack             skill pack with 1 skills" in out
     dev = _kit(tmp_path, "team")
-    assert main(["kits", "add", str(tmp_path / ".lado"), "--name", "dev"]) == 0
+    assert main(["sources", "add", str(tmp_path / ".lado"), "--name", "dev"]) == 0
     assert "  team             1.0.0    about team" in capsys.readouterr().out
 
-    assert main(["kits", "sources"]) == 0
-    out = capsys.readouterr().out.splitlines()
+    assert main(["sources"]) == 0
+    assert main(["sources", "list"]) == 0
+    listed = capsys.readouterr().out
+    assert listed[: len(listed) // 2] == listed[len(listed) // 2 :]
+    out = listed.splitlines()
     assert out[0].startswith(f"pack             git {url} @v1.0.0  at ")
     assert out[1] == f"dev              path {(tmp_path / '.lado').resolve()}"
 
@@ -121,27 +125,27 @@ def test_kits_sources_add_update_remove(tmp_path, repo, capsys, monkeypatch):
     assert f"pack             source pack {clone}\n  -        skill pack, 1 skills" in out
 
     publish(work, {"skills/plan/SKILL.md": skill.format("plan")}, tag="v1.1.0")
-    assert main(["kits", "update"]) == 0
+    assert main(["sources", "update"]) == 0
     out = capsys.readouterr().out
     assert "pack: at " in out and "dev: nothing to update" in out
     assert not (clone / "skills" / "plan").exists()  # still at v1.0.0
 
-    assert main(["kits", "add", url, "--name", "pack"]) == 1
+    assert main(["sources", "add", url, "--name", "pack"]) == 1
     assert 'a source named "pack" already exists' in capsys.readouterr().err
-    assert main(["kits", "remove", "pack"]) == 0
+    assert main(["sources", "remove", "pack"]) == 0
     assert f'Removed source "pack"; deleted the clone {clone}.' in capsys.readouterr().out
     assert not clone.exists()
-    assert main(["kits", "update", "pack"]) == 1
+    assert main(["sources", "update", "pack"]) == 1
     assert 'no source "pack"; sources: dev' in capsys.readouterr().err
 
 
 def test_kits_add_refuses_a_source_without_kits(tmp_path, capsys):
     (tmp_path / "empty").mkdir()
-    assert main(["kits", "add", str(tmp_path / "empty")]) == 1
+    assert main(["sources", "add", str(tmp_path / "empty")]) == 1
     err = capsys.readouterr().err
     assert "no kits and no skills found in" in err and "source not added" in err
     assert sources.registered() == []
-    assert main(["kits", "add", "file:///nowhere/kits.git"]) == 1
+    assert main(["sources", "add", "file:///nowhere/kits.git"]) == 1
     assert "lado: cannot get git file:///nowhere/kits.git" in capsys.readouterr().err
 
 
@@ -152,7 +156,7 @@ def test_kits_show_and_check_name_sources(tmp_path, repo, capsys):
         "kits/team/skills/notes/SKILL.md": "---\nname: notes\ndescription: notes\n---\n",
     }
     url = publish(work, files, tag="v2.0.0")
-    assert main(["kits", "add", url]) == 0
+    assert main(["sources", "add", url]) == 0
     source = sources.get("team")
     kit_dir = source.path().resolve() / "kits" / "team"
     capsys.readouterr()
@@ -174,15 +178,15 @@ def test_kits_add_with_skills_folders(tmp_path, capsys):
         (pack / "skills" / skill / "SKILL.md").write_text(
             f"---\nname: {name}\ndescription: d\n---\n"
         )
-    assert main(["kits", "add", str(pack), "--name", "all"]) == 0
+    assert main(["sources", "add", str(pack), "--name", "all"]) == 0
     assert "  all              invalid; see: lado kits check all" in capsys.readouterr().out
     args = ["--skills", "skills/engineering", "--skills", "skills/productivity"]
-    assert main(["kits", "add", str(pack), *args]) == 0
+    assert main(["sources", "add", str(pack), *args]) == 0
     out = capsys.readouterr().out
     assert f"skills: skills/engineering, skills/productivity, {pack.resolve()}" in out
     assert "  pack             skill pack with 2 skills" in out
     assert sources.get("pack").skills == ("skills/engineering", "skills/productivity")
-    assert main(["kits", "add", str(pack), "--name", "x", "--skills", "../up"]) == 1
+    assert main(["sources", "add", str(pack), "--name", "x", "--skills", "../up"]) == 1
     assert "skills folders are relative paths inside the source" in capsys.readouterr().err
 
 
@@ -195,3 +199,10 @@ def test_kits_check_warns_about_included_kits(repo, capsys):
     assert main(["kits", "--repo", str(repo), "check", "top"]) == 0
     assert "warning: " in capsys.readouterr().err
     assert main(["kits", "--repo", str(repo), "check", "base"]) == 1
+
+
+def test_source_commands_are_not_under_kits(capsys):
+    for command in ("add", "update", "remove", "sources"):
+        with pytest.raises(SystemExit):
+            main(["kits", command, "x"])
+    capsys.readouterr()

@@ -226,7 +226,7 @@ def in_source(origin: sources.Source) -> list[Found]:
     if not root.is_dir():
         raise KitError(
             f'source "{origin.name}": {root} does not exist; '
-            f"run `lado kits update {origin.name}` or `lado kits remove {origin.name}`"
+            f"run `lado sources update {origin.name}` or `lado sources remove {origin.name}`"
         )
     found = []
     if (root / KIT_FILE).is_file():
@@ -368,7 +368,7 @@ def _load_pack(found: Found) -> Kit:
         if skill and skill.name in skills:
             errors.append(
                 f'{path}: skill "{skill.name}" is also in {skills[skill.name].path}; '
-                "choose the folders to use with `lado kits add --skills <folder>`"
+                "choose the folders to use with `lado sources add --skills <folder>`"
             )
         elif skill:
             skills[skill.name] = skill

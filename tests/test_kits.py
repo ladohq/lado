@@ -376,7 +376,7 @@ def test_missing_source_folder_is_an_error(tmp_path, repo):
     folder = make_pack(tmp_path / "gone", ["s"])
     sources.add(str(folder))
     shutil.rmtree(folder)
-    with pytest.raises(kits.KitError, match='source "gone": .* does not exist; run `lado kits'):
+    with pytest.raises(kits.KitError, match='source "gone": .* does not exist; run `lado sources'):
         kits.find("default", repo)
 
 
@@ -445,7 +445,7 @@ def test_skill_pack_with_skills_folders(tmp_path):
     message = str(exc.value)
     assert f'{pack / "skills" / "misc" / "tdd"}: skill "tdd" is also in' in message
     assert str((pack / "skills" / "engineering" / "tdd").resolve()) in message
-    assert "lado kits add --skills" in message
+    assert "lado sources add --skills" in message
 
     source = sources.add(str(pack), "picked", ["skills/engineering", "skills/productivity/"])
     assert source.skills == ("skills/engineering", "skills/productivity")

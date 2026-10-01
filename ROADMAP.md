@@ -35,7 +35,7 @@ which agent CLI runs. Agent status comes from events (hooks, plugins, ACP), neve
 reading the screen.
 
 - [x] Provider interface with explicit capabilities; Claude Code moved onto it
-- [ ] Codex provider
+- [ ] Kilo provider (Codex later, when an OpenAI account is available)
 - [ ] Provider chosen per session and per worker; `lado doctor` checks every installed one
 
 ## Stage 4: Kits

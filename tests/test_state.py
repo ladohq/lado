@@ -247,7 +247,7 @@ def _run(name="feature/x", **changes):
 
 def test_a_run_is_stored_with_its_start_event(lado_home):
     state.add_session(state.Session("s", "/r", None))
-    state.add_run(_run(), "supervisor", "feature/x: started")
+    state.add_run(_run(), [("supervisor", state.FLOW_START, "feature/x: started")])
     run = state.get_run("s", "feature/x")
     assert run == _run(created_at=run.created_at)
     assert (run.status, run.visits, run.reason) == (state.ACTIVE, {}, "")
@@ -260,7 +260,7 @@ def test_a_run_is_stored_with_its_start_event(lado_home):
 
 def test_a_run_changes_only_from_the_state_it_was_read_in(lado_home):
     state.add_session(state.Session("s", "/r", None))
-    state.add_run(_run(), "supervisor", "started")
+    state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
     before = state.get_run("s", "feature/x")
     after = dataclasses.replace(before, state="build", visits={"build": 1})
     assert state.update_run(before, after, [("w1", state.FLOW, "design -ready-> build")])
@@ -274,8 +274,10 @@ def test_a_run_changes_only_from_the_state_it_was_read_in(lado_home):
 
 def test_runs_go_with_their_session(lado_home):
     state.add_session(state.Session("s", "/r", None))
-    state.add_run(_run(), "supervisor", "started")
-    state.add_run(_run("feature/y", status=state.ENDED), "supervisor", "started")
+    state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
+    state.add_run(
+        _run("feature/y", status=state.ENDED), [("supervisor", state.FLOW_START, "started")]
+    )
     assert [r.name for r in state.list_runs("s")] == ["feature/x", "feature/y"]
     assert [r.name for r in state.list_runs("s", open_only=True)] == ["feature/x"]
     state.delete_session("s")

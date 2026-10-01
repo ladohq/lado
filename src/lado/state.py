@@ -385,8 +385,8 @@ def list_events(session: str, after: int = 0) -> list[Event]:
     return [Event(*r) for r in rows]
 
 
-def add_run(run: Run, actor: str, detail: str) -> None:
-    """Store a new run and its flow_start event by `actor`, in one transaction."""
+def add_run(run: Run, events: list[tuple[str, str, str]]) -> None:
+    """Store a new run and its events (actor, kind, detail) in one transaction."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         db.execute(
@@ -410,7 +410,8 @@ def add_run(run: Run, actor: str, detail: str) -> None:
                 run.branch,
             ),
         )
-        _add_event(db, run.session, actor, FLOW_START, detail, run.name)
+        for actor, kind, detail in events:
+            _add_event(db, run.session, actor, kind, detail, run.name)
         db.execute("COMMIT")
 
 

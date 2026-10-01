@@ -45,6 +45,19 @@ report you only write as text is lost.
 Messages from other agents arrive in your input as "[from <name>] ...".
 """
 
+RUN_WORKER_INSTRUCTIONS = """\
+You are worker "{name}" in LADO session "{session}", working for the flow run "{run}" in \
+the run's git worktree on branch {branch}, shared with the run's other workers. Commit \
+your work on that branch.
+LADO sends you the run's steps as messages from "lado". When you finish a step, report its \
+outcome with the `lado` MCP tool flow_advance(run="{run}", outcome=...); flow_status shows \
+the step and its outcomes. Report to your supervisor as well, with send_message(to="supervisor", \
+...).
+The supervisor cannot see your screen: calling those tools is the only way to reach it, and a
+report you only write as text is lost.
+Messages from other agents arrive in your input as "[from <name>] ...".
+"""
+
 # How every agent sends and reads messages, appended to the instructions above.
 MESSAGING = """\
 Messages: send_message takes a one-line summary (at most 200 characters), the only thing \
@@ -133,9 +146,13 @@ def spawn_worker(
     provider: str | None = None,
     role: str | None = None,
     without: list[str] | None = None,
+    run: state.Run | None = None,
 ) -> state.Agent:
     """Start a worker with `role` from the session's kits (default: the kits' default_agent,
-    else "worker"), minus the `without` items ("skill:y", "mcp:z") for this worker."""
+    else "worker"), minus the `without` items ("skill:y", "mcp:z") for this worker.
+
+    A worker gets its own worktree and branch; a worker for a flow `run` works in the
+    run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""
     sess = state.get_session(session)
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
@@ -146,15 +163,30 @@ def spawn_worker(
     worker = slug(name) if name else _next_name(taken)
     if worker in taken:
         raise LadoError(f'an agent named "{worker}" already exists')
-    branch = f"lado/{session}/{worker}"
-    worktree = Path(sess.repo) / ".lado" / "worktrees" / session / worker
+    if run:
+        branch, worktree = run.branch, Path(run.worktree)
+        instructions = RUN_WORKER_INSTRUCTIONS.format(
+            name=worker, session=session, branch=branch, run=run.name
+        )
+    else:
+        branch = f"lado/{session}/{worker}"
+        worktree = Path(sess.repo) / ".lado" / "worktrees" / session / worker
+        instructions = WORKER_INSTRUCTIONS.format(name=worker, session=session, branch=branch)
     agent = state.Agent(
-        session, worker, role_def.name, str(worktree), branch, task, state.STARTING, agent_cli.name
+        session,
+        worker,
+        role_def.name,
+        str(worktree),
+        branch,
+        task,
+        state.STARTING,
+        agent_cli.name,
+        run=run.name if run else None,
     )
-    instructions = WORKER_INSTRUCTIONS.format(name=worker, session=session, branch=branch)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, without or [])
-    _exclude_worktrees(sess.repo)
-    git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
+    if not run:
+        exclude_worktrees(sess.repo)
+        git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
     _add_agent(agent)
     launch = agent_cli.launch_command(agent, sess, spec, first_message=task + REPORT_REMINDER)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
@@ -164,8 +196,12 @@ def spawn_worker(
 @dataclass
 class Finished:
     worker: state.Agent
-    how: str  # "merged" or "discarded"
+    how: str  # "merged", "discarded", or CLOSED: only its window, its run keeps the worktree
     dropped: int  # messages it never got
+
+    @property
+    def removed_worktree(self) -> bool:
+        return self.how in ("merged", "discarded")
 
     def detail(self) -> str:
         if not self.dropped:
@@ -179,6 +215,10 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
 
     `discard` also ends a worker whose work is not merged or not committed, and throws that
     work away.
+
+    A worker of a flow run shares the run's worktree: while the run is open or other
+    workers of it remain, only its window is closed. The last worker of an ended run takes
+    the worktree and branch with it, as above.
     """
     sess = state.get_session(session)
     if sess is None:
@@ -192,19 +232,38 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
     if worker is None or worker.branch is None:
         workers = ", ".join(a.name for a in state.list_agents(session) if a.branch) or "none"
         raise LadoError(f'no worker "{name}"; workers: {workers}')
+    if worker.run and _run_keeps_worktree(session, worker):
+        return close_worker(session, worker, CLOSED)
     if not discard:
         _check_finished(sess.repo, worker)
     # Git first: if it fails, the worker keeps running and nothing is half done.
     git(sess.repo, "worktree", "remove", *(["--force"] if discard else []), worker.cwd)
     git(sess.repo, "branch", "-D" if discard else "-d", worker.branch)
-    tmux.kill_window(session, name)
-    state.delete_agent(session, name)
+    return close_worker(session, worker, "discarded" if discard else "merged")
+
+
+CLOSED = "closed"  # a run's worker: its window is closed, the run keeps the worktree
+
+
+def close_worker(session: str, worker: state.Agent, how: str) -> Finished:
+    """Close the worker's window and forget it; its worktree is left alone."""
+    tmux.kill_window(session, worker.name)
+    state.delete_agent(session, worker.name)
     # Forgotten first, so no new message can be queued for it: a later worker with the
     # same name must not get what was meant for this one.
-    dropped = state.drop_undelivered(session, name)
-    finished = Finished(worker, "discarded" if discard else "merged", dropped)
-    state.add_event(session, name, state.FINISHED, finished.detail())
+    dropped = state.drop_undelivered(session, worker.name)
+    finished = Finished(worker, how, dropped)
+    state.add_event(session, worker.name, state.FINISHED, finished.detail())
     return finished
+
+
+def _run_keeps_worktree(session: str, worker: state.Agent) -> bool:
+    """A run's worktree stays while the run is open or other workers of it remain."""
+    run = state.get_run(session, worker.run)
+    others = [
+        a for a in state.list_agents(session) if a.run == worker.run and a.name != worker.name
+    ]
+    return bool(others) or (run is not None and run.status in state.OPEN)
 
 
 def _check_finished(repo: str, worker: state.Agent) -> None:
@@ -241,6 +300,13 @@ def send_message(
             f"body is {len(body)} characters, the limit is {MAX_MESSAGE}; "
             "write the details to a file and send its path"
         )
+    return post(session, sender, recipient, summary, body)
+
+
+def post(session: str, sender: str, recipient: str, summary: str, body: str = "") -> str:
+    """Queue a message whose summary is checked already and deliver it now if the
+    recipient is idle. LADO's own messages (lado.runs) come here directly: a step's body
+    carries the task, which may be longer than an agent's message."""
     agent = state.get_agent(session, recipient)
     if agent is None or agent.status == state.STOPPED:
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
@@ -361,7 +427,7 @@ def _next_name(taken: set[str]) -> str:
     return f"w{n}"
 
 
-def _exclude_worktrees(repo: str) -> None:
+def exclude_worktrees(repo: str) -> None:
     """Keep worker worktrees out of `git status` without touching .gitignore. The rest of
     `.lado/` (project kits) stays visible, so it can be committed."""
     exclude = Path(repo, git(repo, "rev-parse", "--git-common-dir"), "info", "exclude")

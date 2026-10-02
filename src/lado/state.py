@@ -882,7 +882,7 @@ class Plan:
 
 @dataclass
 class Swept:
-    typed: list[Message]  # typed again: retype them now
+    typed: list[Message]  # marked typed again: type them into the window, as one text
     failed: list[Message]
     requeued: int
 

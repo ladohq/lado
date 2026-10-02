@@ -2,6 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import agent_helpers
 import pytest
 from agent_helpers import init_repo, publish
 
@@ -582,3 +583,18 @@ def test_source_commands_are_not_under_kits(capsys):
         with pytest.raises(SystemExit):
             main(["kits", command, "x"])
     capsys.readouterr()
+
+
+def test_a_command_does_not_migrate_the_database_under_a_running_session(repo, fake_tmux, capsys):
+    assert main(["start", str(repo), "--name", "old", "--no-attach"]) == 0
+    agent_helpers.previous_schema()
+    capsys.readouterr()
+    assert main(["ls"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("lado: ") and "`lado stop old`" in err
+    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["old"])
+    # Stopping is what the refusal asks for, so it goes ahead; then the database migrates.
+    assert main(["stop", "old"]) == 0
+    assert main(["ls"]) == 0
+    assert state.pending_migration() is None
+    assert f"old  {repo}  (stopped)" in capsys.readouterr().out

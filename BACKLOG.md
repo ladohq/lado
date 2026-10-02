@@ -70,17 +70,6 @@ Wanted (decided 2026-10-02): fail only when the wanted kit (or a kit it includes
 the broken source; otherwise warn and go on.
 Found: 2026-10-01, kit sources review.
 
-## A newer LADO migrates the database under running older processes
-
-Running a newer LADO (e.g. the working copy with `uv run lado log`) against the real
-`~/.lado` silently migrates `lado.db` to its schema. Agents, hooks and MCP servers of the
-installed older version then refuse the "newer" database, so the running session breaks
-(MCP tools fail, hooks error). Wanted: before migrating, check for running sessions started
-by another LADO version and refuse with a clear message (or only migrate when no session is
-running); AGENTS.md already says to use a temp `LADO_HOME` for the working copy, but the
-tool should protect against the mistake.
-Found: 2026-10-01, trying `lado log` from the working copy after merging it.
-
 ## No way to reach a busy agent urgently
 
 A message to a busy agent waits until its turn ends. A hint from the supervisor that would
@@ -180,3 +169,13 @@ Wanted: the evidence also copies each agent's CLI transcript and logs, picked by
 cwd and the test's start time; the test layer asks the provider for their location, so nothing
 above providers/ learns a provider's paths.
 Found: 2026-10-02, review of run fix/live-test-keeps-logs.
+
+## Stopping one of several running sessions migrates the database under the others
+
+A newer CLI refuses to migrate `lado.db` while a session runs and asks for `lado stop`
+first, but lets `lado stop` itself through: with sessions A and B running, `lado stop A`
+migrates the database while B still runs, so B's older agents break until B is stopped
+too. Also, a LADO upgraded in place (`pip install -U`) while a session runs migrates from
+that session's own hooks, which run the new code, under its older MCP servers. Wanted: a
+stop that kills the session before it opens the database, or one `lado stop --all`.
+Found: 2026-10-02, migration guard (fix/migration-guard).

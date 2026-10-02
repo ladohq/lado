@@ -310,6 +310,13 @@ def connect() -> Iterator[sqlite3.Connection]:
         version = _migrate(conn)
     if version != SCHEMA_VERSION:
         tables = conn.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()
+        if version > SCHEMA_VERSION:
+            conn.close()
+            raise RuntimeError(
+                f"{home() / 'lado.db'} has schema version {version}, made by a newer LADO "
+                f"(this one knows up to {SCHEMA_VERSION}); upgrade LADO, and restart a "
+                "session that runs on this version with `lado stop` and `lado start`"
+            )
         if version or tables[0]:
             conn.close()
             raise RuntimeError(
@@ -322,6 +329,26 @@ def connect() -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+def pending_migration() -> tuple[int, list[str]] | None:
+    """When connect() would migrate lado.db: its schema version and the sessions it does
+    not mark stopped. Reads only: creates and changes nothing."""
+    path = home() / "lado.db"
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=10)
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version not in MIGRATIONS:
+            return None
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+        # Before version 8 a session could not be stopped.
+        where = " WHERE stopped_at IS NULL" if "stopped_at" in columns else ""
+        rows = conn.execute(f"SELECT name FROM sessions{where} ORDER BY name").fetchall()
+    finally:
+        conn.close()
+    return version, [row[0] for row in rows]
 
 
 def _migrate(conn: sqlite3.Connection) -> int:

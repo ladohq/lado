@@ -91,7 +91,12 @@ schema change.
     `flow_start` and `flow_cancel`). No tool answers a gate.
   - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
-    Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
+    Schema changes: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update
+    `tests/agent_helpers.previous_schema` (it undoes the last step). A CLI command does
+    not migrate under a running session (not stopped, tmux session alive): it refuses,
+    names the sessions and asks for `lado stop` first (`runtime.check_migration`, called
+    by the CLI before each command but `stop`; hooks and `lado mcp` do not check). An
+    older LADO refuses a newer database and asks to upgrade. The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column

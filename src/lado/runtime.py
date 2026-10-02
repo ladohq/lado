@@ -318,6 +318,26 @@ def _first_input(agent: state.Agent, text: str | None, summary: str) -> str | No
     return format_message(state.Message(message_id, lado, summary, text))
 
 
+def check_migration() -> None:
+    """Refuse when opening lado.db would migrate it while a session runs: its agents, hooks
+    and MCP servers may be an older LADO, which refuses the newer schema. The CLI calls
+    this before a command; state.py knows no tmux, so the check lives here."""
+    pending = state.pending_migration()
+    if pending is None:
+        return
+    version, sessions = pending
+    running = [s for s in sessions if tmux.has_session(s)]
+    if running:
+        names = ", ".join(f'"{s}"' for s in running)
+        stops = "; ".join(f"`lado stop {s}`" for s in running)
+        raise LadoError(
+            f"{state.home() / 'lado.db'} has schema version {version} and this LADO would "
+            f"upgrade it to {state.SCHEMA_VERSION} under the running sessions: {names}. "
+            f"Their agents may run an older LADO, which cannot use the upgraded database. "
+            f"Stop them first ({stops}), then run this again; nothing was changed"
+        )
+
+
 def running_session(session: str) -> state.Session:
     """The session, unless it is unknown or stopped: a stopped session has no agents to
     start work or take a run's next step."""

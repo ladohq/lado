@@ -591,6 +591,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     try:
+        # `lado stop` is what the refusal asks for; it ends the session it migrates under.
+        if args.command != "stop":
+            runtime.check_migration()
         return args.func(args)
     except (runtime.LadoError, tmux.TmuxError, kits.KitError, sources.SourceError) as exc:
         print(f"lado: {exc}", file=sys.stderr)

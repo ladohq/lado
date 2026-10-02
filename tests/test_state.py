@@ -3,6 +3,7 @@ import datetime
 import re
 import sqlite3
 
+import agent_helpers
 import pytest
 
 from lado import state
@@ -64,8 +65,48 @@ def test_incompatible_database_is_reported(lado_home):
 def test_newer_database_is_reported(lado_home):
     lado_home.mkdir()
     sqlite3.connect(lado_home / "lado.db").execute("PRAGMA user_version = 99")
-    with pytest.raises(RuntimeError, match="version 99"):
+    with pytest.raises(RuntimeError, match="version 99") as refused:
         state.list_sessions()
+    message = str(refused.value)
+    assert "newer LADO" in message
+    assert "upgrade LADO" in message
+    assert "delete" not in message
+
+
+def _database():
+    """The bytes of lado.db with its WAL folded in, to tell whether anything was written."""
+    path = state.home() / "lado.db"
+    db = sqlite3.connect(path)  # not state.connect(): it would migrate
+    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    db.close()
+    return path.read_bytes()
+
+
+def test_no_pending_migration_without_a_database(lado_home):
+    assert state.pending_migration() is None
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_no_pending_migration_at_the_current_version(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    assert state.pending_migration() is None
+
+
+def test_pending_migration_names_the_sessions_not_stopped(lado_home):
+    for name in ("b", "a", "gone"):
+        state.add_session(state.Session(name, "/r", None))
+    state.stop_session("gone")
+    agent_helpers.previous_schema()
+    before = _database()
+    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["a", "b"])
+    assert (lado_home / "lado.db").read_bytes() == before
+
+
+def test_pending_migration_before_sessions_could_stop(lado_home):
+    """Before version 8 a session had no stopped_at: each one may be running."""
+    lado_home.mkdir()
+    sqlite3.connect(lado_home / "lado.db").executescript(SCHEMA_V1)
+    assert state.pending_migration() == (1, ["s"])
 
 
 def test_version_2_database_gets_kits(lado_home):

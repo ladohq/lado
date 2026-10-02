@@ -787,3 +787,30 @@ def test_hooks_of_a_finished_worker_are_ignored(repo, fake_tmux, monkeypatch):
     runtime.spawn_worker("s", "again", name="w1")
     assert hooks.main("SessionEnd", "s", "w1", old) == 0  # the killed process exits late
     assert state.get_agent("s", "w1").status == state.STARTING
+
+
+def test_no_migration_under_a_running_session(repo, fake_tmux):
+    runtime.start_session(str(repo), "old", None)
+    runtime.start_session(str(repo), "other", None)
+    runtime.start_session(str(repo), "gone", None)
+    runtime.stop_session("gone")
+    tmux.kill_session("other")  # its tmux server died without `lado stop`
+    agent_helpers.previous_schema()
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.check_migration()
+    message = str(refused.value)
+    assert f"schema version {state.SCHEMA_VERSION - 1}" in message
+    assert 'running sessions: "old"' in message
+    assert "other" not in message and "gone" not in message
+    assert "`lado stop old`" in message
+    assert state.pending_migration() is not None  # nothing migrated
+
+
+def test_migration_goes_ahead_with_no_session_running(repo, fake_tmux):
+    runtime.start_session(str(repo), "old", None)
+    runtime.stop_session("old")
+    agent_helpers.previous_schema()
+    runtime.check_migration()
+    runtime.check_migration()  # nothing pending: nothing to check
+    assert state.get_session("old").stopped_at
+    assert state.pending_migration() is None

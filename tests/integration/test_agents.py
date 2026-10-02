@@ -2,6 +2,7 @@
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -185,6 +186,27 @@ def lado_cli(*args: str) -> subprocess.CompletedProcess:
         env=os.environ,
         check=False,
     )
+
+
+def database() -> bytes:
+    """lado.db with its WAL folded in: equal bytes mean nothing was written in between."""
+    path = state.home() / "lado.db"
+    db = sqlite3.connect(path)  # not state.connect(): it would migrate
+    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    db.close()
+    return path.read_bytes()
+
+
+def test_cli_refuses_to_migrate_the_database_under_a_running_session(repo):
+    start(repo)
+    agent_helpers.previous_schema()  # as an older LADO, running this session, left it
+    before = database()
+    result = lado_cli("ls")
+    assert result.returncode == 1
+    assert f'under the running sessions: "{SESSION}"' in result.stderr
+    assert f"`lado stop {SESSION}`" in result.stderr
+    assert database() == before
+    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, [SESSION])
 
 
 def supervisor_runs(command: str) -> None:

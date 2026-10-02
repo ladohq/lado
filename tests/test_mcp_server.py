@@ -60,6 +60,22 @@ def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake
     assert 90 <= worker["status_for_seconds"] < 100
 
 
+def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.spawn_worker("s", "task")
+    state.set_status("s", "supervisor", state.IDLE)
+    runtime.send_message("s", "w1", "supervisor", "report")
+    at = state.list_messages("s")[0].sent_at
+    for delay in runtime.RETRY_DELAYS + runtime.RETRY_DELAYS[-1:]:
+        at += delay
+        runtime.sweep("s", now=at)
+    result = asyncio.run(mcp_server.build("s", "w1").call_tool("list_agents", {}))
+    supervisor, worker = result.structured_content["result"]
+    assert supervisor["status"] == state.WAITING
+    assert supervisor["waiting_reason"].startswith("did not take 1 message: answer the dialog")
+    assert worker["waiting_reason"] is None
+
+
 def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")

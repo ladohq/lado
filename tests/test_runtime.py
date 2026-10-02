@@ -125,24 +125,238 @@ def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
     assert fake_tmux[-1][0] == "send_text"  # confirmed, so not delivered again
 
 
-def test_typed_message_that_never_arrived_is_delivered_again(repo, fake_tmux, monkeypatch):
+DELAYS = (15, 30, 60)
+
+
+def _typed(fake_tmux, window="supervisor"):
+    """What was typed into the window, one text per paste."""
+    return [c[3] for c in fake_tmux if c[0] == "send_text" and c[2] == window]
+
+
+def _swallowed_report(repo, fake_tmux):
+    """w1's report typed into the idle supervisor, and swallowed by a dialog: no hook runs.
+    Returns when it was typed."""
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
-    # A dialog swallowed the text: no UserPromptSubmit, the agent looks busy forever.
-    monkeypatch.setattr(runtime, "CONFIRM_TIMEOUT", -1)
-    assert runtime.send_message("s", "w1", "supervisor", "ping") == "sent"
-    assert fake_tmux[-1][3] == "[from w1] report\n[from w1] ping"
+    return state.list_messages("s")[-1].sent_at
 
 
-def test_stop_hook_redelivers_unconfirmed_message(repo, fake_tmux, monkeypatch):
-    _session_with_worker(repo)
-    state.set_status("s", "supervisor", state.IDLE)
-    runtime.send_message("s", "w1", "supervisor", "report")
-    monkeypatch.setattr(hooks, "CONFIRM_TIMEOUT", -1)
+def test_a_swallowed_message_is_typed_again_after_each_delay(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    runtime.sweep("s", now=sent + 14, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    for at in (15, 15 + 30, 15 + 30 + 60):
+        runtime.sweep("s", now=sent + at - 1, delays=DELAYS)
+        runtime.sweep("s", now=sent + at, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"] * 4
+    [message] = state.list_messages("s")
+    assert (message.state, message.attempts) == (state.SENT, 4)
+    assert state.get_agent("s", "supervisor").status == state.BUSY
+
+
+def test_a_message_is_not_typed_again_after_a_hook_of_its_agent(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "the human typed this"})
+    runtime.sweep("s", now=sent + 1000, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    assert state.list_messages("s")[0].state == state.SENT
+
+
+@pytest.mark.parametrize("status", [state.WAITING, state.STARTING, state.STOPPED])
+def test_nothing_is_typed_again_into_an_agent_not_busy(repo, fake_tmux, status):
+    sent = _swallowed_report(repo, fake_tmux)
+    state.set_status("s", "supervisor", status)
+    runtime.sweep("s", now=sent + 15, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+
+
+def test_sweeps_at_once_type_a_message_again_only_once(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    errors = []
+
+    def sweep():
+        try:
+            runtime.sweep("s", now=sent + 15)
+        except Exception as exc:
+            errors.append(exc)
+
+    sweeps = [threading.Thread(target=sweep) for _ in range(8)]
+    for t in sweeps:
+        t.start()
+    for t in sweeps:
+        t.join()
+    assert errors == []
+    assert _typed(fake_tmux) == ["[from w1] report"] * 2
+    assert state.list_messages("s")[0].attempts == 2
+
+
+def _mismatched_report(repo, fake_tmux):
+    """w1's report typed into the idle supervisor, which then ran a prompt that does not
+    contain it and ended its turn at once."""
+    sent = _swallowed_report(repo, fake_tmux)
     _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
-    out = _hook("Stop", "supervisor")
-    assert out == {"decision": "block", "reason": "[from w1] report"}
+    assert _hook("Stop", "supervisor") is None
+    return sent
+
+
+def test_a_hook_soon_after_typing_does_not_type_again(repo, fake_tmux):
+    _mismatched_report(repo, fake_tmux)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    assert state.list_messages("s")[0].state == state.SENT
+
+
+def test_a_message_not_confirmed_by_the_next_prompt_is_typed_again(repo, fake_tmux):
+    sent = _mismatched_report(repo, fake_tmux)
+    runtime.sweep("s", now=sent + 14, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    runtime.sweep("s", now=sent + 15, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"] * 2
+    [message] = state.list_messages("s")
+    assert (message.state, message.attempts) == (state.SENT, 2)
+    assert state.get_agent("s", "supervisor").status == state.BUSY
+
+
+def test_a_message_never_confirmed_is_typed_once_per_attempt_and_fails(repo, fake_tmux):
+    _mismatched_report(repo, fake_tmux)
+    for delay in DELAYS + DELAYS[-1:]:
+        message = state.list_messages("s")[0]
+        runtime.sweep("s", now=message.sent_at + delay, delays=DELAYS)
+        _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+        assert _hook("Stop", "supervisor") is None
+    assert _typed(fake_tmux) == ["[from w1] report"] * (1 + len(DELAYS))
+    assert state.list_messages("s")[0].state == state.FAILED
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
+    _hook("Stop", "supervisor")
+    assert len(_typed(fake_tmux)) == 1 + len(DELAYS)
+
+
+def test_a_turn_end_after_the_delay_types_the_message_again(repo, fake_tmux, monkeypatch):
+    _swallowed_report(repo, fake_tmux)
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
+    assert _hook("Stop", "supervisor") is None
+    assert _typed(fake_tmux) == ["[from w1] report"] * 2
+    assert state.list_messages("s")[0].attempts == 2
+
+
+def test_the_first_hook_after_a_swallowed_failure_delivers_it_again(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    _retry_until_failed(sent)
+    # The human answered the dialog and typed a line.
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
+    [report, _] = state.list_messages("s")
+    assert (report.state, report.attempts) == (state.PENDING, 0)
+    assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
+    assert state.list_messages("s")[0].state == state.DELIVERED
+
+
+def test_a_new_message_waits_while_one_typed_is_unconfirmed(repo, fake_tmux):
+    _mismatched_report(repo, fake_tmux)  # the supervisor is idle
+    assert runtime.send_message("s", "w1", "supervisor", "ping").startswith("queued")
+    assert _typed(fake_tmux) == ["[from w1] report"]
+
+
+def test_a_new_message_brings_a_swallowed_one_again_after_the_delay(repo, fake_tmux, monkeypatch):
+    _swallowed_report(repo, fake_tmux)
+    assert runtime.send_message("s", "w1", "supervisor", "ping").startswith("queued")
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
+    runtime.send_message("s", "w1", "supervisor", "pong")
+    assert _typed(fake_tmux)[1:] == ["[from w1] report\n[from w1] ping\n[from w1] pong"]
+    assert [m.attempts for m in state.list_messages("s")] == [2, 1, 1]
+
+
+def test_nothing_is_typed_into_an_agent_waiting_after_a_failure(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    _retry_until_failed(sent)
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+    typed = len(_typed(fake_tmux))
+    assert runtime.send_message("s", "w1", "supervisor", "ping").startswith("queued")
+    assert len(_typed(fake_tmux)) == typed
+
+
+def test_an_agent_waiting_after_swallowed_messages_says_what_to_do(repo, fake_tmux):
+    _retry_until_failed(_swallowed_report(repo, fake_tmux))
+    assert runtime.waiting_reasons("s") == {
+        "supervisor": "did not take 1 message: answer the dialog in its window "
+        "or type any line there"
+    }
+
+
+def test_an_agent_waiting_after_unconfirmed_messages_says_so(repo, fake_tmux):
+    _mismatched_report(repo, fake_tmux)
+    for delay in DELAYS:
+        runtime.sweep("s", now=state.list_messages("s")[0].sent_at + delay, delays=DELAYS)
+        _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+        _hook("Stop", "supervisor")
+    runtime.sweep("s", now=state.list_messages("s")[0].sent_at + DELAYS[-1], delays=DELAYS)
+    assert runtime.waiting_reasons("s") == {
+        "supervisor": "did not confirm 1 message (the text typed did not match)"
+    }
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
+    assert runtime.waiting_reasons("s") == {}  # busy again
+
+
+def test_stop_drops_failed_messages(repo, fake_tmux):
+    _retry_until_failed(_swallowed_report(repo, fake_tmux))
+    assert runtime.stop_session("s").dropped == 2  # the report and the notice to w1
+    assert [m.state for m in state.list_messages("s")] == [state.DROPPED] * 2
+
+
+def test_finish_drops_the_failed_messages_of_the_worker(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    runtime.send_message("s", "supervisor", "w1", "task")
+    _retry_until_failed(state.list_messages("s")[0].sent_at)
+    assert runtime.finish_worker("s", "w1", discard=True).dropped == 1
+    assert state.list_messages("s")[0].state == state.DROPPED
+
+
+def _retry_until_failed(sent, start=0):
+    """Sweep at the end of each delay, from the `start`-th one on, until the message fails."""
+    at = sent
+    for delay in DELAYS[start:] + DELAYS[-1:]:
+        at += delay
+        runtime.sweep("s", now=at, delays=DELAYS)
+    return at
+
+
+def test_a_message_never_taken_fails_after_the_last_delay(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    at = _retry_until_failed(sent)
+    assert len(_typed(fake_tmux)) == 1 + len(DELAYS)
+    report = state.list_messages("s")[0]
+    assert report.state == state.FAILED
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+    runtime.sweep("s", now=at + 1000, delays=DELAYS)
+    assert len(_typed(fake_tmux)) == 1 + len(DELAYS)
+    # Its sender hears of it, in one line from LADO.
+    notice = state.list_messages("s")[-1]
+    assert (notice.sender, notice.recipient, notice.body) == ("lado", "w1", "")
+    assert notice.summary == f"message #{report.id} to supervisor not delivered: report"
+
+
+def test_a_failed_message_from_lado_is_reported_to_the_supervisor(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    runtime.post("s", "lado", "w1", "flow x: step y", "the step")
+    step = state.list_messages("s")[-1]
+    _retry_until_failed(step.sent_at)
+    notice = state.list_messages("s")[-1]
+    assert (notice.sender, notice.recipient) == ("lado", "supervisor")
+    assert notice.summary == f"message #{step.id} to w1 not delivered: flow x: step y"
+
+
+def test_a_failed_notice_is_not_reported(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    state.set_status("s", "w1", state.IDLE)
+    _retry_until_failed(sent)
+    # w1 swallows the notice too.
+    _retry_until_failed(state.list_messages("s")[-1].sent_at)
+    assert [(m.sender, m.recipient, m.state) for m in state.list_messages("s")] == [
+        ("w1", "supervisor", state.FAILED),
+        ("lado", "w1", state.FAILED),
+    ]
 
 
 def test_message_to_busy_agent_arrives_via_stop_hook(repo, fake_tmux):
@@ -758,8 +972,9 @@ def test_finish_worker_drops_its_undelivered_messages(repo, fake_tmux, monkeypat
     last = state.list_events("s")[-1]
     assert (last.kind, last.detail) == ("finished", "discarded; 2 messages dropped")
     runtime.spawn_worker("s", "new task", name="w1")
-    monkeypatch.setattr(hooks, "CONFIRM_TIMEOUT", -1)
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
     assert _hook("Stop", "w1") is None  # nothing meant for the old w1
+    assert fake_tmux[-1][0] != "send_text"
     assert [m.state for m in state.list_messages("s")] == [state.DROPPED, state.DROPPED]
 
 

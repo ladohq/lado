@@ -12,10 +12,10 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -78,6 +78,10 @@ SESSIONS_STOPPED = "ALTER TABLE sessions ADD COLUMN stopped_at TEXT"
 # The language the human writes in, e.g. "ru": the run's notes are written in it. '' for
 # none given.
 RUNS_LANGUAGE = "ALTER TABLE runs ADD COLUMN language TEXT NOT NULL DEFAULT ''"
+# How often a message was typed into its recipient's window (lado.runtime.sweep).
+MESSAGES_ATTEMPTS = "ALTER TABLE messages ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"
+# When the agent's latest hook ran (time.time()); 0 for none yet.
+AGENTS_SEEN = "ALTER TABLE agents ADD COLUMN seen_at REAL NOT NULL DEFAULT 0"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -109,14 +113,25 @@ CREATE TABLE IF NOT EXISTS messages (
     recipient TEXT NOT NULL,
     summary TEXT NOT NULL DEFAULT '',  -- one line; '' in messages from before version 5
     body TEXT NOT NULL DEFAULT '',  -- the full text, read with read_messages; '' for none
-    state TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | delivered | read | dropped
+    state TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | delivered | read | dropped | failed
     sent_at REAL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
 SCHEMA += (
     ";\n".join(
-        [EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS, GATES, GATES_OPEN, SESSIONS_STOPPED, RUNS_LANGUAGE]
+        [
+            EVENTS,
+            EVENTS_RUN,
+            AGENTS_RUN,
+            RUNS,
+            GATES,
+            GATES_OPEN,
+            SESSIONS_STOPPED,
+            RUNS_LANGUAGE,
+            MESSAGES_ATTEMPTS,
+            AGENTS_SEEN,
+        ]
     )
     + ";\n"
 )
@@ -144,6 +159,7 @@ MIGRATIONS = {
     6: [GATES, GATES_OPEN],
     7: [SESSIONS_STOPPED],
     8: [RUNS_LANGUAGE],
+    9: [MESSAGES_ATTEMPTS, AGENTS_SEEN],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -160,10 +176,11 @@ SENT = "sent"
 DELIVERED = "delivered"
 READ = "read"  # its recipient got the body with read_messages
 DROPPED = "dropped"  # its recipient was finished or stopped before it got (or read) it
+FAILED = "failed"  # typed again and again, never confirmed (lado.runtime.sweep)
 # What an agent has not received yet: messages not delivered, and bodies not read. When the
 # agent is finished or stopped, they are dropped: a new agent of the same name starts fresh.
-UNRECEIVED = "(state IN (?, ?) OR (state = ? AND body != ''))"
-UNRECEIVED_ARGS = (PENDING, SENT, DELIVERED)
+UNRECEIVED = "(state IN (?, ?, ?) OR (state = ? AND body != ''))"
+UNRECEIVED_ARGS = (PENDING, SENT, FAILED, DELIVERED)
 
 # Event kinds.
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
@@ -204,6 +221,7 @@ class Agent:
     provider: str = "claude"
     instance: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     run: str | None = None  # the flow run it works for
+    seen_at: float = 0  # when its latest hook ran (time.time()); 0 for none yet
 
 
 @dataclass
@@ -226,6 +244,8 @@ class Message:
     recipient: str = ""
     state: str = ""
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS.SSS"; older rows have whole seconds
+    attempts: int = 0  # how often it was typed into the recipient's window
+    sent_at: float | None = None  # when it was last typed or handed over (time.time())
 
     @property
     def title(self) -> str:
@@ -536,6 +556,24 @@ def set_status(session: str, name: str, status: str) -> None:
         db.execute("COMMIT")
 
 
+def seen(session: str, name: str) -> None:
+    """Record that a hook of the agent ran now. Its failed messages that no hook ran after
+    (a dialog swallowed them) go back to the queue, with their attempts from 0."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            "UPDATE messages SET state = ?, attempts = 0 WHERE session = ? AND recipient = ?"
+            " AND state = ? AND sent_at > (SELECT seen_at FROM agents"
+            " WHERE session = ? AND name = ?)",
+            (PENDING, session, name, FAILED, session, name),
+        )
+        db.execute(
+            "UPDATE agents SET seen_at = ? WHERE session = ? AND name = ?",
+            (time.time(), session, name),
+        )
+        db.execute("COMMIT")
+
+
 def add_event(
     session: str, agent: str, kind: str, detail: str = "", run: str | None = None
 ) -> None:
@@ -766,7 +804,7 @@ def status_since(session: str) -> dict[str, datetime.datetime]:
     return {r["agent"]: _utc(r["created_at"]) for r in rows}
 
 
-MESSAGE_COLUMNS = "id, sender, summary, body, recipient, state, created_at"
+MESSAGE_COLUMNS = "id, sender, summary, body, recipient, state, created_at, attempts, sent_at"
 
 
 def queue_message(
@@ -822,12 +860,75 @@ def take_pending(session: str, recipient: str, mark: str) -> list[Message]:
             " WHERE session = ? AND recipient = ? AND state = ? ORDER BY id",
             (session, recipient, PENDING),
         ).fetchall()
+        # Typed into the window, it is an attempt (lado.runtime.sweep); handed over another
+        # way, it is delivered and needs none.
+        attempt = 1 if mark == SENT else 0
         db.executemany(
-            "UPDATE messages SET state = ?, sent_at = ? WHERE id = ?",
-            [(mark, time.time(), r["id"]) for r in rows],
+            "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + ? WHERE id = ?",
+            [(mark, time.time(), attempt, r["id"]) for r in rows],
         )
         db.execute("COMMIT")
     return [Message(*r[:5], mark, r["created_at"]) for r in rows]
+
+
+@dataclass
+class Plan:
+    """What to do with an agent's unconfirmed messages (lado.runtime.sweep decides)."""
+
+    retype: bool = False  # type its sent and pending messages again, as one text
+    requeue: list[int] = field(default_factory=list)  # back to pending
+    fail: list[int] = field(default_factory=list)
+
+
+@dataclass
+class Swept:
+    typed: list[Message]  # typed again: retype them now
+    failed: list[Message]
+    requeued: int
+
+
+def sweep(
+    session: str, name: str, now: float, decide: Callable[[Agent, list[Message]], Plan]
+) -> Swept:
+    """Carry out `decide(agent, its sent messages)` in one write transaction, so two
+    sweeps never type the same message twice. A failure puts a busy or idle agent in
+    waiting: it took or confirmed nothing for so long that typing more would not help."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT * FROM agents WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
+        if row is None:
+            db.execute("ROLLBACK")
+            return Swept([], [], 0)
+        agent = _agent(row)
+        query = (
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND recipient = ?"
+            " AND state IN ({}) ORDER BY id"
+        )
+        sent = [Message(*r) for r in db.execute(query.format("?"), (session, name, SENT))]
+        plan = decide(agent, sent)
+        failed = [m for m in sent if m.id in plan.fail]
+        db.executemany(
+            "UPDATE messages SET state = ? WHERE id = ?",
+            [(FAILED, i) for i in plan.fail] + [(PENDING, i) for i in plan.requeue],
+        )
+        if failed and agent.status in (BUSY, IDLE):
+            db.execute(
+                "UPDATE agents SET status = ? WHERE session = ? AND name = ?",
+                (WAITING, session, name),
+            )
+            _add_event(db, session, name, STATUS, WAITING)
+        typed = []
+        if plan.retype:
+            rows = db.execute(query.format("?, ?"), (session, name, SENT, PENDING)).fetchall()
+            db.executemany(
+                "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + 1 WHERE id = ?",
+                [(SENT, now, r["id"]) for r in rows],
+            )
+            typed = [Message(*r[:5], SENT, r["created_at"]) for r in rows]
+        db.execute("COMMIT")
+    return Swept(typed, [replace(m, state=FAILED) for m in failed], len(plan.requeue))
 
 
 def confirm_sent(
@@ -868,15 +969,27 @@ def drop_pending(session: str, sender: str, recipient: str, summary: str) -> int
         return cur.rowcount
 
 
-def requeue_unconfirmed(session: str, recipient: str, older_than: float) -> int:
-    """Put sent messages that were never confirmed back in the queue. Returns how many."""
+def failed_counts(session: str) -> dict[str, tuple[int, int]]:
+    """Per agent, its failed messages: how many no hook ran after (swallowed) and how many
+    it ran hooks after without confirming them."""
     with connect() as db:
-        cur = db.execute(
-            "UPDATE messages SET state = ? WHERE session = ? AND recipient = ? AND state = ?"
-            " AND sent_at < ?",
-            (PENDING, session, recipient, SENT, time.time() - older_than),
-        )
-        return cur.rowcount
+        rows = db.execute(
+            "SELECT m.recipient, SUM(m.sent_at > a.seen_at), SUM(m.sent_at <= a.seen_at)"
+            " FROM messages m JOIN agents a ON a.session = m.session AND a.name = m.recipient"
+            " WHERE m.session = ? AND m.state = ? GROUP BY m.recipient",
+            (session, FAILED),
+        ).fetchall()
+    return {r[0]: (r[1], r[2]) for r in rows}
+
+
+def has_sent(session: str, recipient: str) -> bool:
+    """Whether a message typed into the recipient's window is still unconfirmed."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT 1 FROM messages WHERE session = ? AND recipient = ? AND state = ?",
+            (session, recipient, SENT),
+        ).fetchone()
+    return row is not None
 
 
 def _agent(row: sqlite3.Row) -> Agent:
@@ -891,6 +1004,7 @@ def _agent(row: sqlite3.Row) -> Agent:
         provider=row["provider"],
         instance=row["instance"],
         run=row["run"],
+        seen_at=row["seen_at"],
     )
 
 

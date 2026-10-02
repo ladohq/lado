@@ -7,6 +7,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 import contextlib
 import re
 import subprocess
+import time
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,7 +16,9 @@ from lado import kits, providers, state, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 MAX_MESSAGE = 8000
-CONFIRM_TIMEOUT = 15  # seconds for a typed message to show up as a prompt
+# Seconds after the 1st, 2nd, ... time a message was typed into an agent's window before
+# sweep deals with it again: types it again, or gives up after the last.
+RETRY_DELAYS = (15, 30, 60)
 # Characters of an agent's first input that go on its command line. tmux refuses a command
 # over about 16 KB, and the system prompt is on it too; a longer input comes as a message.
 FIRST_INPUT_LIMIT = 2000
@@ -485,13 +488,15 @@ def post(session: str, sender: str, recipient: str, summary: str, body: str = ""
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
         raise LadoError(f'no running agent "{recipient}"; running agents: {names}')
     state.queue_message(session, sender, recipient, summary, body)
-    # A typed message the agent never received leaves it marked busy without it being so.
-    lost = state.requeue_unconfirmed(session, recipient, CONFIRM_TIMEOUT)
+    # What was typed before and never confirmed goes first, with this one if typed again.
+    sweep(session, recipient)
     # Queue first, read the status second: the turn-end hook does the reverse, so a message is
     # never left behind by an agent that went idle in between.
     status = state.get_agent(session, recipient).status
-    if status != state.IDLE and not lost:
+    if status != state.IDLE:
         return f"queued; {recipient} is {status} and will get it when its turn ends"
+    if state.has_sent(session, recipient):
+        return f"queued; {recipient} has not confirmed the message typed before"
     return "sent" if deliver_pending(session, recipient) else "queued"
 
 
@@ -504,6 +509,95 @@ def deliver_pending(session: str, recipient: str) -> bool:
     state.set_status(session, recipient, state.BUSY)
     tmux.send_text(session, recipient, format_messages(pending))
     return True
+
+
+def sweep(
+    session: str,
+    agent: str | None = None,
+    now: float | None = None,
+    delays: tuple[float, ...] | None = None,
+) -> None:
+    """Deal with the messages typed into the agent's window (default: each agent's) that
+    its prompt-submit hook has not confirmed. The one rule for them; see _plan."""
+    now = time.time() if now is None else now
+    delays = delays or RETRY_DELAYS
+    names = [agent] if agent else [a.name for a in state.list_agents(session)]
+    for name in names:
+        swept = state.sweep(session, name, now, lambda a, sent: _plan(a, sent, now, delays))
+        if swept.typed:
+            tmux.send_text(session, name, format_messages(swept.typed))
+        if swept.requeued:
+            deliver_pending(session, name)
+        for message in swept.failed:
+            _report_failure(session, message)
+
+
+def _plan(
+    agent: state.Agent, sent: list[state.Message], now: float, delays: tuple[float, ...]
+) -> state.Plan:
+    """A message is left alone until the delay of its attempt is over: delays[n - 1] after
+    the n-th time it was typed."""
+    plan = state.Plan()
+    for message in sent:
+        attempt = max(message.attempts, 1)
+        sent_at = message.sent_at or 0
+        if now < sent_at + delays[min(attempt, len(delays)) - 1]:
+            continue
+        if attempt > len(delays):
+            plan.fail.append(message.id)
+        # No hook since it was typed: a dialog took the text. The agent is still busy, as
+        # LADO marked it when typing.
+        elif agent.seen_at < sent_at:
+            if agent.status == state.BUSY:
+                plan.retype = True
+        # A hook ran since, yet no prompt held its line: back to the queue, delivered as
+        # usual. Its attempts count on.
+        elif agent.status == state.IDLE:
+            plan.requeue.append(message.id)
+    return plan
+
+
+def waiting_reasons(session: str) -> dict[str, str]:
+    """Why each agent that waits after failed messages waits, and what the human can do."""
+    reasons = {}
+    counts = state.failed_counts(session)
+    for agent in state.list_agents(session):
+        swallowed, unconfirmed = counts.get(agent.name, (0, 0))
+        if agent.status != state.WAITING or not swallowed + unconfirmed:
+            continue
+        why = []
+        if swallowed:
+            why.append(
+                f"did not take {_messages(swallowed)}: answer the dialog in its window "
+                "or type any line there"
+            )
+        if unconfirmed:
+            why.append(f"did not confirm {_messages(unconfirmed)} (the text typed did not match)")
+        reasons[agent.name] = "; ".join(why)
+    return reasons
+
+
+def _messages(n: int) -> str:
+    return f"{n} message{'' if n == 1 else 's'}"
+
+
+NOT_DELIVERED = "message #{id} to {recipient} not delivered: {title}"
+NOTICE = re.compile(r"message #\d+ to \S+ not delivered: .*")
+
+
+def _report_failure(session: str, message: state.Message) -> None:
+    """Tell the sender of a failed message, in one line from LADO; the supervisor when LADO
+    sent it. A failed notice is not reported again."""
+    to = SUPERVISOR if message.sender == state.LADO else message.sender
+    if message.sender == state.LADO and NOTICE.fullmatch(message.summary):
+        return
+    if to == message.recipient:
+        return  # it is the one not taking messages; `lado ls` shows it waiting
+    summary = NOT_DELIVERED.format(id=message.id, recipient=message.recipient, title=message.title)
+    if len(summary) > state.SUMMARY_LIMIT:
+        summary = summary[: state.SUMMARY_LIMIT - 1] + "…"
+    with contextlib.suppress(LadoError):  # its sender is gone: `lado log` shows it failed
+        post(session, state.LADO, to, summary)
 
 
 def _check_summary(summary: str) -> None:

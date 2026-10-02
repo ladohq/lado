@@ -11,7 +11,7 @@ import time
 import traceback
 
 from lado import providers, runtime, state
-from lado.runtime import CONFIRM_TIMEOUT, format_message, format_messages
+from lado.runtime import format_message, format_messages
 
 # How long a session-start hook holds the agent's first turn for LADO's MCP server.
 MCP_READY_TIMEOUT = 20.0
@@ -40,6 +40,8 @@ def handle(
     provider: providers.Provider, event: providers.Event, session: str, agent: str
 ) -> str | None:
     """Update the agent's status for `event`. Returns the hook output to print, if any."""
+    # First of all: the agent is alive, so what a dialog swallowed can go to it again.
+    state.seen(session, agent)
     if event.kind == providers.SESSION_START:
         current = state.get_agent(session, agent)
         # Claude Code starts the first turn when its session-start hooks are done, whether
@@ -59,14 +61,13 @@ def handle(
         # Mark idle first, then collect the inbox: lado.runtime.send_message does it the
         # other way round, so a message sent in between is always picked up by one of us.
         state.set_status(session, agent, state.IDLE)
-        state.requeue_unconfirmed(session, agent, CONFIRM_TIMEOUT)
         if not provider.capabilities.deliver_on_turn_end:
             runtime.deliver_pending(session, agent)
-            return None
-        pending = state.take_pending(session, agent, state.DELIVERED)
-        if pending:
+        elif pending := state.take_pending(session, agent, state.DELIVERED):
             state.set_status(session, agent, state.BUSY)
             return provider.continue_output(format_messages(pending))
+        # Then what was typed and never confirmed.
+        runtime.sweep(session, agent)
     elif event.kind == providers.CONVERSATION_END:
         # Not ready while the next conversation loads: messages wait in the queue.
         state.set_status(session, agent, state.STARTING)
@@ -74,8 +75,8 @@ def handle(
         # Ready again: no turn ends to hand over the queue, so its messages are typed in.
         # Idle first, then the inbox, as for TURN_END.
         state.set_status(session, agent, state.IDLE)
-        state.requeue_unconfirmed(session, agent, CONFIRM_TIMEOUT)
         runtime.deliver_pending(session, agent)
+        runtime.sweep(session, agent)
     elif event.kind == providers.SESSION_END:
         state.set_status(session, agent, state.STOPPED)
     return None

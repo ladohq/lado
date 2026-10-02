@@ -25,15 +25,17 @@ Found: 2026-10-01, Kilo provider review.
 
 ## An unconfirmed message waits for the next send
 
-A message typed into an idle agent is requeued when its prompt-submit hook does not confirm
-it within CONFIRM_TIMEOUT, but only on the next `send_message` or hook of that agent
-(`runtime.py`, `hooks.py`: `requeue_unconfirmed`); nothing retries it on its own. Seen when:
-Kilo's plugin reports idle (`plugin.init`) before its TUI accepts input, so the first message
-to a just-started Kilo agent is swallowed; Claude Code's "trust this folder?" dialog swallows
-a message; the /resume picker (no hook fires when it opens or Esc closes it, so the agent stays
-`idle`) takes a message into its search box.
-Wanted: LADO retries an unconfirmed message by itself after the timeout, without waiting for
-another send.
+One rule now deals with a message typed in and never confirmed (`runtime.sweep`: typed
+again after 15, 30 and 60 s, then `failed`, the agent `waiting` and its sender told), but only
+`send_message` to that agent and its own turn-end and conversation-start hooks run it;
+nothing runs it on a timer. Seen when: Kilo's plugin reports idle (`plugin.init`) before its
+TUI accepts input, so the first message to a just-started Kilo agent is swallowed; the
+/resume picker (no hook fires when it opens or Esc closes it, so the agent stays `idle`)
+takes a message into its search box.
+Wanted: the session loop (feature/message-retry, task 2 of 2): a hidden `lado loop
+<session>` process, one per session (flock), started by `lado start`, that calls
+`runtime.sweep(session)` every few seconds and delivers the queue of agents whose
+messages it put back.
 Found: 2026-10-01, kits end-to-end check with Kilo 7.8.1; 2026-10-02, flow dogfooding.
 
 ## Kit MCP secrets are written to disk
@@ -47,11 +49,13 @@ Found: 2026-10-01, kits review.
 ## Claude Code's "trust this folder?" dialog blocks a new session
 
 In a repo Claude Code has not seen before, it asks whether to trust the folder, and no flag
-skips the question. Until the human answers, the supervisor stays "starting" and a message
-pasted in is swallowed (it is resent after the confirm timeout). `lado start` (or
-`lado doctor <repo>`) should detect an untrusted repo and tell the user, and the agent's
-status could show that it waits for the human. (The swallowed message is the entry "An
-unconfirmed message waits for the next send".)
+skips the question. Checked on Claude Code 2.1.287 (2026-10-02): until the human answers,
+no hook runs, so the agent stays `starting` and LADO types nothing into it (messages wait in
+the queue). The dialog's default answer is "No, exit": an Enter there ends Claude Code, its
+tmux window closes, and no SessionEnd hook runs, so `lado ls` keeps showing it `starting`
+(with "tmux session is gone" for a supervisor). `lado start` (or `lado doctor <repo>`)
+should detect an untrusted repo and tell the user, and the agent's status could show that it
+waits for the human.
 Found: 2026-10-01, live e2e tests.
 
 ## A broken kit source blocks every kit lookup

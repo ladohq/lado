@@ -462,6 +462,22 @@ def test_version_8_database_gets_the_language_of_runs(lado_home):
     assert state.get_run("s", "feature/x").language == ""
 
 
+def test_version_9_database_gets_message_attempts_and_when_agents_were_seen(lado_home):
+    db = _schema_v4(lado_home)
+    for version in (4, 5, 6, 7, 8):
+        for statement in state.MIGRATIONS[version]:
+            db.execute(statement)
+    db.execute(
+        "INSERT INTO messages (session, sender, recipient, summary, body, state, sent_at)"
+        " VALUES ('s', 'w1', 'supervisor', 'hi', '', 'sent', 5.0)"
+    )
+    db.execute("PRAGMA user_version = 9")
+    db.commit()
+    [message] = state.list_messages("s")
+    assert (message.state, message.attempts, message.sent_at) == (state.SENT, 0, 5.0)
+    assert state.get_agent("s", "supervisor").seen_at == 0
+
+
 def test_a_run_keeps_the_language_of_the_human(lado_home):
     state.add_session(state.Session("s", "/r", None))
     state.add_run(_run(language="ru"), [("supervisor", state.FLOW_START, "started")])

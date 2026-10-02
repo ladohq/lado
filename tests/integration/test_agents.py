@@ -155,6 +155,51 @@ def test_agent_that_switches_conversation_keeps_running(repo):
     assert state.STOPPED not in statuses
 
 
+def swallowed_report() -> None:
+    """A dialog in the idle supervisor's window swallows a report typed into it."""
+    tmux.send_text(SESSION, "supervisor", "dialog")  # opened by the human, say
+    assert runtime.send_message(SESSION, "w1", "supervisor", "report") == "sent"
+    wait_for(lambda: "swallowed" in tmux.capture(SESSION, "supervisor"), "the dialog")
+    assert message_states("supervisor") == [state.SENT]
+
+
+def later(seconds: float) -> None:
+    """As if `seconds` had passed since anything was typed or any hook ran."""
+    with state.connect() as db:
+        db.execute("UPDATE messages SET sent_at = sent_at - ?", (seconds,))
+        db.execute("UPDATE agents SET seen_at = seen_at - ?", (seconds,))
+
+
+def test_a_swallowed_message_is_typed_again_with_the_next_one(repo):
+    start(repo)
+    swallowed_report()
+    later(runtime.RETRY_DELAYS[0])
+    runtime.send_message(SESSION, "w1", "supervisor", "ping")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
+    assert inputs("supervisor") == ["[from w1] report\n[from w1] ping"]
+
+
+def test_a_swallowed_message_is_typed_again_after_a_hook_of_its_agent(repo):
+    start(repo)
+    swallowed_report()
+    later(runtime.RETRY_DELAYS[0])
+    tmux.send_text(SESSION, "supervisor", "sleep 0")  # the human goes on
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
+    assert inputs("supervisor") == ["sleep 0", "[from w1] report"]
+
+
+def test_nothing_is_typed_into_an_agent_that_asks_the_human(repo):
+    start(repo)
+    swallowed_report()
+    tmux.send_text(SESSION, "supervisor", "ask")
+    wait_status("supervisor", state.WAITING)
+    later(runtime.RETRY_DELAYS[-1] * 10)
+    assert runtime.send_message(SESSION, "w1", "supervisor", "ping").startswith("queued")
+    tmux.send_text(SESSION, "supervisor", "yes")  # the human answers
+    wait_for(lambda: state.DELIVERED in message_states("supervisor"), "delivery")
+    assert inputs("supervisor")[:2] == ["ask", {"answer": "yes"}]
+
+
 def test_stop_kills_agents_and_keeps_worktrees(repo):
     start(repo)
     worker = runtime.spawn_worker(SESSION, "sleep 0")

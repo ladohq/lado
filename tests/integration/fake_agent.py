@@ -14,11 +14,15 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     spawnrun <run>     call the LADO MCP tool spawn_worker for a flow run
     advance <run> <outcome>  call the LADO MCP tool flow_advance
     sleep <seconds>    work that long
+    ask                ask the human for a permission: run the waiting hook, and take the
+                       next input as the answer (logged as {"answer": <text>})
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     exit               end the session
 A typed "switch <seconds>" is no input but a command of the CLI itself, like Claude Code's
 /resume: the agent leaves its conversation, takes that long to pick another, and goes on in
-the same process; no prompt-submit and no turn-end hook run for it.
+the same process; no prompt-submit and no turn-end hook run for it. A typed "dialog" opens a
+modal dialog, like Claude Code's folder-trust dialog: it swallows the next input, and no hook
+runs for either.
 Other lines are ignored. Each input is logged to the config's "inputs" file, and the output
 of `run`, the messages from `read` and the results of `flow_start` and `advance` to its
 "seen" file. At start the agent writes what it
@@ -127,6 +131,11 @@ def send(to: str, text: str) -> None:
     call_tool("send_message", arguments)
 
 
+def log_input(text) -> None:
+    with open(config["inputs"], "a") as log:
+        log.write(json.dumps(text) + "\n")
+
+
 def read_input() -> str | None:
     """The next input from the terminal; None at end of input.
 
@@ -155,6 +164,9 @@ def work(text: str) -> bool:
             return True
         if command[0] == "sleep":
             time.sleep(float(command[1]))
+        elif command[0] == "ask":
+            hook("waiting")
+            log_input({"answer": read_input()})
         elif command[0] == "send":
             send(command[1], command[2])
         elif command[0] == "read":
@@ -199,8 +211,11 @@ def main() -> None:
             hook("conversation_start")
             text = None
             continue
-        with open(config["inputs"], "a") as log:
-            log.write(json.dumps(text) + "\n")
+        if text == "dialog":
+            print(f"> swallowed {read_input()!r}", flush=True)
+            text = None
+            continue
+        log_input(text)
         hook("prompt_submit", text)
         try:
             if work(text):

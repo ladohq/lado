@@ -96,7 +96,9 @@ schema change.
     not migrate under a running session (not stopped, tmux session alive): it refuses,
     names the sessions and asks for `lado stop` first (`runtime.check_migration`, called
     by the CLI before each command but `stop`; hooks and `lado mcp` do not check). An
-    older LADO refuses a newer database and asks to upgrade. The `events`
+    older LADO refuses a newer database and asks to upgrade. A message counts its pastes
+    (`messages.attempts`) and can end `failed`; an agent keeps when its latest hook ran
+    (`agents.seen_at`). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
@@ -128,9 +130,23 @@ schema change.
   its command line. When it is longer than 2000 characters (tmux refuses commands over about
   16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its
   one line and reads the text with `read_messages`. The worker's task is still the full text.
-- A message to an idle agent is pasted into its window and counts as delivered only after
-  the agent's prompt-submit hook sees its line; otherwise it is queued again. A busy agent
-  gets its queued messages from its turn-end hook when the turn ends.
+- A message to an idle agent is pasted into its window and stays `sent` until the agent's
+  prompt-submit hook sees its line (then `delivered`). A busy agent gets its queued messages
+  from its turn-end hook when the turn ends. LADO types only into an idle agent, never into
+  one that is waiting, starting or stopped, and a new message waits while one typed before
+  is unconfirmed.
+- What happens to an unconfirmed message is one rule, `runtime.sweep`, run by `send_message`
+  to the agent and by its turn-end and conversation-start hooks (a timer arrives with the
+  session loop). Each paste is an attempt; after the n-th, the message is left alone for
+  `RETRY_DELAYS[n-1]` seconds (15, 30, 60). Then: if no hook of the agent ran since the paste
+  (`agents.seen_at`; a dialog took the text) and the agent is busy, it is pasted again with
+  the queue; if hooks ran but no prompt held its line and the agent is idle, it goes back to
+  the queue and is delivered as usual. After `1 + len(RETRY_DELAYS)` pastes and the last
+  delay it is `failed` (`lado log`): the agent is set `waiting`, `lado ls` and
+  `list_agents` (`waiting_reason`) say why and what the human can do, and its sender (the
+  supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
+  reported. The agent's first hook after that puts the messages no hook ran after back in
+  the queue with their attempts from 0; the ones it saw and never confirmed stay failed.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so

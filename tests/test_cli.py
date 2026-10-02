@@ -63,6 +63,25 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
     assert lines[1].index("3h05m") == lines[2].index("-")
 
 
+def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsys):
+    main(["start", str(repo), "--name", "s", "--no-attach"])
+    runtime.spawn_worker("s", "task")
+    state.set_status("s", "supervisor", state.IDLE)
+    runtime.send_message("s", "w1", "supervisor", "report")
+    at = state.list_messages("s")[0].sent_at
+    for delay in runtime.RETRY_DELAYS + runtime.RETRY_DELAYS[-1:]:
+        at += delay
+        runtime.sweep("s", now=at)
+    capsys.readouterr()
+    main(["ls"])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].split()[:4] == ["supervisor", "supervisor", "claude", "waiting"]
+    assert lines[2] == (
+        "    waiting: did not take 1 message: answer the dialog in its window "
+        "or type any line there"
+    )
+
+
 def test_finish_ends_a_worker(repo, fake_tmux, capsys):
     main(["start", str(repo), "--name", "s", "--no-attach"])
     worker = runtime.spawn_worker("s", "task")

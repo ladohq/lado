@@ -16,9 +16,13 @@ a surface, it takes nothing away.
    from the UI, no "the server is on this machine". The server's address is configured, not
    assumed. This keeps a later remote or cloud setup (LADO on a server, workers in the
    cloud, or both) open.
-2. **Authentication is its own layer.** Now: a random token per `lado ui` start, checked on
-   every HTTP request and every WebSocket, plus an Origin check. Later it can be replaced by
-   a real login for a remote host without touching the rest.
+2. **Authentication is its own layer** (`lado/server/auth.py`, the only place that checks
+   it). Now: a token of the LADO_HOME, kept until `lado server --new-token`, checked on
+   every API request (and later every WebSocket): a cookie named after the server's port
+   (`lado_token_<port>`, so two LADO servers on one machine do not log each other out) or
+   `Authorization: Bearer <token>`. The Origin check comes with the first request that
+   changes something (gates, the composer), with its own test. Later the layer can be
+   replaced by a real login for a remote host without touching the rest.
 3. **One change feed: "events after id N".** The UI learns about changes from one stream,
    never by polling lists. The server reads it from the database's `events`, `messages` and
    `notes` (ids only grow), so a write by any process (CLI, hooks, MCP server, session loop)
@@ -43,6 +47,42 @@ a surface, it takes nothing away.
 | D4 | Who the human writes to | Any agent, the supervisor by default, from one composer with a recipient | One way to write, not several |
 | D5 | API layout | Everything under `/api`, the bundle served by the same server | No dev proxy that must mirror every route |
 | D6 | Desktop app | Later (task 9); the browser first | A bundled server is heavy; the browser covers the need |
+
+## Server
+
+Decided in task 1 (2026-10-03). One UI server per `LADO_HOME`, the same for the browser, the
+later desktop app and a later cloud setup; the UI is its client.
+
+- `lado server` runs it in the foreground; `lado ui` starts it in the background when none
+  runs (a process of its own, like the session loop), waits until `/api/health` answers
+  (on a timeout it names the log) and opens the browser on the link (`--no-open` prints
+  it). `lado server stop` ends it. A `lado ui --port N` while the server runs on another
+  port is an error naming its address; a server of another LADO version gets a warning
+  that says to restart it.
+- Host: only 127.0.0.1 or localhost for now; `--host` with anything else is refused until
+  there is a real login.
+- Port: 8000, or the next free one up to 8020; `--port N` takes exactly N (busy: an error;
+  0: any free port, as the tests use).
+- One per `LADO_HOME`: the server holds an exclusive flock on `LADO_HOME/server.lock` and
+  writes `LADO_HOME/server.json` (url, port, pid, version). The file counts only while the
+  lock is held; with the lock free it is stale and removed, and `lado server stop` kills
+  nobody. A second server refuses and names the first one's address.
+- Token: `LADO_HOME/server-token` (owner only), made on the first start, replaced with
+  `lado server --new-token`. The link `http://127.0.0.1:<port>/?token=<token>` sets the
+  cookie (HttpOnly, SameSite=Strict, Path=/) and redirects to `/`, so the token leaves the
+  address bar. `/api/health` needs no token.
+- Data only through `lado.state` and `lado.runtime`, no SQL in the server. The server never
+  migrates `lado.db`: every data endpoint first reads the schema version read-only and
+  answers 503 for another one (older or newer).
+- The API's OpenAPI schema is the contract: `web/openapi.json` and the UI's TypeScript
+  types (`web/src/api.gen.ts`) are made from it by `make web-types` and committed; a unit
+  test and `make web` fail when they are stale.
+- The bundle (`web/`, built by `make web` into `src/lado/server/static/`, git-ignored)
+  ships in the sdist and the wheel; `make dist` checks both, in CI on every PR and before
+  a release. Without a bundle the server and `lado ui` warn and name `make web`; the API
+  works.
+- A server started in the background writes its output and request errors to
+  `LADO_HOME/server.log`.
 
 ## Lessons from another orchestrator's UI
 

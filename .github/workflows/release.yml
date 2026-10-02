@@ -20,5 +20,9 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match pyproject version $version"
             exit 1
           fi
-      - run: uv build
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+      # Builds the web UI and checks that the sdist and the wheel ship it.
+      - run: make dist
       - run: uv publish

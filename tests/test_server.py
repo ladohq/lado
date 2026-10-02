@@ -1,6 +1,6 @@
 """The UI server (lado.server): token, authorization, the API, and finding the one server of
 a LADO_HOME. In process, with FastAPI's test client; the server as a process is in
-tests/integration/test_server.py."""
+tests/integration/test_server_process.py."""
 
 import json
 import os
@@ -132,8 +132,9 @@ def test_another_schema_answers_503_and_the_database_stays_as_it_is(client, whic
 
 def test_the_committed_openapi_schema_is_the_servers():
     """The UI's TypeScript types are generated from web/openapi.json (make web-types)."""
-    current = server_app.create_app("t", PORT).openapi()
+    current = server_app.contract()
     assert json.loads(OPENAPI.read_text()) == current, "stale web/openapi.json: make web-types"
+    assert "version" not in current["info"]  # a release does not make it stale
 
 
 def test_the_page_says_how_to_build_a_missing_bundle(tmp_path):

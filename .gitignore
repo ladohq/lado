@@ -10,3 +10,4 @@ node_modules/
 .idea/
 .pytest_cache/
 .ruff_cache/
+src/lado/server/static/

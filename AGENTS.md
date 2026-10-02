@@ -21,9 +21,16 @@ make fmt                # ruff format + ruff check --fix
 make test               # unit tests (uv run pytest -n auto)
 make test-integration   # uv run pytest -m integration -n auto: real tmux, git and processes, no LLM
 make test-js            # node --test: the Kilo plugin
-make check              # lint, the Kilo plugin, unit and integration tests in one run; before a release
+make web                # the web UI: npm ci, stale-types check, tsc, vitest, build into src/lado/server/static
+make web-types          # web/openapi.json and web/src/api.gen.ts from the server's API (commit both)
+make test-ui            # uv run pytest -m ui: Chromium against a real lado server, fake agent
+make dist               # uv build, and check that the sdist and the wheel ship the web UI
+make check              # lint, the Kilo plugin, the web UI, unit, integration and UI tests in one run
 make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=kilo|claude
 ```
+
+The web UI needs Node (npm) to build; users of the wheel do not. `make browser` (part of
+`make check` and `make test-ui`) installs Playwright's Chromium.
 
 Unit and integration tests run in parallel, one pytest-xdist worker per CPU; each test has
 its own `LADO_HOME`, tmux server and repos, so tests must not share a fixed path, port or
@@ -44,11 +51,12 @@ repo path and answers Claude Code's workspace trust dialog, so Claude Code recor
 folder for it.
 
 CI runs `ruff format --check`, `ruff check`, the unit and integration tests (in parallel) on
-Python 3.10 and 3.13, and the Node tests.
+Python 3.10 and 3.13, the Node tests, and in one job on Python 3.13 `make dist` (the web UI
+built and in both the sdist and the wheel) and the UI e2e tests.
 Live tests are not in CI: run them locally.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
-tag against the package version and publishes to PyPI.
+tag against the package version, builds with `make dist` and publishes to PyPI.
 
 Versions (0.x): bump the minor (0.7.0) for new features, an MCP tool or CLI change that older
 agents cannot use, or a database schema migration; running sessions must be restarted after
@@ -118,8 +126,19 @@ schema change.
     `spawned` event, how long a run has been in its state from its latest event.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
+  - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
+    rules in [docs/design/ui.md](docs/design/ui.md), section Server). `auth.py`: the token,
+    the only place that checks it; `app.py`: the FastAPI app, the API under `/api` (data only
+    through `state.py`/`runtime.py`, never migrates the database) and the bundle on `/`;
+    `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
+    the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
+    `runtime.session_status`.
+- `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made
+  by `make web-types` and committed.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
-  `tests/live/`: live tests with real agent CLIs; `tests/js/`: Node tests of the Kilo plugin.
+  `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent
+  CLIs; `tests/js/`: Node tests of the Kilo plugin; `web/src/*.test.tsx`: the UI's unit
+  tests (vitest).
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
@@ -288,13 +307,21 @@ human's override, past a gate or a loop limit; it closes the run's open gate as 
 
 ## Testing
 
-Four layers; each change gets tests at the lowest layer that can catch its bugs:
+Five layers; each change gets tests at the lowest layer that can catch its bugs:
 
 1. **Unit** (`make test`): pure logic, tmux replaced by a recorder. Default for everything.
+   The server's API is tested in process with FastAPI's test client; the web UI's
+   components with vitest (`make web`), `fetch` mocked.
 2. **Integration** (`make test-integration`): real tmux, git, hooks, `lado mcp` and SQLite
-   with the fake agent instead of an LLM. Required for behaviour that crosses processes.
+   with the fake agent instead of an LLM. Required for behaviour that crosses processes,
+   also the UI server's (one per home, background start, stop), without a browser.
 3. **Plugin tests** (`make test-js`): provider plugins run under Node with a fake client.
-4. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
+4. **UI e2e** (`make test-ui`, marker `ui`): Chromium (pytest-playwright) against a real
+   `lado server` on a free port, with sessions of the fake agent, isolated like the
+   integration tests; only what needs a browser. Each test saves a screenshot of every
+   screen it checks to `<temp dir>/lado-ui-shots/<test>.png` (the `shot` fixture), outside
+   the tree, for the reviewer. In `make check` and in CI (one job, with `make dist`).
+5. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
    message; then the session stops and no process is left. Never in the default run and
    not in CI: run it locally after changing a provider or before a release.

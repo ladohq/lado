@@ -48,6 +48,14 @@ def bundle_missing(static: Path) -> bool:
     return not (static / "index.html").is_file()
 
 
+def contract() -> dict:
+    """The API's OpenAPI schema as web/openapi.json keeps it (`make web-types`): without
+    LADO's version, so a release does not change it."""
+    schema = create_app("", 0).openapi()
+    del schema["info"]["version"]
+    return schema
+
+
 def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     guard = Guard(token, port)
     app = FastAPI(title="LADO", version=__version__)
@@ -81,3 +89,9 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     if not bundle_missing(static):
         app.mount("/", StaticFiles(directory=static), name="static")
     return app
+
+
+if __name__ == "__main__":  # `make web-types`
+    import json
+
+    print(json.dumps(contract(), indent=2))

@@ -1,0 +1,154 @@
+/* The palette approved in docs/design/ui.md ("Look"). Orange is only for what waits for
+   the human; nothing on this page does yet. */
+:root {
+  --ground: #f6f7f9;
+  --panel: #ffffff;
+  --line: #e3e6eb;
+  --ink: #16181d;
+  --muted: #5b6270;
+  --action: #1f5fd6;
+  --human: #b4530f;
+  --human-ground: #fdf1e6;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.mark {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.content {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+h1 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 20px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.count {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.problem {
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink);
+}
+
+.panel {
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 10px 16px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  border-bottom: 1px solid var(--line);
+}
+
+tbody tr + tr td {
+  border-top: 1px solid var(--line);
+}
+
+.name {
+  font-weight: 600;
+}
+
+/* Paths can be long: the repository column takes the room left and wraps. */
+.repo {
+  width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: currentColor;
+}
+
+.status-stopped,
+.status-tmux_gone,
+.status-loop_down {
+  color: var(--muted);
+}
+
+.status-tmux_gone::before,
+.status-loop_down::before {
+  background: transparent;
+  border: 1.5px solid currentColor;
+}
+
+@media (max-width: 600px) {
+  .bar,
+  .content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

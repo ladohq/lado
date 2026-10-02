@@ -31,3 +31,23 @@ jobs:
         with:
           node-version: lts/*
       - run: node --test tests/js/*.test.mjs
+
+  # The web UI: types, unit tests and build (make web), the bundle in both the sdist and the
+  # wheel (make dist), and the browser tests against a real lado server.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: sudo apt-get install -y tmux
+      - run: uv sync --locked
+      - run: make dist
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run pytest -m ui -n auto

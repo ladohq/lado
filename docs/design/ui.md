@@ -63,7 +63,9 @@ Each task is one `feature` run, useful on its own; the order may change as we le
 
 1. **Skeleton**: `lado ui` (localhost, token), the bundle built in CI and shipped in the
    wheel, read only: sessions and agents with their status; an end-to-end test harness
-   (browser against a real `lado ui` with the fake agent).
+   (browser against a real `lado ui` with the fake agent) that saves a screenshot of each
+   screen it checks to a folder outside the worktree or git-ignored, so the reviewer can
+   look at them and the tree stays clean.
 2. **Live updates**: the change feed (D3) behind its interface; the UI updates without
    polling.
 3. **Session view**: the activity feed (messages, flow transitions, notes), runs with

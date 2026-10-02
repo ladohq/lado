@@ -112,6 +112,33 @@ def test_tool_errors_tell_the_agent_why(repo, fake_tmux, tool, args, reason):
     assert reason in str(error.value)
 
 
+ACCEPTED = {
+    "list_agents": "none",
+    "flow_advance": "run, outcome, note_summary, note_body",
+    "flow_status": "run",
+    "send_message": "to, summary, body",
+    "read_messages": "none",
+    "spawn_worker": "task, name, provider, role, without, run",
+    "flow_start": "flow, task, name, human_language",
+    "flow_cancel": "run, reason",
+    "finish_worker": "name, discard",
+}
+
+
+@pytest.mark.parametrize("tool", ACCEPTED)
+def test_tools_refuse_unknown_arguments(repo, fake_tmux, tool):
+    """An agent with a stale tool schema, or a typo, learns that its argument was not used."""
+    runtime.start_session(str(repo), "s", None)
+    assert sorted(ACCEPTED) == _tools("s", "supervisor")
+    server = mcp_server.build("s", "supervisor")
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool(tool, {"foo": 1, "bar": 2}))
+    assert str(error.value) == (
+        f'{tool} has no argument "bar", "foo"; it accepts: {ACCEPTED[tool]}'
+    )
+    assert state.list_agents("s")[-1].name == "supervisor"  # nothing ran
+
+
 def test_spawn_worker_takes_a_provider(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     server = mcp_server.build("s", "supervisor")

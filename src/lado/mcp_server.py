@@ -44,6 +44,20 @@ class _Server(MCPServer):
             self._lado_instance = ""
         return tools
 
+    async def call_tool(self, name, arguments, context=None):
+        """Refuse arguments the tool does not have. The MCP library drops them without a
+        word, so an agent with a stale tool schema, or a typo, would never learn that its
+        argument was not used."""
+        tool = self._tool_manager.get_tool(name)
+        if tool:
+            accepted = list(tool.parameters.get("properties", {}))
+            unknown = ", ".join(f'"{a}"' for a in sorted(set(arguments) - set(accepted)))
+            if unknown:
+                raise ToolError(
+                    f"{name} has no argument {unknown}; it accepts: {', '.join(accepted) or 'none'}"
+                )
+        return await super().call_tool(name, arguments, context)
+
 
 def build(session: str, agent: str, instance: str = "") -> MCPServer:
     server = _Server(session, agent, instance)

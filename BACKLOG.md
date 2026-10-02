@@ -179,3 +179,28 @@ too. Also, a LADO upgraded in place (`pip install -U`) while a session runs migr
 that session's own hooks, which run the new code, under its older MCP servers. Wanted: a
 stop that kills the session before it opens the database, or one `lado stop --all`.
 Found: 2026-10-02, migration guard (fix/migration-guard).
+
+## The running-session check sees one tmux socket
+
+`runtime.check_migration` asks `tmux.has_session` on the current process's `LADO_TMUX_SOCKET`.
+A session started in the same LADO_HOME with another socket counts as not running, so the
+database is migrated under it.
+Wanted: store the socket with the session and check that one (or say in the refusal and the
+docs that the check sees one socket). An edge case.
+Found: 2026-10-02, review of run fix/migration-guard.
+
+## A missing tmux binary crashes the CLI with a traceback
+
+Without tmux installed, `tmux.run` raises FileNotFoundError, not TmuxError, so the CLI shows a
+traceback (now also from `check_migration` when an old database has unstopped sessions).
+Wanted: `tmux.run` turns a missing binary into TmuxError with a clear text.
+Found: 2026-10-02, review of run fix/migration-guard.
+
+## Migration-guard leftovers (two Minor review findings)
+
+`state.pending_migration`'s docstring says it creates and changes nothing, but opening a WAL
+database read-only leaves `lado.db-wal` and `lado.db-shm` behind (the data is unchanged).
+`tests/test_state.py` `_database()` and `tests/integration/test_agents.py` `database()` are the
+same helper twice. Wanted: say "changes nothing in the database"; move the helper to
+`tests/agent_helpers.py` next to `previous_schema()`.
+Found: 2026-10-02, review of run fix/migration-guard.

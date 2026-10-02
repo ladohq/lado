@@ -220,6 +220,7 @@ class Hub:
                 # Before the stream reads its start: what it starts from is not missed.
                 self._position = await to_thread.run_sync(self.source.last)
                 self._derived = None
+                self._failures = 0
                 self._task = asyncio.create_task(self._run())
             queue: asyncio.Queue[list[Event] | None] = asyncio.Queue()
             self._queues.add(queue)
@@ -249,10 +250,11 @@ class Hub:
     def failed(self) -> None:
         """Note the error being handled. After FAILED_PASSES in a row the streams end: the
         browser comes again, gets 503 with the reason and shows it, instead of a stream
-        that stays open with nothing in it."""
+        that stays open with nothing in it. The count starts again for the streams after."""
         self._errors.failed()
         self._failures += 1
-        if self._failures == FAILED_PASSES:
+        if self._failures >= FAILED_PASSES:
+            self._failures = 0
             self._send(None)
 
     async def _pass(self) -> None:
@@ -265,8 +267,10 @@ class Hub:
             self._send(None)
             return
         if changes:
+            batch = await to_thread.run_sync(events, changes)
+            # Only once the batch is made: a pass that fails reads the same changes again.
             self._position = changes[-1].id or self._position
-            self._send(await to_thread.run_sync(events, changes))
+            self._send(batch)
         if time.monotonic() - self._derived_at >= DERIVED_EVERY:
             self._derived_at = time.monotonic()
             await self._derive()

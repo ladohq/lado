@@ -270,6 +270,22 @@ def test_a_journal_that_cannot_be_read_ends_the_streams_and_new_ones_get_503(
     assert len(tracebacks) == 1  # the same error is not written again and again
 
 
+def test_a_pass_that_keeps_failing_ends_each_new_stream_too(streams, monkeypatch):
+    """The journal reads, but each pass fails later (here: building an item): every stream
+    ends after FAILED_PASSES, not only the first one."""
+
+    def fail(session, key):
+        raise RuntimeError("no item")
+
+    monkeypatch.setitem(feed.ITEMS, "sessions", fail)
+    for round in range(2):
+        stream = streams()
+        assert stream.status == 200, round
+        stream.next()
+        state.add_session(state.Session(f"s{round}", "/r", None))
+        assert stream.closed.wait(5), round
+
+
 def test_the_journal_is_read_only(streams):
     """The server never writes lado.db: not even to trim the journal."""
     state.add_session(state.Session("s", "/r", None))

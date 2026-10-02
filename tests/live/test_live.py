@@ -372,8 +372,13 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
     moves = [(e.agent, e.detail) for e in state.list_events(SESSION) if e.kind == state.FLOW]
     assert moves == [("w1", "step -done-> end")]
     assert runtime.git(str(repo), "show", f"{run.branch}:flow.txt").strip() == "OK"
+    # w1's MCP server stores the end first and tells the supervisor after its git checks.
     kept = f"flow {run.name}: ended at end; kept its worktree and branch"
-    assert kept in [summary for summary, _ in messages(state.LADO, "supervisor")]
+    wait_for(
+        lambda: kept in [summary for summary, _ in messages(state.LADO, "supervisor")],
+        "the supervisor to be told the run ended",
+        30,
+    )
     assert state.get_agent(SESSION, "w1") is not None
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 120)
 

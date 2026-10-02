@@ -571,6 +571,23 @@ def test_the_supervisor_that_ends_the_run_gets_the_end_as_a_notice(session, repo
     assert messages("supervisor")[-1].summary == "flow feature/login: step merge"
 
 
+def test_the_supervisor_gets_a_message_when_a_worker_ends_the_run(session, team):
+    write(
+        team / "flows" / "quick.yaml",
+        "name: quick\ndescription: d\nstart: build\nstates:\n"
+        "  build: {agent: developer, do: Build it., outcomes: {done: end}}\n"
+        "  end: {end: true}\n",
+    )
+    commit(runs.start(session, "quick", "x", name="x", notices=[]))
+    runs.spawn_worker(session, "quick/x")  # w1, developer
+    notices = []
+    runs.advance(session, "w1", "quick/x", "done", notices=notices)
+    assert notices == []
+    assert [m.summary for m in messages("supervisor")] == [
+        "flow quick/x: ended at end; kept its worktree and branch"
+    ]
+
+
 def test_a_worker_that_ends_the_run_is_closed_last(session, repo, team, fake_tmux):
     # Its own MCP server runs in its window: closing that window ends the call.
     write(

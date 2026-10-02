@@ -50,6 +50,16 @@ states:
 """
 
 
+TINY = """\
+name: tiny
+description: a worker does it
+start: build
+states:
+  build: {agent: worker, do: sleep 0, outcomes: {done: end}}
+  end: {end: true}
+"""
+
+
 PLANNED = """\
 name: planned
 description: the supervisor plans it, a worker builds it
@@ -70,6 +80,7 @@ def flow_kit(repo):
     (kit / "flows" / "gated.yaml").write_text(GATED)
     (kit / "flows" / "reviewed.yaml").write_text(REVIEWED)
     (kit / "flows" / "planned.yaml").write_text(PLANNED)
+    (kit / "flows" / "tiny.yaml").write_text(TINY)
     runtime.start_session(str(repo), SESSION, None, "fake", ["itflow"])
     wait_status("supervisor", state.IDLE)
     return kit
@@ -120,6 +131,9 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     supervisor_runs(f"advance {name} merged")
     ended = f"flow {name}: ended at end; worktree and branch removed"
     assert seen("supervisor")["advance"]["notices"] == [ended]
+    assert [m.summary for m in state.list_messages(SESSION) if m.sender == "lado"] == [
+        f"flow {name}: step merge"
+    ]
     assert run_state(name).status == state.ENDED
     assert state.get_agent(SESSION, "w1") is None
     wait_for(lambda: "w1" not in tmux.run("list-windows", "-t", f"={SESSION}"), "w1 closed")
@@ -130,6 +144,27 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     assert f"w1: flow {name} (build -done-> merge)" in log
     assert f"supervisor: flow {name} (merge -merged-> end)" in log
     assert not (state.home() / "hooks.log").exists()
+
+
+def test_the_supervisor_hears_when_a_worker_ends_the_run(repo, flow_kit):
+    # Started and spawned from outside, as `lado` or the live test does: no notices.
+    name = "tiny/do-it"
+    runs.start(SESSION, "tiny", "do it")
+    runs.spawn_worker(SESSION, name, name="w1")
+    wait_status("w1", state.IDLE)
+    run = run_state(name)
+    Path(run.worktree, "work.txt").write_text("done\n")
+    runtime.git(run.worktree, "add", "work.txt")
+    runtime.git(run.worktree, "commit", "-q", "-m", "work")
+
+    runtime.send_message(SESSION, "human", "w1", f"advance {name} done")
+    # w1's MCP server stores the end first and tells the supervisor after its git checks.
+    kept = f"[from lado] flow {name}: ended at end; kept its worktree and branch"
+    wait_for(lambda: any(t.startswith(kept) for t in inputs("supervisor")), "the end told")
+    assert run_state(name).status == state.ENDED
+    wait_for(lambda: "advance" in seen("w1"), "w1's result")
+    assert seen("w1")["advance"]["notices"] == []
+    assert state.get_agent(SESSION, "w1") is not None
 
 
 def test_a_worker_gets_a_step_far_longer_than_a_tmux_command(repo, flow_kit):

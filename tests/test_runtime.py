@@ -266,6 +266,41 @@ def test_a_new_message_brings_a_swallowed_one_again_after_the_delay(repo, fake_t
     assert [m.attempts for m in state.list_messages("s")] == [2, 1, 1]
 
 
+def _sweeps_that_typed_into_a_waiting_agent(fake_tmux, sent):
+    """Sweep every 15 s for 400 s; returns the times of the sweeps that left the supervisor
+    waiting and typed into it."""
+    wrong = []
+    for at in range(15, 400, 15):
+        typed = len(_typed(fake_tmux))
+        runtime.sweep("s", now=sent + at, delays=DELAYS)
+        waiting = state.get_agent("s", "supervisor").status == state.WAITING
+        if waiting and len(_typed(fake_tmux)) > typed:
+            wrong.append(at)
+    return wrong
+
+
+def test_a_failure_types_nothing_more_with_a_swallowed_message(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    runtime.send_message("s", "w1", "supervisor", "ping")  # queued behind the report
+    assert _sweeps_that_typed_into_a_waiting_agent(fake_tmux, sent) == []
+    assert state.list_messages("s")[0].state == state.FAILED
+
+
+def test_a_failure_types_nothing_more_with_an_unconfirmed_message(repo, fake_tmux):
+    sent = _mismatched_report(repo, fake_tmux)
+    runtime.send_message("s", "w1", "supervisor", "ping")  # queued behind the report
+    runtime.sweep("s", now=sent + 15, delays=DELAYS)  # both typed: report 2nd, ping 1st time
+    with state.connect() as db:  # the report is on its last attempt, the ping is not
+        db.execute("UPDATE messages SET attempts = 4 WHERE summary = 'report'")
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+    _hook("Stop", "supervisor")
+    typed = len(_typed(fake_tmux))
+    runtime.sweep("s", now=state.list_messages("s")[0].sent_at + 60, delays=DELAYS)
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+    assert len(_typed(fake_tmux)) == typed
+    assert [m.state for m in state.list_messages("s")[:2]] == [state.FAILED, state.PENDING]
+
+
 def test_nothing_is_typed_into_an_agent_waiting_after_a_failure(repo, fake_tmux):
     sent = _swallowed_report(repo, fake_tmux)
     _retry_until_failed(sent)
@@ -285,16 +320,22 @@ def test_an_agent_waiting_after_swallowed_messages_says_what_to_do(repo, fake_tm
 
 def test_an_agent_waiting_after_unconfirmed_messages_says_so(repo, fake_tmux):
     _mismatched_report(repo, fake_tmux)
-    for delay in DELAYS:
-        runtime.sweep("s", now=state.list_messages("s")[0].sent_at + delay, delays=DELAYS)
+    no_delays = (0, 0, 0)  # in real time: the hooks below come after the failure
+    for _ in no_delays:
+        runtime.sweep("s", delays=no_delays)
         _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
         _hook("Stop", "supervisor")
-    runtime.sweep("s", now=state.list_messages("s")[0].sent_at + DELAYS[-1], delays=DELAYS)
+    runtime.sweep("s", delays=no_delays)
+    assert state.list_messages("s")[0].state == state.FAILED
     assert runtime.waiting_reasons("s") == {
         "supervisor": "did not confirm 1 message (the text typed did not match)"
     }
     _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
     assert runtime.waiting_reasons("s") == {}  # busy again
+    # Later it waits for a permission: the old failure is not why.
+    _hook("Notification", "supervisor", {"notification_type": "permission_prompt"})
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+    assert runtime.waiting_reasons("s") == {}
 
 
 def test_stop_drops_failed_messages(repo, fake_tmux):

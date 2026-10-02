@@ -97,7 +97,8 @@ schema change.
     names the sessions and asks for `lado stop` first (`runtime.check_migration`, called
     by the CLI before each command but `stop`; hooks and `lado mcp` do not check). An
     older LADO refuses a newer database and asks to upgrade. A message counts its pastes
-    (`messages.attempts`) and can end `failed`; an agent keeps when its latest hook ran
+    (`messages.attempts`) and can end `failed` (`messages.failed_at`); an agent keeps when
+    its latest hook ran
     (`agents.seen_at`). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
@@ -143,7 +144,8 @@ schema change.
   the queue; if hooks ran but no prompt held its line and the agent is idle, it goes back to
   the queue and is delivered as usual. After `1 + len(RETRY_DELAYS)` pastes and the last
   delay it is `failed` (`lado log`): the agent is set `waiting`, `lado ls` and
-  `list_agents` (`waiting_reason`) say why and what the human can do, and its sender (the
+  `list_agents` (`waiting_reason`) say why and what the human can do (until the agent's next
+  hook), and nothing more is typed into it in that sweep; its sender (the
   supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
   reported. The agent's first hook after that puts the messages no hook ran after back in
   the queue with their attempts from 0; the ones it saw and never confirmed stay failed.

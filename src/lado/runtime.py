@@ -526,7 +526,7 @@ def sweep(
         swept = state.sweep(session, name, now, lambda a, sent: _plan(a, sent, now, delays))
         if swept.typed:
             tmux.send_text(session, name, format_messages(swept.typed))
-        if swept.requeued:
+        if swept.requeued and not swept.failed:
             deliver_pending(session, name)
         for message in swept.failed:
             _report_failure(session, message)
@@ -554,6 +554,9 @@ def _plan(
         # usual. Its attempts count on.
         elif agent.status == state.IDLE:
             plan.requeue.append(message.id)
+    # A failure sets the agent waiting: nothing more is typed into it, even what was typed
+    # together with the failed message but has attempts left.
+    plan.retype = plan.retype and not plan.fail
     return plan
 
 

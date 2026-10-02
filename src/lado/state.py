@@ -80,6 +80,7 @@ SESSIONS_STOPPED = "ALTER TABLE sessions ADD COLUMN stopped_at TEXT"
 RUNS_LANGUAGE = "ALTER TABLE runs ADD COLUMN language TEXT NOT NULL DEFAULT ''"
 # How often a message was typed into its recipient's window (lado.runtime.sweep).
 MESSAGES_ATTEMPTS = "ALTER TABLE messages ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"
+MESSAGES_FAILED = "ALTER TABLE messages ADD COLUMN failed_at REAL"  # when sweep gave it up
 # When the agent's latest hook ran (time.time()); 0 for none yet.
 AGENTS_SEEN = "ALTER TABLE agents ADD COLUMN seen_at REAL NOT NULL DEFAULT 0"
 
@@ -130,6 +131,7 @@ SCHEMA += (
             SESSIONS_STOPPED,
             RUNS_LANGUAGE,
             MESSAGES_ATTEMPTS,
+            MESSAGES_FAILED,
             AGENTS_SEEN,
         ]
     )
@@ -159,7 +161,7 @@ MIGRATIONS = {
     6: [GATES, GATES_OPEN],
     7: [SESSIONS_STOPPED],
     8: [RUNS_LANGUAGE],
-    9: [MESSAGES_ATTEMPTS, AGENTS_SEEN],
+    9: [MESSAGES_ATTEMPTS, MESSAGES_FAILED, AGENTS_SEEN],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -910,8 +912,8 @@ def sweep(
         plan = decide(agent, sent)
         failed = [m for m in sent if m.id in plan.fail]
         db.executemany(
-            "UPDATE messages SET state = ? WHERE id = ?",
-            [(FAILED, i) for i in plan.fail] + [(PENDING, i) for i in plan.requeue],
+            "UPDATE messages SET state = ?, failed_at = ? WHERE id = ?",
+            [(FAILED, now, i) for i in plan.fail] + [(PENDING, None, i) for i in plan.requeue],
         )
         if failed and agent.status in (BUSY, IDLE):
             db.execute(
@@ -970,13 +972,14 @@ def drop_pending(session: str, sender: str, recipient: str, summary: str) -> int
 
 
 def failed_counts(session: str) -> dict[str, tuple[int, int]]:
-    """Per agent, its failed messages: how many no hook ran after (swallowed) and how many
-    it ran hooks after without confirming them."""
+    """Per agent, its messages that failed after its latest hook: how many no hook ran after
+    at all (swallowed) and how many it ran hooks after without confirming them."""
     with connect() as db:
         rows = db.execute(
             "SELECT m.recipient, SUM(m.sent_at > a.seen_at), SUM(m.sent_at <= a.seen_at)"
             " FROM messages m JOIN agents a ON a.session = m.session AND a.name = m.recipient"
-            " WHERE m.session = ? AND m.state = ? GROUP BY m.recipient",
+            " WHERE m.session = ? AND m.state = ? AND m.failed_at > a.seen_at"
+            " GROUP BY m.recipient",
             (session, FAILED),
         ).fetchall()
     return {r[0]: (r[1], r[2]) for r in rows}

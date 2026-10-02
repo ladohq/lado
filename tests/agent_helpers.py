@@ -75,10 +75,12 @@ def previous_schema() -> None:
     Undoes the last step of state.MIGRATIONS: change it with each new migration."""
     assert state.MIGRATIONS[state.SCHEMA_VERSION - 1] == [
         state.MESSAGES_ATTEMPTS,
+        state.MESSAGES_FAILED,
         state.AGENTS_SEEN,
     ]
     with state.connect() as db:
         db.execute("ALTER TABLE messages DROP COLUMN attempts")
+        db.execute("ALTER TABLE messages DROP COLUMN failed_at")
         db.execute("ALTER TABLE agents DROP COLUMN seen_at")
         db.execute(f"PRAGMA user_version = {state.SCHEMA_VERSION - 1}")
 

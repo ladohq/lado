@@ -476,6 +476,7 @@ def test_version_9_database_gets_message_attempts_and_when_agents_were_seen(lado
     [message] = state.list_messages("s")
     assert (message.state, message.attempts, message.sent_at) == (state.SENT, 0, 5.0)
     assert state.get_agent("s", "supervisor").seen_at == 0
+    assert state.failed_counts("s") == {}  # reads messages.failed_at
 
 
 def test_a_run_keeps_the_language_of_the_human(lado_home):

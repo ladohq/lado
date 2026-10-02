@@ -28,7 +28,11 @@ Found: 2026-10-01, Kilo provider review.
 One rule now deals with a message typed in and never confirmed (`runtime.sweep`: typed
 again after 15, 30 and 60 s, then `failed`, the agent `waiting` and its sender told), but only
 `send_message` to that agent and its own turn-end and conversation-start hooks run it;
-nothing runs it on a timer. Seen when: Kilo's plugin reports idle (`plugin.init`) before its
+nothing runs it on a timer. Since a new message waits while one typed before is unconfirmed,
+it waits too: an idle agent whose last turn ended before the 15 s were over (the typed line
+never came) gets neither until the next `send_message` to it. Before the rule, the new message
+was typed at once; do not release this without the session loop. Seen when: Kilo's plugin
+reports idle (`plugin.init`) before its
 TUI accepts input, so the first message to a just-started Kilo agent is swallowed; the
 /resume picker (no hook fires when it opens or Esc closes it, so the agent stays `idle`)
 takes a message into its search box.

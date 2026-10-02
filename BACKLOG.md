@@ -129,7 +129,9 @@ Found: 2026-10-02, first flow run `fix/resume-stopped`.
 `lado/lado/fix-reliability-1` (free model `kilo/kilo-auto/free`), then passed twice, and twice
 more for the reviewer. The failure text was not kept. One suspect: that branch makes MCP tools
 refuse unknown arguments, so a weak model that adds one gets an error and must call again.
-Next time it fails: keep the pytest output and `lado log` of the test's temporary session.
+Next time it fails, the failure report names a folder under `<temp dir>/lado-live-evidence/`
+with the session's `lado log`, `hooks.log`, the agents' configs and their last screens (run
+fix/live-test-keeps-logs); keep the pytest output too.
 Found: 2026-10-02, run fix/reliability-1.
 
 ## A failed resume keeps the new settings

@@ -59,7 +59,7 @@ def test_a_session_has_one_loop_after_start_and_after_resume(repo, session):
     assert len(loops(session)) == 1
     assert lado_cli("stop", session).returncode == 0
     wait_for(lambda: not loops(session), "the loop to end", session)
-    assert f"{session}: loop ended: the session is stopped" in logged(session)
+    agent_helpers.check_loop_ended_by_stop(session)
     start(repo, session)  # resumed
     wait_for(lambda: len(loops(session)) == 1, "one loop after the resume", session)
     assert loop.running(session)

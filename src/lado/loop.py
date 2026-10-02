@@ -26,6 +26,10 @@ INTERVAL = 2.0  # seconds between two sweeps
 LOCK_WAIT = 0.1  # seconds a starting loop tries to take the lock before it exits
 REPEAT_NOTE = 60.0  # seconds between two lines about the same repeating error
 
+# Why a loop ends after `lado stop`, which kills the tmux session, then marks it stopped.
+STOPPED = "the session is stopped"
+TMUX_GONE = "its tmux session is gone"
+
 
 def lock_path(session: str) -> Path:
     return state.home() / "loop" / f"{session}.lock"
@@ -41,9 +45,9 @@ def why_stop(session: str) -> str | None:
     if sess is None:
         return "the session is gone"
     if sess.stopped_at:
-        return "the session is stopped"
+        return STOPPED
     if not tmux.has_session(session):
-        return "its tmux session is gone"
+        return TMUX_GONE
     return None
 
 

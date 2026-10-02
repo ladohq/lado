@@ -214,3 +214,14 @@ Found: 2026-10-02, review of run fix/session-loop.
 After upgrading LADO without a schema change, a running loop goes on with the old code until
 `lado stop`; `lado doctor` and `lado ls` do not show it. Low priority.
 Found: 2026-10-02, review of run fix/session-loop.
+
+## A kit cannot say which LADO it needs
+
+A kit that uses a newer flow or kit field (e.g. a flow state's `needs`) fails in an older
+LADO with a validator error about an unknown field, which does not say that LADO is too old.
+So a kit change must wait until every user has upgraded, and the order (release LADO first,
+then the kit) lives only in people's heads.
+Wanted: `kit.yaml` may say `requires: lado>=0.11`; an older LADO refuses the kit with
+"kit <name> needs LADO >= 0.11, this is 0.10.0: upgrade LADO" (`lado start`, `lado kits
+check`), and the kit's own validator errors stay for real mistakes.
+Found: 2026-10-02, planning the lado-dev update for named notes.

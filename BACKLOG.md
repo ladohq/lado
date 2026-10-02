@@ -122,3 +122,11 @@ spawning the reviewer of run fix/gate-popup, 2026-10-02), the row stays: `lado l
 write the agent row only after its window started, or remove it (and its run membership) when
 the launch fails, with a test that makes new_window fail.
 Found: 2026-10-02, second flow run.
+
+## MCP tools silently ignore unknown arguments
+
+On 0.8.0, `flow_start(..., human_language="ru")` (a parameter that only exists from 0.9.0)
+returned success: the MCP library dropped the unknown argument without a word. An agent with a
+stale tool schema (see "Stale tool schemas after /resume") or a typo gets no signal. Wanted:
+reject unknown arguments in LADO's MCP tools with an error that lists the accepted ones.
+Found: 2026-10-02, starting run fix/live-flow-notices.

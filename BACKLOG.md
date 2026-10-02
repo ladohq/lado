@@ -122,3 +122,12 @@ popup → merge → run ended, workers closed, worktree and branch removed). Fri
 - **/resume picker cancelled with Esc** (reviewer's set-aside, unverified): if Claude Code
   sends SessionEnd(resume) and no SessionStart after a cancel, the agent stays `starting`
   and messages wait until its next prompt. Probe it.
+
+## A failed spawn leaves a ghost agent behind
+
+When spawn_worker fails after the agent row is written (seen: tmux "command too long" when
+spawning the reviewer of run fix/gate-popup, 2026-10-02), the row stays: `lado ls` showed
+`w2 reviewer starting 28m`, and the run named w2 as the reviewer acting in `review`. Wanted:
+write the agent row only after its window started, or remove it (and its run membership) when
+the launch fails, with a test that makes new_window fail.
+Found: 2026-10-02, second flow run.

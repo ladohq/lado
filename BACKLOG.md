@@ -226,4 +226,11 @@ keeps a copy of the note's text, not the note's id.
 Wanted: the gate keeps the id of the note that led to it (or the view finds it as the run's
 note just before the gate opened), and the view prints a needed note that is the same
 record once, as the step text does.
-Found: 2026-10-02, run fix/gate-needs.
+The same happens after the gate: the answer's note copies the note before the gate into its
+body ("Note before the gate: ..."), so a next step that needs that state gets it twice (the
+answer is its own notes record, so the id comparison does not catch it). Wanted as well: the
+answer keeps a reference to the note before the gate instead of a copy. Also flows.py's
+docstring example (`design_ok: needs: [design]` right after design) shows exactly this
+duplicating pattern; pick an example where the gate needs an earlier state. lado-dev is not
+affected (its design_ok follows architecture).
+Found: 2026-10-02, run fix/gate-needs and its review.

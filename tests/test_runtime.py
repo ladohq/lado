@@ -225,6 +225,42 @@ def test_status_hooks(repo, fake_tmux):
     assert state.get_agent("s", "w1").status == state.STOPPED
 
 
+@pytest.mark.parametrize("command", ["clear", "resume"])
+def test_conversation_switch_keeps_agent_running(repo, fake_tmux, command):
+    _session_with_worker(repo)
+    _hook("SessionStart", "supervisor", {"source": "startup"})
+    _hook("SessionEnd", "supervisor", {"reason": command})
+    # Not ready (e.g. the /resume picker is open): messages wait instead of being typed.
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    assert runtime.send_message("s", "w1", "supervisor", "report").startswith("queued")
+    assert fake_tmux[-1][0] != "send_text"
+    _hook("SessionStart", "supervisor", {"source": command})
+    assert fake_tmux[-1] == ("send_text", "s", "supervisor", "[from w1] report")
+    assert state.get_agent("s", "supervisor").status == state.BUSY
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "[from w1] report"})
+    _hook("Stop", "supervisor")
+    assert state.get_agent("s", "supervisor").status == state.IDLE
+    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED]
+
+
+def test_conversation_switch_ends_idle_with_nothing_queued(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("SessionStart", "w1", {"source": "startup"})  # busy with its task
+    _hook("Stop", "w1")
+    _hook("SessionEnd", "w1", {"reason": "resume"})
+    _hook("SessionStart", "w1", {"source": "resume"})
+    assert state.get_agent("s", "w1").status == state.IDLE  # not busy with its task again
+
+
+def test_real_exit_stops_agent(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("SessionStart", "w1", {"source": "startup"})
+    _hook("SessionEnd", "w1", {"reason": "prompt_input_exit"})
+    assert state.get_agent("s", "w1").status == state.STOPPED
+    with pytest.raises(runtime.LadoError, match='no running agent "w1"'):
+        runtime.send_message("s", "supervisor", "w1", "hi")
+
+
 def test_hook_errors_are_logged_not_raised(repo, fake_tmux, lado_home, monkeypatch):
     runtime.start_session(str(repo), "s", None)
     instance = state.get_agent("s", "supervisor").instance

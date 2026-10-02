@@ -21,6 +21,8 @@ EVENTS = (
     base.TURN_END,
     base.WAITING,
     base.SESSION_END,
+    base.CONVERSATION_END,
+    base.CONVERSATION_START,
 )
 
 

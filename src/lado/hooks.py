@@ -38,6 +38,15 @@ def handle(
         if pending:
             state.set_status(session, agent, state.BUSY)
             return provider.continue_output(format_messages(pending))
+    elif event.kind == providers.CONVERSATION_END:
+        # Not ready, e.g. a picker of conversations is open: messages wait in the queue.
+        state.set_status(session, agent, state.STARTING)
+    elif event.kind == providers.CONVERSATION_START:
+        # Ready again: no turn ends to hand over the queue, so its messages are typed in.
+        # Idle first, then the inbox, as for TURN_END.
+        state.set_status(session, agent, state.IDLE)
+        state.requeue_unconfirmed(session, agent, CONFIRM_TIMEOUT)
+        runtime.deliver_pending(session, agent)
     elif event.kind == providers.SESSION_END:
         state.set_status(session, agent, state.STOPPED)
     return None

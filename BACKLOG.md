@@ -93,14 +93,3 @@ when the human writes through LADO's own input (UI composer, stage 7: messages f
 and from agents are queued and delivered one at a time) or with the ACP runtime (stage 8: LADO
 drives the agent's input itself). Make sure the UI has a composer that goes through LADO.
 Found: 2026-10-01, dogfooding.
-
-## `/resume` inside a running agent marks it stopped for a moment
-
-Running Claude Code's own `/resume` in an agent's window ends its current CLI session (the
-SessionEnd hook marks the agent `stopped`) and goes on in the same process with the resumed
-conversation; the next prompt marks it busy again, but there is no SessionStart back to idle,
-and while it is `stopped` LADO refuses messages to it ("no running agent"). Seen on
-2026-10-02: `stopped` at 09:54:30, `busy` again at 09:55:35. Wanted: treat a SessionEnd that is
-followed by activity of the same instance as a restart (or handle the CLI's session_end reason
-`resume`), so the agent is never shown or treated as gone while its process lives.
-Found: 2026-10-02, restart after 0.8.0.

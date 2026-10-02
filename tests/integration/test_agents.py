@@ -117,6 +117,19 @@ def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     assert log[at + 1 : at + 4] == ["    Status: DONE", "    Files: work.txt", "    Checks: ok"]
 
 
+def test_agent_that_switches_conversation_keeps_running(repo):
+    """Like Claude Code's /resume: the conversation ends, the process goes on with another."""
+    start(repo)
+    tmux.send_text(SESSION, "supervisor", "switch 1")  # typed by the human
+    wait_status("supervisor", state.STARTING)
+    assert runtime.send_message(SESSION, "human", "supervisor", "hello").startswith("queued")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
+    wait_status("supervisor", state.IDLE)
+    assert inputs("supervisor")[-1] == "[from human] hello"
+    statuses = [e.detail for e in state.list_events(SESSION) if e.kind == "status"]
+    assert state.STOPPED not in statuses
+
+
 def test_stop_kills_agents_and_keeps_worktrees(repo):
     start(repo)
     worker = runtime.spawn_worker(SESSION, "sleep 0")

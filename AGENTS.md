@@ -99,6 +99,10 @@ schema change.
 ## How agents talk
 
 - An agent's status (busy / idle / waiting) comes from its hooks, never from screen scraping.
+  Only the end of its process marks it `stopped`. A CLI command that leaves the conversation
+  for another one in the same process (Claude Code's `/clear` and `/resume`) shows it as
+  `starting` until the CLI is ready again; messages to it wait in the queue meanwhile and are
+  typed in when it is `idle` again.
 - A message is a one-line `summary` (at most 200 characters; a longer or multi-line one is
   refused) and an optional `body` with the details. Only one short line per message reaches
   the recipient: `[from <sender>] <summary>`, plus ` (#<id>, <n> lines: call read_messages)`

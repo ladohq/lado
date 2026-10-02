@@ -15,6 +15,10 @@ PROMPT_SUBMIT = "prompt_submit"  # the agent received input, e.g. a typed messag
 TURN_END = "turn_end"
 WAITING = "waiting"  # the agent needs the human, e.g. a permission prompt
 SESSION_END = "session_end"
+# The agent leaves its conversation for another one and its process goes on (Claude Code's
+# /clear and /resume): not ready until CONVERSATION_START, but not gone either.
+CONVERSATION_END = "conversation_end"
+CONVERSATION_START = "conversation_start"  # ready again, in the other conversation
 
 
 @dataclass(frozen=True)

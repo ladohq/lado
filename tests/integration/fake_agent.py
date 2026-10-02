@@ -15,6 +15,9 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     sleep <seconds>    work that long
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     exit               end the session
+A typed "switch <seconds>" is no input but a command of the CLI itself, like Claude Code's
+/resume: the agent leaves its conversation, takes that long to pick another, and goes on in
+the same process; no prompt-submit and no turn-end hook run for it.
 Other lines are ignored. Each input is logged to the config's "inputs" file, and the output
 of `run` and the messages from `read` to its "seen" file. At start the agent writes what it
 was given (prompt, skills found in its skills folder, MCP servers) to "seen", as a real agent
@@ -156,6 +159,12 @@ def main() -> None:
             text = None
             continue
         print(f"> {text!r}", flush=True)
+        if text.startswith("switch "):
+            hook("conversation_end")
+            time.sleep(float(text.split()[1]))
+            hook("conversation_start")
+            text = None
+            continue
         with open(config["inputs"], "a") as log:
             log.write(json.dumps(text) + "\n")
         hook("prompt_submit", text)

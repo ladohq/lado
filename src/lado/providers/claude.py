@@ -15,6 +15,11 @@ EVENTS = {
     "SessionEnd": base.SESSION_END,
 }
 
+# /clear and /resume end Claude Code's session (SessionEnd with this reason) and start
+# another one in the same process (SessionStart with it as source); /exit ends it with
+# "prompt_input_exit". Checked with Claude Code 2.1.287.
+SWITCHES = ("clear", "resume")
+
 # Claude Code's own tools for messaging and listing agents (its subagents, teammates and
 # other local sessions). An agent that picks them instead of LADO's send_message and
 # list_agents talks to nobody, so they are denied. A deny rule removes them from the
@@ -94,6 +99,10 @@ class ClaudeProvider(base.Provider):
             return base.Event(base.WAITING) if "permission" in kind.lower() else None
         if native not in EVENTS:
             return None
+        if native == "SessionEnd" and data.get("reason") in SWITCHES:
+            return base.Event(base.CONVERSATION_END)
+        if native == "SessionStart" and data.get("source") in SWITCHES:
+            return base.Event(base.CONVERSATION_START)
         return base.Event(EVENTS[native], data.get("prompt", ""))
 
     def continue_output(self, text: str) -> str | None:

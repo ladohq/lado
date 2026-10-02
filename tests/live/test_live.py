@@ -243,6 +243,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     )
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
     check_log(live_provider, summary)
+    check_clear(live_provider)
 
     finish_worker(repo, worker)
 
@@ -256,6 +257,33 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     if live_provider == "kilo":
         assert cli_version(live_provider) == version
     print(f"{live_provider}: {time.monotonic() - started:.0f}s")
+
+
+def check_clear(provider: str) -> None:
+    """Claude Code: /clear, typed by the human, ends the supervisor's conversation and goes
+    on with a new one in the same process (as /resume does). The supervisor is idle again
+    without being stopped and gets the next message. Kilo starts a new conversation without
+    ending its plugin, so nothing changes there."""
+    if provider != "claude":
+        return
+    wait_for(lambda: status("supervisor") == state.IDLE, "the supervisor to be idle", 120)
+    mark = state.list_events(SESSION)[-1].id
+    target = f"{SESSION}:supervisor"
+    tmux.run("send-keys", "-t", target, "-l", "/clear")
+    tmux.run("send-keys", "-t", target, "Enter")
+
+    def statuses() -> list[str]:
+        events = state.list_events(SESSION, mark)
+        return [e.detail for e in events if (e.agent, e.kind) == ("supervisor", state.STATUS)]
+
+    wait_for(lambda: statuses()[-2:] == [state.STARTING, state.IDLE], "a new conversation", 60)
+    assert state.STOPPED not in statuses()
+    runtime.send_message(SESSION, "w1", "supervisor", "After the clear")
+    wait_for(
+        lambda: messages("w1", "supervisor")[-1] in [("After the clear", s) for s in RECEIVED],
+        "the message after /clear to be delivered",
+        60,
+    )
 
 
 def check_resume(provider: str, repo) -> None:

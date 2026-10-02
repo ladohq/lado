@@ -1,6 +1,8 @@
 """Agent CLIs that LADO can run, behind one interface (see lado.providers.base)."""
 
 from lado.providers.base import (
+    CONVERSATION_END,
+    CONVERSATION_START,
     PROMPT_SUBMIT,
     SESSION_END,
     SESSION_START,
@@ -19,6 +21,8 @@ from lado.providers.claude import ClaudeProvider
 from lado.providers.kilo import KiloProvider
 
 __all__ = [
+    "CONVERSATION_END",
+    "CONVERSATION_START",
     "PROMPT_SUBMIT",
     "SESSION_END",
     "SESSION_START",

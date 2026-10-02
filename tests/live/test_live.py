@@ -13,7 +13,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import providers, runs, runtime, state, tmux
+from lado import loop, providers, runs, runtime, state, tmux
 from lado.providers import base
 
 pytestmark = pytest.mark.live
@@ -89,6 +89,13 @@ def start_session(repo, provider: str) -> None:
         return False
 
     wait_for(supervisor_idle, "the supervisor to be idle", 60)
+    assert loop.running(SESSION)
+
+
+def check_loop_ended() -> None:
+    """The session loop ends by itself after `lado stop`, within a few passes."""
+    wait_for(lambda: not loop.running(SESSION), "the session loop to end", 5 * loop.INTERVAL)
+    assert "loop ended: the session is stopped" in (state.home() / "loop.log").read_text()
 
 
 def wait_for(check, what: str, timeout: float):
@@ -296,6 +303,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     runtime.stop_session(SESSION)
     assert not tmux.has_session(SESSION)
     check_gone(processes, "stop")
+    check_loop_ended()
     check_resume(live_provider, repo)
     # Kilo updates itself unless told not to; LADO's agents must not (the Kilo provider
     # switches it off, so the test needs no KILO_DISABLE_AUTOUPDATE from outside).
@@ -350,6 +358,7 @@ def check_resume(provider: str, repo) -> None:
         return bool(idle) and resumed in tmux.capture(SESSION, "supervisor")
 
     wait_for(answered, "the supervisor to take the resume message", 120)
+    assert loop.running(SESSION)
     ls = subprocess.run(
         [sys.executable, "-m", "lado.cli", "ls"], capture_output=True, text=True, env=os.environ
     )
@@ -359,6 +368,7 @@ def check_resume(provider: str, repo) -> None:
     runtime.stop_session(SESSION)
     assert not tmux.has_session(SESSION)
     check_gone(processes, "the stop after the resume")
+    check_loop_ended()
     assert not (state.home() / "hooks.log").exists()
 
 

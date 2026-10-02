@@ -23,25 +23,6 @@ vocabulary is still Claude Code's, and a session has one mode for all its agents
 Wanted: a neutral LADO permission setting that each provider translates.
 Found: 2026-10-01, Kilo provider review.
 
-## An unconfirmed message waits for the next send
-
-One rule now deals with a message typed in and never confirmed (`runtime.sweep`: typed
-again after 15, 30 and 60 s, then `failed`, the agent `waiting` and its sender told), but only
-`send_message` to that agent and its own turn-end and conversation-start hooks run it;
-nothing runs it on a timer. Since a new message waits while one typed before is unconfirmed,
-it waits too: an idle agent whose last turn ended before the 15 s were over (the typed line
-never came) gets neither until the next `send_message` to it. Before the rule, the new message
-was typed at once; do not release this without the session loop. Seen when: Kilo's plugin
-reports idle (`plugin.init`) before its
-TUI accepts input, so the first message to a just-started Kilo agent is swallowed; the
-/resume picker (no hook fires when it opens or Esc closes it, so the agent stays `idle`)
-takes a message into its search box.
-Wanted: the session loop (feature/message-retry, task 2 of 2): a hidden `lado loop
-<session>` process, one per session (flock), started by `lado start`, that calls
-`runtime.sweep(session)` every few seconds and delivers the queue of agents whose
-messages it put back.
-Found: 2026-10-01, kits end-to-end check with Kilo 7.8.1; 2026-10-02, flow dogfooding.
-
 ## Kit MCP secrets are written to disk
 
 `${ENV_VAR}` values in a kit's MCP env are resolved by LADO and written into the per-agent

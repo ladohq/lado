@@ -8,7 +8,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lado import __version__, doctor, kits, log, providers, runs, runtime, sources, state, tmux
+from lado import (
+    __version__,
+    doctor,
+    kits,
+    log,
+    loop,
+    providers,
+    runs,
+    runtime,
+    sources,
+    state,
+    tmux,
+)
 
 PAGER = ["less", "-R"]  # for a gate's full note
 
@@ -176,6 +188,11 @@ def cmd_ls(args: argparse.Namespace) -> int:
             alive = "  (stopped)"
         else:
             alive = "" if tmux.has_session(sess.name) else "  (tmux session is gone)"
+            if not alive and not loop.running(sess.name):
+                alive = (
+                    "  (session loop not running: unconfirmed messages are not retried; "
+                    f"see {state.home() / 'loop.log'})"
+                )
         print(f"{sess.name}  {sess.repo}{alive}")
         since = state.status_since(sess.name)
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -578,6 +595,9 @@ def main(argv: list[str] | None = None) -> int:
     hook.add_argument("--session", required=True)
     hook.add_argument("--agent", required=True)
     hook.add_argument("--instance", required=True)
+    # Internal: started by `lado start`, one per session (lado.loop).
+    loop_cmd = commands.add_parser("loop")
+    loop_cmd.add_argument("session")
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
@@ -590,6 +610,9 @@ def main(argv: list[str] | None = None) -> int:
         from lado import hooks
 
         return hooks.main(args.event, args.session, args.agent, args.instance)
+    if args.command == "loop":
+        # No check_migration: the loop checks the schema itself and ends on another one.
+        return loop.run(args.session)
     if args.command is None:
         parser.print_help()
         return 0

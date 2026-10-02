@@ -109,6 +109,7 @@ schema change.
     agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
     `spawned` event, how long a run has been in its state from its latest event.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
+  - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/live/`: live tests with real agent CLIs; `tests/js/`: Node tests of the Kilo plugin.
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
@@ -137,18 +138,31 @@ schema change.
   one that is waiting, starting or stopped, and a new message waits while one typed before
   is unconfirmed.
 - What happens to an unconfirmed message is one rule, `runtime.sweep`, run by `send_message`
-  to the agent and by its turn-end and conversation-start hooks (a timer arrives with the
-  session loop). Each paste is an attempt; after the n-th, the message is left alone for
+  to the agent, by its turn-end and conversation-start hooks, and every `loop.INTERVAL`
+  seconds by the session loop (below). Each paste is an attempt; after the n-th, the message is left alone for
   `RETRY_DELAYS[n-1]` seconds (15, 30, 60). Then: if no hook of the agent ran since the paste
   (`agents.seen_at`; a dialog took the text) and the agent is busy, it is pasted again with
   the queue; if hooks ran but no prompt held its line and the agent is idle, it goes back to
   the queue and is delivered as usual. After `1 + len(RETRY_DELAYS)` pastes and the last
   delay it is `failed` (`lado log`): the agent is set `waiting`, `lado ls` and
   `list_agents` (`waiting_reason`) say why and what the human can do (until the agent's next
-  hook), and nothing more is typed into it in that sweep; its sender (the
-  supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
+  hook), and nothing more is typed into it in that sweep; the messages typed together with
+  it that are not back in the queue fail with it, attempts left or not; the sender of each
+  (the supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
   reported. The agent's first hook after that puts the messages no hook ran after back in
   the queue with their attempts from 0; the ones it saw and never confirmed stay failed.
+  `LADO_RETRY_DELAYS` (`0.5,0.5,0.5`) replaces the delays in the processes started with it,
+  for the integration tests.
+- The session loop is a hidden `lado loop <session>` (`loop.py`), a process of its own
+  outside tmux that `lado start` (also a resume) starts once the tmux session exists. It
+  sweeps the session every `loop.INTERVAL` seconds, so an unconfirmed message is typed
+  again or failed on time with no send and no hook. One per session: it holds an exclusive
+  `flock` on `LADO_HOME/loop/<session>.lock` (gone with the process, no pid file); a second
+  one exits at once. Before each pass it ends, writing why to `LADO_HOME/loop.log`, when the
+  session is stopped or gone, its tmux session is gone, or `lado.db` has another schema
+  version than its own (checked read-only, so it never migrates); an error in a pass is
+  written there too, and the loop goes on. `lado ls` marks a running session whose loop
+  does not run (its lock is free); `lado forget` removes the lock file.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so

@@ -53,8 +53,18 @@ def repo(tmp_path):
 
 
 @pytest.fixture
-def fake_tmux(monkeypatch):
-    """Record tmux calls instead of running them."""
+def loop_starts(monkeypatch):
+    """Record the sessions whose loop is started, instead of starting a process."""
+    from lado import loop
+
+    started = []
+    monkeypatch.setattr(loop, "start", started.append)
+    return started
+
+
+@pytest.fixture
+def fake_tmux(monkeypatch, loop_starts):
+    """Record tmux calls instead of running them; no session loop is started either."""
     from lado import tmux
 
     calls = []

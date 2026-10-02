@@ -353,6 +353,19 @@ def connect() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def schema_version() -> int | None:
+    """lado.db's schema version, None when there is no lado.db. Reads only: unlike
+    connect(), it never migrates."""
+    path = home() / "lado.db"
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=10)
+    try:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        conn.close()
+
+
 def pending_migration() -> tuple[int, list[str]] | None:
     """When connect() would migrate lado.db: its schema version and the sessions it does
     not mark stopped. Reads only: creates and changes nothing."""

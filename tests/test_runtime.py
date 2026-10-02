@@ -301,6 +301,30 @@ def test_a_failure_types_nothing_more_with_an_unconfirmed_message(repo, fake_tmu
     assert [m.state for m in state.list_messages("s")[:2]] == [state.FAILED, state.PENDING]
 
 
+def test_a_message_typed_with_a_failed_one_fails_with_it(repo, fake_tmux):
+    sent = _swallowed_report(repo, fake_tmux)
+    runtime.send_message("s", "w1", "supervisor", "ping")  # typed with the report from now on
+    at = _retry_until_failed(sent)
+    report, ping = state.list_messages("s")[:2]
+    assert (report.state, ping.state) == (state.FAILED, state.FAILED)
+    runtime.sweep("s", now=at + 1000, delays=DELAYS)  # the session loop sweeps on
+    assert runtime.waiting_reasons("s") == {
+        "supervisor": "did not take 2 messages: answer the dialog in its window "
+        "or type any line there"
+    }
+    notices = [m.summary for m in state.list_messages("s") if m.sender == state.LADO]
+    assert notices == [
+        f"message #{report.id} to supervisor not delivered: report",
+        f"message #{ping.id} to supervisor not delivered: ping",
+    ]
+    # The human answers the dialog: both go to the supervisor again.
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
+    assert _hook("Stop", "supervisor") == {
+        "decision": "block",
+        "reason": "[from w1] report\n[from w1] ping",
+    }
+
+
 def test_nothing_is_typed_into_an_agent_waiting_after_a_failure(repo, fake_tmux):
     sent = _swallowed_report(repo, fake_tmux)
     _retry_until_failed(sent)

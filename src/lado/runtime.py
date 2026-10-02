@@ -5,6 +5,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 """
 
 import contextlib
+import os
 import re
 import subprocess
 import time
@@ -12,13 +13,14 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lado import kits, providers, state, tmux
+from lado import kits, loop, providers, state, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 MAX_MESSAGE = 8000
 # Seconds after the 1st, 2nd, ... time a message was typed into an agent's window before
-# sweep deals with it again: types it again, or gives up after the last.
-RETRY_DELAYS = (15, 30, 60)
+# sweep deals with it again: types it again, or gives up after the last. LADO_RETRY_DELAYS
+# ("0.5,0.5,0.5") replaces them for the processes started with it: the integration tests'.
+RETRY_DELAYS = tuple(float(d) for d in os.environ.get("LADO_RETRY_DELAYS", "15,30,60").split(","))
 # Characters of an agent's first input that go on its command line. tmux refuses a command
 # over about 16 KB, and the system prompt is on it too; a longer input comes as a message.
 FIRST_INPUT_LIMIT = 2000
@@ -229,6 +231,8 @@ def start_session(
         else:
             state.delete_session(session)
         raise
+    # It ends by itself when the tmux session is gone, so not before that exists.
+    loop.start(session)
     return started
 
 
@@ -554,9 +558,12 @@ def _plan(
         # usual. Its attempts count on.
         elif agent.status == state.IDLE:
             plan.requeue.append(message.id)
-    # A failure sets the agent waiting: nothing more is typed into it, even what was typed
-    # together with the failed message but has attempts left.
-    plan.retype = plan.retype and not plan.fail
+    # A failure sets the agent waiting: nothing more is typed into it. What was typed
+    # together with the failed message and is not back in the queue fails with it, though
+    # it has attempts left: the same window did not take it either.
+    if plan.fail:
+        plan.retype = False
+        plan.fail = [m.id for m in sent if m.id not in plan.requeue]
     return plan
 
 
@@ -681,6 +688,7 @@ def forget_session(session: str, force: bool = False) -> Forgotten:
         )
     worktrees = session_worktrees(sess.repo, session)
     state.delete_session(session)
+    loop.forget(session)
     return Forgotten(open_runs, worktrees)
 
 

@@ -14,6 +14,20 @@ from lado import state, tmux
 
 _template: Path | None = None  # the first repo made by this process, copied for the next ones
 
+# git config that keeps git from starting gc or maintenance in the background after a command.
+NO_MAINTENANCE = {"gc.auto": "0", "maintenance.auto": "false"}
+
+
+def no_maintenance_env(environ: dict[str, str]) -> dict[str, str]:
+    """`environ` plus GIT_CONFIG_* entries that apply NO_MAINTENANCE to every git command."""
+    env = dict(environ)
+    count = int(env.get("GIT_CONFIG_COUNT", "0"))
+    for key, value in NO_MAINTENANCE.items():
+        env[f"GIT_CONFIG_KEY_{count}"], env[f"GIT_CONFIG_VALUE_{count}"] = key, value
+        count += 1
+    env["GIT_CONFIG_COUNT"] = str(count)
+    return env
+
 
 def init_repo(path: Path) -> Path:
     """A git repo with one empty commit on main, and a committer for agents that commit.
@@ -28,9 +42,13 @@ def init_repo(path: Path) -> Path:
         subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
         subprocess.run([*git, "config", "user.name", "LADO test"], check=True)
         subprocess.run([*git, "config", "user.email", "test@lado.invalid"], check=True)
+        # No background gc or maintenance: it would hold lock files while we copy the repo.
+        for key, value in NO_MAINTENANCE.items():
+            subprocess.run([*git, "config", key, value], check=True)
         subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
     path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(_template, path, symlinks=True)
+    # A lock file is a git process at work, gone by the time a copy would need it.
+    shutil.copytree(_template, path, symlinks=True, ignore=shutil.ignore_patterns("*.lock"))
     return path
 
 

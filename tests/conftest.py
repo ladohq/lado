@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from agent_helpers import init_repo
+from agent_helpers import init_repo, no_maintenance_env
 
 # Tests never use the user's LADO tmux server (socket "lado").
 TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
@@ -14,6 +14,10 @@ TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
 # as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess.
 for _var in ("LADO_AGENT", "LADO_SESSION", "LADO_HOME", "LADO_TMUX_SOCKET", "TMUX"):
     os.environ.pop(_var, None)
+
+# No git command of the test run (the tests', LADO's, the agents') starts background gc or
+# maintenance, which would still be writing in a repo while a test copies or removes it.
+os.environ.update(no_maintenance_env(os.environ))
 
 
 def _kill_tmux_server(socket: str) -> None:

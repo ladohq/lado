@@ -183,7 +183,8 @@ one-line summary of the note that led to the gate and the numbered options; when
 has a body, `v` shows the whole note in `less -R` (printed when there is no `less`), then
 asks again. When a gate opens, LADO opens a tmux popup (`display-popup -E`, titled
 `LADO: waiting for you (session <name>)`, a rounded soft orange border around the
-terminal's own colours; tmux 3.3+) running `lado answer <session> <gate-id>` on each client
+terminal's own colours from tmux 3.3 on, tmux's plain border on 3.2, none before 3.2;
+`lado doctor` warns about both) running `lado answer <session> <gate-id>` on each client
 attached to the session; with no client attached, nothing opens and the gate waits in
 `lado ls`. tmux does not stack popups: a second gate is asked about in the open popup after
 the first answer. Closing the popup leaves the gate open. `lado answer` and `lado flow-set`

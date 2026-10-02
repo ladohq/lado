@@ -1,9 +1,11 @@
+import pytest
+
 from lado import doctor
 from lado.providers import kilo
 
 
-def _versions(monkeypatch, kilo_version=f"{kilo.TESTED_VERSION}.1"):
-    versions = {"kilo": kilo_version, "claude": "2.1.0 (Claude Code)"}
+def _versions(monkeypatch, kilo_version=f"{kilo.TESTED_VERSION}.1", tmux_version="tmux 3.7c"):
+    versions = {"kilo": kilo_version, "claude": "2.1.0 (Claude Code)", "tmux": tmux_version}
     monkeypatch.setattr(doctor, "_tool_version", lambda path, flag: versions.get(path, "v1"))
 
 
@@ -12,6 +14,20 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     checks = doctor.run_checks(which=lambda cmd: cmd)
     assert [c.name for c in checks] == ["Python", "tmux", "Claude Code", "Kilo CLI"]
     assert all(c.ok and not c.warning for c in checks)
+
+
+@pytest.mark.parametrize(
+    ("version", "hint"),
+    [
+        ("tmux 3.2a", "gate popups have no coloured border before tmux 3.3"),
+        ("tmux 3.1c", "no gate popups before tmux 3.2: gates show only in `lado ls`"),
+    ],
+)
+def test_old_tmux_warns_about_gate_popups(monkeypatch, version, hint):
+    _versions(monkeypatch, tmux_version=version)
+    tmux = next(c for c in doctor.run_checks(which=lambda cmd: cmd) if c.name == "tmux")
+    assert tmux.ok and tmux.warning
+    assert hint in tmux.hint
 
 
 def test_missing_default_provider_fails_other_providers_warn(monkeypatch):

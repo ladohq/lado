@@ -44,8 +44,26 @@ def _screen(session, window, text, timeout=5):
     raise AssertionError(f"{text!r} not on the screen:\n{screen}")
 
 
+@pytest.mark.parametrize(
+    ("output", "version"),
+    [("tmux 3.7c", (3, 7)), ("tmux 3.2a", (3, 2)), ("tmux next-3.4", (3, 4)), ("tmux", None)],
+)
+def test_parse_version(output, version):
+    assert tmux.parse_version(output) == version
+
+
+def test_a_popup_on_tmux_before_3_3_has_no_border_options(monkeypatch):
+    # tmux 3.2 (Ubuntu 22.04) has display-popup, but refuses -b and -S.
+    monkeypatch.setattr(tmux, "version", lambda: (3, 2))
+    cmd = tmux.popup_command("/dev/ttys001", "LADO: waiting", ["lado", "answer"], {})
+    assert "-b" not in cmd and "-S" not in cmd
+    assert cmd[cmd.index("-T") + 1] == " LADO: waiting "
+    assert cmd[-1] == "lado answer"
+
+
 def test_a_popup_has_a_calm_coloured_rounded_border_and_a_title(monkeypatch):
     monkeypatch.setenv("LADO_TMUX_SOCKET", "lado-test-x")
+    monkeypatch.setattr(tmux, "version", lambda: (3, 7))
     cmd = tmux.popup_command("/dev/ttys001", "LADO: waiting #1", ["lado", "answer"], {"A": "b"})
     assert cmd[:6] == ["tmux", "-L", "lado-test-x", "display-popup", "-c", "/dev/ttys001"]
 

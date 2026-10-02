@@ -4,7 +4,9 @@ LADO runs its own tmux server (socket `lado`, or LADO_TMUX_SOCKET), so it never 
 user's tmux sessions.
 """
 
+import functools
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -14,6 +16,8 @@ DEFAULT_SOCKET = "lado"
 TIMEOUT = 10
 POPUP_WIDTH, POPUP_HEIGHT = "80%", "60%"
 POPUP_BORDER, POPUP_BORDER_STYLE = "rounded", "fg=colour214"  # a soft orange
+POPUP_VERSION = (3, 2)  # display-popup
+POPUP_BORDER_VERSION = (3, 3)  # its -b and -S; older tmux refuses the popup with them
 
 # Set by Claude Code in its child processes. A `claude` started with them believes it is
 # nested inside another Claude Code session, so the LADO tmux server must not inherit them.
@@ -140,11 +144,33 @@ def popup(session: str, title: str, argv: list[str], env: dict[str, str]) -> int
 
 def popup_command(client: str, title: str, argv: list[str], env: dict[str, str]) -> list[str]:
     """The tmux command for a popup on `client`: easy to notice but calm, a rounded border
-    in a soft colour around the terminal's own background and text."""
+    in a soft colour around the terminal's own background and text (tmux 3.3+; older ones
+    get tmux's plain border)."""
     title = " " + title.replace("#", "##") + " "  # -T is a format
     cmd = ["tmux", "-L", socket(), "display-popup", "-c", client, "-E", "-T", title]
-    cmd += ["-b", POPUP_BORDER, "-S", POPUP_BORDER_STYLE, "-w", POPUP_WIDTH, "-h", POPUP_HEIGHT]
+    found = version()
+    if found and found >= POPUP_BORDER_VERSION:
+        cmd += ["-b", POPUP_BORDER, "-S", POPUP_BORDER_STYLE]
+    cmd += ["-w", POPUP_WIDTH, "-h", POPUP_HEIGHT]
     return [*cmd, *_env_args(env), shlex.join(argv)]
+
+
+@functools.cache
+def version() -> tuple[int, int] | None:
+    """The installed tmux's version, from `tmux -V`; None if it cannot be read."""
+    try:
+        result = subprocess.run(
+            ["tmux", "-V"], capture_output=True, text=True, timeout=TIMEOUT, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return parse_version(result.stdout)
+
+
+def parse_version(output: str) -> tuple[int, int] | None:
+    """(major, minor) from `tmux -V` output such as "tmux 3.2a" or "tmux next-3.4"."""
+    found = re.search(r"(\d+)\.(\d+)", output)
+    return (int(found[1]), int(found[2])) if found else None
 
 
 def capture(session: str, window: str) -> str:

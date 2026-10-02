@@ -197,3 +197,14 @@ database read-only leaves `lado.db-wal` and `lado.db-shm` behind (the data is un
 same helper twice. Wanted: say "changes nothing in the database"; move the helper to
 `tests/agent_helpers.py` next to `previous_schema()`.
 Found: 2026-10-02, review of run fix/migration-guard.
+
+## The architect cannot put questions to the human
+
+A design review often turns up decisions that are the human's (e.g. what to resurrect after a
+failed delivery), but the architect works inside a flow step with no channel to the human: it
+can only send the design back as `changes`, and the supervisor finds the questions in its note.
+The `grilling` skill (rounds of numbered questions with a recommended answer each) worked well
+for the supervisor in the chat. Wanted (lado-dev kit): the architect lists such decisions under
+a "Questions for the human" section of its note, and the supervisor asks them in the chat in
+the `grilling` format before the next design visit.
+Found: 2026-10-02, design of feature/message-retry.

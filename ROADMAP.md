@@ -81,7 +81,8 @@ The agents still run in tmux; the app is a window onto them.
   own structured panels), its data model on LADO's events, so an ACP runtime later adds an
   event view without a rewrite.
 - [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates, notes;
-  built on LADO's events, not on the terminal
+  built on LADO's events, not on the terminal. Design and tasks: docs/design/ui.md
+  (skeleton, live updates, session view, gates, composer)
 - [ ] Notifications when an agent waits for the human
 - [ ] Artifacts: named, versioned documents of a session (design, plan, review, report) that
   any agent writes and reads, with or without a flow; the human's main way to get results:

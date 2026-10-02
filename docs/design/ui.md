@@ -120,7 +120,10 @@ Decided in the live updates task (2026-10-03).
   while a stream is open, off the event loop, and hands each batch to every stream. A
   batch keeps one change per row (kind, session, key) with its latest id. Before each
   batch it checks the schema version; another one ends the open streams, and a new one is
-  answered 503.
+  answered 503. A read that fails is written to the log once with its traceback, then only
+  counted (the session loop's rule); after 3 failing reads in a row the open streams end,
+  and a new one is answered 503 with the error while the source cannot be read, so the UI
+  shows why instead of a stream that stays open with nothing in it.
 - **`GET /api/events`** (Server-Sent Events, behind the token; 401 and 503 as the REST
   API): `id: <journal id>`, `event: change`, `data: {kind, session, key, op, item}`.
   **`item` is the row as it is now, in the form of its REST model, or null when the row is
@@ -150,7 +153,9 @@ Decided in the live updates task (2026-10-03).
   (`web/src/live.ts`) the sections read; a section opens no stream of its own and never
   polls. A change that comes while a reset's load runs is applied after it. The browser
   reconnects by itself only after a network error; when the server refused the stream
-  (401, 503), the shell asks the API why (`api.ts`), shows it, and opens a new stream after
+  (401, 503), the shell asks the stream's own address why (`api.ts`, `probeStream`: only the
+  answer's head; the rest of the API may work while the feed does not), shows it, and
+  opens a new stream after
   3 s from the latest journal id it got (`?after=`); after a 401 it shows how to get in and
   stops. While no stream is open the top bar says "reconnecting…" with the reason.
 

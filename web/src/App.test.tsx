@@ -11,8 +11,14 @@ const SESSIONS: SessionInfo[] = [
   { name: "old", repo: "/src/old", status: "loop_down", agents: 0 },
 ];
 
-function serve(status = 200, body: unknown = SESSIONS) {
+// The API: /api/sessions answers `status` and `body`; a request for the event stream (the
+// shell asking why one was refused) answers `events`, or the same as /api/sessions.
+function serve(status = 200, body: unknown = SESSIONS, events?: { status: number; body: unknown }) {
   const fetch = vi.fn(async (path: string) => {
+    if (path.startsWith("/api/events")) {
+      const answer = events ?? { status, body: status === 200 ? "" : body };
+      return new Response(JSON.stringify(answer.body), { status: answer.status });
+    }
     expect(path).toBe("/api/sessions");
     return new Response(JSON.stringify(body), { status });
   });
@@ -410,8 +416,9 @@ test("a stream the server refused: the reason shows, then it reconnects from the
   vi.useFakeTimers();
   stream().send("change", change("lado", SESSIONS[0]), "17");
   stream().send("change", change("lado", SESSIONS[0])); // derived: no id of its own
-  const reason = "lado.db has schema version 99, this server knows 12";
-  serve(503, { detail: reason });
+  // The stream's own reason, also when the rest of the API answers.
+  const reason = "reading changes failed: disk I/O error";
+  serve(200, SESSIONS, { status: 503, body: { detail: reason } });
   stream().fail(true);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);

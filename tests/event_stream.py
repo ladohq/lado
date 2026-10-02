@@ -32,8 +32,11 @@ class EventStream:
         self.status = self._response.status_code
         self.closed = threading.Event()
         self._events: queue.Queue[Event] = queue.Queue()
+        self.detail = ""  # the server's reason, when it refused the stream
         if self.status == 200:
             threading.Thread(target=self._read, daemon=True).start()
+        else:
+            self.detail = self._response.read().decode()
 
     def _read(self) -> None:
         fields: dict[str, str] = {}

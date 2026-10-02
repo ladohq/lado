@@ -74,6 +74,10 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         """The change feed as Server-Sent Events (lado.server.feed). The position is the
         Last-Event-ID header (the browser's own reconnect) or, without it, `after`."""
         position = last_event_id if last_event_id is not None else after
+        try:
+            await feed.check(hub)
+        except feed.Unavailable as error:
+            raise HTTPException(503, str(error)) from error
         return StreamingResponse(
             feed.stream(hub, position),
             media_type="text/event-stream",

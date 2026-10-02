@@ -29,12 +29,13 @@ from typing import Protocol
 
 from anyio import to_thread
 
-from lado import runtime, state
+from lado import loop, runtime, state
 from lado.server import models
 
 POLL = 0.25  # seconds between two reads of the source
 DERIVED_EVERY = 3.0  # seconds between two computations of what is derived
 KEEPALIVE = 15.0  # seconds of quiet after which a stream gets a comment line
+FAILED_PASSES = 3  # reads of the source that fail in a row before the open streams end
 
 log = logging.getLogger("lado.server")
 
@@ -209,6 +210,8 @@ class Hub:
         self._position = 0
         self._derived: dict[Change, object] | None = None
         self._derived_at = 0.0
+        self._errors = loop.RepeatedErrors(log.warning)  # one traceback, then counts
+        self._failures = 0  # failing reads in a row
 
     async def subscribe(self) -> asyncio.Queue[list[Event] | None]:
         """A queue that gets each batch of events, and None when the stream must end."""
@@ -238,7 +241,19 @@ class Hub:
             try:
                 await self._pass()
             except Exception:
-                log.exception("reading changes failed; trying again")
+                self.failed()
+            else:
+                self._failures = 0
+                self._errors.worked()
+
+    def failed(self) -> None:
+        """Note the error being handled. After FAILED_PASSES in a row the streams end: the
+        browser comes again, gets 503 with the reason and shows it, instead of a stream
+        that stays open with nothing in it."""
+        self._errors.failed()
+        self._failures += 1
+        if self._failures == FAILED_PASSES:
+            self._send(None)
 
     async def _pass(self) -> None:
         if await to_thread.run_sync(self.source.problem):
@@ -272,6 +287,19 @@ class Hub:
     def snapshots(self) -> list[Event]:
         """Everything derived, as it is now. Reads lado.db: call it in a thread."""
         return events(list(derived())) if self.source.exists() else []
+
+
+class Unavailable(Exception):
+    """The source cannot be read now: the stream is refused (503) with the reason."""
+
+
+async def check(hub: Hub) -> None:
+    """Before a stream: Unavailable when the source cannot be read now."""
+    try:
+        await to_thread.run_sync(hub.source.last)
+    except Exception as error:
+        hub.failed()
+        raise Unavailable(f"reading changes failed: {error}") from error
 
 
 async def stream(hub: Hub, position: int | None) -> AsyncIterator[str]:

@@ -4,7 +4,7 @@
 // are one path); a `change` carries its item as it is now, or null when it is gone.
 import { createContext, useContext, useSyncExternalStore } from "react";
 
-import { ApiError, getSessions, type SessionInfo } from "./api";
+import { ApiError, getSessions, probeStream, type SessionInfo } from "./api";
 
 export type Change = { kind: string; session: string; key: string; op: string; item: unknown };
 
@@ -75,7 +75,8 @@ export class Live {
   }
 
   private async diagnose(source: EventSource) {
-    const problem = await getSessions().then(
+    // The stream's own answer: the rest of the API may work while the feed does not.
+    const problem = await probeStream(source.url).then(
       () => null,
       (error: unknown) => error,
     );

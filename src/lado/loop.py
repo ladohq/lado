@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 from typing import IO
 
@@ -114,7 +115,7 @@ def run(session: str, interval: float = INTERVAL) -> int:
         return 0  # the session has its loop
     with lock:
         _log(session, f"loop started, pid {os.getpid()}")
-        errors = _Errors(session)
+        errors = RepeatedErrors(lambda text: _log(session, text))
         while True:
             try:
                 reason = why_stop(session)
@@ -131,13 +132,14 @@ def run(session: str, interval: float = INTERVAL) -> int:
             time.sleep(interval)
 
 
-class _Errors:
-    """What the loop writes about failing passes: a new error with its traceback; the same
-    error again only as a short line, at most every REPEAT_NOTE seconds, and as a count when
-    passes work again or another error comes."""
+class RepeatedErrors:
+    """What a loop writes about failing passes (with `write`): a new error with its
+    traceback; the same error again only as a short line, at most every REPEAT_NOTE seconds,
+    and as a count when passes work again or another error comes. The session loop's and
+    the UI server's change feed (lado.server.feed)."""
 
-    def __init__(self, session: str):
-        self.session = session
+    def __init__(self, write: Callable[[str], None]):
+        self.write = write
         self.last: str | None = None  # the error of the latest failing pass, while it repeats
         self.unlogged = 0  # repeats of it since its latest line
         self.noted_at = 0.0
@@ -149,11 +151,11 @@ class _Errors:
         if error != self.last:
             self.flush()
             self.last, self.noted_at = error, now
-            _log(self.session, f"error in a pass, the loop goes on:\n{traceback.format_exc()}")
+            self.write(f"error in a pass, the loop goes on:\n{traceback.format_exc()}")
             return
         self.unlogged += 1
         if now - self.noted_at >= REPEAT_NOTE:
-            _log(self.session, f"the same error again, {self.unlogged} times since its last line")
+            self.write(f"the same error again, {self.unlogged} times since its last line")
             self.unlogged, self.noted_at = 0, now
 
     def worked(self) -> None:
@@ -161,12 +163,12 @@ class _Errors:
         if self.last is not None:
             self.flush()
             self.last = None
-            _log(self.session, "passes work again")
+            self.write("passes work again")
 
     def flush(self) -> None:
         """Log how often the error repeated since its latest line."""
         if self.unlogged:
-            _log(self.session, f"the same error repeated {self.unlogged} more times")
+            self.write(f"the same error repeated {self.unlogged} more times")
             self.unlogged = 0
 
 

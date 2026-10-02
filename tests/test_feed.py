@@ -244,6 +244,32 @@ def test_a_quiet_stream_gets_keep_alive_comments(streams, monkeypatch):
     assert stream.next(comments=True).event == "comment"
 
 
+def broken_journal(monkeypatch):
+    def fail(self, *args):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(feed.Journal, "after", fail)
+    monkeypatch.setattr(feed.Journal, "last", fail)
+
+
+def test_a_journal_that_cannot_be_read_ends_the_streams_and_new_ones_get_503(
+    streams, monkeypatch, caplog
+):
+    state.add_session(state.Session("s", "/r", None))
+    stream = streams()
+    stream.next()
+    broken_journal(monkeypatch)
+    assert stream.closed.wait(5)  # the browser comes again and learns why
+    for _ in range(5):  # the browser tries again and again
+        refused = streams()
+        assert refused.status == 503
+        assert "disk I/O error" in refused.detail
+    tracebacks = [
+        r for r in caplog.records if r.name == "lado.server" and "Traceback" in r.getMessage()
+    ]
+    assert len(tracebacks) == 1  # the same error is not written again and again
+
+
 def test_the_journal_is_read_only(streams):
     """The server never writes lado.db: not even to trim the journal."""
     state.add_session(state.Session("s", "/r", None))

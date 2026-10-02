@@ -149,3 +149,22 @@ into its review), and `lado flow-set` clears the note body (`runs.force`), so a 
 `implement` gives the developer no design at all. Wanted: a step can get the latest note of
 a named earlier state (e.g. `design`), so roles need not copy the design forward.
 Found: 2026-10-02, review of lado-dev 0.3.0.
+
+## A failed rollback hides why a start or spawn failed
+
+When `start_session` or `spawn_worker` fails, its `except` undoes what it stored
+(`state.fail_resume`, `state.delete_session`, `close_worker`, git cleanup) and re-raises. If
+that undo raises too (e.g. the database is locked), the user sees the undo's error instead of
+the cause, and the session or worker is left half undone.
+Wanted: an undo that never replaces the original error (report its own failure apart, e.g.
+in `hooks.log` or as a note on the error) and leaves no half state.
+Found: 2026-10-02, review of run fix/resume-settings.
+
+## Two starts of a session whose tmux server died can stop each other
+
+`start_session` stops a session whose tmux server is gone (`stopped_at` unset, no tmux
+session) before it takes it over. Two `lado start` of that name at once both see it so: the
+first stops it, resumes it and launches its supervisor; the second then stops that running
+session again, forgetting its agents, and takes it over in turn. The window is small.
+Wanted: stopping a left-over session and taking it over as one step that only one start wins.
+Found: 2026-10-02, run fix/resume-settings.

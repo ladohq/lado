@@ -130,3 +130,12 @@ returned success: the MCP library dropped the unknown argument without a word. A
 stale tool schema (see "Stale tool schemas after /resume") or a typo gets no signal. Wanted:
 reject unknown arguments in LADO's MCP tools with an error that lists the accepted ones.
 Found: 2026-10-02, starting run fix/live-flow-notices.
+
+## Flows cannot work on another repository
+
+A run's worktree and branch are always made in the session's repo, so a change to another
+repo (e.g. the lado-kits kit repo while the session runs on LADO) cannot go through a flow:
+it is done by a worker outside a run, with no design gate, review step or merge gate.
+Wanted: `flow_start` can name the repo a run works on (a registered kit source or a path),
+and the run's worktree, `make check` and merge happen there.
+Found: 2026-10-02, task lado-dev architecture (kit changes in lado-kits).

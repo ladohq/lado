@@ -26,6 +26,7 @@ HUMAN = "human"  # the actor of what the human does from the CLI
 NOTE_LIMIT = state.SUMMARY_LIMIT
 SLUG_WORDS = 4
 SLUG_LENGTH = 30
+LANGUAGE_LIMIT = 40
 
 # What the human can answer at a gate. An approval gate's options name its outcomes.
 LOOP = "loop"  # the kind of gate a loop limit opens
@@ -35,15 +36,30 @@ CONTINUE, CANCEL = "continue", "cancel"
 Events = list[tuple[str, str, str]]  # (actor, kind, detail)
 
 
-def start(session: str, flow_name: str, task: str, name: str | None = None) -> state.Run:
+def start(
+    session: str,
+    flow_name: str,
+    task: str,
+    name: str | None = None,
+    notices: list[str] | None = None,
+    language: str | None = None,
+) -> state.Run:
     """Start a run of flow `flow_name` on `task`, named <flow>/<slug of name or task>, in a
-    worktree and branch of its own from the repo's HEAD. Enters the start state."""
+    worktree and branch of its own from the repo's HEAD. Enters the start state. What the
+    supervisor would be told about it goes to `notices` instead, if given: it caused it.
+    `language` is the human's, e.g. "ru": the steps' notes are written in it."""
     sess = runtime.running_session(session)
     env = kits.resolve(sess.repo, sess.kits, sess.without)
     flow = env.flow(flow_name)
     task = task.strip()
     if not task:
         raise LadoError("task is empty; say what the run is for")
+    language = (language or "").strip()
+    if "\n" in language or len(language) > LANGUAGE_LIMIT:
+        raise LadoError(
+            f'human_language is a language name or code such as "ru", at most '
+            f"{LANGUAGE_LIMIT} characters"
+        )
     if len(task) > runtime.MAX_MESSAGE:
         # It goes into every step's message.
         raise LadoError(
@@ -63,6 +79,7 @@ def start(session: str, flow_name: str, task: str, name: str | None = None) -> s
         state=flow.start,
         worktree=str(Path(sess.repo) / ".lado" / "worktrees" / session / folder),
         branch=f"lado/{session}/{folder}",
+        language=language,
     )
     started, events, gate = _enter(run, flow, flow.start)
     runtime.exclude_worktrees(sess.repo)
@@ -70,7 +87,7 @@ def start(session: str, flow_name: str, task: str, name: str | None = None) -> s
     version = f" {kit.version}" if kit.version else ""
     detail = f"flow {flow.name} from kit {kit.name}{version}: {task.splitlines()[0][:100]}"
     state.add_run(started, [(SUPERVISOR, state.FLOW_START, detail), *events], gate)
-    _arrived(started, flow, SUPERVISOR)
+    _arrived(started, flow, SUPERVISOR, notices)
     return started
 
 
@@ -81,9 +98,11 @@ def advance(
     outcome: str,
     note: str | None = None,
     note_body: str | None = None,
+    notices: list[str] | None = None,
 ) -> state.Run:
     """Move the run on by `outcome` of its current step, reported by the agent acting in
-    it. The note goes to the next step."""
+    it. The note goes to the next step. If the caller is the supervisor, what it would be
+    told about the move goes to `notices` instead, if given."""
     runtime.running_session(session)
     run = _run(session, run_name)
     if run.status == state.WAITING:
@@ -110,7 +129,8 @@ def advance(
     noted = dataclasses.replace(run, note=note, note_body=note_body or "")
     after, events, gate = _enter(noted, flow, target)
     transition = (caller, state.FLOW, f"{run.state} -{outcome}-> {target}")
-    return _commit(run, after, [transition, *events], flow, caller, gate)
+    own = notices if caller == SUPERVISOR else None
+    return _commit(run, after, [transition, *events], flow, caller, gate, notices=own)
 
 
 def answer(
@@ -266,7 +286,12 @@ def spawn_worker(
         )
     _restore_worktree(_session(session).repo, run)
     task = "\n\n".join(parts)
-    return runtime.spawn_worker(session, task, name, provider, role, without, run, has_step)
+    worker = runtime.spawn_worker(session, task, name, provider, role, without, run, has_step)
+    if has_step:
+        # The step has its worker: LADO's request for one is stale if not delivered yet.
+        summary, _ = _to_supervisor(run, _needs(run, role))
+        state.drop_pending(session, LADO, SUPERVISOR, summary)
+    return worker
 
 
 def _restore_worktree(repo: str, run: state.Run) -> None:
@@ -348,18 +373,17 @@ def acting(run: state.Run) -> str:
 
 def status(session: str, caller: str, run_name: str | None = None) -> list[dict]:
     """The runs `caller` can see: a worker its own run, the supervisor every open run (or
-    `run_name`, open or not)."""
+    `run_name`, open or not). One run asked for by name comes with its task."""
     me = state.get_agent(session, caller)
     if me is None:
         raise LadoError(f'no agent "{caller}"')
-    if caller != SUPERVISOR:
-        if run_name and run_name != me.run:
+    if run_name:
+        if caller != SUPERVISOR and run_name != me.run:
             raise LadoError(f'you work for run "{me.run}", not "{run_name}"')
-        run_name = me.run
-        if run_name is None:
-            return []
-    found = [_run(session, run_name)] if run_name else state.list_runs(session, open_only=True)
-    return [describe(r) for r in found]
+        return [describe(_run(session, run_name), full=True)]
+    if caller != SUPERVISOR:
+        return [describe(_run(session, me.run))] if me.run else []
+    return [describe(r) for r in state.list_runs(session, open_only=True)]
 
 
 def step_text(run: state.Run, flow: flows.Flow) -> str:
@@ -379,6 +403,10 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
         f"of these outcomes:\n{outcomes}\n"
         "Pass a note for the next step in note_summary (one line) and note_body."
     )
+    if run.language:
+        parts[-1] += (
+            f"\nWrite note_summary and note_body in {run.language}: the human reads them at gates."
+        )
     return "\n\n".join(parts)
 
 
@@ -425,10 +453,11 @@ def _commit(
     caller: str,
     opens: state.Gate | None = None,
     closes: state.Close | None = None,
+    notices: list[str] | None = None,
 ) -> state.Run:
     if not state.update_run(before, after, events, opens, closes):
         raise _changed(before, closes)
-    _arrived(after, flow, caller)
+    _arrived(after, flow, caller, notices)
     return after
 
 
@@ -440,30 +469,36 @@ def _changed(run: state.Run, closes: state.Close | None) -> LadoError:
     return LadoError(f'run "{run.name}" changed meanwhile; see flow_status')
 
 
-def _arrived(run: state.Run, flow: flows.Flow, caller: str) -> None:
-    """Tell whoever acts now: the step's agent, or the supervisor; close an ended run.
-    The transition is stored already, so an error says that the run did move on."""
+def _arrived(
+    run: state.Run, flow: flows.Flow, caller: str, notices: list[str] | None = None
+) -> None:
+    """Tell whoever acts now: the step's agent, or the supervisor (in `notices`, if given);
+    close an ended run. The transition is stored already, so an error says that the run did
+    move on."""
     try:
-        _act_on_arrival(run, flow, caller)
+        _act_on_arrival(run, flow, caller, notices)
     except (LadoError, tmux.TmuxError) as exc:
         raise LadoError(
             f'run "{run.name}" moved on to {run.state} ({run.status}), but: {exc}'
         ) from exc
 
 
-def _act_on_arrival(run: state.Run, flow: flows.Flow, caller: str) -> None:
+def _act_on_arrival(
+    run: state.Run, flow: flows.Flow, caller: str, notices: list[str] | None
+) -> None:
     if run.status == state.WAITING:
         gate = state.open_gate(run.session, run.name)
         _tell_supervisor(
             run,
             f"waiting for the human at {gate.state} (gate #{gate.id})",
             f"{gate.question}\nOnly the human answers it: lado answer {run.session} {gate.id}",
+            notices,
         )
         _popup(run.session, gate)
     elif run.status == state.ENDED:
-        _close(run, caller)
+        _close(run, caller, notices)
     else:
-        _deliver_step(run, flow)
+        _deliver_step(run, flow, notices)
 
 
 def _popup(session: str, gate: state.Gate) -> None:
@@ -477,21 +512,26 @@ def _popup(session: str, gate: state.Gate) -> None:
     tmux.popup(session, f"lado {session}: waiting for you", argv, env)
 
 
-def _deliver_step(run: state.Run, flow: flows.Flow) -> None:
+def _deliver_step(run: state.Run, flow: flows.Flow, notices: list[str] | None) -> None:
     current = flow.states[run.state]
     who = _acting_agent(run, current)
     if who is None:
         _tell_supervisor(
             run,
-            f"step {run.state} needs a {current.agent}",
+            _needs(run, current.agent),
             f'Start one with spawn_worker(role="{current.agent}", run="{run.name}"); it gets '
             "the step as its task.",
+            notices,
         )
         return
     runtime.post(run.session, LADO, who, f"flow {run.name}: step {run.state}", step_text(run, flow))
 
 
-def _close(run: state.Run, caller: str) -> None:
+def _needs(run: state.Run, role: str) -> str:
+    return f"step {run.state} needs a {role}"
+
+
+def _close(run: state.Run, caller: str, notices: list[str] | None) -> None:
     """Finish an ended run's workers and remove its worktree and branch, if its branch is
     merged and its worktree clean. Otherwise keep them all and say why. `caller` is the
     agent (or the human) whose action ended the run."""
@@ -506,12 +546,13 @@ def _close(run: state.Run, caller: str) -> None:
             f"{problem}\nKept: worktree {run.worktree}, branch {run.branch}, workers: {kept}.\n"
             "Merge the branch, then finish_worker each worker: the last one removes the "
             "worktree and branch (with no workers left, remove them with git).",
+            notices,
         )
         return
     # Git first: if it fails, the workers keep running and nothing is half done.
     runtime.git(repo, "worktree", "remove", run.worktree)
     runtime.git(repo, "branch", "-d", run.branch)
-    _tell_supervisor(run, f"ended at {run.state}; worktree and branch removed")
+    _tell_supervisor(run, f"ended at {run.state}; worktree and branch removed", notices=notices)
     # The caller last: this code runs in its MCP server, which goes with its window.
     for worker in sorted(workers, key=lambda w: w.name == caller):
         runtime.close_worker(run.session, worker, "run ended")
@@ -529,11 +570,23 @@ def _unfinished(repo: str, run: state.Run) -> str:
     return ""
 
 
-def _tell_supervisor(run: state.Run, what: str, body: str = "") -> None:
+def _tell_supervisor(
+    run: state.Run, what: str, body: str = "", notices: list[str] | None = None
+) -> None:
+    """Send the supervisor a message, or add it to `notices`: the supervisor caused it
+    itself and gets it in its tool's result."""
+    if notices is not None:
+        notices.append(f"flow {run.name}: {what}\n{body}".strip())
+        return
+    runtime.post(run.session, LADO, SUPERVISOR, *_to_supervisor(run, what, body))
+
+
+def _to_supervisor(run: state.Run, what: str, body: str = "") -> tuple[str, str]:
+    """The summary and body of LADO's message to the supervisor about the run."""
     summary = f"flow {run.name}: {what}"
     if len(summary) > state.SUMMARY_LIMIT:
         summary, body = summary[: state.SUMMARY_LIMIT - 1] + "…", f"{summary}\n{body}".strip()
-    runtime.post(run.session, LADO, SUPERVISOR, summary, body)
+    return summary, body
 
 
 def _acting_agent(run: state.Run, current: flows.State) -> str | None:
@@ -566,21 +619,29 @@ def _workers(run: state.Run) -> list[state.Agent]:
     return [a for a in state.list_agents(run.session) if a.run == run.name]
 
 
-def describe(run: state.Run) -> dict:
+def describe(run: state.Run, full: bool = False) -> dict:
+    """Where the run is and who acts; `full` adds the task, why it waits or was cancelled,
+    and its worktree and branch."""
     current = flow_of(run).states[run.state]
     gate = state.open_gate(run.session, run.name) if run.status == state.WAITING else None
-    return {
+    short = {
         "run": run.name,
         "flow": run.flow,
-        "task": run.task,
         "state": run.state,
         "status": run.status,
-        "reason": run.reason,
         "acting": acting(run),
         "outcomes": current.outcomes if run.status == state.ACTIVE else {},
         "gate": gate and {"id": gate.id, "question": gate.question, "options": gate.options},
         "visits": run.visits,
         "note": run.note,
+        "language": run.language,
+    }
+    if not full:
+        return short
+    return {
+        **short,
+        "task": run.task,
+        "reason": run.reason,
         "worktree": run.worktree,
         "branch": run.branch,
     }

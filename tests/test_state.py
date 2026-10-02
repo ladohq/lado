@@ -406,6 +406,27 @@ def test_version_7_database_gets_stopped_sessions(lado_home):
     assert state.get_session("s").stopped_at is None
 
 
+def test_version_8_database_gets_the_language_of_runs(lado_home):
+    db = _schema_v4(lado_home)
+    for version in (4, 5, 6, 7):
+        for statement in state.MIGRATIONS[version]:
+            db.execute(statement)
+    db.execute(
+        "INSERT INTO runs (session, name, flow, snapshot, kit, task, state, status, worktree,"
+        " branch) VALUES ('s', 'feature/x', 'feature', '{}', '{}', 'x', 'design', 'active',"
+        " '/w', 'b')"
+    )
+    db.execute("PRAGMA user_version = 8")
+    db.commit()
+    assert state.get_run("s", "feature/x").language == ""
+
+
+def test_a_run_keeps_the_language_of_the_human(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_run(_run(language="ru"), [("supervisor", state.FLOW_START, "started")])
+    assert state.get_run("s", "feature/x").language == "ru"
+
+
 def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(lado_home):
     state.add_session(state.Session("s", "/r", None))
     state.add_agent(_agent("supervisor", state.IDLE))

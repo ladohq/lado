@@ -63,15 +63,21 @@ def build(session: str, agent: str) -> MCPServer:
 
         Only the agent acting in the run's current step can advance it. `outcome` is one of
         the step's outcomes. `note_summary` (one line) and `note_body` go to the next step.
+        `notices` are what LADO tells you about the move you made (e.g. that the next step
+        needs a worker), instead of a message.
         """
         with _reasons():
-            advanced = runs.advance(session, agent, run, outcome, note_summary, note_body)
-            return runs.describe(advanced)
+            notices = []
+            advanced = runs.advance(
+                session, agent, run, outcome, note_summary, note_body, notices=notices
+            )
+            return {**runs.describe(advanced), "notices": notices}
 
     @server.tool()
     def flow_status(run: str | None = None) -> list[dict]:
         """Flow runs: state, status, who acts, allowed outcomes, visits per state. A worker
-        sees its own run; the supervisor every open run, or `run`."""
+        sees its own run; the supervisor every open run. With `run`, that one run with its
+        task, worktree and branch."""
         with _reasons():
             return runs.status(session, agent, run)
 
@@ -144,17 +150,25 @@ def build(session: str, agent: str) -> MCPServer:
             }
 
         @server.tool()
-        def flow_start(flow: str, task: str, name: str | None = None) -> dict:
+        def flow_start(
+            flow: str, task: str, name: str | None = None, human_language: str | None = None
+        ) -> dict:
             """Start a run of a flow from the kits on `task`. Flows are optional: use one
             when its description fits the task.
 
             The run is named <flow>/<name> (default: from the task's first words) and gets
             its own git worktree and branch from your current HEAD, shared by its workers.
             LADO then sends each step to the agent that acts in it, or asks you to
-            spawn_worker(role=..., run=...) when the step needs a worker.
+            spawn_worker(role=..., run=...) when the step needs a worker: `notices` says so
+            when the first step does.
+
+            `human_language` is the language the human writes in, e.g. "ru": every step is
+            told to write its notes in it, since the human reads them at gates.
             """
             with _reasons():
-                return runs.describe(runs.start(session, flow, task, name))
+                notices = []
+                started = runs.start(session, flow, task, name, notices, human_language)
+                return {**runs.describe(started), "notices": notices}
 
         @server.tool()
         def flow_cancel(run: str, reason: str) -> dict:

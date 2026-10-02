@@ -101,6 +101,23 @@ def test_a_supervisor_step_is_sent_to_the_supervisor(session):
     assert "ready -> implement" in step.body
 
 
+def test_every_step_asks_for_notes_in_the_humans_language(session):
+    runs.start(session, "feature", "Add a login page", name="login", language="ru")
+    runs.advance(session, "supervisor", "feature/login", "ready", "agreed")
+    runs.spawn_worker(session, "feature/login")  # w1, developer
+    asked = "Write note_summary and note_body in ru: the human reads them at gates."
+    assert asked in messages("supervisor")[0].body
+    assert asked in state.get_agent(session, "w1").task
+    runs.start(session, "feature", "Other", name="other")
+    assert "note_summary and note_body in" not in messages("supervisor")[-1].body
+
+
+def test_a_language_is_one_short_line(session):
+    with pytest.raises(runtime.LadoError, match="human_language is a language name or code"):
+        runs.start(session, "feature", "x", language="ru\nen")
+    assert state.list_runs(session) == []
+
+
 def test_a_task_longer_than_a_message_is_refused(session):
     with pytest.raises(runtime.LadoError, match="write the details to a file"):
         runs.start(session, "feature", "x" * (runtime.MAX_MESSAGE + 1))
@@ -129,6 +146,59 @@ def test_a_step_without_its_worker_asks_the_supervisor_for_one(session):
     assert runs.acting(run) == "developer (not spawned)"
     [transition] = [e for e in state.list_events(session) if e.kind == state.FLOW]
     assert (transition.agent, transition.detail) == ("supervisor", "design -ready-> implement")
+
+
+def test_the_supervisor_gets_what_its_own_advance_caused_as_notices(session):
+    runs.start(session, "feature", "Add a login page", name="login")
+    notices = []
+    runs.advance(session, "supervisor", "feature/login", "ready", "agreed", notices=notices)
+    assert notices == [
+        "flow feature/login: step implement needs a developer\n"
+        'Start one with spawn_worker(role="developer", run="feature/login"); it gets the '
+        "step as its task."
+    ]
+    assert [m.summary for m in messages("supervisor")] == ["flow feature/login: step design"]
+
+
+def test_the_supervisor_gets_what_its_own_start_caused_as_notices(session, team):
+    write(
+        team / "flows" / "quick.yaml",
+        "name: quick\ndescription: d\nstart: build\nstates:\n"
+        "  build: {agent: developer, do: Build it., outcomes: {done: end}}\n"
+        "  end: {end: true}\n",
+    )
+    notices = []
+    runs.start(session, "quick", "x", name="x", notices=notices)
+    assert notices[0].startswith("flow quick/x: step build needs a developer\n")
+    assert messages("supervisor") == []
+
+
+def test_what_a_worker_caused_still_goes_to_the_supervisor(session):
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")  # w1, developer
+    notices = []
+    runs.advance(session, "w1", "feature/login", "done", "built", notices=notices)
+    assert notices == []
+    assert messages("supervisor")[-1].summary == "flow feature/login: step review needs a reviewer"
+
+
+def test_a_worker_spawned_for_the_step_drops_the_pending_request_for_it(session):
+    def asks():
+        return [(m.summary, m.state) for m in messages("supervisor") if "needs a" in m.summary]
+
+    to_implement(session)
+    runs.start(session, "feature", "other", name="other")
+    runs.advance(session, "supervisor", "feature/other", "ready")  # needs a developer too
+    runs.spawn_worker(session, "feature/login")  # w1, developer
+    assert asks() == [
+        ("flow feature/login: step implement needs a developer", state.DROPPED),
+        ("flow feature/other: step implement needs a developer", state.PENDING),
+    ]
+    runs.advance(session, "w1", "feature/login", "done", "built")
+    assert asks()[-1] == ("flow feature/login: step review needs a reviewer", state.PENDING)
+    runs.spawn_worker(session, "feature/login")  # w2, reviewer
+    assert asks()[-1] == ("flow feature/login: step review needs a reviewer", state.DROPPED)
+    assert asks()[1][1] == state.PENDING
 
 
 def test_a_worker_for_a_run_works_in_its_worktree_and_gets_the_step(session, fake_tmux):
@@ -491,6 +561,16 @@ def test_end_finishes_the_workers_and_removes_a_merged_worktree(session, repo, f
     assert state.list_runs(session, open_only=True) == []
 
 
+def test_the_supervisor_that_ends_the_run_gets_the_end_as_a_notice(session, repo):
+    run = to_merge(session)
+    commit(run)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    notices = []
+    runs.advance(session, "supervisor", "feature/login", "merged", notices=notices)
+    assert notices == ["flow feature/login: ended at done; worktree and branch removed"]
+    assert messages("supervisor")[-1].summary == "flow feature/login: step merge"
+
+
 def test_a_worker_that_ends_the_run_is_closed_last(session, repo, team, fake_tmux):
     # Its own MCP server runs in its window: closing that window ends the call.
     write(
@@ -601,6 +681,7 @@ def test_the_supervisor_is_told_the_flows_and_a_run_worker_how_to_report(session
     prompt = supervisor[supervisor.index("--append-system-prompt") + 1]
     assert "  - feature: New feature, reviewed." in prompt
     assert "Flows are optional" in prompt and "flow_start" in prompt
+    assert "human_language: the language the human writes to you in" in prompt
     to_implement(session)
     runs.spawn_worker(session, "feature/login")
     worker = fake_tmux[-1][-1]

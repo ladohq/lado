@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -75,6 +75,9 @@ GATES_OPEN = (
 # When `lado stop` stopped the session; NULL while it runs. A stopped session keeps its
 # history and open runs until `lado start` resumes it or `lado forget` drops it.
 SESSIONS_STOPPED = "ALTER TABLE sessions ADD COLUMN stopped_at TEXT"
+# The language the human writes in, e.g. "ru": the run's notes are written in it. '' for
+# none given.
+RUNS_LANGUAGE = "ALTER TABLE runs ADD COLUMN language TEXT NOT NULL DEFAULT ''"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -112,7 +115,10 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 """
 SCHEMA += (
-    ";\n".join([EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS, GATES, GATES_OPEN, SESSIONS_STOPPED]) + ";\n"
+    ";\n".join(
+        [EVENTS, EVENTS_RUN, AGENTS_RUN, RUNS, GATES, GATES_OPEN, SESSIONS_STOPPED, RUNS_LANGUAGE]
+    )
+    + ";\n"
 )
 
 SUMMARY_LIMIT = 200  # characters in a message summary
@@ -137,6 +143,7 @@ MIGRATIONS = {
     5: [AGENTS_RUN, EVENTS_RUN, RUNS],
     6: [GATES, GATES_OPEN],
     7: [SESSIONS_STOPPED],
+    8: [RUNS_LANGUAGE],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -256,6 +263,7 @@ class Run:
     reason: str = ""  # why it waits for the human, or was cancelled
     note: str = ""  # the previous step's note, one line
     note_body: str = ""
+    language: str = ""  # the human's language, for the notes; "" for none given
     created_at: str = ""
 
 
@@ -505,8 +513,8 @@ def add_run(run: Run, events: list[tuple[str, str, str]], opens: Gate | None = N
         db.execute("BEGIN IMMEDIATE")
         db.execute(
             "INSERT INTO runs (session, name, flow, snapshot, kit, task, state, visits, status,"
-            " reason, note, note_body, worktree, branch) VALUES"
-            " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " reason, note, note_body, worktree, branch, language) VALUES"
+            " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run.session,
                 run.name,
@@ -522,6 +530,7 @@ def add_run(run: Run, events: list[tuple[str, str, str]], opens: Gate | None = N
                 run.note_body,
                 run.worktree,
                 run.branch,
+                run.language,
             ),
         )
         for actor, kind, detail in events:
@@ -772,6 +781,18 @@ def drop_undelivered(session: str, recipient: str) -> int:
         return cur.rowcount
 
 
+def drop_pending(session: str, sender: str, recipient: str, summary: str) -> int:
+    """Mark the pending messages with this sender, recipient and summary dropped: what they
+    ask for is done already. Returns how many."""
+    with connect() as db:
+        cur = db.execute(
+            "UPDATE messages SET state = ? WHERE session = ? AND sender = ? AND recipient = ?"
+            " AND summary = ? AND state = ?",
+            (DROPPED, session, sender, recipient, summary, PENDING),
+        )
+        return cur.rowcount
+
+
 def requeue_unconfirmed(session: str, recipient: str, older_than: float) -> int:
     """Put sent messages that were never confirmed back in the queue. Returns how many."""
     with connect() as db:
@@ -814,6 +835,7 @@ def _run(row: sqlite3.Row) -> Run:
         reason=row["reason"],
         note=row["note"],
         note_body=row["note_body"],
+        language=row["language"],
         created_at=row["created_at"],
     )
 

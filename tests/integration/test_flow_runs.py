@@ -73,9 +73,9 @@ def run_state(name: str) -> state.Run:
 def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     name = "ship/add-a-file"
     supervisor_runs("flow_start ship add a file")
-    wait_for(
-        lambda: got("supervisor", f"[from lado] flow {name}: step build needs a worker"), "ask"
-    )
+    # The supervisor caused it: it hears in the tool's result, not in a message.
+    [ask] = seen("supervisor")["flow_start"]["notices"]
+    assert ask.startswith(f"flow {name}: step build needs a worker\n")
     run = run_state(name)
     assert Path(run.worktree, ".git").exists()
 
@@ -100,13 +100,13 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
         for m in state.list_messages(SESSION)
         if (m.sender, m.recipient) == ("lado", "supervisor")
     ]
-    assert from_lado == [f"flow {name}: step build needs a worker", f"flow {name}: step merge"]
+    assert from_lado == [f"flow {name}: step merge"]
     wait_status("supervisor", state.IDLE)
 
     runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
-    runtime.send_message(SESSION, "human", "supervisor", f"advance {name} merged")
-    ended = f"[from lado] flow {name}: ended at end; worktree and branch removed"
-    wait_for(lambda: got("supervisor", ended), "the end")
+    supervisor_runs(f"advance {name} merged")
+    ended = f"flow {name}: ended at end; worktree and branch removed"
+    assert seen("supervisor")["advance"]["notices"] == [ended]
     assert run_state(name).status == state.ENDED
     assert state.get_agent(SESSION, "w1") is None
     wait_for(lambda: "w1" not in tmux.run("list-windows", "-t", f"={SESSION}"), "w1 closed")
@@ -122,9 +122,8 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
 def test_a_run_waits_at_a_gate_until_the_human_sets_it(repo, flow_kit):
     name = "gated/check-it"
     supervisor_runs("flow_start gated check it")
-    wait_for(
-        lambda: got("supervisor", f"flow {name}: waiting for the human at check (gate #1)"), "wait"
-    )
+    [waiting] = seen("supervisor")["flow_start"]["notices"]
+    assert waiting.startswith(f"flow {name}: waiting for the human at check (gate #1)\n")
     assert "gate #1 waiting: Go?" in lado_cli("ls").stdout
     result = lado_cli("flow-set", SESSION, name, "end", "--reason", "looks fine")
     assert result.returncode == 0, result.stderr
@@ -140,7 +139,6 @@ def test_a_run_waits_at_a_gate_until_the_human_sets_it(repo, flow_kit):
 def to_the_gate(name: str) -> None:
     """Start a run of "reviewed" whose worker reports its build done: the run waits."""
     supervisor_runs("flow_start reviewed check it")
-    wait_for(lambda: got("supervisor", f"flow {name}: step build needs a worker"), "ask")
     supervisor_runs(f"spawnrun {name}")
     wait_status("w1", state.IDLE)
     runtime.send_message(SESSION, "human", "w1", f"advance {name} done")
@@ -177,7 +175,6 @@ def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
     runtime.git(run.worktree, "add", "work.txt")
     runtime.git(run.worktree, "commit", "-q", "-m", "work before the stop")
     supervisor_runs("flow_start gated check it")
-    wait_for(lambda: got("supervisor", f"flow {gated}: waiting for the human"), "the gate")
     gate = state.open_gate(SESSION, gated)
 
     result = lado_cli("stop", SESSION)

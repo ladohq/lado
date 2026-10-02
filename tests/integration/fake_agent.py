@@ -19,7 +19,8 @@ A typed "switch <seconds>" is no input but a command of the CLI itself, like Cla
 /resume: the agent leaves its conversation, takes that long to pick another, and goes on in
 the same process; no prompt-submit and no turn-end hook run for it.
 Other lines are ignored. Each input is logged to the config's "inputs" file, and the output
-of `run` and the messages from `read` to its "seen" file. At start the agent writes what it
+of `run`, the messages from `read` and the results of `flow_start` and `advance` to its
+"seen" file. At start the agent writes what it
 was given (prompt, skills found in its skills folder, MCP servers) to "seen", as a real agent
 CLI would load them.
 """
@@ -85,7 +86,9 @@ def call_tool(name: str, arguments: dict):
 
     result = asyncio.run(call())
     print(f"{name}: {result.content}", flush=True)
-    return (result.structured_content or {}).get("result")
+    if result.structured_content is None:  # a dict comes as JSON text
+        return json.loads(result.content[0].text) if not result.is_error else None
+    return result.structured_content.get("result")
 
 
 def send(to: str, text: str) -> None:
@@ -135,11 +138,12 @@ def work(text: str) -> bool:
         elif command[0] == "finish":
             call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
         elif command[0] == "flow_start":
-            call_tool("flow_start", {"flow": command[1], "task": command[2]})
+            report(flow_start=call_tool("flow_start", {"flow": command[1], "task": command[2]}))
         elif command[0] == "spawnrun":
             call_tool("spawn_worker", {"run": command[1]})
         elif command[0] == "advance":
-            call_tool("flow_advance", {"run": command[1], "outcome": command[2]})
+            args = {"run": command[1], "outcome": command[2]}
+            report(advance=call_tool("flow_advance", args))
     time.sleep(0.05)  # think
     return False
 

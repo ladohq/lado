@@ -50,13 +50,18 @@ FLOW_INSTRUCTIONS = """\
 Flows are optional algorithms from the kits for one task: steps, who does each and the \
 allowed outcomes. Use one when its description fits the task:
 {flows}
-- flow_start(flow, task): start a run of a flow. It gets its own git worktree and branch \
-from your current HEAD, shared by all its workers. LADO then sends each step, as a message \
-from "lado", to the agent that acts in it: to you for supervisor steps, otherwise to the \
-run's worker with the step's role. When a step needs a worker the run does not have, LADO \
-asks you to start it with spawn_worker(role=..., run=...); it gets the step as its task.
+- flow_start(flow, task, human_language): start a run of a flow. It gets its own git \
+worktree and branch from your current HEAD, shared by all its workers. LADO then sends each \
+step, as a message from "lado", to the agent that acts in it: to you for supervisor steps, \
+otherwise to the run's worker with the step's role. When a step needs a worker the run does \
+not have, LADO asks you to start it with spawn_worker(role=..., run=...); it gets the step \
+as its task. What your own flow_start or flow_advance causes comes in the tool's result \
+(`notices`), not as a message.
+  Pass human_language: the language the human writes to you in (e.g. "ru"). Each step's \
+notes are written in it, because the human reads them at gates.
 - flow_advance(run, outcome, note_summary, note_body): report the outcome of your own step.
-- flow_status: the runs, their state, who acts and the allowed outcomes.
+- flow_status: the runs, their state, who acts and the allowed outcomes; flow_status(run) \
+also gives one run's task, worktree and branch.
 - flow_cancel(run, reason): stop a run; its worktree and branch are kept.
 When a run waits for the human (a gate or a loop limit), only the human can answer it, \
 with `lado answer` (LADO asks them in a popup); no tool of yours does. The run's next step \

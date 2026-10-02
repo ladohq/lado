@@ -139,6 +139,7 @@ def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux)
     runtime.start_session(str(repo), "s", None, kit_names=["k"])
     run = _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
     assert (run["run"], run["state"], run["acting"]) == ("ship/x", "build", "worker (not spawned)")
+    [run] = _call("s", "supervisor", "flow_status", {"run": "ship/x"})
     worker = _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
     assert (worker["run"], worker["worktree"]) == ("ship/x", run["worktree"])
     [agent] = [a for a in _call("s", "supervisor", "list_agents") if a["name"] == "w1"]
@@ -153,6 +154,37 @@ def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux)
     cancelled = _call("s", "supervisor", "flow_cancel", {"run": "ship/x", "reason": "stop"})
     assert cancelled["finished_workers"] == ["w1"]
     assert cancelled["kept"] == {"worktree": run["worktree"], "branch": run["branch"]}
+
+
+SHORT = {"run", "flow", "state", "status", "acting", "outcomes", "gate", "visits", "note"}
+
+
+def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, fake_tmux):
+    kit = repo / ".lado" / "kits" / "k"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: k\ninclude: [default]\n")
+    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    runtime.start_session(str(repo), "s", None, kit_names=["k"])
+    task = "Add x. " + "Details. " * 50
+    args = {"flow": "ship", "task": task, "name": "x", "human_language": "ru"}
+    run = _call("s", "supervisor", "flow_start", args)
+    assert set(run) == SHORT | {"language", "notices"}
+    assert run["language"] == "ru"
+    assert run["notices"] == [
+        "flow ship/x: step build needs a worker\n"
+        'Start one with spawn_worker(role="worker", run="ship/x"); it gets the step as its task.'
+    ]
+    assert state.get_run("s", "ship/x").language == "ru"
+    assert [m for m in state.list_messages("s") if m.recipient == "supervisor"] == []
+    _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
+    after = _call("s", "w1", "flow_advance", {"run": "ship/x", "outcome": "done"})
+    assert set(after) == SHORT | {"language", "notices"}
+    assert after["notices"] == []  # the worker's advance: the supervisor gets a message
+    [status] = _call("s", "w1", "flow_status")
+    assert set(status) == SHORT | {"language"}
+    [detail] = _call("s", "supervisor", "flow_status", {"run": "ship/x"})
+    assert detail["task"] == task.strip()
+    assert detail["worktree"] == state.get_run("s", "ship/x").worktree
 
 
 def test_no_agent_can_answer_a_gate(repo, fake_tmux):

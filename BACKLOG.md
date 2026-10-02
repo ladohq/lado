@@ -131,3 +131,21 @@ launch fails the session is stopped again, but with the new settings: after a fa
 `lado start --provider kilo`, a plain `lado start` takes kilo again and reports no change.
 Wanted: put the old settings back when the launch fails, or store them only after it started.
 Found: 2026-10-02, review of run fix/reliability-1.
+
+## Flows cannot work on another repository
+
+A run's worktree and branch are always made in the session's repo, so a change to another
+repo (e.g. the lado-kits kit repo while the session runs on LADO) cannot go through a flow:
+it is done by a worker outside a run, with no design gate, review step or merge gate.
+Wanted: `flow_start` can name the repo a run works on (a registered kit source or a path),
+and the run's worktree, `make check` and merge happen there.
+Found: 2026-10-02, task lado-dev architecture (kit changes in lado-kits).
+
+## A step sees only the previous step's note
+
+A step's text (`runs.step_text`) and a gate carry one note: the previous step's. So a role
+must copy what a later step needs forward by hand (lado-dev's architect copies the design
+into its review), and `lado flow-set` clears the note body (`runs.force`), so a run set to
+`implement` gives the developer no design at all. Wanted: a step can get the latest note of
+a named earlier state (e.g. `design`), so roles need not copy the design forward.
+Found: 2026-10-02, review of lado-dev 0.3.0.

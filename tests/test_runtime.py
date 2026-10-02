@@ -8,7 +8,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import hooks, kits, providers, runtime, state, tmux
+from lado import hooks, kits, providers, runs, runtime, state, tmux
 
 
 def test_slug():
@@ -447,6 +447,30 @@ def test_a_failed_resume_leaves_the_session_stopped(repo, fake_tmux, monkeypatch
     assert not (state.home() / "agents" / "s" / "supervisor").exists()
     assert runtime.start_session(str(repo), "s", None).resumed
     assert state.get_agent("s", "supervisor") is not None
+
+
+@pytest.mark.parametrize("failing", ["tmux", "runs"])
+def test_a_failed_resume_keeps_the_settings_it_had(repo, fake_tmux, monkeypatch, team_kit, failing):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        if failing == "tmux":
+            m.setattr(tmux, "new_session", _fail)
+        else:
+            m.setattr(runs, "resume", _fail)
+        with pytest.raises(tmux.TmuxError, match="command too long"):
+            runtime.start_session(str(repo), "s", "plan", "kilo", ["team"], ["skill:style"])
+    sess = state.get_session("s")
+    assert (sess.provider, sess.kits, sess.without, sess.permission_mode) == (
+        "claude",
+        ["default"],
+        [],
+        None,
+    )
+    assert sess.stopped_at
+    started = runtime.start_session(str(repo), "s", None, "kilo")
+    assert started.changes == ["provider: claude -> kilo"]
+    assert state.get_session("s").provider == "kilo"
 
 
 def test_resume_refuses_another_repo(repo, tmp_path, fake_tmux):

@@ -132,15 +132,6 @@ refuse unknown arguments, so a weak model that adds one gets an error and must c
 Next time it fails: keep the pytest output and `lado log` of the test's temporary session.
 Found: 2026-10-02, run fix/reliability-1.
 
-## A failed resume keeps the new settings
-
-`start_session` stores the settings given (`--provider`, `--kit`, `--without`,
-`--permission-mode`) with `state.resume_session` before it launches the supervisor. When the
-launch fails the session is stopped again, but with the new settings: after a failed
-`lado start --provider kilo`, a plain `lado start` takes kilo again and reports no change.
-Wanted: put the old settings back when the launch fails, or store them only after it started.
-Found: 2026-10-02, review of run fix/reliability-1.
-
 ## Flows cannot work on another repository
 
 A run's worktree and branch are always made in the session's repo, so a change to another

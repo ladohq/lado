@@ -398,19 +398,30 @@ def resume_session(session: Session, detail: str) -> None:
     says what changed."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        db.execute(
-            "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?,"
-            " stopped_at = NULL WHERE name = ?",
-            (
-                session.permission_mode,
-                session.provider,
-                json.dumps(session.kits),
-                json.dumps(session.without),
-                session.name,
-            ),
-        )
+        _set_settings(db, session)
+        db.execute("UPDATE sessions SET stopped_at = NULL WHERE name = ?", (session.name,))
         _add_event(db, session.name, LADO, SESSION_RESUME, detail)
         db.execute("COMMIT")
+
+
+def set_settings(session: Session) -> None:
+    """Store the settings of `session` (e.g. put back those a failed resume replaced)."""
+    with connect() as db:
+        _set_settings(db, session)
+
+
+def _set_settings(db: sqlite3.Connection, session: Session) -> None:
+    db.execute(
+        "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?"
+        " WHERE name = ?",
+        (
+            session.permission_mode,
+            session.provider,
+            json.dumps(session.kits),
+            json.dumps(session.without),
+            session.name,
+        ),
+    )
 
 
 def list_sessions() -> list[Session]:

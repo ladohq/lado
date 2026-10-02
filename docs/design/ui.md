@@ -82,7 +82,9 @@ later desktop app and a later cloud setup; the UI is its client.
   a release. Without a bundle the server and `lado ui` warn and name `make web`; the API
   works.
 - A server started in the background writes its output and request errors to
-  `LADO_HOME/server.log`.
+  `LADO_HOME/server.log` (owner only; no access log, which would hold the login link's
+  token). When it ends while `lado ui` waits for it, `lado ui` says so at once with its
+  exit code and last log line.
 
 ## Lessons from another orchestrator's UI
 

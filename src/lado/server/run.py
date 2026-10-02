@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from dataclasses import dataclass
 from typing import IO
 
 from lado import __version__, providers, state
@@ -70,8 +71,10 @@ def _held() -> bool:
 def running() -> dict | None:
     """The running server's server.json; None when no server runs (a file left by a dead
     one is removed) or it has not written the file yet."""
-    if not _held():
-        info_path().unlink(missing_ok=True)
+    lock = take_lock()
+    if lock is not None:
+        with lock:  # removed while held: a server starting now cannot have written it yet
+            info_path().unlink(missing_ok=True)
         return None
     try:
         return json.loads(info_path().read_text())
@@ -128,7 +131,9 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
             print(
                 f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr
             )
-        server = uvicorn.Server(uvicorn.Config(app.create_app(token, bound), log_level="info"))
+        # No access log: it would write the login link, token included, to server.log.
+        config = uvicorn.Config(app.create_app(token, bound), log_level="info", access_log=False)
+        server = uvicorn.Server(config)
         info = {"url": url, "port": bound, "pid": os.getpid(), "version": __version__}
         written = info_path().with_suffix(".tmp")
         written.write_text(json.dumps(info))
@@ -152,12 +157,23 @@ def _exit(signum, frame) -> None:
     raise SystemExit(0)
 
 
-def start_background(port: int | None) -> None:
+@dataclass
+class Started:
+    """A server `lado ui` started: its process and where its lines in server.log begin."""
+
+    process: subprocess.Popen
+    log_from: int
+
+
+def start_background(port: int | None) -> Started:
     """Start `lado server` as a process of its own that outlives the command starting it,
-    its output going to server.log."""
+    its output going to server.log (the owner's only, like the token)."""
     args = ["server"] + ([] if port is None else ["--port", str(port)])
-    with open(log_path(), "a") as log:
-        subprocess.Popen(
+    fd = os.open(log_path(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    os.fchmod(fd, 0o600)  # also a log an older LADO made
+    with os.fdopen(fd, "a") as log:
+        log_from = log.tell()
+        process = subprocess.Popen(
             providers.lado_command(*args),
             stdin=subprocess.DEVNULL,
             stdout=log,
@@ -165,6 +181,7 @@ def start_background(port: int | None) -> None:
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
             start_new_session=True,  # not ended with the terminal that started it
         )
+    return Started(process, log_from)
 
 
 def _healthy(url: str) -> bool:
@@ -174,15 +191,24 @@ def _healthy(url: str) -> bool:
     return False
 
 
-def wait_ready(timeout: float | None = None) -> dict:
+def wait_ready(started: Started | None = None, timeout: float | None = None) -> dict:
     """The server's server.json once it answers; LadoError naming server.log after
-    `timeout` seconds."""
+    `timeout` seconds, or at once when the server `started` ends before."""
     timeout = READY_TIMEOUT if timeout is None else timeout
     deadline = time.monotonic() + timeout
     while True:
         info = running()
         if info and _healthy(info["url"]):
             return info
+        code = started.process.poll() if started else None
+        if code is not None:
+            with open(log_path()) as log:
+                log.seek(started.log_from)
+                lines = log.read().strip().splitlines()
+            said = f": {lines[-1]}" if lines else ""
+            raise LadoError(
+                f"the LADO server ended as it started, exit code {code}{said}; see {log_path()}"
+            )
         if time.monotonic() > deadline:
             raise LadoError(f"the LADO server did not come up in {timeout:g}s; see {log_path()}")
         time.sleep(0.1)

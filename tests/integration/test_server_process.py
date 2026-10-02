@@ -2,9 +2,12 @@
 ended by `lado server stop`. No browser: that is tests/ui/."""
 
 import os
+import socket
+import stat
 import subprocess
 import sys
 import time
+import urllib.request
 
 import pytest
 
@@ -92,3 +95,27 @@ def test_a_second_server_refuses_and_names_the_first():
         lado_cli("server", "stop")
         first.wait(timeout=10)
     assert first.returncode == 0  # ended by SIGTERM, cleanly
+
+
+def test_server_log_is_the_owners_only_and_never_holds_the_token():
+    link = lado_cli("ui", "--no-open", "--port", "0").stdout.strip()
+    with urllib.request.urlopen(link, timeout=10) as answer:  # logs in, follows the redirect
+        assert answer.status == 200
+    lado_cli("server", "stop")
+    log = state.home() / "server.log"
+    assert auth.token() not in log.read_text()
+    assert stat.S_IMODE(log.stat().st_mode) == 0o600
+
+
+def test_ui_says_at_once_when_the_server_it_started_exits():
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        started = time.monotonic()
+        result = lado_cli("ui", "--no-open", "--port", str(port))
+        took = time.monotonic() - started
+    assert result.returncode == 1
+    assert f"port {port} is busy" in result.stderr  # the server's own error, from its log
+    assert str(state.home() / "server.log") in result.stderr
+    assert took < server_run.READY_TIMEOUT / 2

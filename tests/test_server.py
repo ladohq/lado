@@ -203,6 +203,22 @@ def test_server_json_counts_only_while_its_lock_is_held():
     lock.close()
 
 
+def test_a_stale_server_json_is_removed_under_the_lock(monkeypatch):
+    """Removed after letting the lock go, it could be the file of a server just started."""
+    held_while_removed = []
+    unlink = Path.unlink
+
+    def watched(path, *args, **kwargs):
+        if path == server_run.info_path():
+            held_while_removed.append(server_run._held())
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", watched)
+    write_info(8001)
+    assert server_run.running() is None
+    assert held_while_removed == [True]
+
+
 def test_stop_without_a_server_kills_nobody(capsys, monkeypatch):
     killed = []
     monkeypatch.setattr(os, "kill", lambda *a: killed.append(a))

@@ -469,8 +469,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
             "stop it with `lado server stop` to start it on another port"
         )
     if info is None:
-        server_run.start_background(args.port)
-        info = server_run.wait_ready()
+        info = server_run.wait_ready(server_run.start_background(args.port))
     if info["version"] != __version__:
         print(
             f"lado: warning: the running LADO server is version {info['version']}, this LADO is "

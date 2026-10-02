@@ -18,12 +18,18 @@ The Makefile wraps these (`make help` lists the targets):
 ```bash
 make lint               # ruff format --check + ruff check
 make fmt                # ruff format + ruff check --fix
-make test               # unit tests (uv run pytest)
-make test-integration   # uv run pytest -m integration: real tmux, git and processes, no LLM
+make test               # unit tests (uv run pytest -n auto)
+make test-integration   # uv run pytest -m integration -n auto: real tmux, git and processes, no LLM
 make test-js            # node --test: the Kilo plugin
-make check              # lint and all three test suites; run before a release
+make check              # lint, the Kilo plugin, unit and integration tests in one run; before a release
 make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=kilo|claude
 ```
+
+Unit and integration tests run in parallel, one pytest-xdist worker per CPU; each test has
+its own `LADO_HOME`, tmux server and repos, so tests must not share a fixed path, port or
+file. To debug serially, with output in order: `make test PYTEST_ARGS=-n0` (`PYTEST_ARGS`
+replaces `-n auto` and takes any pytest options, e.g. `PYTEST_ARGS="-n0 -k gate -x"`), or
+`uv run pytest` without `-n`. Live tests always run serially.
 
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
 instead of a real agent CLI. They use a temp `LADO_HOME` and their own tmux server
@@ -37,8 +43,8 @@ is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-
 repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
 folder for it.
 
-CI runs `ruff format --check`, `ruff check`, the unit and integration tests on Python 3.10 and
-3.13, and the Node tests.
+CI runs `ruff format --check`, `ruff check`, the unit and integration tests (in parallel) on
+Python 3.10 and 3.13, and the Node tests.
 Live tests are not in CI: run them locally.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the

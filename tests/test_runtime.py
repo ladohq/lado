@@ -242,9 +242,9 @@ def test_session_start_waits_until_the_lado_mcp_server_listed_its_tools(repo, fa
     _session_with_worker(repo)
     _mcp_ready("w1", instance="an-earlier-launch")
     started = time.monotonic()
-    threading.Timer(0.5, _mcp_ready, ["w1"]).start()
+    threading.Timer(0.2, _mcp_ready, ["w1"]).start()
     _hook("SessionStart", "w1", mcp_ready=False)
-    assert 0.5 <= time.monotonic() - started < hooks.MCP_READY_TIMEOUT
+    assert 0.2 <= time.monotonic() - started < hooks.MCP_READY_TIMEOUT
     assert state.get_agent("s", "w1").status == state.BUSY
 
 
@@ -252,10 +252,10 @@ def test_session_start_goes_on_without_the_lado_mcp_server_after_a_while(
     repo, fake_tmux, lado_home, monkeypatch
 ):
     _session_with_worker(repo)
-    monkeypatch.setattr(hooks, "MCP_READY_TIMEOUT", 0.3)
+    monkeypatch.setattr(hooks, "MCP_READY_TIMEOUT", 0.1)
     started = time.monotonic()
     _hook("SessionStart", "w1", mcp_ready=False)
-    assert time.monotonic() - started >= 0.3
+    assert time.monotonic() - started >= 0.1
     assert state.get_agent("s", "w1").status == state.BUSY
     assert "w1: LADO's MCP server listed no tools" in (lado_home / "hooks.log").read_text()
 
@@ -266,7 +266,8 @@ def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
     assert not kilo_cli.capabilities.hold_first_turn  # its session start is the plugin's init
     started = time.monotonic()
     hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
-    assert time.monotonic() - started < 0.5
+    # Far below the wait, but not tight: the tests run in parallel on a busy machine.
+    assert time.monotonic() - started < hooks.MCP_READY_TIMEOUT / 4
     assert state.get_agent("s", "w1").status == state.BUSY
 
 

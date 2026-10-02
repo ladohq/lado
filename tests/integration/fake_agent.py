@@ -23,13 +23,15 @@ Other lines are ignored. Each input is logged to the config's "inputs" file, and
 of `run`, the messages from `read` and the results of `flow_start` and `advance` to its
 "seen" file. At start the agent writes what it
 was given (prompt, skills found in its skills folder, MCP servers) to "seen", as a real agent
-CLI would load them, and lists the tools of its LADO MCP server while its session-start
-hook runs.
+CLI would load them, and starts its LADO MCP server and lists its tools while its
+session-start hook runs; like a real CLI, it keeps that one server for all its tool calls.
 """
 
 import asyncio
+import concurrent.futures
 import json
 import os
+import queue
 import re
 import signal
 import subprocess
@@ -55,8 +57,9 @@ def hook(event: str, prompt: str = "") -> str:
 def report(**seen) -> None:
     path = config["seen"]
     data = json.load(open(path)) if os.path.exists(path) else {}
-    with open(path, "w") as out:
+    with open(path + ".new", "w") as out:
         json.dump({**data, **seen}, out, indent=2)
+    os.replace(path + ".new", path)  # a test polling the file never reads half of it
 
 
 def load_skills() -> dict[str, str]:
@@ -80,25 +83,31 @@ def lado_server() -> StdioServerParameters:
     return StdioServerParameters(command=mcp["command"][0], args=mcp["command"][1:], env=mcp["env"])
 
 
-def list_tools() -> None:
-    """List the LADO MCP server's tools, as an agent CLI does at start."""
+tool_calls: queue.Queue = queue.Queue()  # (name, arguments, Future) for the MCP thread
 
-    async def listing():
+
+def mcp_connection() -> None:
+    """Start the LADO MCP server over stdio once and keep it, as an agent CLI does: list its
+    tools at start, then run each tool call from `tool_calls` on it."""
+
+    async def serve():
         async with Client(lado_server()) as client:
             await client.list_tools()
+            while True:
+                name, arguments, future = await asyncio.to_thread(tool_calls.get)
+                try:
+                    future.set_result(await client.call_tool(name, arguments))
+                except Exception as exc:
+                    future.set_exception(exc)
 
-    asyncio.run(listing())
+    asyncio.run(serve())
 
 
 def call_tool(name: str, arguments: dict):
-    """Call a tool of the LADO MCP server, started over stdio like an agent CLI does.
-    Returns its structured result."""
-
-    async def call():
-        async with Client(lado_server()) as client:
-            return await client.call_tool(name, arguments)
-
-    result = asyncio.run(call())
+    """Call a tool of the LADO MCP server. Returns its structured result."""
+    future = concurrent.futures.Future()
+    tool_calls.put((name, arguments, future))
+    result = future.result()
     print(f"{name}: {result.content}", flush=True)
     if result.structured_content is None:  # a dict comes as JSON text
         return json.loads(result.content[0].text) if not result.is_error else None
@@ -167,7 +176,7 @@ def main() -> None:
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
     report(prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"])
     # Like Claude Code: the MCP server connects while the session-start hook runs.
-    threading.Thread(target=list_tools, daemon=True).start()
+    threading.Thread(target=mcp_connection, daemon=True).start()
     hook("session_start")
     text = sys.argv[2] if len(sys.argv) > 2 else None  # the first message
     while True:

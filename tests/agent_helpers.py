@@ -1,6 +1,8 @@
 """Helpers for tests that run real agent processes: integration (fake agent) and live tests."""
 
+import atexit
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -10,15 +12,25 @@ import pytest
 
 from lado import state, tmux
 
+_template: Path | None = None  # the first repo made by this process, copied for the next ones
+
 
 def init_repo(path: Path) -> Path:
-    """A git repo with one empty commit on main, and a committer for agents that commit."""
-    path.mkdir(parents=True)
-    git = ["git", "-C", str(path)]
-    subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
-    subprocess.run([*git, "config", "user.name", "LADO test"], check=True)
-    subprocess.run([*git, "config", "user.email", "test@lado.invalid"], check=True)
-    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    """A git repo with one empty commit on main, and a committer for agents that commit.
+
+    Most tests need one; git runs only for the first, the others are copies of it."""
+    global _template
+    if _template is None:
+        _template = Path(tempfile.mkdtemp(prefix="lado-test-repo-"), "repo")
+        atexit.register(shutil.rmtree, _template.parent, ignore_errors=True)
+        _template.mkdir()
+        git = ["git", "-C", str(_template)]
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+        subprocess.run([*git, "config", "user.name", "LADO test"], check=True)
+        subprocess.run([*git, "config", "user.email", "test@lado.invalid"], check=True)
+        subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(_template, path, symlinks=True)
     return path
 
 
@@ -49,7 +61,13 @@ def refuse_unless_isolated() -> None:
         pytest.exit(f"agent tests need a test tmux socket, not {tmux.socket()}", returncode=2)
 
 
-def wait_for(check, what: str, session: str, timeout: float = 10, interval: float = 0.05):
+# How long to wait for an agent before failing. Generous: a wait ends as soon as its check is
+# true, and the tests run in parallel, often beside other agents' checks on a loaded machine,
+# where starting an agent (two Python processes that import the MCP library) can take seconds.
+TIMEOUT = 30
+
+
+def wait_for(check, what: str, session: str, timeout: float = TIMEOUT, interval: float = 0.05):
     """Poll `check` until it returns something true, and return that."""
     deadline = time.monotonic() + timeout
     while not (result := check()):

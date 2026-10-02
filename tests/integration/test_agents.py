@@ -16,7 +16,7 @@ pytestmark = pytest.mark.integration
 SESSION = "itest"
 
 
-def wait_for(check, what: str, timeout: float = 10):
+def wait_for(check, what: str, timeout: float = agent_helpers.TIMEOUT):
     return agent_helpers.wait_for(check, what, SESSION, timeout)
 
 
@@ -36,7 +36,8 @@ def inputs(agent: str) -> list[str]:
 
 def seen(agent: str) -> dict:
     """What the fake agent wrote to its "seen" file."""
-    return json.loads((state.home() / "agents" / SESSION / agent / "seen.json").read_text())
+    path = state.home() / "agents" / SESSION / agent / "seen.json"
+    return json.loads(path.read_text()) if path.exists() else {}
 
 
 def message_states(recipient: str) -> list[str]:
@@ -73,6 +74,16 @@ def test_first_turn_waits_until_the_lado_mcp_server_listed_its_tools(repo):
     )
 
 
+def test_an_agent_keeps_one_lado_mcp_server_for_its_launch(repo):
+    """Like a real CLI, the fake agent starts its MCP server once and calls every tool on it:
+    the server records mcp_ready once, however many tools the agent calls."""
+    start(repo)
+    runtime.spawn_worker(SESSION, "send supervisor one\nsend supervisor two\nread")
+    wait_for(lambda: "read" in seen("w1"), "w1's tool calls")
+    ready = [e for e in state.list_events(SESSION) if e.kind == state.MCP_READY]
+    assert [e.agent for e in ready] == ["supervisor", "w1"]
+
+
 def test_message_to_idle_agent_is_pasted_and_confirmed(repo):
     start(repo)
     assert runtime.send_message(SESSION, "human", "supervisor", "hello", "there\nagain") == "sent"
@@ -100,7 +111,7 @@ def test_message_to_busy_agent_arrives_when_its_turn_ends(repo, provider):
 def test_spawned_worker_reports_back_to_supervisor(repo):
     start(repo)
     runtime.send_message(SESSION, "human", "supervisor", "spawn send supervisor finished")
-    wait_for(lambda: "[from w1] finished" in inputs("supervisor"), "the report", timeout=20)
+    wait_for(lambda: "[from w1] finished" in inputs("supervisor"), "the report")
     worker = state.get_agent(SESSION, "w1")
     assert (worker.branch, worker.task) == ("lado/itest/w1", "send supervisor finished")
     assert Path(worker.cwd, ".git").exists()
@@ -115,7 +126,7 @@ def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     report = "send supervisor DONE: work.txt added | Status: DONE\\nFiles: work.txt\\nChecks: ok"
     runtime.spawn_worker(SESSION, report)
     line = "[from w1] DONE: work.txt added (#1, 3 lines: call read_messages)"
-    wait_for(lambda: line in inputs("supervisor"), "the report", timeout=20)
+    wait_for(lambda: line in inputs("supervisor"), "the report")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
     supervisor_runs("read")
@@ -206,7 +217,8 @@ def test_supervisor_finishes_a_merged_worker(repo):
     result = lado_cli("log", SESSION, "--agent", "w1")
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines()[-1].endswith(" w1: finished (merged)")
-    assert "w1" not in lado_cli("ls").stdout
+    agents = [line.split()[0] for line in lado_cli("ls").stdout.splitlines()[1:]]
+    assert agents == ["supervisor"]  # not the line with the repo: its path can hold "w1"
 
 
 def test_unmerged_worker_is_finished_only_with_discard(repo):

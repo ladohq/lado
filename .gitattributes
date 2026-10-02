@@ -1,0 +1,2 @@
+# Parallel branches append BACKLOG.md entries; keep both sides instead of a conflict.
+BACKLOG.md merge=union

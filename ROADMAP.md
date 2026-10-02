@@ -52,11 +52,13 @@ MCP servers and flows. Kits can be combined and parts switched on or off.
 ## Stage 5: Flows
 
 A flow is optional and comes with a kit: steps, who does them, allowed outcomes, human gates,
-required artifacts. LADO enforces the rules; how to do each step is up to the agent.
+and which earlier notes a step needs. LADO enforces the rules; how to do each step is up to the
+agent.
 
 - [x] Flow engine with steps, outcomes and human gates
 - [x] Gates answered by the human with `lado answer` or in a tmux popup
-- [ ] Artifacts stored per session, readable by agents and the human; flows can require them
+- [ ] A step gets the latest notes of the earlier states it names (`needs`), so roles do not
+  copy a design forward; `lado flow-set` keeps them
 
 ## Stage 6: Develop LADO inside LADO
 
@@ -71,6 +73,9 @@ The agents still run in tmux; the app is a window onto them.
 
 - [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates
 - [ ] Notifications when an agent waits for the human
+- [ ] Artifacts: named, versioned documents (design, plan, review) readable by agents and the
+  human and shown in the UI; flows can require them. Agents know an artifact by name only,
+  never by path, and storage sits behind one interface, so it can move to a separate service
 - [ ] Agent terminals in the UI (a web terminal attached to the agent's tmux window)
 - [ ] Desktop app that bundles the UI and the LADO runtime (macOS first)
 

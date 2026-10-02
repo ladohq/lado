@@ -47,12 +47,15 @@ def check_provider(provider: providers.Provider, which: Callable[[str], str | No
             check.ok, check.warning = True, True
             check.hint += f" (needed only for --provider {provider.name})"
         return check
-    version = re.search(r"\d+\.\d+\.\d+", check.detail)
+    found = re.search(r"\d+\.\d+\.\d+", check.detail)
+    version = found[0] if found else ""
     tested = provider.tested_version
-    if tested and not (version and version[0].startswith(tested + ".")):
+    if tested and not (version == tested or version.startswith(tested + ".")):
+        # A prefix ("7.8") stands for its versions; a full version only for itself.
+        shown = tested if tested.count(".") == 2 else f"{tested}.x"
         check.warning = True
         check.hint = (
-            f"LADO is tested with {provider.title} {tested}.x; with other versions "
+            f"LADO is tested with {provider.title} {shown}; with other versions "
             "agent status and message delivery may break"
         )
     return check

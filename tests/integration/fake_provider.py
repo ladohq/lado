@@ -42,6 +42,7 @@ class FakeProvider(base.Provider):
             permission_event=False,
             deliver_on_turn_end=deliver_on_turn_end,
             skills=True,
+            hold_first_turn=True,
         )
 
     def launch_command(

@@ -7,10 +7,33 @@ logged, not raised.
 """
 
 import sys
+import time
 import traceback
 
 from lado import providers, runtime, state
 from lado.runtime import CONFIRM_TIMEOUT, format_message, format_messages
+
+# How long a session-start hook holds the agent's first turn for LADO's MCP server.
+MCP_READY_TIMEOUT = 20.0
+
+
+def _wait_for_mcp(session: str, agent: state.Agent) -> None:
+    """Return when the agent's CLI has listed the tools of this launch's LADO MCP server
+    (lado.mcp_server records it), or after MCP_READY_TIMEOUT."""
+    deadline = time.monotonic() + MCP_READY_TIMEOUT
+    while not state.has_event(session, agent.name, state.MCP_READY, agent.instance):
+        if time.monotonic() >= deadline:
+            _log(
+                f"{session}/{agent.name}: LADO's MCP server listed no tools within "
+                f"{MCP_READY_TIMEOUT}s; the first turn starts without them"
+            )
+            return
+        time.sleep(0.1)
+
+
+def _log(text: str) -> None:
+    with open(state.home() / "hooks.log", "a") as log:
+        log.write(f"{text}\n")
 
 
 def handle(
@@ -19,6 +42,12 @@ def handle(
     """Update the agent's status for `event`. Returns the hook output to print, if any."""
     if event.kind == providers.SESSION_START:
         current = state.get_agent(session, agent)
+        # Claude Code starts the first turn when its session-start hooks are done, whether
+        # its MCP servers are connected or not, and defers the tools of a server that
+        # connects later behind its tool search, alwaysLoad or not. A weak model then may
+        # not find flow_advance or send_message. So the hook waits for LADO's server.
+        if current and provider.capabilities.hold_first_turn:
+            _wait_for_mcp(session, current)
         if current and current.status == state.STARTING:
             state.set_status(session, agent, state.BUSY if current.task else state.IDLE)
     elif event.kind == providers.PROMPT_SUBMIT:
@@ -64,6 +93,5 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
         if output:
             print(output)
     except Exception:
-        with open(state.home() / "hooks.log", "a") as log:
-            log.write(f"{event} {session}/{agent}\n{traceback.format_exc()}\n")
+        _log(f"{event} {session}/{agent}\n{traceback.format_exc()}")
     return 0

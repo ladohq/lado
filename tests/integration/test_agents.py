@@ -60,6 +60,19 @@ def test_supervisor_starts_and_becomes_idle(repo):
     assert tmux.has_session(SESSION)
 
 
+def test_first_turn_waits_until_the_lado_mcp_server_listed_its_tools(repo):
+    """The fake agent lists its LADO MCP server's tools while its session-start hook runs,
+    like Claude Code; the hook returns only after the server has recorded it."""
+    start(repo)
+    worker = runtime.spawn_worker(SESSION, "sleep 0")
+    wait_status("w1", state.IDLE)
+    events = [(e.kind, e.detail) for e in state.list_events(SESSION) if e.agent == "w1"]
+    assert (state.MCP_READY, worker.instance) in events
+    assert events.index((state.MCP_READY, worker.instance)) < events.index(
+        (state.STATUS, state.BUSY)
+    )
+
+
 def test_message_to_idle_agent_is_pasted_and_confirmed(repo):
     start(repo)
     assert runtime.send_message(SESSION, "human", "supervisor", "hello", "there\nagain") == "sent"

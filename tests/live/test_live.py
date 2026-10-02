@@ -4,9 +4,11 @@ reports the outcome, which ends the run."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import agent_helpers
 import pytest
@@ -209,6 +211,48 @@ def check_agent_config(provider: str, repo, worker: state.Agent) -> None:
         assert not {"SendMessage", "ListAgents"} & set(tools), tools
 
 
+LADO_TOOLS = {"mcp__lado__flow_advance", "mcp__lado__send_message", "mcp__lado__read_messages"}
+
+
+def claude_transcripts(cwd: str, since: float) -> list[list[dict]]:
+    """The Claude Code transcripts (one per conversation) of an agent in `cwd`, written
+    since `since` (a time.time()). Claude Code keeps them in its config folder under
+    projects/<the real path of cwd, each character other than a letter or digit a "-">."""
+    config = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    folder = config / "projects" / re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(cwd))
+    files = [f for f in folder.glob("*.jsonl") if f.stat().st_mtime >= since]
+    return [[json.loads(line) for line in f.read_text().splitlines() if line] for f in files]
+
+
+def check_lado_tools_loaded(provider: str, cwd: str, since: float) -> None:
+    """Claude Code: the tools sent with w1's first turn include LADO's, and none of them is
+    deferred behind ToolSearch, which happens to the tools of an MCP server that connects
+    after the first turn has started (see providers/claude.py). The CLI's init event can
+    not tell: it lists deferred tools too."""
+    if provider != "claude":
+        return
+
+    def first_tools() -> list[str] | None:
+        for transcript in claude_transcripts(cwd, since):
+            for entry in transcript:
+                attachment = entry.get("attachment") or {}
+                if attachment.get("type") == "prompt_snapshot" and "tools" in attachment:
+                    return [t["name"] for t in attachment["tools"]]
+        return None
+
+    tools = wait_for(first_tools, "w1's first turn in its transcript", 120)
+    deferred = {
+        name
+        for transcript in claude_transcripts(cwd, since)
+        for entry in transcript
+        if (entry.get("attachment") or {}).get("type") == "deferred_tools_delta"
+        for name in entry["attachment"].get("addedNames", [])
+        if name.startswith("mcp__lado__")
+    }
+    assert not deferred, f"LADO's tools deferred: {sorted(deferred)}"
+    assert LADO_TOOLS <= set(tools), f"LADO's tools not loaded; the first turn had: {tools}"
+
+
 def cli_version(provider: str) -> str:
     command = providers.get(provider).command
     return subprocess.run([command, "--version"], capture_output=True, text=True).stdout
@@ -216,12 +260,13 @@ def cli_version(provider: str) -> str:
 
 def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider):
     repo = live_repo
-    started = time.monotonic()
+    started, since = time.monotonic(), time.time()
     version = cli_version(live_provider)
     start_session(repo, live_provider)
 
     worker = runtime.spawn_worker(SESSION, TASK, name="w1")
     wait_for(lambda: status("w1") == state.BUSY, "w1 to be busy", 60)
+    check_lado_tools_loaded(live_provider, worker.cwd, since)
     wait_for(lambda: messages("w1", "supervisor"), "w1's report", 240)
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 60)
     wait_for(
@@ -355,13 +400,14 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
     the branch and the worker and tells the supervisor; finishing the worker after the
     merge removes them."""
     repo = live_repo
-    started = time.monotonic()
+    started, since = time.monotonic(), time.time()
     start_session(repo, live_provider)
 
     run = runs.start(SESSION, "tiny", "Add flow.txt for the live test.")
     worker = runs.spawn_worker(SESSION, run.name, name="w1")
     assert worker.task.startswith(f"Run {run.name} (flow tiny), step step.")
     assert worker.cwd == run.worktree
+    check_lado_tools_loaded(live_provider, worker.cwd, since)
 
     ended = wait_for(
         lambda: (r := state.get_run(SESSION, run.name)).status == state.ENDED and r,

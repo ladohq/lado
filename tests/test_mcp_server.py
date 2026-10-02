@@ -36,6 +36,14 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     ]
 
 
+def test_listing_the_tools_records_that_the_server_is_ready(repo, fake_tmux):
+    """The agent's session-start hook waits for this (lado.hooks)."""
+    runtime.start_session(str(repo), "s", None)
+    asyncio.run(mcp_server.build("s", "supervisor", instance="abc").list_tools())
+    ready = [(e.agent, e.detail) for e in state.list_events("s") if e.kind == state.MCP_READY]
+    assert ready == [("supervisor", "abc")]
+
+
 def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")

@@ -27,6 +27,9 @@ class Capabilities:
     permission_event: bool  # a hook reports that the agent waits for the human
     deliver_on_turn_end: bool  # the turn-end hook can hand the agent its queued messages
     skills: bool  # the agent loads SKILL.md folders that LADO places for it
+    # The session-start hook can hold the first turn until the CLI has listed LADO's MCP
+    # tools (lado.hooks waits for it); False where that hook would hold the MCP server too.
+    hold_first_turn: bool = False
 
 
 @dataclass(frozen=True)
@@ -66,7 +69,8 @@ class Provider(ABC):
     title: str  # for humans, e.g. "Claude Code"
     command: str  # the CLI executable
     install_hint: str  # shown by `lado doctor` when the command is missing
-    tested_version: str = ""  # version prefix LADO is tested with, e.g. "7.8"; "" for any
+    # The version LADO is tested with, e.g. "2.1.287", or a prefix, e.g. "7.8"; "" for any.
+    tested_version: str = ""
     capabilities: Capabilities
 
     @abstractmethod
@@ -138,8 +142,9 @@ def hook_command(agent: state.Agent, event: str) -> str:
 
 
 def mcp_server(agent: state.Agent) -> McpServer:
-    """The LADO MCP server of the agent."""
-    return McpServer(lado_command("mcp"), agent_env(agent))
+    """The LADO MCP server of the agent. It records which launch it serves when the CLI
+    lists its tools (lado.hooks waits for that)."""
+    return McpServer(lado_command("mcp"), {**agent_env(agent), "LADO_INSTANCE": agent.instance})
 
 
 def link_skills(target: Path, skills: dict[str, Path]) -> Path:

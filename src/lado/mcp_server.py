@@ -25,8 +25,28 @@ def _reasons() -> Iterator[None]:
         raise ToolError(str(exc)) from exc
 
 
-def build(session: str, agent: str) -> MCPServer:
-    server = MCPServer("lado", instructions=f'You are agent "{agent}" in LADO session "{session}".')
+class _Server(MCPServer):
+    """Records once that the agent's CLI listed the tools: the agent's session-start hook
+    waits for it, so that its first turn has them (lado.hooks)."""
+
+    def __init__(self, session: str, agent: str, instance: str):
+        super().__init__(
+            "lado", instructions=f'You are agent "{agent}" in LADO session "{session}".'
+        )
+        self._lado_agent = (session, agent)
+        self._lado_instance = instance  # "" when started without one: nothing to record
+
+    async def list_tools(self):
+        tools = await super().list_tools()
+        if self._lado_instance:
+            session, agent = self._lado_agent
+            state.add_event(session, agent, state.MCP_READY, self._lado_instance)
+            self._lado_instance = ""
+        return tools
+
+
+def build(session: str, agent: str, instance: str = "") -> MCPServer:
+    server = _Server(session, agent, instance)
 
     @server.tool()
     def list_agents() -> list[dict]:
@@ -215,5 +235,5 @@ def main() -> int:
     session, agent = os.environ.get("LADO_SESSION"), os.environ.get("LADO_AGENT")
     if not session or not agent:
         raise SystemExit("lado mcp is started by LADO agents; LADO_SESSION/LADO_AGENT not set")
-    build(session, agent).run("stdio")
+    build(session, agent, os.environ.get("LADO_INSTANCE", "")).run("stdio")
     return 0

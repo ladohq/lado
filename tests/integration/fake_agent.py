@@ -23,7 +23,8 @@ Other lines are ignored. Each input is logged to the config's "inputs" file, and
 of `run`, the messages from `read` and the results of `flow_start` and `advance` to its
 "seen" file. At start the agent writes what it
 was given (prompt, skills found in its skills folder, MCP servers) to "seen", as a real agent
-CLI would load them.
+CLI would load them, and lists the tools of its LADO MCP server while its session-start
+hook runs.
 """
 
 import asyncio
@@ -33,6 +34,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 import traceback
 
@@ -73,16 +75,27 @@ def run_skill_file(skill: str, file: str) -> None:
     report(run={"file": f"{skill}/{file}", "output": result.stdout.strip()})
 
 
+def lado_server() -> StdioServerParameters:
+    mcp = config["mcp"]["lado"]
+    return StdioServerParameters(command=mcp["command"][0], args=mcp["command"][1:], env=mcp["env"])
+
+
+def list_tools() -> None:
+    """List the LADO MCP server's tools, as an agent CLI does at start."""
+
+    async def listing():
+        async with Client(lado_server()) as client:
+            await client.list_tools()
+
+    asyncio.run(listing())
+
+
 def call_tool(name: str, arguments: dict):
     """Call a tool of the LADO MCP server, started over stdio like an agent CLI does.
     Returns its structured result."""
-    mcp = config["mcp"]["lado"]
-    server = StdioServerParameters(
-        command=mcp["command"][0], args=mcp["command"][1:], env=mcp["env"]
-    )
 
     async def call():
-        async with Client(server) as client:
+        async with Client(lado_server()) as client:
             return await client.call_tool(name, arguments)
 
     result = asyncio.run(call())
@@ -153,6 +166,8 @@ def main() -> None:
     signal.signal(signal.SIGHUP, lambda *_: os._exit(0))  # its tmux session was killed
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
     report(prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"])
+    # Like Claude Code: the MCP server connects while the session-start hook runs.
+    threading.Thread(target=list_tools, daemon=True).start()
     hook("session_start")
     text = sys.argv[2] if len(sys.argv) > 2 else None  # the first message
     while True:

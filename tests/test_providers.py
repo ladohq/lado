@@ -77,7 +77,9 @@ def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tm
 
 def _kilo_launch(repo, permission_mode=None, first_message=None):
     sess = state.Session("s", str(repo), permission_mode, "kilo")
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo", instance="i1"
+    )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     launch = providers.get("kilo").launch_command(agent, sess, spec, first_message)
     config = json.loads(open(launch.env["KILO_CONFIG"]).read())
@@ -98,6 +100,7 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
         "LADO_SESSION": "s",
         "LADO_AGENT": "w1",
         "LADO_TMUX_SOCKET": tmux.socket(),
+        "LADO_INSTANCE": "i1",
     }
     [[plugin, options]] = config["plugin"]
     assert plugin == kilo.PLUGIN.as_uri()
@@ -219,6 +222,9 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
     assert mcp["lado"]["args"][-1] == "mcp"
     # LADO's tools are in the prompt from the start, not deferred behind tool search.
     assert mcp["lado"]["alwaysLoad"] is True
+    # The server says which launch it serves; the session-start hook waits for it.
+    assert mcp["lado"]["env"]["LADO_INSTANCE"] == agent.instance
+    assert claude.capabilities.hold_first_turn
     added = Path(cmd[cmd.index("--add-dir") + 1])
     link = added / ".claude" / "skills" / "notes"
     assert link.is_symlink() and link.resolve() == skill_dir.resolve()

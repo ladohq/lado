@@ -169,6 +169,7 @@ UNRECEIVED_ARGS = (PENDING, SENT, DELIVERED)
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
 STATUS = "status"  # detail: the new status
 FINISHED = "finished"  # a worker was ended; detail: "merged" or "discarded"
+MCP_READY = "mcp_ready"  # the agent's CLI listed LADO's MCP tools; detail: the launch (instance)
 # Flow run events (lado.runs); their run column names the run.
 FLOW_START = "flow_start"
 FLOW = "flow"  # a transition; detail: "<from> -<outcome>-> <to>"
@@ -493,6 +494,15 @@ def _add_event(
         "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
         (session, agent, kind, detail, run),
     )
+
+
+def has_event(session: str, agent: str, kind: str, detail: str) -> bool:
+    with connect() as db:
+        row = db.execute(
+            "SELECT 1 FROM events WHERE session = ? AND agent = ? AND kind = ? AND detail = ?",
+            (session, agent, kind, detail),
+        ).fetchone()
+    return row is not None
 
 
 def list_events(session: str, after: int = 0) -> list[Event]:

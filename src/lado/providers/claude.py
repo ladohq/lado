@@ -6,6 +6,16 @@ import shutil
 from lado import state
 from lado.providers import base
 
+# `lado doctor` warns when the installed Claude Code is not this version. Checked with it
+# (and 2.1.286) by hand: a server with alwaysLoad in --mcp-config has its tools loaded up
+# front when it is connected before the first turn; one that connects later has its tools
+# deferred behind ToolSearch all the same. The interactive first turn does not wait for
+# MCP servers (CLAUDE_CODE_MCP_STARTUP_WAIT_MS, MCP_CONNECTION_NONBLOCKING=false and
+# CLAUDE_CODE_MCP_PREWAIT_SERVERS change nothing there), but it does wait for the
+# SessionStart hooks. So LADO's SessionStart hook waits for LADO's MCP server
+# (hold_first_turn, lado.hooks). The live test checks this in w1's transcript.
+TESTED_VERSION = "2.1.287"
+
 # Claude Code hook events and the neutral events they stand for. Notification is mapped
 # in parse_event: only permission prompts mean the agent waits for the human.
 EVENTS = {
@@ -32,8 +42,13 @@ class ClaudeProvider(base.Provider):
     title = "Claude Code"
     command = "claude"
     install_hint = "install it: https://docs.anthropic.com/en/docs/claude-code"
+    tested_version = TESTED_VERSION
     capabilities = base.Capabilities(
-        status_events=True, permission_event=True, deliver_on_turn_end=True, skills=True
+        status_events=True,
+        permission_event=True,
+        deliver_on_turn_end=True,
+        skills=True,
+        hold_first_turn=True,
     )
 
     def launch_command(
@@ -51,7 +66,8 @@ class ClaudeProvider(base.Provider):
             for name, s in spec.mcp.items()
         }
         # Claude Code defers MCP tools behind its ToolSearch tool; a weak model then may not
-        # find send_message and never report. alwaysLoad puts LADO's tools in the prompt.
+        # find send_message and never report. alwaysLoad puts LADO's tools in the prompt,
+        # if the server is connected before the first turn (see TESTED_VERSION).
         if "lado" in servers:
             servers["lado"]["alwaysLoad"] = True
         mcp_config.write_text(json.dumps({"mcpServers": servers}, indent=2))

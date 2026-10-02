@@ -1,11 +1,16 @@
 import pytest
 
 from lado import doctor
-from lado.providers import kilo
+from lado.providers import claude, kilo
 
 
-def _versions(monkeypatch, kilo_version=f"{kilo.TESTED_VERSION}.1", tmux_version="tmux 3.7c"):
-    versions = {"kilo": kilo_version, "claude": "2.1.0 (Claude Code)", "tmux": tmux_version}
+def _versions(
+    monkeypatch,
+    kilo_version=f"{kilo.TESTED_VERSION}.1",
+    claude_version=f"{claude.TESTED_VERSION} (Claude Code)",
+    tmux_version="tmux 3.7c",
+):
+    versions = {"kilo": kilo_version, "claude": claude_version, "tmux": tmux_version}
     monkeypatch.setattr(doctor, "_tool_version", lambda path, flag: versions.get(path, "v1"))
 
 
@@ -47,6 +52,15 @@ def test_untested_kilo_version_warns_but_passes(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "[warn] Kilo CLI: 9.0.0" in out
     assert f"{kilo.TESTED_VERSION}.x" in out
+
+
+@pytest.mark.parametrize("version", ["2.1.286", "2.1.288", "2.2.0", "2.1.2870"])
+def test_claude_code_other_than_the_tested_version_warns(monkeypatch, version):
+    """Whether LADO's tools load up front was checked on one Claude Code version only."""
+    _versions(monkeypatch, claude_version=f"{version} (Claude Code)")
+    check = next(c for c in doctor.run_checks(which=lambda cmd: cmd) if c.name == "Claude Code")
+    assert check.ok and check.warning
+    assert f"LADO is tested with Claude Code {claude.TESTED_VERSION};" in check.hint
 
 
 def test_missing_tool_fails_with_hint():

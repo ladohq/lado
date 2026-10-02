@@ -1,6 +1,8 @@
 import json
 import re
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import agent_helpers
@@ -90,8 +92,17 @@ def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
     assert "lado log" in supervisor
 
 
-def _hook(event, agent, payload=None):
-    """Run a Claude Code hook of agent `agent` in session "s"; returns its decoded output."""
+def _mcp_ready(agent, instance=None):
+    """What the agent's LADO MCP server records when Claude Code has listed its tools."""
+    instance = instance or state.get_agent("s", agent).instance
+    state.add_event("s", agent, state.MCP_READY, instance)
+
+
+def _hook(event, agent, payload=None, mcp_ready=True):
+    """Run a Claude Code hook of agent `agent` in session "s"; returns its decoded output.
+    Before SessionStart its LADO MCP server is ready unless `mcp_ready` is false."""
+    if event == "SessionStart" and mcp_ready:
+        _mcp_ready(agent)
     claude = providers.get("claude")
     neutral = claude.parse_event(event, json.dumps(payload or {}))
     output = hooks.handle(claude, neutral, "s", agent) if neutral else None
@@ -223,6 +234,40 @@ def test_status_hooks(repo, fake_tmux):
     assert state.get_agent("s", "w1").status == state.WAITING
     _hook("SessionEnd", "w1")
     assert state.get_agent("s", "w1").status == state.STOPPED
+
+
+def test_session_start_waits_until_the_lado_mcp_server_listed_its_tools(repo, fake_tmux):
+    """Claude Code starts the first turn after its SessionStart hooks, but not after its MCP
+    servers: tools listed later are deferred behind tool search."""
+    _session_with_worker(repo)
+    _mcp_ready("w1", instance="an-earlier-launch")
+    started = time.monotonic()
+    threading.Timer(0.5, _mcp_ready, ["w1"]).start()
+    _hook("SessionStart", "w1", mcp_ready=False)
+    assert 0.5 <= time.monotonic() - started < hooks.MCP_READY_TIMEOUT
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_session_start_goes_on_without_the_lado_mcp_server_after_a_while(
+    repo, fake_tmux, lado_home, monkeypatch
+):
+    _session_with_worker(repo)
+    monkeypatch.setattr(hooks, "MCP_READY_TIMEOUT", 0.3)
+    started = time.monotonic()
+    _hook("SessionStart", "w1", mcp_ready=False)
+    assert time.monotonic() - started >= 0.3
+    assert state.get_agent("s", "w1").status == state.BUSY
+    assert "w1: LADO's MCP server listed no tools" in (lado_home / "hooks.log").read_text()
+
+
+def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
+    _session_with_worker(repo)
+    kilo_cli = providers.get("kilo")
+    assert not kilo_cli.capabilities.hold_first_turn  # its session start is the plugin's init
+    started = time.monotonic()
+    hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
+    assert time.monotonic() - started < 0.5
+    assert state.get_agent("s", "w1").status == state.BUSY
 
 
 @pytest.mark.parametrize("command", ["clear", "resume"])

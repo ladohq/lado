@@ -376,6 +376,57 @@ def test_start_resumes_a_session_whose_tmux_server_is_gone(repo, fake_tmux):
     assert state.SESSION_STOP in [e.kind for e in state.list_events("s")]
 
 
+def _fail(*args, **kwargs):
+    raise tmux.TmuxError("command too long")
+
+
+@pytest.mark.parametrize("failing", ["tmux", "provider"])
+def test_a_failed_spawn_leaves_no_ghost_worker(repo, fake_tmux, monkeypatch, failing):
+    runtime.start_session(str(repo), "s", None)
+    monkeypatch.setattr(runtime, "FIRST_INPUT_LIMIT", 10)  # the task comes as a message
+    with monkeypatch.context() as m:
+        if failing == "tmux":
+            m.setattr(tmux, "new_window", _fail)
+        else:
+            m.setattr(providers.get("claude"), "launch_command", _fail)
+        with pytest.raises(tmux.TmuxError, match="command too long"):
+            runtime.spawn_worker("s", "a task that is long")
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert [m.state for m in state.list_messages("s")] == [state.DROPPED]
+    assert not (state.home() / "agents" / "s" / "w1").exists()
+    assert runtime.session_worktrees(str(repo), "s") == {}
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
+    last = state.list_events("s")[-1]
+    assert (last.agent, last.kind) == ("w1", state.FINISHED)
+    assert last.detail.startswith("not started: command too long")
+    assert runtime.spawn_worker("s", "a task that is long").name == "w1"
+
+
+def test_a_failed_start_leaves_no_session(repo, fake_tmux, monkeypatch):
+    monkeypatch.setattr(tmux, "new_session", _fail)
+    with pytest.raises(tmux.TmuxError, match="command too long"):
+        runtime.start_session(str(repo), "s", None)
+    assert state.get_session("s") is None
+    assert not (state.home() / "agents" / "s" / "supervisor").exists()
+
+
+def test_a_failed_resume_leaves_the_session_stopped(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_session", _fail)
+        with pytest.raises(tmux.TmuxError, match="command too long"):
+            runtime.start_session(str(repo), "s", None)
+    assert state.get_session("s").stopped_at
+    assert state.list_agents("s") == []
+    # LADO's first messages never reached a supervisor.
+    [resumed] = state.list_messages("s")
+    assert (resumed.summary, resumed.state) == ("session resumed: 0 open runs", state.DROPPED)
+    assert not (state.home() / "agents" / "s" / "supervisor").exists()
+    assert runtime.start_session(str(repo), "s", None).resumed
+    assert state.get_agent("s", "supervisor") is not None
+
+
 def test_resume_refuses_another_repo(repo, tmp_path, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.stop_session("s")

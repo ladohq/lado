@@ -4,6 +4,7 @@ Each agent's provider (lado.providers) gives it its own MCP config (so the LADO 
 knows who is calling) and hooks (so LADO learns when the agent is busy, idle or waiting).
 """
 
+import contextlib
 import re
 import subprocess
 import unicodedata
@@ -186,7 +187,8 @@ def start_session(
         started.problems = runs.resume(sess, env)
         # LADO's messages about the open runs are its first input, so they cannot be lost
         # while it starts.
-        agent.task = format_messages(state.take_pending(session, SUPERVISOR, state.DELIVERED))
+        taken = state.take_pending(session, SUPERVISOR, state.DELIVERED)
+        agent.task = format_messages(taken)
     else:
         state.add_session(sess)
     _add_agent(agent)
@@ -194,8 +196,12 @@ def start_session(
         first = _first_input(agent, agent.task, "your first messages")
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
         tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
-    except tmux.TmuxError:
+    except Exception:
+        providers.base.remove_config_dir(agent)
         if old:
+            # Stopped again: the supervisor never got LADO's messages; the next resume
+            # writes them anew.
+            state.drop_messages(session, [m.id for m in taken])
             state.stop_session(session)
         else:
             state.delete_session(session)
@@ -270,12 +276,24 @@ def spawn_worker(
         exclude_worktrees(sess.repo)
         git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
     _add_agent(agent)
-    # A step is reported with flow_advance, as the run worker's instructions say.
-    first = task if has_step else task + REPORT_REMINDER
-    summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
-    first = _first_input(agent, first, summary)
-    launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
-    tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
+    try:
+        # A step is reported with flow_advance, as the run worker's instructions say.
+        first = task if has_step else task + REPORT_REMINDER
+        summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
+        first = _first_input(agent, first, summary)
+        launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
+        tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
+    except Exception as exc:
+        # The worker never ran: leave nothing that says it did, so the run's step still
+        # waits for one and the name is free again.
+        close_worker(session, agent, f"not started: {exc}")
+        providers.base.remove_config_dir(agent)
+        if not run:
+            # The original error matters more than one from this cleanup.
+            with contextlib.suppress(LadoError):
+                git(sess.repo, "worktree", "remove", "--force", str(worktree))
+                git(sess.repo, "branch", "-D", branch)
+        raise
     return agent
 
 

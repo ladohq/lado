@@ -122,6 +122,11 @@ def config_dir(agent: state.Agent) -> Path:
     return path
 
 
+def remove_config_dir(agent: state.Agent) -> None:
+    """Remove what launch_command wrote for an agent that never started."""
+    shutil.rmtree(state.home() / "agents" / agent.session / agent.name, ignore_errors=True)
+
+
 def hook_argv(agent: state.Agent, event: str) -> list[str]:
     """Command that reports a native hook event of `agent` to LADO."""
     return lado_command(

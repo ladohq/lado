@@ -795,6 +795,15 @@ def drop_undelivered(session: str, recipient: str) -> int:
         return cur.rowcount
 
 
+def drop_messages(session: str, ids: list[int]) -> None:
+    """Mark these messages dropped: their recipient never got them."""
+    with connect() as db:
+        db.executemany(
+            "UPDATE messages SET state = ? WHERE session = ? AND id = ?",
+            [(DROPPED, session, i) for i in ids],
+        )
+
+
 def drop_pending(session: str, sender: str, recipient: str, summary: str) -> int:
     """Mark the pending messages with this sender, recipient and summary dropped: what they
     ask for is done already. Returns how many."""

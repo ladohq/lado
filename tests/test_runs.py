@@ -223,6 +223,35 @@ def test_a_worker_for_a_run_works_in_its_worktree_and_gets_the_step(session, fak
     assert second.task == "Read the plan."
 
 
+def fail_launch(monkeypatch, what="new_window"):
+    def launch(*args):
+        raise tmux.TmuxError("command too long")
+
+    monkeypatch.setattr(tmux, what, launch)
+
+
+def test_a_failed_spawn_for_a_run_leaves_no_ghost_worker(session, fake_tmux, monkeypatch):
+    to_implement(session)
+    monkeypatch.setattr(runtime, "FIRST_INPUT_LIMIT", 100)  # the step comes as a message
+    fail_launch(monkeypatch)
+    with pytest.raises(tmux.TmuxError, match="command too long"):
+        runs.spawn_worker(session, "feature/login")
+    assert state.get_agent(session, "w1") is None
+    assert runs.acting(state.get_run(session, "feature/login")) == "developer (not spawned)"
+    assert [m.state for m in messages("w1")] == [state.DROPPED]
+    assert not (state.home() / "agents" / session / "w1").exists()
+    # The request for a developer still waits for the supervisor.
+    ask = messages("supervisor")[-1]
+    assert (ask.summary, ask.state) == (
+        "flow feature/login: step implement needs a developer",
+        state.PENDING,
+    )
+    monkeypatch.setattr(tmux, "new_window", lambda *a: fake_tmux.append(("new_window", *a)))
+    worker = runs.spawn_worker(session, "feature/login")
+    assert (worker.name, worker.role) == ("w1", "developer")
+    assert runs.acting(state.get_run(session, "feature/login")) == "w1"
+
+
 def advance_to_review(session):
     to_implement(session)
     runs.spawn_worker(session, "feature/login")  # w1, developer

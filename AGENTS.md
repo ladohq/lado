@@ -106,9 +106,11 @@ schema change.
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
     names the run) and the session's `session_stop` and `session_resume`. The `notes`
     table keeps every note a run's step reported (`flow_advance`, a gate's answer,
-    `lado flow-set`'s reason) with the state it was reported from: a work state's report
-    from that state, an answer from its gate's state, a flow-set reason from the state the
-    run was in. Events, messages,
+    `lado flow-set`'s reason) with the state it was reported from and its kind: a
+    `report` is a work state's own or the answer at an approval or choice gate; an
+    `override` (a flow-set reason, from the state the run was in; an answer at a loop
+    limit, from the state it kept the run out of) is kept but never taken for a state's
+    report. Events, messages,
     runs, notes and gates go with their session, which `lado stop` only marks stopped
     (`sessions.stopped_at`) and `lado forget` deletes. How long an
     agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
@@ -240,7 +242,7 @@ follows in the body; when a worker gets the next step, the supervisor gets one l
 `flow <run>: human answered <option> at <state>`.
 
 A step's text (`runs.step_text`) has the task, the step's `do`, then for each state in its
-`needs` the latest note kept from that state (`Note from <state>: ...`, or `no note yet`),
+`needs` the latest report kept from that state (`Note from <state>: ...`, or `no note yet`),
 then the previous step's note and the outcomes. The needed notes come from the `notes`
 table, so `lado flow-set` keeps them: a run set to `implement` with `needs: [design]` gets
 the latest design note, and the flow-set reason is the previous step's note.

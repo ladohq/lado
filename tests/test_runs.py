@@ -288,10 +288,29 @@ def test_flow_set_keeps_the_notes_a_step_needs(session):
     assert step.summary == "flow feature/login: step implement"
     assert "Note from design: design agreed\na\nb" in step.body
     assert "Note from the previous step: set by the human: rework the form" in step.body
-    # The human's reason is kept as a note too, from where the run was.
-    assert state.latest_notes(session, "feature/login")["review"].summary == (
-        "set by the human: rework the form"
-    )
+
+
+def test_flow_set_from_a_needed_state_keeps_its_report(session):
+    advance_to_review(session)  # implement reported "built"
+    runs.advance(session, "w2", "feature/login", "changes", "fix the form")
+    # The run is at implement again; the human skips it before w1 reports.
+    runs.force(session, "feature/login", "review", "the form is fine")
+    step = messages("w2")[-1]
+    assert step.summary == "flow feature/login: step review"
+    assert "Note from implement: built" in step.body
+    assert "Note from the previous step: set by the human: the form is fine" in step.body
+
+
+def test_a_loop_limit_answer_or_flow_set_keeps_the_states_report(session):
+    advance_to_review(session)
+    runs.advance(session, "w2", "feature/login", "again", "first look")
+    runs.advance(session, "w2", "feature/login", "again", "second look")
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "continue", "one more")
+    assert state.latest_notes(session, "feature/login")["review"].summary == "second look"
+    runs.advance(session, "w2", "feature/login", "again", "third look")
+    runs.force(session, "feature/login", "implement", "enough looking")  # from the loop gate
+    assert state.latest_notes(session, "feature/login")["review"].summary == "third look"
 
 
 def test_a_gate_answer_is_kept_as_the_gates_note(session):

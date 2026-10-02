@@ -84,13 +84,14 @@ MESSAGES_FAILED = "ALTER TABLE messages ADD COLUMN failed_at REAL"  # when sweep
 # When the agent's latest hook ran (time.time()); 0 for none yet.
 AGENTS_SEEN = "ALTER TABLE agents ADD COLUMN seen_at REAL NOT NULL DEFAULT 0"
 # Every note a run's step reported, with the state it was reported from: a state's
-# `needs` (lado.flows) gets the latest ones. Kept from version 11 on.
+# `needs` (lado.flows) gets the latest reports. Kept from version 11 on.
 NOTES = """
 CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
     run TEXT NOT NULL,
-    state TEXT NOT NULL,  -- a work state's report, a gate's answer, or where flow-set found it
+    state TEXT NOT NULL,  -- where the run was, or the gate a loop limit asked at
+    kind TEXT NOT NULL,  -- report | override
     summary TEXT NOT NULL,  -- one line
     body TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))  -- UTC
@@ -223,6 +224,12 @@ WAITING = "waiting"  # for the human: a gate or a loop limit
 ENDED = "ended"
 CANCELLED = "cancelled"
 OPEN = (ACTIVE, WAITING)
+
+# Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
+# approval or choice gate. An override is the human's past the flow (flow-set's reason, an
+# answer at a loop limit): kept, but never taken for the state's report.
+REPORT = "report"
+OVERRIDE = "override"
 
 
 @dataclass
@@ -712,14 +719,15 @@ def update_run(
     events: list[tuple[str, str, str]],
     opens: Gate | None = None,
     closes: Close | None = None,
-    noted: str | None = None,
+    noted: tuple[str, str] | None = None,
 ) -> bool:
     """Write `after` and the events (actor, kind, detail) in one transaction, but only if
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
     was written. In the same transaction `closes` closes the run's open gate (nothing is
     written if it names a gate that is not open), the gate `opens` is stored (its id
-    set), and `after`'s note is kept as reported from state `noted`, if given."""
+    set), and `after`'s note is kept as `noted` says, if given: (state, REPORT or
+    OVERRIDE)."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -750,20 +758,23 @@ def update_run(
                 _open_gate(db, opens)
             if noted is not None:
                 db.execute(
-                    "INSERT INTO notes (session, run, state, summary, body) VALUES (?, ?, ?, ?, ?)",
-                    (before.session, before.name, noted, after.note, after.note_body),
+                    "INSERT INTO notes (session, run, state, kind, summary, body)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (before.session, before.name, *noted, after.note, after.note_body),
                 )
         db.execute("COMMIT")
     return bool(cur.rowcount)
 
 
 def latest_notes(session: str, run: str) -> dict[str, Note]:
-    """The latest note kept from each state of the run."""
+    """The latest report kept from each state of the run; the human's overrides are not
+    a state's report."""
     with connect() as db:
         rows = db.execute(
             "SELECT state, summary, body, created_at FROM notes WHERE id IN"
-            " (SELECT MAX(id) FROM notes WHERE session = ? AND run = ? GROUP BY state)",
-            (session, run),
+            " (SELECT MAX(id) FROM notes WHERE session = ? AND run = ? AND kind = ?"
+            " GROUP BY state)",
+            (session, run, REPORT),
         ).fetchall()
     return {r["state"]: Note(*r) for r in rows}
 

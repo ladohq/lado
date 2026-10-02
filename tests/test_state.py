@@ -502,10 +502,10 @@ def test_version_10_database_keeps_the_notes_of_runs(lado_home):
     assert state.latest_notes("s", "feature/x") == {}
 
 
-def _moved(run, to, note, body=""):
+def _moved(run, to, note, body="", kind=state.REPORT):
     """Move `run` to state `to` with the note reported from where it was."""
     after = dataclasses.replace(run, state=to, note=note, note_body=body)
-    assert state.update_run(run, after, [], noted=run.state)
+    assert state.update_run(run, after, [], noted=(run.state, kind))
     return after
 
 
@@ -518,7 +518,8 @@ def test_every_note_is_kept_with_the_state_it_was_reported_from(lado_home):
     run = _moved(run, "implement", "second design", "plan B")
     # A write that moves nothing keeps no note.
     stale = dataclasses.replace(run, state="other")
-    assert not state.update_run(stale, dataclasses.replace(run, note="lost"), [], noted="other")
+    lost = dataclasses.replace(run, note="lost")
+    assert not state.update_run(stale, lost, [], noted=("other", state.REPORT))
     notes = state.latest_notes("s", "feature/x")
     assert set(notes) == {"design", "implement"}
     design = notes["design"]
@@ -536,6 +537,23 @@ def test_notes_belong_to_their_run(lado_home):
         state.add_run(_run(name), [("supervisor", state.FLOW_START, "started")])
     _moved(_run("feature/x"), "implement", "x designed")
     assert state.latest_notes("s", "feature/y") == {}
+
+
+def test_the_humans_override_is_kept_but_never_taken_for_a_states_report(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    run = _run()
+    state.add_run(run, [("supervisor", state.FLOW_START, "started")])
+    run = _moved(run, "implement", "the design")
+    run = _moved(run, "design", "back to design")
+    _moved(run, "implement", "set by the human: old design is fine", kind=state.OVERRIDE)
+    assert state.latest_notes("s", "feature/x")["design"].summary == "the design"
+    with state.connect() as db:
+        kept = db.execute("SELECT state, kind, summary FROM notes ORDER BY id").fetchall()
+    assert [tuple(row) for row in kept][-1] == (
+        "design",
+        state.OVERRIDE,
+        "set by the human: old design is fine",
+    )
 
 
 def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(lado_home):

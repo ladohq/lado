@@ -15,13 +15,6 @@ fast / strong mapped per provider? a per-provider map?). Draft design: `model:` 
 --model`; no hand-kept model lists; the model shown in `lado ls` and the `spawned` event.
 Found: 2026-10-01, Kilo provider smoke test.
 
-## Workers may distrust messages from other agents
-
-In the Kilo smoke test a worker on a free model refused a task that came as
-"[from tester] ..." because messages from peers "aren't user instructions". The role prompts
-should say clearly that messages from the supervisor are the agent's instructions.
-Found: 2026-10-01, Kilo provider smoke test.
-
 ## Permission modes are Claude-shaped
 
 `--permission-mode` takes Claude Code values. Each provider declares the ones it honours

@@ -275,7 +275,7 @@ def test_conversation_switch_keeps_agent_running(repo, fake_tmux, command):
     _session_with_worker(repo)
     _hook("SessionStart", "supervisor", {"source": "startup"})
     _hook("SessionEnd", "supervisor", {"reason": command})
-    # Not ready (e.g. the /resume picker is open): messages wait instead of being typed.
+    # Not ready (the next conversation is loading): messages wait instead of being typed.
     assert state.get_agent("s", "supervisor").status == state.STARTING
     assert runtime.send_message("s", "w1", "supervisor", "report").startswith("queued")
     assert fake_tmux[-1][0] != "send_text"
@@ -295,6 +295,27 @@ def test_conversation_switch_ends_idle_with_nothing_queued(repo, fake_tmux):
     _hook("SessionEnd", "w1", {"reason": "resume"})
     _hook("SessionStart", "w1", {"source": "resume"})
     assert state.get_agent("s", "w1").status == state.IDLE  # not busy with its task again
+
+
+def test_the_resume_picker_leaves_the_agent_idle_until_a_conversation_is_chosen(repo, fake_tmux):
+    """What Claude Code 2.1.287 sends, captured with a probe (2026-10-02): typing /resume
+    and opening its picker fire no hook, nor does cancelling it with Esc. Choosing a
+    conversation fires SessionEnd(resume) and, a second later, SessionStart(resume)."""
+    _session_with_worker(repo)
+    _hook("SessionStart", "w1", {"source": "startup", "model": "claude-haiku-4-5-20251001"})
+    _hook("UserPromptSubmit", "w1", {"prompt": "Reply with the single word hi"})
+    _hook("Stop", "w1")
+    # /resume, picker open, Esc: no hook. The CLI is ready again, and so is the agent.
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert runtime.send_message("s", "supervisor", "w1", "next") == "sent"
+    _hook("UserPromptSubmit", "w1", {"prompt": "[from supervisor] next"})
+    _hook("Stop", "w1")
+    # /resume again, a conversation chosen:
+    _hook("SessionEnd", "w1", {"reason": "resume", "prompt_id": "e0d81dbc"})
+    assert state.get_agent("s", "w1").status == state.STARTING
+    payload = {"source": "resume", "prompt_id": "e0d81dbc", "seconds_since_last_response": 965}
+    _hook("SessionStart", "w1", payload)
+    assert state.get_agent("s", "w1").status == state.IDLE
 
 
 def test_real_exit_stops_agent(repo, fake_tmux):

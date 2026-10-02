@@ -27,7 +27,8 @@ EVENTS = {
 
 # /clear and /resume end Claude Code's session (SessionEnd with this reason) and start
 # another one in the same process (SessionStart with it as source); /exit ends it with
-# "prompt_input_exit". Checked with Claude Code 2.1.287.
+# "prompt_input_exit". Checked with Claude Code 2.1.287. /resume opens its picker without a
+# hook and Esc cancels it without one; both events come only once a conversation is chosen.
 SWITCHES = ("clear", "resume")
 
 # Claude Code's own tools for messaging and listing agents (its subagents, teammates and

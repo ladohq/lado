@@ -68,7 +68,7 @@ def handle(
             state.set_status(session, agent, state.BUSY)
             return provider.continue_output(format_messages(pending))
     elif event.kind == providers.CONVERSATION_END:
-        # Not ready, e.g. a picker of conversations is open: messages wait in the queue.
+        # Not ready while the next conversation loads: messages wait in the queue.
         state.set_status(session, agent, state.STARTING)
     elif event.kind == providers.CONVERSATION_START:
         # Ready again: no turn ends to hand over the queue, so its messages are typed in.

@@ -109,24 +109,7 @@ popup → merge → run ended, workers closed, worktree and branch removed). Fri
   short line.
 - **Stale tool schemas after `/resume`.** The supervisor's spawn_worker kept its old schema
   (no `run`/`role`) after Claude Code's in-process /resume; the server accepted the
-  arguments anyway.
-- **/resume picker cancelled with Esc** (reviewer's set-aside, unverified): if Claude Code
-  sends SessionEnd(resume) and no SessionStart after a cancel, the agent stays `starting`
-  and messages wait until its next prompt. Probe it.
-
-## A failed spawn leaves a ghost agent behind
-
-When spawn_worker fails after the agent row is written (seen: tmux "command too long" when
-spawning the reviewer of run fix/gate-popup, 2026-10-02), the row stays: `lado ls` showed
-`w2 reviewer starting 28m`, and the run named w2 as the reviewer acting in `review`. Wanted:
-write the agent row only after its window started, or remove it (and its run membership) when
-the launch fails, with a test that makes new_window fail.
-Found: 2026-10-02, second flow run.
-
-## MCP tools silently ignore unknown arguments
-
-On 0.8.0, `flow_start(..., human_language="ru")` (a parameter that only exists from 0.9.0)
-returned success: the MCP library dropped the unknown argument without a word. An agent with a
-stale tool schema (see "Stale tool schemas after /resume") or a typo gets no signal. Wanted:
-reject unknown arguments in LADO's MCP tools with an error that lists the accepted ones.
-Found: 2026-10-02, starting run fix/live-flow-notices.
+  arguments anyway (unknown arguments are refused since then, so a stale schema now errs).
+- **/resume picker cancelled with Esc**: probed on Claude Code 2.1.287, no hook fires when
+  the picker opens or Esc cancels it, so the agent stays `idle` (never `starting`); left
+  open: while the picker is open LADO may paste a message into its search box.

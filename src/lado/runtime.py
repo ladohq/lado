@@ -169,6 +169,7 @@ def start_session(
         kit_names or (old.kits if old else [kits.DEFAULT_KIT]),
         without if without is not None else (old.without if old else []),
     )
+    _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(repo, sess.kits, sess.without)
     role = env.supervisor()
     agent = state.Agent(
@@ -242,6 +243,7 @@ def spawn_worker(
     run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""
     sess = running_session(session)
     agent_cli = _provider(provider or sess.provider)
+    _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.repo, sess.kits, sess.without)
     role_def = env.worker_role(role)
     taken = {a.name for a in state.list_agents(session)}
@@ -565,6 +567,13 @@ def session_worktrees(repo: str, session: str) -> dict[str, str]:
 def _provider(name: str) -> providers.Provider:
     try:
         return providers.get(name)
+    except ValueError as exc:
+        raise LadoError(str(exc)) from None
+
+
+def _check_permission_mode(agent_cli: providers.Provider, mode: str | None) -> None:
+    try:
+        agent_cli.check_permission_mode(mode)
     except ValueError as exc:
         raise LadoError(str(exc)) from None
 

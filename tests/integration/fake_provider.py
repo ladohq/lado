@@ -34,6 +34,7 @@ class FakeProvider(base.Provider):
     title = "Fake agent"
     command = sys.executable
     install_hint = "part of the LADO tests"
+    permission_modes = ()  # the fake agent asks for no permissions
 
     def __init__(self, name: str, deliver_on_turn_end: bool):
         self.name = name

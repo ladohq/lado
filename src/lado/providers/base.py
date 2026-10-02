@@ -72,6 +72,16 @@ class Provider(ABC):
     # The version LADO is tested with, e.g. "2.1.287", or a prefix, e.g. "7.8"; "" for any.
     tested_version: str = ""
     capabilities: Capabilities
+    # The values of `lado start --permission-mode` this provider honours.
+    permission_modes: tuple[str, ...]
+
+    def check_permission_mode(self, mode: str | None) -> None:
+        """Raise ValueError for a permission mode this provider cannot honour."""
+        if mode and mode not in self.permission_modes:
+            raise ValueError(
+                f'permission mode "{mode}" is not supported by {self.title} ({self.name}); '
+                f"supported: {', '.join(self.permission_modes)}"
+            )
 
     @abstractmethod
     def launch_command(

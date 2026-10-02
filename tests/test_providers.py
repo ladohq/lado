@@ -136,6 +136,46 @@ def test_kilo_permission_modes(repo, mode, flags, edit):
     assert ("permission.asked" in hooks_) == (mode != "bypassPermissions")
 
 
+def test_kilo_plan_agent_may_use_lado_tools(repo):
+    # Kilo's plan agent denies every tool it does not list, LADO's MCP tools too (Kilo 7.8.1);
+    # an agent that cannot call send_message or flow_advance cannot report.
+    _, config = _kilo_launch(repo, "plan")
+    assert config["agent"] == {"plan": {"permission": {"lado_*": "allow"}}}
+    _, config = _kilo_launch(repo, "default")
+    assert "agent" not in config
+
+
+def test_providers_declare_their_permission_modes():
+    assert providers.get("kilo").permission_modes == (
+        "default",
+        "acceptEdits",
+        "bypassPermissions",
+        "plan",
+    )
+    # What Claude Code 2.1.287 accepts for --permission-mode ("default" without listing it).
+    assert set(providers.get("claude").permission_modes) == {
+        "default",
+        "acceptEdits",
+        "auto",
+        "bypassPermissions",
+        "manual",
+        "dontAsk",
+        "plan",
+    }
+
+
+def test_permission_mode_check_names_mode_provider_and_supported_modes():
+    kilo_cli = providers.get("kilo")
+    kilo_cli.check_permission_mode(None)
+    kilo_cli.check_permission_mode("plan")
+    with pytest.raises(ValueError) as exc:
+        kilo_cli.check_permission_mode("dontAsk")
+    assert str(exc.value) == (
+        'permission mode "dontAsk" is not supported by Kilo CLI (kilo); '
+        "supported: default, acceptEdits, bypassPermissions, plan"
+    )
+
+
 def test_kilo_plugin_ships_inside_the_package():
     import lado
 
@@ -191,6 +231,31 @@ def test_unknown_provider_is_refused(repo, fake_tmux):
     with pytest.raises(runtime.LadoError, match="known: claude, kilo"):
         runtime.spawn_worker("s", "task", provider="nope")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+
+
+def test_permission_mode_the_provider_cannot_honour_is_refused(repo, fake_tmux):
+    with pytest.raises(runtime.LadoError, match='"dontAsk" is not supported by Kilo CLI'):
+        runtime.start_session(str(repo), "s", "dontAsk", "kilo")
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+    runtime.start_session(str(repo), "s", "dontAsk")
+    with pytest.raises(runtime.LadoError, match="supported: default, acceptEdits"):
+        runtime.spawn_worker("s", "task", provider="kilo")
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert len(fake_tmux) == 1
+
+
+def test_resume_with_a_provider_that_cannot_honour_the_stored_mode_is_refused(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", "dontAsk")
+    runtime.stop_session("s")
+    with pytest.raises(runtime.LadoError, match='"dontAsk" is not supported by Kilo CLI'):
+        runtime.start_session(str(repo), "s", None, "kilo")
+    sess = state.get_session("s")
+    assert (sess.provider, sess.permission_mode, bool(sess.stopped_at)) == (
+        "claude",
+        "dontAsk",
+        True,
+    )
 
 
 def _spec_with_kit_parts(agent, skill_dir):

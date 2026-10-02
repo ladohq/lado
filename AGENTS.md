@@ -66,6 +66,9 @@ schema change.
     `kilo_plugin.js`, the Kilo plugin that runs LADO's hooks). A provider writes the agent's
     config, returns its argv and env and translates its hook events. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
+    Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
+    CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
+    agent's provider does not support, before anything is launched.
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`; `LADO_TMUX_SOCKET` overrides
     the socket name and is passed on to agents).
   - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup, `include`, `--without`,

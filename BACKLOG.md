@@ -24,10 +24,10 @@ Found: 2026-10-01, Kilo provider smoke test.
 
 ## Permission modes are Claude-shaped
 
-`--permission-mode` takes Claude Code values. Kilo maps default, acceptEdits,
-bypassPermissions and plan; other values (e.g. dontAsk) are silently ignored.
-Wanted: a neutral LADO permission setting that each provider translates, with an error for
-values a provider cannot honour.
+`--permission-mode` takes Claude Code values. Each provider declares the ones it honours
+and LADO refuses the others (Kilo: default, acceptEdits, bypassPermissions, plan), but the
+vocabulary is still Claude Code's, and a session has one mode for all its agents.
+Wanted: a neutral LADO permission setting that each provider translates.
 Found: 2026-10-01, Kilo provider review.
 
 ## An unconfirmed message waits for the next send

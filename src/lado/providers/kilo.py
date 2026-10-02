@@ -36,6 +36,9 @@ class KiloProvider(base.Provider):
     capabilities = base.Capabilities(
         status_events=True, permission_event=True, deliver_on_turn_end=True, skills=True
     )
+    # How launch_command maps them (checked with `kilo agent list`, Kilo 7.8.1): Kilo's
+    # default agent edits without asking and asks before bash, which is acceptEdits as is.
+    permission_modes = ("default", "acceptEdits", "bypassPermissions", "plan")
 
     def launch_command(
         self,
@@ -73,6 +76,10 @@ class KiloProvider(base.Provider):
             # with 7.8.3) and the plugin API: the agent's Kilo must not update itself.
             "autoupdate": False,
         }
+        if mode == "plan":
+            # The plan agent denies every tool it does not list, LADO's MCP tools too; its
+            # own permission rules come after the built-in ones, so this allow wins.
+            config["agent"] = {"plan": {"permission": {"lado_*": "allow"}}}
         config_file = config_dir / "kilo.json"
         config_file.write_text(json.dumps(config, indent=2))
 

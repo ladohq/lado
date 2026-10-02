@@ -80,6 +80,21 @@ def test_start_with_unknown_provider_fails(repo, fake_tmux, capsys):
     assert 'unknown provider "nope"; known: claude, kilo' in capsys.readouterr().err
 
 
+def test_start_help_lists_each_providers_permission_modes(capsys):
+    with pytest.raises(SystemExit):
+        main(["start", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "kilo: default, acceptEdits, bypassPermissions, plan" in out
+    assert "claude: " in out and "dontAsk" in out
+
+
+def test_start_with_a_mode_the_provider_cannot_honour_fails(repo, fake_tmux, capsys):
+    args = ["start", str(repo), "--provider", "kilo", "--permission-mode", "dontAsk"]
+    assert main([*args, "--no-attach"]) == 1
+    assert '"dontAsk" is not supported by Kilo CLI (kilo)' in capsys.readouterr().err
+    assert fake_tmux == []
+
+
 def _kit(repo, name, body="---\nname: rev\ndescription: reviews\n---\nReview.\n"):
     kit = repo / ".lado" / "kits" / name
     (kit / "agents").mkdir(parents=True)

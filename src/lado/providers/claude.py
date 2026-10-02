@@ -51,6 +51,17 @@ class ClaudeProvider(base.Provider):
         skills=True,
         hold_first_turn=True,
     )
+    # Passed on as --permission-mode: the choices of Claude Code 2.1.287, which also takes
+    # "default" without listing it.
+    permission_modes = (
+        "default",
+        "acceptEdits",
+        "auto",
+        "bypassPermissions",
+        "manual",
+        "dontAsk",
+        "plan",
+    )
 
     def launch_command(
         self,

@@ -112,6 +112,14 @@ def test_tool_errors_tell_the_agent_why(repo, fake_tmux, tool, args, reason):
     assert reason in str(error.value)
 
 
+def test_spawn_worker_refuses_a_provider_without_the_sessions_mode(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", "dontAsk")
+    server = mcp_server.build("s", "supervisor")
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool("spawn_worker", {"task": "t", "provider": "kilo"}))
+    assert '"dontAsk" is not supported by Kilo CLI (kilo)' in str(error.value)
+
+
 ACCEPTED = {
     "list_agents": "none",
     "flow_advance": "run, outcome, note_summary, note_body",

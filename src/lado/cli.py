@@ -454,7 +454,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     start.add_argument(
         "--permission-mode",
-        help="permission mode for all agents: default, acceptEdits, bypassPermissions or plan",
+        help="permission mode for all agents, one their provider supports: "
+        + "; ".join(
+            f"{name}: {', '.join(providers.get(name).permission_modes)}"
+            for name in providers.names()
+        ),
     )
     start.add_argument(
         "--kit",

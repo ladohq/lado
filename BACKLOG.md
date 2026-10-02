@@ -86,7 +86,7 @@ of a turn is not the end of the agent's work.
 Wanted: find out whether Claude Code and Kilo signal a running or finished background task;
 use it for the status, or document the limit.
 Postponed (2026-10-02): low impact. Flows move on flow_advance, not on idle; a message
-pasted meanwhile is taken as a normal prompt (not lost); typing into waiting agents is
+pasted meanwhile most likely starts a normal turn (not verified); typing into waiting agents is
 already blocked. The reference orchestrator does not handle it either (screen-based idle).
 Found: 2026-10-02, first flow run `fix/resume-stopped`.
 

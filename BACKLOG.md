@@ -30,13 +30,18 @@ Wanted: a neutral LADO permission setting that each provider translates, with an
 values a provider cannot honour.
 Found: 2026-10-01, Kilo provider review.
 
-## First message to a just-started Kilo agent is lost
+## An unconfirmed message waits for the next send
 
-Kilo's plugin reports `plugin.init` (agent idle) before the TUI accepts input, so a message
-pasted right after start is swallowed. It stays "sent" and is only typed again on the next
-`send_message` after CONFIRM_TIMEOUT. Wanted: mark a Kilo agent idle only when its TUI is
-ready, or retry unconfirmed messages without waiting for another send.
-Found: 2026-10-01, kits end-to-end check with Kilo 7.8.1.
+A message typed into an idle agent is requeued when its prompt-submit hook does not confirm
+it within CONFIRM_TIMEOUT, but only on the next `send_message` or hook of that agent
+(`runtime.py`, `hooks.py`: `requeue_unconfirmed`); nothing retries it on its own. Seen when:
+Kilo's plugin reports idle (`plugin.init`) before its TUI accepts input, so the first message
+to a just-started Kilo agent is swallowed; Claude Code's "trust this folder?" dialog swallows
+a message; the /resume picker (no hook fires when it opens or Esc closes it, so the agent stays
+`idle`) takes a message into its search box.
+Wanted: LADO retries an unconfirmed message by itself after the timeout, without waiting for
+another send.
+Found: 2026-10-01, kits end-to-end check with Kilo 7.8.1; 2026-10-02, flow dogfooding.
 
 ## Kit MCP secrets are written to disk
 
@@ -52,16 +57,17 @@ In a repo Claude Code has not seen before, it asks whether to trust the folder, 
 skips the question. Until the human answers, the supervisor stays "starting" and a message
 pasted in is swallowed (it is resent after the confirm timeout). `lado start` (or
 `lado doctor <repo>`) should detect an untrusted repo and tell the user, and the agent's
-status could show that it waits for the human.
+status could show that it waits for the human. (The swallowed message is the entry "An
+unconfirmed message waits for the next send".)
 Found: 2026-10-01, live e2e tests.
 
 ## A broken kit source blocks every kit lookup
 
 If any registered source is broken (folder or clone missing, two kits with one name, bad
 layout), every kit lookup fails, even `lado start` with the built-in `default` kit. The error
-says to run `lado sources update` or `lado sources remove`. Decide: keep failing everywhere, or fail only
-when the wanted kit (or the lookup path to it) depends on the broken source and warn
-otherwise.
+says to run `lado sources update` or `lado sources remove`.
+Wanted (decided 2026-10-02): fail only when the wanted kit (or a kit it includes) depends on
+the broken source; otherwise warn and go on.
 Found: 2026-10-01, kit sources review.
 
 ## A newer LADO migrates the database under running older processes
@@ -94,25 +100,28 @@ and from agents are queued and delivered one at a time) or with the ACP runtime 
 drives the agent's input itself). Make sure the UI has a composer that goes through LADO.
 Found: 2026-10-01, dogfooding.
 
-## Flow dogfooding notes (first run, `fix/resume-stopped`, 2026-10-02)
+## A step that needs a new worker is a relay through the supervisor
 
-The first task done through a flow worked end to end (implement → review → merge gate in the
-popup → merge → run ended, workers closed, worktree and branch removed). Frictions seen:
+LADO asks the supervisor to start a step's worker, and the supervisor calls spawn_worker with
+exactly the arguments LADO named; no decision is made.
+Wanted: a flow (or kit) can say that LADO spawns the step's worker itself.
+Found: 2026-10-02, first flow run `fix/resume-stopped`.
 
-- **A step that needs a new worker is a relay through the supervisor.** LADO asks, the
-  supervisor calls spawn_worker with exactly the arguments LADO named; no decision is made.
-  Consider letting a flow (or kit) say that LADO spawns the step's worker itself.
-- **"idle" while a background command runs.** The reviewer's turn ended while its
-  `make check` ran in the background; LADO showed it idle for 80 s (and could have pasted a
-  message into it) until the command finished and woke it.
-- **Delivery at turn end still reads "Stop hook error"** in the Claude Code UI, now as one
-  short line.
-- **Stale tool schemas after `/resume`.** The supervisor's spawn_worker kept its old schema
-  (no `run`/`role`) after Claude Code's in-process /resume; the server accepted the
-  arguments anyway (unknown arguments are refused since then, so a stale schema now errs).
-- **/resume picker cancelled with Esc**: probed on Claude Code 2.1.287, no hook fires when
-  the picker opens or Esc cancels it, so the agent stays `idle` (never `starting`); left
-  open: while the picker is open LADO may paste a message into its search box.
+## "idle" while a background command runs
+
+A reviewer's turn ended while its `make check` ran in the background; LADO showed it idle for
+80 s (and could have pasted a message into it) until the command finished and woke it. The end
+of a turn is not the end of the agent's work.
+Wanted: find out whether Claude Code and Kilo signal a running or finished background task;
+use it for the status, or document the limit.
+Found: 2026-10-02, first flow run `fix/resume-stopped`.
+
+## Delivery at turn end reads "Stop hook error"
+
+Claude Code shows a message delivered by the turn-end hook as a "Stop hook error" line.
+Wanted: check whether another form of the hook's answer (e.g. JSON `decision: block`) shows a
+neutral label. Cosmetic.
+Found: 2026-10-02, first flow run `fix/resume-stopped`.
 
 ## Flaky: Kilo live test of a worker's task
 

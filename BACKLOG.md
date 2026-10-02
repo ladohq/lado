@@ -243,3 +243,16 @@ one Kilo's "Disable for this project" writes) is merged after that file, so a re
 Wanted: check the merge order; if the project wins, pass LADO's must-have settings where
 they win (e.g. `KILO_CONFIG_CONTENT`, which 7.8.1 reads) and test it.
 Found: 2026-10-02, run fix/kilo-no-snapshots.
+
+## Claude agents load the user's global Claude Code plugins
+
+A Claude Code agent started by LADO still loads the plugins enabled in the user's own
+`~/.claude` (seen: the global superpowers plugin's SessionStart hook runs in the supervisor,
+next to the kit's superpowers skills from `lado sources`). So what an agent can do depends on
+the human's machine, Claude agents get skills and hooks Kilo agents do not, and a kit cannot
+switch them off (`--without` does not see them).
+Wanted: an agent runs only what its kit gives it: find Claude Code's switch for user plugins
+(e.g. a settings source or flag for the agent's own settings) and use it per agent, without
+touching the user's global config; `lado doctor` says what it found. Low priority
+(environment isolation), but it makes runs reproducible.
+Found: 2026-10-03, choosing UI skills for the lado-dev kit.

@@ -160,3 +160,14 @@ into its review), and `lado flow-set` clears the note body (`runs.force`), so a 
 `implement` gives the developer no design at all. Wanted: a step can get the latest note of
 a named earlier state (e.g. `design`), so roles need not copy the design forward.
 Found: 2026-10-02, review of lado-dev 0.3.0.
+
+## Live-test evidence lacks the CLIs' own transcripts and logs
+
+A failed live test keeps LADO's log, hooks.log, agent configs and window screens, but not
+Claude Code's transcript (~/.claude/projects/<cwd>/*.jsonl) or Kilo's session and log from its
+data folder. For a flake such as a weak model calling a tool with a wrong argument, the
+transcript (tool calls and their answers) matters most.
+Wanted: the evidence also copies each agent's CLI transcript and logs, picked by the agent's
+cwd and the test's start time; the test layer asks the provider for their location, so nothing
+above providers/ learns a provider's paths.
+Found: 2026-10-02, review of run fix/live-test-keeps-logs.

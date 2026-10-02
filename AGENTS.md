@@ -127,8 +127,9 @@ schema change.
     The `changes` table is the UI's change journal: triggers on `sessions`, `agents`,
     `messages`, `runs`, `gates` and `notes` record each insert, update and delete (kind,
     session, key, op) in the writer's transaction, so no code path reports changes by hand;
-    an agent update of only `seen_at` is none (a new `agents` column goes into
-    `AGENTS_CHANGED`, a test checks every column), and each insert drops changes older than
+    an agent update that changes `seen_at` is none (`AGENTS_CHANGED`: only `state.seen`
+    writes it, and nothing else with it; keep it so, since the condition names no other
+    column and a trigger stays in `lado.db` as it was made), and each insert drops changes older than
     the latest `CHANGES_KEPT`. A new table the UI shows gets its triggers in `JOURNALED`.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).

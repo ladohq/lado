@@ -123,25 +123,11 @@ JOURNALED = {
     "gates": "{row}.id",
     "notes": "{row}.id",
 }
-# Every hook sets agents.seen_at, which the UI does not show: an update that changes only
-# it is not a change. A new column of agents goes into this list (tests/test_changes.py
-# checks every column).
-AGENTS_CHANGED = " OR ".join(
-    f"OLD.{column} IS NOT NEW.{column}"
-    for column in (
-        "session",
-        "name",
-        "role",
-        "cwd",
-        "branch",
-        "task",
-        "status",
-        "instance",
-        "provider",
-        "created_at",
-        "run",
-    )
-)
+# Every hook sets agents.seen_at, which the UI does not show: an update that changes it is
+# not a change. Only `seen` writes seen_at, and nothing else with it; so the condition names
+# no other column, and a column added later is recorded without a new trigger (a trigger
+# stays in lado.db as it was made).
+AGENTS_CHANGED = "OLD.seen_at IS NEW.seen_at"
 
 
 def _journal_trigger(table: str, op: str) -> str:
@@ -675,8 +661,10 @@ def _set_status(db: sqlite3.Connection, session: str, name: str, status: str) ->
 
 
 def seen(session: str, name: str) -> None:
-    """Record that a hook of the agent ran now. Its failed messages that no hook ran after
-    (a dialog swallowed them) go back to the queue, with their attempts from 0."""
+    """Record that a hook of the agent ran now. The only writer of seen_at, which it sets
+    alone: an update of it is no change for the UI (AGENTS_CHANGED). Its failed messages
+    that no hook ran after (a dialog swallowed them) go back to the queue, with their
+    attempts from 0."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         db.execute(

@@ -119,6 +119,17 @@ def test_a_change_of_any_agent_column_but_seen_at_is_recorded(lado_home):
         assert journal(before) == [("agents", "s", "w1", "update")], column
 
 
+def test_a_column_added_to_agents_later_is_recorded_without_a_new_trigger(lado_home):
+    """The trigger is kept in lado.db as it was made: it must not list the columns."""
+    with state.connect() as db:
+        setup_agent(db)
+        db.execute("ALTER TABLE agents ADD COLUMN later TEXT")
+    before = last()
+    with state.connect() as db:
+        db.execute("UPDATE agents SET later = 'x'")
+    assert journal(before) == [("agents", "s", "w1", "update")]
+
+
 def test_a_hook_that_only_marks_the_agent_seen_is_not_a_change(lado_home):
     with state.connect() as db:
         setup_agent(db)

@@ -111,7 +111,7 @@ Decided in the live updates task (2026-10-03).
 - **The journal**: `changes(id, kind, session, key, op)` in `lado.db` (schema 12), written
   by triggers on the six tables. `kind` is the table, `key` the row in its session (an
   agent's or run's name, a message's, gate's or note's id, `''` for the session). An update
-  of an agent that changes only `seen_at` (every hook sets it) is no change. The journal
+  of an agent that changes `seen_at` (every hook sets it, alone) is no change. The journal
   keeps the latest `state.CHANGES_KEPT` (100 000) changes: each insert drops the older
   ones, in the writer's transaction; the server only reads. `events` is not in it.
 - **The source** (`server/feed.py`, `Source`): "the changes after position N", "the latest

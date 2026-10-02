@@ -14,6 +14,7 @@ A flow is a file flows/<name>.yaml in a kit:
       design_ok:                  # gate: the human answers `ask`
         gate: approval            # approval | choice
         ask: Approve the design?
+        needs: [design]                   # optional, as in a work state
         outcomes: {approved: implement, rejected: design}
       implement:
         agent: developer
@@ -24,10 +25,12 @@ A flow is a file flows/<name>.yaml in a kit:
         end: true
 
 A work state's step gets the previous step's note, and with `needs` also the latest note
-reported from each named state (lado.runs.step_text).
+reported from each named state (lado.runs.step_text); a needed state whose latest note is
+the previous step's note is printed once.
 
 An approval gate has exactly the outcomes `approved` and `rejected`; the human answers it
-with approve or reject. A choice gate offers its outcome names.
+with approve or reject. A choice gate offers its outcome names. With `needs`, `lado answer`
+shows the human the latest note of each named state besides the note that led to the gate.
 
 This module only reads and checks the format; lado.runs runs flows. Whether each `agent`
 role exists depends on the kits a session combines, so lado.kits checks that.
@@ -40,7 +43,7 @@ FLOW_KEYS = {"name", "description", "start", "states"}
 WORK, GATE, END = "work", "gate", "end"
 STATE_KEYS = {
     WORK: {"agent", "do", "outcomes", "max_visits", "needs"},
-    GATE: {"gate", "ask", "outcomes"},
+    GATE: {"gate", "ask", "outcomes", "needs"},
     END: {"end"},
 }
 GATES = ("approval", "choice")
@@ -56,7 +59,7 @@ class State:
     agent: str = ""  # work: the role that acts
     do: str = ""  # work: the step's instruction
     max_visits: int | None = None  # work: how often the state may be entered
-    needs: tuple[str, ...] = ()  # work: the states whose latest notes the step gets
+    needs: tuple[str, ...] = ()  # work, gate: the states whose latest notes it shows
     gate: str = ""  # gate: approval or choice
     ask: str = ""  # gate: the question for the human
 
@@ -156,6 +159,10 @@ def _state(name: object, raw: object, error) -> State | None:
             return None
         return State(name, END)
     outcomes = _outcomes(raw.get("outcomes"), where, error)
+    needs = raw.get("needs", [])
+    if not isinstance(needs, list) or not all(isinstance(n, str) for n in needs):
+        error(f"{where}: needs must be a list of state names")
+        return None
     if kind == GATE:
         gate, ask = raw.get("gate"), raw.get("ask")
         if gate not in GATES:
@@ -167,9 +174,8 @@ def _state(name: object, raw: object, error) -> State | None:
             error(f"{where}: an approval gate has the outcomes {' and '.join(APPROVAL)}")
         if outcomes is None or gate not in GATES or not _text(ask) or not approval:
             return None
-        return State(name, GATE, outcomes, gate=gate, ask=ask.strip())
+        return State(name, GATE, outcomes, needs=tuple(needs), gate=gate, ask=ask.strip())
     agent, do, visits = raw.get("agent"), raw.get("do"), raw.get("max_visits")
-    needs = raw.get("needs", [])
     ok = outcomes is not None
     if not _text(agent):
         error(f"{where}: agent must be a role name")
@@ -179,9 +185,6 @@ def _state(name: object, raw: object, error) -> State | None:
         ok = False
     if visits is not None and (type(visits) is not int or visits < 1):
         error(f"{where}: max_visits must be a whole number of 1 or more")
-        ok = False
-    if not isinstance(needs, list) or not all(isinstance(n, str) for n in needs):
-        error(f"{where}: needs must be a list of state names")
         ok = False
     if not ok:
         return None

@@ -79,7 +79,8 @@ schema change.
     repository cloned into `LADO_HOME/sources/<name>`; registered in `LADO_HOME/sources.yaml`.
     Only the `Source` classes know a kind; `kits.py` asks a source for its directory.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
-    a work state's optional `needs` lists the states whose latest notes its step gets)
+    a work or gate state's optional `needs` lists the states whose latest notes its step
+    gets or the human sees at the gate)
     and its validator. `runs.py`: flow runs: start (own worktree and branch, shared by the
     run's workers), step messages from `lado`, `flow_advance`, loop limits, gates (the run
     waits for the human), end (finish workers, remove the worktree if merged), cancel and
@@ -245,15 +246,21 @@ A step's text (`runs.step_text`) has the task, the step's `do`, then for each st
 `needs` the latest report kept from that state (`Note from <state>: ...`, or `no note yet`),
 then the previous step's note and the outcomes. The needed notes come from the `notes`
 table, so `lado flow-set` keeps them: a run set to `implement` with `needs: [design]` gets
-the latest design note, and the flow-set reason is the previous step's note.
+the latest design note, and the flow-set reason is the previous step's note. A needed
+state whose latest report is the previous step's note itself (the same `notes` record,
+compared by id, not by text) is printed once, as `Note from <state> (also the previous
+step's note): ...`, and the separate previous-step note is left out.
 
 `lado answer <session> <gate-id|run> <option> [-m COMMENT]` answers a gate. Without the
 option it asks: with no arguments about the open gates of all sessions (a list to pick from
 when there are several), and after each answer it goes on with the open gates of that session
 until none is left or the human presses Enter on an empty line. It shows the question, the
-one-line summary of the note that led to the gate and the numbered options; when the note
-has a body, `v` shows the whole note in `less -R` (printed when there is no `less`), then
-asks again. When a gate opens, LADO opens a tmux popup (`display-popup -E`, titled
+one-line summary of the note that led to the gate, for a gate state with `needs` one line
+per needed state (`Note from <state>: <summary>` of its latest report, or `no note yet`),
+and the numbered options; when the note has a body or the gate has `needs`, `v` shows the
+whole text in `less -R` (printed when there is no `less`): each needed note, then the note
+that led to the gate; then it asks again. The needed notes are read from the `notes` table
+when asked, not kept in the gate; a loop limit shows none. When a gate opens, LADO opens a tmux popup (`display-popup -E`, titled
 `LADO: waiting for you (session <name>)`, a rounded soft orange border around the
 terminal's own colours from tmux 3.3 on, tmux's plain border on 3.2, none before 3.2;
 `lado doctor` warns about both) running `lado answer <session> <gate-id>` on each client

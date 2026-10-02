@@ -320,17 +320,21 @@ def _pick(gates: list[state.Gate]) -> state.Gate | None:
 
 def _choose(gate: state.Gate) -> str | None:
     """The option the human picks for the gate, by number or name; None to leave it. The
-    note shows as its summary; with a body, "v" shows all of it in a pager."""
-    full_note = gate.note_body.strip() != ""
+    note and the notes the gate needs show as their summaries; when there is more, "v"
+    shows all of it in a pager."""
+    needed = runs.gate_notes(gate)
+    full_note = gate.note_body.strip() != "" or bool(needed)
     v = ", v for the full note" if full_note else ""
-    _show_gate(gate)
+    _show_gate(gate, needed)
     while True:
         chosen = _input(f"Answer (number or name{v}, Enter to leave it open): ")
         if not chosen:
             return None
         if full_note and chosen.lower() == "v":
-            _page(f"Note: {gate.note}\n\n{gate.note_body.strip()}\n")
-            _show_gate(gate)
+            parts = [f"Note from {name}: {_note_text(note)}\n" for name, note in needed]
+            parts.append(f"Note: {gate.note}\n\n{gate.note_body.strip()}\n")
+            _page("\n".join(parts))
+            _show_gate(gate, needed)
             continue
         if chosen.isdigit() and 1 <= int(chosen) <= len(gate.options):
             return gate.options[int(chosen) - 1]
@@ -340,7 +344,11 @@ def _choose(gate: state.Gate) -> str | None:
             print(f"lado: {exc}")
 
 
-def _show_gate(gate: state.Gate) -> None:
+def _note_text(note: state.Note | None) -> str:
+    return f"{note.summary}\n{note.body.strip()}".rstrip() if note else "no note yet"
+
+
+def _show_gate(gate: state.Gate, needed: list[tuple[str, state.Note | None]]) -> None:
     print(f"\nGate #{gate.id}, session {gate.session}, run {gate.run} at {gate.state}:")
     print(gate.question)
     lines = len(gate.note_body.strip().splitlines())
@@ -348,6 +356,8 @@ def _show_gate(gate: state.Gate) -> None:
         print(f"Note: {gate.note} (v: the full note, {lines} more line{'' if lines == 1 else 's'})")
     elif gate.note:
         print(f"Note: {gate.note}")
+    for name, note in needed:
+        print(f"Note from {name}: {note.summary if note else 'no note yet'}")
     print("Options:")
     for n, option in enumerate(gate.options, 1):
         print(f"  {n}) {option}")

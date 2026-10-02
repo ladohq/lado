@@ -215,7 +215,7 @@ def test_a_worker_for_a_run_works_in_its_worktree_and_gets_the_step(session, fak
     first = fake_tmux[-1][-1][-1]
     assert first.startswith("Run feature/login (flow feature), step implement.")
     assert "Build it." in first
-    assert "Note from the previous step: design agreed\na\nb" in first
+    assert "Note from design (also the previous step's note): design agreed\na\nb" in first
     assert "- done -> review" in first
     assert runs.acting(state.get_run(session, "feature/login")) == "w1"
     # The step has its worker now: another one needs a task of its own.
@@ -262,14 +262,32 @@ def advance_to_review(session):
 
 
 def test_a_step_gets_the_latest_notes_of_the_states_it_needs(session):
-    to_implement(session)
-    runs.spawn_worker(session, "feature/login")  # w1, developer
-    step = state.get_agent(session, "w1").task
+    advance_to_review(session)
+    runs.advance(session, "w2", "feature/login", "changes", "fix the form")
+    step = messages("w1")[-1].body
     needed = "Note from design: design agreed\na\nb"
     assert needed in step
     # After the task and the step, before the previous step's note.
     assert step.index("Build it.") < step.index(needed)
-    assert step.index(needed) < step.index("Note from the previous step: design agreed")
+    assert step.index(needed) < step.index("Note from the previous step: fix the form")
+
+
+def test_a_needed_note_that_is_the_previous_steps_note_comes_once(session):
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")  # w1, developer
+    step = state.get_agent(session, "w1").task
+    assert step.count("design agreed") == 1
+    assert "Note from design (also the previous step's note): design agreed\na\nb" in step
+    assert "Note from the previous step" not in step
+
+
+def test_a_needed_note_with_the_same_text_as_the_previous_note_is_another_note(session):
+    advance_to_review(session)
+    # The reviewer's note has the design note's text, but it is a note of its own.
+    runs.advance(session, "w2", "feature/login", "changes", "design agreed", "a\nb")
+    step = messages("w1")[-1].body
+    assert "Note from design: design agreed\na\nb" in step
+    assert "Note from the previous step: design agreed\na\nb" in step
 
 
 def test_a_needed_state_with_no_note_yet_is_named(session):
@@ -313,6 +331,15 @@ def test_a_loop_limit_answer_or_flow_set_keeps_the_states_report(session):
     assert state.latest_notes(session, "feature/login")["review"].summary == "third look"
 
 
+def test_a_loop_limit_shows_no_needed_notes(session):
+    advance_to_review(session)
+    runs.advance(session, "w2", "feature/login", "again", "first look")
+    runs.advance(session, "w2", "feature/login", "again", "second look")
+    [gate] = state.open_gates(session)
+    assert gate.kind == runs.LOOP  # kept out of review, which needs implement
+    assert runs.gate_notes(gate) == []
+
+
 def test_a_gate_answer_is_kept_as_the_gates_note(session):
     to_gate(session)
     [gate] = state.open_gates(session)
@@ -330,7 +357,7 @@ def test_a_worker_step_goes_to_the_next_worker_only(session):
     assert run.state == "review"
     [step] = messages("w2")
     assert (step.sender, step.summary) == ("lado", "flow feature/login: step review")
-    assert "Note from the previous step: built" in step.body
+    assert "Note from implement (also the previous step's note): built" in step.body
     assert [m.summary for m in messages("supervisor")] == [
         "flow feature/login: step design",
         "flow feature/login: step implement needs a developer",
@@ -912,7 +939,9 @@ def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_
         f"{len(step.body.splitlines())} lines: call read_messages)"
     )
     assert plan in step.body
-    assert f"Note from design: agreed\n{plan}" in step.body  # implement needs design
+    # implement needs design, whose note is the previous step's: it comes once.
+    assert f"Note from design (also the previous step's note): agreed\n{plan}" in step.body
+    assert step.body.count(plan) == 1
     assert worker.task == step.body  # the task in full: lado ls, list_agents
     assert state.read_messages(session, "w1")[0].body == step.body
 

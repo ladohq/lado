@@ -339,6 +339,7 @@ class Note:
     summary: str
     body: str
     created_at: str
+    id: int = 0
 
 
 # Who closes a run's open gate, the answer, a comment, and the id of the gate that must be
@@ -771,12 +772,24 @@ def latest_notes(session: str, run: str) -> dict[str, Note]:
     a state's report."""
     with connect() as db:
         rows = db.execute(
-            "SELECT state, summary, body, created_at FROM notes WHERE id IN"
+            "SELECT state, summary, body, created_at, id FROM notes WHERE id IN"
             " (SELECT MAX(id) FROM notes WHERE session = ? AND run = ? AND kind = ?"
             " GROUP BY state)",
             (session, run, REPORT),
         ).fetchall()
     return {r["state"]: Note(*r) for r in rows}
+
+
+def last_note(session: str, run: str) -> Note | None:
+    """The run's latest note of any kind: the one its current step got as the previous
+    step's note, since each note a step gets is kept when the run moves on."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT state, summary, body, created_at, id FROM notes"
+            " WHERE session = ? AND run = ? ORDER BY id DESC LIMIT 1",
+            (session, run),
+        ).fetchone()
+    return Note(*row) if row else None
 
 
 def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:

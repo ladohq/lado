@@ -216,3 +216,14 @@ Wanted: `kit.yaml` may say `requires: lado>=0.11`; an older LADO refuses the kit
 "kit <name> needs LADO >= 0.11, this is 0.10.0: upgrade LADO" (`lado start`, `lado kits
 check`), and the kit's own validator errors stay for real mistakes.
 Found: 2026-10-02, planning the lado-dev update for named notes.
+
+## A gate shows a needed note twice when it is the note before the gate
+
+A gate with `needs: [design]` reached right from `design` shows design's report twice in
+`lado answer`: as `Note from design` and as the note that led to the gate. The step text
+prints such a note once (compared by note id), the gate view does not: the gate record
+keeps a copy of the note's text, not the note's id.
+Wanted: the gate keeps the id of the note that led to it (or the view finds it as the run's
+note just before the gate opened), and the view prints a needed note that is the same
+record once, as the step text does.
+Found: 2026-10-02, run fix/gate-needs.

@@ -121,8 +121,12 @@ def _broken(change):
             'state "review": needs must be a list of state names',
         ),
         (
-            lambda d: d["states"]["design_ok"].update(needs=["design"]),
-            'state "design_ok": unknown keys needs',
+            lambda d: d["states"]["design_ok"].update(needs=["nowhere"]),
+            'state "design_ok": needs "nowhere", which is not a state',
+        ),
+        (
+            lambda d: d["states"]["design_ok"].update(needs="design"),
+            'state "design_ok": needs must be a list of state names',
         ),
         (lambda d: d["states"]["done"].update(end=False), 'state "done": end must be true'),
         (
@@ -159,12 +163,24 @@ def test_a_work_state_names_the_earlier_states_whose_notes_it_needs():
     assert flow.states["implement"].needs == ()
 
 
+def test_a_gate_names_the_states_whose_notes_the_human_sees():
+    data = _broken(lambda d: d["states"]["design_ok"].update(needs=["design"]))
+    flow, errors = parse(data)
+    assert errors == []
+    assert flow.states["design_ok"].needs == ("design",)
+
+
 def test_a_flow_round_trips_through_its_snapshot():
-    flow, _ = parse(_broken(lambda d: d["states"]["review"].update(needs=["design"])))
+    def change(d):
+        d["states"]["review"].update(needs=["design"])
+        d["states"]["design_ok"].update(needs=["design"])
+
+    flow, _ = parse(_broken(change))
     snapshot = copy.deepcopy(flow.snapshot)
     again = flows.from_snapshot(snapshot, "kit")
     assert again.states == flow.states
     assert again.states["review"].needs == ("design",)
+    assert again.states["design_ok"].needs == ("design",)
     assert again.start == flow.start
 
 

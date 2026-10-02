@@ -196,6 +196,16 @@ def find_gate(session: str, ref: str) -> state.Gate:
     return gate
 
 
+def gate_notes(gate: state.Gate) -> list[tuple[str, state.Note | None]]:
+    """Each state the gate state needs, with its latest report (None: no note yet). A loop
+    limit is no gate state of the flow: it needs nothing."""
+    if gate.kind == LOOP:
+        return []
+    needs = flow_of(_run(gate.session, gate.run)).states[gate.state].needs
+    kept = state.latest_notes(gate.session, gate.run) if needs else {}
+    return [(needed, kept.get(needed)) for needed in needs]
+
+
 def canonical_option(gate: state.Gate, given: str) -> str:
     """The option `given` names, in any case; an approval also takes its outcome names."""
     names = {o.lower(): o for o in gate.options}
@@ -408,11 +418,16 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
         f"Step:\n{current.do}",
     ]
     kept = state.latest_notes(run.session, run.name) if current.needs else {}
+    previous = state.last_note(run.session, run.name) if current.needs else None
+    shown = False  # the previous step's note was one of the needed ones
     for needed in current.needs:
         note = kept.get(needed)
+        label = needed
+        if note and previous and note.id == previous.id:
+            label, shown = f"{needed} (also the previous step's note)", True
         text = f"{note.summary}\n{note.body}".rstrip() if note else "no note yet"
-        parts.append(f"Note from {needed}: {text}")
-    if run.note or run.note_body:
+        parts.append(f"Note from {label}: {text}")
+    if (run.note or run.note_body) and not shown:
         parts.append(f"Note from the previous step: {run.note}\n{run.note_body}".rstrip())
     outcomes = "\n".join(f"- {o} -> {t}" for o, t in current.outcomes.items())
     parts.append(

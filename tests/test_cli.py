@@ -427,6 +427,65 @@ def test_v_prints_the_full_note_without_a_pager(repo, fake_tmux, capsys, monkeyp
     assert out.endswith("Gate #2 stays open.\n")
 
 
+PLAN = """\
+name: plan
+description: plan, build and ship
+start: plan
+states:
+  plan: {agent: supervisor, do: Plan it., outcomes: {ready: build}}
+  build: {agent: rev, do: Build it., outcomes: {done: check, polish: polish}}
+  polish: {agent: rev, do: Polish it., outcomes: {done: check}}
+  check:
+    gate: approval
+    ask: Ship it?
+    needs: [plan, polish]
+    outcomes: {approved: end, rejected: build}
+  end: {end: true}
+"""
+
+
+def _at_gate_with_needs(repo, capsys):
+    kit = _kit(repo, "team")
+    (kit / "flows").mkdir()
+    (kit / "flows" / "plan.yaml").write_text(PLAN)
+    main(["start", str(repo), "--name", "s", "--kit", "team", "--no-attach"])
+    runs.start("s", "plan", "Add x", name="x")
+    runs.advance("s", "supervisor", "plan/x", "ready", "the plan", "step 1\nstep 2")
+    runs.spawn_worker("s", "plan/x")
+    runs.advance("s", "w1", "plan/x", "done", "built it", "all\ntests pass")
+    capsys.readouterr()
+
+
+def test_answer_shows_the_summaries_of_the_notes_a_gate_needs(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate_with_needs(repo, capsys)
+    _typing(monkeypatch, "")
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Ship it?\n"
+        "Note: built it (v: the full note, 2 more lines)\n"
+        "Note from plan: the plan\n"
+        "Note from polish: no note yet\n"
+        "Options:\n"
+    ) in out
+    assert "step 1" not in out
+    assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
+
+
+def test_v_shows_the_needed_notes_then_the_note_before_the_gate(
+    repo, fake_tmux, capsys, monkeypatch
+):
+    _at_gate_with_needs(repo, capsys)
+    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
+    _typing(monkeypatch, "v")
+    assert main(["answer"]) == 0
+    assert (
+        "Note from plan: the plan\nstep 1\nstep 2\n\n"
+        "Note from polish: no note yet\n\n"
+        "Note: built it\n\nall\ntests pass\n"
+    ) in capsys.readouterr().out
+
+
 def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, monkeypatch):
     _at_gate(repo, capsys)
     runs.start("s", "ship", "Add y", name="y")

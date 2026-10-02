@@ -1,3 +1,5 @@
+import threading
+
 from agent_helpers import previous_schema
 
 from lado import loop, runtime, state, tmux
@@ -101,3 +103,61 @@ def test_forget_removes_the_lock_file(repo, fake_tmux):
     runtime.stop_session("s")
     runtime.forget_session("s")
     assert not loop.lock_path("s").exists()
+
+
+def test_a_loop_waits_for_a_lock_held_for_a_moment(repo, fake_tmux, monkeypatch):
+    _session(repo)
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        runtime.stop_session(session)
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    held = loop.take_lock("s")  # as `loop.running()` from `lado ls` does
+    threading.Timer(loop.LOCK_WAIT / 4, held.close).start()
+    assert loop.run("s", interval=0) == 0
+    assert passes == ["s"]
+
+
+def test_a_repeating_error_is_logged_once(repo, fake_tmux, monkeypatch, lado_home):
+    _session(repo)
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        if len(passes) == 1000:
+            runtime.stop_session(session)
+        elif len(passes) >= 600:
+            raise ValueError("another error")
+        elif len(passes) != 500:
+            raise RuntimeError("tmux not found")
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    assert loop.run("s", interval=0) == 0
+    log = (lado_home / "loop.log").read_text()
+    assert log.count("RuntimeError: tmux not found") == 2  # first, and again after pass 500
+    assert log.count("ValueError: another error") == 1
+    assert "Traceback" in log
+    assert "the same error repeated 498 more times" in log
+    assert "passes work again" in log
+    assert len(log.splitlines()) < 60
+
+
+def test_a_repeating_error_gets_a_short_line_now_and_then(repo, fake_tmux, monkeypatch, lado_home):
+    _session(repo)
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        if len(passes) == 4:
+            runtime.stop_session(session)
+            return
+        raise RuntimeError("tmux not found")
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    monkeypatch.setattr(loop, "REPEAT_NOTE", 0)
+    assert loop.run("s", interval=0) == 0
+    log = (lado_home / "loop.log").read_text()
+    assert log.count("RuntimeError: tmux not found") == 1
+    assert log.count("the same error again") == 2

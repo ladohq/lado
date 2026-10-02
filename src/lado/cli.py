@@ -191,6 +191,7 @@ def cmd_ls(args: argparse.Namespace) -> int:
             if not alive and not loop.running(sess.name):
                 alive = (
                     "  (session loop not running: unconfirmed messages are not retried; "
+                    f"run `lado attach {sess.name}` to restart it; "
                     f"see {state.home() / 'loop.log'})"
                 )
         print(f"{sess.name}  {sess.repo}{alive}")
@@ -386,6 +387,9 @@ def cmd_attach(args: argparse.Namespace) -> int:
             print("Name the session: lado attach <name> (see lado ls)", file=sys.stderr)
             return 1
         name = sessions[0].name
+    sess = state.get_session(name)
+    if sess and not sess.stopped_at and tmux.has_session(name):
+        loop.ensure(name)
     return _attach(name)
 
 

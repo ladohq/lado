@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -627,9 +628,25 @@ def test_ls_shows_a_running_session_without_its_loop(repo, fake_tmux, capsys):
     main(["ls"])
     assert capsys.readouterr().out.splitlines()[0] == (
         f"s  {repo}  (session loop not running: unconfirmed messages are not retried; "
-        f"see {state.home() / 'loop.log'})"
+        f"run `lado attach s` to restart it; see {state.home() / 'loop.log'})"
     )
     held = loop.take_lock("s")  # its loop runs
     main(["ls"])
     assert capsys.readouterr().out.splitlines()[0] == f"s  {repo}"
     held.close()
+
+
+def test_attach_restarts_a_dead_loop(repo, fake_tmux, loop_starts, monkeypatch):
+    from lado import loop
+
+    attached = []
+    monkeypatch.setattr(os, "execvpe", lambda *args: attached.append(args[1]))
+    main(["start", str(repo), "--name", "s", "--no-attach"])
+    assert loop_starts == ["s"]
+    main(["attach", "s"])
+    assert loop_starts == ["s", "s"]  # its lock was free: the loop had died
+    held = loop.take_lock("s")  # its loop runs
+    main(["attach"])
+    assert loop_starts == ["s", "s"]
+    held.close()
+    assert len(attached) == 2

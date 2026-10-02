@@ -158,11 +158,17 @@ schema change.
   sweeps the session every `loop.INTERVAL` seconds, so an unconfirmed message is typed
   again or failed on time with no send and no hook. One per session: it holds an exclusive
   `flock` on `LADO_HOME/loop/<session>.lock` (gone with the process, no pid file); a second
-  one exits at once. Before each pass it ends, writing why to `LADO_HOME/loop.log`, when the
+  one exits when it cannot take the lock within `loop.LOCK_WAIT` (0.1 s, so a moment's lock
+  check by `lado ls` does not make a starting loop exit). Before each pass it ends, writing
+  why to `LADO_HOME/loop.log`, when the
   session is stopped or gone, its tmux session is gone, or `lado.db` has another schema
   version than its own (checked read-only, so it never migrates); an error in a pass is
-  written there too, and the loop goes on. `lado ls` marks a running session whose loop
-  does not run (its lock is free); `lado forget` removes the lock file.
+  written there too with its traceback, and the loop goes on. While the same error
+  repeats, it writes one short line at most every `loop.REPEAT_NOTE` seconds (60) and the
+  count when another error comes or passes work again. `lado ls` marks a running session
+  whose loop does not run (its lock is free) and says to run `lado attach <session>`:
+  `lado attach`, and `lado start` on a running session (which still refuses), start the
+  loop again when its lock is free. `lado forget` removes the lock file.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so

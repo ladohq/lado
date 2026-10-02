@@ -198,35 +198,12 @@ a "Questions for the human" section of its note, and the supervisor asks them in
 the `grilling` format before the next design visit.
 Found: 2026-10-02, design of feature/message-retry.
 
-## A dead session loop cannot be restarted
-
-If a session's loop dies (SIGKILL, OOM), `lado ls` says "session loop not running ... see
-loop.log" but names no action, and only `lado stop` + `lado start` bring it back: `lado start`
-refuses a running session. Until then messages are not retried on time.
-Wanted: `lado start` / `lado attach` start the loop when its lock is free (a second instance
-exits at once anyway), and the `lado ls` line says what to do.
-Found: 2026-10-02, review of run fix/session-loop.
-
-## The loop's lock check can make a starting loop exit
-
-`loop.running()` takes the exclusive lock for a moment; a loop starting at that instant (right
-after `lado start`, while `lado ls` or a test polls) fails to take it and exits, leaving the
-session without a loop. Wanted: `run` retries taking the lock for ~100 ms before it exits.
-Found: 2026-10-02, review of run fix/session-loop.
-
 ## `lado forget` can leave two loops for one session name
 
 `lado forget` deletes the lock file while the stopped session's loop may still sleep (up to
 INTERVAL). A new session of the same name started within that time locks a new file (another
 inode); the old loop wakes, sees a running session and goes on: two loops. Wanted: each pass
 checks that the held file is still the one at the path (os.fstat vs os.stat) and exits if not.
-Found: 2026-10-02, review of run fix/session-loop.
-
-## The session loop floods loop.log with a repeating error
-
-On a steady error (tmux gone from PATH, a sweep that always fails) the loop writes a traceback
-every 2 s without limit. Wanted: log a repeating error once (or with a cut-off) and/or rotate
-loop.log.
 Found: 2026-10-02, review of run fix/session-loop.
 
 ## A running session loop keeps the old code after an upgrade

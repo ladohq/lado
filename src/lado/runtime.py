@@ -169,6 +169,7 @@ def start_session(
     old = state.get_session(session)
     if old:
         if not old.stopped_at and tmux.has_session(session):
+            loop.ensure(session)
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
         if old.repo != repo:
             raise LadoError(

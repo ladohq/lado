@@ -45,6 +45,21 @@ def test_start_refuses_running_session(repo, fake_tmux):
         runtime.start_session(str(repo), None, None)
 
 
+def test_start_on_a_running_session_restarts_a_dead_loop(repo, fake_tmux, loop_starts):
+    from lado import loop
+
+    runtime.start_session(str(repo), "s", None)
+    assert loop_starts == ["s"]
+    with pytest.raises(runtime.LadoError, match="already running"):
+        runtime.start_session(str(repo), "s", None)
+    assert loop_starts == ["s", "s"]  # its lock was free: the loop had died
+    held = loop.take_lock("s")  # its loop runs
+    with pytest.raises(runtime.LadoError, match="already running"):
+        runtime.start_session(str(repo), "s", None)
+    assert loop_starts == ["s", "s"]
+    held.close()
+
+
 def test_start_requires_git_repo(tmp_path, fake_tmux):
     with pytest.raises(runtime.LadoError, match="not inside a git repository"):
         runtime.start_session(str(tmp_path), None, None)

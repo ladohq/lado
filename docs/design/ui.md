@@ -173,11 +173,13 @@ time. Each task is one `feature` run, useful on its own.
 2. **Main screen structure**: with the human, which sections and items the main screen has
    and how one moves between them; layout and navigation only, sections empty. Done:
    Structure above.
-3. **Sections, one at a time**, each designed with the human and then built. Next is
-   Providers and environment, then the session's sections one by one. The live updates
-   (the change feed, D3), the composer (D4), notifications and the agent terminal come
-   with or after the sections that need them; later the desktop app. The placeholders
-   link to these items:
+3. **Sections, one at a time**, each designed with the human and then built. Goal
+   (decided with the human 2026-10-03): develop LADO from the UI instead of the terminal,
+   so first what that needs, in this order: the live updates (the change feed, D3); the
+   agent terminal in the browser (the supervisor's first: today's chat with it is its
+   terminal); Gates (Needs you with its count, the gate page, a browser notification);
+   Agents; Flows. Then Activity, Providers and environment, the composer (D4) and the
+   rest; later the desktop app. The placeholders link to these items:
 
 ### Providers and environment
 

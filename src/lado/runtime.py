@@ -5,6 +5,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 """
 
 import contextlib
+import enum
 import os
 import re
 import subprocess
@@ -369,6 +370,26 @@ def running_session(session: str) -> state.Session:
             "runs and gates wait"
         )
     return sess
+
+
+class SessionStatus(str, enum.Enum):
+    """Whether a session runs, as `lado ls` and the UI show it."""
+
+    STOPPED = "stopped"  # `lado stop` marked it stopped
+    RUNNING = "running"
+    TMUX_GONE = "tmux_gone"  # not stopped, but its tmux session is gone
+    LOOP_DOWN = "loop_down"  # running without its session loop: no message is retried
+
+
+def session_status(sess: state.Session) -> SessionStatus:
+    """The one place that tells whether a session runs."""
+    if sess.stopped_at:
+        return SessionStatus.STOPPED
+    if not tmux.has_session(sess.name):
+        return SessionStatus.TMUX_GONE
+    if not loop.running(sess.name):
+        return SessionStatus.LOOP_DOWN
+    return SessionStatus.RUNNING
 
 
 @dataclass

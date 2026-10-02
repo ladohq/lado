@@ -184,16 +184,16 @@ def cmd_ls(args: argparse.Namespace) -> int:
     if not sessions:
         print("No sessions. Start one with: lado start <repo>")
     for sess in sessions:
-        if sess.stopped_at:
-            alive = "  (stopped)"
-        else:
-            alive = "" if tmux.has_session(sess.name) else "  (tmux session is gone)"
-            if not alive and not loop.running(sess.name):
-                alive = (
-                    "  (session loop not running: unconfirmed messages are not retried; "
-                    f"run `lado attach {sess.name}` to restart it; "
-                    f"see {state.home() / 'loop.log'})"
-                )
+        alive = {
+            runtime.SessionStatus.RUNNING: "",
+            runtime.SessionStatus.STOPPED: "  (stopped)",
+            runtime.SessionStatus.TMUX_GONE: "  (tmux session is gone)",
+            runtime.SessionStatus.LOOP_DOWN: (
+                "  (session loop not running: unconfirmed messages are not retried; "
+                f"run `lado attach {sess.name}` to restart it; "
+                f"see {state.home() / 'loop.log'})"
+            ),
+        }[runtime.session_status(sess)]
         print(f"{sess.name}  {sess.repo}{alive}")
         since = state.status_since(sess.name)
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -442,6 +442,59 @@ def cmd_finish(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_server(args: argparse.Namespace) -> int:
+    from lado.server import run as server_run  # FastAPI loads only for the server
+
+    if args.action == "stop":
+        info = server_run.stop()
+        print(
+            f"Stopped the LADO server at {info['url']}."
+            if info
+            else "The LADO server is not running."
+        )
+        return 0
+    return server_run.serve(args.host, args.port, args.new_token)
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
+    import webbrowser
+
+    from lado.server import app, auth
+    from lado.server import run as server_run
+
+    info = server_run.running()
+    if info and args.port and info["port"] != args.port:
+        raise runtime.LadoError(
+            f"the LADO server already runs at {info['url']}, not on port {args.port}; "
+            "stop it with `lado server stop` to start it on another port"
+        )
+    if info is None:
+        server_run.start_background(args.port)
+        info = server_run.wait_ready()
+    if info["version"] != __version__:
+        print(
+            f"lado: warning: the running LADO server is version {info['version']}, this LADO is "
+            f"{__version__}; restart it with `lado server stop` and `lado ui`",
+            file=sys.stderr,
+        )
+    if app.bundle_missing(app.STATIC):
+        print(f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr)
+    url = f"{info['url']}/?token={auth.token()}"
+    if args.no_open:
+        print(url)
+    else:
+        print(f"Opening {url}")
+        webbrowser.open(url)
+    return 0
+
+
+def _port(value: str) -> int:
+    n = int(value)
+    if not 0 <= n <= 65535:
+        raise argparse.ArgumentTypeError("a port is 0 to 65535")
+    return n
+
+
 def _attach(name: str) -> int:
     if not tmux.has_session(name):
         print(f'No running session "{name}" (see lado ls)', file=sys.stderr)
@@ -601,6 +654,25 @@ def main(argv: list[str] | None = None) -> int:
     answer.add_argument("option", nargs="?", help="e.g. approve, reject, continue, cancel")
     answer.add_argument("-m", dest="comment", metavar="COMMENT", help="for the next step")
     answer.set_defaults(func=cmd_answer)
+
+    port_help = "exactly this port; 0 for any free one (default: 8000 or the next free to 8020)"
+    server = commands.add_parser(
+        "server", help="run the UI server of this LADO_HOME in the foreground; stop: end it"
+    )
+    server.add_argument("action", nargs="?", choices=["stop"], help="stop the running server")
+    server.add_argument("--port", type=_port, help=port_help)
+    server.add_argument("--host", default="127.0.0.1", help="only 127.0.0.1 or localhost for now")
+    server.add_argument(
+        "--new-token", action="store_true", help="make a new token; links with the old one stop"
+    )
+    server.set_defaults(func=cmd_server)
+
+    ui = commands.add_parser(
+        "ui", help="open the web UI; starts the UI server in the background if none runs"
+    )
+    ui.add_argument("--no-open", action="store_true", help="only print the link")
+    ui.add_argument("--port", type=_port, help=f"for a server it starts: {port_help}")
+    ui.set_defaults(func=cmd_ui)
 
     # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")

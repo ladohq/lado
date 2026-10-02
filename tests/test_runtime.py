@@ -8,7 +8,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import hooks, kits, providers, runs, runtime, state, tmux
+from lado import hooks, kits, loop, providers, runs, runtime, state, tmux
 
 
 def test_slug():
@@ -1109,3 +1109,16 @@ def test_migration_goes_ahead_with_no_session_running(repo, fake_tmux):
     runtime.check_migration()  # nothing pending: nothing to check
     assert state.get_session("old").stopped_at
     assert state.pending_migration() is None
+
+
+def test_session_status_tells_the_four_states(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    sess = state.get_session("s")
+    assert runtime.session_status(sess) == runtime.SessionStatus.LOOP_DOWN
+    held = loop.take_lock("s")  # its loop runs
+    assert runtime.session_status(sess) == runtime.SessionStatus.RUNNING
+    tmux.kill_session("s")
+    assert runtime.session_status(sess) == runtime.SessionStatus.TMUX_GONE
+    held.close()
+    runtime.stop_session("s")
+    assert runtime.session_status(state.get_session("s")) == runtime.SessionStatus.STOPPED

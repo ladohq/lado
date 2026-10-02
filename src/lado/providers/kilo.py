@@ -75,6 +75,12 @@ class KiloProvider(base.Provider):
             # An update during a session can break the global install (it emptied it once,
             # with 7.8.3) and the plugin API: the agent's Kilo must not update itself.
             "autoupdate": False,
+            # Snapshots are Kilo's undo; git keeps the history in LADO's worktrees. On a slow
+            # repo their setup asks "Continue with snapshots / Disable for this project" and
+            # the agent waits for the human. Kilo 7.8.1's config schema has the top-level
+            # boolean `snapshot`; Snapshot.track returns before that dialog when it is false,
+            # and the dialog's "Disable" itself writes `snapshot: false` (read in the binary).
+            "snapshot": False,
         }
         if mode == "plan":
             # The plan agent denies every tool it does not list, LADO's MCP tools too; its

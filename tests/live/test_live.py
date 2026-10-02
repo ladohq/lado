@@ -218,6 +218,21 @@ def check_agent_config(provider: str, repo, worker: state.Agent) -> None:
         assert not {"SendMessage", "ListAgents"} & set(tools), tools
 
 
+def check_no_snapshots(provider: str, repo) -> None:
+    """Kilo: the agents took no snapshots of the repo. Kilo keeps them in
+    <data>/snapshot/<project id>/ and the project id in the repo's .git/kilo (Kilo 7.8.1);
+    on a slow repo their setup stops the agent on a question for the human."""
+    if provider != "kilo":
+        return
+    paths = subprocess.run(
+        ["kilo", "debug", "paths"], capture_output=True, text=True, check=True
+    ).stdout
+    [data] = [line.split(None, 1)[1] for line in paths.splitlines() if line.startswith("data ")]
+    project = (repo / ".git" / "kilo").read_text().strip()
+    snapshots = Path(data) / "snapshot" / project
+    assert not snapshots.exists(), f"Kilo took snapshots: {snapshots}"
+
+
 LADO_TOOLS = {"mcp__lado__flow_advance", "mcp__lado__send_message", "mcp__lado__read_messages"}
 
 
@@ -286,6 +301,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     hello = runtime.git(str(repo), "show", f"{worker.branch}:hello.txt")
     assert hello.strip() == "OK"
     check_agent_config(live_provider, repo, worker)
+    check_no_snapshots(live_provider, repo)
 
     runtime.send_message(SESSION, "supervisor", "w1", FOLLOW_UP, FOLLOW_UP_BODY)
     wait_for(

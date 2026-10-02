@@ -97,17 +97,6 @@ Wanted: check whether another form of the hook's answer (e.g. JSON `decision: bl
 neutral label. Cosmetic.
 Found: 2026-10-02, first flow run `fix/resume-stopped`.
 
-## Flaky: Kilo live test of a worker's task
-
-`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once in three runs on branch
-`lado/lado/fix-reliability-1` (free model `kilo/kilo-auto/free`), then passed twice, and twice
-more for the reviewer. The failure text was not kept. One suspect: that branch makes MCP tools
-refuse unknown arguments, so a weak model that adds one gets an error and must call again.
-Next time it fails, the failure report names a folder under `<temp dir>/lado-live-evidence/`
-with the session's `lado log`, `hooks.log`, the agents' configs and their last screens (run
-fix/live-test-keeps-logs); keep the pytest output too.
-Found: 2026-10-02, run fix/reliability-1.
-
 ## Flows cannot work on another repository
 
 A run's worktree and branch are always made in the session's repo, so a change to another
@@ -255,3 +244,13 @@ already migrated back. Likely a session-loop pass that passed `why_stop` before
 Wanted: a loop pass never migrates (the schema checked on the connection the pass uses),
 so the refusal holds while the loop runs.
 Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason.
+
+## A repo's own Kilo config may override what LADO switches off
+
+LADO passes its Kilo settings (`autoupdate`, `snapshot`, permissions) in the file named by
+`KILO_CONFIG`. In the opencode family a project's own config (`kilo.json` in the repo, or the
+one Kilo's "Disable for this project" writes) is merged after that file, so a repo with
+`"snapshot": true` would bring the snapshot dialog back. Not verified for Kilo 7.8.1.
+Wanted: check the merge order; if the project wins, pass LADO's must-have settings where
+they win (e.g. `KILO_CONFIG_CONTENT`, which 7.8.1 reads) and test it.
+Found: 2026-10-02, run fix/kilo-no-snapshots.

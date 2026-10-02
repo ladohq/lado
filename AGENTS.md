@@ -180,7 +180,9 @@ schema change.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so
-  is self-updating (Kilo: `autoupdate: false` and `KILO_DISABLE_AUTOUPDATE=1`).
+  is self-updating (Kilo: `autoupdate: false` and `KILO_DISABLE_AUTOUPDATE=1`). Kilo's
+  snapshots (its undo; git keeps the history) are off too (`snapshot: false`): on a slow
+  repo their setup stops the agent on a question for the human.
 - Claude Code starts an agent's first turn after its SessionStart hooks, not after its MCP
   servers, and defers the tools of a server that connects later, `alwaysLoad` or not. So
   the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists

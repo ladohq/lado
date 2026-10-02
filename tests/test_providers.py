@@ -117,6 +117,12 @@ def test_kilo_agent_does_not_update_itself(repo):
     assert config["autoupdate"] is False
 
 
+def test_kilo_agent_takes_no_snapshots(repo):
+    # On a slow repo Kilo's snapshot setup asks the human whether to go on; the agent waits.
+    _, config = _kilo_launch(repo)
+    assert config["snapshot"] is False
+
+
 @pytest.mark.parametrize(
     ("mode", "flags", "edit"),
     [

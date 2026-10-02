@@ -215,6 +215,26 @@ def test_kilo_turn_end_prints_queued_messages(repo, fake_tmux):
     assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
+def test_turn_end_hands_over_queued_messages_without_an_idle_moment(repo, fake_tmux, monkeypatch):
+    """No one sees the messages delivered and the agent idle, as if it were done with them
+    before it got them."""
+    runtime.start_session(str(repo), "s", None)
+    state.set_status("s", "supervisor", state.BUSY)
+    runtime.send_message("s", "w1", "supervisor", "done")  # busy: queued
+    status_once_delivered = []
+    take_pending = state.take_pending
+
+    def spy(*args, **kwargs):
+        taken = take_pending(*args, **kwargs)
+        status_once_delivered.append(state.get_agent("s", "supervisor").status)
+        return taken
+
+    monkeypatch.setattr(state, "take_pending", spy)
+    out = hooks.handle(providers.get("claude"), Event(providers.TURN_END), "s", "supervisor")
+    assert json.loads(out)["reason"] == "[from w1] done"
+    assert status_once_delivered == [state.BUSY]
+
+
 def test_provider_chosen_per_session_and_worker(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, "kilo")
     runtime.spawn_worker("s", "task")

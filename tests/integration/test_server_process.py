@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 import pytest
@@ -46,6 +47,11 @@ def gone(pid: int, timeout: float = 10) -> bool:
             return False
         time.sleep(0.05)
     return True
+
+
+class StopAtRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
 
 
 @pytest.fixture(autouse=True)
@@ -99,8 +105,12 @@ def test_a_second_server_refuses_and_names_the_first():
 
 def test_server_log_is_the_owners_only_and_never_holds_the_token():
     link = lado_cli("ui", "--no-open", "--port", "0").stdout.strip()
-    with urllib.request.urlopen(link, timeout=10) as answer:  # logs in, follows the redirect
-        assert answer.status == 200
+    # Logs in and stops at the redirect: the page behind it needs the bundle (make web),
+    # which the integration tests do not build.
+    no_redirect = urllib.request.build_opener(StopAtRedirect)
+    with pytest.raises(urllib.error.HTTPError) as answer:
+        no_redirect.open(link, timeout=10)
+    assert answer.value.code == 303
     lado_cli("server", "stop")
     log = state.home() / "server.log"
     assert auth.token() not in log.read_text()

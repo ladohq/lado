@@ -285,3 +285,13 @@ server already runs"), and `lado ui` reports "the LADO server ended as it starte
 the first server is ready a moment later. Wanted: on an early exit of its own process, check
 whether the lock is held and, if so, keep waiting until the timeout.
 Found: 2026-10-03, review of run feature/ui-skeleton (M-3).
+
+## `make check` hides an integration test's need for the web bundle
+
+`make check` builds the web UI (`make web`) before it runs the unit and integration tests,
+while CI's `check` job runs them without the bundle. An integration test that reaches the
+page behind `/` passes locally and fails in CI with 503 "the web UI's bundle is missing"
+(test_server_log_is_the_owners_only_and_never_holds_the_token, CI run 37066847184).
+Wanted: unit and integration tests run without the bundle in `make check` too (e.g. a
+static dir from the test or the bundle hidden for them), so `make check` matches CI.
+Found: 2026-10-03, run fix/ci-red-after-ui.

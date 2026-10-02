@@ -529,10 +529,9 @@ def post(session: str, sender: str, recipient: str, summary: str, body: str = ""
 def deliver_pending(session: str, recipient: str) -> bool:
     """Type the recipient's pending messages into its window. They stay "sent" until its
     prompt-submit hook confirms them."""
-    pending = state.take_pending(session, recipient, state.SENT)
+    pending = state.take_pending(session, recipient, state.SENT, state.BUSY)
     if not pending:
         return False
-    state.set_status(session, recipient, state.BUSY)
     tmux.send_text(session, recipient, format_messages(pending))
     return True
 

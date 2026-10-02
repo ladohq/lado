@@ -594,13 +594,17 @@ def set_status(session: str, name: str, status: str) -> None:
     """Set the agent's status and, if it changed, record a "status" event."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        cur = db.execute(
-            "UPDATE agents SET status = ? WHERE session = ? AND name = ? AND status != ?",
-            (status, session, name, status),
-        )
-        if cur.rowcount:
-            _add_event(db, session, name, STATUS, status)
+        _set_status(db, session, name, status)
         db.execute("COMMIT")
+
+
+def _set_status(db: sqlite3.Connection, session: str, name: str, status: str) -> None:
+    cur = db.execute(
+        "UPDATE agents SET status = ? WHERE session = ? AND name = ? AND status != ?",
+        (status, session, name, status),
+    )
+    if cur.rowcount:
+        _add_event(db, session, name, STATUS, status)
 
 
 def seen(session: str, name: str) -> None:
@@ -928,10 +932,14 @@ def read_messages(session: str, recipient: str) -> list[Message]:
     return [Message(*r[:5], READ, r["created_at"]) for r in rows]
 
 
-def take_pending(session: str, recipient: str, mark: str) -> list[Message]:
-    """Move all pending messages for `recipient` to `mark` and return them, oldest first.
+def take_pending(
+    session: str, recipient: str, mark: str, status: str | None = None
+) -> list[Message]:
+    """Move all pending messages for `recipient` to `mark` and return them, oldest first;
+    when there are any and `status` is given, set the recipient's status too.
 
-    Runs in one write transaction, so two concurrent callers never get the same message.
+    Runs in one write transaction, so two concurrent callers never get the same message,
+    and no one sees the messages moved without the status that goes with them.
     """
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -947,6 +955,8 @@ def take_pending(session: str, recipient: str, mark: str) -> list[Message]:
             "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + ? WHERE id = ?",
             [(mark, time.time(), attempt, r["id"]) for r in rows],
         )
+        if rows and status:
+            _set_status(db, session, recipient, status)
         db.execute("COMMIT")
     return [Message(*r[:5], mark, r["created_at"]) for r in rows]
 

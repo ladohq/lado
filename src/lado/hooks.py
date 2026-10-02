@@ -63,8 +63,7 @@ def handle(
         state.set_status(session, agent, state.IDLE)
         if not provider.capabilities.deliver_on_turn_end:
             runtime.deliver_pending(session, agent)
-        elif pending := state.take_pending(session, agent, state.DELIVERED):
-            state.set_status(session, agent, state.BUSY)
+        elif pending := state.take_pending(session, agent, state.DELIVERED, state.BUSY):
             return provider.continue_output(format_messages(pending))
         # Then what was typed and never confirmed.
         runtime.sweep(session, agent)

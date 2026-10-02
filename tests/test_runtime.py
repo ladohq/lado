@@ -140,6 +140,24 @@ def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
     assert fake_tmux[-1][0] == "send_text"  # confirmed, so not delivered again
 
 
+def test_an_agent_being_typed_into_never_looks_idle(repo, fake_tmux, monkeypatch):
+    """Taken from the queue and the agent busy in one step: no one sees the agent idle
+    with a message on its way in."""
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    status_once_taken = []
+    take_pending = state.take_pending
+
+    def spy(*args, **kwargs):
+        taken = take_pending(*args, **kwargs)
+        status_once_taken.append(state.get_agent("s", "w1").status)
+        return taken
+
+    monkeypatch.setattr(state, "take_pending", spy)
+    assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
+    assert status_once_taken == [state.BUSY]
+
+
 DELAYS = (15, 30, 60)
 
 

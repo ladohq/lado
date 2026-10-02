@@ -161,3 +161,21 @@ def test_a_repeating_error_gets_a_short_line_now_and_then(repo, fake_tmux, monke
     log = (lado_home / "loop.log").read_text()
     assert log.count("RuntimeError: tmux not found") == 1
     assert log.count("the same error again") == 2
+
+
+def test_a_stop_during_a_repeating_error_is_no_recovery(repo, fake_tmux, monkeypatch, lado_home):
+    _session(repo)
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        if len(passes) == 3:
+            runtime.stop_session(session)
+        raise RuntimeError("tmux not found")
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    assert loop.run("s", interval=0) == 0
+    log = (lado_home / "loop.log").read_text()
+    assert "passes work again" not in log  # the last pass swept nothing
+    assert "the same error repeated 2 more times" in log
+    assert log.splitlines()[-1].endswith("s: loop ended: the session is stopped")

@@ -74,7 +74,7 @@ def running(session: str) -> bool:
 
 def start(session: str) -> None:
     """Start the session's loop as a process of its own, outside tmux, that outlives the
-    command starting it. If one runs already, the new one exits at once."""
+    command starting it. If one runs already, the new one exits after LOCK_WAIT."""
     subprocess.Popen(
         providers.lado_command("loop", session),
         stdin=subprocess.DEVNULL,
@@ -116,11 +116,10 @@ def run(session: str, interval: float = INTERVAL) -> int:
                 reason = why_stop(session)
                 if reason is None:
                     runtime.sweep(session)
+                    errors.worked()
             except Exception:
                 reason = None
                 errors.failed()
-            else:
-                errors.worked()
             if reason:
                 errors.flush()
                 _log(session, f"loop ended: {reason}")

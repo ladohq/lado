@@ -71,12 +71,17 @@ Task trackers moved to stage 9: BACKLOG.md serves until it gets too small.
 
 The agents still run in tmux; the app is a window onto them.
 
-- [ ] Research first (from stage 8), since it decides whether the UI shows terminals or
-  events: what ACP gives Claude Code, Kilo and Codex. Can the human watch an agent at work and
-  step in (today: attach to its tmux window and type)? Which of today's pieces work over
-  ACP (skills, hooks, MCP servers, the CLI's own slash commands and dialogs)? Can an agent
-  move between the ACP and tmux runtimes?
-- [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates
+- [x] Research first (from stage 8), done 2026-10-03: what ACP gives Claude Code, Kilo and
+  Codex. Over ACP the human watches and steps in only through the client (prompt, cancel,
+  permission answers); no real terminal can attach to a live ACP session (OpenCode may get
+  it); the CLI's own dialogs, /resume picker and /clear are lost; a session can move between
+  ACP and the TUI one after the other (shared transcript store), not at the same time.
+  Claude over ACP runs on the Agent SDK, whose terms want an API key rather than a Pro/Max
+  subscription. Decision: the UI is built on tmux first (an agent's terminal plus LADO's
+  own structured panels), its data model on LADO's events, so an ACP runtime later adds an
+  event view without a rewrite.
+- [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates, notes;
+  built on LADO's events, not on the terminal
 - [ ] Notifications when an agent waits for the human
 - [ ] Artifacts: named, versioned documents of a session (design, plan, review, report) that
   any agent writes and reads, with or without a flow; the human's main way to get results:
@@ -92,8 +97,11 @@ Drive agents over the Agent Client Protocol instead of tmux: structured events, 
 requests handled by LADO, any ACP agent as a provider (OpenCode, Kilo, Gemini CLI, Copilot,
 Cursor; Claude Code and Codex through adapters).
 
-- [ ] Research: Claude and Codex via ACP adapters (subscription auth, skills, hooks); started
-  in stage 7
+- [ ] Start when ACP v2 leaves draft (v1 is stable; v2 changes the turn and state model).
+  Try first with agents that speak ACP natively (OpenCode, Kilo), then Codex (codex-acp);
+  Claude (claude-agent-acp) only with an API key unless its subscription terms allow it.
+  Hands-on check of the open points from the stage 7 research: adapter stability, resume
+  between ACP and the TUI, per-session MCP servers, model choice (Kilo)
 - [ ] ACP runtime behind the same provider interface as tmux
 - [ ] UI renders ACP sessions and permission requests
 - [ ] Dogfooding moves to the ACP runtime

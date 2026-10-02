@@ -485,6 +485,59 @@ def test_a_run_keeps_the_language_of_the_human(lado_home):
     assert state.get_run("s", "feature/x").language == "ru"
 
 
+def test_version_10_database_keeps_the_notes_of_runs(lado_home):
+    db = _schema_v4(lado_home)
+    for version in range(4, 10):
+        for statement in state.MIGRATIONS[version]:
+            db.execute(statement)
+    db.execute(
+        "INSERT INTO runs (session, name, flow, snapshot, kit, task, state, status, worktree,"
+        " branch, note) VALUES ('s', 'feature/x', 'feature', '{}', '{}', 'x', 'implement',"
+        " 'active', '/w', 'b', 'designed')"
+    )
+    db.execute("PRAGMA user_version = 10")
+    db.commit()
+    # A run from before keeps its previous note; no earlier note was kept.
+    assert state.get_run("s", "feature/x").note == "designed"
+    assert state.latest_notes("s", "feature/x") == {}
+
+
+def _moved(run, to, note, body=""):
+    """Move `run` to state `to` with the note reported from where it was."""
+    after = dataclasses.replace(run, state=to, note=note, note_body=body)
+    assert state.update_run(run, after, [], noted=run.state)
+    return after
+
+
+def test_every_note_is_kept_with_the_state_it_was_reported_from(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    run = _run()
+    state.add_run(run, [("supervisor", state.FLOW_START, "started")])
+    run = _moved(run, "implement", "first design", "plan A")
+    run = _moved(run, "design", "back to design")
+    run = _moved(run, "implement", "second design", "plan B")
+    # A write that moves nothing keeps no note.
+    stale = dataclasses.replace(run, state="other")
+    assert not state.update_run(stale, dataclasses.replace(run, note="lost"), [], noted="other")
+    notes = state.latest_notes("s", "feature/x")
+    assert set(notes) == {"design", "implement"}
+    design = notes["design"]
+    assert (design.state, design.summary, design.body) == ("design", "second design", "plan B")
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", design.created_at)
+    assert notes["implement"].summary == "back to design"
+    # The notes go with their session.
+    state.delete_session("s")
+    assert state.latest_notes("s", "feature/x") == {}
+
+
+def test_notes_belong_to_their_run(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    for name in ("feature/x", "feature/y"):
+        state.add_run(_run(name), [("supervisor", state.FLOW_START, "started")])
+    _moved(_run("feature/x"), "implement", "x designed")
+    assert state.latest_notes("s", "feature/y") == {}
+
+
 def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(lado_home):
     state.add_session(state.Session("s", "/r", None))
     state.add_agent(_agent("supervisor", state.IDLE))

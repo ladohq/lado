@@ -108,6 +108,22 @@ def _broken(change):
             lambda d: d["states"]["design_ok"].update(max_visits=2),
             'state "design_ok": unknown keys max_visits',
         ),
+        (
+            lambda d: d["states"]["review"].update(needs=["design", "nowhere"]),
+            'state "review": needs "nowhere", which is not a state',
+        ),
+        (
+            lambda d: d["states"]["review"].update(needs="design"),
+            'state "review": needs must be a list of state names',
+        ),
+        (
+            lambda d: d["states"]["review"].update(needs=[["design"]]),
+            'state "review": needs must be a list of state names',
+        ),
+        (
+            lambda d: d["states"]["design_ok"].update(needs=["design"]),
+            'state "design_ok": unknown keys needs',
+        ),
         (lambda d: d["states"]["done"].update(end=False), 'state "done": end must be true'),
         (
             lambda d: d["states"]["done"].update(outcomes={"x": "design"}),
@@ -135,9 +151,24 @@ def test_a_self_loop_is_a_valid_transition():
     assert parse(data)[1] == []
 
 
+def test_a_work_state_names_the_earlier_states_whose_notes_it_needs():
+    data = _broken(lambda d: d["states"]["review"].update(needs=["design", "design_ok"]))
+    flow, errors = parse(data)
+    assert errors == []
+    assert flow.states["review"].needs == ("design", "design_ok")
+    assert flow.states["implement"].needs == ()
+
+
 def test_a_flow_round_trips_through_its_snapshot():
-    flow, _ = parse(yaml.safe_load(FEATURE))
+    flow, _ = parse(_broken(lambda d: d["states"]["review"].update(needs=["design"])))
     snapshot = copy.deepcopy(flow.snapshot)
     again = flows.from_snapshot(snapshot, "kit")
     assert again.states == flow.states
+    assert again.states["review"].needs == ("design",)
     assert again.start == flow.start
+
+
+def test_a_snapshot_from_before_needs_still_works():
+    # A run started by an older LADO keeps the flow as it was: no needs anywhere.
+    flow = flows.from_snapshot(yaml.safe_load(FEATURE), "kit")
+    assert all(state.needs == () for state in flow.states.values())

@@ -130,7 +130,9 @@ def advance(
     after, events, gate = _enter(noted, flow, target)
     transition = (caller, state.FLOW, f"{run.state} -{outcome}-> {target}")
     own = notices if caller == SUPERVISOR else None
-    return _commit(run, after, [transition, *events], flow, caller, gate, notices=own)
+    return _commit(
+        run, after, [transition, *events], flow, caller, gate, notices=own, noted=run.state
+    )
 
 
 def answer(
@@ -159,7 +161,7 @@ def answer(
     noted = dataclasses.replace(run, note=note, note_body=note_body)
     after, events, opens = _enter(noted, flow, target, limit=found.kind != LOOP)
     transition = (by, state.FLOW, f"{run.state} -{outcome}-> {target}")
-    after = _commit(run, after, [transition, *events], flow, by, opens, closes)
+    after = _commit(run, after, [transition, *events], flow, by, opens, closes, noted=found.state)
     if after.status == state.ACTIVE:
         # A worker got the step; the supervisor only hears that the run moved on.
         if _acting_agent(after, flow.states[after.state]) not in (None, SUPERVISOR):
@@ -231,7 +233,7 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     after, events, gate = _enter(noted, flow, target, limit=False)
     forced = (HUMAN, state.FLOW_SET, f"{run.state} -> {target}: {reason}")
     closes = (HUMAN, "overridden", reason, None)
-    return _commit(run, after, [forced, *events], flow, HUMAN, gate, closes)
+    return _commit(run, after, [forced, *events], flow, HUMAN, gate, closes, noted=run.state)
 
 
 def cancel(session: str, run_name: str, reason: str) -> list[runtime.Finished]:
@@ -387,14 +389,19 @@ def status(session: str, caller: str, run_name: str | None = None) -> list[dict]
 
 
 def step_text(run: state.Run, flow: flows.Flow) -> str:
-    """What the acting agent of a work state is told: the task, the step, the previous
-    step's note and how to report the outcome."""
+    """What the acting agent of a work state is told: the task, the step, the latest notes
+    of the states it needs, the previous step's note and how to report the outcome."""
     current = flow.states[run.state]
     parts = [
         f"Run {run.name} (flow {flow.name}), step {run.state}.",
         f"Task:\n{run.task}",
         f"Step:\n{current.do}",
     ]
+    kept = state.latest_notes(run.session, run.name) if current.needs else {}
+    for needed in current.needs:
+        note = kept.get(needed)
+        text = f"{note.summary}\n{note.body}".rstrip() if note else "no note yet"
+        parts.append(f"Note from {needed}: {text}")
     if run.note or run.note_body:
         parts.append(f"Note from the previous step: {run.note}\n{run.note_body}".rstrip())
     outcomes = "\n".join(f"- {o} -> {t}" for o, t in current.outcomes.items())
@@ -454,8 +461,11 @@ def _commit(
     opens: state.Gate | None = None,
     closes: state.Close | None = None,
     notices: list[str] | None = None,
+    noted: str | None = None,
 ) -> state.Run:
-    if not state.update_run(before, after, events, opens, closes):
+    """Store the move from `before` to `after`, keeping `after`'s note as reported from
+    state `noted`, and tell whoever acts now."""
+    if not state.update_run(before, after, events, opens, closes, noted):
         raise _changed(before, closes)
     _arrived(after, flow, caller, notices)
     return after

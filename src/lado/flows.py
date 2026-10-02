@@ -14,9 +14,17 @@ A flow is a file flows/<name>.yaml in a kit:
       design_ok:                  # gate: the human answers `ask`
         gate: approval            # approval | choice
         ask: Approve the design?
-        outcomes: {approved: done, rejected: design}
+        outcomes: {approved: implement, rejected: design}
+      implement:
+        agent: developer
+        do: Build it.
+        needs: [design]                   # optional: states whose latest notes it gets
+        outcomes: {done: done}
       done:
         end: true
+
+A work state's step gets the previous step's note, and with `needs` also the latest note
+reported from each named state (lado.runs.step_text).
 
 An approval gate has exactly the outcomes `approved` and `rejected`; the human answers it
 with approve or reject. A choice gate offers its outcome names.
@@ -31,7 +39,7 @@ from dataclasses import dataclass, field
 FLOW_KEYS = {"name", "description", "start", "states"}
 WORK, GATE, END = "work", "gate", "end"
 STATE_KEYS = {
-    WORK: {"agent", "do", "outcomes", "max_visits"},
+    WORK: {"agent", "do", "outcomes", "max_visits", "needs"},
     GATE: {"gate", "ask", "outcomes"},
     END: {"end"},
 }
@@ -48,6 +56,7 @@ class State:
     agent: str = ""  # work: the role that acts
     do: str = ""  # work: the step's instruction
     max_visits: int | None = None  # work: how often the state may be entered
+    needs: tuple[str, ...] = ()  # work: the states whose latest notes the step gets
     gate: str = ""  # gate: approval or choice
     ask: str = ""  # gate: the question for the human
 
@@ -104,6 +113,9 @@ def parse(data: object, name: str, kit: str, where: str, errors: list[str]) -> F
                     f'state "{state.name}": outcome "{outcome}" goes to "{target}", '
                     "which is not a state"
                 )
+        for needed in state.needs:
+            if needed not in raw_states:
+                error(f'state "{state.name}": needs "{needed}", which is not a state')
     if len(errors) == count:
         _check_reachable(states, start, error)
     if len(errors) > count:
@@ -157,6 +169,7 @@ def _state(name: object, raw: object, error) -> State | None:
             return None
         return State(name, GATE, outcomes, gate=gate, ask=ask.strip())
     agent, do, visits = raw.get("agent"), raw.get("do"), raw.get("max_visits")
+    needs = raw.get("needs", [])
     ok = outcomes is not None
     if not _text(agent):
         error(f"{where}: agent must be a role name")
@@ -167,9 +180,14 @@ def _state(name: object, raw: object, error) -> State | None:
     if visits is not None and (type(visits) is not int or visits < 1):
         error(f"{where}: max_visits must be a whole number of 1 or more")
         ok = False
+    if not isinstance(needs, list) or not all(isinstance(n, str) for n in needs):
+        error(f"{where}: needs must be a list of state names")
+        ok = False
     if not ok:
         return None
-    return State(name, WORK, outcomes, agent=agent, do=do.strip(), max_visits=visits)
+    return State(
+        name, WORK, outcomes, agent=agent, do=do.strip(), max_visits=visits, needs=tuple(needs)
+    )
 
 
 def _outcomes(value: object, where: str, error) -> dict[str, str] | None:

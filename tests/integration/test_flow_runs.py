@@ -71,6 +71,18 @@ states:
 """
 
 
+DESIGNED = """\
+name: designed
+description: the supervisor designs it, the human approves, a worker builds it
+start: design
+states:
+  design: {agent: supervisor, do: sleep 0, outcomes: {ready: approve}}
+  approve: {gate: approval, ask: 'Build it?', outcomes: {approved: build, rejected: design}}
+  build: {agent: worker, do: sleep 0, needs: [design], outcomes: {done: end}}
+  end: {end: true}
+"""
+
+
 @pytest.fixture
 def flow_kit(repo):
     kit = repo / ".lado" / "kits" / "itflow"
@@ -81,6 +93,7 @@ def flow_kit(repo):
     (kit / "flows" / "reviewed.yaml").write_text(REVIEWED)
     (kit / "flows" / "planned.yaml").write_text(PLANNED)
     (kit / "flows" / "tiny.yaml").write_text(TINY)
+    (kit / "flows" / "designed.yaml").write_text(DESIGNED)
     runtime.start_session(str(repo), SESSION, None, "fake", ["itflow"])
     wait_status("supervisor", state.IDLE)
     return kit
@@ -230,6 +243,30 @@ def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):
     assert f"lado: gate_open {name} (#1 approval at check: Ship it?)" in log
     assert f"human: gate_answer {name} (#1 reject: add a test)" in log
     assert f"human: flow {name} (check -rejected-> build)" in log
+
+
+def test_a_step_gets_the_note_it_needs_after_a_gate_and_after_flow_set(repo, flow_kit):
+    name = "designed/build-it"
+    supervisor_runs("flow_start designed build it")
+    supervisor_runs(f"advance {name} ready the design | use a form\\nno captcha")
+    assert run_state(name).status == state.WAITING
+    result = lado_cli("answer", SESSION, "1", "approve", "-m", "go")
+    assert result.returncode == 0, result.stderr
+    supervisor_runs(f"spawnrun {name}")
+    wait_status("w1", state.IDLE)
+    design = "Note from design: the design\nuse a form\nno captcha"
+    [first] = inputs("w1")
+    assert first.startswith(f"Run {name} (flow designed), step build.")
+    assert design in first
+    assert "Note from the previous step: approved: go" in first
+
+    # Set back to build by the human: the previous note is the reason, the design stays.
+    result = lado_cli("flow-set", SESSION, name, "build", "--reason", "once more")
+    assert result.returncode == 0, result.stderr
+    wait_for(lambda: got("w1", f"[from lado] flow {name}: step build"), "the step again")
+    step = [m for m in state.list_messages(SESSION) if m.recipient == "w1"][-1]
+    assert design in step.body
+    assert "Note from the previous step: set by the human: once more" in step.body
 
 
 def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):

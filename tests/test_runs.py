@@ -18,10 +18,12 @@ states:
   implement:
     agent: developer
     do: Build it.
+    needs: [design]
     outcomes: {done: review}
   review:
     agent: reviewer
     do: Review it.
+    needs: [implement]
     max_visits: 2
     outcomes: {approved: merge, changes: implement, again: review}
   merge:
@@ -257,6 +259,51 @@ def advance_to_review(session):
     runs.spawn_worker(session, "feature/login")  # w1, developer
     runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait for the review.")
     return runs.advance(session, "w1", "feature/login", "done", "built")
+
+
+def test_a_step_gets_the_latest_notes_of_the_states_it_needs(session):
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")  # w1, developer
+    step = state.get_agent(session, "w1").task
+    needed = "Note from design: design agreed\na\nb"
+    assert needed in step
+    # After the task and the step, before the previous step's note.
+    assert step.index("Build it.") < step.index(needed)
+    assert step.index(needed) < step.index("Note from the previous step: design agreed")
+
+
+def test_a_needed_state_with_no_note_yet_is_named(session):
+    runs.start(session, "feature", "Add a login page", name="login")
+    runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait for the review.")
+    runs.force(session, "feature/login", "review", "the code is there already")
+    step = messages("w1")[-1]
+    assert step.summary == "flow feature/login: step review"
+    assert "Note from implement: no note yet" in step.body
+
+
+def test_flow_set_keeps_the_notes_a_step_needs(session):
+    advance_to_review(session)
+    runs.force(session, "feature/login", "implement", "rework the form")
+    step = messages("w1")[-1]
+    assert step.summary == "flow feature/login: step implement"
+    assert "Note from design: design agreed\na\nb" in step.body
+    assert "Note from the previous step: set by the human: rework the form" in step.body
+    # The human's reason is kept as a note too, from where the run was.
+    assert state.latest_notes(session, "feature/login")["review"].summary == (
+        "set by the human: rework the form"
+    )
+
+
+def test_a_gate_answer_is_kept_as_the_gates_note(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "reject", "the form is too big")
+    notes = state.latest_notes(session, "feature/login")
+    assert notes["gated"].summary == "rejected: the form is too big"
+    assert notes["merge"].summary == "ready to ship"
+    step = messages("w1")[-1]
+    assert step.summary == "flow feature/login: step implement"
+    assert "Note from design: design agreed\na\nb" in step.body
 
 
 def test_a_worker_step_goes_to_the_next_worker_only(session):
@@ -846,6 +893,7 @@ def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_
         f"{len(step.body.splitlines())} lines: call read_messages)"
     )
     assert plan in step.body
+    assert f"Note from design: agreed\n{plan}" in step.body  # implement needs design
     assert worker.task == step.body  # the task in full: lado ls, list_agents
     assert state.read_messages(session, "w1")[0].body == step.body
 

@@ -78,7 +78,8 @@ schema change.
   - `sources.py`: kit sources (`lado sources`): a local folder read in place, or a git
     repository cloned into `LADO_HOME/sources/<name>`; registered in `LADO_HOME/sources.yaml`.
     Only the `Source` classes know a kind; `kits.py` asks a source for its directory.
-  - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states)
+  - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
+    a work state's optional `needs` lists the states whose latest notes its step gets)
     and its validator. `runs.py`: flow runs: start (own worktree and branch, shared by the
     run's workers), step messages from `lado`, `flow_advance`, loop limits, gates (the run
     waits for the human), end (finish workers, remove the worktree if merged), cancel and
@@ -103,8 +104,12 @@ schema change.
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
-    names the run) and the session's `session_stop` and `session_resume`; events, messages,
-    runs and gates go with their session, which `lado stop` only marks stopped
+    names the run) and the session's `session_stop` and `session_resume`. The `notes`
+    table keeps every note a run's step reported (`flow_advance`, a gate's answer,
+    `lado flow-set`'s reason) with the state it was reported from: a work state's report
+    from that state, an answer from its gate's state, a flow-set reason from the state the
+    run was in. Events, messages,
+    runs, notes and gates go with their session, which `lado stop` only marks stopped
     (`sessions.stopped_at`) and `lado forget` deletes. How long an
     agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
     `spawned` event, how long a run has been in its state from its latest event.
@@ -233,6 +238,12 @@ supervisor gets one line, `flow <run>: waiting for the human at <state> (gate #<
 answer and its comment become the next step's note, after which the note that led to the gate
 follows in the body; when a worker gets the next step, the supervisor gets one line
 `flow <run>: human answered <option> at <state>`.
+
+A step's text (`runs.step_text`) has the task, the step's `do`, then for each state in its
+`needs` the latest note kept from that state (`Note from <state>: ...`, or `no note yet`),
+then the previous step's note and the outcomes. The needed notes come from the `notes`
+table, so `lado flow-set` keeps them: a run set to `implement` with `needs: [design]` gets
+the latest design note, and the flow-set reason is the previous step's note.
 
 `lado answer <session> <gate-id|run> <option> [-m COMMENT]` answers a gate. Without the
 option it asks: with no arguments about the open gates of all sessions (a list to pick from

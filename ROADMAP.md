@@ -57,7 +57,7 @@ agent.
 
 - [x] Flow engine with steps, outcomes and human gates
 - [x] Gates answered by the human with `lado answer` or in a tmux popup
-- [ ] A step gets the latest notes of the earlier states it names (`needs`), so roles do not
+- [x] A step gets the latest notes of the earlier states it names (`needs`), so roles do not
   copy a design forward; `lado flow-set` keeps them
 
 ## Stage 6: Develop LADO inside LADO

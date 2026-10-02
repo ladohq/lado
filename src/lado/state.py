@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -83,6 +83,18 @@ MESSAGES_ATTEMPTS = "ALTER TABLE messages ADD COLUMN attempts INTEGER NOT NULL D
 MESSAGES_FAILED = "ALTER TABLE messages ADD COLUMN failed_at REAL"  # when sweep gave it up
 # When the agent's latest hook ran (time.time()); 0 for none yet.
 AGENTS_SEEN = "ALTER TABLE agents ADD COLUMN seen_at REAL NOT NULL DEFAULT 0"
+# Every note a run's step reported, with the state it was reported from: a state's
+# `needs` (lado.flows) gets the latest ones. Kept from version 11 on.
+NOTES = """
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session TEXT NOT NULL REFERENCES sessions(name) ON DELETE CASCADE,
+    run TEXT NOT NULL,
+    state TEXT NOT NULL,  -- a work state's report, a gate's answer, or where flow-set found it
+    summary TEXT NOT NULL,  -- one line
+    body TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))  -- UTC
+)"""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -133,6 +145,7 @@ SCHEMA += (
             MESSAGES_ATTEMPTS,
             MESSAGES_FAILED,
             AGENTS_SEEN,
+            NOTES,
         ]
     )
     + ";\n"
@@ -162,6 +175,7 @@ MIGRATIONS = {
     7: [SESSIONS_STOPPED],
     8: [RUNS_LANGUAGE],
     9: [MESSAGES_ATTEMPTS, MESSAGES_FAILED, AGENTS_SEEN],
+    10: [NOTES],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -308,6 +322,16 @@ class Gate:
     answered_by: str = ""
     created_at: str = ""
     answered_at: str | None = None
+
+
+@dataclass(frozen=True)
+class Note:
+    """A note a run's step reported, kept with the state it was reported from."""
+
+    state: str
+    summary: str
+    body: str
+    created_at: str
 
 
 # Who closes a run's open gate, the answer, a comment, and the id of the gate that must be
@@ -688,13 +712,14 @@ def update_run(
     events: list[tuple[str, str, str]],
     opens: Gate | None = None,
     closes: Close | None = None,
+    noted: str | None = None,
 ) -> bool:
     """Write `after` and the events (actor, kind, detail) in one transaction, but only if
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
     was written. In the same transaction `closes` closes the run's open gate (nothing is
-    written if it names a gate that is not open), and the gate `opens` is stored (its id
-    set)."""
+    written if it names a gate that is not open), the gate `opens` is stored (its id
+    set), and `after`'s note is kept as reported from state `noted`, if given."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -723,8 +748,24 @@ def update_run(
                 _add_event(db, before.session, actor, kind, detail, before.name)
             if opens:
                 _open_gate(db, opens)
+            if noted is not None:
+                db.execute(
+                    "INSERT INTO notes (session, run, state, summary, body) VALUES (?, ?, ?, ?, ?)",
+                    (before.session, before.name, noted, after.note, after.note_body),
+                )
         db.execute("COMMIT")
     return bool(cur.rowcount)
+
+
+def latest_notes(session: str, run: str) -> dict[str, Note]:
+    """The latest note kept from each state of the run."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT state, summary, body, created_at FROM notes WHERE id IN"
+            " (SELECT MAX(id) FROM notes WHERE session = ? AND run = ? GROUP BY state)",
+            (session, run),
+        ).fetchall()
+    return {r["state"]: Note(*r) for r in rows}
 
 
 def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:

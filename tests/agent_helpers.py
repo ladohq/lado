@@ -73,15 +73,9 @@ def publish(work: Path, files: dict[str, str], tag: str | None = None) -> str:
 def previous_schema() -> None:
     """Turn the LADO_HOME database back to SCHEMA_VERSION - 1, as an older LADO left it.
     Undoes the last step of state.MIGRATIONS: change it with each new migration."""
-    assert state.MIGRATIONS[state.SCHEMA_VERSION - 1] == [
-        state.MESSAGES_ATTEMPTS,
-        state.MESSAGES_FAILED,
-        state.AGENTS_SEEN,
-    ]
+    assert state.MIGRATIONS[state.SCHEMA_VERSION - 1] == [state.NOTES]
     with state.connect() as db:
-        db.execute("ALTER TABLE messages DROP COLUMN attempts")
-        db.execute("ALTER TABLE messages DROP COLUMN failed_at")
-        db.execute("ALTER TABLE agents DROP COLUMN seen_at")
+        db.execute("DROP TABLE notes")
         db.execute(f"PRAGMA user_version = {state.SCHEMA_VERSION - 1}")
 
 

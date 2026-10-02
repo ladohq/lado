@@ -117,15 +117,6 @@ Wanted: `flow_start` can name the repo a run works on (a registered kit source o
 and the run's worktree, `make check` and merge happen there.
 Found: 2026-10-02, task lado-dev architecture (kit changes in lado-kits).
 
-## A step sees only the previous step's note
-
-A step's text (`runs.step_text`) and a gate carry one note: the previous step's. So a role
-must copy what a later step needs forward by hand (lado-dev's architect copies the design
-into its review), and `lado flow-set` clears the note body (`runs.force`), so a run set to
-`implement` gives the developer no design at all. Wanted: a step can get the latest note of
-a named earlier state (e.g. `design`), so roles need not copy the design forward.
-Found: 2026-10-02, review of lado-dev 0.3.0.
-
 ## A failed rollback hides why a start or spawn failed
 
 When `start_session` or `spawn_worker` fails, its `except` undoes what it stored

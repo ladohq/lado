@@ -12,7 +12,8 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
     spawnrun <run>     call the LADO MCP tool spawn_worker for a flow run
-    advance <run> <outcome>  call the LADO MCP tool flow_advance
+    advance <run> <outcome>[ <note summary>[ | <body>]]  call the LADO MCP tool
+                       flow_advance; "\\n" in the body is a line break
     sleep <seconds>    work that long
     ask                ask the human for a permission: run the waiting hook, and take the
                        next input as the answer (logged as {"answer": <text>})
@@ -182,7 +183,13 @@ def work(text: str) -> bool:
         elif command[0] == "spawnrun":
             call_tool("spawn_worker", {"run": command[1]})
         elif command[0] == "advance":
-            args = {"run": command[1], "outcome": command[2]}
+            outcome, _, note = command[2].partition(" ")
+            summary, _, body = note.partition(" | ")
+            args = {"run": command[1], "outcome": outcome}
+            if summary:
+                args["note_summary"] = summary
+            if body:
+                args["note_body"] = body.replace("\\n", "\n")
             report(advance=call_tool("flow_advance", args))
     time.sleep(0.05)  # think
     return False

@@ -509,7 +509,7 @@ def _popup(session: str, gate: state.Gate) -> None:
     unset = ["env", "-u", "LADO_AGENT", "-u", "LADO_SESSION"]
     argv = unset + providers.lado_command("answer", session, str(gate.id))
     env = {"LADO_HOME": str(state.home()), "LADO_TMUX_SOCKET": tmux.socket()}
-    tmux.popup(session, f"lado {session}: waiting for you", argv, env)
+    tmux.popup(session, f"LADO: waiting for you (session {session})", argv, env)
 
 
 def _deliver_step(run: state.Run, flow: flows.Flow, notices: list[str] | None) -> None:

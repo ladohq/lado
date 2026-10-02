@@ -28,7 +28,8 @@ make test-live          # uv run pytest -m live: real agent CLIs and models; PRO
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
 instead of a real agent CLI. They use a temp `LADO_HOME` and their own tmux server
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. Tests never use the default
-`lado` tmux socket.
+`lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
+`LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is.
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`
@@ -173,12 +174,27 @@ follows in the body; when a worker gets the next step, the supervisor gets one l
 `lado answer <session> <gate-id|run> <option> [-m COMMENT]` answers a gate. Without the
 option it asks: with no arguments about the open gates of all sessions (a list to pick from
 when there are several), and after each answer it goes on with the open gates of that session
-until none is left or the human presses Enter on an empty line. When a gate opens, LADO opens
-a tmux popup (`display-popup -E`) running `lado answer <session> <gate-id>` on each client
+until none is left or the human presses Enter on an empty line. It shows the question, the
+one-line summary of the note that led to the gate and the numbered options; when the note
+has a body, `v` shows the whole note in `less -R` (printed when there is no `less`), then
+asks again. When a gate opens, LADO opens a tmux popup (`display-popup -E`, titled
+`LADO: waiting for you (session <name>)`, a rounded soft orange border around the
+terminal's own colours; tmux 3.3+) running `lado answer <session> <gate-id>` on each client
 attached to the session; with no client attached, nothing opens and the gate waits in
 `lado ls`. tmux does not stack popups: a second gate is asked about in the open popup after
 the first answer. Closing the popup leaves the gate open. `lado answer` and `lado flow-set`
 refuse to run inside an agent (`LADO_AGENT` set).
+
+Flow tools return short results: the run, flow, state, status, who acts, outcomes, gate,
+visits, the note's summary and the run's language; `flow_status(run=...)` adds the task,
+reason, worktree and branch. What the supervisor's own `flow_start` or `flow_advance`
+causes (a step that needs a worker, a gate, the run's end) comes back in the result's
+`notices` instead of as a message; what others cause (a worker's advance, the human's
+answer) still comes as a message. A "step <x> needs a <role>" message still waiting in the
+queue is dropped when that worker is spawned for the run. `flow_start(human_language=...)`
+stores the human's language with the run (e.g. `ru`), and every step message asks for
+`note_summary` and `note_body` in it, since the human reads them at gates; the flow's gate
+questions stay as written.
 
 `lado flow-set <session> <run> <state> --reason TEXT` puts a flow run into a state: the
 human's override, past a gate or a loop limit; it closes the run's open gate as `overridden`.

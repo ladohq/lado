@@ -99,18 +99,9 @@ Found: 2026-10-01, dogfooding.
 The first task done through a flow worked end to end (implement → review → merge gate in the
 popup → merge → run ended, workers closed, worktree and branch removed). Frictions seen:
 
-- **Messages the supervisor caused itself.** "step X needs a <role>" is queued even when the
-  supervisor spawns the worker in the same turn, and "ended at done" after its own
-  flow_advance; both arrive later as stale lines. Return them in the tool result instead, or
-  drop a "needs a <role>" message once that worker is spawned.
 - **A step that needs a new worker is a relay through the supervisor.** LADO asks, the
   supervisor calls spawn_worker with exactly the arguments LADO named; no decision is made.
   Consider letting a flow (or kit) say that LADO spawns the step's worker itself.
-- **Tool results are long.** flow_start, flow_advance and flow_status return the full task
-  text every time; return the run, state, who acts and the note, and the task only on request.
-- **Agents must unset LADO's env to run tests.** A worker (and the supervisor in the merge
-  step) runs `env -u LADO_AGENT -u LADO_SESSION -u LADO_HOME -u LADO_TMUX_SOCKET -u TMUX make
-  check`; the tests (or the Makefile) should clear the agent's LADO variables themselves.
 - **"idle" while a background command runs.** The reviewer's turn ended while its
   `make check` ran in the background; LADO showed it idle for 80 s (and could have pasted a
   message into it) until the command finished and woke it.

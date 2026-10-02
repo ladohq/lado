@@ -3,10 +3,14 @@
 import argparse
 import datetime
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from lado import __version__, doctor, kits, log, providers, runs, runtime, sources, state, tmux
+
+PAGER = ["less", "-R"]  # for a gate's full note
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -294,25 +298,47 @@ def _pick(gates: list[state.Gate]) -> state.Gate | None:
 
 
 def _choose(gate: state.Gate) -> str | None:
-    """The option the human picks for the gate, by number or name; None to leave it."""
-    print(f"\nGate #{gate.id}, session {gate.session}, run {gate.run} at {gate.state}:")
-    print(gate.question)
-    if gate.note or gate.note_body:
-        body = "".join(f"\n  {line}" for line in gate.note_body.splitlines())
-        print(f"Note: {gate.note}{body}")
-    print("Options:")
-    for n, option in enumerate(gate.options, 1):
-        print(f"  {n}) {option}")
+    """The option the human picks for the gate, by number or name; None to leave it. The
+    note shows as its summary; with a body, "v" shows all of it in a pager."""
+    full_note = gate.note_body.strip() != ""
+    v = ", v for the full note" if full_note else ""
+    _show_gate(gate)
     while True:
-        chosen = _input("Answer (number or name, Enter to leave it open): ")
+        chosen = _input(f"Answer (number or name{v}, Enter to leave it open): ")
         if not chosen:
             return None
+        if full_note and chosen.lower() == "v":
+            _page(f"Note: {gate.note}\n\n{gate.note_body.strip()}\n")
+            _show_gate(gate)
+            continue
         if chosen.isdigit() and 1 <= int(chosen) <= len(gate.options):
             return gate.options[int(chosen) - 1]
         try:
             return runs.canonical_option(gate, chosen)
         except runtime.LadoError as exc:
             print(f"lado: {exc}")
+
+
+def _show_gate(gate: state.Gate) -> None:
+    print(f"\nGate #{gate.id}, session {gate.session}, run {gate.run} at {gate.state}:")
+    print(gate.question)
+    lines = len(gate.note_body.strip().splitlines())
+    if lines:
+        print(f"Note: {gate.note} (v: the full note, {lines} more line{'' if lines == 1 else 's'})")
+    elif gate.note:
+        print(f"Note: {gate.note}")
+    print("Options:")
+    for n, option in enumerate(gate.options, 1):
+        print(f"  {n}) {option}")
+
+
+def _page(text: str) -> None:
+    """Show `text` in the pager, or print it when there is none."""
+    pager = shutil.which(PAGER[0])
+    if pager is None:
+        print(text, end="")
+        return
+    subprocess.run([pager, *PAGER[1:]], input=text, text=True, check=False)
 
 
 def format_duration(seconds: float) -> str:

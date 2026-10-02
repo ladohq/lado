@@ -13,6 +13,7 @@ import uuid
 DEFAULT_SOCKET = "lado"
 TIMEOUT = 10
 POPUP_WIDTH, POPUP_HEIGHT = "80%", "60%"
+POPUP_BORDER, POPUP_BORDER_STYLE = "rounded", "fg=colour214"  # a soft orange
 
 # Set by Claude Code in its child processes. A `claude` started with them believes it is
 # nested inside another Claude Code session, so the LADO tmux server must not inherit them.
@@ -125,12 +126,9 @@ def popup(session: str, title: str, argv: list[str], env: dict[str, str]) -> int
         clients = run("list-clients", "-t", f"={session}", "-F", "#{client_name}").split()
     except TmuxError:
         return 0  # the session is gone
-    title = title.replace("#", "##")  # -T is a format
     for client in clients:
-        cmd = ["tmux", "-L", socket(), "display-popup", "-c", client, "-E", "-T", title]
-        cmd += ["-w", POPUP_WIDTH, "-h", POPUP_HEIGHT, *_env_args(env), shlex.join(argv)]
         subprocess.Popen(
-            cmd,
+            popup_command(client, title, argv, env),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -138,6 +136,15 @@ def popup(session: str, title: str, argv: list[str], env: dict[str, str]) -> int
             start_new_session=True,
         )
     return len(clients)
+
+
+def popup_command(client: str, title: str, argv: list[str], env: dict[str, str]) -> list[str]:
+    """The tmux command for a popup on `client`: easy to notice but calm, a rounded border
+    in a soft colour around the terminal's own background and text."""
+    title = " " + title.replace("#", "##") + " "  # -T is a format
+    cmd = ["tmux", "-L", socket(), "display-popup", "-c", client, "-E", "-T", title]
+    cmd += ["-b", POPUP_BORDER, "-S", POPUP_BORDER_STYLE, "-w", POPUP_WIDTH, "-h", POPUP_HEIGHT]
+    return [*cmd, *_env_args(env), shlex.join(argv)]
 
 
 def capture(session: str, window: str) -> str:

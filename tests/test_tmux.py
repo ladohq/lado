@@ -44,6 +44,23 @@ def _screen(session, window, text, timeout=5):
     raise AssertionError(f"{text!r} not on the screen:\n{screen}")
 
 
+def test_a_popup_has_a_calm_coloured_rounded_border_and_a_title(monkeypatch):
+    monkeypatch.setenv("LADO_TMUX_SOCKET", "lado-test-x")
+    cmd = tmux.popup_command("/dev/ttys001", "LADO: waiting #1", ["lado", "answer"], {"A": "b"})
+    assert cmd[:6] == ["tmux", "-L", "lado-test-x", "display-popup", "-c", "/dev/ttys001"]
+
+    def option(flag):
+        return cmd[cmd.index(flag) + 1]
+
+    assert "-E" in cmd  # closes when the command exits
+    assert option("-T") == " LADO: waiting ##1 "  # a format: "#" is doubled
+    assert option("-b") == "rounded"
+    assert option("-S") == "fg=colour214"  # a soft orange border
+    assert "-s" not in cmd  # the terminal's own background and text colours
+    assert option("-e") == "A=b"
+    assert cmd[-1] == "lado answer"
+
+
 def test_popup_opens_on_the_clients_attached_to_the_session(tmp_path):
     session = f"test-{uuid.uuid4().hex[:6]}"
     viewer = f"viewer-{uuid.uuid4().hex[:6]}"

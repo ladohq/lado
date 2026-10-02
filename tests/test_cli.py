@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from agent_helpers import init_repo, publish
 
-from lado import __version__, runs, runtime, sources, state
+from lado import __version__, cli, runs, runtime, sources, state
 from lado.cli import format_duration, main
 
 
@@ -341,12 +341,54 @@ def test_answer_asks_about_the_only_open_gate(repo, fake_tmux, capsys, monkeypat
     assert main(["answer"]) == 0
     out = capsys.readouterr().out
     assert "Gate #2, session s, run ship/x at check:\nShip it?\n" in out
-    assert "Note: built it\n  all\n  tests pass\n" in out
+    # The note's summary only: its body can be long. "v" shows all of it.
+    assert "Note: built it (v: the full note, 2 more lines)\n" in out
+    assert "tests pass" not in out
     assert "  1) approve\n  2) reject\n" in out
+    assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
     assert 'no option "x" for gate #2' in out
     assert "gate #2: reject. ship/x: check -> build (→ w1)" in out
     assert out.endswith("No more open gates.\n")
     assert state.get_run("s", "ship/x").note == "rejected: still too big"
+
+
+def _at_gate_with_a_long_note(repo, capsys):
+    _at_gate(repo, capsys)
+    runs.answer("s", "1", "reject", "first")
+    runs.spawn_worker("s", "ship/x")
+    body = "\n".join(f"line {n}" for n in range(1, 61))
+    runs.advance("s", "w1", "ship/x", "done", "built it", body)
+    capsys.readouterr()
+    return body
+
+
+def test_v_shows_the_full_note_in_a_pager_then_asks_again(
+    repo, fake_tmux, capsys, monkeypatch, tmp_path
+):
+    body = _at_gate_with_a_long_note(repo, capsys)
+    assert cli.PAGER == ["less", "-R"]
+    paged = tmp_path / "paged.txt"
+    copy = f"import sys; open({str(paged)!r}, 'w').write(sys.stdin.read())"
+    monkeypatch.setattr(cli, "PAGER", [sys.executable, "-c", copy])
+    _typing(monkeypatch, "v", "approve", "")
+    assert main(["answer"]) == 0
+    assert paged.read_text() == f"Note: built it\n\n{body}\n"
+    out = capsys.readouterr().out
+    assert "line 60" not in out
+    # Back at the question after the pager.
+    assert out.count("Ship it?\n") == 2
+    assert "gate #2: approve. ship/x: check -> end (ended)" in out
+
+
+def test_v_prints_the_full_note_without_a_pager(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate_with_a_long_note(repo, capsys)
+    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
+    _typing(monkeypatch, "v")
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert "Note: built it\n\nline 1\nline 2\n" in out and "line 60\n" in out
+    assert out.count("Ship it?\n") == 2
+    assert out.endswith("Gate #2 stays open.\n")
 
 
 def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, monkeypatch):

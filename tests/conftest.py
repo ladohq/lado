@@ -10,6 +10,11 @@ from agent_helpers import init_repo
 # Tests never use the user's LADO tmux server (socket "lado").
 TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
 
+# An agent's shell has these set (its session, its LADO home, its tmux): the tests run there
+# as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess.
+for _var in ("LADO_AGENT", "LADO_SESSION", "LADO_HOME", "LADO_TMUX_SOCKET", "TMUX"):
+    os.environ.pop(_var, None)
+
 
 def _kill_tmux_server(socket: str) -> None:
     if shutil.which("tmux"):
@@ -35,8 +40,6 @@ def lado_home(tmp_path, monkeypatch):
     home = tmp_path / "lado-home"
     monkeypatch.setenv("LADO_HOME", str(home))
     monkeypatch.setenv("LADO_TMUX_SOCKET", TEST_SOCKET)
-    for var in ("LADO_SESSION", "LADO_AGENT"):  # set when the tests run inside a LADO agent
-        monkeypatch.delenv(var, raising=False)
     return home
 
 

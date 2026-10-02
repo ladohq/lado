@@ -364,7 +364,7 @@ def test_a_gate_opens_with_the_note_that_led_to_it_and_a_popup(session, fake_tmu
     [popup] = [c for c in fake_tmux if c[0] == "popup"]
     _, where, title, argv, env = popup
     # One title for all gates: tmux keeps an open popup and only gives it the new title.
-    assert (where, title) == (session, f"lado {session}: waiting for you")
+    assert (where, title) == (session, f"LADO: waiting for you (session {session})")
     assert argv[-3:] == ["answer", session, str(gate.id)]
     # The tmux session's environment has the supervisor's LADO_AGENT: not the popup's.
     assert argv[:5] == ["env", "-u", "LADO_AGENT", "-u", "LADO_SESSION"]

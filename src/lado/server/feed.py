@@ -126,8 +126,16 @@ def _session_item(session: str, key: str) -> dict | None:
     return None if sess is None else models.session_info(sess).model_dump(mode="json")
 
 
+def _agent_item(session: str, key: str) -> dict | None:
+    agent = state.get_agent(session, key)
+    return None if agent is None else models.agent_info(agent).model_dump(mode="json")
+
+
 # The kinds whose REST model exists, and how to build an item of it. Others' items are null.
-ITEMS: dict[str, Callable[[str, str], dict | None]] = {"sessions": _session_item}
+ITEMS: dict[str, Callable[[str, str], dict | None]] = {
+    "sessions": _session_item,
+    "agents": _agent_item,
+}
 
 # A change of kind X also changes the item of kind Y of the same session (Y's key is '':
 # the session's own). The session's item counts its agents.

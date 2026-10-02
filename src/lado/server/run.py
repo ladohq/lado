@@ -21,7 +21,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import IO
 
-from lado import __version__, providers, state
+from lado import __version__, providers, state, terminal
 from lado.runtime import LadoError
 
 HOSTS = ("127.0.0.1", "localhost")  # a remote host waits for a real login
@@ -147,6 +147,10 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
         written.replace(info_path())
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
         print(f"{stamp} LADO server {__version__} at {url}, pid {os.getpid()}", flush=True)
+        # Terminals a server of this LADO_HOME left open when it died: nobody reads them.
+        left = terminal.close_viewers()
+        if left:
+            print(f"Closed {len(left)} terminal viewers left over: {', '.join(left)}", flush=True)
         print(f"Open the UI with: lado ui (token in {auth.token_path()})", flush=True)
         # uvicorn shuts down on SIGTERM or SIGINT, then raises the signal again: end with 0
         # through the `finally` below instead of being killed by it.

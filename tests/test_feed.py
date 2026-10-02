@@ -128,6 +128,23 @@ def test_a_change_of_an_agent_also_updates_its_session(streams, repo, fake_tmux)
     assert sessions[-1].data["item"]["status"] == "stopped"
 
 
+def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
+    stream = streams()
+    stream.next()
+    runtime.start_session(str(repo), "s", None)
+    state.set_status("s", "supervisor", state.IDLE)
+    added = stream.until(
+        lambda e: is_change("agents", "s")(e) and e.data["item"]["status"] == "idle"
+    )
+    assert added[-1].data["key"] == "supervisor"
+    assert added[-1].data["item"] == {
+        "name": "supervisor",
+        "role": "supervisor",
+        "provider": "claude",
+        "status": "idle",
+    }
+
+
 def test_a_position_replays_what_came_after_it_once_per_row(streams):
     state.add_session(state.Session("s", "/r", None))
     position = last_change()

@@ -7,15 +7,15 @@ never migrates the database: another schema version answers 503.
 
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, state
-from lado.server import feed, models
+from lado import __version__, state, terminal
+from lado.server import feed, models, terminals
 from lado.server.auth import Guard
-from lado.server.models import SessionInfo
+from lado.server.models import AgentInfo, History, SessionInfo
 
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
 BUILD_HINT = "build it with `make web` in a LADO checkout"
@@ -83,6 +83,34 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
+
+    @app.get("/api/sessions/{name}/agents", dependencies=[Depends(guard)])
+    def agents(name: str, has_db: bool = Depends(database)) -> list[AgentInfo]:
+        if not has_db or state.get_session(name) is None:
+            raise HTTPException(404, f'unknown session "{name}"')
+        return [models.agent_info(agent) for agent in state.list_agents(name)]
+
+    @app.get("/api/sessions/{name}/agents/{agent}/history", dependencies=[Depends(guard)])
+    def history(
+        name: str,
+        agent: str,
+        lines: int = Query(2000, ge=1, le=50000),
+        has_db: bool = Depends(database),
+    ) -> History:
+        """The agent's window: its last `lines` lines, for the UI's read-only history, and
+        whether the agent shows a full-screen program, whose history is inside it."""
+        if not has_db:
+            raise HTTPException(404, f'unknown session "{name}"')
+        try:
+            found = terminal.history(name, agent, lines)
+        except terminal.NoTerminal as none:
+            raise HTTPException(404, str(none)) from none
+        return History(text=found.text, alternate=found.alternate)
+
+    @app.websocket("/api/sessions/{name}/agents/{agent}/terminal")
+    async def terminal_socket(ws: WebSocket, name: str, agent: str, mode: str = terminal.VIEW):
+        """The agent's terminal (lado.server.terminals): mode view or control."""
+        await terminals.serve(ws, guard, name, agent, mode)
 
     if (static / "assets").is_dir():
         app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")

@@ -14,6 +14,7 @@ import secrets
 from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request
+from fastapi.requests import HTTPConnection
 from fastapi.responses import RedirectResponse
 
 from lado import state
@@ -40,24 +41,49 @@ def cookie_name(port: int) -> str:
     return f"lado_token_{port}"
 
 
+class Refused(Exception):
+    """A connection the server does not take: its HTTP status and why."""
+
+    def __init__(self, status: int, detail: str):
+        super().__init__(detail)
+        self.status, self.detail = status, detail
+
+
 class Guard:
-    """Checks the token of the server listening on `port`."""
+    """Checks the token of the server listening on `port`, and for a connection that changes
+    something its Origin: only the server's own pages may, so another page in the browser
+    cannot use the human's cookie (a terminal's input is the first such connection)."""
 
     def __init__(self, token: str, port: int):
         self.token = token
         self.cookie = cookie_name(port)
+        self.origins = {f"http://{host}:{port}" for host in ("127.0.0.1", "localhost")}
 
     def _valid(self, given: str | None) -> bool:
         return given is not None and secrets.compare_digest(given.encode(), self.token.encode())
 
+    def check(self, conn: HTTPConnection, changes: bool = False) -> None:
+        """Refused (401) without the token. With `changes` first Refused (403) for another
+        Origin than the server's own, and for none unless the token is a Bearer one (a
+        client that is not a browser: a browser always sends its Origin)."""
+        scheme, _, given = conn.headers.get("authorization", "").partition(" ")
+        bearer = scheme.lower() == "bearer" and self._valid(given)
+        if changes:
+            origin = conn.headers.get("origin")
+            if origin is None and not bearer:
+                raise Refused(403, "no Origin: only a client with a Bearer token may")
+            if origin is not None and origin not in self.origins:
+                raise Refused(403, f"the Origin {origin} is not this server's")
+        if bearer or self._valid(conn.cookies.get(self.cookie)):
+            return
+        raise Refused(401, "no valid token: open the link `lado ui` prints")
+
     def __call__(self, request: Request) -> None:
         """A FastAPI dependency: refuse a request without the token (401)."""
-        scheme, _, given = request.headers.get("authorization", "").partition(" ")
-        if scheme.lower() == "bearer" and self._valid(given):
-            return
-        if self._valid(request.cookies.get(self.cookie)):
-            return
-        raise HTTPException(401, "no valid token: open the link `lado ui` prints")
+        try:
+            self.check(request)
+        except Refused as refused:
+            raise HTTPException(refused.status, refused.detail) from refused
 
     def login(self, request: Request) -> RedirectResponse:
         """The answer to `<page>?token=<given>`: the cookie and a redirect to the same page

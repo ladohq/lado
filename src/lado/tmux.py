@@ -53,7 +53,20 @@ def _arg(value: str) -> str:
 
 
 def run(*args: str, input: str | None = None) -> str:
-    cmd = ["tmux", "-L", socket(), *(_arg(a) for a in args)]
+    return _run([_arg(a) for a in args], input)
+
+
+def run_chain(*commands: list[str]) -> str:
+    """Several commands in one tmux call, run in order; tmux skips the rest after one fails
+    (and the call fails)."""
+    args: list[str] = []
+    for command in commands:
+        args += [*([";"] if args else []), *(_arg(a) for a in command)]
+    return _run(args)
+
+
+def _run(args: list[str], input: str | None = None) -> str:
+    cmd = ["tmux", "-L", socket(), *args]
     try:
         result = subprocess.run(
             cmd,
@@ -96,13 +109,18 @@ def kill_session(session: str) -> None:
 
 
 def kill_window(session: str, window: str) -> None:
-    """Close the window and the program in it. A window that is already gone is fine."""
-    try:
-        names = run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
-    except TmuxError:
-        return  # the session is gone
-    if window in names:
+    """Close the window and the program in it, in every session it is linked into (a UI
+    viewer's too). A window that is already gone is fine."""
+    if window in window_names(session):
         run("kill-window", "-t", f"={session}:={window}")
+
+
+def window_names(session: str) -> list[str]:
+    """The names of the session's windows; none when the session is gone."""
+    try:
+        return run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
+    except TmuxError:
+        return []
 
 
 def send_text(session: str, window: str, text: str) -> None:
@@ -179,3 +197,80 @@ def capture(session: str, window: str) -> str:
 
 def attach_argv(session: str) -> list[str]:
     return ["tmux", "-L", socket(), "attach-session", "-t", f"={session}"]
+
+
+# A viewer's own key table (lado.terminal): only the wheel is bound. It goes to the program
+# when that reads the mouse or the pane is in a mode, else into tmux's copy-mode, which it
+# leaves at the bottom. tmux's other tables stay as they are.
+VIEWER_TABLE = "lado-viewer"
+VIEWER_BINDINGS = [
+    [
+        "bind-key",
+        "-T",
+        VIEWER_TABLE,
+        "WheelUpPane",
+        "if-shell",
+        "-F",
+        "#{||:#{pane_in_mode},#{mouse_any_flag}}",
+        "send-keys -M",
+        "copy-mode -e",
+    ],
+    ["bind-key", "-T", VIEWER_TABLE, "WheelDownPane", "send-keys", "-M"],
+]
+
+
+def new_viewer(viewer: str, labels: dict[str, str]) -> str:
+    """A detached session for a viewer, with its labels (user options) set in the same tmux
+    call: it never exists without them. Returns the id of the window it was made with."""
+    made = ["new-session", "-d", "-s", viewer, "-P", "-F", "#{window_id}", "cat"]
+    labelled = (["set-option", "-t", f"={viewer}:", k, v] for k, v in labels.items())
+    return run_chain(made, *labelled).strip()
+
+
+def link_viewer(viewer: str, own: str, session: str, window: str, options: dict[str, str]) -> None:
+    """Give the viewer the window `session:window` as its only one: link it, close the
+    window `own` it was made with, bind its key table, set its options."""
+    run_chain(
+        ["link-window", "-s", f"={session}:={window}", "-t", f"={viewer}:"],
+        ["kill-window", "-t", own],
+        *VIEWER_BINDINGS,
+        *(["set-option", "-t", f"={viewer}:", k, v] for k, v in options.items()),
+    )
+
+
+def attach_viewer_argv(viewer: str, ignore_size: bool) -> list[str]:
+    """`tmux attach` to a viewer. With `ignore_size` its size counts only while no other
+    client is attached. Never read-only: tmux takes an attached client for the client of a
+    command from outside, and a read-only one makes LADO's send-keys fail."""
+    flags = ["-f", "ignore-size"] if ignore_size else []
+    return ["tmux", "-L", socket(), "attach-session", *flags, "-t", f"={viewer}"]
+
+
+def sessions_with(*options: str) -> list[list[str]]:
+    """Each session's name and the values of the user options given ('' where unset); none
+    when no tmux server runs."""
+    form = "\t".join(["#{session_name}", *(f"#{{{option}}}" for option in options)])
+    try:
+        listed = run("list-sessions", "-F", form)
+    except TmuxError as error:
+        if "no server running" in str(error) or "error connecting" in str(error):
+            return []
+        raise
+    return [line.split("\t") for line in listed.splitlines()]
+
+
+def window_size(target: str) -> tuple[int, int]:
+    """The width and height of the window `target`."""
+    size = run("display-message", "-p", "-t", target, "#{window_width} #{window_height}")
+    cols, rows = size.split()
+    return int(cols), int(rows)
+
+
+def history(session: str, window: str, lines: int) -> tuple[str, bool]:
+    """The last `lines` lines of the window's history and its screen, wrapped lines joined,
+    and whether the program shows the alternate screen (a full-screen program: its history
+    is not in tmux's)."""
+    target = f"={session}:={window}"
+    alternate = run("display-message", "-p", "-t", target, "#{alternate_on}").strip() == "1"
+    text = run("capture-pane", "-p", "-J", "-S", f"-{lines}", "-t", target)
+    return text, alternate

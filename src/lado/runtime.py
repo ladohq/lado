@@ -14,7 +14,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lado import kits, loop, providers, state, tmux
+from lado import kits, loop, providers, state, terminal, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 MAX_MESSAGE = 8000
@@ -196,7 +196,8 @@ def start_session(
     spec = _spec(agent_cli, env, role.name, agent, _supervisor_instructions(env, session))
     started = Started(sess)
     if old and not old.stopped_at:
-        state.stop_session(session)  # left over from a tmux server that is gone
+        state.stop_session(session)  # left over from a tmux session that is gone
+        terminal.close_viewers(session)  # they may keep its agents' windows alive
     # Taking the session is one step, so of two `lado start` at once only one goes on; the
     # other changes nothing.
     if old:
@@ -682,6 +683,9 @@ def stop_session(session: str) -> Stopped:
     if tmux.has_session(session):
         tmux.kill_session(session)
     agents, dropped = state.stop_session(session)
+    # Then the UI's viewers, which keep the agents' windows: one opened meanwhile found no
+    # window to link. Their streams end as the session is marked stopped already.
+    terminal.close_viewers(session)
     return Stopped([a for a in agents if a.name != SUPERVISOR], dropped)
 
 

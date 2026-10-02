@@ -102,10 +102,149 @@
           }
         }
       }
+    },
+    "/api/sessions/{name}/agents": {
+      "get": {
+        "summary": "Agents",
+        "operationId": "agents_api_sessions__name__agents_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentInfo"
+                  },
+                  "title": "Response Agents Api Sessions  Name  Agents Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/agents/{agent}/history": {
+      "get": {
+        "summary": "History",
+        "description": "The agent's window: its last `lines` lines, for the UI's read-only history, and\nwhether the agent shows a full-screen program, whose history is inside it.",
+        "operationId": "history_api_sessions__name__agents__agent__history_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent"
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50000,
+              "minimum": 1,
+              "default": 2000,
+              "title": "Lines"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AgentInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "busy",
+              "idle",
+              "waiting",
+              "stopped"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "role",
+          "provider",
+          "status"
+        ],
+        "title": "AgentInfo"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -136,6 +275,24 @@
           "version"
         ],
         "title": "Health"
+      },
+      "History": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "alternate": {
+            "type": "boolean",
+            "title": "Alternate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "alternate"
+        ],
+        "title": "History"
       },
       "SessionInfo": {
         "properties": {

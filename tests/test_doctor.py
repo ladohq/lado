@@ -26,9 +26,10 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     [
         ("tmux 3.2a", "gate popups have no coloured border before tmux 3.3"),
         ("tmux 3.1c", "no gate popups before tmux 3.2: gates show only in `lado ls`"),
+        ("tmux 3.1c", "no agent terminals in the web UI before tmux 3.2"),
     ],
 )
-def test_old_tmux_warns_about_gate_popups(monkeypatch, version, hint):
+def test_old_tmux_warns_about_gate_popups_and_terminals(monkeypatch, version, hint):
     _versions(monkeypatch, tmux_version=version)
     tmux = next(c for c in doctor.run_checks(which=lambda cmd: cmd) if c.name == "tmux")
     assert tmux.ok and tmux.warning

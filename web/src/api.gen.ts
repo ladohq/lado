@@ -59,10 +59,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agents */
+        get: operations["agents_api_sessions__name__agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/agents/{agent}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History
+         * @description The agent's window: its last `lines` lines, for the UI's read-only history, and
+         *     whether the agent shows a full-screen program, whose history is inside it.
+         */
+        get: operations["history_api_sessions__name__agents__agent__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgentInfo */
+        AgentInfo: {
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "starting" | "busy" | "idle" | "waiting" | "stopped";
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -74,6 +126,13 @@ export interface components {
             ok: boolean;
             /** Version */
             version: string;
+        };
+        /** History */
+        History: {
+            /** Text */
+            text: string;
+            /** Alternate */
+            alternate: boolean;
         };
         /** SessionInfo */
         SessionInfo: {
@@ -173,6 +232,71 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agents_api_sessions__name__agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_sessions__name__agents__agent__history_get: {
+        parameters: {
+            query?: {
+                lines?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+                agent: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["History"];
                 };
             };
             /** @description Validation Error */

@@ -65,7 +65,7 @@ def loop_starts(monkeypatch):
 @pytest.fixture
 def fake_tmux(monkeypatch, loop_starts):
     """Record tmux calls instead of running them; no session loop is started either."""
-    from lado import tmux
+    from lado import terminal, tmux
 
     calls = []
     monkeypatch.setattr(tmux, "new_session", lambda *a: calls.append(("new_session", *a)))
@@ -83,4 +83,5 @@ def fake_tmux(monkeypatch, loop_starts):
     monkeypatch.setattr(tmux, "kill_session", lambda s: calls.append(("kill_session", s)))
     monkeypatch.setattr(tmux, "kill_window", lambda *a: calls.append(("kill_window", *a)))
     monkeypatch.setattr(tmux, "popup", lambda *a: calls.append(("popup", *a)))
+    monkeypatch.setattr(terminal, "close_viewers", lambda s: calls.append(("close_viewers", s)))
     return calls

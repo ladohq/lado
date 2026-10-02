@@ -7,7 +7,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from lado import providers, tmux
+from lado import providers, terminal, tmux
 
 
 @dataclass
@@ -62,13 +62,19 @@ def check_provider(provider: providers.Provider, which: Callable[[str], str | No
 
 
 def check_tmux(which: Callable[[str], str | None]) -> Check:
-    """tmux is required; an old one works without (bordered) gate popups."""
+    """tmux is required; an old one works without (bordered) gate popups and without agent
+    terminals in the web UI."""
     hint = "install it: `brew install tmux` or `sudo apt install tmux`"
     check = check_tool("tmux", "tmux", "-V", hint, which)
     found = tmux.parse_version(check.detail) if check.ok else None
+    missing = []
     if found and found < tmux.POPUP_VERSION:
+        missing.append("no gate popups before tmux 3.2: gates show only in `lado ls`")
+    if found and found < terminal.VERSION:
+        missing.append("no agent terminals in the web UI before tmux 3.2 (attach -f ignore-size)")
+    if missing:
         check.warning = True
-        check.hint = "no gate popups before tmux 3.2: gates show only in `lado ls`"
+        check.hint = "; ".join(missing)
     elif found and found < tmux.POPUP_BORDER_VERSION:
         check.warning = True
         check.hint = "gate popups have no coloured border before tmux 3.3"

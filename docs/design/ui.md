@@ -59,27 +59,27 @@ backpressure.
 
 ## Tasks
 
-Each task is one `feature` run, useful on its own; the order may change as we learn.
+From simple to complex (decided with the human 2026-10-03): build the plumbing first and see
+it work, then agree on the main screen's structure, then design and build one section at a
+time. Each task is one `feature` run, useful on its own.
 
-1. **Skeleton**: `lado ui` (localhost, token), the bundle built in CI and shipped in the
-   wheel, read only: sessions and agents with their status; an end-to-end test harness
-   (browser against a real `lado ui` with the fake agent) that saves a screenshot of each
-   screen it checks to a folder outside the worktree or git-ignored, so the reviewer can
+1. **Skeleton**: plumbing only, no screen design. `lado ui` (localhost, token), FastAPI app
+   under `/api`, the React bundle built in CI and shipped in the wheel, one plain page that
+   lists the sessions read only (proof that database → API → UI works), an end-to-end test
+   harness (browser against a real `lado ui` with the fake agent) that saves a screenshot of
+   each screen it checks to a folder outside the worktree or git-ignored, so the reviewer can
    look at them and the tree stays clean.
-2. **Live updates**: the change feed (D3) behind its interface; the UI updates without
-   polling.
-3. **Session view**: the activity feed (messages, flow transitions, notes), runs with
-   their states.
-4. **Gates**: answer approval, choice and loop-limit gates with the notes the gate needs.
-5. **Composer**: the human writes to any agent (D4).
-6. **Notifications**: browser notifications and a "needs you" count.
-7. **Agent terminal** in the browser.
-8. **Artifacts** (own design; ROADMAP stage 7).
-9. **Desktop app**.
+2. **Main screen structure**: with the human, which sections and items the main screen has
+   and how one moves between them; layout and navigation only, sections empty.
+3. **Sections, one at a time**, each designed with the human and then built. Candidates,
+   order decided in task 2: agents and their status, live updates (the change feed, D3),
+   activity (messages, flow transitions, notes), runs, gates, the composer (D4),
+   notifications, the agent terminal, artifacts; later the desktop app.
 
-## Screens (first mockups)
+## Look
 
-Session view (sessions list with "needs you"; activity feed; agents and runs; composer),
-gate (the needed notes, the review, approve or reject with a comment), agent (its messages
-and events, details; terminal from task 7). The mockups are shown to the human in the
-design step of each task; this file keeps what was decided from them.
+A first exploration of whole screens (2026-10-03) was not approved as a layout; only its
+colours were: a light, calm ground (#F6F7F9, panels #FFFFFF, lines #E3E6EB, ink #16181D,
+muted #5B6270), blue for actions and links (#1F5FD6), and orange only for what waits for the
+human (#B4530F on #FDF1E6); IBM Plex Sans and IBM Plex Mono. Each section's mockups are made
+and approved in its own task; this file keeps what was decided from them.

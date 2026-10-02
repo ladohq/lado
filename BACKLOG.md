@@ -234,3 +234,24 @@ docstring example (`design_ok: needs: [design]` right after design) shows exactl
 duplicating pattern; pick an example where the gate needs an earlier state. lado-dev is not
 affected (its design_ok follows architecture).
 Found: 2026-10-02, run fix/gate-needs and its review.
+## Flaky: integration test of a swallowed message typed again after a hook
+
+`test_a_swallowed_message_is_typed_again_after_a_hook_of_its_agent` failed about 1 run in 5
+of the full parallel integration suite (never alone): "timed out after 30s waiting for
+delivery; ... w1 → supervisor [sent] 'report'". The screen shows the human's `sleep 0` and
+the re-pasted `[from w1] report` in one input line, so the fake agent saw only `sleep 0`
+and no prompt held the message line.
+Wanted: the retry never types into an input the human has just typed into (or the test
+waits for the human's line to be submitted first); the test passes under load.
+Found: 2026-10-02, `make check` in fix/live-loop-reason (change touched only tests and
+loop.py constants).
+
+## Flaky: integration test of the migration refusal under a running session
+
+`test_cli_refuses_to_migrate_the_database_under_a_running_session` failed once in nine
+parallel integration runs: `lado ls` exited 0 (`assert 0 == 1`) because the database was
+already migrated back. Likely a session-loop pass that passed `why_stop` before
+`previous_schema()` and then opened the database through `runtime.sweep`, which migrates.
+Wanted: a loop pass never migrates (the schema checked on the connection the pass uses),
+so the refusal holds while the loop runs.
+Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason.

@@ -6,7 +6,7 @@ import agent_helpers
 import pytest
 from agent_helpers import init_repo
 
-from lado import state, tmux
+from lado import loop, state, tmux
 from lado.providers import base
 
 
@@ -110,3 +110,21 @@ def test_a_timed_out_wait_says_what_it_waited_for_and_the_last_state(failed_sess
     assert first.startswith("timed out after 0s waiting for w1's report; ")
     assert "agents: w1 busy" in first
     assert "messages: w1 → supervisor [pending] 'done'" in first
+
+
+@pytest.mark.parametrize("reason", [loop.STOPPED, loop.TMUX_GONE])
+def test_a_loop_ended_by_lado_stop_ends_with_either_stop_reason(lado_home, reason):
+    # `lado stop` kills the tmux session, then marks the session stopped: the loop may see
+    # either first.
+    loop._log("s", "loop started, pid 1")
+    loop._log("other", "loop ended: the session is gone")
+    loop._log("s", f"loop ended: {reason}")
+    agent_helpers.check_loop_ended_by_stop("s")
+
+
+@pytest.mark.parametrize("logged", ["loop started, pid 1", "loop ended: the session is gone"])
+def test_a_loop_not_ended_by_lado_stop_fails_the_check(lado_home, logged):
+    loop._log("other", f"loop ended: {loop.STOPPED}")
+    loop._log("s", logged)
+    with pytest.raises(pytest.fail.Exception, match="s: "):
+        agent_helpers.check_loop_ended_by_stop("s")

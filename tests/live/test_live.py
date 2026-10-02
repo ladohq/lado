@@ -95,7 +95,7 @@ def start_session(repo, provider: str) -> None:
 def check_loop_ended() -> None:
     """The session loop ends by itself after `lado stop`, within a few passes."""
     wait_for(lambda: not loop.running(SESSION), "the session loop to end", 5 * loop.INTERVAL)
-    assert "loop ended: the session is stopped" in (state.home() / "loop.log").read_text()
+    agent_helpers.check_loop_ended_by_stop(SESSION)
 
 
 def wait_for(check, what: str, timeout: float):

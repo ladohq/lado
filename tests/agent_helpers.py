@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lado import log, state, tmux
+from lado import log, loop, state, tmux
 
 _template: Path | None = None  # the first repo made by this process, copied for the next ones
 
@@ -105,6 +105,22 @@ def wait_for(check, what: str, session: str, timeout: float = TIMEOUT, interval:
             )
         time.sleep(interval)
     return result
+
+
+def check_loop_ended_by_stop(session: str) -> None:
+    """The session's latest line in loop.log says its loop ended for `lado stop`. Either
+    reason counts: stop kills the tmux session, then marks the session stopped, and the loop
+    may see either first."""
+    path = state.home() / "loop.log"
+    prefix = f" {session}: "
+    lines = [
+        line.split(prefix, 1)[1]
+        for line in (path.read_text().splitlines() if path.exists() else [])
+        if prefix in line
+    ]
+    last = lines[-1] if lines else "nothing"
+    if last not in [f"loop ended: {reason}" for reason in (loop.STOPPED, loop.TMUX_GONE)]:
+        pytest.fail(f"loop.log, last line of {session}: {last}")
 
 
 def last_state(session: str) -> str:

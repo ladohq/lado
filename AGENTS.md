@@ -84,7 +84,7 @@ schema change.
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION` and add a step to `MIGRATIONS`. The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
-    `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
+    `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
     names the run) and the session's `session_stop` and `session_resume`; events, messages,
     runs and gates go with their session, which `lado stop` only marks stopped
@@ -121,6 +121,13 @@ schema change.
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so
   is self-updating (Kilo: `autoupdate: false` and `KILO_DISABLE_AUTOUPDATE=1`).
+- Claude Code starts an agent's first turn after its SessionStart hooks, not after its MCP
+  servers, and defers the tools of a server that connects later, `alwaysLoad` or not. So
+  the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists
+  its tools, and the session-start hook of a provider with `hold_first_turn` waits for it
+  (at most `hooks.MCP_READY_TIMEOUT`; giving up is written to `hooks.log`). Verified with
+  Claude Code 2.1.287 (`providers/claude.py`: `TESTED_VERSION`; `lado doctor` warns about
+  others); the live test checks w1's transcript.
 
 ## Try it locally
 

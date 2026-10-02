@@ -216,3 +216,25 @@ Wanted: `kit.yaml` may say `requires: lado>=0.11`; an older LADO refuses the kit
 "kit <name> needs LADO >= 0.11, this is 0.10.0: upgrade LADO" (`lado start`, `lado kits
 check`), and the kit's own validator errors stay for real mistakes.
 Found: 2026-10-02, planning the lado-dev update for named notes.
+
+## Flaky: integration test of a swallowed message typed again after a hook
+
+`test_a_swallowed_message_is_typed_again_after_a_hook_of_its_agent` failed about 1 run in 5
+of the full parallel integration suite (never alone): "timed out after 30s waiting for
+delivery; ... w1 → supervisor [sent] 'report'". The screen shows the human's `sleep 0` and
+the re-pasted `[from w1] report` in one input line, so the fake agent saw only `sleep 0`
+and no prompt held the message line.
+Wanted: the retry never types into an input the human has just typed into (or the test
+waits for the human's line to be submitted first); the test passes under load.
+Found: 2026-10-02, `make check` in fix/live-loop-reason (change touched only tests and
+loop.py constants).
+
+## Flaky: integration test of the migration refusal under a running session
+
+`test_cli_refuses_to_migrate_the_database_under_a_running_session` failed once in nine
+parallel integration runs: `lado ls` exited 0 (`assert 0 == 1`) because the database was
+already migrated back. Likely a session-loop pass that passed `why_stop` before
+`previous_schema()` and then opened the database through `runtime.sweep`, which migrates.
+Wanted: a loop pass never migrates (the schema checked on the connection the pass uses),
+so the refusal holds while the loop runs.
+Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason.

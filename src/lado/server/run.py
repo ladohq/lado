@@ -30,6 +30,8 @@ LAST_PORT = 8020  # the last port tried when the ones before it are busy
 LOCK_WAIT = 0.1  # seconds a starting server tries to take the lock: `running()` holds it briefly
 READY_TIMEOUT = 15.0  # seconds `lado ui` waits for a server it started
 STOP_TIMEOUT = 10.0  # seconds `lado server stop` waits for the server to end
+# Seconds a stopping server waits for open requests; an event stream never ends by itself.
+SHUTDOWN_GRACE = 1
 
 
 def lock_path():
@@ -132,7 +134,12 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
                 f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr
             )
         # No access log: it would write the login link, token included, to server.log.
-        config = uvicorn.Config(app.create_app(token, bound), log_level="info", access_log=False)
+        config = uvicorn.Config(
+            app.create_app(token, bound),
+            log_level="info",
+            access_log=False,
+            timeout_graceful_shutdown=SHUTDOWN_GRACE,
+        )
         server = uvicorn.Server(config)
         info = {"url": url, "port": bound, "pid": os.getpid(), "version": __version__}
         written = info_path().with_suffix(".tmp")

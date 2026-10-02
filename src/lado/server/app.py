@@ -7,13 +7,15 @@ never migrates the database: another schema version answers 503.
 
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, runtime, state
+from lado import __version__, state
+from lado.server import feed, models
 from lado.server.auth import Guard
+from lado.server.models import SessionInfo
 
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
 BUILD_HINT = "build it with `make web` in a LADO checkout"
@@ -24,24 +26,13 @@ class Health(BaseModel):
     version: str
 
 
-class SessionInfo(BaseModel):
-    name: str
-    repo: str
-    status: runtime.SessionStatus
-    agents: int  # agents the session has now
-
-
 def database() -> bool:
     """A dependency of every endpoint that reads lado.db: whether there is one. Reads its
     schema version without opening it for writing, so the server never migrates it."""
-    version = state.schema_version()
-    if version is not None and version != state.SCHEMA_VERSION:
-        raise HTTPException(
-            503,
-            f"{state.home() / 'lado.db'} has schema version {version}, this server knows "
-            f"{state.SCHEMA_VERSION}: upgrade LADO or restart `lado server`",
-        )
-    return version is not None
+    problem = feed.schema_problem()
+    if problem:
+        raise HTTPException(503, problem)
+    return feed.database_made()
 
 
 def bundle_missing(static: Path) -> bool:
@@ -58,6 +49,7 @@ def contract() -> dict:
 
 def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     guard = Guard(token, port)
+    hub = feed.Hub(feed.Journal())
     app = FastAPI(title="LADO", version=__version__)
 
     @app.get("/api/health")
@@ -68,15 +60,25 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     def sessions(has_db: bool = Depends(database)) -> list[SessionInfo]:
         if not has_db:
             return []
-        return [
-            SessionInfo(
-                name=sess.name,
-                repo=sess.repo,
-                status=runtime.session_status(sess),
-                agents=len(state.list_agents(sess.name)),
-            )
-            for sess in state.list_sessions()
-        ]
+        return [models.session_info(sess) for sess in state.list_sessions()]
+
+    @app.get(
+        "/api/events",
+        dependencies=[Depends(guard), Depends(database)],
+        response_class=StreamingResponse,
+        responses={200: {"content": {"text/event-stream": {}}}},
+    )
+    async def events(
+        after: int | None = None, last_event_id: int | None = Header(None)
+    ) -> StreamingResponse:
+        """The change feed as Server-Sent Events (lado.server.feed). The position is the
+        Last-Event-ID header (the browser's own reconnect) or, without it, `after`."""
+        position = last_event_id if last_event_id is not None else after
+        return StreamingResponse(
+            feed.stream(hub, position),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     if (static / "assets").is_dir():
         app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")

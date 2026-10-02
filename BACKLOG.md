@@ -256,3 +256,14 @@ Wanted: an agent runs only what its kit gives it: find Claude Code's switch for 
 touching the user's global config; `lado doctor` says what it found. Low priority
 (environment isolation), but it makes runs reproducible.
 Found: 2026-10-03, choosing UI skills for the lado-dev kit.
+
+## Skill packs written for Claude Code plugins break under LADO
+
+`ui-ux-pro-max` (nextlevelbuilder/ui-ux-pro-max-skill) calls its scripts as
+`python "${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/scripts/search.py"`. Outside a
+Claude Code plugin `CLAUDE_PLUGIN_ROOT` is unset, so the skill cannot find its scripts and
+data when LADO links it from a source, for Claude and Kilo agents alike. Other plugin-born
+packs may do the same. Wanted: decide whether LADO supports such packs (e.g. set
+`CLAUDE_PLUGIN_ROOT`-like variables per skill, or a source option that maps them to the
+source folder) or `lado kits check` warns about unknown `${...}` variables in a skill.
+Found: 2026-10-03, choosing UI skills for the lado-dev kit.

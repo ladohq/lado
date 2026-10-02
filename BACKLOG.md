@@ -129,7 +129,9 @@ Found: 2026-10-02, first flow run `fix/resume-stopped`.
 `lado/lado/fix-reliability-1` (free model `kilo/kilo-auto/free`), then passed twice, and twice
 more for the reviewer. The failure text was not kept. One suspect: that branch makes MCP tools
 refuse unknown arguments, so a weak model that adds one gets an error and must call again.
-Next time it fails: keep the pytest output and `lado log` of the test's temporary session.
+Next time it fails, the failure report names a folder under `<temp dir>/lado-live-evidence/`
+with the session's `lado log`, `hooks.log`, the agents' configs and their last screens (run
+fix/live-test-keeps-logs); keep the pytest output too.
 Found: 2026-10-02, run fix/reliability-1.
 
 ## Flows cannot work on another repository
@@ -168,3 +170,13 @@ first stops it, resumes it and launches its supervisor; the second then stops th
 session again, forgetting its agents, and takes it over in turn. The window is small.
 Wanted: stopping a left-over session and taking it over as one step that only one start wins.
 Found: 2026-10-02, run fix/resume-settings.
+## Live-test evidence lacks the CLIs' own transcripts and logs
+
+A failed live test keeps LADO's log, hooks.log, agent configs and window screens, but not
+Claude Code's transcript (~/.claude/projects/<cwd>/*.jsonl) or Kilo's session and log from its
+data folder. For a flake such as a weak model calling a tool with a wrong argument, the
+transcript (tool calls and their answers) matters most.
+Wanted: the evidence also copies each agent's CLI transcript and logs, picked by the agent's
+cwd and the test's start time; the test layer asks the provider for their location, so nothing
+above providers/ learns a provider's paths.
+Found: 2026-10-02, review of run fix/live-test-keeps-logs.

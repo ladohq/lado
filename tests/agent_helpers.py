@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lado import state, tmux
+from lado import log, state, tmux
 
 _template: Path | None = None  # the first repo made by this process, copied for the next ones
 
@@ -90,9 +90,54 @@ def wait_for(check, what: str, session: str, timeout: float = TIMEOUT, interval:
     deadline = time.monotonic() + timeout
     while not (result := check()):
         if time.monotonic() > deadline:
-            pytest.fail(f"timed out waiting for {what}\n{diagnostics(session)}")
+            pytest.fail(
+                f"timed out after {timeout:g}s waiting for {what}; {last_state(session)}\n"
+                f"{diagnostics(session)}"
+            )
         time.sleep(interval)
     return result
+
+
+def last_state(session: str) -> str:
+    """One line: each agent's status and the last messages with their delivery state."""
+    agents = ", ".join(f"{a.name} {a.status}" for a in state.list_agents(session)) or "none"
+    messages = ", ".join(
+        f"{m.sender} → {m.recipient} [{m.state}] {m.title!r}"
+        for m in state.list_messages(session)[-5:]
+    )
+    return f"agents: {agents}; messages: {messages or 'none'}"
+
+
+def keep_evidence(session: str, folder: Path) -> Path:
+    """Copy into `folder` what shows why an agent test failed: `lado log` of the session,
+    hooks.log, each agent's config folder and where it worked, and each tmux window's screen
+    with its scrollback. Takes what is still there: a stopped session has no windows left."""
+    folder.mkdir(parents=True)
+    feed = log.Feed(session).read() if state.get_session(session) else []
+    (folder / "lado-log.txt").write_text("".join(f"{log.format_entry(e)}\n" for e in feed))
+    hooks_log = state.home() / "hooks.log"
+    if hooks_log.exists():
+        shutil.copy(hooks_log, folder / "hooks.log")
+    configs = state.home() / "agents" / session
+    if configs.is_dir():
+        shutil.copytree(configs, folder / "agents", symlinks=True)
+    (folder / "agents.txt").write_text(
+        "".join(
+            f"{a.name} {a.role} {a.status} cwd {a.cwd} branch {a.branch} "
+            f"provider {a.provider} config {configs / a.name}\n"
+            for a in state.list_agents(session)
+        )
+    )
+    screens = folder / "screens"
+    screens.mkdir()
+    try:
+        windows = tmux.run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
+        for window in windows:
+            screen = tmux.run("capture-pane", "-p", "-S", "-2000", "-t", f"{session}:{window}")
+            (screens / f"{window}.txt").write_text(screen)
+    except tmux.TmuxError as exc:
+        (screens / "error.txt").write_text(f"{exc}\n")
+    return folder
 
 
 def diagnostics(session: str) -> str:

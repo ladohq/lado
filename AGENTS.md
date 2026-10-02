@@ -230,6 +230,11 @@ Four layers; each change gets tests at the lowest layer that can catch its bugs:
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
    message; then the session stops and no process is left. Never in the default run and
    not in CI: run it locally after changing a provider or before a release.
+   When a live test fails, its report names a folder
+   `<temp dir>/lado-live-evidence/<time>-<test>` that keeps the test session's `lado log`,
+   `hooks.log`, each agent's config folder and cwd, and each tmux window's screen, taken
+   before teardown. A passing test keeps nothing; the folder is never cleaned by the tests.
+   A timed-out wait names what it waited for and the agents' statuses and last messages.
 
 Before a release: `make check` and `make test-live` pass.
 

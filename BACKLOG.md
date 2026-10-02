@@ -275,3 +275,13 @@ that no lado-dev role lists (diagnosing-superpowers, subagent-driven-development
 writing-skills). The kit cannot act on them, so the warnings are noise that hides real ones.
 Wanted: lint only the skills the kit's roles use, or mark the others "(not used by any role)".
 Found: 2026-10-03, review of lado-dev 0.5.0.
+
+## `lado ui` fails while another server is just starting
+
+`server/run.py` `wait_ready` treats any early exit of the server it started as a failure.
+When two `lado ui` run at once, or `lado ui` right after `lado server`, the lock is held but
+server.json not yet written; `lado ui` starts its own server, which exits at once ("a LADO
+server already runs"), and `lado ui` reports "the LADO server ended as it started" although
+the first server is ready a moment later. Wanted: on an early exit of its own process, check
+whether the lock is held and, if so, keep waiting until the timeout.
+Found: 2026-10-03, review of run feature/ui-skeleton (M-3).

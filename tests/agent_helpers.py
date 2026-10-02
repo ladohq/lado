@@ -73,9 +73,14 @@ def publish(work: Path, files: dict[str, str], tag: str | None = None) -> str:
 def previous_schema() -> None:
     """Turn the LADO_HOME database back to SCHEMA_VERSION - 1, as an older LADO left it.
     Undoes the last step of state.MIGRATIONS: change it with each new migration."""
-    assert state.MIGRATIONS[state.SCHEMA_VERSION - 1] == [state.NOTES]
+    assert state.MIGRATIONS[state.SCHEMA_VERSION - 1] == state.JOURNAL
     with state.connect() as db:
-        db.execute("DROP TABLE notes")
+        triggers = db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'changes_%'"
+        ).fetchall()
+        for (name,) in triggers:
+            db.execute(f"DROP TRIGGER {name}")
+        db.execute("DROP TABLE changes")
         db.execute(f"PRAGMA user_version = {state.SCHEMA_VERSION - 1}")
 
 

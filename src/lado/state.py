@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -96,6 +96,71 @@ CREATE TABLE IF NOT EXISTS notes (
     body TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))  -- UTC
 )"""
+# The change journal, from version 12 on: one row for each insert, update and delete of the
+# tables the UI shows, written by triggers in the writer's own transaction, so a change by
+# any process (CLI, hooks, MCP server, session loop) is in it. The UI server reads it
+# (lado.server.feed). `key` names the row in its session: an agent's or run's name, a
+# message's, gate's or note's id, '' for the session itself.
+CHANGES = """
+CREATE TABLE IF NOT EXISTS changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,  -- the table: sessions | agents | messages | runs | gates | notes
+    session TEXT NOT NULL,
+    key TEXT NOT NULL,
+    op TEXT NOT NULL  -- insert | update | delete
+)"""
+CHANGES_KEPT = 100_000  # the journal keeps the latest changes; an older position gets reset
+CHANGES_TRIM = f"""
+CREATE TRIGGER IF NOT EXISTS changes_trim AFTER INSERT ON changes BEGIN
+    DELETE FROM changes WHERE id <= NEW.id - {CHANGES_KEPT};
+END"""
+# Each table with the expression of its key.
+JOURNALED = {
+    "sessions": "''",
+    "agents": "{row}.name",
+    "messages": "{row}.id",
+    "runs": "{row}.name",
+    "gates": "{row}.id",
+    "notes": "{row}.id",
+}
+# Every hook sets agents.seen_at, which the UI does not show: an update that changes only
+# it is not a change. A new column of agents goes into this list (tests/test_changes.py
+# checks every column).
+AGENTS_CHANGED = " OR ".join(
+    f"OLD.{column} IS NOT NEW.{column}"
+    for column in (
+        "session",
+        "name",
+        "role",
+        "cwd",
+        "branch",
+        "task",
+        "status",
+        "instance",
+        "provider",
+        "created_at",
+        "run",
+    )
+)
+
+
+def _journal_trigger(table: str, op: str) -> str:
+    row = "OLD" if op == "delete" else "NEW"
+    when = f" WHEN {AGENTS_CHANGED}" if (table, op) == ("agents", "update") else ""
+    key = JOURNALED[table].format(row=row)
+    return (
+        f"CREATE TRIGGER IF NOT EXISTS changes_{table}_{op} AFTER {op.upper()} ON {table}"
+        f"{when} BEGIN INSERT INTO changes (kind, session, key, op)"
+        f" VALUES ('{table}', {row}.{'name' if table == 'sessions' else 'session'},"
+        f" CAST({key} AS TEXT), '{op}'); END"
+    )
+
+
+JOURNAL = [
+    CHANGES,
+    CHANGES_TRIM,
+    *(_journal_trigger(t, op) for t in JOURNALED for op in ("insert", "update", "delete")),
+]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -147,6 +212,7 @@ SCHEMA += (
             MESSAGES_FAILED,
             AGENTS_SEEN,
             NOTES,
+            *JOURNAL,
         ]
     )
     + ";\n"
@@ -177,6 +243,7 @@ MIGRATIONS = {
     8: [RUNS_LANGUAGE],
     9: [MESSAGES_ATTEMPTS, MESSAGES_FAILED, AGENTS_SEEN],
     10: [NOTES],
+    11: JOURNAL,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.

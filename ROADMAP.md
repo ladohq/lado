@@ -62,15 +62,20 @@ agent.
 
 ## Stage 6: Develop LADO inside LADO
 
-- [ ] Work runs through an installed release of LADO; agents edit the working copy
-- [ ] Task trackers (YouGile, Jira) as kits with skills; the active tracker is chosen in config
-- [ ] Every bug or friction found is filed in the task tracker
+- [x] Work runs through an installed release of LADO; agents edit the working copy
 - [ ] Agent CLIs are used directly only when LADO is too broken to fix itself
+
+Task trackers moved to stage 9: BACKLOG.md serves until it gets too small.
 
 ## Stage 7: Desktop app
 
 The agents still run in tmux; the app is a window onto them.
 
+- [ ] Research first (from stage 8), since it decides whether the UI shows terminals or
+  events: what ACP gives Claude Code, Kilo and Codex. Can the human watch an agent at work and
+  step in (today: attach to its tmux window and type)? Which of today's pieces work over
+  ACP (skills, hooks, MCP servers, the CLI's own slash commands and dialogs)? Can an agent
+  move between the ACP and tmux runtimes?
 - [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates
 - [ ] Notifications when an agent waits for the human
 - [ ] Artifacts: named, versioned documents of a session (design, plan, review, report) that
@@ -87,7 +92,18 @@ Drive agents over the Agent Client Protocol instead of tmux: structured events, 
 requests handled by LADO, any ACP agent as a provider (OpenCode, Kilo, Gemini CLI, Copilot,
 Cursor; Claude Code and Codex through adapters).
 
-- [ ] Research: Claude and Codex via ACP adapters (subscription auth, skills, hooks)
+- [ ] Research: Claude and Codex via ACP adapters (subscription auth, skills, hooks); started
+  in stage 7
 - [ ] ACP runtime behind the same provider interface as tmux
 - [ ] UI renders ACP sessions and permission requests
 - [ ] Dogfooding moves to the ACP runtime
+
+## Stage 9: Task trackers
+
+Trackers stay outside LADO: each is a kit (skills and an MCP server), and the core knows
+nothing about trackers. Open question: how a flow or role works with "the active tracker"
+without depending on one, e.g. one shared skill interface (file a task, update its status)
+that each tracker kit implements.
+
+- [ ] Task trackers (YouGile, Jira) as kits with skills; the active tracker is chosen in config
+- [ ] Every bug or friction found is filed in the task tracker; BACKLOG.md goes away

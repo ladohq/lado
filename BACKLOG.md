@@ -295,3 +295,17 @@ page behind `/` passes locally and fails in CI with 503 "the web UI's bundle is 
 Wanted: unit and integration tests run without the bundle in `make check` too (e.g. a
 static dir from the test or the bundle hidden for them), so `make check` matches CI.
 Found: 2026-10-03, run fix/ci-red-after-ui.
+
+## The supervisor draws the UI mockups itself
+
+In UI design steps the supervisor makes the mockups: it has no UI skills (frontend-design and
+the visual critique skills belong to the developer and reviewer), nobody reviews a mockup
+before the human sees it, the supervisor stops coordinating other runs meanwhile, and it
+publishes them with a Claude-only feature. Fine for low-fidelity structure wireframes, which
+are part of the talk with the human.
+Wanted (lado-dev kit): a `designer` role (frontend-design plus visual critique; writes only
+static HTML mockups in `.lado/mockups/<run>/`, never the UI source) that the supervisor starts
+inside a design step for detailed section mockups; the supervisor shows them to the human
+(opening the local file works for any provider; publishing a page is optional) and writes the
+human's decisions into the design. Do it before the first task with detailed mockups.
+Found: 2026-10-03, design of feature/ui-main-screen.

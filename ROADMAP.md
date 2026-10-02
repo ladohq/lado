@@ -116,3 +116,12 @@ that each tracker kit implements.
 
 - [ ] Task trackers (YouGile, Jira) as kits with skills; the active tracker is chosen in config
 - [ ] Every bug or friction found is filed in the task tracker; BACKLOG.md goes away
+
+## Later (after stage 7)
+
+Shown in the UI's menu as sections to come (docs/design/ui.md, Structure); designed when
+their time comes.
+
+- [ ] Projects: sessions grouped by project; what a project is in LADO's core (repo, kits,
+  settings) is decided first
+- [ ] Kit marketplace: find and add kits and skill packs from the UI

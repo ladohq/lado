@@ -10,16 +10,21 @@ Environment:
 Claude Code asks whether to trust a new workspace and records the answer in its own config;
 no option skips that. So the Claude test always uses the same repo path, and the test answers
 the dialog like the human would (see test_live.answer_dialogs): Claude Code keeps one entry for it.
+
+A failed test keeps its evidence in a folder under EVIDENCE, named in the failure report.
 """
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
+import agent_helpers
 import pytest
 from agent_helpers import init_repo, refuse_unless_isolated
 
@@ -90,6 +95,28 @@ def live_repo(live_provider, tmp_path):
     shutil.rmtree(CLAUDE_REPO.parent, ignore_errors=True)
     yield init_repo(CLAUDE_REPO)
     shutil.rmtree(CLAUDE_REPO.parent, ignore_errors=True)
+
+
+EVIDENCE = Path(tempfile.gettempdir(), "lado-live-evidence")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """When a live test fails, keep what shows why (agent_helpers.keep_evidence) in a folder
+    of its own under EVIDENCE, before teardown kills its tmux server and removes its LADO
+    home, and name the folder in the failure report. A passing test keeps nothing."""
+    outcome = yield
+    report = outcome.get_result()
+    if not report.failed or report.when == "teardown":
+        return
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    folder = EVIDENCE / f"{stamp}-{re.sub(r'[^A-Za-z0-9_.-]', '_', item.name)}"
+    try:
+        agent_helpers.keep_evidence(item.module.SESSION, folder)
+        kept = f"kept in {folder}"
+    except Exception as exc:  # the test's own failure must still be reported
+        kept = f"could not keep it in {folder}: {exc!r}"
+    report.sections.append(("LADO evidence", kept))
 
 
 @pytest.fixture(autouse=True)

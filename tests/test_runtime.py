@@ -8,7 +8,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import hooks, kits, providers, runtime, state, tmux
+from lado import hooks, kits, providers, runs, runtime, state, tmux
 
 
 def test_slug():
@@ -447,6 +447,55 @@ def test_a_failed_resume_leaves_the_session_stopped(repo, fake_tmux, monkeypatch
     assert not (state.home() / "agents" / "s" / "supervisor").exists()
     assert runtime.start_session(str(repo), "s", None).resumed
     assert state.get_agent("s", "supervisor") is not None
+
+
+@pytest.mark.parametrize("failing", ["tmux", "runs"])
+def test_a_failed_resume_keeps_the_settings_it_had(repo, fake_tmux, monkeypatch, team_kit, failing):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        if failing == "tmux":
+            m.setattr(tmux, "new_session", _fail)
+        else:
+            m.setattr(runs, "resume", _fail)
+        with pytest.raises(tmux.TmuxError, match="command too long"):
+            runtime.start_session(str(repo), "s", "plan", "kilo", ["team"], ["skill:style"])
+    sess = state.get_session("s")
+    assert (sess.provider, sess.kits, sess.without, sess.permission_mode) == (
+        "claude",
+        ["default"],
+        [],
+        None,
+    )
+    assert sess.stopped_at
+    # The log says the settings went back, not only what the resume changed.
+    stop = state.list_events("s")[-1]
+    assert stop.kind == state.SESSION_STOP
+    assert "settings put back: provider: kilo -> claude" in stop.detail
+    started = runtime.start_session(str(repo), "s", None, "kilo")
+    assert started.changes == ["provider: claude -> kilo"]
+    assert state.get_session("s").provider == "kilo"
+
+
+@pytest.mark.parametrize("resumed", [False, True])
+def test_a_start_that_loses_the_race_leaves_the_running_session_alone(
+    repo, fake_tmux, monkeypatch, resumed
+):
+    """Two `lado start` of one name at once: both see the same stored session, the other
+    one starts first."""
+    if resumed:
+        runtime.start_session(str(repo), "s", None)
+        runtime.stop_session("s")
+    seen = state.get_session("s")
+    runtime.start_session(str(repo), "s", None)  # the other `lado start`
+    with monkeypatch.context() as m:
+        m.setattr(state, "get_session", lambda name: seen)
+        with pytest.raises(runtime.LadoError, match='session "s" is already running'):
+            runtime.start_session(str(repo), "s", None, "kilo")
+    sess = state.get_session("s")
+    assert (sess.provider, sess.stopped_at) == ("claude", None)
+    assert state.get_agent("s", "supervisor") is not None
+    assert (state.home() / "agents" / "s" / "supervisor").exists()
 
 
 def test_resume_refuses_another_repo(repo, tmp_path, fake_tmux):

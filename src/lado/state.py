@@ -338,11 +338,12 @@ def _migrate(conn: sqlite3.Connection) -> int:
     return version
 
 
-def add_session(session: Session) -> None:
+def add_session(session: Session) -> bool:
+    """False, with nothing changed, when a session of that name exists already."""
     with connect() as db:
-        db.execute(
+        added = db.execute(
             "INSERT INTO sessions (name, repo, permission_mode, provider, kits, switched_off)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
             (
                 session.name,
                 session.repo,
@@ -351,7 +352,8 @@ def add_session(session: Session) -> None:
                 json.dumps(session.kits),
                 json.dumps(session.without),
             ),
-        )
+        ).rowcount
+    return added == 1
 
 
 def get_session(name: str) -> Session | None:
@@ -372,45 +374,77 @@ def stop_session(name: str) -> tuple[list[Agent], int]:
     and how many messages were dropped."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        rows = db.execute(
-            "SELECT * FROM agents WHERE session = ? ORDER BY created_at, rowid", (name,)
-        ).fetchall()
-        for row in rows:
-            if row["status"] != STOPPED:
-                _add_event(db, name, row["name"], STATUS, STOPPED)
-        db.execute("DELETE FROM agents WHERE session = ?", (name,))
-        dropped = db.execute(
-            f"UPDATE messages SET state = ? WHERE session = ? AND {UNRECEIVED}",
-            (DROPPED, name, *UNRECEIVED_ARGS),
-        ).rowcount
-        db.execute(
-            "UPDATE sessions SET stopped_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE name = ?",
-            (name,),
-        )
-        detail = f"{dropped} message{'' if dropped == 1 else 's'} dropped"
-        _add_event(db, name, LADO, SESSION_STOP, detail)
+        rows, dropped = _stop_session(db, name, "")
         db.execute("COMMIT")
     return [_agent(r) for r in rows], dropped
 
 
-def resume_session(session: Session, detail: str) -> None:
+def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, int]:
+    rows = db.execute(
+        "SELECT * FROM agents WHERE session = ? ORDER BY created_at, rowid", (name,)
+    ).fetchall()
+    for row in rows:
+        if row["status"] != STOPPED:
+            _add_event(db, name, row["name"], STATUS, STOPPED)
+    db.execute("DELETE FROM agents WHERE session = ?", (name,))
+    dropped = db.execute(
+        f"UPDATE messages SET state = ? WHERE session = ? AND {UNRECEIVED}",
+        (DROPPED, name, *UNRECEIVED_ARGS),
+    ).rowcount
+    db.execute(
+        "UPDATE sessions SET stopped_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE name = ?",
+        (name,),
+    )
+    detail = f"{dropped} message{'' if dropped == 1 else 's'} dropped{note}"
+    _add_event(db, name, LADO, SESSION_STOP, detail)
+    return rows, dropped
+
+
+def resume_session(session: Session, detail: str) -> bool:
     """Mark the stopped session running again, with the settings of `session`; `detail`
-    says what changed."""
+    says what changed. False, with nothing changed, when the session is not stopped (another
+    start took it first)."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        db.execute(
-            "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?,"
-            " stopped_at = NULL WHERE name = ?",
-            (
-                session.permission_mode,
-                session.provider,
-                json.dumps(session.kits),
-                json.dumps(session.without),
-                session.name,
-            ),
-        )
+        taken = db.execute(
+            "UPDATE sessions SET stopped_at = NULL WHERE name = ? AND stopped_at IS NOT NULL",
+            (session.name,),
+        ).rowcount
+        if not taken:
+            db.execute("ROLLBACK")
+            return False
+        _set_settings(db, session)
         _add_event(db, session.name, LADO, SESSION_RESUME, detail)
         db.execute("COMMIT")
+    return True
+
+
+def fail_resume(old: Session, message_ids: list[int], restored: str) -> None:
+    """Stop a session whose resume failed, in one go: drop the messages its supervisor never
+    got (`message_ids`) and put back the settings of `old`; `restored` says which."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        db.executemany(
+            "UPDATE messages SET state = ? WHERE session = ? AND id = ?",
+            [(DROPPED, old.name, i) for i in message_ids],
+        )
+        _stop_session(db, old.name, f"; settings put back: {restored}" if restored else "")
+        _set_settings(db, old)
+        db.execute("COMMIT")
+
+
+def _set_settings(db: sqlite3.Connection, session: Session) -> None:
+    db.execute(
+        "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?"
+        " WHERE name = ?",
+        (
+            session.permission_mode,
+            session.provider,
+            json.dumps(session.kits),
+            json.dumps(session.without),
+            session.name,
+        ),
+    )
 
 
 def list_sessions() -> list[Session]:
@@ -793,15 +827,6 @@ def drop_undelivered(session: str, recipient: str) -> int:
             (DROPPED, session, recipient, *UNRECEIVED_ARGS),
         )
         return cur.rowcount
-
-
-def drop_messages(session: str, ids: list[int]) -> None:
-    """Mark these messages dropped: their recipient never got them."""
-    with connect() as db:
-        db.executemany(
-            "UPDATE messages SET state = ? WHERE session = ? AND id = ?",
-            [(DROPPED, session, i) for i in ids],
-        )
 
 
 def drop_pending(session: str, sender: str, recipient: str, summary: str) -> int:

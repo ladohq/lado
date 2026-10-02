@@ -129,17 +129,10 @@ Found: 2026-10-02, first flow run `fix/resume-stopped`.
 `lado/lado/fix-reliability-1` (free model `kilo/kilo-auto/free`), then passed twice, and twice
 more for the reviewer. The failure text was not kept. One suspect: that branch makes MCP tools
 refuse unknown arguments, so a weak model that adds one gets an error and must call again.
-Next time it fails: keep the pytest output and `lado log` of the test's temporary session.
+Next time it fails, the failure report names a folder under `<temp dir>/lado-live-evidence/`
+with the session's `lado log`, `hooks.log`, the agents' configs and their last screens (run
+fix/live-test-keeps-logs); keep the pytest output too.
 Found: 2026-10-02, run fix/reliability-1.
-
-## A failed resume keeps the new settings
-
-`start_session` stores the settings given (`--provider`, `--kit`, `--without`,
-`--permission-mode`) with `state.resume_session` before it launches the supervisor. When the
-launch fails the session is stopped again, but with the new settings: after a failed
-`lado start --provider kilo`, a plain `lado start` takes kilo again and reports no change.
-Wanted: put the old settings back when the launch fails, or store them only after it started.
-Found: 2026-10-02, review of run fix/reliability-1.
 
 ## Flows cannot work on another repository
 
@@ -158,3 +151,32 @@ into its review), and `lado flow-set` clears the note body (`runs.force`), so a 
 `implement` gives the developer no design at all. Wanted: a step can get the latest note of
 a named earlier state (e.g. `design`), so roles need not copy the design forward.
 Found: 2026-10-02, review of lado-dev 0.3.0.
+
+## A failed rollback hides why a start or spawn failed
+
+When `start_session` or `spawn_worker` fails, its `except` undoes what it stored
+(`state.fail_resume`, `state.delete_session`, `close_worker`, git cleanup) and re-raises. If
+that undo raises too (e.g. the database is locked), the user sees the undo's error instead of
+the cause, and the session or worker is left half undone.
+Wanted: an undo that never replaces the original error (report its own failure apart, e.g.
+in `hooks.log` or as a note on the error) and leaves no half state.
+Found: 2026-10-02, review of run fix/resume-settings.
+
+## Two starts of a session whose tmux server died can stop each other
+
+`start_session` stops a session whose tmux server is gone (`stopped_at` unset, no tmux
+session) before it takes it over. Two `lado start` of that name at once both see it so: the
+first stops it, resumes it and launches its supervisor; the second then stops that running
+session again, forgetting its agents, and takes it over in turn. The window is small.
+Wanted: stopping a left-over session and taking it over as one step that only one start wins.
+Found: 2026-10-02, run fix/resume-settings.
+## Live-test evidence lacks the CLIs' own transcripts and logs
+
+A failed live test keeps LADO's log, hooks.log, agent configs and window screens, but not
+Claude Code's transcript (~/.claude/projects/<cwd>/*.jsonl) or Kilo's session and log from its
+data folder. For a flake such as a weak model calling a tool with a wrong argument, the
+transcript (tool calls and their answers) matters most.
+Wanted: the evidence also copies each agent's CLI transcript and logs, picked by the agent's
+cwd and the test's start time; the test layer asks the provider for their location, so nothing
+above providers/ learns a provider's paths.
+Found: 2026-10-02, review of run fix/live-test-keeps-logs.

@@ -177,33 +177,41 @@ def start_session(
     )
     spec = _spec(agent_cli, env, role.name, agent, _supervisor_instructions(env, session))
     started = Started(sess)
+    if old and not old.stopped_at:
+        state.stop_session(session)  # left over from a tmux server that is gone
+    # Taking the session is one step, so of two `lado start` at once only one goes on; the
+    # other changes nothing.
     if old:
-        if not old.stopped_at:
-            state.stop_session(session)  # left over from a tmux server that is gone
         started.resumed, started.changes = True, _changes(old, sess)
-        state.resume_session(sess, "; ".join(started.changes) or "same settings")
-        # Imported here: lado.runs builds on this module.
-        from lado import runs
-
-        started.problems = runs.resume(sess, env)
-        # LADO's messages about the open runs are its first input, so they cannot be lost
-        # while it starts.
-        taken = state.take_pending(session, SUPERVISOR, state.DELIVERED)
-        agent.task = format_messages(taken)
+        taken_over = state.resume_session(sess, "; ".join(started.changes) or "same settings")
     else:
-        state.add_session(sess)
-    _add_agent(agent)
+        taken_over = state.add_session(sess)
+    if not taken_over:
+        raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
+    taken: list[state.Message] = []
+    # From here on the session is stored as running, with the new settings; whatever fails
+    # before its supervisor runs undoes that.
     try:
+        if old:
+            # Imported here: lado.runs builds on this module.
+            from lado import runs
+
+            started.problems = runs.resume(sess, env)
+            # LADO's messages about the open runs are its first input, so they cannot be
+            # lost while it starts.
+            taken = state.take_pending(session, SUPERVISOR, state.DELIVERED)
+            agent.task = format_messages(taken)
+        _add_agent(agent)
         first = _first_input(agent, agent.task, "your first messages")
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
         tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
     except Exception:
         providers.base.remove_config_dir(agent)
         if old:
-            # Stopped again: the supervisor never got LADO's messages; the next resume
-            # writes them anew.
-            state.drop_messages(session, [m.id for m in taken])
-            state.stop_session(session)
+            # Stopped again, with the settings it had: the supervisor never got LADO's
+            # messages; the next resume writes them anew.
+            restored = ", ".join(_changes(sess, old))
+            state.fail_resume(old, [m.id for m in taken], restored)
         else:
             state.delete_session(session)
         raise

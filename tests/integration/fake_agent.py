@@ -1,6 +1,7 @@
 """A fake agent CLI for the integration tests: behaves like an agent in a terminal, no LLM.
 
-Usage: fake_agent.py <config.json> (written by fake_provider.FakeProvider).
+Usage: fake_agent.py <config.json> [<first message>] (written by fake_provider.FakeProvider).
+The first message is on the command line, as real agent CLIs take it.
 
 It reports its lifecycle through the hooks in the config and works on each input typed or
 pasted into its terminal. Every input line is a command, after an optional "[from <name>] ":
@@ -153,7 +154,7 @@ def main() -> None:
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
     report(prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"])
     hook("session_start")
-    text = config["first_message"]
+    text = sys.argv[2] if len(sys.argv) > 2 else None  # the first message
     while True:
         if text is None:
             text = read_input()

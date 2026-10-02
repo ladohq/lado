@@ -766,6 +766,45 @@ def test_resume_tells_the_supervisor_what_each_open_run_waits_for(session, repo,
     assert state.get_agent(session, "supervisor").task == first
 
 
+def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_tmux):
+    runs.start(session, "feature", "Add a login page", name="login")
+    plan = "x" * 50_000
+    runs.advance(session, "supervisor", "feature/login", "ready", "agreed", plan)
+    worker = runs.spawn_worker(session, "feature/login")
+    _, _, window, cwd, env, argv = fake_tmux[-1]
+    assert window == "w1"
+    # tmux refuses a command over about 16 KB.
+    assert sum(len(a) + 1 for a in argv) + sum(len(k) + len(v) + 4 for k, v in env.items()) < 16_000
+    [step] = messages("w1")
+    assert (step.sender, step.summary, step.state) == (
+        "lado",
+        "flow feature/login: step implement",
+        state.DELIVERED,  # its line is the first input
+    )
+    assert argv[-1] == (
+        f"[from lado] flow feature/login: step implement (#{step.id}, "
+        f"{len(step.body.splitlines())} lines: call read_messages)"
+    )
+    assert plan in step.body
+    assert worker.task == step.body  # the task in full: lado ls, list_agents
+    assert state.read_messages(session, "w1")[0].body == step.body
+
+
+def test_a_long_first_input_of_a_resumed_supervisor_comes_as_a_message(
+    session, repo, fake_tmux, monkeypatch
+):
+    runs.start(session, "feature", "Plan it", name="plan")
+    monkeypatch.setattr(runtime, "FIRST_INPUT_LIMIT", 100)
+    restart(session, repo)
+    *_, first = messages("supervisor")
+    assert (first.summary, first.state) == ("your first messages", state.DELIVERED)
+    assert first.body.startswith("[from lado] session resumed: 1 open run (#")
+    argv = fake_tmux[-1][-1]
+    assert argv[-1] == (
+        f"[from lado] your first messages (#{first.id}, 2 lines: call read_messages)"
+    )
+
+
 def test_resume_reports_runs_whose_roles_are_gone(session, repo):
     to_implement(session)
     started = restart(session, repo, without=["agent:reviewer"])

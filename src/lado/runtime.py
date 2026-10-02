@@ -15,6 +15,9 @@ from lado import kits, providers, state, tmux
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 MAX_MESSAGE = 8000
 CONFIRM_TIMEOUT = 15  # seconds for a typed message to show up as a prompt
+# Characters of an agent's first input that go on its command line. tmux refuses a command
+# over about 16 KB, and the system prompt is on it too; a longer input comes as a message.
+FIRST_INPUT_LIMIT = 2000
 
 # What every agent must know about LADO, appended to its role prompt from the kit. Kits only
 # describe the role.
@@ -188,7 +191,8 @@ def start_session(
         state.add_session(sess)
     _add_agent(agent)
     try:
-        launch = agent_cli.launch_command(agent, sess, spec, first_message=agent.task)
+        first = _first_input(agent, agent.task, "your first messages")
+        launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
         tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
     except tmux.TmuxError:
         if old:
@@ -268,9 +272,22 @@ def spawn_worker(
     _add_agent(agent)
     # A step is reported with flow_advance, as the run worker's instructions say.
     first = task if has_step else task + REPORT_REMINDER
+    summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
+    first = _first_input(agent, first, summary)
     launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
     tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
     return agent
+
+
+def _first_input(agent: state.Agent, text: str | None, summary: str) -> str | None:
+    """What goes on the agent's command line as its first input: `text`, or, when it is
+    too long for that, the line of a message from LADO that holds it, which the agent reads
+    with read_messages. The message counts as delivered with that line."""
+    if not text or len(text) <= FIRST_INPUT_LIMIT:
+        return text
+    lado, mark = state.LADO, state.DELIVERED
+    message_id = state.queue_message(agent.session, lado, agent.name, summary, text, mark)
+    return format_message(state.Message(message_id, lado, summary, text))
 
 
 def running_session(session: str) -> state.Session:

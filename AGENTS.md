@@ -110,6 +110,10 @@ schema change.
   when there is a body. `read_messages` returns the caller's delivered, unread bodies and
   marks them `read`. The supervisor's window is also the human's chat, so it stays quiet:
   the supervisor does not relay reports, and the details are in `lado log`.
+- An agent's first input (a worker's task or step, a resumed supervisor's messages) goes on
+  its command line. When it is longer than 2000 characters (tmux refuses commands over about
+  16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its
+  one line and reads the text with `read_messages`. The worker's task is still the full text.
 - A message to an idle agent is pasted into its window and counts as delivered only after
   the agent's prompt-submit hook sees its line; otherwise it is queued again. A busy agent
   gets its queued messages from its turn-end hook when the turn ends.

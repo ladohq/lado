@@ -698,12 +698,16 @@ def status_since(session: str) -> dict[str, datetime.datetime]:
 MESSAGE_COLUMNS = "id, sender, summary, body, recipient, state, created_at"
 
 
-def queue_message(session: str, sender: str, recipient: str, summary: str, body: str = "") -> int:
+def queue_message(
+    session: str, sender: str, recipient: str, summary: str, body: str = "", mark: str = PENDING
+) -> int:
+    """Store a message in state `mark`: pending, or delivered when its line goes to the
+    recipient another way (its first input). Returns its id."""
     with connect() as db:
         cur = db.execute(
-            "INSERT INTO messages (session, sender, recipient, summary, body, created_at)"
-            " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-            (session, sender, recipient, summary, body),
+            "INSERT INTO messages (session, sender, recipient, summary, body, state, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (session, sender, recipient, summary, body, mark),
         )
         return cur.lastrowid or 0
 

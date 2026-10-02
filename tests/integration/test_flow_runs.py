@@ -1,6 +1,7 @@
 """Flow runs for real: the fake supervisor starts a run, its worker and the supervisor do
 the steps through the MCP tools, LADO delivers each step and cleans up at the end."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,7 @@ from test_agents import (
     wait_status,
 )
 
-from lado import runtime, state, tmux
+from lado import runs, runtime, state, tmux
 
 pytestmark = pytest.mark.integration
 
@@ -49,6 +50,17 @@ states:
 """
 
 
+PLANNED = """\
+name: planned
+description: the supervisor plans it, a worker builds it
+start: plan
+states:
+  plan: {agent: supervisor, do: sleep 0, outcomes: {ready: build}}
+  build: {agent: worker, do: sleep 0, outcomes: {done: end}}
+  end: {end: true}
+"""
+
+
 @pytest.fixture
 def flow_kit(repo):
     kit = repo / ".lado" / "kits" / "itflow"
@@ -57,6 +69,7 @@ def flow_kit(repo):
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     (kit / "flows" / "gated.yaml").write_text(GATED)
     (kit / "flows" / "reviewed.yaml").write_text(REVIEWED)
+    (kit / "flows" / "planned.yaml").write_text(PLANNED)
     runtime.start_session(str(repo), SESSION, None, "fake", ["itflow"])
     wait_status("supervisor", state.IDLE)
     return kit
@@ -117,6 +130,25 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     assert f"w1: flow {name} (build -done-> merge)" in log
     assert f"supervisor: flow {name} (merge -merged-> end)" in log
     assert not (state.home() / "hooks.log").exists()
+
+
+def test_a_worker_gets_a_step_far_longer_than_a_tmux_command(repo, flow_kit):
+    # tmux refuses a command over about 16 KB; the first message used to be on it.
+    name = "planned/long"
+    runs.start(SESSION, "planned", "a long plan", name="long", notices=[])
+    plan = "\n".join(f"plan line {n}: " + "x" * 60 for n in range(800))  # about 60 KB
+    runs.advance(SESSION, "supervisor", name, "ready", "planned", plan, notices=[])
+    worker = runs.spawn_worker(SESSION, name)
+    wait_status("w1", state.IDLE)
+    step = runs.step_text(run_state(name), runs.flow_of(run_state(name)))
+    assert worker.task == step  # still the worker's task, in full
+    [first] = inputs("w1")
+    line = r"\[from lado\] flow planned/long: step build \(#\d+, \d+ lines: call read_messages\)"
+    assert re.fullmatch(line, first)
+    runtime.send_message(SESSION, "human", "w1", "read")
+    wait_for(lambda: "read" in seen("w1"), "w1 to read")
+    [got_step] = seen("w1")["read"]
+    assert got_step["body"] == step
 
 
 def test_a_run_waits_at_a_gate_until_the_human_sets_it(repo, flow_kit):

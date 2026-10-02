@@ -64,13 +64,14 @@ class FakeProvider(base.Provider):
                 for name, s in {**spec.mcp, "lado": lado}.items()
             },
             "continue_on_turn_end": self.capabilities.deliver_on_turn_end,
-            "first_message": first_message,
             "inputs": str(config_dir / "inputs.jsonl"),
             "seen": str(config_dir / "seen.json"),
         }
         config_file = config_dir / "fake.json"
         config_file.write_text(json.dumps(config, indent=2))
-        return base.Launch([sys.executable, str(AGENT), str(config_file)])
+        # On the command line, like the real CLIs: tmux's limit on its length applies.
+        first = [first_message] if first_message else []
+        return base.Launch([sys.executable, str(AGENT), str(config_file), *first])
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:

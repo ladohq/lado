@@ -31,7 +31,6 @@ import asyncio
 import concurrent.futures
 import json
 import os
-import queue
 import re
 import signal
 import subprocess
@@ -83,31 +82,37 @@ def lado_server() -> StdioServerParameters:
     return StdioServerParameters(command=mcp["command"][0], args=mcp["command"][1:], env=mcp["env"])
 
 
-tool_calls: queue.Queue = queue.Queue()  # (name, arguments, Future) for the MCP thread
+mcp_loop = asyncio.new_event_loop()  # runs in a daemon thread: it never holds up the exit
+mcp_client: concurrent.futures.Future = concurrent.futures.Future()  # the connected Client
 
 
-def mcp_connection() -> None:
+def connect_mcp() -> None:
     """Start the LADO MCP server over stdio once and keep it, as an agent CLI does: list its
-    tools at start, then run each tool call from `tool_calls` on it."""
+    tools at start, then serve every tool call. If it cannot start, every call fails."""
 
-    async def serve():
-        async with Client(lado_server()) as client:
-            await client.list_tools()
-            while True:
-                name, arguments, future = await asyncio.to_thread(tool_calls.get)
-                try:
-                    future.set_result(await client.call_tool(name, arguments))
-                except Exception as exc:
-                    future.set_exception(exc)
+    async def connect():
+        try:
+            async with Client(lado_server()) as client:
+                await client.list_tools()
+                mcp_client.set_result(client)
+                await asyncio.Event().wait()  # keep the connection until the process ends
+        except Exception as exc:
+            if not mcp_client.done():
+                mcp_client.set_exception(exc)
+            raise
 
-    asyncio.run(serve())
+    threading.Thread(target=mcp_loop.run_forever, daemon=True).start()
+    asyncio.run_coroutine_threadsafe(connect(), mcp_loop)
 
 
 def call_tool(name: str, arguments: dict):
     """Call a tool of the LADO MCP server. Returns its structured result."""
-    future = concurrent.futures.Future()
-    tool_calls.put((name, arguments, future))
-    result = future.result()
+
+    async def call():
+        client = await asyncio.wrap_future(mcp_client)  # once connected
+        return await client.call_tool(name, arguments)
+
+    result = asyncio.run_coroutine_threadsafe(call(), mcp_loop).result()
     print(f"{name}: {result.content}", flush=True)
     if result.structured_content is None:  # a dict comes as JSON text
         return json.loads(result.content[0].text) if not result.is_error else None
@@ -176,7 +181,7 @@ def main() -> None:
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
     report(prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"])
     # Like Claude Code: the MCP server connects while the session-start hook runs.
-    threading.Thread(target=mcp_connection, daemon=True).start()
+    connect_mcp()
     hook("session_start")
     text = sys.argv[2] if len(sys.argv) > 2 else None  # the first message
     while True:

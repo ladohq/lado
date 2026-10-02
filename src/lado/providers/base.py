@@ -116,15 +116,19 @@ def agent_env(agent: state.Agent) -> dict[str, str]:
     }
 
 
+def _config_path(agent: state.Agent) -> Path:
+    return state.home() / "agents" / agent.session / agent.name
+
+
 def config_dir(agent: state.Agent) -> Path:
-    path = state.home() / "agents" / agent.session / agent.name
+    path = _config_path(agent)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def remove_config_dir(agent: state.Agent) -> None:
     """Remove what launch_command wrote for an agent that never started."""
-    shutil.rmtree(state.home() / "agents" / agent.session / agent.name, ignore_errors=True)
+    shutil.rmtree(_config_path(agent), ignore_errors=True)
 
 
 def hook_argv(agent: state.Agent, event: str) -> list[str]:

@@ -113,3 +113,21 @@ popup → merge → run ended, workers closed, worktree and branch removed). Fri
 - **/resume picker cancelled with Esc**: probed on Claude Code 2.1.287, no hook fires when
   the picker opens or Esc cancels it, so the agent stays `idle` (never `starting`); left
   open: while the picker is open LADO may paste a message into its search box.
+
+## Flaky: Kilo live test of a worker's task
+
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once in three runs on branch
+`lado/lado/fix-reliability-1` (free model `kilo/kilo-auto/free`), then passed twice, and twice
+more for the reviewer. The failure text was not kept. One suspect: that branch makes MCP tools
+refuse unknown arguments, so a weak model that adds one gets an error and must call again.
+Next time it fails: keep the pytest output and `lado log` of the test's temporary session.
+Found: 2026-10-02, run fix/reliability-1.
+
+## A failed resume keeps the new settings
+
+`start_session` stores the settings given (`--provider`, `--kit`, `--without`,
+`--permission-mode`) with `state.resume_session` before it launches the supervisor. When the
+launch fails the session is stopped again, but with the new settings: after a failed
+`lado start --provider kilo`, a plain `lado start` takes kilo again and reports no change.
+Wanted: put the old settings back when the launch fails, or store them only after it started.
+Found: 2026-10-02, review of run fix/reliability-1.

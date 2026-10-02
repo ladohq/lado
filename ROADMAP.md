@@ -47,7 +47,7 @@ MCP servers and flows. Kits can be combined and parts switched on or off.
 - [x] Switch single roles, skills and MCP servers on or off per session and per agent
 - [x] Skills placed where each provider looks for them in the agent's worktree
 - [x] Kit sources: git repositories and local folders (`lado sources add`), skill packs
-- [ ] `lado-dev` kit used to develop LADO
+- [x] `lado-dev` kit used to develop LADO
 
 ## Stage 5: Flows
 
@@ -73,9 +73,11 @@ The agents still run in tmux; the app is a window onto them.
 
 - [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates
 - [ ] Notifications when an agent waits for the human
-- [ ] Artifacts: named, versioned documents (design, plan, review) readable by agents and the
-  human and shown in the UI; flows can require them. Agents know an artifact by name only,
-  never by path, and storage sits behind one interface, so it can move to a separate service
+- [ ] Artifacts: named, versioned documents of a session (design, plan, review, report) that
+  any agent writes and reads, with or without a flow; the human's main way to get results:
+  attached to messages and gates and shown in the UI. Flows can require them. Agents know an
+  artifact by name only, never by path, and storage sits behind one interface, so it can
+  move to a separate service
 - [ ] Agent terminals in the UI (a web terminal attached to the agent's tmux window)
 - [ ] Desktop app that bundles the UI and the LADO runtime (macOS first)
 

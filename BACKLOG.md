@@ -93,3 +93,32 @@ when the human writes through LADO's own input (UI composer, stage 7: messages f
 and from agents are queued and delivered one at a time) or with the ACP runtime (stage 8: LADO
 drives the agent's input itself). Make sure the UI has a composer that goes through LADO.
 Found: 2026-10-01, dogfooding.
+
+## Flow dogfooding notes (first run, `fix/resume-stopped`, 2026-10-02)
+
+The first task done through a flow worked end to end (implement → review → merge gate in the
+popup → merge → run ended, workers closed, worktree and branch removed). Frictions seen:
+
+- **Messages the supervisor caused itself.** "step X needs a <role>" is queued even when the
+  supervisor spawns the worker in the same turn, and "ended at done" after its own
+  flow_advance; both arrive later as stale lines. Return them in the tool result instead, or
+  drop a "needs a <role>" message once that worker is spawned.
+- **A step that needs a new worker is a relay through the supervisor.** LADO asks, the
+  supervisor calls spawn_worker with exactly the arguments LADO named; no decision is made.
+  Consider letting a flow (or kit) say that LADO spawns the step's worker itself.
+- **Tool results are long.** flow_start, flow_advance and flow_status return the full task
+  text every time; return the run, state, who acts and the note, and the task only on request.
+- **Agents must unset LADO's env to run tests.** A worker (and the supervisor in the merge
+  step) runs `env -u LADO_AGENT -u LADO_SESSION -u LADO_HOME -u LADO_TMUX_SOCKET -u TMUX make
+  check`; the tests (or the Makefile) should clear the agent's LADO variables themselves.
+- **"idle" while a background command runs.** The reviewer's turn ended while its
+  `make check` ran in the background; LADO showed it idle for 80 s (and could have pasted a
+  message into it) until the command finished and woke it.
+- **Delivery at turn end still reads "Stop hook error"** in the Claude Code UI, now as one
+  short line.
+- **Stale tool schemas after `/resume`.** The supervisor's spawn_worker kept its old schema
+  (no `run`/`role`) after Claude Code's in-process /resume; the server accepted the
+  arguments anyway.
+- **/resume picker cancelled with Esc** (reviewer's set-aside, unverified): if Claude Code
+  sends SessionEnd(resume) and no SessionStart after a cancel, the agent stays `starting`
+  and messages wait until its next prompt. Probe it.

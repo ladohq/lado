@@ -1,7 +1,7 @@
 # Backlog
 
 Tasks and bugs found while using LADO, until the external task tracker is connected
-(see ROADMAP.md, stage 6). Move them to the tracker then and delete this file.
+(see ROADMAP.md, stage 9). Move them to the tracker then and delete this file.
 
 ## Choose the model per agent
 

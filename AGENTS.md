@@ -129,7 +129,8 @@ schema change.
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
     rules in [docs/design/ui.md](docs/design/ui.md), section Server). `auth.py`: the token,
     the only place that checks it; `app.py`: the FastAPI app, the API under `/api` (data only
-    through `state.py`/`runtime.py`, never migrates the database) and the bundle on `/`;
+    through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
+    that is a page of the UI (its router shows it);
     `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`.

@@ -10,5 +10,6 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    css: true, // tokens.test.ts reads the stylesheets (?raw); left out, they are empty
   },
 });

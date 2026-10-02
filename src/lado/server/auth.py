@@ -1,8 +1,9 @@
 """Who may call the UI server: the only place that checks it.
 
 Now a token of LADO_HOME, kept in LADO_HOME/server-token (owner only) until
-`lado server --new-token`. `lado ui` opens `/?token=<token>`; the server then sets a cookie
-and sends the browser on to `/`, so the token leaves the address bar. The cookie's name holds
+`lado server --new-token`. `lado ui` opens `/?token=<token>` (any page of the UI takes it);
+the server then sets a cookie and sends the browser on to the same page without the token,
+so the token leaves the address bar. The cookie's name holds
 the port: a browser sends 127.0.0.1's cookies to every port, and two LADO servers (say, one
 for development) would otherwise overwrite each other's. Other clients send
 `Authorization: Bearer <token>`. A real login for a remote host replaces this module.
@@ -10,6 +11,7 @@ for development) would otherwise overwrite each other's. Other clients send
 
 import os
 import secrets
+from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -57,10 +59,14 @@ class Guard:
             return
         raise HTTPException(401, "no valid token: open the link `lado ui` prints")
 
-    def login(self, given: str) -> RedirectResponse:
-        """The answer to `/?token=<given>`: the cookie and a redirect to `/`, or 401."""
-        if not self._valid(given):
+    def login(self, request: Request) -> RedirectResponse:
+        """The answer to `<page>?token=<given>`: the cookie and a redirect to the same page
+        without the token, or 401. The redirect is a path on this server: leading slashes
+        are made one, so `//host/x` cannot send the browser to another host."""
+        if not self._valid(request.query_params.get("token")):
             raise HTTPException(401, "wrong token: open the link `lado ui` prints")
-        answer = RedirectResponse("/", status_code=303)
+        target = "/" + request.url.path.lstrip("/")
+        rest = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "token"])
+        answer = RedirectResponse(f"{target}?{rest}" if rest else target, status_code=303)
         answer.set_cookie(self.cookie, self.token, httponly=True, samesite="strict", path="/")
         return answer

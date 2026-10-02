@@ -144,10 +144,78 @@ def test_the_page_says_how_to_build_a_missing_bundle(tmp_path):
     assert "make web" in answer.text
 
 
-def test_the_page_is_the_bundles_index(tmp_path):
+@pytest.fixture
+def bundle(tmp_path):
+    """A client of a server with a small bundle: index.html, assets/app.js, favicon.svg."""
     (tmp_path / "index.html").write_text("<html>bundle</html>")
-    client = TestClient(server_app.create_app("t", PORT, static=tmp_path))
-    assert client.get("/").text == "<html>bundle</html>"
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "app.js").write_text("console.log(1)")
+    (tmp_path / "favicon.svg").write_text("<svg/>")
+    (tmp_path.parent / "secret.txt").write_text("not served")
+    return TestClient(
+        server_app.create_app(auth.token(), PORT, static=tmp_path), follow_redirects=False
+    )
+
+
+def test_the_page_is_the_bundles_index(bundle):
+    assert bundle.get("/").text == "<html>bundle</html>"
+
+
+@pytest.mark.parametrize(
+    "path", ["/sessions", "/sessions/x", "/sessions/a%20b.c/flows", "/settings"]
+)
+def test_every_page_path_is_the_bundles_index(bundle, path):
+    """The UI's own addresses work when opened directly or reloaded."""
+    answer = bundle.get(path)
+    assert answer.status_code == 200
+    assert answer.text == "<html>bundle</html>"
+
+
+def test_the_bundles_files_are_served(bundle):
+    assert bundle.get("/assets/app.js").text == "console.log(1)"
+    assert bundle.get("/favicon.svg").text == "<svg/>"
+
+
+@pytest.mark.parametrize("path", ["/assets/none.js", "/assets/x", "/none.css", "/sessions/x.js"])
+def test_a_missing_file_of_the_bundle_is_404_not_the_page(bundle, path):
+    """After an upgrade an open tab asking for an old file gets 404, not HTML instead of JS."""
+    answer = bundle.get(path)
+    assert answer.status_code == 404
+    assert "bundle" not in answer.text
+
+
+def test_no_file_outside_the_bundle_is_served(bundle):
+    assert bundle.get("/../secret.txt").status_code == 404
+    assert bundle.get("/%2e%2e/secret.txt").status_code == 404
+
+
+def test_an_unknown_api_path_is_a_json_404(bundle):
+    answer = bundle.get("/api/nope")
+    assert answer.status_code == 404
+    assert answer.json() == {"detail": "Not Found"}
+
+
+def test_the_link_with_the_token_on_any_page_redirects_to_that_page(bundle):
+    """A link from a notification (/gates/12?token=...) leads straight to the gate."""
+    answer = bundle.get(f"/sessions/x?token={auth.token()}")
+    assert answer.status_code == 303
+    assert answer.headers["location"] == "/sessions/x"
+    assert answer.headers["set-cookie"].startswith(f"lado_token_{PORT}={auth.token()};")
+    answer = bundle.get(f"/sessions/a%20b/flows?tab=1&token={auth.token()}&x=y")
+    assert answer.headers["location"] == "/sessions/a%20b/flows?tab=1&x=y"
+
+
+def test_the_link_with_a_wrong_token_on_a_page_is_401(bundle):
+    answer = bundle.get("/sessions/x?token=nope")
+    assert answer.status_code == 401
+    assert "set-cookie" not in answer.headers
+
+
+def test_the_redirect_after_the_login_stays_on_this_server(bundle):
+    """`//host/x` as a Location would send the browser to another host."""
+    answer = bundle.get(f"http://testserver//evil.example/x?token={auth.token()}")
+    assert answer.status_code == 303
+    assert answer.headers["location"] == "/evil.example/x"
 
 
 # Finding the one server of LADO_HOME, its port and host (lado.server.run).

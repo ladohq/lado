@@ -44,7 +44,7 @@ a surface, it takes nothing away.
 | D1 | Frontend stack | React + TypeScript + Vite | Agents write it best; xterm.js and a later desktop shell fit; the built bundle ships in the wheel, users need no Node |
 | D2 | Server | FastAPI on uvicorn (Starlette, uvicorn and pydantic already come with `mcp`) | Typed requests, an OpenAPI schema from which the UI's TypeScript types are generated: one contract for the UI and later remote clients |
 | D3 | Realtime | Server-Sent Events for the change feed (resumable from the last id); a WebSocket only for terminals | One transport per job; no second channel with other topics |
-| D4 | Who the human writes to | Any agent, the supervisor by default, from one composer with a recipient | One way to write, not several |
+| D4 | Who the human writes to | Revised in task 2: not from the UI yet. The composer is a task of its own, later, starting with the supervisor; writing to any agent directly stays in mind | The structure comes first; one way to write when it comes |
 | D5 | API layout | Everything under `/api`, the bundle served by the same server | No dev proxy that must mirror every route |
 | D6 | Desktop app | Later (task 9); the browser first | A bundled server is heavy; the browser covers the need |
 
@@ -69,8 +69,17 @@ later desktop app and a later cloud setup; the UI is its client.
   nobody. A second server refuses and names the first one's address.
 - Token: `LADO_HOME/server-token` (owner only), made on the first start, replaced with
   `lado server --new-token`. The link `http://127.0.0.1:<port>/?token=<token>` sets the
-  cookie (HttpOnly, SameSite=Strict, Path=/) and redirects to `/`, so the token leaves the
-  address bar. `/api/health` needs no token.
+  cookie (HttpOnly, SameSite=Strict, Path=/) and redirects (303) to `/`, so the token leaves
+  the address bar. Every page of the UI takes `?token=` the same way (decided in task 2):
+  `/gates/12?token=…` sets the cookie and redirects to `/gates/12` with the other query
+  parameters kept, so a link from a notification leads straight to its page. The redirect
+  is a path on this server (leading slashes become one: `//host/x` goes to `/host/x`). A
+  wrong token is 401. `/api/health` needs no token.
+- Pages and files (task 2): a path under `/assets/` or one whose last segment has a file
+  extension is a file of the bundle, served as it is or 404, never the page: an open tab
+  that asks for a file an upgrade removed must not get HTML instead of JS. `/api/<unknown>`
+  is a JSON 404. Every other path gets `index.html`, and the UI's router shows the page or
+  Not found.
 - Data only through `lado.state` and `lado.runtime`, no SQL in the server. The server never
   migrates `lado.db`: every data endpoint first reads the schema version read-only and
   answers 503 for another one (older or newer).
@@ -85,6 +94,54 @@ later desktop app and a later cloud setup; the UI is its client.
   `LADO_HOME/server.log` (owner only; no access log, which would hold the login link's
   token). When it ends while `lado ui` waits for it, `lado ui` says so at once with its
   exit code and last log line.
+
+## Structure
+
+Decided with the human in task 2 (2026-10-03): a frame for all the sections to come, all of
+them visible from the start; a section not built yet is a placeholder. The work is in
+Sessions for now. The UI's texts are in English.
+
+- **Rail** on the left, top to bottom: Home, Needs you, Sessions, Projects, Kits,
+  Marketplace; Settings apart at the bottom. A button collapses it to icons (each with its
+  name as tooltip and accessible name; the button has `aria-expanded`). The browser
+  remembers the choice; a window narrower than 900 px starts collapsed.
+- **Top bar**: the page's title on the left; on the right the server's address and
+  **Launch**. Launch only explains for now: starting a session from the UI comes later,
+  until then `lado start <repo>`.
+- **Sessions**: the list on the left (searched by name in the browser, the current one
+  marked, stopped ones dimmed), the selected session on the right: its name and status,
+  the place for its gates (a placeholder until the Gates task), and the tabs
+  **Activity | Agents | Flows | Artifacts**, each a placeholder naming the task that fills
+  it. `/sessions` with no name says "Select a session" (nothing is selected for the
+  human); a name `/api/sessions` does not know says "Session <name> not found" with a link
+  to the list, and the address stays as it was.
+- **Needs you**: the gates of all sessions (Gates task); its count comes with it.
+- **Gate**: a page of its own, `/gates/<id>` (`gates.id` is global).
+- **Settings**: one page, its sections one under the other: Appearance (theme: system,
+  light, dark) and Providers and environment (what `lado doctor` checks; a task of its
+  own). New sections go below.
+- **Placeholders**: one component, with the section's name, one sentence on what it will
+  hold, and a link to the plan item that builds it. A placeholder is allowed only when its
+  section has an item in ROADMAP.md or in Tasks below: Projects and Marketplace are
+  ROADMAP's "Later (after stage 7)", the others are Tasks here.
+- **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
+  activity, agents, flows, artifacts; without one, activity), `/gates/<id>`, `/projects`,
+  `/kits`, `/marketplace`, `/settings`. Anything else is Not found with a link to Home.
+  Opened directly or reloaded, each works (the server's page fallback, Server above).
+  Routing: react-router in declarative mode.
+- **Encoding rule**: every name in an address is one segment, encoded whole with
+  `encodeURIComponent` (session names are free text, run names hold `/`); a run's address
+  will be `/sessions/<name>/flows/<run, encoded whole>`. `web/src/paths.ts` makes them.
+- **Without the token** the shell, one place, shows the server's own `detail` (open the
+  link `lado ui` prints) instead of the page; no section knows about 401.
+- **Theme**: system (follows `prefers-color-scheme`), light or dark, chosen in Settings,
+  applied at once and remembered in the browser (without browser storage: system). The
+  colours are tokens in one file, `web/src/tokens.css` (Look below); components use only
+  the tokens, and a unit test fails on a colour written anywhere else.
+
+Open question for the Activity task: another orchestrator's feed shows the human's messages
+and the gates, not the supervisor's whole console stream; there is a layer between the feed
+and the supervisor. Settle it when Activity is designed.
 
 ## Lessons from another orchestrator's UI
 
@@ -112,11 +169,49 @@ time. Each task is one `feature` run, useful on its own.
    each screen it checks to a folder outside the worktree or git-ignored, so the reviewer can
    look at them and the tree stays clean.
 2. **Main screen structure**: with the human, which sections and items the main screen has
-   and how one moves between them; layout and navigation only, sections empty.
-3. **Sections, one at a time**, each designed with the human and then built. Candidates,
-   order decided in task 2: agents and their status, live updates (the change feed, D3),
-   activity (messages, flow transitions, notes), runs, gates, the composer (D4),
-   notifications, the agent terminal, artifacts; later the desktop app.
+   and how one moves between them; layout and navigation only, sections empty. Done:
+   Structure above.
+3. **Sections, one at a time**, each designed with the human and then built. Next is
+   Providers and environment, then the session's sections one by one. The live updates
+   (the change feed, D3), the composer (D4), notifications and the agent terminal come
+   with or after the sections that need them; later the desktop app. The placeholders
+   link to these items:
+
+### Providers and environment
+
+Settings: the agent CLIs LADO can run, their versions and logins, and what `lado doctor`
+checks.
+
+### Activity
+
+A session's tab: messages, flow transitions and notes as they happen (see the open
+question in Structure).
+
+### Agents
+
+A session's tab: its agents, their roles, status and branches.
+
+### Flows
+
+A session's tab: its flow runs, their state, who acts and the notes of each step.
+
+### Gates
+
+The gate page (`/gates/<id>`), Needs you (the gates of all sessions, with a count in the
+rail) and the gates banner of a session.
+
+### Artifacts
+
+A session's tab: the documents the agents write (ROADMAP stage 7, Artifacts).
+
+### Home
+
+Later: an overview of all sessions, what runs, what is stuck and what waits for the human.
+
+### Kits
+
+Later: the kits LADO knows and where they come from (`lado sources`), with their roles,
+skills, MCP servers and flows.
 
 ## Look
 
@@ -125,3 +220,9 @@ colours were: a light, calm ground (#F6F7F9, panels #FFFFFF, lines #E3E6EB, ink 
 muted #5B6270), blue for actions and links (#1F5FD6), and orange only for what waits for the
 human (#B4530F on #FDF1E6); IBM Plex Sans and IBM Plex Mono. Each section's mockups are made
 and approved in its own task; this file keeps what was decided from them.
+
+The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8EAEE, muted
+#9AA1AD, actions #6FA0FF (labels on them #111317), waiting for the human #F0A25A on #3A2A1C.
+Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242C). Every
+text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test
+(`web/src/tokens.test.ts`) checks it.

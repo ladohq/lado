@@ -1,0 +1,30 @@
+/* The UI's colours, the only place they are written (docs/design/ui.md, "Look"): each token
+   is light-dark(<light>, <dark>). The theme follows the system (prefers-color-scheme) unless
+   the human chose one in Settings, which sets data-theme on the root. Orange is only for
+   what waits for the human. */
+:root {
+  color-scheme: light dark;
+
+  --ground: light-dark(#f6f7f9, #111317);
+  --panel: light-dark(#ffffff, #181b21);
+  --raised: light-dark(#eef0f4, #20242c); /* hover, the current item */
+  --line: light-dark(#e3e6eb, #2a2f38);
+  --ink: light-dark(#16181d, #e8eaee);
+  --muted: light-dark(#5b6270, #9aa1ad);
+  --action: light-dark(#1f5fd6, #6fa0ff);
+  --on-action: light-dark(#ffffff, #111317);
+  --human: light-dark(#b4530f, #f0a25a);
+  --human-ground: light-dark(#fdf1e6, #3a2a1c);
+  --shadow: light-dark(#16181d1f, #0000008c);
+
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}

@@ -7,7 +7,7 @@ never migrates the database: another schema version answers 503.
 
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -78,17 +78,38 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
             for sess in state.list_sessions()
         ]
 
-    @app.get("/", include_in_schema=False)
-    def page(token: str | None = None):
-        if token is not None:
-            return guard.login(token)
+    if (static / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def page(path: str, request: Request):
+        """A file of the bundle, or for any other path the UI's page, whose router shows it.
+        A path under /api or one that names a file (has an extension) is never the page: an
+        open tab asking for a file an upgrade removed gets 404, not HTML."""
+        if path == "api" or path.startswith("api/") or path.startswith("assets/"):
+            raise HTTPException(404)
+        if "token" in request.query_params:
+            return guard.login(request)
+        file = bundle_file(static, path)
+        if file is not None:
+            return FileResponse(file)
+        if "." in path.rsplit("/", 1)[-1]:
+            raise HTTPException(404)
         if bundle_missing(static):
             return PlainTextResponse(f"The web UI's bundle is missing: {BUILD_HINT}.", 503)
         return FileResponse(static / "index.html")
 
-    if not bundle_missing(static):
-        app.mount("/", StaticFiles(directory=static), name="static")
     return app
+
+
+def bundle_file(static: Path, path: str) -> Path | None:
+    """The file `path` names in the bundle's top folder (favicon and the like), if any."""
+    if not path or "/" in path:
+        return None
+    file = (static / path).resolve()
+    if file.parent != static.resolve() or not file.is_file():
+        return None
+    return file
 
 
 if __name__ == "__main__":  # `make web-types`

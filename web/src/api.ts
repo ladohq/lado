@@ -14,11 +14,23 @@ export class ApiError extends Error {
   }
 }
 
+// Who hears about a 401: the shell, the one place that tells the human how to get in.
+let denied: ((detail: string) => void) | null = null;
+
+export function onDenied(listener: (detail: string) => void): () => void {
+  denied = listener;
+  return () => {
+    if (denied === listener) denied = null;
+  };
+}
+
 async function get<T>(path: string): Promise<T> {
   const answer = await fetch(path, { credentials: "same-origin" });
   if (!answer.ok) {
     const body = await answer.json().catch(() => null);
-    throw new ApiError(answer.status, body?.detail ?? `${answer.status} ${answer.statusText}`);
+    const error = new ApiError(answer.status, body?.detail ?? `${answer.status} ${answer.statusText}`);
+    if (error.status === 401) denied?.(error.message);
+    throw error;
   }
   return (await answer.json()) as T;
 }

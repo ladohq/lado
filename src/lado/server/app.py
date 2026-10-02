@@ -84,8 +84,9 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     @app.get("/{path:path}", include_in_schema=False)
     def page(path: str, request: Request):
         """A file of the bundle, or for any other path the UI's page, whose router shows it.
-        A path under /api or one that names a file (has an extension) is never the page: an
-        open tab asking for a file an upgrade removed gets 404, not HTML."""
+        A path under /api or /assets, or one at the top that names a file (has an
+        extension), is never the page: an open tab asking for a file an upgrade removed gets
+        404, not HTML. Deeper down a dot is part of a name (`/sessions/a.b`)."""
         if path == "api" or path.startswith("api/") or path.startswith("assets/"):
             raise HTTPException(404)
         if "token" in request.query_params:
@@ -93,7 +94,7 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         file = bundle_file(static, path)
         if file is not None:
             return FileResponse(file)
-        if "." in path.rsplit("/", 1)[-1]:
+        if "/" not in path and "." in path:
             raise HTTPException(404)
         if bundle_missing(static):
             return PlainTextResponse(f"The web UI's bundle is missing: {BUILD_HINT}.", 503)

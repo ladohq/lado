@@ -61,11 +61,12 @@ class Guard:
 
     def login(self, request: Request) -> RedirectResponse:
         """The answer to `<page>?token=<given>`: the cookie and a redirect to the same page
-        without the token, or 401. The redirect is a path on this server: leading slashes
-        are made one, so `//host/x` cannot send the browser to another host."""
+        without the token, or 401. The redirect is the path as it was sent, still encoded
+        (a run's name holds "/" as %2F in one segment), and a path on this server: leading
+        slashes are made one, so `//host/x` cannot send the browser to another host."""
         if not self._valid(request.query_params.get("token")):
             raise HTTPException(401, "wrong token: open the link `lado ui` prints")
-        target = "/" + request.url.path.lstrip("/")
+        target = "/" + request.scope["raw_path"].decode("ascii").lstrip("/")
         rest = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "token"])
         answer = RedirectResponse(f"{target}?{rest}" if rest else target, status_code=303)
         answer.set_cookie(self.cookie, self.token, httponly=True, samesite="strict", path="/")

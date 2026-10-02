@@ -73,13 +73,15 @@ later desktop app and a later cloud setup; the UI is its client.
   the address bar. Every page of the UI takes `?token=` the same way (decided in task 2):
   `/gates/12?token=…` sets the cookie and redirects to `/gates/12` with the other query
   parameters kept, so a link from a notification leads straight to its page. The redirect
-  is a path on this server (leading slashes become one: `//host/x` goes to `/host/x`). A
-  wrong token is 401. `/api/health` needs no token.
-- Pages and files (task 2): a path under `/assets/` or one whose last segment has a file
-  extension is a file of the bundle, served as it is or 404, never the page: an open tab
-  that asks for a file an upgrade removed must not get HTML instead of JS. `/api/<unknown>`
-  is a JSON 404. Every other path gets `index.html`, and the UI's router shows the page or
-  Not found.
+  is the path as it was sent, still encoded (`%2F` in a run's name stays), and a path on
+  this server (leading slashes become one: `//host/x` goes to `/host/x`). A wrong token is
+  401. `/api/health` needs no token.
+- Pages and files (task 2): the bundle's files are at its top (`/favicon.svg`) or under
+  `/assets/`. A path under `/assets/`, or one at the top with a file extension, is a file,
+  served as it is or 404, never the page: an open tab that asks for a file an upgrade
+  removed must not get HTML instead of JS. Deeper down a dot belongs to a name
+  (`/sessions/a.b` is a page). `/api/<unknown>` is a JSON 404. Every other path gets
+  `index.html`, and the UI's router shows the page or Not found.
 - Data only through `lado.state` and `lado.runtime`, no SQL in the server. The server never
   migrates `lado.db`: every data endpoint first reads the schema version read-only and
   answers 503 for another one (older or newer).

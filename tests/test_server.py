@@ -176,7 +176,7 @@ def test_the_bundles_files_are_served(bundle):
     assert bundle.get("/favicon.svg").text == "<svg/>"
 
 
-@pytest.mark.parametrize("path", ["/assets/none.js", "/assets/x", "/none.css", "/sessions/x.js"])
+@pytest.mark.parametrize("path", ["/assets/none.js", "/assets/x", "/none.css", "/old.js"])
 def test_a_missing_file_of_the_bundle_is_404_not_the_page(bundle, path):
     """After an upgrade an open tab asking for an old file gets 404, not HTML instead of JS."""
     answer = bundle.get(path)
@@ -184,9 +184,17 @@ def test_a_missing_file_of_the_bundle_is_404_not_the_page(bundle, path):
     assert "bundle" not in answer.text
 
 
+@pytest.mark.parametrize("path", ["/sessions/a.b", "/sessions/my%20app.v2/flows", "/gates/x.js"])
+def test_a_name_with_a_dot_below_the_top_is_a_page(bundle, path):
+    """The bundle's files are at its top or under /assets; deeper down a dot is in a name."""
+    answer = bundle.get(path)
+    assert answer.status_code == 200
+    assert answer.text == "<html>bundle</html>"
+
+
 def test_no_file_outside_the_bundle_is_served(bundle):
-    assert bundle.get("/../secret.txt").status_code == 404
-    assert bundle.get("/%2e%2e/secret.txt").status_code == 404
+    for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/%2e%2e%2fsecret.txt"):
+        assert "not served" not in bundle.get(path).text
 
 
 def test_an_unknown_api_path_is_a_json_404(bundle):
@@ -203,6 +211,16 @@ def test_the_link_with_the_token_on_any_page_redirects_to_that_page(bundle):
     assert answer.headers["set-cookie"].startswith(f"lado_token_{PORT}={auth.token()};")
     answer = bundle.get(f"/sessions/a%20b/flows?tab=1&token={auth.token()}&x=y")
     assert answer.headers["location"] == "/sessions/a%20b/flows?tab=1&x=y"
+
+
+@pytest.mark.parametrize(
+    "path", ["/sessions/x/flows/feature%2Fui", "/sessions/a%3Fb", "/sessions/a%25b/agents"]
+)
+def test_the_redirect_after_the_login_keeps_the_encoded_names(bundle, path):
+    """A run's name holds "/", encoded in its one segment: decoded, it would be another page."""
+    answer = bundle.get(f"{path}?token={auth.token()}")
+    assert answer.status_code == 303
+    assert answer.headers["location"] == path
 
 
 def test_the_link_with_a_wrong_token_on_a_page_is_401(bundle):

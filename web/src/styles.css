@@ -170,6 +170,27 @@ button {
   font-weight: 600;
 }
 
+/* The change feed is down: quiet, beside the title, the reason cut to one line. */
+.reconnecting {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reconnecting::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  vertical-align: 1px;
+}
+
 .server {
   margin-left: auto;
   color: var(--muted);

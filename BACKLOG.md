@@ -309,3 +309,15 @@ inside a design step for detailed section mockups; the supervisor shows them to 
 (opening the local file works for any provider; publishing a page is optional) and writes the
 human's decisions into the design. Do it before the first task with detailed mockups.
 Found: 2026-10-03, design of feature/ui-main-screen.
+
+## state.connect() creates and migrates lado.db; readers have no read-only connection
+
+`state.connect()` creates the schema when there is no `lado.db` and migrates an older one.
+The UI server must never migrate, so each endpoint first checks the schema version
+(`feed.schema_problem`) and only then calls `state.py`; a future endpoint that forgets the
+check, or a race between the check and the call, can migrate the database under a running
+session. `loop.why_stop` relies on the same discipline.
+Wanted: a read-only connection in `state.py` for readers (the server, `loop.why_stop`) that
+refuses another schema itself. Related: "Flaky: integration test of the migration refusal
+under a running session".
+Found: 2026-10-03, architect's review of the live updates design (feature/ui-live-updates).

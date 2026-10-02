@@ -23,11 +23,16 @@ a surface, it takes nothing away.
    `Authorization: Bearer <token>`. The Origin check comes with the first request that
    changes something (gates, the composer), with its own test. Later the layer can be
    replaced by a real login for a remote host without touching the rest.
-3. **One change feed: "events after id N".** The UI learns about changes from one stream,
-   never by polling lists. The server reads it from the database's `events`, `messages` and
-   `notes` (ids only grow), so a write by any process (CLI, hooks, MCP server, session loop)
-   reaches the UI. Where the server gets events from sits behind one interface, so remote
-   workers can later send events over the network instead of writing a local SQLite.
+3. **One change feed: "changes after id N".** The UI learns about changes from one stream,
+   never by polling lists. SQLite triggers write every insert, update and delete of the
+   tables the UI shows (sessions, agents, messages, runs, gates, notes) to the journal
+   `changes` in the writer's own transaction, so a write by any process (CLI, hooks, MCP
+   server, session loop) reaches the UI, and no code path can forget to report one. What
+   the UI shows but no table keeps (a session's `tmux_gone`) is derived: the server
+   computes it and sends its changes itself (the table of derived fields, Server below).
+   Where the server gets changes from sits behind one interface (`server/feed.py`), so
+   remote workers can later send events over the network instead of writing a local
+   SQLite.
 4. **An agent's terminal is the runtime's.** The terminal stream comes from where the agent
    runs (a local tmux window today, another host later); the UI sees one WebSocket. An
    agent without a terminal (ACP) simply has none.
@@ -82,7 +87,8 @@ later desktop app and a later cloud setup; the UI is its client.
   removed must not get HTML instead of JS. Deeper down a dot belongs to a name
   (`/sessions/a.b` is a page). `/api/<unknown>` is a JSON 404. Every other path gets
   `index.html`, and the UI's router shows the page or Not found.
-- Data only through `lado.state` and `lado.runtime`, no SQL in the server. The server never
+- Data only through `lado.state` and `lado.runtime`, no SQL in the server but the journal's
+  read-only reader (`feed.Journal`, The change feed below). The server never
   migrates `lado.db`: every data endpoint first reads the schema version read-only and
   answers 503 for another one (older or newer).
 - The API's OpenAPI schema is the contract: `web/openapi.json` and the UI's TypeScript
@@ -95,7 +101,58 @@ later desktop app and a later cloud setup; the UI is its client.
 - A server started in the background writes its output and request errors to
   `LADO_HOME/server.log` (owner only; no access log, which would hold the login link's
   token). When it ends while `lado ui` waits for it, `lado ui` says so at once with its
-  exit code and last log line.
+  exit code and last log line. A stopping server waits at most a second for open
+  requests: an event stream never ends by itself.
+
+### The change feed
+
+Decided in the live updates task (2026-10-03).
+
+- **The journal**: `changes(id, kind, session, key, op)` in `lado.db` (schema 12), written
+  by triggers on the six tables. `kind` is the table, `key` the row in its session (an
+  agent's or run's name, a message's, gate's or note's id, `''` for the session). An update
+  of an agent that changes only `seen_at` (every hook sets it) is no change. The journal
+  keeps the latest `state.CHANGES_KEPT` (100 000) changes: each insert drops the older
+  ones, in the writer's transaction; the server only reads. `events` is not in it.
+- **The source** (`server/feed.py`, `Source`): "the changes after position N", "the latest
+  position". Now `Journal`, which reads `lado.db` read only and creates nothing (no
+  `lado.db` yet: no changes, the stream waits). One hub per server reads it every 0.25 s
+  while a stream is open, off the event loop, and hands each batch to every stream. A
+  batch keeps one change per row (kind, session, key) with its latest id. Before each
+  batch it checks the schema version; another one ends the open streams, and a new one is
+  answered 503.
+- **`GET /api/events`** (Server-Sent Events, behind the token; 401 and 503 as the REST
+  API): `id: <journal id>`, `event: change`, `data: {kind, session, key, op, item}`.
+  **`item` is the row as it is now, in the form of its REST model, or null when the row is
+  gone, whatever `op` says**; the UI uses only `item`. A kind without a REST model yet
+  (agents, messages, runs, gates, notes until their tasks) has a null item. One table in
+  `feed.py`, `ALSO`, says which change also changes another item: a change of `agents`
+  also sends the session's (it counts its agents). A comment line every 15 s keeps a quiet
+  stream open.
+- **The start of a stream**: the position is the `Last-Event-ID` header (the browser's own
+  reconnect) or else `?after=N`. Without a position, or with one the journal no longer has
+  (dropped, or ahead of it), the stream starts with `event: reset` whose `id` is the latest
+  position, taken before it is sent; the UI loads its data on reset (the first load and
+  the load after a gap are one path) and gets every change after it. With a position the
+  journal has, the stream sends what came after it, then the current value of every
+  derived field.
+- **Derived fields**: the hub computes them every 3 s and sends a change when one differs
+  from its last value. Such a synthetic change has no `id:` line: the browser keeps its
+  position, and no journal id is taken or repeated. The snapshots after a resume make sure
+  a change while no stream was open is not lost; they are idempotent. Every field the UI
+  shows that no table holds belongs in this table (`feed.DERIVED`):
+
+  | Field | Computed by | From |
+  |---|---|---|
+  | `sessions.status` (`tmux_gone`, `loop_down`; not of a stopped session) | `runtime.session_status` | tmux, the session loop's lock |
+
+- **The UI**: the shell opens one `EventSource` per browser tab and keeps the store
+  (`web/src/live.ts`) the sections read; a section opens no stream of its own and never
+  polls. A change that comes while a reset's load runs is applied after it. The browser
+  reconnects by itself only after a network error; when the server refused the stream
+  (401, 503), the shell asks the API why (`api.ts`), shows it, and opens a new stream after
+  3 s from the latest journal id it got (`?after=`); after a 401 it shows how to get in and
+  stops. While no stream is open the top bar says "reconnecting…" with the reason.
 
 ## Structure
 
@@ -175,7 +232,8 @@ time. Each task is one `feature` run, useful on its own.
    Structure above.
 3. **Sections, one at a time**, each designed with the human and then built. Goal
    (decided with the human 2026-10-03): develop LADO from the UI instead of the terminal,
-   so first what that needs, in this order: the live updates (the change feed, D3); the
+   so first what that needs, in this order: the live updates (the change feed, D3; done:
+   The change feed above); the
    agent terminal in the browser (the supervisor's first: today's chat with it is its
    terminal); Gates (Needs you with its count, the gate page, a browser notification);
    Agents; Flows. Then Activity, Providers and environment, the composer (D4) and the

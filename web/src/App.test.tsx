@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -41,15 +41,77 @@ function wide(matches: boolean) {
   );
 }
 
+// The browser's EventSource as the server drives it: `start` opens it and sends reset, as
+// a new stream does; the tests send changes and errors themselves.
+class FakeEventSource {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSED = 2;
+  static all: FakeEventSource[] = [];
+  static autoStart = true;
+
+  readyState = FakeEventSource.CONNECTING;
+  onopen: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  private listeners = new Map<string, ((event: MessageEvent) => void)[]>();
+  private lastId = "";
+
+  constructor(readonly url: string) {
+    FakeEventSource.all.push(this);
+    if (FakeEventSource.autoStart) queueMicrotask(() => this.start());
+  }
+
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+
+  close() {
+    this.readyState = FakeEventSource.CLOSED;
+  }
+
+  start(id = "10") {
+    this.open();
+    this.send("reset", {}, id);
+  }
+
+  open() {
+    this.readyState = FakeEventSource.OPEN;
+    act(() => this.onopen?.(new Event("open")));
+  }
+
+  // An event with an `id:` line when `id` is given; without one the browser keeps the last.
+  send(type: string, data: unknown, id?: string) {
+    if (id !== undefined) this.lastId = id;
+    const event = new MessageEvent(type, { data: JSON.stringify(data), lastEventId: this.lastId });
+    act(() => this.listeners.get(type)?.forEach((listener) => listener(event)));
+  }
+
+  // A network error (the browser tries again itself) or a refused answer (it gives up).
+  fail(closed: boolean) {
+    this.readyState = closed ? FakeEventSource.CLOSED : FakeEventSource.CONNECTING;
+    act(() => this.onerror?.(new Event("error")));
+  }
+}
+
+const stream = () => FakeEventSource.all[FakeEventSource.all.length - 1];
+
+function change(session: string, item: SessionInfo | null, op = "update") {
+  return { kind: "sessions", session, key: "", op, item };
+}
+
 beforeEach(() => {
   localStorage.clear();
   delete document.documentElement.dataset.theme;
   wide(true);
   serve();
+  FakeEventSource.all = [];
+  FakeEventSource.autoStart = true;
+  vi.stubGlobal("EventSource", FakeEventSource);
 });
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -259,6 +321,120 @@ test("an unknown session says so and links to the list", async () => {
 test("an unknown tab of a session is Not found", async () => {
   open("/sessions/lado/nope");
   expect(heading()).toBe("Not found");
+});
+
+// Live updates: the change feed
+
+test("the shell opens one event stream; the sessions load on its reset", async () => {
+  FakeEventSource.autoStart = false;
+  const fetch = serve();
+  open("/");
+  expect(FakeEventSource.all.map((one) => one.url)).toEqual(["/api/events"]);
+  fireEvent.click(within(rail()).getByRole("link", { name: "Sessions" }));
+  expect(fetch).not.toHaveBeenCalled();
+  stream().start();
+  const list = screen.getByRole("navigation", { name: "Sessions" });
+  expect(await within(list).findByRole("link", { name: /lado/ })).toBeTruthy();
+  fireEvent.click(within(rail()).getByRole("link", { name: "Kits" }));
+  fireEvent.click(within(rail()).getByRole("link", { name: "Sessions" }));
+  expect(FakeEventSource.all).toHaveLength(1); // a section opens no stream of its own
+});
+
+test("every reset loads the sessions again", async () => {
+  const fetch = serve();
+  open("/sessions");
+  await screen.findByRole("link", { name: /lado/ });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  serve(200, [SESSIONS[0]]);
+  stream().send("reset", {}, "20");
+  await waitFor(() =>
+    expect(within(screen.getByRole("navigation", { name: "Sessions" })).getAllByRole("link")).toHaveLength(1),
+  );
+});
+
+test("changes update the list and the session's header as they come", async () => {
+  open("/sessions/lado");
+  const view = await screen.findByRole("region", { name: "Session lado" });
+  const list = screen.getByRole("navigation", { name: "Sessions" });
+  stream().send("change", change("lado", { ...SESSIONS[0], status: "tmux_gone" }));
+  expect(within(view).getByText("tmux session is gone")).toBeTruthy();
+  expect(within(list).getByRole("link", { name: /lado/ }).className).toContain("dim");
+  stream().send(
+    "change",
+    change("new", { name: "new", repo: "/src/new", status: "running", agents: 1 }, "insert"),
+    "11",
+  );
+  expect(within(list).getByRole("link", { name: /new/ })).toBeTruthy();
+  stream().send("change", change("old", null, "delete"), "12");
+  expect(within(list).queryByRole("link", { name: /old/ })).toBeNull();
+  expect(within(list).getAllByRole("link")).toHaveLength(3);
+});
+
+test("a change that comes while the sessions load is not lost to an older load", async () => {
+  FakeEventSource.autoStart = false;
+  let answer: (response: Response) => void = () => {};
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))),
+  );
+  open("/sessions/lado");
+  stream().start();
+  stream().send("change", change("lado", { ...SESSIONS[0], status: "tmux_gone" }), "11");
+  await act(async () => answer(new Response(JSON.stringify(SESSIONS))));
+  const view = await screen.findByRole("region", { name: "Session lado" });
+  expect(within(view).getByText("tmux session is gone")).toBeTruthy();
+});
+
+test("a change of another kind leaves the sessions alone", async () => {
+  open("/sessions");
+  const list = screen.getByRole("navigation", { name: "Sessions" });
+  await within(list).findByRole("link", { name: /lado/ });
+  stream().send("change", { kind: "messages", session: "lado", key: "4", op: "insert", item: null }, "11");
+  expect(within(list).getAllByRole("link")).toHaveLength(3);
+});
+
+test("reconnecting shows in the top bar while the stream is down", async () => {
+  open("/");
+  await waitFor(() => expect(stream().readyState).toBe(FakeEventSource.OPEN));
+  const bar = screen.getByRole("banner");
+  expect(within(bar).queryByText(/reconnecting/)).toBeNull();
+  stream().fail(false);
+  expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
+  stream().open();
+  expect(within(bar).queryByText(/reconnecting/)).toBeNull();
+});
+
+test("a stream the server refused: the reason shows, then it reconnects from the last id", async () => {
+  open("/sessions");
+  await screen.findByRole("link", { name: /lado/ });
+  vi.useFakeTimers();
+  stream().send("change", change("lado", SESSIONS[0]), "17");
+  stream().send("change", change("lado", SESSIONS[0])); // derived: no id of its own
+  const reason = "lado.db has schema version 99, this server knows 12";
+  serve(503, { detail: reason });
+  stream().fail(true);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(within(screen.getByRole("banner")).getByRole("status").textContent).toContain(reason);
+  expect(FakeEventSource.all).toHaveLength(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(stream().url).toBe("/api/events?after=17");
+});
+
+test("a stream refused for the token shows how to get in and does not try again", async () => {
+  FakeEventSource.autoStart = false;
+  serve(401, { detail: "no valid token: open the link `lado ui` prints" });
+  open("/settings");
+  vi.useFakeTimers();
+  stream().fail(true);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10000);
+  });
+  expect(screen.getByRole("alert").textContent).toBe("no valid token: open the link `lado ui` prints");
+  expect(FakeEventSource.all).toHaveLength(1);
 });
 
 // Settings and the theme

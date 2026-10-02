@@ -1,6 +1,7 @@
 // The frame around every page: the rail of sections on the left, the top bar with the
 // page's title, the server's address and Launch, and the page itself. The one place that
-// handles a 401: it shows the server's own message instead of the page.
+// handles a 401: it shows the server's own message instead of the page. It holds the tab's
+// one change feed (live.ts) for every page.
 import {
   createContext,
   useContext,
@@ -12,7 +13,7 @@ import {
 } from "react";
 import { NavLink, Outlet } from "react-router";
 
-import { getSessions, onDenied } from "./api";
+import { onDenied } from "./api";
 import {
   CollapseIcon,
   HomeIcon,
@@ -23,6 +24,7 @@ import {
   SessionsIcon,
   SettingsIcon,
 } from "./icons";
+import { Live, LiveContext, useLive } from "./live";
 import { storeRailCollapsed, storedRailCollapsed } from "./prefs";
 
 const SECTIONS: { to: string; name: string; icon: ReactNode }[] = [
@@ -46,13 +48,18 @@ export function Shell() {
   const [title, setTitle] = useState("");
   const [collapsed, setCollapsed] = useState(storedRailCollapsed);
   const [denied, setDenied] = useState<string | null>(null);
+  const [live] = useState(() => new Live());
 
   useEffect(() => {
     const off = onDenied(setDenied);
-    // Ask once, so a page that reads no data still learns that the token is missing.
-    getSessions().catch(() => {});
-    return off;
-  }, []);
+    // The one stream of this tab: without the token it learns so, also on a page that
+    // reads no data.
+    live.start();
+    return () => {
+      live.stop();
+      off();
+    };
+  }, [live]);
 
   useEffect(() => {
     document.title = title ? `${title} · LADO` : "LADO";
@@ -63,7 +70,7 @@ export function Shell() {
     storeRailCollapsed(!collapsed);
   };
 
-  return (
+  const frame = (
     <div className={`app${collapsed ? " collapsed" : ""}`}>
       <nav className="rail" aria-label="Sections">
         <div className="rail-head">
@@ -93,6 +100,7 @@ export function Shell() {
       <div className="main">
         <header className="topbar">
           <h1>{title}</h1>
+          <Reconnecting />
           <span className="server" title="The LADO server this page talks to">
             {window.location.host}
           </span>
@@ -111,6 +119,18 @@ export function Shell() {
         </main>
       </div>
     </div>
+  );
+  return <LiveContext.Provider value={live}>{frame}</LiveContext.Provider>;
+}
+
+// Shown while the change feed is down: what the page shows may be old.
+function Reconnecting() {
+  const { link, problem } = useLive();
+  if (link !== "down") return null;
+  return (
+    <span className="reconnecting" role="status" title={problem ?? undefined}>
+      reconnecting…{problem && <span className="reconnecting-why"> {problem}</span>}
+    </span>
   );
 }
 

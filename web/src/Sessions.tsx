@@ -1,9 +1,10 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
 // session on the right with the place for its gates and its tabs.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router";
 
-import { ApiError, getSessions, type SessionInfo, type SessionStatus } from "./api";
+import type { SessionStatus } from "./api";
+import { useLive, type Loaded } from "./live";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
 import { Placeholder } from "./Placeholder";
@@ -17,20 +18,11 @@ const STATUS: Record<SessionStatus, string> = {
   loop_down: "session loop not running",
 };
 
-type Loaded = { sessions: SessionInfo[] } | { error: string } | null;
-
 // The pages inside (NoSession, Session) name themselves: a session's unknown tab is Not found.
+// The list and the session's header follow the change feed (live.ts).
 export function Sessions() {
-  const [loaded, setLoaded] = useState<Loaded>(null);
+  const loaded = useLive().sessions;
   const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    getSessions()
-      .then((sessions) => setLoaded({ sessions }))
-      .catch((error: unknown) =>
-        setLoaded({ error: error instanceof ApiError ? error.message : String(error) }),
-      );
-  }, []);
 
   const wanted = query.trim().toLowerCase();
   return (

@@ -124,13 +124,22 @@ schema change.
     (`sessions.stopped_at`) and `lado forget` deletes. How long an
     agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
     `spawned` event, how long a run has been in its state from its latest event.
+    The `changes` table is the UI's change journal: triggers on `sessions`, `agents`,
+    `messages`, `runs`, `gates` and `notes` record each insert, update and delete (kind,
+    session, key, op) in the writer's transaction, so no code path reports changes by hand;
+    an agent update of only `seen_at` is none (a new `agents` column goes into
+    `AGENTS_CHANGED`, a test checks every column), and each insert drops changes older than
+    the latest `CHANGES_KEPT`. A new table the UI shows gets its triggers in `JOURNALED`.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
     rules in [docs/design/ui.md](docs/design/ui.md), section Server). `auth.py`: the token,
     the only place that checks it; `app.py`: the FastAPI app, the API under `/api` (data only
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
-    that is a page of the UI (its router shows it);
+    that is a page of the UI (its router shows it); `feed.py`: the change feed behind
+    `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
+    journal, read only), one hub per server, `reset` and resume, the derived fields;
+    `models.py`: the API's models, one form for REST and the stream's items;
     `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`.

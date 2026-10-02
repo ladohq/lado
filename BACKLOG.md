@@ -267,3 +267,11 @@ packs may do the same. Wanted: decide whether LADO supports such packs (e.g. set
 `CLAUDE_PLUGIN_ROOT`-like variables per skill, or a source option that maps them to the
 source folder) or `lado kits check` warns about unknown `${...}` variables in a skill.
 Found: 2026-10-03, choosing UI skills for the lado-dev kit.
+
+## `lado kits check` warns about skills no role uses
+
+Every `lado kits check lado-dev` prints four hardcoded-path warnings from superpowers skills
+that no lado-dev role lists (diagnosing-superpowers, subagent-driven-development,
+writing-skills). The kit cannot act on them, so the warnings are noise that hides real ones.
+Wanted: lint only the skills the kit's roles use, or mark the others "(not used by any role)".
+Found: 2026-10-03, review of lado-dev 0.5.0.

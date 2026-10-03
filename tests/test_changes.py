@@ -159,10 +159,18 @@ def test_the_journal_keeps_the_latest_changes_only(lado_home):
     assert ids == [first + state.CHANGES_KEPT]
 
 
-def test_the_previous_schema_has_no_journal_and_migrates_to_one(lado_home):
+def test_version_11_has_no_journal_and_migrates_to_one(lado_home):
     state.add_session(state.Session("s", "/r", None))
     agent_helpers.previous_schema()
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    assert state.MIGRATIONS[11] == state.JOURNAL
+    for (name,) in db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'changes_%'"
+    ).fetchall():
+        db.execute(f"DROP TRIGGER {name}")
+    db.execute("DROP TABLE changes")
+    db.execute("PRAGMA user_version = 11")
+    db.commit()
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()
     assert "changes" not in names and not any(n.startswith("changes_") for n in names)

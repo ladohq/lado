@@ -280,6 +280,8 @@ def spawn_worker(
     branches = git(sess.repo, "branch", "--list", "--format=%(refname:short)", f"lado/{session}/*")
     kept = {b.rsplit("/", 1)[1] for b in branches.split()}
     worker = slug(name) if name else _next_name(taken | kept)
+    if worker in state.RESERVED:
+        raise LadoError(f'the name "{worker}" is reserved for LADO\'s messages; choose another')
     if worker in taken:
         raise LadoError(f'an agent named "{worker}" already exists')
     if run:
@@ -506,15 +508,158 @@ def send_message(
     return post(session, sender, recipient, summary, body)
 
 
+def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
+    """Send the human's text (the UI's composer) to agent `to` as a message from `human`,
+    through the same queue, confirmation and retries as an agent's. Its first line, without
+    tabs and control characters, is the summary, cut to the limit; the whole text is the
+    body when it has more lines or the line was cut."""
+    running_session(session)
+    text = text.strip()
+    if not text:
+        raise LadoError("the message is empty")
+    if to == state.HUMAN:
+        raise LadoError(f'no running agent "{to}": the human cannot write to themselves')
+    return post(session, state.HUMAN, to, *_human_text(text))
+
+
+def _human_text(text: str, prefix: str = "") -> tuple[str, str]:
+    """The human's stripped text as a summary and a body: `prefix` and its first line,
+    without tabs and control characters and cut to the limit; and the whole text when it
+    has more lines or the line was cut, else ''."""
+    if len(text) > MAX_MESSAGE:
+        raise LadoError(f"the message is {len(text)} characters, the limit is {MAX_MESSAGE}")
+    first = text.split("\n", 1)[0]
+    first = "".join(" " if unicodedata.category(c) == "Cc" else c for c in first).strip()
+    if not first:
+        raise LadoError("the first line of the message has no text")
+    summary = prefix + first
+    if len(summary) > state.SUMMARY_LIMIT:
+        summary = summary[: state.SUMMARY_LIMIT - 1] + "…"
+    body = text if "\n" in text or summary != prefix + first else ""
+    return summary, body
+
+
+def answer_question(
+    session: str, question_id: int, choice: str | None = None, text: str | None = None
+) -> str:
+    """The human answers an open question with one of its choices, their own `text`, or a
+    choice with `text` as a comment. The answer goes to the agent that asked, as a message
+    from human, and the question is answered, in one transaction."""
+    question = _open_question(session, question_id)
+    text = (text or "").strip()
+    prefix = f"Answer to #{question_id}: "
+    if choice is not None:
+        if choice not in (question.choices or []):
+            listed = ", ".join(question.choices or []) or "none"
+            raise LadoError(
+                f'question #{question_id} has no choice "{choice}"; its choices: {listed}'
+            )
+        summary, body = prefix + choice, text
+        if len(body) > MAX_MESSAGE:
+            raise LadoError(f"the message is {len(body)} characters, the limit is {MAX_MESSAGE}")
+    elif not text:
+        raise LadoError("choose one of the choices or write an answer")
+    elif not question.free_answer:
+        raise LadoError(f"question #{question_id} takes one of its choices, not an own answer")
+    else:
+        summary, body = _human_text(text, prefix)
+    return _reply(session, question, summary, body, choice, state.ANSWERED)
+
+
+def dismiss_question(session: str, question_id: int) -> str:
+    """The human dismisses an open question; the agent that asked hears of it."""
+    question = _open_question(session, question_id)
+    return _reply(session, question, f"Dismissed #{question_id}", "", None, state.DISMISSED)
+
+
+def _open_question(session: str, question_id: int) -> state.Message:
+    running_session(session)
+    question = state.get_message(session, question_id)
+    if question is None or question.kind != state.QUESTION:
+        raise LadoError(f"no question #{question_id} in session {session}")
+    if question.question_state != state.OPEN_QUESTION:
+        raise LadoError(f"question #{question_id} is {question.question_state}")
+    return question
+
+
+def _reply(
+    session: str, question: state.Message, summary: str, body: str, choice: str | None, outcome: str
+) -> str:
+    _running_agent(session, question.sender)
+    if not state.reply_to_question(session, question.id, summary, body, choice, outcome):
+        now = state.get_message(session, question.id)
+        raise LadoError(f"question #{question.id} is {now.question_state}")
+    return _deliver(session, question.sender)
+
+
+MAX_CHOICES = 6
+# Characters in a choice: "Answer to #<id>: <choice>" must fit in a summary.
+CHOICE_LIMIT = 160
+
+
+def ask_human(
+    session: str,
+    sender: str,
+    question: str,
+    details: str | None = None,
+    choices: list[str] | None = None,
+    free_answer: bool = True,
+) -> str:
+    """Ask the human a question, shown in the UI with its choices; with `free_answer` they
+    may answer in their own words too. It does not wait: the answer, or that the human
+    dismissed it, comes to `sender` as a message from human."""
+    question = question.strip()
+    _check_summary(question, "question", "details")
+    details = details or ""
+    if len(details) > MAX_MESSAGE:
+        raise LadoError(f"details are {len(details)} characters, the limit is {MAX_MESSAGE}")
+    choices = [c.strip() for c in choices or []]
+    if not choices and not free_answer:
+        raise LadoError("no choices and no free answer: the human could not answer")
+    if len(choices) > MAX_CHOICES:
+        raise LadoError(f"{len(choices)} choices, the limit is {MAX_CHOICES}")
+    for choice in choices:
+        if not choice:
+            raise LadoError("a choice is empty")
+        if any(unicodedata.category(c) == "Cc" for c in choice):
+            raise LadoError("a choice must be one line without control characters")
+        if len(choice) > CHOICE_LIMIT:
+            raise LadoError(f"a choice is {len(choice)} characters, the limit is {CHOICE_LIMIT}")
+        if choices.count(choice) > 1:
+            raise LadoError(f'choice "{choice}" is given twice')
+    asked = state.add_question(session, sender, question, details, choices or None, free_answer)
+    return (
+        f"question #{asked} asked; the human's answer or dismissal comes as a message from "
+        f"{state.HUMAN}"
+    )
+
+
+TO_HUMAN = "delivered: the human reads it in LADO's UI"
+
+
 def post(session: str, sender: str, recipient: str, summary: str, body: str = "") -> str:
     """Queue a message whose summary is checked already and deliver it now if the
     recipient is idle. LADO's own messages (lado.runs) come here directly: a step's body
-    carries the task, which may be longer than an agent's message."""
-    agent = state.get_agent(session, recipient)
+    carries the task, which may be longer than an agent's message.
+
+    The human has no window: a message to them is delivered at once, and the UI shows it."""
+    if recipient == state.HUMAN:
+        state.queue_message(session, sender, recipient, summary, body, state.DELIVERED)
+        return TO_HUMAN
+    _running_agent(session, recipient)
+    state.queue_message(session, sender, recipient, summary, body)
+    return _deliver(session, recipient)
+
+
+def _running_agent(session: str, name: str) -> None:
+    agent = state.get_agent(session, name)
     if agent is None or agent.status == state.STOPPED:
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
-        raise LadoError(f'no running agent "{recipient}"; running agents: {names}')
-    state.queue_message(session, sender, recipient, summary, body)
+        raise LadoError(f'no running agent "{name}"; running agents: {names}; or "{state.HUMAN}"')
+
+
+def _deliver(session: str, recipient: str) -> str:
+    """Deliver the recipient's queued messages now if it is idle."""
     # What was typed before and never confirmed goes first, with this one if typed again.
     sweep(session, recipient)
     # Queue first, read the status second: the turn-end hook does the reverse, so a message is
@@ -632,21 +777,22 @@ def _report_failure(session: str, message: state.Message) -> None:
         post(session, state.LADO, to, summary)
 
 
-def _check_summary(summary: str) -> None:
+def _check_summary(summary: str, what: str = "summary", details: str = "body") -> None:
     """Refuse a summary that cannot be typed as one line. It must be stripped already: the
-    agent CLI trims what is typed, and the typed line must match the prompt it confirms."""
+    agent CLI trims what is typed, and the typed line must match the prompt it confirms.
+    `what` names it in the errors, `details` the argument for the rest."""
     if not summary:
-        raise LadoError("summary is empty; say in one line what the message is about")
+        raise LadoError(f"{what} is empty; say in one line what the message is about")
     if len(summary.splitlines()) > 1:
-        raise LadoError("summary must be one line; put the details in body")
+        raise LadoError(f"{what} must be one line; put the details in {details}")
     if any(unicodedata.category(c) == "Cc" for c in summary):
         raise LadoError(
-            "summary must be one line without control characters; put the details in body"
+            f"{what} must be one line without control characters; put the details in {details}"
         )
     if len(summary) > state.SUMMARY_LIMIT:
         raise LadoError(
-            f"summary is {len(summary)} characters, the limit is {state.SUMMARY_LIMIT}; "
-            "put the details in body"
+            f"{what} is {len(summary)} characters, the limit is {state.SUMMARY_LIMIT}; "
+            f"put the details in {details}"
         )
 
 

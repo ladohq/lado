@@ -1140,3 +1140,288 @@ def test_session_status_tells_the_four_states(repo, fake_tmux):
     held.close()
     runtime.stop_session("s")
     assert runtime.session_status(state.get_session("s")) == runtime.SessionStatus.STOPPED
+
+
+def test_a_message_to_the_human_is_delivered_at_once_into_no_window(repo, fake_tmux):
+    _session_with_worker(repo)
+    typed_before = len(fake_tmux)
+    assert runtime.send_message("s", "supervisor", "human", "need a decision", "A or B?") == (
+        "delivered: the human reads it in LADO's UI"
+    )
+    assert len(fake_tmux) == typed_before
+    [message] = state.list_messages("s")
+    assert (message.sender, message.recipient, message.state) == (
+        "supervisor",
+        "human",
+        state.DELIVERED,
+    )
+
+
+def test_an_unknown_recipient_names_the_human_too(repo, fake_tmux):
+    _session_with_worker(repo)
+    with pytest.raises(runtime.LadoError, match='running agents: supervisor, w1; or "human"'):
+        runtime.send_message("s", "w1", "nobody", "hi")
+
+
+@pytest.mark.parametrize("name", ["human", "lado", "Human"])
+def test_a_worker_cannot_take_a_name_of_lado_or_the_human(repo, fake_tmux, name):
+    runtime.start_session(str(repo), "s", None)
+    with pytest.raises(runtime.LadoError, match=f'"{name.lower()}" is reserved'):
+        runtime.spawn_worker("s", "task", name=name)
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert not (repo / ".lado/worktrees/s" / name.lower()).exists()
+
+
+def test_messages_to_the_human_are_never_dropped(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.send_message("s", "w1", "human", "a question", "with a body")
+    runtime.send_message("s", "supervisor", "human", "a milestone")
+    runtime.sweep("s", now=time.time() + 1000, delays=DELAYS)
+    assert runtime.finish_worker("s", "w1", discard=True).dropped == 0
+    assert runtime.stop_session("s").dropped == 0
+    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
+    assert state.list_events("s")[-1].detail == "0 messages dropped"
+
+
+def test_the_humans_text_reaches_the_supervisor_as_a_message(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    assert runtime.write_as_human("s", "  merge w1, please\t\n") == "sent"
+    assert fake_tmux[-1] == ("send_text", "s", "supervisor", "[from human] merge w1, please")
+    [message] = state.list_messages("s")
+    assert (message.sender, message.recipient, message.body) == ("human", "supervisor", "")
+
+
+@pytest.mark.parametrize(
+    ("text", "summary", "body"),
+    [
+        ("look at\tthis\x1b[0m now", "look at this [0m now", ""),
+        ("first line\nsecond line", "first line", "first line\nsecond line"),
+        ("x" * 250, "x" * 199 + "…", "x" * 250),
+    ],
+)
+def test_the_humans_text_is_split_into_a_summary_and_a_body(repo, fake_tmux, text, summary, body):
+    _session_with_worker(repo)
+    runtime.write_as_human("s", text, to="w1")
+    [message] = state.list_messages("s")
+    assert (message.recipient, message.summary, message.body) == ("w1", summary, body)
+
+
+@pytest.mark.parametrize(
+    ("text", "to", "reason"),
+    [
+        (" \n ", "supervisor", "the message is empty"),
+        ("x" * 8001, "supervisor", "the message is 8001 characters, the limit is 8000"),
+        ("hi", "nobody", 'no running agent "nobody"'),
+        ("hi", "human", 'no running agent "human"'),
+    ],
+)
+def test_the_humans_text_is_refused_with_a_reason(repo, fake_tmux, text, to, reason):
+    _session_with_worker(repo)
+    with pytest.raises(runtime.LadoError, match=re.escape(reason)):
+        runtime.write_as_human("s", text, to=to)
+    assert state.list_messages("s") == []
+
+
+def test_the_human_cannot_write_into_a_stopped_session(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.stop_session("s")
+    with pytest.raises(runtime.LadoError, match='session "s" is stopped'):
+        runtime.write_as_human("s", "hi")
+
+
+def test_the_human_hears_of_their_message_that_failed(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    runtime.write_as_human("s", "are you there?")
+    _retry_until_failed(state.list_messages("s")[0].sent_at)
+    mine, notice = state.list_messages("s")
+    assert mine.state == state.FAILED
+    assert (notice.sender, notice.recipient, notice.state) == ("lado", "human", state.DELIVERED)
+    assert notice.summary == f"message #{mine.id} to supervisor not delivered: are you there?"
+
+
+def test_an_agent_asks_the_human_a_question(repo, fake_tmux):
+    _session_with_worker(repo)
+    typed_before = len(fake_tmux)
+    result = runtime.ask_human("s", "w1", "Merge now?", "Tests pass.", ["yes", "later"], False)
+    [question] = state.list_messages("s")
+    assert result == (
+        f"question #{question.id} asked; the human's answer or dismissal comes as a message "
+        "from human"
+    )
+    assert len(fake_tmux) == typed_before
+    assert (question.kind, question.sender, question.recipient, question.state) == (
+        state.QUESTION,
+        "w1",
+        "human",
+        state.DELIVERED,
+    )
+    assert (question.summary, question.body) == ("Merge now?", "Tests pass.")
+    assert (question.choices, question.free_answer, question.question_state) == (
+        ["yes", "later"],
+        False,
+        state.OPEN_QUESTION,
+    )
+
+
+def test_a_question_without_choices_takes_a_free_answer(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.ask_human("s", "w1", "Which port?")
+    [question] = state.list_messages("s")
+    assert (question.choices, question.free_answer) == (None, True)
+
+
+@pytest.mark.parametrize(
+    ("question", "choices", "free", "reason"),
+    [
+        ("", None, True, "question is empty"),
+        ("a\nb", None, True, "question must be one line; put the details in details"),
+        ("x" * 201, None, True, "question is 201 characters, the limit is 200"),
+        ("ok?", [], False, "no choices and no free answer: the human could not answer"),
+        ("ok?", list("abcdefg"), True, "7 choices, the limit is 6"),
+        ("ok?", ["yes", "yes"], True, 'choice "yes" is given twice'),
+        ("ok?", ["yes", " "], True, "a choice is empty"),
+        ("ok?", ["a\nb"], True, "a choice must be one line"),
+        ("ok?", ["x" * 161], True, "a choice is 161 characters, the limit is 160"),
+    ],
+)
+def test_a_question_is_refused_with_a_reason(repo, fake_tmux, question, choices, free, reason):
+    _session_with_worker(repo)
+    with pytest.raises(runtime.LadoError, match=re.escape(reason)):
+        runtime.ask_human("s", "w1", question, None, choices, free)
+    assert state.list_messages("s") == []
+
+
+def _asked(repo, choices=("yes", "later"), free=True):
+    """w1, idle, asked the human a question; returns it."""
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    runtime.ask_human("s", "w1", "Merge now?", None, list(choices) if choices else None, free)
+    return state.list_messages("s")[-1]
+
+
+@pytest.mark.parametrize(
+    ("choice", "text", "summary", "body"),
+    [
+        ("yes", None, "Answer to #{id}: yes", ""),
+        (
+            "later",
+            "after the release\nplease",
+            "Answer to #{id}: later",
+            "after the release\nplease",
+        ),
+        (None, " after the release ", "Answer to #{id}: after the release", ""),
+        (None, "after\nthe release", "Answer to #{id}: after", "after\nthe release"),
+    ],
+)
+def test_the_humans_answer_comes_to_the_agent_as_a_message(
+    repo, fake_tmux, choice, text, summary, body
+):
+    question = _asked(repo)
+    runtime.answer_question("s", question.id, choice, text)
+    asked, answer = state.list_messages("s")
+    summary = summary.format(id=question.id)
+    assert (answer.sender, answer.recipient, answer.summary, answer.body) == (
+        "human",
+        "w1",
+        summary,
+        body,
+    )
+    assert (answer.reply_to, answer.choice) == (question.id, choice)
+    assert (asked.question_state, asked.answered_by) == (state.ANSWERED, answer.id)
+    assert fake_tmux[-1][:3] == ("send_text", "s", "w1")
+    assert fake_tmux[-1][3].startswith(f"[from human] {summary}")
+
+
+def test_a_long_own_answer_is_cut_in_the_summary_and_whole_in_the_body(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.answer_question("s", question.id, None, "x" * 300)
+    answer = state.list_messages("s")[-1]
+    assert len(answer.summary) == state.SUMMARY_LIMIT and answer.summary.endswith("…")
+    assert answer.body == "x" * 300
+
+
+def test_the_human_dismisses_a_question_and_the_agent_hears_of_it(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.dismiss_question("s", question.id)
+    asked, dismissal = state.list_messages("s")
+    assert (dismissal.sender, dismissal.recipient, dismissal.summary) == (
+        "human",
+        "w1",
+        f"Dismissed #{question.id}",
+    )
+    assert (dismissal.reply_to, dismissal.choice) == (question.id, None)
+    assert (asked.question_state, asked.answered_by) == (state.DISMISSED, dismissal.id)
+    assert fake_tmux[-1] == ("send_text", "s", "w1", f"[from human] Dismissed #{question.id}")
+
+
+@pytest.mark.parametrize(
+    ("choices", "free", "choice", "text", "reason"),
+    [
+        (
+            ("yes", "later"),
+            True,
+            "no",
+            None,
+            'question #{id} has no choice "no"; its choices: yes, later',
+        ),
+        (
+            ("yes",),
+            False,
+            None,
+            "maybe",
+            "question #{id} takes one of its choices, not an own answer",
+        ),
+        (("yes",), True, None, None, "choose one of the choices or write an answer"),
+        (("yes",), True, None, "  ", "choose one of the choices or write an answer"),
+    ],
+)
+def test_a_wrong_answer_is_refused(repo, fake_tmux, choices, free, choice, text, reason):
+    question = _asked(repo, choices, free)
+    with pytest.raises(runtime.LadoError, match=re.escape(reason.format(id=question.id))):
+        runtime.answer_question("s", question.id, choice, text)
+    assert state.list_messages("s")[-1].question_state == state.OPEN_QUESTION
+
+
+def test_only_an_open_question_takes_an_answer(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.answer_question("s", question.id, "yes")
+    for act in (
+        lambda: runtime.answer_question("s", question.id, "later"),
+        lambda: runtime.dismiss_question("s", question.id),
+    ):
+        with pytest.raises(runtime.LadoError, match=f"question #{question.id} is answered"):
+            act()
+    assert len(state.list_messages("s")) == 2
+
+
+def test_an_answer_to_no_question_is_refused(repo, fake_tmux):
+    question = _asked(repo)
+    answer_id = question.id + 1
+    runtime.send_message("s", "w1", "human", "not a question")
+    for missing in (answer_id, 999):
+        with pytest.raises(runtime.LadoError, match=f"no question #{missing} in session s"):
+            runtime.answer_question("s", missing, "yes")
+
+
+def _question_states():
+    return [m.question_state for m in state.list_messages("s") if m.kind == state.QUESTION]
+
+
+def test_a_finished_workers_open_questions_are_closed(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.ask_human("s", "w1", "first?")
+    runtime.ask_human("s", "w1", "second?")
+    runtime.ask_human("s", "supervisor", "the supervisor's?")
+    runtime.answer_question("s", state.list_messages("s")[0].id, text="done")
+    runtime.finish_worker("s", "w1", discard=True)
+    assert _question_states() == [state.ANSWERED, state.CLOSED, state.OPEN_QUESTION]
+
+
+def test_stopping_the_session_closes_its_open_questions(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.ask_human("s", "w1", "first?")
+    runtime.ask_human("s", "supervisor", "second?")
+    runtime.stop_session("s")
+    assert _question_states() == [state.CLOSED, state.CLOSED]

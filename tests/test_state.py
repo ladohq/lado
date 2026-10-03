@@ -603,3 +603,16 @@ def test_a_resumed_session_gets_its_new_settings(lado_home):
     assert sess == state.Session("s", "/r", "plan", "kilo", ["team"], ["skill:x"])
     last = state.list_events("s")[-1]
     assert (last.agent, last.kind, last.detail) == ("lado", state.SESSION_RESUME, "kits")
+
+
+def test_version_12_messages_become_plain_messages_in_version_13(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.queue_message("s", "w1", "supervisor", "hi", "body")
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    columns = {row[1] for row in db.execute("PRAGMA table_info(messages)")}
+    db.close()
+    assert "kind" not in columns and "reply_state" not in columns
+    [message] = state.list_messages("s")  # migrates
+    assert (message.kind, message.choices, message.question_state) == (state.MESSAGE, None, None)
+    assert (message.reply_to, message.choice, message.reply_state) == (None, None, None)

@@ -1040,3 +1040,23 @@ def test_a_gate_is_answered_after_resume_but_not_while_stopped(session, repo):
     assert messages("supervisor")[-1].summary == (
         "flow feature/login: step implement needs a developer"
     )
+
+
+def _question_states(session):
+    return [m.question_state for m in state.list_messages(session) if m.kind == state.QUESTION]
+
+
+def test_cancelling_a_run_closes_its_workers_questions(session):
+    advance_to_review(session)
+    runtime.ask_human(session, "w1", "which form?")
+    runs.cancel(session, "feature/login", "not needed")
+    assert _question_states(session) == [state.CLOSED]
+
+
+def test_the_end_of_a_run_closes_its_workers_questions(session, repo):
+    run = to_merge(session)
+    runtime.ask_human(session, "w1", "which form?")
+    commit(run)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    runs.advance(session, "supervisor", "feature/login", "merged")
+    assert _question_states(session) == [state.CLOSED]

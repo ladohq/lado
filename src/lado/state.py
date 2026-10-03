@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -148,6 +148,24 @@ JOURNAL = [
     *(_journal_trigger(t, op) for t in JOURNALED for op in ("insert", "update", "delete")),
 ]
 
+# The human in messages, from version 13 on: an agent's question to the human (ask_human)
+# and its outcome, the answer to it, and whether an agent replied to the human's message.
+MESSAGES_HUMAN = [
+    "ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'message'",  # | question
+    # A question's: JSON list of the choices, or NULL for none; whether the human may answer
+    # in their own words; open | answered | dismissed | closed; the id of the answer.
+    "ALTER TABLE messages ADD COLUMN choices TEXT",
+    "ALTER TABLE messages ADD COLUMN free_answer INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE messages ADD COLUMN question_state TEXT",
+    "ALTER TABLE messages ADD COLUMN answered_by INTEGER",
+    # An answer's or dismissal's: the question's id, and the choice taken, if one was.
+    "ALTER TABLE messages ADD COLUMN reply_to INTEGER",
+    "ALTER TABLE messages ADD COLUMN choice TEXT",
+    # The human's message to an agent: NULL until the turn it started ends, then replied
+    # or missing (the agent wrote nothing to the human: it replied only in its terminal).
+    "ALTER TABLE messages ADD COLUMN reply_state TEXT",
+]
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     name TEXT PRIMARY KEY,
@@ -199,6 +217,7 @@ SCHEMA += (
             AGENTS_SEEN,
             NOTES,
             *JOURNAL,
+            *MESSAGES_HUMAN,
         ]
     )
     + ";\n"
@@ -230,6 +249,7 @@ MIGRATIONS = {
     9: [MESSAGES_ATTEMPTS, MESSAGES_FAILED, AGENTS_SEEN],
     10: [NOTES],
     11: JOURNAL,
+    12: MESSAGES_HUMAN,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -238,6 +258,10 @@ BUSY = "busy"
 IDLE = "idle"
 WAITING = "waiting"  # waiting for the human, e.g. a permission prompt
 STOPPED = "stopped"
+
+LADO = "lado"  # the sender of LADO's own messages and the actor of its own events
+HUMAN = "human"  # the human as a participant of messages: no agent, no window
+RESERVED = frozenset({LADO, HUMAN})  # senders of messages that no agent may be named
 
 # Message states. A message typed into an agent's window is only "sent" until the agent's
 # prompt-submit hook confirms it; a modal dialog in the TUI can swallow the text.
@@ -249,8 +273,9 @@ DROPPED = "dropped"  # its recipient was finished or stopped before it got (or r
 FAILED = "failed"  # typed again and again, never confirmed (lado.runtime.sweep)
 # What an agent has not received yet: messages not delivered, and bodies not read. When the
 # agent is finished or stopped, they are dropped: a new agent of the same name starts fresh.
-UNRECEIVED = "(state IN (?, ?, ?) OR (state = ? AND body != ''))"
-UNRECEIVED_ARGS = (PENDING, SENT, FAILED, DELIVERED)
+# The human is no agent: their messages stay as they are.
+UNRECEIVED = "(state IN (?, ?, ?) OR (state = ? AND body != '')) AND recipient != ?"
+UNRECEIVED_ARGS = (PENDING, SENT, FAILED, DELIVERED, HUMAN)
 
 # Event kinds.
 SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
@@ -269,7 +294,18 @@ GATE_ANSWER = "gate_answer"  # the gate closed; detail: "#<id> <answer>[: <comme
 SESSION_STOP = "session_stop"  # detail: what was dropped
 SESSION_RESUME = "session_resume"  # detail: what changed
 
-LADO = "lado"  # the sender of LADO's own messages and the actor of its own events
+# Message kinds.
+MESSAGE = "message"
+QUESTION = "question"  # an agent's question to the human (ask_human)
+# Question states: waiting for the human; answered or dismissed by them; closed when the
+# agent that asked was forgotten (finished, or its session stopped).
+OPEN_QUESTION = "open"
+ANSWERED = "answered"
+DISMISSED = "dismissed"
+CLOSED = "closed"
+# Reply states of the human's message to an agent, set when the turn it started ends.
+REPLIED = "replied"
+MISSING = "missing"  # the agent wrote nothing to the human: it replied only in its terminal
 
 # Run statuses.
 ACTIVE = "active"
@@ -322,6 +358,16 @@ class Message:
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS.SSS"; older rows have whole seconds
     attempts: int = 0  # how often it was typed into the recipient's window
     sent_at: float | None = None  # when it was last typed or handed over (time.time())
+    kind: str = "message"  # MESSAGE | QUESTION
+    # A question's (ask_human): its choices (None for none), whether the human may answer in
+    # their own words, its QUESTION_STATES and the id of its answer.
+    choices: list[str] | None = None
+    free_answer: bool = False
+    question_state: str | None = None
+    answered_by: int | None = None
+    reply_to: int | None = None  # an answer's or dismissal's: the question's id
+    choice: str | None = None  # an answer's: the choice taken, if one was
+    reply_state: str | None = None  # the human's message to an agent: REPLIED | MISSING
 
     @property
     def title(self) -> str:
@@ -534,6 +580,7 @@ def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, i
         if row["status"] != STOPPED:
             _add_event(db, name, row["name"], STATUS, STOPPED)
     db.execute("DELETE FROM agents WHERE session = ?", (name,))
+    _close_questions(db, name)
     dropped = db.execute(
         f"UPDATE messages SET state = ? WHERE session = ? AND {UNRECEIVED}",
         (DROPPED, name, *UNRECEIVED_ARGS),
@@ -638,9 +685,23 @@ def list_agents(session: str) -> list[Agent]:
 
 
 def delete_agent(session: str, name: str) -> None:
-    """Forget the agent; its messages and events stay in the log."""
+    """Forget the agent and close its open questions to the human, in one transaction; its
+    messages and events stay in the log."""
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
         db.execute("DELETE FROM agents WHERE session = ? AND name = ?", (session, name))
+        _close_questions(db, session, name)
+        db.execute("COMMIT")
+
+
+def _close_questions(db: sqlite3.Connection, session: str, sender: str | None = None) -> None:
+    """Close the open questions of `sender` (default: of every agent of the session): no
+    agent is left to get their answer."""
+    db.execute(
+        "UPDATE messages SET question_state = ? WHERE session = ? AND kind = ?"
+        " AND question_state = ? AND (? IS NULL OR sender = ?)",
+        (CLOSED, session, QUESTION, OPEN_QUESTION, sender, sender),
+    )
 
 
 def set_status(session: str, name: str, status: str) -> None:
@@ -943,7 +1004,27 @@ def status_since(session: str) -> dict[str, datetime.datetime]:
     return {r["agent"]: _utc(r["created_at"]) for r in rows}
 
 
-MESSAGE_COLUMNS = "id, sender, summary, body, recipient, state, created_at, attempts, sent_at"
+MESSAGE_COLUMNS = (
+    "id, sender, summary, body, recipient, state, created_at, attempts, sent_at, kind, choices,"
+    " free_answer, question_state, answered_by, reply_to, choice, reply_state"
+)
+
+
+def _message(row: sqlite3.Row, **changed) -> Message:
+    """A row of MESSAGE_COLUMNS as a Message, with the `changed` fields."""
+    choices = row["choices"]
+    message = Message(
+        *row[:9],
+        kind=row["kind"],
+        choices=None if choices is None else json.loads(choices),
+        free_answer=bool(row["free_answer"]),
+        question_state=row["question_state"],
+        answered_by=row["answered_by"],
+        reply_to=row["reply_to"],
+        choice=row["choice"],
+        reply_state=row["reply_state"],
+    )
+    return replace(message, **changed) if changed else message
 
 
 def queue_message(
@@ -960,6 +1041,75 @@ def queue_message(
         return cur.lastrowid or 0
 
 
+def add_question(
+    session: str,
+    sender: str,
+    question: str,
+    details: str,
+    choices: list[str] | None,
+    free_answer: bool,
+) -> int:
+    """Store an agent's open question to the human, delivered: the UI shows it. Returns its
+    id."""
+    with connect() as db:
+        cur = db.execute(
+            "INSERT INTO messages (session, sender, recipient, summary, body, state, kind,"
+            " choices, free_answer, question_state, created_at) VALUES"
+            " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (
+                session,
+                sender,
+                HUMAN,
+                question,
+                details,
+                DELIVERED,
+                QUESTION,
+                None if choices is None else json.dumps(choices),
+                int(free_answer),
+                OPEN_QUESTION,
+            ),
+        )
+        return cur.lastrowid or 0
+
+
+def reply_to_question(
+    session: str, question: int, summary: str, body: str, choice: str | None, outcome: str
+) -> int | None:
+    """Queue the human's answer or dismissal of an open question to the agent that asked,
+    and set the question's outcome (ANSWERED or DISMISSED), in one transaction. Returns the
+    reply's id; None, with nothing changed, when the question is not open."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT sender FROM messages WHERE session = ? AND id = ? AND kind = ?"
+            " AND question_state = ?",
+            (session, question, QUESTION, OPEN_QUESTION),
+        ).fetchone()
+        if row is None:
+            db.execute("ROLLBACK")
+            return None
+        reply = db.execute(
+            "INSERT INTO messages (session, sender, recipient, summary, body, reply_to, choice,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (session, HUMAN, row["sender"], summary, body, question, choice),
+        ).lastrowid
+        db.execute(
+            "UPDATE messages SET question_state = ?, answered_by = ? WHERE id = ?",
+            (outcome, reply, question),
+        )
+        db.execute("COMMIT")
+    return reply
+
+
+def get_message(session: str, message_id: int) -> Message | None:
+    with connect() as db:
+        row = db.execute(
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND id = ?",
+            (session, message_id),
+        ).fetchone()
+    return _message(row) if row else None
+
+
 def list_messages(session: str, after: int = 0) -> list[Message]:
     """The session's messages with an id above `after`, oldest first."""
     with connect() as db:
@@ -967,7 +1117,7 @@ def list_messages(session: str, after: int = 0) -> list[Message]:
             f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND id > ? ORDER BY id",
             (session, after),
         ).fetchall()
-    return [Message(*r) for r in rows]
+    return [_message(r) for r in rows]
 
 
 def read_messages(session: str, recipient: str) -> list[Message]:
@@ -984,7 +1134,7 @@ def read_messages(session: str, recipient: str) -> list[Message]:
             "UPDATE messages SET state = ? WHERE id = ?", [(READ, r["id"]) for r in rows]
         )
         db.execute("COMMIT")
-    return [Message(*r[:5], READ, r["created_at"]) for r in rows]
+    return [_message(r, state=READ) for r in rows]
 
 
 def take_pending(
@@ -1013,7 +1163,7 @@ def take_pending(
         if rows and status:
             _set_status(db, session, recipient, status)
         db.execute("COMMIT")
-    return [Message(*r[:5], mark, r["created_at"]) for r in rows]
+    return [_message(r, state=mark) for r in rows]
 
 
 @dataclass
@@ -1051,7 +1201,7 @@ def sweep(
             f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND recipient = ?"
             " AND state IN ({}) ORDER BY id"
         )
-        sent = [Message(*r) for r in db.execute(query.format("?"), (session, name, SENT))]
+        sent = [_message(r) for r in db.execute(query.format("?"), (session, name, SENT))]
         plan = decide(agent, sent)
         failed = [m for m in sent if m.id in plan.fail]
         db.executemany(
@@ -1071,7 +1221,7 @@ def sweep(
                 "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + 1 WHERE id = ?",
                 [(SENT, now, r["id"]) for r in rows],
             )
-            typed = [Message(*r[:5], SENT, r["created_at"]) for r in rows]
+            typed = [_message(r, state=SENT) for r in rows]
         db.execute("COMMIT")
     return Swept(typed, [replace(m, state=FAILED) for m in failed], len(plan.requeue))
 
@@ -1087,7 +1237,7 @@ def confirm_sent(
             " WHERE session = ? AND recipient = ? AND state = ?",
             (session, recipient, SENT),
         ).fetchall()
-        confirmed = [(DELIVERED, r["id"]) for r in rows if typed(Message(*r)) in prompt]
+        confirmed = [(DELIVERED, r["id"]) for r in rows if typed(_message(r)) in prompt]
         db.executemany("UPDATE messages SET state = ? WHERE id = ?", confirmed)
 
 

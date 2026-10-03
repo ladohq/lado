@@ -5,17 +5,27 @@ TypeScript types are made). Data comes only through lado.state and lado.runtime;
 never migrates the database: another schema version answers 503.
 """
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, state, terminal
+from lado import __version__, runtime, state, terminal
 from lado.server import feed, models, terminals
 from lado.server.auth import Guard
-from lado.server.models import AgentInfo, History, SessionInfo
+from lado.server.models import (
+    AgentInfo,
+    Answer,
+    History,
+    MessageInfo,
+    MessageText,
+    Sent,
+    SessionInfo,
+)
 
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
 BUILD_HINT = "build it with `make web` in a LADO checkout"
@@ -33,6 +43,20 @@ def database() -> bool:
     if problem:
         raise HTTPException(503, problem)
     return feed.database_made()
+
+
+def known(name: str, has_db: bool) -> None:
+    """404 for a session lado.db does not have."""
+    if not has_db or state.get_session(name) is None:
+        raise HTTPException(404, f'unknown session "{name}"')
+
+
+def core(action: Callable[..., str], *args) -> str:
+    """Do what the human asked through the core; what it refuses is 400 with its reason."""
+    try:
+        return action(*args)
+    except runtime.LadoError as refused:
+        raise HTTPException(400, str(refused)) from refused
 
 
 def bundle_missing(static: Path) -> bool:
@@ -89,6 +113,43 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         if not has_db or state.get_session(name) is None:
             raise HTTPException(404, f'unknown session "{name}"')
         return [models.agent_info(agent) for agent in state.list_agents(name)]
+
+    @app.get("/api/sessions/{name}/messages", dependencies=[Depends(guard)])
+    def messages(
+        name: str,
+        with_: Literal["human"] = Query(alias="with"),
+        has_db: bool = Depends(database),
+    ) -> list[MessageInfo]:
+        """The session's messages from and to `with`, the human: the chat, oldest first."""
+        known(name, has_db)
+        return [
+            models.message_info(m)
+            for m in state.list_messages(name)
+            if with_ in (m.sender, m.recipient)
+        ]
+
+    @app.post("/api/sessions/{name}/messages", dependencies=[Depends(guard.changes)])
+    def write(name: str, message: MessageText, has_db: bool = Depends(database)) -> Sent:
+        """The human's text to an agent of the session (default: the supervisor), through
+        the same queue and delivery as an agent's message."""
+        known(name, has_db)
+        return Sent(result=core(runtime.write_as_human, name, message.text, message.to))
+
+    @app.post(
+        "/api/sessions/{name}/questions/{question}/answer", dependencies=[Depends(guard.changes)]
+    )
+    def answer(name: str, question: int, given: Answer, has_db: bool = Depends(database)) -> Sent:
+        """The human's answer to an agent's open question: a choice, own words, or both."""
+        known(name, has_db)
+        return Sent(result=core(runtime.answer_question, name, question, given.choice, given.text))
+
+    @app.post(
+        "/api/sessions/{name}/questions/{question}/dismiss", dependencies=[Depends(guard.changes)]
+    )
+    def dismiss(name: str, question: int, has_db: bool = Depends(database)) -> Sent:
+        """The human dismisses an agent's open question; the agent hears of it."""
+        known(name, has_db)
+        return Sent(result=core(runtime.dismiss_question, name, question))
 
     @app.get("/api/sessions/{name}/agents/{agent}/history", dependencies=[Depends(guard)])
     def history(

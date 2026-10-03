@@ -85,6 +85,14 @@ class Guard:
         except Refused as refused:
             raise HTTPException(refused.status, refused.detail) from refused
 
+    def changes(self, request: Request) -> None:
+        """A FastAPI dependency of a request that changes something: refuse it without the
+        token (401) or from another Origin (403)."""
+        try:
+            self.check(request, changes=True)
+        except Refused as refused:
+            raise HTTPException(refused.status, refused.detail) from refused
+
     def login(self, request: Request) -> RedirectResponse:
         """The answer to `<page>?token=<given>`: the cookie and a redirect to the same page
         without the token, or 401. The redirect is the path as it was sent, still encoded

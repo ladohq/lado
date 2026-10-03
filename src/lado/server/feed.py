@@ -131,10 +131,18 @@ def _agent_item(session: str, key: str) -> dict | None:
     return None if agent is None else models.agent_info(agent).model_dump(mode="json")
 
 
+def _message_item(session: str, key: str) -> dict | None:
+    message = state.get_message(session, int(key))
+    if message is None:
+        return None
+    return models.message_info(message).model_dump(mode="json", by_alias=True)
+
+
 # The kinds whose REST model exists, and how to build an item of it. Others' items are null.
 ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "sessions": _session_item,
     "agents": _agent_item,
+    "messages": _message_item,
 }
 
 # A change of kind X also changes the item of kind Y of the same session (Y's key is '':

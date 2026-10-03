@@ -76,6 +76,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Messages
+         * @description The session's messages from and to `with`, the human: the chat, oldest first.
+         */
+        get: operations["messages_api_sessions__name__messages_get"];
+        put?: never;
+        /**
+         * Write
+         * @description The human's text to an agent of the session (default: the supervisor), through
+         *     the same queue and delivery as an agent's message.
+         */
+        post: operations["write_api_sessions__name__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/questions/{question}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer
+         * @description The human's answer to an agent's open question: a choice, own words, or both.
+         */
+        post: operations["answer_api_sessions__name__questions__question__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/questions/{question}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss
+         * @description The human dismisses an agent's open question; the agent hears of it.
+         */
+        post: operations["dismiss_api_sessions__name__questions__question__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/agents/{agent}/history": {
         parameters: {
             query?: never;
@@ -115,6 +180,13 @@ export interface components {
              */
             status: "starting" | "busy" | "idle" | "waiting" | "stopped";
         };
+        /** Answer */
+        Answer: {
+            /** Choice */
+            choice?: string | null;
+            /** Text */
+            text?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -133,6 +205,66 @@ export interface components {
             text: string;
             /** Alternate */
             alternate: boolean;
+        };
+        /**
+         * MessageInfo
+         * @description A message, a question to the human (kind "question") or an answer to one.
+         */
+        MessageInfo: {
+            /** Id */
+            id: number;
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "message" | "question";
+            /** Summary */
+            summary: string;
+            /** Body */
+            body: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "sent" | "delivered" | "read" | "dropped" | "failed";
+            /** Choices */
+            choices: string[] | null;
+            /** Free Answer */
+            free_answer: boolean;
+            /** Question State */
+            question_state: ("open" | "answered" | "dismissed" | "closed") | null;
+            /** Answered By */
+            answered_by: number | null;
+            /** Reply To */
+            reply_to: number | null;
+            /** Choice */
+            choice: string | null;
+            /** Reply State */
+            reply_state: ("replied" | "missing") | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * MessageText
+         * @description The human's text from the composer.
+         */
+        MessageText: {
+            /**
+             * To
+             * @default supervisor
+             */
+            to: string;
+            /** Text */
+            text: string;
+        };
+        /** Sent */
+        Sent: {
+            /** Result */
+            result: string;
         };
         /** SessionInfo */
         SessionInfo: {
@@ -263,6 +395,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    messages_api_sessions__name__messages_get: {
+        parameters: {
+            query: {
+                with: "human";
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_api_sessions__name__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageText"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_api_sessions__name__questions__question__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                question: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Answer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_api_sessions__name__questions__question__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                question: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sent"];
                 };
             };
             /** @description Validation Error */

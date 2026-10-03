@@ -110,9 +110,37 @@ def test_kinds_without_a_model_yet_come_with_a_null_item(streams):
     state.add_session(state.Session("s", "/r", None))
     stream = streams()
     stream.next()
-    state.queue_message("s", "a", "b", "hello")
-    message = stream.until(is_change("messages", "s"))[-1]
-    assert message.data["item"] is None and message.data["op"] == "insert"
+    run = state.Run("s", "feature/x", "feature", {}, {}, "x", "design", "/w", "b")
+    state.add_run(run, [])
+    added = stream.until(is_change("runs", "s"))[-1]
+    assert added.data["item"] is None and added.data["op"] == "insert"
+
+
+def test_a_messages_change_comes_with_its_item_in_the_form_of_the_rest_api(
+    streams, repo, fake_tmux
+):
+    runtime.start_session(str(repo), "s", None)
+    stream = streams()
+    stream.next()
+    runtime.ask_human("s", "supervisor", "Ship?", None, ["yes"])
+    [question] = state.list_messages("s")
+    asked = stream.until(is_change("messages", "s"))[-1]
+    assert asked.data["key"] == str(question.id)
+    item = asked.data["item"]
+    assert (item["from"], item["kind"], item["question_state"]) == (
+        "supervisor",
+        "question",
+        "open",
+    )
+    runtime.answer_question("s", question.id, "yes")
+    answered = stream.until(
+        lambda e: (
+            is_change("messages", "s")(e)
+            and e.data["key"] == str(question.id)
+            and e.data["item"]["question_state"] == "answered"
+        )
+    )[-1]
+    assert answered.data["item"]["answered_by"] == question.id + 1
 
 
 def test_a_change_of_an_agent_also_updates_its_session(streams, repo, fake_tmux):

@@ -201,7 +201,8 @@ Found: 2026-10-02, planning the lado-dev update for named notes.
 ## A gate shows a needed note twice when it is the note before the gate
 
 A gate with `needs: [design]` reached right from `design` shows design's report twice in
-`lado answer`: as `Note from design` and as the note that led to the gate. The step text
+`lado answer` and on the gate's card in the UI's chat (`GateCard.tsx`): as `Note from
+design` and as the note that led to the gate. The step text
 prints such a note once (compared by note id), the gate view does not: the gate record
 keeps a copy of the note's text, not the note's id.
 Wanted: the gate keeps the id of the note that led to it (or the view finds it as the run's
@@ -386,15 +387,6 @@ the same test. The reviewer can look at the wrong build's screens.
 Wanted: a folder per worktree or per run (e.g. named after the branch or a hash of the
 repo path), printed by the tests, so each report names its own screenshots.
 Found: 2026-10-03, implement of feature/ui-layout (the rail change).
-## A gate answered with free text is lost without a word
-
-The human answered the merge gate by typing "reject, стоит исправить minors?" (into the popup or a
-window); nothing took it as an answer, the gate stayed open, and nothing told the human that
-the answer was not accepted. Only `lado answer` (or the popup's option) answers a gate.
-Wanted: the Gates task answers gates with buttons and a comment in the chat; until then, the
-popup says plainly when the input is not one of the options, and keeps asking.
-Found: 2026-10-03, merge gate #35 of feature/ui-layout.
-
 ## Claude Code 2.1.288 is installed but TESTED_VERSION is 2.1.287
 
 `lado doctor` warns: the installed Claude Code is 2.1.288, `providers/claude.py`
@@ -438,3 +430,14 @@ gate for a few lines.
 Wanted: an addendum to an open run (from the supervisor, approved by the human), kept in
 `notes` and shown to every later step and gate after the design note.
 Found: 2026-10-03, feature/ui-polish.
+
+## One run whose flow snapshot cannot be read stops the UI's change feed
+
+A gate's feed item (`feed._gate_item` → `models.gate_info` → `runs.gate_notes`) reads the
+run's flow snapshot. If a snapshot cannot be read (e.g. a flow format a newer LADO no longer
+takes), building the item raises in every pass of the hub; after `FAILED_PASSES` the
+streams end and every new one ends the same way, so the whole UI stops updating for one
+broken run. `GET …/gates` would answer 500 too.
+Wanted: an item that cannot be built is sent without what failed (here: `needs` null and a
+problem named) and the error logged once, so one bad row never stops the feed.
+Found: 2026-10-03, feature/gates (implement).

@@ -185,7 +185,9 @@ def test_a_missing_file_of_the_bundle_is_404_not_the_page(bundle, path):
     assert "bundle" not in answer.text
 
 
-@pytest.mark.parametrize("path", ["/sessions/a.b", "/sessions/my%20app.v2/flows", "/sessions/x/flows/a.js"])
+@pytest.mark.parametrize(
+    "path", ["/sessions/a.b", "/sessions/my%20app.v2/flows", "/sessions/x/flows/a.js"]
+)
 def test_a_name_with_a_dot_below_the_top_is_a_page(bundle, path):
     """The bundle's files are at its top or under /assets; deeper down a dot is in a name."""
     answer = bundle.get(path)

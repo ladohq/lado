@@ -22,7 +22,7 @@ a surface, it takes nothing away.
    (`lado_token_<port>`, so two LADO servers on one machine do not log each other out) or
    `Authorization: Bearer <token>`. A connection that changes something is also checked
    for its Origin (`Guard.check(conn, changes=True)`, for any HTTP connection: the
-   terminal's WebSocket now, gates and the composer later): only the server's own
+   terminal's WebSocket, the composer, answers to questions and gates): only the server's own
    `http://127.0.0.1:<port>` and `http://localhost:<port>`, and no Origin only with a Bearer
    token (a client that is not a browser). Later the layer can be replaced by a real login
    for a remote host without touching the rest.
@@ -81,8 +81,9 @@ later desktop app and a later cloud setup; the UI is its client.
   `lado server --new-token`. The link `http://127.0.0.1:<port>/?token=<token>` sets the
   cookie (HttpOnly, SameSite=Strict, Path=/) and redirects (303) to `/`, so the token leaves
   the address bar. Every page of the UI takes `?token=` the same way (decided in task 2):
-  `/gates/12?token=…` sets the cookie and redirects to `/gates/12` with the other query
-  parameters kept, so a link from a notification leads straight to its page. The redirect
+  `/sessions/lado/activity?token=…` sets the cookie and redirects to
+  `/sessions/lado/activity` with the other query parameters kept, so a link from a
+  notification leads straight to its page. The redirect
   is the path as it was sent, still encoded (`%2F` in a run's name stays), and a path on
   this server (leading slashes become one: `//host/x` goes to `/host/x`). A wrong token is
   401. `/api/health` needs no token.
@@ -137,10 +138,12 @@ Decided in the live updates task (2026-10-03).
   API): `id: <journal id>`, `event: change`, `data: {kind, session, key, op, item}`.
   **`item` is the row as it is now, in the form of its REST model, or null when the row is
   gone, whatever `op` says**; the UI uses only `item`. A kind without a REST model yet
-  (runs, gates, notes until their tasks) has a null item; an agent's is its
+  (runs, notes until their tasks) has a null item; an agent's is its
   `AgentInfo`, as `GET /api/sessions/{name}/agents` gives it, a message's its
   `MessageInfo` (any message: the store keeps them all, Activity picks what it shows), a
-  run event's its `RunEventInfo`. One table in `feed.py`, `ALSO`, says which change also
+  run event's its `RunEventInfo`, a gate's its `GateInfo` (`models.gate_info`, as
+  `GET /api/sessions/{name}/gates` gives it: a closed gate's item replaces the open one's,
+  it is never null). One table in `feed.py`, `ALSO`, says which change also
   changes another item: a change of `agents`, `gates` or `messages` also sends the
   session's (it counts its agents and what waits for the human in it, `waiting`). Each
   session item asks tmux for its status (`runtime.session_status`); a batch is collapsed
@@ -292,7 +295,7 @@ Sessions for now. The UI's texts are in English.
   browser). A stopped session is under Stopped whatever waits in it: nothing in it can be
   answered. Each shows a line under its name: what waits, or its agents. The **session**
   in the middle: its name and status, then the tabs **Activity | Agents | Flows |
-  Artifacts** (its gates come as cards in the feed, the Gates task): Activity is the
+  Artifacts** (its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents lists the agents live (name, role,
   provider, status) with **Open terminal** until the Agents task builds the whole section,
   the others placeholders naming the task that fills them. The **terminal panel** on the
@@ -322,8 +325,8 @@ Sessions for now. The UI's texts are in English.
   `/sessions` with no name says "Select a session" (nothing is selected for the human); a
   name `/api/sessions` does not know says "Session <name> not found" with a link to the
   list, and the address stays as it was.
-- **Needs you**: the gates of all sessions (Gates task); its count comes with it.
-- **Gate**: a page of its own, `/gates/<id>` (`gates.id` is global).
+- **Needs you**: the gates of all sessions (Gates task, Needs you and notifications); its
+  count comes with it. A gate has no page of its own: it is a card in its session's chat.
 - **Settings**: one page, its sections one under the other: Appearance (theme: system,
   light, dark) and Providers and environment (what `lado doctor` checks; a task of its
   own). New sections go below.
@@ -332,7 +335,7 @@ Sessions for now. The UI's texts are in English.
   section has an item in ROADMAP.md or in Tasks below: Projects and Marketplace are
   ROADMAP's "Later (after stage 7)", the others are Tasks here.
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
-  activity, agents, flows, artifacts; without one, activity), `/gates/<id>`, `/projects`,
+  activity, agents, flows, artifacts; without one, activity), `/projects`,
   `/kits`, `/marketplace`, `/settings`. Anything else is Not found with a link to Home.
   Opened directly or reloaded, each works (the server's page fallback, Server above).
   Routing: react-router in declarative mode.
@@ -360,7 +363,27 @@ reaches the feed. LADO takes the model and builds it on what it has:
   free answer). The answer, or that the human dismissed it, comes back to the agent as a
   normal message; a dismissal is never silent.
 - **Flow gates** are cards in the same feed, answered through `runs.answer` (the flow engine
-  opens them, an agent cannot forget to).
+  opens them, an agent cannot forget to). Built (Gates task, gates in the chat): the server
+  lists a session's gates (`GET /api/sessions/{name}/gates`, `GateInfo`: the question, the
+  options, the note that led to the gate and, only while it is open, the notes its state
+  needs as they are now, `NeededNote {state, note}`) and takes the human's answer
+  (`POST …/gates/{id}/answer {option, comment}`, guarded like the composer, through
+  `runs.answer_text`, the one text `lado answer` prints too; what the core refuses is 400
+  with its reason). An **open gate** is a card where it opened in the feed: "Gate #id ·
+  run · state", the question, the note before the gate (its summary in bold, its body
+  open, more than 20 lines behind Show all), a line per needed note ("Note from design:
+  <summary>", its body on a click, or "no note yet"), an optional comment for the next
+  step, and a button per option (Approve / Reject, a choice gate's own options, Continue /
+  Cancel run at a loop limit; the first one primary). The buttons are off while the answer
+  is sent and in a stopped session (it says to resume it); a refusal shows on the card.
+  The card changes only when the feed brings the closed gate, wherever it was answered
+  (the popup, `lado answer`, another tab). A **closed gate** is a line, "Gate #id · run ·
+  state: <answer> by <who>" (also `overridden` by `lado flow-set`, `cancelled`), its
+  comment and time; a click shows its question and note, read only, without the needed
+  notes, which are not kept as they were when it was answered. While a gate is open, a
+  hint over the composer ("Gate #id waits: answer on its card") scrolls to its card: the
+  composer does not answer gates. Known limit (BACKLOG): when a gate state needs the state
+  whose note led to it, that note shows twice.
 - **A forgotten reply is caught, not hoped for**: when the supervisor ends a turn that a
   human message started and wrote nothing to `human`, the feed says "replied only in its
   terminal" (the terminal is beside the feed).
@@ -444,9 +467,10 @@ Built in the layout task (2026-10-03, schema 14):
   Esc; `role="tooltip"`, the trigger's `aria-describedby` while it shows, no pointer
   events, kept inside the window. A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
-  events as quiet lines (`<kind> <run>: <detail>`, a link to Flows), the kinds shown as
-  lines named in one list in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; the Gates task takes
-  the gates out of it, their cards replace the lines); and behind the switch **Show agent
+  gates as cards or lines (Flow gates above); their other events as quiet lines
+  (`<kind> <run>: <detail>`, a link to Flows), the kinds shown as lines named in one list
+  in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_open` and `gate_answer` are not in it,
+  the gate stands for them); and behind the switch **Show agent
   messages** (off by default, remembered in the browser) the agents' messages to each
   other. The store keeps all the session's messages, so the switch only changes the view.
   A body to the human shows at once: its first 8 lines that are not blank (at most 1500
@@ -502,9 +526,13 @@ time. Each task is one `feature` run, useful on its own.
       messages (behind a switch) in the feed (`GET …/messages` without `with`), the session
       list's "+" and its stopped sessions folded. Done: Structure and The human in the
       session above.
-   5. **Gates**: gate cards in the chat, Needs you with its count, browser notifications.
-      Then a release (0.12.0 shipped the chat): the human can work from the browser, tmux
-      stays the fallback.
+   5. **Gates**, in two parts:
+      1. **Gates in the chat**: gate cards in the chat, answered from the browser; the popup
+         and `lado answer` notice an answer given elsewhere. Done: Flow gates in The human
+         in the session above.
+      2. **Needs you and notifications**: the Needs you page with its count in the rail,
+         browser notifications. Then a release (0.12.0 shipped the chat): the human can
+         work from the browser, tmux stays the fallback.
    6. Agents; Flows; Providers and environment; a pass over the look with a designer role
       (BACKLOG), with it the rework of the rail (later, with the look pass: Launch on it,
       names under the icons when collapsed; the human kept the rail as it is in the Layout
@@ -532,11 +560,11 @@ A session's tab: its flow runs, their state, who acts and the notes of each step
 
 ### Gates
 
-Gates as cards in the session's chat (and the gate page, `/gates/<id>`, for a long note),
-Needs you (gates of all sessions and agents waiting for the human, with a count in the
-rail) and browser notifications. Until this task gates show only in tmux (the
-popup opens on the clients of the session's own tmux session, never on a browser's
-viewer) and in `lado ls`: a human who works only in the browser does not see them.
+Gates as cards in the session's chat (built: Flow gates in The human in the session), Needs
+you (gates of all sessions and agents waiting for the human, with a count in the rail) and
+browser notifications. The popup still opens only on the clients of the session's own tmux
+session, never on a browser's viewer; until Needs you, a human who works only in the
+browser sees a gate in its session's chat and its count in the session list.
 
 ### Artifacts
 

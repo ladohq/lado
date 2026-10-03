@@ -100,8 +100,8 @@ schema change.
     waits for the human), end (finish workers, remove the worktree if merged), cancel and
     `lado flow-set`. A run keeps a snapshot of its flow. A waiting run has one open gate
     record (`state.Gate`); `runs.answer` is the only way to answer it, called from
-    `lado answer`, never from an MCP tool; the answering surface (popup, CLI) stays outside
-    that core.
+    `lado answer` and the UI server's API, never from an MCP tool; the answering surface
+    (popup, CLI, UI) stays outside that core.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
     `list_agents`, `flow_advance`, `flow_status`; the supervisor also gets `spawn_worker`,
     `finish_worker`, `flow_start` and `flow_cancel`). No tool answers a gate or a question.
@@ -157,8 +157,9 @@ schema change.
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
-    backpressure, close codes; the agents, history, messages and run events
-    (`/api/sessions/{name}/events`) endpoints are in `app.py`; a session's
+    backpressure, close codes; the agents, history, messages, run events
+    (`/api/sessions/{name}/events`) and gates (with the human's answer) endpoints are in
+    `app.py`; a gate's model is built by `models.gate_info` for REST and the feed; a session's
     `waiting` (open gates, open questions, agents in `waiting`: the one "needs you") is
     counted in `models.session_info`;
     `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
@@ -342,6 +343,16 @@ attached to the session; with no client attached, nothing opens and the gate wai
 `lado ls`. tmux does not stack popups: a second gate is asked about in the open popup after
 the first answer. Closing the popup leaves the gate open. `lado answer` and `lado flow-set`
 refuse to run inside an agent (`LADO_AGENT` set).
+
+A gate is answered with `lado answer`, the popup, or the UI server's API (the gate's card in
+the session's chat; docs/design/ui.md, Flow gates); all go through `runs.answer`, and
+`runs.answer_text` is the one line that says what the answer did. Two answers at once: the
+second is refused (`closed already`). While `lado answer` waits for the human on a terminal
+(the option, the comment), it checks every second (`cli.POLL`) that the gate is still open;
+when it was answered elsewhere, it drops what was typed (`tcflush`), prints `Gate #<id> was
+answered elsewhere: <answer> by <who>` and goes on with the session's open gates, or ends
+with `No more open gates.`, which closes the popup. Without a terminal (a pipe) it does not
+check.
 
 Flow tools return short results: the run, flow, state, status, who acts, outcomes, gate,
 visits, the note's summary and the run's language; `flow_status(run=...)` adds the task,

@@ -180,12 +180,13 @@ def test_a_runs_events_show_in_the_feed_and_its_gate_puts_the_session_under_need
     expect(sessions.get_by_role("region", name="Running")).to_contain_text(session)
 
     run = state.Run(session, "feature/demo", "feature", {}, {}, "demo", "design", "/w", "b")
-    gate = state.Gate(session, "feature/demo", "approve", "approval", "OK?", ["approved"])
+    # A loop limit: its card needs no flow, and this run has none.
+    gate = state.Gate(session, "feature/demo", "design", "loop", "Again?", ["continue", "cancel"])
     state.add_run(run, [("supervisor", state.FLOW_START, "at design")], gate)
     chat = page.get_by_role("log", name="Chat with the session")
     lines = chat.get_by_role("listitem")
     expect(lines.first).to_contain_text("feature/demo: at design")
-    expect(lines.last).to_contain_text("waits for you")
+    expect(chat.get_by_role("article", name=f"Gate #{gate.id}")).to_contain_text("Again?")
     expect(lines.first.get_by_role("link", name="Flows")).to_have_attribute(
         "href", f"/sessions/{session}/flows"
     )

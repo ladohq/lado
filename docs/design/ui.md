@@ -28,7 +28,8 @@ a surface, it takes nothing away.
    for a remote host without touching the rest.
 3. **One change feed: "changes after id N".** The UI learns about changes from one stream,
    never by polling lists. SQLite triggers write every insert, update and delete of the
-   tables the UI shows (sessions, agents, messages, runs, gates, notes) to the journal
+   tables the UI shows (sessions, agents, messages, runs, gates, notes; of events, the
+   flow runs' new ones) to the journal
    `changes` in the writer's own transaction, so a write by any process (CLI, hooks, MCP
    server, session loop) reaches the UI, and no code path can forget to report one. What
    the UI shows but no table keeps (a session's `tmux_gone`) is derived: the server
@@ -117,7 +118,11 @@ Decided in the live updates task (2026-10-03).
   agent's or run's name, a message's, gate's or note's id, `''` for the session). An update
   of an agent that changes `seen_at` (every hook sets it, alone) is no change. The journal
   keeps the latest `state.CHANGES_KEPT` (100 000) changes: each insert drops the older
-  ones, in the writer's transaction; the server only reads. `events` is not in it.
+  ones, in the writer's transaction; the server only reads. From schema 14 (the Layout
+  task) `events` is in it too, key its `id`, but only inserts and only a flow run's events
+  (`WHEN NEW.run IS NOT NULL`, `state.RUN_EVENT`): an agent's `status` event would double
+  the journal, as its `agents` row is recorded already. A trigger's condition stays in
+  `lado.db` as the trigger was made (`state.JOURNAL_WHEN`).
 - **The source** (`server/feed.py`, `Source`): "the changes after position N", "the latest
   position". Now `Journal`, which reads `lado.db` read only and creates nothing (no
   `lado.db` yet: no changes, the stream waits). One hub per server reads it every 0.25 s
@@ -134,9 +139,12 @@ Decided in the live updates task (2026-10-03).
   gone, whatever `op` says**; the UI uses only `item`. A kind without a REST model yet
   (runs, gates, notes until their tasks) has a null item; an agent's is its
   `AgentInfo`, as `GET /api/sessions/{name}/agents` gives it, a message's its
-  `MessageInfo` (any message: the UI keeps those from or to the human). One table in
-  `feed.py`, `ALSO`, says which change also changes another item: a change of `agents`
-  also sends the session's (it counts its agents). A comment line every 15 s keeps a quiet
+  `MessageInfo` (any message: the store keeps them all, Activity picks what it shows), a
+  run event's its `RunEventInfo`. One table in `feed.py`, `ALSO`, says which change also
+  changes another item: a change of `agents`, `gates` or `messages` also sends the
+  session's (it counts its agents and what waits for the human in it, `waiting`). Each
+  session item asks tmux for its status (`runtime.session_status`); a batch is collapsed
+  first, so that is once per session in a batch. A comment line every 15 s keeps a quiet
   stream open.
 - **The start of a stream**: the position is the `Last-Event-ID` header (the browser's own
   reconnect) or else `?after=N`. Without a position, or with one the journal no longer has
@@ -207,8 +215,9 @@ Decided in the agent terminal task (2026-10-03).
   Close codes: 44xx for good with the reason (4401 no token, 4400 unknown mode, 4404 no
   terminal), shown, no reconnect; 45xx for now (4500 the terminal closed, 4503 lado.db of
   another schema), the UI opens a new socket after 2 s.
-- **Modes**: the supervisor's terminal opens in control (the human's chat with it); the
-  others in view, and **Take control** asks first, **Release** goes back. In control tmux
+- **Modes**: every terminal opens in view, the supervisor's too (the Layout task: the human
+  writes to agents in the chat, and a window is never resized without the human's own
+  step); **Take control** asks first, **Release** goes back. In control tmux
   sizes the window by the client active last (`window-size latest`, tmux's default): the
   human's `lado attach` sees the window resized when the browser is the latest, and the
   other way round. In view the client never sizes it: its pty always has the window's size,
@@ -241,25 +250,34 @@ Decided with the human in task 2 (2026-10-03): a frame for all the sections to c
 them visible from the start; a section not built yet is a placeholder. The work is in
 Sessions for now. The UI's texts are in English.
 
-- **Rail** on the left, top to bottom: Home, Needs you, Sessions, Projects, Kits,
-  Marketplace; Settings apart at the bottom. A button collapses it to icons (each with its
-  name as tooltip and accessible name; the button has `aria-expanded`). The browser
-  remembers the choice; a window narrower than 900 px starts collapsed.
-- **Top bar**: the page's title on the left; on the right the server's address and
-  **Launch**. Launch only explains for now: starting a session from the UI comes later,
-  until then `lado start <repo>`.
-- **Sessions**: the list on the left (searched by name in the browser, the current one
-  marked, stopped ones dimmed), the selected session on the right: its name and status,
-  the place for its gates (a placeholder until the Gates task), and the tabs
-  **Activity | Agents | Flows | Artifacts**, each a placeholder naming the task that fills
-  it; Agents lists the agents live (name, role, provider, status) with **Open terminal**
-  until the Agents task builds the whole section. Under them, on every tab, the
-  **terminal panel** (Terminal above): docked at the bottom, collapsible, its height dragged
-  (or the arrow keys on its edge) and remembered in the browser; its tabs are Supervisor
-  (always, first) and the agents opened from Agents, each closed with ×. A hidden tab keeps
-  its socket, a closed one closes it. `/sessions` with no name says "Select a session" (nothing is selected for the
-  human); a name `/api/sessions` does not know says "Session <name> not found" with a link
-  to the list, and the address stays as it was.
+- **Rail** on the left, top to bottom: **Launch** (a large button, the rail's first
+  control), Home, Needs you, Sessions, Projects, Kits, Marketplace; Settings apart at the
+  bottom. A button collapses it to icons, each with its name in small type under it (and
+  as its accessible name; the button has `aria-expanded`). The browser remembers the
+  choice; a window narrower than 900 px starts collapsed. Launch only explains for now:
+  starting a session from the UI comes later, until then `lado start <repo>`.
+- **Top bar**: the page's title on the left; on the right the server's address and the
+  change feed's link (`live`, or `reconnecting…` with the reason).
+- **Sessions** (the Layout task, 2026-10-03): three columns under the top bar, each the
+  window's height. The **list** on the left: "+" in its head (it explains, as Launch), the
+  search by name, and the sessions in groups: **Needs you** (something waits for the
+  human: `SessionInfo.waiting`, counted by the server: open gates, open questions, agents
+  in `waiting`), **Running**, and **Stopped** at the bottom, folded (remembered in the
+  browser). A stopped session is under Stopped whatever waits in it: nothing in it can be
+  answered. Each shows a line under its name: what waits, or its agents. The **session**
+  in the middle: its name and status, the place for its gates (a placeholder until the
+  Gates task), and the tabs **Activity | Agents | Flows | Artifacts**: Activity is the
+  feed (The human in the session, below), Agents lists the agents live (name, role,
+  provider, status) with **Open terminal** until the Agents task builds the whole section,
+  the others placeholders naming the task that fills them. The **terminal panel** on the
+  right, on every tab (Terminal above): closed when the page opens (no socket opens with
+  the page), opened by a team chip or Open terminal; each open terminal is a tab, closed
+  with ×, and closing the last one closes the panel; a hidden tab keeps its socket, a
+  closed one closes it. Its width is dragged (or the arrow keys on its edge) and
+  remembered in the browser. Below 900 px the columns stack and the page scrolls.
+  `/sessions` with no name says "Select a session" (nothing is selected for the human); a
+  name `/api/sessions` does not know says "Session <name> not found" with a link to the
+  list, and the address stays as it was.
 - **Needs you**: the gates of all sessions (Gates task); its count comes with it.
 - **Gate**: a page of its own, `/gates/<id>` (`gates.id` is global).
 - **Settings**: one page, its sections one under the other: Appearance (theme: system,
@@ -356,8 +374,33 @@ Built in the chat task (2026-10-03):
   question as a card: open (orange: it waits for the human) with its choices, a field for
   an own answer and Submit when `free_answer`, and Dismiss; then its outcome. The composer
   under it: Enter sends, Shift+Enter is a new line; a refusal shows at the field and the
-  text stays. The feed scrolls by itself above the terminal panel; in a window under about
-  840 px the page scrolls (the Layout task moves the terminal beside the chat).
+  text stays.
+
+Built in the layout task (2026-10-03, schema 14):
+
+- **Run events in the journal**: the flow runs' events reach the UI through the `events`
+  triggers (The change feed above); `GET /api/sessions/{name}/events` lists them
+  (`RunEventInfo {id, run, kind, actor, detail, created_at}`, oldest first); the server
+  does not parse `detail`.
+- **API**: `GET …/messages` without `with` gives all the session's messages (`with=human`
+  stays); `SessionInfo.waiting {gates, questions, agents}` counts what waits for the human
+  (open gates, open questions, agents in `waiting`), computed in `models.session_info` from
+  the tables: the one definition of "needs you" for the session list now and the rail's
+  count later; `AgentInfo` has `run` and `task` (the first line of its task).
+- **Activity**: the team above the feed, a chip per agent, the supervisor first: a status
+  dot that differs in colour and shape (busy a full circle, idle a ring, waiting an orange
+  diamond, starting a dashed ring, stopped a grey square), its name and role, a tooltip
+  with its run and the first line of its task; the chip of the terminal the panel shows
+  is marked. A chip opens the agent's terminal in the panel, or selects its tab. The feed
+  holds, in time order: the messages with the human and the questions; the flow runs'
+  events as quiet lines (`<kind> <run>: <detail>`, a link to Flows), the kinds shown as
+  lines named in one list in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; the Gates task takes
+  the gates out of it, their cards replace the lines); and behind the switch **Show agent
+  messages** (off by default, remembered in the browser) the agents' messages to each
+  other. The store keeps all the session's messages, so the switch only changes the view.
+  A body to the human shows at once: its first 8 lines that are not blank (at most 1500
+  characters), the rest behind **Show all**. The feed takes the page's height and scrolls
+  by itself, the composer under it.
 
 ## Lessons from another orchestrator's UI
 
@@ -406,9 +449,11 @@ time. Each task is one `feature` run, useful on its own.
       instead of the bottom panel (the chat then takes the page's height: now its feed is
       sized to leave room for the panel under it), flow transitions and agent-to-agent
       messages (behind a switch) in the feed (`GET …/messages` without `with`), the session
-      list's "+" and its stopped sessions folded.
+      list's "+" and its stopped sessions folded. Done: Structure and The human in the
+      session above.
    5. **Gates**: gate cards in the chat, Needs you with its count, browser notifications.
-      Then release 0.12.0: the human can work from the browser, tmux stays the fallback.
+      Then a release (0.12.0 shipped the chat): the human can work from the browser, tmux
+      stays the fallback.
    6. Agents; Flows; Providers and environment; a pass over the look with a designer role
       (BACKLOG); then the rest; later the desktop app.
 
@@ -420,8 +465,9 @@ checks.
 ### Activity
 
 A session's tab: the chat with the human (The human in the session, above), flow
-transitions and notes as they happen, agent-to-agent messages behind a switch; the team as
-chips; the selected agent's terminal on the right.
+transitions as they happen, agent-to-agent messages behind a switch; the team as chips;
+the selected agent's terminal on the right. Built (Layout task); the notes of each step
+come with Flows.
 
 ### Agents
 

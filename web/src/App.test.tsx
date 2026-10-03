@@ -10,14 +10,16 @@ import { FakeEventSource, FakeSocket, stream } from "./fakes";
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
+const NONE = { gates: 0, questions: 0, agents: 0 };
+
 const SESSIONS: SessionInfo[] = [
-  { name: "lado", repo: "/src/lado", status: "running", agents: 3 },
-  { name: "my app.v2", repo: "/src/app", status: "stopped", agents: 0 },
-  { name: "old", repo: "/src/old", status: "loop_down", agents: 0 },
+  { name: "lado", repo: "/src/lado", status: "running", agents: 3, waiting: NONE },
+  { name: "my app.v2", repo: "/src/app", status: "stopped", agents: 0, waiting: NONE },
+  { name: "old", repo: "/src/old", status: "loop_down", agents: 0, waiting: NONE },
 ];
 
 const AGENTS: AgentInfo[] = [
-  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle" },
+  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null },
 ];
 
 // The API: /api/sessions answers `status` and `body`; a request for the event stream (the
@@ -31,7 +33,8 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (path === "/api/sessions/lado/agents") {
       return new Response(JSON.stringify(AGENTS), { status: 200 });
     }
-    if (path.endsWith("/messages?with=human")) return new Response("[]"); // the chat (Chat.test.tsx)
+    // The feed's messages and run events (Chat.test.tsx).
+    if (path.endsWith("/messages") || path.endsWith("/events")) return new Response("[]");
     expect(path).toBe("/api/sessions");
     return new Response(JSON.stringify(body), { status });
   });
@@ -149,11 +152,9 @@ test("an unknown address is Not found with a link to Home", () => {
   expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
 });
 
-test("the top bar shows the server's address and Launch explains lado start", () => {
+test("Launch in the rail explains lado start and closes with Escape", () => {
   open("/");
-  const bar = screen.getByRole("banner");
-  expect(within(bar).getByText(window.location.host)).toBeTruthy();
-  const launch = within(bar).getByRole("button", { name: "Launch" });
+  const launch = within(rail()).getByRole("button", { name: "Launch" });
   expect(launch.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(launch);
   expect(launch.getAttribute("aria-expanded")).toBe("true");
@@ -204,10 +205,11 @@ test("/sessions lists the sessions and asks to select one", async () => {
   open("/sessions");
   const list = screen.getByRole("navigation", { name: "Sessions" });
   expect(await within(list).findByRole("link", { name: /lado/ })).toBeTruthy();
-  expect(within(list).getAllByRole("link")).toHaveLength(3);
+  expect(within(list).getAllByRole("link")).toHaveLength(2); // the stopped one is folded
   expect(screen.getByText("Select a session")).toBeTruthy();
-  const stopped = within(list).getByRole("link", { name: /my app\.v2/ });
-  expect(stopped.className).toContain("dim");
+  const stuck = within(list).getByRole("link", { name: /old/ });
+  expect(stuck.className).toContain("dim");
+  expect(stuck.textContent).toContain("session loop not running");
 });
 
 test("with no sessions, /sessions says how to start one", async () => {
@@ -273,6 +275,7 @@ test("a session with a space and a dot in its name opens by its encoded address"
   const view = await screen.findByRole("region", { name: "Session my app.v2" });
   expect(within(view).getByRole("region", { name: "Artifacts" })).toBeTruthy();
   const list = screen.getByRole("navigation", { name: "Sessions" });
+  fireEvent.click(within(list).getByRole("button", { name: "Stopped (1)" }));
   expect(within(list).getByRole("link", { name: /my app\.v2/ }).getAttribute("href")).toBe(
     "/sessions/my%20app.v2",
   );
@@ -328,13 +331,13 @@ test("changes update the list and the session's header as they come", async () =
   expect(within(list).getByRole("link", { name: /lado/ }).className).toContain("dim");
   stream().send(
     "change",
-    change("new", { name: "new", repo: "/src/new", status: "running", agents: 1 }, "insert"),
+    change("new", { name: "new", repo: "/src/new", status: "running", agents: 1, waiting: NONE }, "insert"),
     "11",
   );
   expect(within(list).getByRole("link", { name: /new/ })).toBeTruthy();
   stream().send("change", change("old", null, "delete"), "12");
   expect(within(list).queryByRole("link", { name: /old/ })).toBeNull();
-  expect(within(list).getAllByRole("link")).toHaveLength(3);
+  expect(within(list).getAllByRole("link")).toHaveLength(2) // lado and new; the stopped one is folded;
 });
 
 test("a change that comes while the sessions load is not lost to an older load", async () => {
@@ -357,14 +360,14 @@ test("a change of another kind leaves the sessions alone", async () => {
   const list = screen.getByRole("navigation", { name: "Sessions" });
   await within(list).findByRole("link", { name: /lado/ });
   stream().send("change", { kind: "messages", session: "lado", key: "4", op: "insert", item: null }, "11");
-  expect(within(list).getAllByRole("link")).toHaveLength(3);
+  expect(within(list).getAllByRole("link")).toHaveLength(2);
 });
 
 test("the Agents tab follows the agents' changes; a reset loads them again", async () => {
   const fetch = serve();
   open("/sessions/lado/agents");
   const table = await screen.findByRole("table", { name: "Agents of lado" });
-  await within(table).findByText("in the panel"); // the supervisor's row
+  await within(table).findByRole("button", { name: "Open supervisor's terminal" });
   const agent = (name: string, status: string) => ({ name, role: "developer", provider: "kilo", status });
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "insert", item: agent("w1", "starting") }, "11");
   expect(within(table).getByText("starting")).toBeTruthy();

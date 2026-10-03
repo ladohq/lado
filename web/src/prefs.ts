@@ -50,25 +50,39 @@ export function storeRailCollapsed(collapsed: boolean): void {
   write(RAIL, collapsed ? "collapsed" : "expanded");
 }
 
-// The terminal panel of a session page: collapsed or not, and its height in pixels.
+// The terminal panel on the right of a session page: its width in pixels.
 const PANEL = "lado.terminals";
-export const PANEL_HEIGHT = { initial: 320, min: 160, max: 900 };
+export const PANEL_WIDTH = { initial: 480, min: 280, max: 1200 };
 
-export type PanelPrefs = { collapsed: boolean; height: number };
+export type PanelPrefs = { width: number };
 
 export function storedPanel(): PanelPrefs {
   try {
-    const found = JSON.parse(read(PANEL) ?? "{}");
-    const height = Number(found.height);
-    return {
-      collapsed: found.collapsed === true,
-      height: height >= PANEL_HEIGHT.min && height <= PANEL_HEIGHT.max ? height : PANEL_HEIGHT.initial,
-    };
+    const width = Number(JSON.parse(read(PANEL) ?? "{}").width);
+    return { width: width >= PANEL_WIDTH.min && width <= PANEL_WIDTH.max ? width : PANEL_WIDTH.initial };
   } catch {
-    return { collapsed: false, height: PANEL_HEIGHT.initial };
+    return { width: PANEL_WIDTH.initial };
   }
 }
 
 export function storePanel(panel: PanelPrefs): void {
   write(PANEL, JSON.stringify(panel));
+}
+
+// Whether the Activity feed shows the agents' messages to each other (off by default).
+const AGENT_MESSAGES = "lado.agentMessages";
+
+export const storedAgentMessages = (): boolean => read(AGENT_MESSAGES) === "shown";
+
+export function storeAgentMessages(shown: boolean): void {
+  write(AGENT_MESSAGES, shown ? "shown" : "hidden");
+}
+
+// Whether the session list shows its stopped sessions (folded by default).
+const STOPPED = "lado.stoppedSessions";
+
+export const storedStoppedOpen = (): boolean => read(STOPPED) === "open";
+
+export function storeStoppedOpen(open: boolean): void {
+  write(STOPPED, open ? "open" : "folded");
 }

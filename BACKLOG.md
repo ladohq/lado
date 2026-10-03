@@ -366,3 +366,13 @@ supervisor). A kit that forgets it lets a worker's question reach the human past
 supervisor. Wanted: revisit with more kits in use: a worker-specific hint in LADO's own
 worker instructions, or tools only for the supervisor unless a role asks for them.
 Found: 2026-10-03, review of lado-dev 0.6.0.
+
+## Activity loads every message and run event of a session at once
+
+The Activity feed (Layout task) loads `GET …/messages` (now without `with`: all of the
+session's messages, agent-to-agent too) and `GET …/events` whole on each reset, and the store
+keeps them all. A long session (hundreds of worker reports, dozens of runs) makes every
+reconnect load and re-render all of it, while the human looks at the last screen.
+Wanted: the latest N with "load earlier" (`?before=<id>&limit=`), or a window the feed asks
+for as it scrolls; the store's lists keep only what was loaded.
+Found: 2026-10-03, implement of feature/ui-layout.

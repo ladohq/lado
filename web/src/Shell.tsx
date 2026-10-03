@@ -1,11 +1,13 @@
-// The frame around every page: the rail of sections on the left, the top bar with the
-// page's title, the server's address and Launch, and the page itself. The one place that
+// The frame around every page: the rail of sections on the left with Launch on top, the top
+// bar with the page's title, the server's address and the change feed's link, and the page
+// itself. The one place that
 // handles a 401: it shows the server's own message instead of the page. It holds the tab's
 // one change feed (live.ts) for every page.
 import {
   createContext,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -86,6 +88,7 @@ export function Shell() {
             <CollapseIcon collapsed={collapsed} />
           </button>
         </div>
+        <Launch variant="rail" />
         <ul>
           {SECTIONS.map((section) => (
             <li key={section.to}>
@@ -100,11 +103,10 @@ export function Shell() {
       <div className="main">
         <header className="topbar">
           <h1>{title}</h1>
-          <Reconnecting />
           <span className="server" title="The LADO server this page talks to">
             {window.location.host}
           </span>
-          <Launch />
+          <LinkState />
         </header>
         <main className="content">
           {denied !== null ? (
@@ -123,12 +125,20 @@ export function Shell() {
   return <LiveContext.Provider value={live}>{frame}</LiveContext.Provider>;
 }
 
-// Shown while the change feed is down: what the page shows may be old.
-function Reconnecting() {
+// The change feed's link: live, or reconnecting while it is down (what the page shows may
+// be old), with the reason.
+function LinkState() {
   const { link, problem } = useLive();
-  if (link !== "down") return null;
+  if (link === "refused") return null; // the page says how to get in
+  if (link !== "down") {
+    return (
+      <span className={`link link-${link}`} role="status">
+        {link === "open" ? "live" : "connecting…"}
+      </span>
+    );
+  }
   return (
-    <span className="reconnecting" role="status" title={problem ?? undefined}>
+    <span className="link reconnecting" role="status" title={problem ?? undefined}>
       reconnecting…{problem && <span className="reconnecting-why"> {problem}</span>}
     </span>
   );
@@ -149,8 +159,10 @@ function RailLink(props: { to: string; name: string; icon: ReactNode; collapsed:
   );
 }
 
-// Starting a session from the UI comes later; until then Launch says how.
-function Launch() {
+// Starting a session from the UI comes later; until then Launch (the rail's first control,
+// and the session list's "+") says how.
+export function Launch({ variant }: { variant: "rail" | "plus" }) {
+  const id = useId();
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -172,21 +184,26 @@ function Launch() {
   };
 
   return (
-    <div className="launch">
+    <div className={`launch launch-${variant}`}>
       <button
         ref={button}
         type="button"
-        className="primary"
+        className={variant === "rail" ? "primary launch-button" : "plus"}
+        aria-label={variant === "rail" ? "Launch" : "New session"}
+        title={variant === "rail" ? undefined : "New session"}
         aria-expanded={open}
-        aria-controls="launch-info"
+        aria-controls={id}
         onClick={() => setOpen(!open)}
       >
-        Launch
+        <span className="launch-plus" aria-hidden="true">
+          +
+        </span>
+        {variant === "rail" && <span className="rail-name">Launch</span>}
       </button>
       {open && (
         <div
           ref={panel}
-          id="launch-info"
+          id={id}
           className="popover"
           role="dialog"
           aria-label="Launch a session"

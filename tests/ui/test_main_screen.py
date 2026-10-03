@@ -79,7 +79,8 @@ def test_every_rail_item_opens_its_section(page: Page, server, shot):
 
 def test_the_launch_button_says_how_to_start_a_session(page: Page, server, shot):
     log_in(page, server)
-    page.get_by_role("button", name="Launch").click()
+    expect(page.get_by_role("banner").get_by_role("button", name="Launch")).to_have_count(0)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
     expect(page.get_by_role("dialog", name="Launch a session")).to_contain_text("lado start <repo>")
     shot(page)
     page.keyboard.press("Escape")
@@ -90,8 +91,12 @@ def test_the_rail_collapses_and_stays_so(page: Page, server, shot):
     log_in(page, server)
     rail = page.get_by_role("navigation", name="Sections")
     page.get_by_role("button", name="Collapse menu").click()
-    expect(rail.get_by_text("Marketplace")).to_be_hidden()
-    expect(rail.get_by_role("link", name="Marketplace")).to_be_visible()
+    # Each icon keeps its name, in small type under it.
+    link = rail.get_by_role("link", name="Marketplace")
+    icon = link.locator("svg").bounding_box()
+    name = link.locator(".rail-name").bounding_box()
+    assert name["y"] >= icon["y"] + icon["height"]
+    expect(rail.get_by_role("button", name="Launch")).to_be_visible()
     shot(page)
     page.reload()
     expect(page.get_by_role("button", name="Expand menu")).to_have_attribute(

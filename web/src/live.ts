@@ -8,11 +8,12 @@ import {
   ApiError,
   getAgents,
   getMessages,
+  getRunEvents,
   getSessions,
-  HUMAN,
   probeStream,
   type AgentInfo,
   type MessageInfo,
+  type RunEventInfo,
   type SessionInfo,
 } from "./api";
 
@@ -27,16 +28,17 @@ export type ListLoaded<T> = { items: T[] } | { error: string } | null;
 // token is wrong, the shell says how to get in and nothing is tried again.
 export type Link = "connecting" | "open" | "down" | "refused";
 
-// agents, messages: the lists of each session a page watches (watch), by session name.
+// agents, messages, events: the lists of each session a page watches (watch), by session name.
 export type LiveState = {
   sessions: Loaded;
   agents: Record<string, ListLoaded<AgentInfo>>;
-  messages: Record<string, ListLoaded<MessageInfo>>; // the chat: those from or to the human
+  messages: Record<string, ListLoaded<MessageInfo>>; // all of them: a page picks what it shows
+  events: Record<string, ListLoaded<RunEventInfo>>; // the flow runs' events
   link: Link;
   problem: string | null;
 };
 
-type ListName = "agents" | "messages";
+type ListName = "agents" | "messages" | "events";
 
 // How a list of a session is loaded and follows the feed: the change kind that is its, an
 // item's key (the change's), which items it keeps and in what order.
@@ -47,14 +49,15 @@ type ListKind<T> = {
   order?: (a: T, b: T) => number;
 };
 
-const LISTS: { agents: ListKind<AgentInfo>; messages: ListKind<MessageInfo> } = {
+const LISTS: { agents: ListKind<AgentInfo>; messages: ListKind<MessageInfo>; events: ListKind<RunEventInfo> } = {
   agents: { load: getAgents, key: (agent) => agent.name, keeps: () => true },
   messages: {
     load: getMessages,
     key: (message) => String(message.id),
-    keeps: (message) => message.from === HUMAN || message.to === HUMAN,
+    keeps: () => true,
     order: (a, b) => a.id - b.id,
   },
+  events: { load: getRunEvents, key: (event) => String(event.id), keeps: () => true, order: (a, b) => a.id - b.id },
 };
 
 export const RETRY_MS = 3000; // the pause before a new stream when the server closed one
@@ -64,6 +67,7 @@ export class Live {
     sessions: null,
     agents: {},
     messages: {},
+    events: {},
     link: "connecting",
     problem: null,
   };
@@ -73,8 +77,12 @@ export class Live {
   private lastId = ""; // the latest journal id the stream sent; derived changes have none
   private loading: Change[] | null = null; // changes that came while a load runs
   // Per list, session -> pages that watch it, and the changes that came while it loads.
-  private watched: Record<ListName, Map<string, number>> = { agents: new Map(), messages: new Map() };
-  private listLoads: Record<ListName, Map<string, Change[]>> = { agents: new Map(), messages: new Map() };
+  private watched: Record<ListName, Map<string, number>> = { agents: new Map(), messages: new Map(), events: new Map() };
+  private listLoads: Record<ListName, Map<string, Change[]>> = {
+    agents: new Map(),
+    messages: new Map(),
+    events: new Map(),
+  };
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -139,7 +147,7 @@ export class Live {
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
-  // A page that shows the session's agents or chat: they load now and follow the feed until
+  // A page that shows the session's agents, messages or run events: they load now and follow the feed until
   // the last page that watches them lets go (the returned function).
   watch(list: ListName, session: string): () => void {
     const watched = this.watched[list];

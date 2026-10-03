@@ -14,10 +14,8 @@ pytestmark = pytest.mark.ui
 
 
 @pytest.fixture(autouse=True)
-def tall(page: Page):
-    """A window with room for the session's head, the chat and the terminal panel under it;
-    in a smaller one the page scrolls (the Layout task moves the terminal beside the chat)."""
-    page.set_viewport_size({"width": 1280, "height": 1000})
+def wide(page: Page):
+    page.set_viewport_size({"width": 1280, "height": 900})
 
 
 def inputs(session: str) -> list:
@@ -40,8 +38,7 @@ def test_the_human_writes_and_the_supervisor_gets_it_and_replies(page: Page, ser
     reply = chat.get_by_role("article", name="Message from supervisor")
     expect(reply).to_contain_text("merged w1")
     assert any(i.startswith("[from human] send human merged w1") for i in inputs(session))
-    reply.get_by_text("merged w1").click()
-    expect(reply.locator("strong")).to_have_text("All")
+    expect(reply.locator("strong")).to_have_text("All")  # a body to the human shows at once
     shot(page)
 
 

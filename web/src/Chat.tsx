@@ -1,24 +1,86 @@
-// The chat in a session's Activity tab (docs/design/ui.md, The human in the session): the
-// messages from and to the human and the agents' questions, live from the feed (live.ts),
-// and the composer. What the human sends shows only once the feed brings it: nothing ahead
-// of the server.
+// The feed in a session's Activity tab (docs/design/ui.md, The human in the session): the
+// messages from and to the human and the agents' questions, the flow runs' events as lines,
+// and behind a switch the agents' messages to each other, live from the feed (live.ts); and
+// the composer. What the human sends shows only once the feed brings it: nothing ahead of
+// the server.
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import Markdown from "react-markdown";
+import { Link } from "react-router";
 
-import { answerQuestion, ApiError, dismissQuestion, HUMAN, writeMessage, type MessageInfo } from "./api";
-import { useLive, useLiveStore } from "./live";
+import {
+  answerQuestion,
+  ApiError,
+  dismissQuestion,
+  HUMAN,
+  writeMessage,
+  type MessageInfo,
+  type RunEventInfo,
+} from "./api";
+import { useLive, useLiveStore, type ListLoaded } from "./live";
+import { sessionPath } from "./paths";
 
-export function Chat({ session, stopped }: { session: string; stopped: boolean }) {
+// The run events the feed shows as lines, and how it names each kind: the one list. (The
+// Gates task takes the gates out of it: their cards replace the lines.)
+export const RUN_EVENT_LINES: Record<string, string> = {
+  flow_start: "started",
+  flow: "moved",
+  flow_set: "set by the human",
+  gate_open: "waits for you",
+  gate_answer: "answered",
+  flow_end: "ended",
+  flow_cancel: "cancelled",
+};
+
+const BODY_LINES = 8; // the lines of a body to the human shown before Show all
+const BODY_CHARS = 1500; // and at most these characters of them
+
+const withHuman = (message: MessageInfo) => message.from === HUMAN || message.to === HUMAN;
+
+type Entry = { at: number; message: MessageInfo } | { at: number; event: RunEventInfo };
+
+// The messages and the run events shown, in time order (a message before an event of the
+// same moment).
+function entries(messages: MessageInfo[], events: RunEventInfo[], agentMessages: boolean): Entry[] {
+  const all: Entry[] = [
+    ...messages
+      .filter((one) => agentMessages || withHuman(one))
+      .map((message) => ({ at: Date.parse(message.created_at), message })),
+    ...events.filter((one) => one.kind in RUN_EVENT_LINES).map((event) => ({ at: Date.parse(event.created_at), event })),
+  ];
+  return all.sort((a, b) => a.at - b.at);
+}
+
+// The messages, and the run events between them, consecutive ones in one list.
+function grouped(list: Entry[]): (MessageInfo | RunEventInfo[])[] {
+  const out: (MessageInfo | RunEventInfo[])[] = [];
+  for (const entry of list) {
+    const last = out[out.length - 1];
+    if ("message" in entry) out.push(entry.message);
+    else if (Array.isArray(last)) last.push(entry.event);
+    else out.push([entry.event]);
+  }
+  return out;
+}
+
+function both<A, B>(a: ListLoaded<A> | null, b: ListLoaded<B> | null): { error: string } | [A[], B[]] | null {
+  if (a && "error" in a) return a;
+  if (b && "error" in b) return b;
+  return a === null || b === null ? null : [a.items, b.items];
+}
+
+export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
   const live = useLiveStore();
-  const loaded = useLive().messages[session] ?? null;
+  const state = useLive();
+  const loaded = both(state.messages[session] ?? null, state.events[session] ?? null);
   const feed = useRef<HTMLDivElement>(null);
   useEffect(() => live.watch("messages", session), [live, session]);
+  useEffect(() => live.watch("events", session), [live, session]);
 
-  const count = loaded && "items" in loaded ? loaded.items.length : 0;
+  const shown = Array.isArray(loaded) ? entries(loaded[0], loaded[1], agentMessages) : [];
   useEffect(() => {
     const element = feed.current;
     if (element) element.scrollTop = element.scrollHeight; // the latest at the bottom
-  }, [count]);
+  }, [shown.length]);
 
   return (
     <section className="chat" aria-label="Chat">
@@ -29,14 +91,15 @@ export function Chat({ session, stopped }: { session: string; stopped: boolean }
             {loaded.error}
           </p>
         )}
-        {loaded && "items" in loaded && loaded.items.length === 0 && (
+        {Array.isArray(loaded) && shown.length === 0 && (
           <p className="empty">No messages yet. Write to the supervisor below.</p>
         )}
-        {loaded &&
-          "items" in loaded &&
-          loaded.items.map((one) =>
-            one.kind === "question" ? (
-              <Question key={one.id} session={session} question={one} answer={answerOf(one, loaded.items)} />
+        {Array.isArray(loaded) &&
+          grouped(shown).map((one) =>
+            Array.isArray(one) ? (
+              <RunEvents key={`events-${one[0].id}`} session={session} events={one} />
+            ) : one.kind === "question" ? (
+              <Question key={one.id} session={session} question={one} answer={answerOf(one, loaded[0])} />
             ) : (
               <Message key={one.id} message={one} />
             ),
@@ -44,6 +107,23 @@ export function Chat({ session, stopped }: { session: string; stopped: boolean }
       </div>
       <Composer session={session} stopped={stopped} />
     </section>
+  );
+}
+
+function RunEvents({ session, events }: { session: string; events: RunEventInfo[] }) {
+  return (
+    <ol className="run-events" aria-label="Flow runs">
+      {events.map((event) => (
+        <li key={event.id} className={`run-event run-${event.kind}`}>
+          <span className="run-kind">{RUN_EVENT_LINES[event.kind]}</span>{" "}
+          <span className="run-text">
+            {event.run}: {event.detail}
+          </span>{" "}
+          <time dateTime={event.created_at}>{clock(event.created_at)}</time>{" "}
+          <Link to={sessionPath(session, "flows")}>Flows</Link>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -56,7 +136,7 @@ function Meta({ message }: { message: MessageInfo }) {
   return (
     <header className="chat-meta">
       <span className="chat-from">{mine ? "you" : message.from}</span>
-      {mine && <span>to {message.to}</span>}
+      {message.to !== HUMAN && <span>to {message.to}</span>}
       <time dateTime={message.created_at}>{clock(message.created_at)}</time>
     </header>
   );
@@ -76,13 +156,51 @@ function Body({ text }: { text: string }) {
   );
 }
 
+// A body to the human, shown at once: its first lines, the rest behind Show all.
+function Preview({ text }: { text: string }) {
+  const [all, setAll] = useState(false);
+  const short = preview(text);
+  if (short === text) return <Body text={text} />;
+  return (
+    <>
+      <Body text={all ? text : short} />
+      <button type="button" className="link-button" aria-expanded={all} onClick={() => setAll(!all)}>
+        {all ? "Show less" : "Show all"}
+      </button>
+    </>
+  );
+}
+
+// The text up to its BODY_LINES-th line that is not blank, and at most BODY_CHARS of it.
+function preview(text: string): string {
+  const lines = text.split("\n");
+  let seen = 0;
+  let end = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() && ++seen === BODY_LINES) {
+      end = i + 1;
+      break;
+    }
+  }
+  const head = lines.slice(0, end).join("\n");
+  const cut = head.length > BODY_CHARS ? `${head.slice(0, BODY_CHARS)}…` : head;
+  return cut.trimEnd() === text.trimEnd() ? text : cut;
+}
+
 function Message({ message }: { message: MessageInfo }) {
   const mine = message.from === HUMAN;
+  const between = !withHuman(message);
   const summary = <h4 className="chat-summary">{message.summary}</h4>;
+  const label = between ? `Message from ${message.from} to ${message.to}` : `Message from ${mine ? "you" : message.from}`;
   return (
-    <article className={`chat-message${mine ? " mine" : ""}`} aria-label={`Message from ${mine ? "you" : message.from}`}>
+    <article className={`chat-message${mine ? " mine" : ""}${between ? " between" : ""}`} aria-label={label}>
       <Meta message={message} />
-      {message.body ? (
+      {message.body && message.to === HUMAN ? (
+        <>
+          {summary}
+          <Preview text={message.body} />
+        </>
+      ) : message.body ? (
         <details>
           <summary>{summary}</summary>
           <Body text={message.body} />

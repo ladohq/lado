@@ -1,5 +1,6 @@
-"""Agents' terminals in a browser: the supervisor's in the panel, typed into; another agent's
-opened from the Agents tab to view, with its history read only."""
+"""Agents' terminals in a browser, in the panel on the right: the supervisor's opened from
+its chip to view, then taken control of and typed into; another agent's opened from the
+Agents tab to view, with its history read only."""
 
 import agent_helpers
 import pytest
@@ -11,14 +12,20 @@ from lado import runtime, state, tmux
 pytestmark = pytest.mark.ui
 
 
-def test_the_supervisors_terminal_in_the_panel_takes_what_the_human_types(
+def test_the_supervisors_terminal_opens_to_view_and_takes_what_the_human_types_in_control(
     page: Page, server, repo, shot
 ):
     session = running_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    panel = page.get_by_role("region", name="Terminals")
-    expect(panel.get_by_role("tab", name="Supervisor")).to_have_attribute("aria-selected", "true")
+    page.get_by_role("group", name="Team").get_by_role("button", name="supervisor,").click()
+    panel = page.get_by_role("complementary", name="Terminals")
+    expect(panel.get_by_role("tab", name="supervisor")).to_have_attribute("aria-selected", "true")
+    expect(panel.get_by_role("status")).to_have_text("live")
+    expect(panel).to_contain_text("Viewing")
+    panel.get_by_role("button", name="Take control").click()
+    panel.get_by_role("alertdialog").get_by_role("button", name="Take control").click()
+    expect(panel).to_contain_text("In control")
     expect(panel.get_by_role("status")).to_have_text("live")
     panel.locator(".xterm").click()
     page.keyboard.type("lines 3")
@@ -39,10 +46,9 @@ def test_an_agents_terminal_opens_to_view_with_its_history(page: Page, server, r
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/agents")
     agents = page.get_by_role("table", name=f"Agents of {session}")
-    expect(agents).to_contain_text("in the panel")
     agents.get_by_role("button", name="Open w1's terminal").click()
 
-    panel = page.get_by_role("region", name="Terminals")
+    panel = page.get_by_role("complementary", name="Terminals")
     view = panel.get_by_role("tabpanel", name="w1")
     expect(view.get_by_role("status")).to_have_text("live")
     expect(view).to_contain_text("Viewing")

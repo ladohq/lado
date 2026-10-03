@@ -87,7 +87,13 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
         "session": "s",
         "key": "",
         "op": "insert",
-        "item": {"name": "s", "repo": "/r", "status": "tmux_gone", "agents": 0},
+        "item": {
+            "name": "s",
+            "repo": "/r",
+            "status": "tmux_gone",
+            "agents": 0,
+            "waiting": {"gates": 0, "questions": 0, "agents": 0},
+        },
     }
     state.delete_session("s")
     deleted = stream.until(is_change("sessions", "s"))[-1]
@@ -114,6 +120,42 @@ def test_kinds_without_a_model_yet_come_with_a_null_item(streams):
     state.add_run(run, [])
     added = stream.until(is_change("runs", "s"))[-1]
     assert added.data["item"] is None and added.data["op"] == "insert"
+
+
+def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
+    state.add_session(state.Session("s", "/r", None))
+    stream = streams()
+    stream.next()
+    run = state.Run("s", "feature/x", "feature", {}, {}, "x", "design", "/w", "b")
+    state.add_run(run, [("lado", state.FLOW_START, "at design")])
+    [event] = state.run_events("s")
+    added = stream.until(is_change("events", "s"))[-1]
+    assert (added.data["key"], added.data["op"]) == (str(event.id), "insert")
+    item = added.data["item"]
+    del item["created_at"]
+    assert item == {
+        "id": event.id,
+        "run": "feature/x",
+        "kind": "flow_start",
+        "actor": "lado",
+        "detail": "at design",
+    }
+
+
+def waiting_of(session: str):
+    return lambda e: is_change("sessions", session)(e) and e.data["item"]["waiting"]
+
+
+def test_a_gate_and_a_question_change_what_waits_in_their_session(streams, repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    stream = streams()
+    stream.next()
+    run = state.Run("s", "feature/x", "feature", {}, {}, "x", "design", "/w", "b")
+    gate = state.Gate("s", "feature/x", "approve", "approval", "OK?", ["approved", "rejected"])
+    state.add_run(run, [], gate)
+    stream.until(lambda e: waiting_of("s")(e) and e.data["item"]["waiting"]["gates"] == 1)
+    runtime.ask_human("s", "supervisor", "Ship?", None, ["yes"])
+    stream.until(lambda e: waiting_of("s")(e) and e.data["item"]["waiting"]["questions"] == 1)
 
 
 def test_a_messages_change_comes_with_its_item_in_the_form_of_the_rest_api(
@@ -170,6 +212,8 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         "role": "supervisor",
         "provider": "claude",
         "status": "idle",
+        "run": None,
+        "task": None,
     }
 
 
@@ -278,6 +322,7 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "repo": str(repo),
         "status": "tmux_gone",
         "agents": 1,
+        "waiting": {"gates": 0, "questions": 0, "agents": 0},
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived
 

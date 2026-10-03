@@ -69,9 +69,13 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 
 const sessionPath = (session: string) => `/api/sessions/${encodeURIComponent(session)}`;
 
-// The chat: the session's messages from and to the human, oldest first.
-export const getMessages = (session: string) =>
-  get<MessageInfo[]>(`${sessionPath(session)}/messages?with=${HUMAN}`);
+// The session's messages, oldest first: with the human and between the agents.
+export const getMessages = (session: string) => get<MessageInfo[]>(`${sessionPath(session)}/messages`);
+
+export type RunEventInfo = components["schemas"]["RunEventInfo"];
+
+// What happened to the session's flow runs, oldest first.
+export const getRunEvents = (session: string) => get<RunEventInfo[]>(`${sessionPath(session)}/events`);
 
 // The human's text to an agent of the session (default: the supervisor).
 export const writeMessage = (session: string, text: string) =>

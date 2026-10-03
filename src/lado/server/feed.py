@@ -42,7 +42,7 @@ log = logging.getLogger("lado.server")
 
 @dataclass(frozen=True)
 class Change:
-    kind: str  # sessions | agents | messages | runs | gates | notes
+    kind: str  # sessions | agents | messages | runs | gates | notes | events
     session: str
     key: str  # the row in its session; '' for the session itself
     op: str  # insert | update | delete: for information, the item tells what is there
@@ -138,16 +138,24 @@ def _message_item(session: str, key: str) -> dict | None:
     return models.message_info(message).model_dump(mode="json", by_alias=True)
 
 
+def _event_item(session: str, key: str) -> dict | None:
+    event = state.get_event(session, int(key))
+    return None if event is None else models.run_event_info(event).model_dump(mode="json")
+
+
 # The kinds whose REST model exists, and how to build an item of it. Others' items are null.
 ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "sessions": _session_item,
     "agents": _agent_item,
     "messages": _message_item,
+    "events": _event_item,
 }
 
 # A change of kind X also changes the item of kind Y of the same session (Y's key is '':
-# the session's own). The session's item counts its agents.
-ALSO = {"agents": "sessions"}
+# the session's own). The session's item counts its agents and what waits for the human in
+# it (open gates and questions, agents in `waiting`). Each such session item asks tmux for
+# its status (runtime.session_status): collapsed, once per session in a batch.
+ALSO = {"agents": "sessions", "gates": "sessions", "messages": "sessions"}
 
 
 def _session_statuses() -> dict[Change, object]:

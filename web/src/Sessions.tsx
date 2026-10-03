@@ -6,11 +6,13 @@ import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router
 import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { useLive, useLiveStore, type Loaded } from "./live";
-import { SUPERVISOR, TerminalPanel, useOpenTerminal } from "./Terminals";
+import { TerminalPanel, useOpenTerminal } from "./Terminals";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
 import { Placeholder } from "./Placeholder";
-import { useTitle } from "./Shell";
+import { storeAgentMessages, storedAgentMessages, storedStoppedOpen, storeStoppedOpen } from "./prefs";
+import { Launch, useTitle } from "./Shell";
+import { Team } from "./Team";
 
 // What each status means to the human, in the words of `lado ls`.
 const STATUS: Record<SessionStatus, string> = {
@@ -25,11 +27,22 @@ const STATUS: Record<SessionStatus, string> = {
 export function Sessions() {
   const loaded = useLive().sessions;
   const [query, setQuery] = useState("");
+  const [stoppedOpen, setStoppedOpen] = useState(storedStoppedOpen);
 
   const wanted = query.trim().toLowerCase();
+  const found = loaded && "sessions" in loaded ? loaded.sessions.filter((one) => one.name.toLowerCase().includes(wanted)) : [];
+  const groups = grouped(found);
+  const toggleStopped = () => {
+    setStoppedOpen(!stoppedOpen);
+    storeStoppedOpen(!stoppedOpen);
+  };
   return (
     <div className="sessions">
       <div className="session-list">
+        <div className="session-list-head">
+          <h2>Sessions</h2>
+          <Launch variant="plus" />
+        </div>
         <input
           type="search"
           className="search"
@@ -46,21 +59,23 @@ export function Sessions() {
             </p>
           )}
           {loaded && "sessions" in loaded && (
-            <ul>
-              {loaded.sessions
-                .filter((session) => session.name.toLowerCase().includes(wanted))
-                .map((session) => (
-                  <li key={session.name}>
-                    <NavLink
-                      to={sessionPath(session.name)}
-                      className={`session-link${session.status === "running" ? "" : " dim"}`}
-                    >
-                      <span className="session-name">{session.name}</span>
-                      <Status status={session.status} />
-                    </NavLink>
-                  </li>
-                ))}
-            </ul>
+            <>
+              <Group name="Needs you" sessions={groups.needsYou} />
+              <Group name="Running" sessions={groups.running} />
+              {groups.stopped.length > 0 && (
+                <button
+                  type="button"
+                  className="group-toggle"
+                  aria-expanded={stoppedOpen}
+                  aria-controls="stopped-sessions"
+                  onClick={toggleStopped}
+                >
+                  <span aria-hidden="true">{stoppedOpen ? "▾" : "›"} </span>
+                  Stopped ({groups.stopped.length})
+                </button>
+              )}
+              {stoppedOpen && <Group name="Stopped" id="stopped-sessions" sessions={groups.stopped} hideName />}
+            </>
           )}
         </nav>
       </div>
@@ -68,6 +83,77 @@ export function Sessions() {
         <Outlet context={loaded} />
       </div>
     </div>
+  );
+}
+
+const waits = (session: SessionInfo) => {
+  const { gates, questions, agents } = session.waiting;
+  return gates + questions + agents > 0;
+};
+
+// The list's groups, from what the server counts (SessionInfo.waiting): a stopped session is
+// Stopped whatever waits in it, since nothing in it can be answered.
+function grouped(sessions: SessionInfo[]) {
+  const stopped = sessions.filter((one) => one.status === "stopped");
+  const live = sessions.filter((one) => one.status !== "stopped");
+  return { needsYou: live.filter(waits), running: live.filter((one) => !waits(one)), stopped };
+}
+
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// One line under a session's name: what waits for the human, or its agents and status.
+function about(session: SessionInfo): string {
+  const { gates, questions, agents } = session.waiting;
+  const parts = [
+    gates > 0 && count(gates, "gate"),
+    questions > 0 && count(questions, "question"),
+    agents > 0 && `${count(agents, "agent")} waiting`,
+  ].filter(Boolean);
+  if (session.status !== "stopped" && parts.length) return parts.join(" · ");
+  return session.status === "stopped" ? STATUS.stopped : count(session.agents, "agent");
+}
+
+function Group({
+  name,
+  sessions,
+  id,
+  hideName = false,
+}: {
+  name: string;
+  sessions: SessionInfo[];
+  id?: string;
+  hideName?: boolean;
+}) {
+  if (sessions.length === 0) return null;
+  const slug = name.toLowerCase().replace(/\s+/g, "-");
+  const headId = `group-${slug}`;
+  return (
+    <section
+      className={`session-group group-${slug}`}
+      id={id}
+      aria-label={hideName ? name : undefined}
+      aria-labelledby={hideName ? undefined : headId}
+    >
+      {!hideName && (
+        <h3 id={headId} className="group-name">
+          {name}
+        </h3>
+      )}
+      <ul>
+        {sessions.map((session) => (
+          <li key={session.name}>
+            <NavLink
+              to={sessionPath(session.name)}
+              className={`session-link${session.status === "running" ? "" : " dim"}${waits(session) && session.status !== "stopped" ? " waits" : ""}`}
+            >
+              <span className="session-name">{session.name}</span>
+              <span className="session-about">{about(session)}</span>
+              {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -157,13 +243,38 @@ function SessionView({ name, tab, session }: { name: string; tab: Tab; session: 
       {tab === "agents" ? (
         <Agents session={name} />
       ) : tab === "activity" ? (
-        <Chat session={name} stopped={session.status === "stopped"} />
+        <Activity session={name} stopped={session.status === "stopped"} />
       ) : (
         <Placeholder title={TAB_NAMES[tab]} plan={PLANS[tab]} level={3}>
           {TAB_TEXT[tab]}
         </Placeholder>
       )}
     </section>
+  );
+}
+
+// The Activity tab: the team, the switch for the agents' messages to each other (it changes
+// only what the feed shows, and is remembered), and the feed with the composer.
+function Activity({ session, stopped }: { session: string; stopped: boolean }) {
+  const [agentMessages, setAgentMessages] = useState(storedAgentMessages);
+  return (
+    <div className="activity">
+      <div className="team-row">
+        <Team session={session} />
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={agentMessages}
+            onChange={(event) => {
+              setAgentMessages(event.target.checked);
+              storeAgentMessages(event.target.checked);
+            }}
+          />
+          Show agent messages
+        </label>
+      </div>
+      <Chat session={session} stopped={stopped} agentMessages={agentMessages} />
+    </div>
   );
 }
 
@@ -204,18 +315,14 @@ function Agents({ session }: { session: string }) {
               <span className={`status agent-${agent.status}`}>{agent.status}</span>
             </td>
             <td>
-              {agent.name === SUPERVISOR ? (
-                <span className="muted">in the panel</span>
-              ) : (
-                <button
-                  type="button"
-                  className="quiet"
-                  aria-label={`Open ${agent.name}'s terminal`}
-                  onClick={() => openTerminal(agent.name)}
-                >
-                  Open terminal
-                </button>
-              )}
+              <button
+                type="button"
+                className="quiet"
+                aria-label={`Open ${agent.name}'s terminal`}
+                onClick={() => openTerminal(agent.name)}
+              >
+                Open terminal
+              </button>
             </td>
           </tr>
         ))}

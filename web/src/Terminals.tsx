@@ -1,129 +1,121 @@
-// The terminal panel of a session page (docs/design/ui.md, Terminal): docked under the page
-// on every tab, collapsible, its height dragged and remembered. Its tabs: the supervisor's
-// terminal, always first and in control (the human's chat with it), and the agents opened
-// from the Agents tab, to view; a tab closes with ×. A hidden tab keeps its socket; a closed
-// one closes it. In view the wheel opens the window's history, read only; Take control
-// asks first, then types into the agent; Release goes back to view.
+// The terminal panel of a session page (docs/design/ui.md, Terminal and Structure): on the
+// right of the page, on every tab, closed until a terminal is opened (a team chip, or Open
+// terminal in the Agents tab); its width dragged and remembered. Each open terminal is a
+// tab, closed with ×; closing the last one closes the panel. A hidden tab keeps its socket;
+// a closed one closes it. Every terminal opens to view: the wheel opens the window's
+// history, read only; Take control asks first, then types into the agent; Release goes back.
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { getHistory, type History } from "./api";
-import { PANEL_HEIGHT, storedPanel, storePanel } from "./prefs";
+import { PANEL_WIDTH, storedPanel, storePanel } from "./prefs";
 import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink";
 
-export const SUPERVISOR = "supervisor";
-const HEIGHT_STEP = 40; // pixels per arrow key on the panel's handle
+const WIDTH_STEP = 40; // pixels per arrow key on the panel's edge
 
-const TerminalsContext = createContext<((agent: string) => void) | null>(null);
+type Terminals = { open: (agent: string) => void; active: string | null };
 
-// Open an agent's terminal in the panel (from the Agents tab).
-export function useOpenTerminal(): (agent: string) => void {
-  const open = useContext(TerminalsContext);
-  if (open === null) throw new Error("useOpenTerminal outside a session's page");
-  return open;
+const TerminalsContext = createContext<Terminals | null>(null);
+
+function useTerminals(): Terminals {
+  const terminals = useContext(TerminalsContext);
+  if (terminals === null) throw new Error("a terminal outside a session's page");
+  return terminals;
 }
 
-const tabName = (agent: string) => (agent === SUPERVISOR ? "Supervisor" : agent);
+// Open an agent's terminal in the panel, or select its tab.
+export function useOpenTerminal(): (agent: string) => void {
+  return useTerminals().open;
+}
+
+// The agent whose terminal the panel shows, or null when it is closed.
+export function useShownTerminal(): string | null {
+  return useTerminals().active;
+}
 
 export function TerminalPanel({ session, children }: { session: string; children: ReactNode }) {
-  const [tabs, setTabs] = useState<string[]>([SUPERVISOR]);
-  const [active, setActive] = useState(SUPERVISOR);
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [active, setActive] = useState<string | null>(null);
   const [panel, setPanel] = useState(storedPanel);
-
-  const change = (next: typeof panel) => {
-    setPanel(next);
-    storePanel(next);
-  };
 
   const open = useCallback((agent: string) => {
     setTabs((now) => (now.includes(agent) ? now : [...now, agent]));
     setActive(agent);
-    setPanel((now) => (now.collapsed ? { ...now, collapsed: false } : now));
   }, []);
 
   const close = (agent: string) => {
     const left = tabs.filter((one) => one !== agent);
     setTabs(left);
-    if (active === agent) setActive(left[left.length - 1]);
+    if (active === agent) setActive(left.length ? left[left.length - 1] : null);
+  };
+
+  const resize = (width: number) => {
+    setPanel({ width });
+    storePanel({ width });
   };
 
   return (
-    <TerminalsContext.Provider value={open}>
-      {children}
-      <section
-        className={`terminals${panel.collapsed ? " collapsed" : ""}`}
-        aria-label="Terminals"
-        style={panel.collapsed ? undefined : { height: `${panel.height}px` }}
-      >
-        {!panel.collapsed && <Handle height={panel.height} onChange={(height) => change({ ...panel, height })} />}
-        <div className="terminals-bar">
-          <div role="tablist" aria-label="Open terminals" className="term-tabs">
+    <TerminalsContext.Provider value={{ open, active }}>
+      <div className="session-page">
+        <div className="session-main">{children}</div>
+        {tabs.length > 0 && (
+          <aside className="terminals" aria-label="Terminals" style={{ width: `${panel.width}px` }}>
+            <Edge width={panel.width} onChange={resize} />
+            <div className="terminals-bar">
+              <div role="tablist" aria-label="Open terminals" className="term-tabs">
+                {tabs.map((agent) => (
+                  <div key={agent} className="term-tab" data-active={agent === active || undefined}>
+                    <button
+                      type="button"
+                      role="tab"
+                      id={`term-tab-${agent}`}
+                      aria-selected={agent === active}
+                      aria-controls={`term-${agent}`}
+                      onClick={() => setActive(agent)}
+                    >
+                      {agent}
+                    </button>
+                    <button
+                      type="button"
+                      className="term-close"
+                      aria-label={`Close ${agent}'s terminal`}
+                      title="Close"
+                      onClick={() => close(agent)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
             {tabs.map((agent) => (
-              <div key={agent} className="term-tab" data-active={agent === active || undefined}>
-                <button
-                  type="button"
-                  role="tab"
-                  id={`term-tab-${agent}`}
-                  aria-selected={agent === active}
-                  aria-controls={`term-${agent}`}
-                  onClick={() => {
-                    setActive(agent);
-                    if (panel.collapsed) change({ ...panel, collapsed: false });
-                  }}
-                >
-                  {tabName(agent)}
-                </button>
-                {agent !== SUPERVISOR && (
-                  <button
-                    type="button"
-                    className="term-close"
-                    aria-label={`Close ${agent}'s terminal`}
-                    title="Close"
-                    onClick={() => close(agent)}
-                  >
-                    ×
-                  </button>
-                )}
+              <div
+                key={agent}
+                id={`term-${agent}`}
+                role="tabpanel"
+                aria-labelledby={`term-tab-${agent}`}
+                className="term-body"
+                hidden={agent !== active}
+              >
+                <AgentTerminal session={session} agent={agent} visible={agent === active} />
               </div>
             ))}
-          </div>
-          <button
-            type="button"
-            className="ghost term-collapse"
-            aria-expanded={!panel.collapsed}
-            aria-label={panel.collapsed ? "Expand the terminals" : "Collapse the terminals"}
-            title={panel.collapsed ? "Expand" : "Collapse"}
-            onClick={() => change({ ...panel, collapsed: !panel.collapsed })}
-          >
-            {panel.collapsed ? "▴" : "▾"}
-          </button>
-        </div>
-        {tabs.map((agent) => (
-          <div
-            key={agent}
-            id={`term-${agent}`}
-            role="tabpanel"
-            aria-labelledby={`term-tab-${agent}`}
-            className="term-body"
-            hidden={agent !== active || panel.collapsed}
-          >
-            <AgentTerminal session={session} agent={agent} visible={agent === active && !panel.collapsed} />
-          </div>
-        ))}
-      </section>
+          </aside>
+        )}
+      </div>
     </TerminalsContext.Provider>
   );
 }
 
-// The panel's top edge: drag it, or use the arrow keys, to change the panel's height.
-function Handle({ height, onChange }: { height: number; onChange: (height: number) => void }) {
-  const clamp = (value: number) => Math.round(Math.min(PANEL_HEIGHT.max, Math.max(PANEL_HEIGHT.min, value)));
+// The panel's left edge: drag it, or use the arrow keys, to change the panel's width.
+function Edge({ width, onChange }: { width: number; onChange: (width: number) => void }) {
+  const clamp = (value: number) => Math.round(Math.min(PANEL_WIDTH.max, Math.max(PANEL_WIDTH.min, value)));
   const drag = (event: React.PointerEvent) => {
-    const startY = event.clientY;
-    const startHeight = height;
-    const move = (moved: PointerEvent) => onChange(clamp(startHeight + startY - moved.clientY));
+    const startX = event.clientX;
+    const startWidth = width;
+    const move = (moved: PointerEvent) => onChange(clamp(startWidth + startX - moved.clientX));
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -135,16 +127,16 @@ function Handle({ height, onChange }: { height: number; onChange: (height: numbe
     <div
       role="separator"
       aria-label="Resize the terminals"
-      aria-orientation="horizontal"
-      aria-valuenow={height}
-      aria-valuemin={PANEL_HEIGHT.min}
-      aria-valuemax={PANEL_HEIGHT.max}
+      aria-orientation="vertical"
+      aria-valuenow={width}
+      aria-valuemin={PANEL_WIDTH.min}
+      aria-valuemax={PANEL_WIDTH.max}
       tabIndex={0}
-      className="term-handle"
+      className="term-edge"
       onPointerDown={drag}
       onKeyDown={(event) => {
-        if (event.key === "ArrowUp") onChange(clamp(height + HEIGHT_STEP));
-        if (event.key === "ArrowDown") onChange(clamp(height - HEIGHT_STEP));
+        if (event.key === "ArrowLeft") onChange(clamp(width + WIDTH_STEP));
+        if (event.key === "ArrowRight") onChange(clamp(width - WIDTH_STEP));
       }}
     />
   );
@@ -177,7 +169,7 @@ const PHASE: Record<LinkState["phase"], string> = {
 };
 
 function AgentTerminal({ session, agent, visible }: { session: string; agent: string; visible: boolean }) {
-  const [mode, setModeNow] = useState<Mode>(agent === SUPERVISOR ? "control" : "view");
+  const [mode, setModeNow] = useState<Mode>("view");
   const [link, setLink] = useState<LinkState>({ phase: "connecting", reason: null });
   // Another mode is another socket: the old one's state is not shown for it.
   const setMode = (next: Mode) => {

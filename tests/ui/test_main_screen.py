@@ -79,7 +79,7 @@ def test_every_rail_item_opens_its_section(page: Page, server, shot):
 
 def test_the_launch_button_says_how_to_start_a_session(page: Page, server, shot):
     log_in(page, server)
-    page.get_by_role("button", name="Launch").click()
+    page.get_by_role("banner").get_by_role("button", name="Launch").click()
     expect(page.get_by_role("dialog", name="Launch a session")).to_contain_text("lado start <repo>")
     shot(page)
     page.keyboard.press("Escape")

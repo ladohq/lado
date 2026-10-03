@@ -23,6 +23,7 @@ from lado.server.models import (
     History,
     MessageInfo,
     MessageText,
+    RunEventInfo,
     Sent,
     SessionInfo,
 )
@@ -117,16 +118,23 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     @app.get("/api/sessions/{name}/messages", dependencies=[Depends(guard)])
     def messages(
         name: str,
-        with_: Literal["human"] = Query(alias="with"),
+        with_: Literal["human"] | None = Query(None, alias="with"),
         has_db: bool = Depends(database),
     ) -> list[MessageInfo]:
-        """The session's messages from and to `with`, the human: the chat, oldest first."""
+        """The session's messages, oldest first; with `with`, only those from and to it
+        (the human: the chat)."""
         known(name, has_db)
         return [
             models.message_info(m)
             for m in state.list_messages(name)
-            if with_ in (m.sender, m.recipient)
+            if with_ is None or with_ in (m.sender, m.recipient)
         ]
+
+    @app.get("/api/sessions/{name}/events", dependencies=[Depends(guard)])
+    def run_events(name: str, has_db: bool = Depends(database)) -> list[RunEventInfo]:
+        """What happened to the session's flow runs, oldest first."""
+        known(name, has_db)
+        return [models.run_event_info(e) for e in state.run_events(name)]
 
     @app.post("/api/sessions/{name}/messages", dependencies=[Depends(guard.changes)])
     def write(name: str, message: MessageText, has_db: bool = Depends(database)) -> Sent:

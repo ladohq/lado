@@ -73,12 +73,22 @@ def publish(work: Path, files: dict[str, str], tag: str | None = None) -> str:
 def previous_schema() -> None:
     """Turn the LADO_HOME database back to SCHEMA_VERSION - 1, as an older LADO left it.
     Undoes the last step of state.MIGRATIONS: change it with each new migration."""
-    assert state.MIGRATIONS[state.SCHEMA_VERSION - 1] == state.MESSAGES_HUMAN
+    schema_before(state.SCHEMA_VERSION)
+
+
+def schema_before(version: int) -> None:
+    """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
+    undoing the steps of state.MIGRATIONS from the latest on."""
+    assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
+    assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
+    assert 13 <= version <= state.SCHEMA_VERSION == 14
     with state.connect() as db:
-        for statement in state.MESSAGES_HUMAN:
-            column = statement.split("ADD COLUMN ")[1].split()[0]
-            db.execute(f"ALTER TABLE messages DROP COLUMN {column}")
-        db.execute(f"PRAGMA user_version = {state.SCHEMA_VERSION - 1}")
+        db.execute("DROP TRIGGER changes_events_insert")
+        if version == 13:
+            for statement in state.MESSAGES_HUMAN:
+                column = statement.split("ADD COLUMN ")[1].split()[0]
+                db.execute(f"ALTER TABLE messages DROP COLUMN {column}")
+        db.execute(f"PRAGMA user_version = {version - 1}")
 
 
 def refuse_unless_isolated() -> None:

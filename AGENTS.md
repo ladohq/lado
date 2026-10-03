@@ -140,7 +140,10 @@ schema change.
     an agent update that changes `seen_at` is none (`AGENTS_CHANGED`: only `state.seen`
     writes it, and nothing else with it; keep it so, since the condition names no other
     column and a trigger stays in `lado.db` as it was made), and each insert drops changes older than
-    the latest `CHANGES_KEPT`. A new table the UI shows gets its triggers in `JOURNALED`.
+    the latest `CHANGES_KEPT`. From schema 14 `events` is journaled too, key its id, but
+    only inserts (`JOURNALED_OPS`) of a flow run's events (`RUN_EVENT`: `run IS NOT NULL`;
+    a status event would double the journal); a trigger's condition is in `JOURNAL_WHEN`.
+    A new table the UI shows gets its triggers in `JOURNALED`.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -154,7 +157,10 @@ schema change.
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
-    backpressure, close codes; the agents and history endpoints are in `app.py`;
+    backpressure, close codes; the agents, history, messages and run events
+    (`/api/sessions/{name}/events`) endpoints are in `app.py`; a session's
+    `waiting` (open gates, open questions, agents in `waiting`: the one "needs you") is
+    counted in `models.session_info`;
     `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`.

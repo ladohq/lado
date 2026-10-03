@@ -590,6 +590,45 @@ def test_answer_notices_a_gate_answered_elsewhere(repo, fake_tmux, capsys, monke
     assert state.get_gate(2).answer is None
 
 
+def test_a_comment_given_with_m_is_not_taken_to_the_next_gate(
+    repo, fake_tmux, capsys, monkeypatch, terminal
+):
+    """-m is for the gate it was given for: answered elsewhere, the next gate asks for its
+    own comment."""
+    import threading
+    import time
+
+    keyboard, stdin = terminal
+    _at_gate(repo, capsys)
+    runs.start("s", "ship", "Add y", name="y")
+    runs.force("s", "ship/y", "check", "built by hand")
+    monkeypatch.setattr(sys, "stdin", stdin)
+    done = []
+    argv = ["answer", "s", "1", "-m", "split it"]
+    asking = threading.Thread(target=lambda: done.append(main(argv)), daemon=True)
+    asking.start()
+    out = ""
+    deadline = time.monotonic() + 10
+    while "Answer (" not in out:
+        assert time.monotonic() < deadline, out
+        time.sleep(0.02)
+        out += capsys.readouterr().out
+    runs.answer("s", "1", "reject")
+    while "Gate #2, session s" not in out:
+        assert time.monotonic() < deadline, out
+        time.sleep(0.02)
+        out += capsys.readouterr().out
+    os.write(keyboard, b"approve\n")
+    while "Comment for the next step" not in out and not done:
+        assert time.monotonic() < deadline, out
+        time.sleep(0.02)
+        out += capsys.readouterr().out
+    os.write(keyboard, b"ship y\n")
+    asking.join(10)
+    assert done == [0]
+    assert state.get_gate(2).comment == "ship y"
+
+
 def test_answer_ends_when_the_last_gate_is_answered_elsewhere(
     repo, fake_tmux, capsys, monkeypatch, terminal
 ):

@@ -266,9 +266,10 @@ def cmd_answer(args: argparse.Namespace) -> int:
         gate = gates[0] if len(gates) == 1 else _pick(gates)
         if gate is None:
             return failed
+        # -m is for the first gate only, also when that one is answered elsewhere.
+        comment, args.comment = args.comment, None
         try:
             option = _choose(gate)
-            comment, args.comment = args.comment, None  # -m is for the first answer only
             if option is not None and comment is None:
                 comment = _input("Comment for the next step (Enter for none): ", gate)
             if option is None or comment is None:

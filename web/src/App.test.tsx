@@ -134,7 +134,6 @@ test.each([
   ["/projects", "Projects", /ROADMAP\.md#later-after-stage-7/],
   ["/kits", "Kits", /docs\/design\/ui\.md#kits/],
   ["/marketplace", "Marketplace", /ROADMAP\.md#later-after-stage-7/],
-  ["/gates/12", "Gate #12", /docs\/design\/ui\.md#gates/],
 ])("%s is a placeholder that links to its plan item", (path, title, plan) => {
   open(path);
   const placeholder = screen.getByRole("region", { name: title });
@@ -145,8 +144,8 @@ test.each([
   );
 });
 
-test("an unknown address is Not found with a link to Home", () => {
-  open("/nowhere/at/all");
+test.each(["/nowhere/at/all", "/gates/12"])("%s is Not found with a link to Home", (path) => {
+  open(path); // a gate has no page: it is a card in its session's chat
   expect(heading()).toBe("Not found");
   const main = screen.getByRole("main");
   expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");

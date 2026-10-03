@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { MessageInfo, RunEventInfo, SessionInfo } from "./api";
+import type { GateInfo, MessageInfo, RunEventInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { FakeEventSource, FakeSocket, stream } from "./fakes";
 
@@ -60,6 +60,7 @@ function serve(
   chat: MessageInfo[],
   answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } },
   events: RunEventInfo[] = [],
+  gates: GateInfo[] = [],
 ) {
   const posted: Posted[] = [];
   const fetch = vi.fn(async (path: string, init?: RequestInit) => {
@@ -73,6 +74,9 @@ function serve(
     }
     if (path.startsWith("/api/sessions/") && path.endsWith("/events")) {
       return new Response(JSON.stringify(events));
+    }
+    if (path.startsWith("/api/sessions/") && path.endsWith("/gates")) {
+      return new Response(JSON.stringify(gates));
     }
     if (path.endsWith("/agents")) return new Response("[]");
     return new Response("{}", { status: 404 });
@@ -345,4 +349,199 @@ test("run events show as lines in time order, linking to Flows; a kind not liste
     "11",
   );
   expect(within(log).getAllByRole("listitem").at(-1)!.textContent).toContain("feature/x: at done");
+});
+
+// Flow gates (the Gates task): an open gate is a card answered with its options, a closed
+// one a line.
+
+function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
+  return {
+    id,
+    run: "feature/x",
+    state: "check",
+    kind: "approval",
+    question: "Ship it?",
+    options: ["approve", "reject"],
+    note: "built it",
+    note_body: "All **tests** pass.",
+    needs: [
+      {
+        state: "design",
+        note: { id: 3, state: "design", summary: "the plan", body: "step one", created_at: "2026-10-03T11:00:00Z" },
+      },
+      { state: "polish", note: null },
+    ],
+    answer: null,
+    comment: "",
+    answered_by: null,
+    created_at: "2026-10-03T12:00:00.250Z",
+    answered_at: null,
+    ...more,
+  };
+}
+
+const closed = (id: number, answer: string, more: Partial<GateInfo> = {}) =>
+  gate(id, { answer, answered_by: "human", answered_at: "2026-10-03T12:05:00Z", needs: null, ...more });
+
+const gateCard = async (id = 1) => within(await chat()).findByRole("article", { name: `Gate #${id}` });
+
+function gateChanged(item: GateInfo) {
+  return { kind: "gates", session: "lado", key: String(item.id), op: "update", item };
+}
+
+test("an open gate is a card: its question, the note that led to it and the notes it needs", async () => {
+  serve([], undefined, [], [gate(1)]);
+  open();
+  const card = await gateCard();
+  expect(within(card).getByRole("heading", { name: "Gate #1 · feature/x · check" })).toBeTruthy();
+  expect(within(card).getByText("Ship it?")).toBeTruthy();
+  expect(within(card).getByText("built it").tagName).toBe("STRONG");
+  expect(within(card).getByText("tests").tagName).toBe("STRONG"); // the body, open, as Markdown
+  const design = within(card).getByRole("button", { name: "Note from design: the plan" });
+  expect(design.getAttribute("aria-expanded")).toBe("false");
+  expect(within(card).queryByText("step one")).toBeNull();
+  fireEvent.click(design);
+  expect(within(card).getByText("step one")).toBeTruthy();
+  expect(within(card).getByText("Note from polish: no note yet")).toBeTruthy();
+  expect(within(card).getByRole("textbox", { name: "Comment for the next step (optional)" })).toBeTruthy();
+});
+
+test("a long note before the gate is behind Show all", async () => {
+  const body = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n\n");
+  serve([], undefined, [], [gate(1, { note_body: body })]);
+  open();
+  const card = await gateCard();
+  expect(within(card).getByText("line 20")).toBeTruthy();
+  expect(within(card).queryByText("line 21")).toBeNull();
+  fireEvent.click(within(card).getByRole("button", { name: "Show all" }));
+  expect(within(card).getByText("line 30")).toBeTruthy();
+});
+
+test.each([
+  [gate(1), ["Approve", "Reject"]],
+  [gate(1, { kind: "choice", options: ["left", "right"] }), ["left", "right"]],
+  [gate(1, { kind: "loop", options: ["continue", "cancel"], needs: [] }), ["Continue", "Cancel run"]],
+])("a gate's buttons are its options", async (one, labels) => {
+  serve([], undefined, [], [one]);
+  open();
+  const card = await gateCard();
+  const buttons = within(card)
+    .getAllByRole("button")
+    .filter((button) => !button.hasAttribute("aria-expanded"));
+  expect(buttons.map((button) => button.textContent)).toEqual(labels);
+  expect(buttons[0].className).toContain("primary");
+});
+
+test("a gate is answered with an option and the comment; the card waits for the feed", async () => {
+  const { posted } = serve([], undefined, [], [gate(1)]);
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const plain = globalThis.fetch;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (init?.method === "POST") await held;
+    return plain(path, init);
+  });
+  open();
+  const card = await gateCard();
+  fireEvent.change(within(card).getByRole("textbox", { name: "Comment for the next step (optional)" }), {
+    target: { value: "add a test\nfor the form" },
+  });
+  fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
+  await waitFor(() => expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true));
+  release();
+  await waitFor(() =>
+    expect(posted).toEqual([
+      { path: "/api/sessions/lado/gates/1/answer", body: { option: "reject", comment: "add a test\nfor the form" } },
+    ]),
+  );
+  await waitFor(() => expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false));
+  stream().send("change", gateChanged(closed(1, "reject", { comment: "add a test\nfor the form" })), "11");
+  const line = await gateCard();
+  expect(within(line).queryByRole("button", { name: "Approve" })).toBeNull();
+  expect(line.textContent).toContain("Gate #1 · feature/x · check: reject by human");
+});
+
+test("an answer the server refuses says why on the gate's card", async () => {
+  serve([], { status: 400, body: { detail: "gate #1 is closed already: approve by human" } }, [], [gate(1)]);
+  open();
+  const card = await gateCard();
+  fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
+  expect((await within(card).findByRole("alert")).textContent).toBe("gate #1 is closed already: approve by human");
+  expect(within(card).getByRole("button", { name: "Approve" })).toBeTruthy();
+});
+
+test("a closed gate is a line with its answer and comment; it opens read only, without needs", async () => {
+  serve([], undefined, [], [closed(1, "approve", { comment: "ship it" })]);
+  open();
+  const line = await gateCard();
+  const toggle = within(line).getByRole("button", { name: /Gate #1 · feature\/x · check: approve by human/ });
+  expect(line.textContent).toContain("ship it");
+  expect(within(line).queryByText("Ship it?")).toBeNull();
+  fireEvent.click(toggle);
+  expect(within(line).getByText("Ship it?")).toBeTruthy();
+  expect(within(line).getByText("built it")).toBeTruthy();
+  expect(within(line).queryByText(/Note from/)).toBeNull();
+  expect(within(line).queryByRole("textbox")).toBeNull();
+  expect(within(line).getAllByRole("button")).toHaveLength(1);
+});
+
+test.each([
+  [closed(1, "overridden", { comment: "built by hand" }), "check: overridden by human"],
+  [closed(1, "cancelled", { answered_by: "supervisor", comment: "dropped" }), "check: cancelled by supervisor"],
+])("a gate closed otherwise says how", async (one, text) => {
+  serve([], undefined, [], [one]);
+  open();
+  expect((await gateCard()).textContent).toContain(text);
+});
+
+test("gates are in time order among messages and run events, and a gate's events are no lines", async () => {
+  serve(
+    [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
+    undefined,
+    [
+      event(5, "flow", "build -done-> check", "2026-10-03T12:00:00.100Z"),
+      event(6, "gate_open", "#1 approval at check: Ship it?", "2026-10-03T12:00:00.250Z"),
+      event(7, "gate_answer", "#1 approve", "2026-10-03T12:00:03Z"),
+      event(8, "flow_end", "at end", "2026-10-03T12:00:04Z"),
+    ],
+    [gate(1, { created_at: "2026-10-03T12:00:02Z" })],
+  );
+  open();
+  const log = await chat();
+  await gateCard();
+  const order = Array.from(log.querySelectorAll(":scope > article, :scope > ol > li")).map(
+    (one) => one.getAttribute("aria-label") ?? one.textContent,
+  );
+  expect(order).toEqual([
+    "Message from you",
+    expect.stringContaining("build -done-> check"),
+    "Gate #1",
+    expect.stringContaining("at end"),
+  ]);
+});
+
+test("while a gate is open, a hint over the composer leads to its card; the composer does not answer it", async () => {
+  const { posted } = serve([], undefined, [], [closed(1, "approve"), gate(2)]);
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  open();
+  await gateCard(2);
+  const hint = screen.getByText(/Gate #2 waits/);
+  scrolled.mockClear(); // the terminal panel scrolls its tabs too
+  fireEvent.click(within(hint).getByRole("button", { name: "answer on its card" }));
+  expect(scrolled.mock.contexts).toEqual([await gateCard(2)]);
+  const field = screen.getByRole("textbox", { name: "Write to the supervisor…" });
+  fireEvent.change(field, { target: { value: "approve" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/lado/messages", body: { text: "approve" } }]));
+  stream().send("change", gateChanged(closed(2, "approve")), "11");
+  await waitFor(() => expect(screen.queryByText(/waits: answer/)).toBeNull());
+});
+
+test("in a stopped session a gate's buttons are off and say why", async () => {
+  serve([], undefined, [], [gate(1)]);
+  open("/sessions/old/activity");
+  const card = await gateCard();
+  expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(within(card).getByText("The session is stopped: resume it to answer.")).toBeTruthy();
 });

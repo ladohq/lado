@@ -7,11 +7,13 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import {
   ApiError,
   getAgents,
+  getGates,
   getMessages,
   getRunEvents,
   getSessions,
   probeStream,
   type AgentInfo,
+  type GateInfo,
   type MessageInfo,
   type RunEventInfo,
   type SessionInfo,
@@ -28,17 +30,19 @@ export type ListLoaded<T> = { items: T[] } | { error: string } | null;
 // token is wrong, the shell says how to get in and nothing is tried again.
 export type Link = "connecting" | "open" | "down" | "refused";
 
-// agents, messages, events: the lists of each session a page watches (watch), by session name.
+// agents, messages, events, gates: the lists of each session a page watches (watch), by
+// session name.
 export type LiveState = {
   sessions: Loaded;
   agents: Record<string, ListLoaded<AgentInfo>>;
   messages: Record<string, ListLoaded<MessageInfo>>; // all of them: a page picks what it shows
   events: Record<string, ListLoaded<RunEventInfo>>; // the flow runs' events
+  gates: Record<string, ListLoaded<GateInfo>>; // open and closed: a closed gate's item stays
   link: Link;
   problem: string | null;
 };
 
-type ListName = "agents" | "messages" | "events";
+type ListName = "agents" | "messages" | "events" | "gates";
 
 // How a list of a session is loaded and follows the feed: the change kind that is its, an
 // item's key (the change's), which items it keeps and in what order.
@@ -49,7 +53,12 @@ type ListKind<T> = {
   order?: (a: T, b: T) => number;
 };
 
-const LISTS: { agents: ListKind<AgentInfo>; messages: ListKind<MessageInfo>; events: ListKind<RunEventInfo> } = {
+const LISTS: {
+  agents: ListKind<AgentInfo>;
+  messages: ListKind<MessageInfo>;
+  events: ListKind<RunEventInfo>;
+  gates: ListKind<GateInfo>;
+} = {
   agents: { load: getAgents, key: (agent) => agent.name, keeps: () => true },
   messages: {
     load: getMessages,
@@ -58,6 +67,7 @@ const LISTS: { agents: ListKind<AgentInfo>; messages: ListKind<MessageInfo>; eve
     order: (a, b) => a.id - b.id,
   },
   events: { load: getRunEvents, key: (event) => String(event.id), keeps: () => true, order: (a, b) => a.id - b.id },
+  gates: { load: getGates, key: (gate) => String(gate.id), keeps: () => true, order: (a, b) => a.id - b.id },
 };
 
 export const RETRY_MS = 3000; // the pause before a new stream when the server closed one
@@ -68,6 +78,7 @@ export class Live {
     agents: {},
     messages: {},
     events: {},
+    gates: {},
     link: "connecting",
     problem: null,
   };
@@ -77,11 +88,17 @@ export class Live {
   private lastId = ""; // the latest journal id the stream sent; derived changes have none
   private loading: Change[] | null = null; // changes that came while a load runs
   // Per list, session -> pages that watch it, and the changes that came while it loads.
-  private watched: Record<ListName, Map<string, number>> = { agents: new Map(), messages: new Map(), events: new Map() };
+  private watched: Record<ListName, Map<string, number>> = {
+    agents: new Map(),
+    messages: new Map(),
+    events: new Map(),
+    gates: new Map(),
+  };
   private listLoads: Record<ListName, Map<string, Change[]>> = {
     agents: new Map(),
     messages: new Map(),
     events: new Map(),
+    gates: new Map(),
   };
 
   subscribe = (listener: () => void) => {
@@ -147,7 +164,7 @@ export class Live {
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
-  // A page that shows the session's agents, messages or run events: they load now and follow the feed until
+  // A page that shows the session's agents, messages, run events or gates: they load now and follow the feed until
   // the last page that watches them lets go (the returned function).
   watch(list: ListName, session: string): () => void {
     const watched = this.watched[list];

@@ -77,6 +77,15 @@ export type RunEventInfo = components["schemas"]["RunEventInfo"];
 // What happened to the session's flow runs, oldest first.
 export const getRunEvents = (session: string) => get<RunEventInfo[]>(`${sessionPath(session)}/events`);
 
+export type GateInfo = components["schemas"]["GateInfo"];
+
+// The session's flow gates, open and closed, oldest first.
+export const getGates = (session: string) => get<GateInfo[]>(`${sessionPath(session)}/gates`);
+
+// The human's answer to an open gate: one of its options and a comment for the next step.
+export const answerGate = (session: string, id: number, option: string, comment: string) =>
+  post<Sent>(`${sessionPath(session)}/gates/${id}/answer`, { option, comment });
+
 // The human's text to an agent of the session (default: the supervisor).
 export const writeMessage = (session: string, text: string) =>
   post<Sent>(`${sessionPath(session)}/messages`, { text });

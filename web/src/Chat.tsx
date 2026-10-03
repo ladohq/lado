@@ -1,10 +1,9 @@
 // The feed in a session's Activity tab (docs/design/ui.md, The human in the session): the
-// messages from and to the human and the agents' questions, the flow runs' events as lines,
-// and behind a switch the agents' messages to each other, live from the feed (live.ts); and
-// the composer. What the human sends shows only once the feed brings it: nothing ahead of
-// the server.
+// messages from and to the human and the agents' questions, the flow runs' gates as cards
+// and their other events as lines, and behind a switch the agents' messages to each other,
+// live from the feed (live.ts); and the composer. What the human sends shows only once the
+// feed brings it: nothing ahead of the server.
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import Markdown from "react-markdown";
 import { Link } from "react-router";
 
 import {
@@ -13,70 +12,85 @@ import {
   dismissQuestion,
   HUMAN,
   writeMessage,
+  type GateInfo,
   type MessageInfo,
   type RunEventInfo,
 } from "./api";
+import { Body, clock, Preview } from "./ChatText";
+import { Gate, gateAnchor } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { sessionPath } from "./paths";
 
-// The run events the feed shows as lines, and how it names each kind: the one list. (The
-// Gates task takes the gates out of it: their cards replace the lines.)
+// The run events the feed shows as lines, and how it names each kind: the one list. A
+// gate's events are not in it: the gate's card or line stands for them.
 export const RUN_EVENT_LINES: Record<string, string> = {
   flow_start: "started",
   flow: "moved",
   flow_set: "set by the human",
-  gate_open: "waits for you",
-  gate_answer: "answered",
   flow_end: "ended",
   flow_cancel: "cancelled",
 };
 
-const BODY_LINES = 8; // the lines of a body to the human shown before Show all
-const BODY_CHARS = 1500; // and at most these characters of them
-
 const withHuman = (message: MessageInfo) => message.from === HUMAN || message.to === HUMAN;
 
-type Entry = { at: number; message: MessageInfo } | { at: number; event: RunEventInfo };
+type Entry =
+  | { at: number; message: MessageInfo }
+  | { at: number; event: RunEventInfo }
+  | { at: number; gate: GateInfo };
 
-// The messages and the run events shown, in time order (a message before an event of the
-// same moment).
-function entries(messages: MessageInfo[], events: RunEventInfo[], agentMessages: boolean): Entry[] {
+type Loaded = { messages: MessageInfo[]; events: RunEventInfo[]; gates: GateInfo[] };
+
+// The messages, the run events and the gates shown, in time order (a message before an
+// event of the same moment); a gate where it opened.
+function entries({ messages, events, gates }: Loaded, agentMessages: boolean): Entry[] {
   const all: Entry[] = [
     ...messages
       .filter((one) => agentMessages || withHuman(one))
       .map((message) => ({ at: Date.parse(message.created_at), message })),
     ...events.filter((one) => one.kind in RUN_EVENT_LINES).map((event) => ({ at: Date.parse(event.created_at), event })),
+    ...gates.map((gate) => ({ at: Date.parse(gate.created_at), gate })),
   ];
   return all.sort((a, b) => a.at - b.at);
 }
 
-// The messages, and the run events between them, consecutive ones in one list.
-function grouped(list: Entry[]): (MessageInfo | RunEventInfo[])[] {
-  const out: (MessageInfo | RunEventInfo[])[] = [];
+// The messages and gates, and the run events between them, consecutive ones in one list.
+function grouped(list: Entry[]): (MessageInfo | GateInfo | RunEventInfo[])[] {
+  const out: (MessageInfo | GateInfo | RunEventInfo[])[] = [];
   for (const entry of list) {
     const last = out[out.length - 1];
     if ("message" in entry) out.push(entry.message);
+    else if ("gate" in entry) out.push(entry.gate);
     else if (Array.isArray(last)) last.push(entry.event);
     else out.push([entry.event]);
   }
   return out;
 }
 
-function both<A, B>(a: ListLoaded<A> | null, b: ListLoaded<B> | null): { error: string } | [A[], B[]] | null {
-  if (a && "error" in a) return a;
-  if (b && "error" in b) return b;
-  return a === null || b === null ? null : [a.items, b.items];
+// The three lists once all are loaded; the first one that failed; or null while loading.
+function all(
+  messages: ListLoaded<MessageInfo> | null,
+  events: ListLoaded<RunEventInfo> | null,
+  gates: ListLoaded<GateInfo> | null,
+): { error: string } | Loaded | null {
+  for (const one of [messages, events, gates]) if (one && "error" in one) return one;
+  if (!messages || !events || !gates || "error" in messages || "error" in events || "error" in gates) return null;
+  return { messages: messages.items, events: events.items, gates: gates.items };
 }
+
+const isGate = (one: MessageInfo | GateInfo | RunEventInfo[]): one is GateInfo => !Array.isArray(one) && "options" in one;
 
 export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
   const live = useLiveStore();
   const state = useLive();
-  const loaded = both(state.messages[session] ?? null, state.events[session] ?? null);
+  const loaded = all(state.messages[session] ?? null, state.events[session] ?? null, state.gates[session] ?? null);
   const feed = useRef<HTMLDivElement>(null);
   useEffect(() => live.watch("messages", session), [live, session]);
   useEffect(() => live.watch("events", session), [live, session]);
+  useEffect(() => live.watch("gates", session), [live, session]);
 
-  const shown = Array.isArray(loaded) ? entries(loaded[0], loaded[1], agentMessages) : [];
+  const ready = loaded !== null && !("error" in loaded);
+  const shown = ready ? entries(loaded, agentMessages) : [];
+  const waiting = ready ? loaded.gates.find((gate) => gate.answer === null) : undefined;
   useEffect(() => {
     const element = feed.current;
     if (element) element.scrollTop = element.scrollHeight; // the latest at the bottom
@@ -91,22 +105,39 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
             {loaded.error}
           </p>
         )}
-        {Array.isArray(loaded) && shown.length === 0 && (
-          <p className="empty">No messages yet. Write to the supervisor below.</p>
-        )}
-        {Array.isArray(loaded) &&
+        {ready && shown.length === 0 && <p className="empty">No messages yet. Write to the supervisor below.</p>}
+        {ready &&
           grouped(shown).map((one) =>
             Array.isArray(one) ? (
               <RunEvents key={`events-${one[0].id}`} session={session} events={one} />
+            ) : isGate(one) ? (
+              <Gate key={`gate-${one.id}`} session={session} gate={one} stopped={stopped} />
             ) : one.kind === "question" ? (
-              <Question key={one.id} session={session} question={one} answer={answerOf(one, loaded[0])} />
+              <Question key={one.id} session={session} question={one} answer={answerOf(one, loaded.messages)} />
             ) : (
               <Message key={one.id} message={one} />
             ),
           )}
       </div>
+      {waiting && <GateHint gate={waiting} />}
       <Composer session={session} stopped={stopped} />
     </section>
+  );
+}
+
+// Over the composer while a gate is open: the composer does not answer it, its card does.
+function GateHint({ gate }: { gate: GateInfo }) {
+  return (
+    <p className="gate-hint">
+      Gate #{gate.id} waits:{" "}
+      <button
+        type="button"
+        className="link-button"
+        onClick={() => document.getElementById(gateAnchor(gate.id))?.scrollIntoView({ block: "center" })}
+      >
+        answer on its card
+      </button>
+    </p>
   );
 }
 
@@ -140,51 +171,6 @@ function Meta({ message }: { message: MessageInfo }) {
       <time dateTime={message.created_at}>{clock(message.created_at)}</time>
     </header>
   );
-}
-
-function clock(iso: string): string {
-  const when = new Date(iso);
-  return Number.isNaN(when.getTime()) ? "" : when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-// The body is the agent's text: Markdown, with any HTML in it left out.
-function Body({ text }: { text: string }) {
-  return (
-    <div className="chat-body">
-      <Markdown skipHtml>{text}</Markdown>
-    </div>
-  );
-}
-
-// A body to the human, shown at once: its first lines, the rest behind Show all.
-function Preview({ text }: { text: string }) {
-  const [all, setAll] = useState(false);
-  const short = preview(text);
-  if (short === text) return <Body text={text} />;
-  return (
-    <>
-      <Body text={all ? text : short} />
-      <button type="button" className="link-button" aria-expanded={all} onClick={() => setAll(!all)}>
-        {all ? "Show less" : "Show all"}
-      </button>
-    </>
-  );
-}
-
-// The text up to its BODY_LINES-th line that is not blank, and at most BODY_CHARS of it.
-function preview(text: string): string {
-  const lines = text.split("\n");
-  let seen = 0;
-  let end = lines.length;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() && ++seen === BODY_LINES) {
-      end = i + 1;
-      break;
-    }
-  }
-  const head = lines.slice(0, end).join("\n");
-  const cut = head.length > BODY_CHARS ? `${head.slice(0, BODY_CHARS)}…` : head;
-  return cut.trimEnd() === text.trimEnd() ? text : cut;
 }
 
 function Message({ message }: { message: MessageInfo }) {

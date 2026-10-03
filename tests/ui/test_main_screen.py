@@ -69,9 +69,6 @@ def test_every_rail_item_opens_its_section(page: Page, server, shot):
             "aria-current", "page"
         )
         shot(page, name.lower().replace(" ", "-"))
-    page.goto(f"{server['url']}/gates/7")
-    expect(page.get_by_role("region", name="Gate #7")).to_be_visible()
-    shot(page, "gate")
     page.goto(f"{server['url']}/no/such/page")
     expect(page.get_by_role("banner").get_by_role("heading")).to_have_text("Not found")
     shot(page, "not-found")

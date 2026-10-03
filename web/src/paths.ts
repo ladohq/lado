@@ -12,8 +12,6 @@ export function sessionPath(name: string, tab?: Tab): string {
   return tab ? `${path}/${tab}` : path;
 }
 
-export const gatePath = (id: number) => `/gates/${id}`;
-
 // Where a placeholder's section is planned: an item of ROADMAP.md or of docs/design/ui.md.
 const REPO = "https://github.com/ladohq/lado/blob/main";
 

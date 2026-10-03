@@ -1,5 +1,5 @@
 // The sections that are placeholders for now, and Not found.
-import { Link, useParams } from "react-router";
+import { Link } from "react-router";
 
 import { PLANS } from "./paths";
 import { Placeholder } from "./Placeholder";
@@ -50,24 +50,8 @@ export function Marketplace() {
   );
 }
 
-export function Gate() {
-  const { id = "" } = useParams();
-  const valid = /^[1-9]\d*$/.test(id);
-  useTitle(valid ? `Gate #${id}` : "Not found");
-  if (!valid) return <NotFoundBody />;
-  return (
-    <Placeholder title={`Gate #${id}`} plan={PLANS.gates} toSessions>
-      The gate's question, the notes it needs, and its answers.
-    </Placeholder>
-  );
-}
-
 export function NotFound() {
   useTitle("Not found");
-  return <NotFoundBody />;
-}
-
-function NotFoundBody() {
   return (
     <div className="empty">
       <p>There is no page at this address.</p>

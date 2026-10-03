@@ -185,7 +185,7 @@ def test_a_missing_file_of_the_bundle_is_404_not_the_page(bundle, path):
     assert "bundle" not in answer.text
 
 
-@pytest.mark.parametrize("path", ["/sessions/a.b", "/sessions/my%20app.v2/flows", "/gates/x.js"])
+@pytest.mark.parametrize("path", ["/sessions/a.b", "/sessions/my%20app.v2/flows", "/sessions/x/flows/a.js"])
 def test_a_name_with_a_dot_below_the_top_is_a_page(bundle, path):
     """The bundle's files are at its top or under /assets; deeper down a dot is in a name."""
     answer = bundle.get(path)
@@ -205,7 +205,7 @@ def test_an_unknown_api_path_is_a_json_404(bundle):
 
 
 def test_the_link_with_the_token_on_any_page_redirects_to_that_page(bundle):
-    """A link from a notification (/gates/12?token=...) leads straight to the gate."""
+    """A link to a page (/sessions/x?token=...) leads straight to it."""
     answer = bundle.get(f"/sessions/x?token={auth.token()}")
     assert answer.status_code == 303
     assert answer.headers["location"] == "/sessions/x"

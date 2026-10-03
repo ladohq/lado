@@ -1,7 +1,7 @@
 // The UI's addresses (docs/design/ui.md, Structure), all inside the shell.
 import { Route, Routes } from "react-router";
 
-import { Gate, Home, Kits, Marketplace, NeedsYou, NotFound, Projects } from "./pages";
+import { Home, Kits, Marketplace, NeedsYou, NotFound, Projects } from "./pages";
 import { NoSession, Session, Sessions } from "./Sessions";
 import { Settings } from "./Settings";
 import { Shell } from "./Shell";
@@ -17,7 +17,6 @@ export function App() {
           <Route path=":name" element={<Session />} />
           <Route path=":name/:tab" element={<Session />} />
         </Route>
-        <Route path="gates/:id" element={<Gate />} />
         <Route path="projects" element={<Projects />} />
         <Route path="kits" element={<Kits />} />
         <Route path="marketplace" element={<Marketplace />} />

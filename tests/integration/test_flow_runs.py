@@ -117,20 +117,20 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     assert Path(run.worktree, ".git").exists()
 
     supervisor_runs(f"spawnrun {name}")
-    wait_status("w1", state.IDLE)
-    worker = state.get_agent(SESSION, "w1")
+    wait_status("worker", state.IDLE)
+    worker = state.get_agent(SESSION, "worker")
     assert (worker.cwd, worker.branch, worker.run) == (run.worktree, run.branch, name)
-    assert inputs("w1")[0].startswith(f"Run {name} (flow ship), step build.")
+    assert inputs("worker")[0].startswith(f"Run {name} (flow ship), step build.")
 
     Path(run.worktree, "work.txt").write_text("done\n")
     runtime.git(run.worktree, "add", "work.txt")
     runtime.git(run.worktree, "commit", "-q", "-m", "work")
 
-    runtime.send_message(SESSION, "human", "w1", f"advance {name} bogus")
-    wait_for(lambda: 'unknown outcome "bogus"' in tmux.capture(SESSION, "w1"), "the refusal")
+    runtime.send_message(SESSION, "human", "worker", f"advance {name} bogus")
+    wait_for(lambda: 'unknown outcome "bogus"' in tmux.capture(SESSION, "worker"), "the refusal")
     assert run_state(name).state == "build"
 
-    runtime.send_message(SESSION, "human", "w1", f"advance {name} done")
+    runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
     wait_for(lambda: got("supervisor", f"[from lado] flow {name}: step merge"), "the merge step")
     from_lado = [
         m.summary
@@ -148,13 +148,15 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
         f"flow {name}: step merge"
     ]
     assert run_state(name).status == state.ENDED
-    assert state.get_agent(SESSION, "w1") is None
-    wait_for(lambda: "w1" not in tmux.run("list-windows", "-t", f"={SESSION}"), "w1 closed")
+    assert state.get_agent(SESSION, "worker") is None
+    wait_for(
+        lambda: "worker" not in tmux.run("list-windows", "-t", f"={SESSION}"), "the worker closed"
+    )
     assert not Path(run.worktree).exists()
     assert runtime.git(str(repo), "branch", "--list", run.branch) == ""
     assert (repo / "work.txt").read_text() == "done\n"
     log = lado_cli("log", SESSION).stdout
-    assert f"w1: flow {name} (build -done-> merge)" in log
+    assert f"worker: flow {name} (build -done-> merge)" in log
     assert f"supervisor: flow {name} (merge -merged-> end)" in log
     assert not (state.home() / "hooks.log").exists()
 
@@ -163,21 +165,21 @@ def test_the_supervisor_hears_when_a_worker_ends_the_run(repo, flow_kit):
     # Started and spawned from outside, as `lado` or the live test does: no notices.
     name = "tiny/do-it"
     runs.start(SESSION, "tiny", "do it")
-    runs.spawn_worker(SESSION, name, name="w1")
-    wait_status("w1", state.IDLE)
+    runs.spawn_worker(SESSION, name, name="worker")
+    wait_status("worker", state.IDLE)
     run = run_state(name)
     Path(run.worktree, "work.txt").write_text("done\n")
     runtime.git(run.worktree, "add", "work.txt")
     runtime.git(run.worktree, "commit", "-q", "-m", "work")
 
-    runtime.send_message(SESSION, "human", "w1", f"advance {name} done")
-    # w1's MCP server stores the end first and tells the supervisor after its git checks.
+    runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
+    # The worker's MCP server stores the end first and tells the supervisor after its git checks.
     kept = f"[from lado] flow {name}: ended at end; kept its worktree and branch"
     wait_for(lambda: any(t.startswith(kept) for t in inputs("supervisor")), "the end told")
     assert run_state(name).status == state.ENDED
-    wait_for(lambda: "advance" in seen("w1"), "w1's result")
-    assert seen("w1")["advance"]["notices"] == []
-    assert state.get_agent(SESSION, "w1") is not None
+    wait_for(lambda: "advance" in seen("worker"), "the worker's result")
+    assert seen("worker")["advance"]["notices"] == []
+    assert state.get_agent(SESSION, "worker") is not None
 
 
 def test_a_worker_gets_a_step_far_longer_than_a_tmux_command(repo, flow_kit):
@@ -187,15 +189,15 @@ def test_a_worker_gets_a_step_far_longer_than_a_tmux_command(repo, flow_kit):
     plan = "\n".join(f"plan line {n}: " + "x" * 60 for n in range(800))  # about 60 KB
     runs.advance(SESSION, "supervisor", name, "ready", "planned", plan, notices=[])
     worker = runs.spawn_worker(SESSION, name)
-    wait_status("w1", state.IDLE)
+    wait_status("worker", state.IDLE)
     step = runs.step_text(run_state(name), runs.flow_of(run_state(name)))
     assert worker.task == step  # still the worker's task, in full
-    [first] = inputs("w1")
+    [first] = inputs("worker")
     line = r"\[from lado\] flow planned/long: step build \(#\d+, \d+ lines: call read_messages\)"
     assert re.fullmatch(line, first)
-    runtime.send_message(SESSION, "human", "w1", "read")
-    wait_for(lambda: "read" in seen("w1"), "w1 to read")
-    [got_step] = seen("w1")["read"]
+    runtime.send_message(SESSION, "human", "worker", "read")
+    wait_for(lambda: "read" in seen("worker"), "the worker to read")
+    [got_step] = seen("worker")["read"]
     assert got_step["body"] == step
 
 
@@ -220,8 +222,8 @@ def to_the_gate(name: str) -> None:
     """Start a run of "reviewed" whose worker reports its build done: the run waits."""
     supervisor_runs("flow_start reviewed check it")
     supervisor_runs(f"spawnrun {name}")
-    wait_status("w1", state.IDLE)
-    runtime.send_message(SESSION, "human", "w1", f"advance {name} done")
+    wait_status("worker", state.IDLE)
+    runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
     waiting = f"[from lado] flow {name}: waiting for the human at check (gate #1)"
     wait_for(lambda: got("supervisor", waiting), "the gate")
 
@@ -232,11 +234,11 @@ def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):
     assert "gate #1 waiting: Ship it?" in lado_cli("ls").stdout
     result = lado_cli("answer", SESSION, "1", "reject", "-m", "add a test")
     assert result.returncode == 0, result.stderr
-    assert result.stdout == f"gate #1: reject. {name}: check -> build (→ w1)\n"
-    step = [m for m in state.list_messages(SESSION) if m.recipient == "w1"][-1]
+    assert result.stdout == f"gate #1: reject. {name}: check -> build (→ worker)\n"
+    step = [m for m in state.list_messages(SESSION) if m.recipient == "worker"][-1]
     assert step.summary == f"flow {name}: step build"
     assert "Note from the previous step: rejected: add a test" in step.body
-    wait_for(lambda: got("w1", f"[from lado] flow {name}: step build"), "the step")
+    wait_for(lambda: got("worker", f"[from lado] flow {name}: step build"), "the step")
     told = f"[from lado] flow {name}: human answered reject at check"
     wait_for(lambda: got("supervisor", told), "the supervisor told")
     log = lado_cli("log", SESSION).stdout
@@ -253,9 +255,9 @@ def test_a_step_gets_the_note_it_needs_after_a_gate_and_after_flow_set(repo, flo
     result = lado_cli("answer", SESSION, "1", "approve", "-m", "go")
     assert result.returncode == 0, result.stderr
     supervisor_runs(f"spawnrun {name}")
-    wait_status("w1", state.IDLE)
+    wait_status("worker", state.IDLE)
     design = "Note from design: the design\nuse a form\nno captcha"
-    [first] = inputs("w1")
+    [first] = inputs("worker")
     assert first.startswith(f"Run {name} (flow designed), step build.")
     assert design in first
     assert "Note from the previous step: approved: go" in first
@@ -263,8 +265,8 @@ def test_a_step_gets_the_note_it_needs_after_a_gate_and_after_flow_set(repo, flo
     # Set back to build by the human: the previous note is the reason, the design stays.
     result = lado_cli("flow-set", SESSION, name, "build", "--reason", "once more")
     assert result.returncode == 0, result.stderr
-    wait_for(lambda: got("w1", f"[from lado] flow {name}: step build"), "the step again")
-    step = [m for m in state.list_messages(SESSION) if m.recipient == "w1"][-1]
+    wait_for(lambda: got("worker", f"[from lado] flow {name}: step build"), "the step again")
+    step = [m for m in state.list_messages(SESSION) if m.recipient == "worker"][-1]
     assert design in step.body
     assert "Note from the previous step: set by the human: once more" in step.body
 
@@ -273,7 +275,7 @@ def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
     ship, gated = "ship/add-a-file", "gated/check-it"
     supervisor_runs("flow_start ship add a file")
     supervisor_runs(f"spawnrun {ship}")
-    wait_status("w1", state.IDLE)
+    wait_status("worker", state.IDLE)
     run = run_state(ship)
     Path(run.worktree, "work.txt").write_text("done\n")
     runtime.git(run.worktree, "add", "work.txt")
@@ -301,12 +303,12 @@ def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
 
     # A new worker takes over the run's worktree and branch, with the earlier commit.
     supervisor_runs(f"spawnrun {ship}")
-    wait_status("w1", state.IDLE)
-    worker = state.get_agent(SESSION, "w1")
+    wait_status("worker", state.IDLE)
+    worker = state.get_agent(SESSION, "worker")
     assert (worker.cwd, worker.branch) == (run.worktree, run.branch)
     assert "work before the stop" in runtime.git(worker.cwd, "log", "--format=%s")
-    assert inputs("w1")[-1].startswith(f"Run {ship} (flow ship), step build.")
-    runtime.send_message(SESSION, "human", "w1", f"advance {ship} done")
+    assert inputs("worker")[-1].startswith(f"Run {ship} (flow ship), step build.")
+    runtime.send_message(SESSION, "human", "worker", f"advance {ship} done")
     wait_for(lambda: got("supervisor", f"[from lado] flow {ship}: step merge"), "the merge step")
 
     # The gate opened before the stop is answered after it.
@@ -324,7 +326,7 @@ def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):
     attach = ["env", "-u", "TMUX", *tmux.attach_argv(SESSION)]
     tmux.new_session("viewer", "v", str(repo), {}, attach)
     wait_for(lambda: tmux.run("list-clients", "-t", f"={SESSION}").strip(), "the client")
-    # The gate opens in w1's MCP server process; it opens the popup.
+    # The gate opens in the worker's MCP server process; it opens the popup.
     to_the_gate(name)
     wait_for(lambda: "1) approve" in tmux.capture("viewer", "v"), "the popup")
     assert "Ship it?" in tmux.capture("viewer", "v")
@@ -335,4 +337,4 @@ def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):
     assert (gate.answer, gate.answered_by) == ("approve", "human")
     # The popup closes when no gate is left.
     wait_for(lambda: "1) approve" not in tmux.capture("viewer", "v"), "the popup closed")
-    assert all(text.strip() != "1" for text in inputs("w1") + inputs("supervisor"))
+    assert all(text.strip() != "1" for text in inputs("worker") + inputs("supervisor"))

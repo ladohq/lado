@@ -284,7 +284,7 @@ def spawn_worker(
     # A worker of a stopped launch of the session may have left its branch.
     branches = git(sess.repo, "branch", "--list", "--format=%(refname:short)", f"lado/{session}/*")
     kept = {b.rsplit("/", 1)[1] for b in branches.split()}
-    worker = slug(name) if name else _next_name(taken | kept)
+    worker = slug(name) if name else _next_name(role_def.name, taken | kept)
     if worker in state.RESERVED:
         raise LadoError(f'the name "{worker}" is reserved for LADO\'s messages; choose another')
     if worker in taken:
@@ -951,11 +951,16 @@ def _env(agent: state.Agent, launch: providers.Launch) -> dict[str, str]:
     return {**providers.agent_env(agent), **launch.env}
 
 
-def _next_name(taken: set[str]) -> str:
-    n = 1
-    while f"w{n}" in taken:
+def _next_name(role: str, taken: set[str]) -> str:
+    """A worker's default name: its role, made valid like a given name, or `<role>-2`,
+    `<role>-3`… when taken. Reserved names and the supervisor's are never chosen."""
+    base = slug(role)
+    taken = taken | state.RESERVED | {SUPERVISOR}
+    name, n = base, 1
+    while name in taken:
         n += 1
-    return f"w{n}"
+        name = f"{base}-{n}"
+    return name
 
 
 def exclude_worktrees(repo: str) -> None:

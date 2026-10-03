@@ -68,17 +68,34 @@ def test_start_requires_git_repo(tmp_path, fake_tmux):
 def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     worker = runtime.spawn_worker("s", "fix the bug;")
-    assert (worker.name, worker.branch) == ("w1", "lado/s/w1")
-    assert (repo / ".lado/worktrees/s/w1/.git").exists()
+    assert (worker.name, worker.branch) == ("worker", "lado/s/worker")
+    assert (repo / ".lado/worktrees/s/worker/.git").exists()
     kind, _, window, cwd, _, cmd = fake_tmux[-1]
-    assert (kind, window, cwd) == ("new_window", "w1", worker.cwd)
+    assert (kind, window, cwd) == ("new_window", "worker", worker.cwd)
     assert cmd[-2] == "--"
     assert cmd[-1].startswith("fix the bug;") and "send_message" in cmd[-1]
     status = subprocess.run(
         ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True
     )
     assert status.stdout == ""  # .lado/ is excluded
-    assert runtime.spawn_worker("s", "another").name == "w2"
+    assert runtime.spawn_worker("s", "another").name == "worker-2"
+    assert runtime.spawn_worker("s", "named", name="w1").name == "w1"  # a given name wins
+    assert runtime.spawn_worker("s", "third").name == "worker-3"
+
+
+@pytest.mark.parametrize(
+    ("role", "taken", "expected"),
+    [
+        ("developer", set(), "developer"),
+        ("developer", {"developer", "developer-2"}, "developer-3"),
+        ("Code Reviewer", set(), "code-reviewer"),  # made valid like a given name
+        ("lado", set(), "lado-2"),
+        ("human", set(), "human-2"),
+        ("supervisor", set(), "supervisor-2"),
+    ],
+)
+def test_default_worker_name_is_the_first_free_one_of_its_role(role, taken, expected):
+    assert runtime._next_name(role, taken) == expected
 
 
 def test_worker_is_told_a_text_report_is_lost(repo, fake_tmux):
@@ -135,7 +152,7 @@ def _hook(event, agent, payload=None, mcp_ready=True):
 
 def _session_with_worker(repo):
     runtime.start_session(str(repo), "s", None)
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
 
 
 def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
@@ -691,6 +708,7 @@ def _launched_with(cmd):
 
 def test_start_resumes_a_stopped_session(repo, fake_tmux):
     _session_with_worker(repo)
+    runtime.spawn_worker("s", "task")  # "worker"
     runtime.stop_session("s")
     started = runtime.start_session(str(repo), "s", None)
     assert (started.resumed, started.changes, started.problems) == (True, [], [])
@@ -704,8 +722,8 @@ def test_start_resumes_a_stopped_session(repo, fake_tmux):
     )
     kinds = [e.kind for e in state.list_events("s")]
     assert kinds[-2:] == [state.SESSION_RESUME, state.SPAWNED]
-    # w1's branch is still there: the next worker gets another name.
-    assert runtime.spawn_worker("s", "task").name == "w2"
+    # The branch of "worker" is still there: the next worker gets another name.
+    assert runtime.spawn_worker("s", "task").name == "worker-2"
 
 
 def test_start_resumes_a_session_whose_tmux_server_is_gone(repo, fake_tmux):
@@ -736,13 +754,13 @@ def test_a_failed_spawn_leaves_no_ghost_worker(repo, fake_tmux, monkeypatch, fai
             runtime.spawn_worker("s", "a task that is long")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
     assert [m.state for m in state.list_messages("s")] == [state.DROPPED]
-    assert not (state.home() / "agents" / "s" / "w1").exists()
+    assert not (state.home() / "agents" / "s" / "worker").exists()
     assert runtime.session_worktrees(str(repo), "s") == {}
     assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
     last = state.list_events("s")[-1]
-    assert (last.agent, last.kind) == ("w1", state.FINISHED)
+    assert (last.agent, last.kind) == ("worker", state.FINISHED)
     assert last.detail.startswith("not started: command too long")
-    assert runtime.spawn_worker("s", "a task that is long").name == "w1"
+    assert runtime.spawn_worker("s", "a task that is long").name == "worker"
 
 
 def test_a_failed_start_leaves_no_session(repo, fake_tmux, monkeypatch):
@@ -898,7 +916,7 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
     cmd = fake_tmux[-1][5]
     prompt = cmd[cmd.index("--append-system-prompt") + 1]
     assert prompt.startswith(f"You review. Notes are in {team_kit.resolve()}/notes.")
-    assert 'You are worker "w1" in LADO session "s"' in prompt
+    assert 'You are worker "reviewer" in LADO session "s"' in prompt
     added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
     assert sorted(p.name for p in added.iterdir()) == ["checklist"]
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
@@ -979,7 +997,7 @@ def test_start_and_spawn_record_spawned_events(repo, fake_tmux):
     runtime.spawn_worker("s", "task", provider="claude")
     assert [(e.agent, e.kind, e.detail) for e in state.list_events("s")] == [
         ("supervisor", "spawned", "role supervisor, provider kilo"),
-        ("w1", "spawned", "role worker, provider claude"),
+        ("worker", "spawned", "role worker, provider claude"),
     ]
 
 
@@ -1007,6 +1025,14 @@ def test_finish_worker_removes_a_merged_worker(repo, fake_tmux):
     last = state.list_events("s")[-1]
     assert (last.agent, last.kind, last.detail) == ("w1", "finished", "merged")
     assert runtime.spawn_worker("s", "again", name="w1").branch == "lado/s/w1"
+
+
+def test_a_finished_workers_name_is_the_default_again(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    worker = runtime.spawn_worker("s", "task")
+    assert runtime.spawn_worker("s", "at the same time").name == "worker-2"
+    runtime.finish_worker("s", worker.name)  # nothing to merge
+    assert runtime.spawn_worker("s", "again").name == "worker"
 
 
 def test_finish_worker_refuses_unknown_session_agent_and_supervisor(repo, fake_tmux):

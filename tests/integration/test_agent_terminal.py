@@ -108,7 +108,7 @@ def test_control_types_into_the_agent(repo, opened):
 
 def test_a_viewer_has_only_the_agents_window_and_no_tmux_keys(repo, opened):
     start(repo)
-    runtime.spawn_worker(SESSION, "sleep 0")
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_for(lambda: state.get_agent(SESSION, "w1").status == state.IDLE, "w1 idle")
     keys_before = tmux.run("list-keys")
     term = opened("supervisor", "control")
@@ -130,7 +130,7 @@ def test_a_viewer_has_only_the_agents_window_and_no_tmux_keys(repo, opened):
 
 def test_the_humans_tmux_session_is_left_as_it_was(repo, opened):
     start(repo)
-    runtime.spawn_worker(SESSION, "sleep 0")
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_for(lambda: state.get_agent(SESSION, "w1").status == state.IDLE, "w1 idle")
     before = (
         tmux.run("show-options", "-t", f"={SESSION}:"),
@@ -203,7 +203,7 @@ def test_closing_a_terminal_leaves_no_viewer_and_no_client(repo, opened):
 
 def test_stop_ends_open_terminals_and_leaves_no_window_viewer_or_agent(repo, opened):
     start(repo)
-    runtime.spawn_worker(SESSION, "sleep 0")
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_for(lambda: state.get_agent(SESSION, "w1").status == state.IDLE, "w1 idle")
     pids = [int(pane(f"={SESSION}:={w}", "#{pane_pid}")) for w in ("supervisor", "w1")]
     terms = [opened("supervisor", "control"), opened("w1", "view")]
@@ -238,7 +238,7 @@ def test_a_start_after_the_tmux_session_is_gone_ends_the_viewers_keeping_its_age
 
 def test_finishing_a_worker_ends_its_terminal(repo, opened):
     start(repo)
-    runtime.spawn_worker(SESSION, "sleep 0")
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_for(lambda: state.get_agent(SESSION, "w1").status == state.IDLE, "w1 idle")
     term = opened("w1", "view")
     runtime.finish_worker(SESSION, "w1", discard=True)

@@ -14,7 +14,7 @@ def _tools(session, agent):
 
 def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     supervisor_tools = [
         "ask_human",
         "finish_worker",
@@ -48,7 +48,7 @@ def test_listing_the_tools_records_that_the_server_is_ready(repo, fake_tmux):
 
 def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     with state.connect() as db:
         db.execute(
             "UPDATE events SET created_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-90 seconds')"
@@ -64,7 +64,7 @@ def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake
 
 def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
     at = state.list_messages("s")[0].sent_at
@@ -80,7 +80,7 @@ def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tm
 
 def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     worker = mcp_server.build("s", "w1")
     report = {"to": "supervisor", "summary": "DONE: x added", "body": "Files: x.py\nChecks: ok"}
     asyncio.run(worker.call_tool("send_message", report))
@@ -101,7 +101,7 @@ def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
 
 def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    worker = runtime.spawn_worker("s", "task")
+    worker = runtime.spawn_worker("s", "task", name="w1")
     server = mcp_server.build("s", "supervisor")
     result = asyncio.run(server.call_tool("finish_worker", {"name": "w1", "discard": True}))
     assert json.loads(result.content[0].text) == {
@@ -172,7 +172,7 @@ def test_spawn_worker_takes_a_provider(repo, fake_tmux):
     asyncio.run(server.call_tool("spawn_worker", {"task": "t", "provider": "kilo"}))
     agents = asyncio.run(server.call_tool("list_agents", {}))
     assert "kilo" in str(agents)
-    assert state.get_agent("s", "w1").provider == "kilo"
+    assert state.get_agent("s", "worker").provider == "kilo"
 
 
 SHIP = """\
@@ -204,17 +204,18 @@ def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux)
     [run] = _call("s", "supervisor", "flow_status", {"run": "ship/x"})
     worker = _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
     assert (worker["run"], worker["worktree"]) == ("ship/x", run["worktree"])
-    [agent] = [a for a in _call("s", "supervisor", "list_agents") if a["name"] == "w1"]
+    assert worker["name"] == "worker"  # named after its role
+    [agent] = [a for a in _call("s", "supervisor", "list_agents") if a["name"] == "worker"]
     assert agent["run"] == "ship/x"
     with pytest.raises(ToolError, match='unknown outcome "ok" for step build; valid: done'):
-        _call("s", "w1", "flow_advance", {"run": "ship/x", "outcome": "ok"})
+        _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "ok"})
     args = {"run": "ship/x", "outcome": "done", "note_summary": "built", "note_body": "x.py"}
-    after = _call("s", "w1", "flow_advance", args)
+    after = _call("s", "worker", "flow_advance", args)
     assert (after["state"], after["acting"], after["note"]) == ("merge", "supervisor", "built")
-    [status] = _call("s", "w1", "flow_status")
+    [status] = _call("s", "worker", "flow_status")
     assert status["outcomes"] == {"merged": "end"}
     cancelled = _call("s", "supervisor", "flow_cancel", {"run": "ship/x", "reason": "stop"})
-    assert cancelled["finished_workers"] == ["w1"]
+    assert cancelled["finished_workers"] == ["worker"]
     assert cancelled["kept"] == {"worktree": run["worktree"], "branch": run["branch"]}
 
 
@@ -239,10 +240,10 @@ def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, f
     assert state.get_run("s", "ship/x").language == "ru"
     assert [m for m in state.list_messages("s") if m.recipient == "supervisor"] == []
     _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
-    after = _call("s", "w1", "flow_advance", {"run": "ship/x", "outcome": "done"})
+    after = _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "done"})
     assert set(after) == SHORT | {"language", "notices"}
     assert after["notices"] == []  # the worker's advance: the supervisor gets a message
-    [status] = _call("s", "w1", "flow_status")
+    [status] = _call("s", "worker", "flow_status")
     assert set(status) == SHORT | {"language"}
     [detail] = _call("s", "supervisor", "flow_status", {"run": "ship/x"})
     assert detail["task"] == task.strip()
@@ -260,9 +261,9 @@ def test_no_agent_can_answer_a_gate(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, kit_names=["k"])
     _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
     _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
-    waiting = _call("s", "w1", "flow_advance", {"run": "ship/x", "outcome": "done"})
+    waiting = _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "done"})
     assert waiting["gate"] == {"id": 1, "question": "Go?", "options": ["approve", "reject"]}
-    for agent in ("w1", "supervisor"):
+    for agent in ("worker", "supervisor"):
         with pytest.raises(ToolError, match=r"waits for the human \(gate #1\): answer with lado"):
             _call("s", agent, "flow_advance", {"run": "ship/x", "outcome": "approved"})
     assert state.open_gate("s", "ship/x").id == 1
@@ -285,7 +286,7 @@ def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
     server = mcp_server.build("s", "supervisor")
     args = {"task": "t", "role": "rev", "without": ["skill:s"]}
     asyncio.run(server.call_tool("spawn_worker", args))
-    assert state.get_agent("s", "w1").role == "rev"
+    assert state.get_agent("s", "rev").role == "rev"
     cmd = fake_tmux[-1][5]
     assert "--add-dir" not in cmd
     assert "role" in str(asyncio.run(server.call_tool("list_agents", {})))
@@ -293,7 +294,7 @@ def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
 
 def test_an_agent_writes_to_and_asks_the_human(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     sent = _call("s", "w1", "send_message", {"to": "human", "summary": "a milestone"})
     assert sent == runtime.TO_HUMAN
     asked = _call(

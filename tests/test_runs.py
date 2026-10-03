@@ -106,10 +106,10 @@ def test_a_supervisor_step_is_sent_to_the_supervisor(session):
 def test_every_step_asks_for_notes_in_the_humans_language(session):
     runs.start(session, "feature", "Add a login page", name="login", language="ru")
     runs.advance(session, "supervisor", "feature/login", "ready", "agreed")
-    runs.spawn_worker(session, "feature/login")  # w1, developer
+    runs.spawn_worker(session, "feature/login")
     asked = "Write note_summary and note_body in ru: the human reads them at gates."
     assert asked in messages("supervisor")[0].body
-    assert asked in state.get_agent(session, "w1").task
+    assert asked in state.get_agent(session, "developer").task
     runs.start(session, "feature", "Other", name="other")
     assert "note_summary and note_body in" not in messages("supervisor")[-1].body
 
@@ -177,9 +177,9 @@ def test_the_supervisor_gets_what_its_own_start_caused_as_notices(session, team)
 
 def test_what_a_worker_caused_still_goes_to_the_supervisor(session):
     to_implement(session)
-    runs.spawn_worker(session, "feature/login")  # w1, developer
+    runs.spawn_worker(session, "feature/login")
     notices = []
-    runs.advance(session, "w1", "feature/login", "done", "built", notices=notices)
+    runs.advance(session, "developer", "feature/login", "done", "built", notices=notices)
     assert notices == []
     assert messages("supervisor")[-1].summary == "flow feature/login: step review needs a reviewer"
 
@@ -191,14 +191,14 @@ def test_a_worker_spawned_for_the_step_drops_the_pending_request_for_it(session)
     to_implement(session)
     runs.start(session, "feature", "other", name="other")
     runs.advance(session, "supervisor", "feature/other", "ready")  # needs a developer too
-    runs.spawn_worker(session, "feature/login")  # w1, developer
+    runs.spawn_worker(session, "feature/login")
     assert asks() == [
         ("flow feature/login: step implement needs a developer", state.DROPPED),
         ("flow feature/other: step implement needs a developer", state.PENDING),
     ]
-    runs.advance(session, "w1", "feature/login", "done", "built")
+    runs.advance(session, "developer", "feature/login", "done", "built")
     assert asks()[-1] == ("flow feature/login: step review needs a reviewer", state.PENDING)
-    runs.spawn_worker(session, "feature/login")  # w2, reviewer
+    runs.spawn_worker(session, "feature/login")
     assert asks()[-1] == ("flow feature/login: step review needs a reviewer", state.DROPPED)
     assert asks()[1][1] == state.PENDING
 
@@ -217,7 +217,7 @@ def test_a_worker_for_a_run_works_in_its_worktree_and_gets_the_step(session, fak
     assert "Build it." in first
     assert "Note from design (also the previous step's note): design agreed\na\nb" in first
     assert "- done -> review" in first
-    assert runs.acting(state.get_run(session, "feature/login")) == "w1"
+    assert runs.acting(state.get_run(session, "feature/login")) == "developer"
     # The step has its worker now: another one needs a task of its own.
     with pytest.raises(runtime.LadoError, match="has no step for a developer now"):
         runs.spawn_worker(session, "feature/login", role="developer")
@@ -238,10 +238,10 @@ def test_a_failed_spawn_for_a_run_leaves_no_ghost_worker(session, fake_tmux, mon
     fail_launch(monkeypatch)
     with pytest.raises(tmux.TmuxError, match="command too long"):
         runs.spawn_worker(session, "feature/login")
-    assert state.get_agent(session, "w1") is None
+    assert state.get_agent(session, "developer") is None
     assert runs.acting(state.get_run(session, "feature/login")) == "developer (not spawned)"
-    assert [m.state for m in messages("w1")] == [state.DROPPED]
-    assert not (state.home() / "agents" / session / "w1").exists()
+    assert [m.state for m in messages("developer")] == [state.DROPPED]
+    assert not (state.home() / "agents" / session / "developer").exists()
     # The request for a developer still waits for the supervisor.
     ask = messages("supervisor")[-1]
     assert (ask.summary, ask.state) == (
@@ -250,21 +250,21 @@ def test_a_failed_spawn_for_a_run_leaves_no_ghost_worker(session, fake_tmux, mon
     )
     monkeypatch.setattr(tmux, "new_window", lambda *a: fake_tmux.append(("new_window", *a)))
     worker = runs.spawn_worker(session, "feature/login")
-    assert (worker.name, worker.role) == ("w1", "developer")
-    assert runs.acting(state.get_run(session, "feature/login")) == "w1"
+    assert (worker.name, worker.role) == ("developer", "developer")
+    assert runs.acting(state.get_run(session, "feature/login")) == "developer"
 
 
 def advance_to_review(session):
     to_implement(session)
-    runs.spawn_worker(session, "feature/login")  # w1, developer
+    runs.spawn_worker(session, "feature/login")
     runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait for the review.")
-    return runs.advance(session, "w1", "feature/login", "done", "built")
+    return runs.advance(session, "developer", "feature/login", "done", "built")
 
 
 def test_a_step_gets_the_latest_notes_of_the_states_it_needs(session):
     advance_to_review(session)
-    runs.advance(session, "w2", "feature/login", "changes", "fix the form")
-    step = messages("w1")[-1].body
+    runs.advance(session, "reviewer", "feature/login", "changes", "fix the form")
+    step = messages("developer")[-1].body
     needed = "Note from design: design agreed\na\nb"
     assert needed in step
     # After the task and the step, before the previous step's note.
@@ -274,8 +274,8 @@ def test_a_step_gets_the_latest_notes_of_the_states_it_needs(session):
 
 def test_a_needed_note_that_is_the_previous_steps_note_comes_once(session):
     to_implement(session)
-    runs.spawn_worker(session, "feature/login")  # w1, developer
-    step = state.get_agent(session, "w1").task
+    runs.spawn_worker(session, "feature/login")
+    step = state.get_agent(session, "developer").task
     assert step.count("design agreed") == 1
     assert "Note from design (also the previous step's note): design agreed\na\nb" in step
     assert "Note from the previous step" not in step
@@ -284,8 +284,8 @@ def test_a_needed_note_that_is_the_previous_steps_note_comes_once(session):
 def test_a_needed_note_with_the_same_text_as_the_previous_note_is_another_note(session):
     advance_to_review(session)
     # The reviewer's note has the design note's text, but it is a note of its own.
-    runs.advance(session, "w2", "feature/login", "changes", "design agreed", "a\nb")
-    step = messages("w1")[-1].body
+    runs.advance(session, "reviewer", "feature/login", "changes", "design agreed", "a\nb")
+    step = messages("developer")[-1].body
     assert "Note from design: design agreed\na\nb" in step
     assert "Note from the previous step: design agreed\na\nb" in step
 
@@ -294,7 +294,7 @@ def test_a_needed_state_with_no_note_yet_is_named(session):
     runs.start(session, "feature", "Add a login page", name="login")
     runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait for the review.")
     runs.force(session, "feature/login", "review", "the code is there already")
-    step = messages("w1")[-1]
+    step = messages("reviewer")[-1]
     assert step.summary == "flow feature/login: step review"
     assert "Note from implement: no note yet" in step.body
 
@@ -302,7 +302,7 @@ def test_a_needed_state_with_no_note_yet_is_named(session):
 def test_flow_set_keeps_the_notes_a_step_needs(session):
     advance_to_review(session)
     runs.force(session, "feature/login", "implement", "rework the form")
-    step = messages("w1")[-1]
+    step = messages("developer")[-1]
     assert step.summary == "flow feature/login: step implement"
     assert "Note from design: design agreed\na\nb" in step.body
     assert "Note from the previous step: set by the human: rework the form" in step.body
@@ -310,10 +310,10 @@ def test_flow_set_keeps_the_notes_a_step_needs(session):
 
 def test_flow_set_from_a_needed_state_keeps_its_report(session):
     advance_to_review(session)  # implement reported "built"
-    runs.advance(session, "w2", "feature/login", "changes", "fix the form")
-    # The run is at implement again; the human skips it before w1 reports.
+    runs.advance(session, "reviewer", "feature/login", "changes", "fix the form")
+    # The run is at implement again; the human skips it before the developer reports.
     runs.force(session, "feature/login", "review", "the form is fine")
-    step = messages("w2")[-1]
+    step = messages("reviewer")[-1]
     assert step.summary == "flow feature/login: step review"
     assert "Note from implement: built" in step.body
     assert "Note from the previous step: set by the human: the form is fine" in step.body
@@ -321,20 +321,20 @@ def test_flow_set_from_a_needed_state_keeps_its_report(session):
 
 def test_a_loop_limit_answer_or_flow_set_keeps_the_states_report(session):
     advance_to_review(session)
-    runs.advance(session, "w2", "feature/login", "again", "first look")
-    runs.advance(session, "w2", "feature/login", "again", "second look")
+    runs.advance(session, "reviewer", "feature/login", "again", "first look")
+    runs.advance(session, "reviewer", "feature/login", "again", "second look")
     [gate] = state.open_gates(session)
     runs.answer(session, str(gate.id), "continue", "one more")
     assert state.latest_notes(session, "feature/login")["review"].summary == "second look"
-    runs.advance(session, "w2", "feature/login", "again", "third look")
+    runs.advance(session, "reviewer", "feature/login", "again", "third look")
     runs.force(session, "feature/login", "implement", "enough looking")  # from the loop gate
     assert state.latest_notes(session, "feature/login")["review"].summary == "third look"
 
 
 def test_a_loop_limit_shows_no_needed_notes(session):
     advance_to_review(session)
-    runs.advance(session, "w2", "feature/login", "again", "first look")
-    runs.advance(session, "w2", "feature/login", "again", "second look")
+    runs.advance(session, "reviewer", "feature/login", "again", "first look")
+    runs.advance(session, "reviewer", "feature/login", "again", "second look")
     [gate] = state.open_gates(session)
     assert gate.kind == runs.LOOP  # kept out of review, which needs implement
     assert runs.gate_notes(gate) == []
@@ -347,7 +347,7 @@ def test_a_gate_answer_is_kept_as_the_gates_note(session):
     notes = state.latest_notes(session, "feature/login")
     assert notes["gated"].summary == "rejected: the form is too big"
     assert notes["merge"].summary == "ready to ship"
-    step = messages("w1")[-1]
+    step = messages("developer")[-1]
     assert step.summary == "flow feature/login: step implement"
     assert "Note from design: design agreed\na\nb" in step.body
 
@@ -355,7 +355,7 @@ def test_a_gate_answer_is_kept_as_the_gates_note(session):
 def test_a_worker_step_goes_to_the_next_worker_only(session):
     run = advance_to_review(session)
     assert run.state == "review"
-    [step] = messages("w2")
+    [step] = messages("reviewer")
     assert (step.sender, step.summary) == ("lado", "flow feature/login: step review")
     assert "Note from implement (also the previous step's note): built" in step.body
     assert [m.summary for m in messages("supervisor")] == [
@@ -367,9 +367,13 @@ def test_a_worker_step_goes_to_the_next_worker_only(session):
 @pytest.mark.parametrize(
     ("caller", "outcome", "error"),
     [
-        ("w1", "approved", 'step review of run "feature/login" is for the run\'s reviewer'),
+        ("developer", "approved", 'step review of run "feature/login" is for the run\'s reviewer'),
         ("supervisor", "approved", "is for the run's reviewer"),
-        ("w2", "lgtm", 'unknown outcome "lgtm" for step review; valid: approved, changes, again'),
+        (
+            "reviewer",
+            "lgtm",
+            'unknown outcome "lgtm" for step review; valid: approved, changes, again',
+        ),
     ],
 )
 def test_advance_refuses_other_agents_and_unknown_outcomes(session, caller, outcome, error):
@@ -383,33 +387,33 @@ def test_a_supervisor_step_is_only_for_the_supervisor(session):
     runs.start(session, "feature", "x", name="login")
     runtime.spawn_worker(session, "task")
     with pytest.raises(runtime.LadoError, match="is for the supervisor"):
-        runs.advance(session, "w1", "feature/login", "ready")
+        runs.advance(session, "developer", "feature/login", "ready")
 
 
 def test_an_error_after_the_transition_says_the_run_moved_on(session):
     to_implement(session)
-    runs.spawn_worker(session, "feature/login")  # w1, developer
-    runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait.")  # w2
-    state.set_status(session, "w2", state.STOPPED)
+    runs.spawn_worker(session, "feature/login")
+    runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait.")
+    state.set_status(session, "reviewer", state.STOPPED)
     with pytest.raises(runtime.LadoError) as error:
-        runs.advance(session, "w1", "feature/login", "done")
+        runs.advance(session, "developer", "feature/login", "done")
     assert str(error.value).startswith(
-        'run "feature/login" moved on to review (active), but: no running agent "w2"'
+        'run "feature/login" moved on to review (active), but: no running agent "reviewer"'
     )
     assert state.get_run(session, "feature/login").state == "review"
 
 
 def test_a_self_loop_enters_the_state_again(session):
     advance_to_review(session)
-    run = runs.advance(session, "w2", "feature/login", "again")
+    run = runs.advance(session, "reviewer", "feature/login", "again")
     assert (run.state, run.visits["review"]) == ("review", 2)
-    assert len(messages("w2")) == 2
+    assert len(messages("reviewer")) == 2
 
 
 def test_max_visits_stops_the_run_for_the_human(session):
     advance_to_review(session)
-    runs.advance(session, "w2", "feature/login", "again")
-    run = runs.advance(session, "w2", "feature/login", "again")
+    runs.advance(session, "reviewer", "feature/login", "again")
+    run = runs.advance(session, "reviewer", "feature/login", "again")
     assert (run.state, run.status, run.reason) == (
         "review",
         state.WAITING,
@@ -432,7 +436,7 @@ def test_max_visits_stops_the_run_for_the_human(session):
         f'run "feature/login" waits for the human \\(gate #{gate.id}\\): answer with lado answer'
     )
     with pytest.raises(runtime.LadoError, match=error):
-        runs.advance(session, "w2", "feature/login", "approved")
+        runs.advance(session, "reviewer", "feature/login", "approved")
 
 
 def test_the_human_moves_a_run_past_a_stop(session):
@@ -449,7 +453,7 @@ def test_the_human_moves_a_run_past_a_stop(session):
         state.ACTIVE,
         "set by the human: rework the form",
     )
-    assert messages("w1")[-1].summary == "flow feature/login: step implement"
+    assert messages("developer")[-1].summary == "flow feature/login: step implement"
     forced = [e for e in state.list_events(session) if e.kind == state.FLOW_SET]
     assert [(e.agent, e.detail) for e in forced] == [
         ("human", "review -> gated: try the gate"),
@@ -511,7 +515,7 @@ def test_rejecting_sends_the_answer_and_the_earlier_note_to_the_next_step(sessio
         "rejected: the form is too big",
     )
     assert run.note_body == "Note before the gate: ready to ship\na\nb"
-    step = messages("w1")[-1]
+    step = messages("developer")[-1]
     assert step.summary == "flow feature/login: step implement"
     assert "Note from the previous step: rejected: the form is too big" in step.body
     # The step went to a worker: the supervisor hears what the human answered.
@@ -566,8 +570,8 @@ def test_a_choice_gate_offers_its_outcomes(session, team):
 
 def to_loop_limit(session):
     advance_to_review(session)
-    runs.advance(session, "w2", "feature/login", "again")
-    return runs.advance(session, "w2", "feature/login", "again", "still red")
+    runs.advance(session, "reviewer", "feature/login", "again")
+    return runs.advance(session, "reviewer", "feature/login", "again", "still red")
 
 
 def test_continue_at_a_loop_limit_enters_the_state_anyway(session):
@@ -580,10 +584,10 @@ def test_continue_at_a_loop_limit_enters_the_state_anyway(session):
         "continue: one more try",
         "Note before the gate: still red",
     )
-    assert messages("w2")[-1].summary == "flow feature/login: step review"
+    assert messages("reviewer")[-1].summary == "flow feature/login: step review"
     assert state.list_events(session)[-1].detail == "review -continue-> review"
     # The limit stops it again next time.
-    run = runs.advance(session, "w2", "feature/login", "again")
+    run = runs.advance(session, "reviewer", "feature/login", "again")
     assert run.status == state.WAITING
 
 
@@ -657,7 +661,7 @@ def test_cancelling_a_waiting_run_closes_its_gate(session):
 
 def to_merge(session):
     advance_to_review(session)
-    return runs.advance(session, "w2", "feature/login", "approved")
+    return runs.advance(session, "reviewer", "feature/login", "approved")
 
 
 def commit(run, name="login.txt"):
@@ -674,7 +678,7 @@ def test_end_finishes_the_workers_and_removes_a_merged_worktree(session, repo, f
     run = runs.advance(session, "supervisor", "feature/login", "merged")
     assert (run.state, run.status) == ("done", state.ENDED)
     assert [a.name for a in state.list_agents(session)] == ["supervisor"]
-    assert ("kill_window", session, "w1") in fake_tmux
+    assert ("kill_window", session, "developer") in fake_tmux
     assert not Path(run.worktree).exists()
     assert runtime.git(str(repo), "branch", "--list", run.branch) == ""
     assert messages("supervisor")[-1].summary == (
@@ -701,9 +705,9 @@ def test_the_supervisor_gets_a_message_when_a_worker_ends_the_run(session, team)
         "  end: {end: true}\n",
     )
     commit(runs.start(session, "quick", "x", name="x", notices=[]))
-    runs.spawn_worker(session, "quick/x")  # w1, developer
+    runs.spawn_worker(session, "quick/x")
     notices = []
-    runs.advance(session, "w1", "quick/x", "done", notices=notices)
+    runs.advance(session, "developer", "quick/x", "done", notices=notices)
     assert notices == []
     assert [m.summary for m in messages("supervisor")] == [
         "flow quick/x: ended at end; kept its worktree and branch"
@@ -719,15 +723,15 @@ def test_a_worker_that_ends_the_run_is_closed_last(session, repo, team, fake_tmu
         "  end: {end: true}\n",
     )
     runs.start(session, "quick", "x", name="x")
-    runs.spawn_worker(session, "quick/x")  # w1, developer
-    runs.spawn_worker(session, "quick/x", role="reviewer", task="Watch.")  # w2
+    runs.spawn_worker(session, "quick/x")
+    runs.spawn_worker(session, "quick/x", role="reviewer", task="Watch.")
     state.set_status(session, "supervisor", state.IDLE)
-    runs.advance(session, "w1", "quick/x", "done")
+    runs.advance(session, "developer", "quick/x", "done")
     calls = [c[:3] for c in fake_tmux if c[0] in ("send_text", "kill_window")]
     assert calls[-3:] == [
         ("send_text", session, "supervisor"),
-        ("kill_window", session, "w2"),
-        ("kill_window", session, "w1"),
+        ("kill_window", session, "reviewer"),
+        ("kill_window", session, "developer"),
     ]
 
 
@@ -736,17 +740,17 @@ def test_end_keeps_an_unmerged_worktree_and_says_why(session, repo):
     commit(run)
     run = runs.advance(session, "supervisor", "feature/login", "merged")
     assert run.status == state.ENDED
-    assert [a.name for a in state.list_agents(session)] == ["supervisor", "w1", "w2"]
+    assert [a.name for a in state.list_agents(session)] == ["supervisor", "developer", "reviewer"]
     assert Path(run.worktree).exists()
     told = messages("supervisor")[-1]
     assert told.summary == "flow feature/login: ended at done; kept its worktree and branch"
     assert f"Branch {run.branch} is not merged into main." in told.body
-    assert "workers: w1, w2" in told.body
+    assert "workers: developer, reviewer" in told.body
     # Once merged, the last worker finished takes the worktree and branch with it.
     runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
-    assert runtime.finish_worker(session, "w1").how == runtime.CLOSED
+    assert runtime.finish_worker(session, "developer").how == runtime.CLOSED
     assert Path(run.worktree).exists()
-    assert runtime.finish_worker(session, "w2").how == "merged"
+    assert runtime.finish_worker(session, "reviewer").how == "merged"
     assert not Path(run.worktree).exists()
 
 
@@ -760,11 +764,11 @@ def test_end_keeps_a_worktree_with_uncommitted_changes(session, repo):
 
 def test_finishing_a_worker_of_an_open_run_closes_only_its_window(session):
     run = advance_to_review(session)
-    finished = runtime.finish_worker(session, "w1")
+    finished = runtime.finish_worker(session, "developer")
     assert (finished.how, finished.removed_worktree) == (runtime.CLOSED, False)
     assert Path(run.worktree).exists()
-    assert state.get_agent(session, "w1") is None
-    finished = runtime.finish_worker(session, "w2", discard=True)
+    assert state.get_agent(session, "developer") is None
+    finished = runtime.finish_worker(session, "reviewer", discard=True)
     assert finished.detail() == (
         "closed; discard does not apply: the run keeps its worktree; 1 message dropped"
     )
@@ -774,14 +778,14 @@ def test_finishing_a_worker_of_an_open_run_closes_only_its_window(session):
 def test_cancel_finishes_the_workers_and_keeps_the_worktree(session, repo, fake_tmux):
     run = advance_to_review(session)
     finished = runs.cancel(session, "feature/login", "not needed")
-    assert [f.worker.name for f in finished] == ["w1", "w2"]
+    assert [f.worker.name for f in finished] == ["developer", "reviewer"]
     assert state.list_agents(session)[-1].name == "supervisor"
     run = state.get_run(session, "feature/login")
     assert (run.status, run.reason) == (state.CANCELLED, "not needed")
     assert Path(run.worktree).exists()
     runtime.git(str(repo), "rev-parse", "--verify", run.branch)
     with pytest.raises(runtime.LadoError, match="cancelled: not needed"):
-        runs.advance(session, "w2", "feature/login", "approved")
+        runs.advance(session, "reviewer", "feature/login", "approved")
     with pytest.raises(runtime.LadoError, match="is cancelled already"):
         runs.cancel(session, "feature/login", "again")
 
@@ -803,12 +807,12 @@ def test_a_run_can_start_at_a_gate(session, team):
 def test_status_shows_a_worker_its_own_run(session):
     advance_to_review(session)
     runs.start(session, "feature", "other", name="other")
-    [mine] = runs.status(session, "w2")
-    assert (mine["run"], mine["state"], mine["acting"]) == ("feature/login", "review", "w2")
+    [mine] = runs.status(session, "reviewer")
+    assert (mine["run"], mine["state"], mine["acting"]) == ("feature/login", "review", "reviewer")
     assert mine["outcomes"] == {"approved": "merge", "changes": "implement", "again": "review"}
     assert mine["visits"] == {"design": 1, "implement": 1, "review": 1}
     with pytest.raises(runtime.LadoError, match='you work for run "feature/login"'):
-        runs.status(session, "w2", "feature/other")
+        runs.status(session, "reviewer", "feature/other")
     assert [r["run"] for r in runs.status(session, "supervisor")] == [
         "feature/login",
         "feature/other",
@@ -925,10 +929,10 @@ def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_
     runs.advance(session, "supervisor", "feature/login", "ready", "agreed", plan)
     worker = runs.spawn_worker(session, "feature/login")
     _, _, window, cwd, env, argv = fake_tmux[-1]
-    assert window == "w1"
+    assert window == "developer"
     # tmux refuses a command over about 16 KB.
     assert sum(len(a) + 1 for a in argv) + sum(len(k) + len(v) + 4 for k, v in env.items()) < 16_000
-    [step] = messages("w1")
+    [step] = messages("developer")
     assert (step.sender, step.summary, step.state) == (
         "lado",
         "flow feature/login: step implement",
@@ -943,7 +947,7 @@ def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_
     assert f"Note from design (also the previous step's note): agreed\n{plan}" in step.body
     assert step.body.count(plan) == 1
     assert worker.task == step.body  # the task in full: lado ls, list_agents
-    assert state.read_messages(session, "w1")[0].body == step.body
+    assert state.read_messages(session, "developer")[0].body == step.body
 
 
 def test_a_long_first_input_of_a_resumed_supervisor_comes_as_a_message(
@@ -982,7 +986,7 @@ def test_a_worker_after_resume_takes_over_the_runs_worktree(session, repo, fake_
     commit(run)
     restart(session, repo)
     worker = runs.spawn_worker(session, "feature/login")
-    assert (worker.name, worker.cwd, worker.branch) == ("w1", run.worktree, run.branch)
+    assert (worker.name, worker.cwd, worker.branch) == ("developer", run.worktree, run.branch)
     assert Path(run.worktree, "login.txt").exists()
     assert fake_tmux[-1][-1][-1].startswith("Run feature/login (flow feature), step implement.")
 
@@ -1048,14 +1052,14 @@ def _question_states(session):
 
 def test_cancelling_a_run_closes_its_workers_questions(session):
     advance_to_review(session)
-    runtime.ask_human(session, "w1", "which form?")
+    runtime.ask_human(session, "developer", "which form?")
     runs.cancel(session, "feature/login", "not needed")
     assert _question_states(session) == [state.CLOSED]
 
 
 def test_the_end_of_a_run_closes_its_workers_questions(session, repo):
     run = to_merge(session)
-    runtime.ask_human(session, "w1", "which form?")
+    runtime.ask_human(session, "developer", "which form?")
     commit(run)
     runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
     runs.advance(session, "supervisor", "feature/login", "merged")

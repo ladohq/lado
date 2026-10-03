@@ -49,7 +49,7 @@ def test_duration_is_short(seconds, shown):
 
 def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys):
     main(["start", str(repo), "--name", "s", "--no-attach"])
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     with state.connect() as db:
         db.execute(
             "UPDATE events SET created_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-11105 seconds')"
@@ -66,7 +66,7 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
 
 def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsys):
     main(["start", str(repo), "--name", "s", "--no-attach"])
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
     at = state.list_messages("s")[0].sent_at
@@ -85,7 +85,7 @@ def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsy
 
 def test_finish_ends_a_worker(repo, fake_tmux, capsys):
     main(["start", str(repo), "--name", "s", "--no-attach"])
-    worker = runtime.spawn_worker("s", "task")
+    worker = runtime.spawn_worker("s", "task", name="w1")
     (Path(worker.cwd) / "x.txt").write_text("x")
     assert main(["finish", "s", "w1"]) == 1
     assert 'lado: worker "w1" has uncommitted changes' in capsys.readouterr().err
@@ -371,7 +371,7 @@ def test_answer_asks_about_the_only_open_gate(repo, fake_tmux, capsys, monkeypat
     _at_gate(repo, capsys)
     runs.answer("s", "1", "reject", "first")
     runs.spawn_worker("s", "ship/x")
-    runs.advance("s", "w1", "ship/x", "done", "built it", "all\ntests pass")
+    runs.advance("s", "rev", "ship/x", "done", "built it", "all\ntests pass")
     capsys.readouterr()
     _typing(monkeypatch, "x", "2", "still too big")
     assert main(["answer"]) == 0
@@ -383,7 +383,7 @@ def test_answer_asks_about_the_only_open_gate(repo, fake_tmux, capsys, monkeypat
     assert "  1) approve\n  2) reject\n" in out
     assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
     assert 'no option "x" for gate #2' in out
-    assert "gate #2: reject. ship/x: check -> build (→ w1)" in out
+    assert "gate #2: reject. ship/x: check -> build (→ rev)" in out
     assert out.endswith("No more open gates.\n")
     assert state.get_run("s", "ship/x").note == "rejected: still too big"
 
@@ -393,7 +393,7 @@ def _at_gate_with_a_long_note(repo, capsys):
     runs.answer("s", "1", "reject", "first")
     runs.spawn_worker("s", "ship/x")
     body = "\n".join(f"line {n}" for n in range(1, 61))
-    runs.advance("s", "w1", "ship/x", "done", "built it", body)
+    runs.advance("s", "rev", "ship/x", "done", "built it", body)
     capsys.readouterr()
     return body
 
@@ -452,7 +452,7 @@ def _at_gate_with_needs(repo, capsys):
     runs.start("s", "plan", "Add x", name="x")
     runs.advance("s", "supervisor", "plan/x", "ready", "the plan", "step 1\nstep 2")
     runs.spawn_worker("s", "plan/x")
-    runs.advance("s", "w1", "plan/x", "done", "built it", "all\ntests pass")
+    runs.advance("s", "rev", "plan/x", "done", "built it", "all\ntests pass")
     capsys.readouterr()
 
 
@@ -545,10 +545,11 @@ def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
     run = _session_with_run(repo)
     runs.spawn_worker("s", "ship/x")
     runs.spawn_worker("s", "ship/x", role="rev", task="Help.")
-    assert main(["finish", "s", "w2"]) == 0
+    assert main(["finish", "s", "rev-2"]) == 0
     out = capsys.readouterr().out
     assert (
-        f'Finished worker "w2" (closed): closed its window; run ship/x keeps {run.worktree}' in out
+        f'Finished worker "rev-2" (closed): closed its window; run ship/x keeps {run.worktree}'
+        in out
     )
     assert main(["stop", "s"]) == 0
     out = capsys.readouterr().out
@@ -558,7 +559,7 @@ def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
 def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
     run = _session_with_run(repo)
     runs.force("s", "ship/x", "check", "built by hand")
-    runtime.spawn_worker("s", "task")  # w1, starting: a message to it waits
+    runtime.spawn_worker("s", "task", name="w1")  # starting: a message to it waits
     runtime.send_message("s", "supervisor", "w1", "hi")
     capsys.readouterr()
     assert main(["stop", "s"]) == 0

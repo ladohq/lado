@@ -290,7 +290,12 @@ the resumed session lacks is reported on stderr and in that body; `flow_cancel` 
 `lado flow-set` move it on. While a session is stopped, nothing starts or moves in it:
 `lado answer`, `lado flow-set`, spawning workers and starting, advancing or cancelling runs
 are refused (`runtime.running_session`); `lado answer` with no session skips its gates.
-The next default worker name skips names whose branch is still there.
+A worker started without a name (`spawn_worker`, also for a run) is named after its role,
+made valid like a given name (`slug`: `Code Reviewer` gives `code-reviewer`): `developer`,
+or `developer-2`, `developer-3`… when that is taken. A name is taken by a running agent of
+that name or a branch `lado/<session>/<name>` still there (from a stopped launch or a
+worker not finished); `human`, `lado` and `supervisor` are never chosen. A given name wins
+and is checked as before.
 `lado forget <session>` deletes a stopped session with its history; it refuses a running
 one, and one with open runs unless `--force`; worktrees and branches stay on disk and are
 listed.

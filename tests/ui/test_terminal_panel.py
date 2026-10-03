@@ -31,7 +31,7 @@ def test_the_supervisors_terminal_in_the_panel_takes_what_the_human_types(
 
 def test_an_agents_terminal_opens_to_view_with_its_history(page: Page, server, repo, shot):
     session = running_session(repo)
-    runtime.spawn_worker(session, "sleep 0")
+    runtime.spawn_worker(session, "sleep 0", name="w1")
     agent_helpers.wait_for(
         lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session
     )

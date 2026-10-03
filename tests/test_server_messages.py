@@ -25,7 +25,7 @@ def client():
 @pytest.fixture
 def session(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    runtime.spawn_worker("s", "task")
+    runtime.spawn_worker("s", "task", name="w1")
     return "s"
 
 

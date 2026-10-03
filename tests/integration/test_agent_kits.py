@@ -55,19 +55,28 @@ def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
     monkeypatch.setenv("IT_TOKEN", "t0k")
     runtime.spawn_worker(SESSION, "sleep 0", role="reviewer")
     runtime.spawn_worker(SESSION, "sleep 0", role="reviewer", without=["mcp:echo", "skill:notes"])
-    wait_status("w1", state.IDLE)
-    wait_status("w2", state.IDLE)
-    w1, w2 = seen("w1"), seen("w2")
-    assert w1["prompt"].startswith("You review branches.")
-    assert f'You are worker "w1" in LADO session "{SESSION}"' in w1["prompt"]
-    assert w1["skills"] == {"notes": "take notes"}
-    assert w1["mcp"]["echo"] == {"command": [f"{kit.resolve()}/echo.sh"], "env": {"TOKEN": "t0k"}}
-    assert (w2["skills"], list(w2["mcp"])) == ({}, ["lado"])
+    # Named after their role: the second one gets "-2".
+    wait_status("reviewer", state.IDLE)
+    wait_status("reviewer-2", state.IDLE)
+    first, second = seen("reviewer"), seen("reviewer-2")
+    assert first["prompt"].startswith("You review branches.")
+    assert f'You are worker "reviewer" in LADO session "{SESSION}"' in first["prompt"]
+    assert first["skills"] == {"notes": "take notes"}
+    assert first["mcp"]["echo"] == {
+        "command": [f"{kit.resolve()}/echo.sh"],
+        "env": {"TOKEN": "t0k"},
+    }
+    assert (second["skills"], list(second["mcp"])) == ({}, ["lado"])
 
     # A skill's scripts run from where the agent found the skill.
-    assert runtime.send_message(SESSION, "human", "w1", "run notes scripts/hello.sh") == "sent"
-    wait_for(lambda: seen("w1").get("run"), "the script's output")
-    assert seen("w1")["run"] == {"file": "notes/scripts/hello.sh", "output": "hello from notes"}
+    assert (
+        runtime.send_message(SESSION, "human", "reviewer", "run notes scripts/hello.sh") == "sent"
+    )
+    wait_for(lambda: seen("reviewer").get("run"), "the script's output")
+    assert seen("reviewer")["run"] == {
+        "file": "notes/scripts/hello.sh",
+        "output": "hello from notes",
+    }
 
 
 def test_kit_from_a_path_source_includes_a_skill_pack_from_git(tmp_path, repo):
@@ -86,9 +95,9 @@ def test_kit_from_a_path_source_includes_a_skill_pack_from_git(tmp_path, repo):
     wait_status("supervisor", state.IDLE)
     assert seen("supervisor")["skills"] == {"tdd": "test first"}
     runtime.spawn_worker(SESSION, "sleep 0")
-    wait_status("w1", state.IDLE)
-    assert seen("w1")["skills"] == {"tdd": "test first"}
+    wait_status("worker", state.IDLE)
+    assert seen("worker")["skills"] == {"tdd": "test first"}
     # Nothing was copied: the agent's skill links into the source's clone.
-    link = state.home() / "agents" / SESSION / "w1" / "skills" / "tdd"
+    link = state.home() / "agents" / SESSION / "worker" / "skills" / "tdd"
     clone = sources.get("pack").path()
     assert link.is_symlink() and link.resolve() == (clone / "skills" / "eng" / "tdd").resolve()

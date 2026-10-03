@@ -66,7 +66,7 @@ def test_first_turn_waits_until_the_lado_mcp_server_listed_its_tools(repo):
     """The fake agent lists its LADO MCP server's tools while its session-start hook runs,
     like Claude Code; the hook returns only after the server has recorded it."""
     start(repo)
-    worker = runtime.spawn_worker(SESSION, "sleep 0")
+    worker = runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_status("w1", state.IDLE)
     events = [(e.kind, e.detail) for e in state.list_events(SESSION) if e.agent == "w1"]
     assert (state.MCP_READY, worker.instance) in events
@@ -79,7 +79,7 @@ def test_an_agent_keeps_one_lado_mcp_server_for_its_launch(repo):
     """Like a real CLI, the fake agent starts its MCP server once and calls every tool on it:
     the server records mcp_ready once, however many tools the agent calls."""
     start(repo)
-    runtime.spawn_worker(SESSION, "send supervisor one\nsend supervisor two\nread")
+    runtime.spawn_worker(SESSION, "send supervisor one\nsend supervisor two\nread", name="w1")
     wait_for(lambda: "read" in seen("w1"), "w1's tool calls")
     ready = [e for e in state.list_events(SESSION) if e.kind == state.MCP_READY]
     assert [e.agent for e in ready] == ["supervisor", "w1"]
@@ -112,20 +112,21 @@ def test_message_to_busy_agent_arrives_when_its_turn_ends(repo, provider):
 def test_spawned_worker_reports_back_to_supervisor(repo):
     start(repo)
     runtime.send_message(SESSION, "human", "supervisor", "spawn send supervisor finished")
-    wait_for(lambda: "[from w1] finished" in inputs("supervisor"), "the report")
-    worker = state.get_agent(SESSION, "w1")
-    assert (worker.branch, worker.task) == ("lado/itest/w1", "send supervisor finished")
+    # A worker spawned without a name is named after its role.
+    wait_for(lambda: "[from worker] finished" in inputs("supervisor"), "the report")
+    worker = state.get_agent(SESSION, "worker")
+    assert (worker.branch, worker.task) == ("lado/itest/worker", "send supervisor finished")
     assert Path(worker.cwd, ".git").exists()
-    runtime.git(str(repo), "rev-parse", "--verify", "lado/itest/w1")
-    assert inputs("w1")[0].startswith("send supervisor finished\n")
-    wait_status("w1", state.IDLE)
+    runtime.git(str(repo), "rev-parse", "--verify", "lado/itest/worker")
+    assert inputs("worker")[0].startswith("send supervisor finished\n")
+    wait_status("worker", state.IDLE)
     wait_status("supervisor", state.IDLE)
 
 
 def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     start(repo)
     report = "send supervisor DONE: work.txt added | Status: DONE\\nFiles: work.txt\\nChecks: ok"
-    runtime.spawn_worker(SESSION, report)
+    runtime.spawn_worker(SESSION, report, name="w1")
     line = "[from w1] DONE: work.txt added (#1, 3 lines: call read_messages)"
     wait_for(lambda: line in inputs("supervisor"), "the report")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
@@ -202,7 +203,7 @@ def test_nothing_is_typed_into_an_agent_that_asks_the_human(repo):
 
 def test_stop_kills_agents_and_keeps_worktrees(repo):
     start(repo)
-    worker = runtime.spawn_worker(SESSION, "sleep 0")
+    worker = runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_status("w1", state.IDLE)
     result = subprocess.run(
         [sys.executable, "-m", "lado.cli", "stop", SESSION],
@@ -263,7 +264,7 @@ def supervisor_runs(command: str) -> None:
 
 def worker_commits() -> state.Agent:
     """Spawn w1 and commit a file on its branch, as the worker would."""
-    worker = runtime.spawn_worker(SESSION, "sleep 0")
+    worker = runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_status("w1", state.IDLE)
     Path(worker.cwd, "work.txt").write_text("done\n")
     runtime.git(worker.cwd, "add", "work.txt")
@@ -307,7 +308,7 @@ def test_unmerged_worker_is_finished_only_with_discard(repo):
 
 def test_log_shows_spawns_statuses_and_messages(repo):
     start(repo)
-    runtime.spawn_worker(SESSION, "sleep 0")
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     wait_status("w1", state.IDLE)
     runtime.send_message(SESSION, "supervisor", "w1", "hello w1")
     wait_for(lambda: message_states("w1") == [state.DELIVERED], "delivery")

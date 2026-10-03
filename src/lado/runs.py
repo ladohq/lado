@@ -178,6 +178,26 @@ def answer(
     return after
 
 
+def answer_text(session: str, gate: str, option: str, comment: str | None = None) -> str:
+    """`answer`, said in one line for the human: the answer and where the run went. Every
+    surface of the human (`lado answer`, the popup, the UI) shows this text."""
+    found = find_gate(session, gate)
+    before = _run(session, found.run)
+    run = answer(session, str(found.id), option, comment)
+    word = state.get_gate(found.id).answer
+    return f"gate #{found.id}: {word}. {run.name}: {before.state} -> {run.state} ({now(run)})"
+
+
+def now(run: state.Run) -> str:
+    """Where the run is now: who acts, the gate it waits at, or how it closed."""
+    if run.status == state.WAITING:
+        gate = state.open_gate(run.session, run.name)
+        return f"waiting for human: {f'gate #{gate.id}' if gate else run.reason}"
+    if run.status == state.ACTIVE:
+        return f"→ {acting(run)}"
+    return f"{run.status}: {run.reason}" if run.reason else run.status
+
+
 def find_gate(session: str, ref: str) -> state.Gate:
     """The open gate `ref` names: a gate id, or a run whose gate it is."""
     if ref.isdigit():

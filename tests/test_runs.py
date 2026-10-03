@@ -533,6 +533,19 @@ def test_rejecting_sends_the_answer_and_the_earlier_note_to_the_next_step(sessio
     assert state.list_events(session)[-1].detail == "gated -rejected-> implement"
 
 
+def test_the_answers_text_says_where_the_run_went(session):
+    """One text for every surface of the human: `lado answer`, the popup, the UI."""
+    to_gate(session)
+    assert runs.answer_text(session, "1", "reject", "too big") == (
+        "gate #1: reject. feature/login: gated -> implement (→ developer)"
+    )
+    to_merge_again = runs.force(session, "feature/login", "gated", "again")
+    assert runs.now(to_merge_again) == "waiting for human: gate #2"
+    assert runs.answer_text(session, "2", "approved") == (
+        "gate #2: approve. feature/login: gated -> done (ended)"
+    )
+
+
 @pytest.mark.parametrize("option", ["approve", "approved", " Approve "])
 def test_approving_takes_the_approved_outcome(session, repo, option):
     run = to_gate(session)

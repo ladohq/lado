@@ -299,6 +299,109 @@
         }
       }
     },
+    "/api/sessions/{name}/gates": {
+      "get": {
+        "summary": "Gates",
+        "description": "The session's gates, open and closed, oldest first.",
+        "operationId": "gates_api_sessions__name__gates_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GateInfo"
+                  },
+                  "title": "Response Gates Api Sessions  Name  Gates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/gates/{gate}/answer": {
+      "post": {
+        "summary": "Answer Gate",
+        "description": "The human's answer to an open gate: one of its options and a comment for the\nnext step. The same core as `lado answer` and the popup.",
+        "operationId": "answer_gate_api_sessions__name__gates__gate__answer_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "gate",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Gate"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateAnswer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{name}/questions/{question}/answer": {
       "post": {
         "summary": "Answer",
@@ -558,6 +661,142 @@
         "type": "object",
         "title": "Answer"
       },
+      "GateAnswer": {
+        "properties": {
+          "option": {
+            "type": "string",
+            "title": "Option"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "option"
+        ],
+        "title": "GateAnswer"
+      },
+      "GateInfo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "run": {
+            "type": "string",
+            "title": "Run"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "approval",
+              "choice",
+              "loop"
+            ],
+            "title": "Kind"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "note_body": {
+            "type": "string",
+            "title": "Note Body"
+          },
+          "needs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NeededNote"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needs"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment"
+          },
+          "answered_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered By"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "run",
+          "state",
+          "kind",
+          "question",
+          "options",
+          "note",
+          "note_body",
+          "needs",
+          "answer",
+          "comment",
+          "answered_by",
+          "created_at",
+          "answered_at"
+        ],
+        "title": "GateInfo",
+        "description": "A flow run's question to the human: open while `answer` is None."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -776,6 +1015,64 @@
         ],
         "title": "MessageText",
         "description": "The human's text from the composer."
+      },
+      "NeededNote": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoteInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "note"
+        ],
+        "title": "NeededNote"
+      },
+      "NoteInfo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "summary",
+          "body",
+          "created_at"
+        ],
+        "title": "NoteInfo",
+        "description": "A note a run's step reported, with the state it was reported from."
       },
       "RunEventInfo": {
         "properties": {

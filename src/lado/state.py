@@ -1015,6 +1015,13 @@ def open_gates(session: str | None = None) -> list[Gate]:
     return [_gate(r) for r in rows]
 
 
+def session_gates(session: str) -> list[Gate]:
+    """All gates of `session`, open and closed, oldest first."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM gates WHERE session = ? ORDER BY id", (session,))
+        return [_gate(r) for r in rows.fetchall()]
+
+
 def waiting_for_human(session: str) -> tuple[int, int, int]:
     """What in the session waits for the human: its open gates, its open questions to the
     human and its agents in `waiting`."""

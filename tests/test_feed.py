@@ -13,7 +13,7 @@ import uvicorn
 from agent_helpers import previous_schema
 from event_stream import EventStream
 
-from lado import loop, runtime, state
+from lado import loop, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth, feed
 
@@ -142,6 +142,43 @@ def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
     }
 
 
+def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
+    kit = repo / ".lado" / "kits" / "team"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "flows" / "ship.yaml").write_text(
+        "name: ship\ndescription: d\nstart: plan\nstates:\n"
+        "  plan: {agent: supervisor, do: Plan it., outcomes: {ready: check}}\n"
+        "  check: {gate: approval, ask: 'Ship it?', needs: [plan], outcomes:"
+        " {approved: end, rejected: plan}}\n"
+        "  end: {end: true}\n"
+    )
+    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    stream = streams()
+    stream.next()
+    runs.start("s", "ship", "Add x", name="x")
+    runs.advance("s", "supervisor", "ship/x", "ready", "the plan", "step 1")
+    opened = stream.until(is_change("gates", "s"))[-1]
+    item = opened.data["item"]
+    assert (opened.data["key"], item["id"], item["note"], item["answer"]) == (
+        "1",
+        1,
+        "the plan",
+        None,
+    )
+    assert [(n["state"], n["note"]["summary"]) for n in item["needs"]] == [("plan", "the plan")]
+    runs.answer("s", "1", "reject", "replan")
+    closed = stream.until(lambda e: is_change("gates", "s")(e) and e.data["item"]["answer"])[-1]
+    # A closed gate is still there: its item is replaced, never null.
+    item = closed.data["item"]
+    assert (closed.data["op"], item["answer"], item["comment"], item["needs"]) == (
+        "update",
+        "reject",
+        "replan",
+        None,
+    )
+
+
 def waiting_of(session: str):
     return lambda e: is_change("sessions", session)(e) and e.data["item"]["waiting"]
 
@@ -151,7 +188,8 @@ def test_a_gate_and_a_question_change_what_waits_in_their_session(streams, repo,
     stream = streams()
     stream.next()
     run = state.Run("s", "feature/x", "feature", {}, {}, "x", "design", "/w", "b")
-    gate = state.Gate("s", "feature/x", "approve", "approval", "OK?", ["approved", "rejected"])
+    # A loop limit: its item needs no flow, and this run has none.
+    gate = state.Gate("s", "feature/x", "design", "loop", "Again?", ["continue", "cancel"])
     state.add_run(run, [], gate)
     stream.until(lambda e: waiting_of("s")(e) and e.data["item"]["waiting"]["gates"] == 1)
     runtime.ask_human("s", "supervisor", "Ship?", None, ["yes"])

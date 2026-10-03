@@ -209,21 +209,11 @@ def cmd_ls(args: argparse.Namespace) -> int:
         for run in state.list_runs(sess.name, open_only=True):
             when = run_since.get(run.name)
             took = format_duration((now - when).total_seconds()) if when else "-"
-            print(f"  run {run.name}  {run.state}  {_run_now(run)}  {took}")
+            print(f"  run {run.name}  {run.state}  {runs.now(run)}  {took}")
             gate = state.open_gate(sess.name, run.name)
             if gate:
                 print(f"    gate #{gate.id} waiting: {gate.question}")
     return 0
-
-
-def _run_now(run: state.Run) -> str:
-    """Where the run is now: who acts, the gate it waits at, or how it closed."""
-    if run.status == state.WAITING:
-        gate = state.open_gate(run.session, run.name)
-        return f"waiting for human: {f'gate #{gate.id}' if gate else run.reason}"
-    if run.status == state.ACTIVE:
-        return f"→ {runs.acting(run)}"
-    return f"{run.status}: {run.reason}" if run.reason else run.status
 
 
 def _human_only(command: str) -> None:
@@ -237,7 +227,7 @@ def cmd_flow_set(args: argparse.Namespace) -> int:
     _human_only("flow-set")
     before = state.get_run(args.session, args.run)
     run = runs.force(args.session, args.run, args.state, args.reason)
-    print(f"{run.name}: {before.state} -> {run.state} ({_run_now(run)})")
+    print(f"{run.name}: {before.state} -> {run.state} ({runs.now(run)})")
     return 0
 
 
@@ -290,11 +280,7 @@ def cmd_answer(args: argparse.Namespace) -> int:
 
 
 def _answer(session: str, ref: str, option: str, comment: str | None) -> None:
-    gate = runs.find_gate(session, ref)
-    before = state.get_run(session, gate.run)
-    run = runs.answer(session, str(gate.id), option, comment)
-    word = state.get_gate(gate.id).answer
-    print(f"gate #{gate.id}: {word}. {run.name}: {before.state} -> {run.state} ({_run_now(run)})")
+    print(runs.answer_text(session, ref, option, comment))
 
 
 def _input(prompt: str) -> str | None:

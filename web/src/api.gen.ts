@@ -122,6 +122,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/gates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gates
+         * @description The session's gates, open and closed, oldest first.
+         */
+        get: operations["gates_api_sessions__name__gates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/gates/{gate}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Gate
+         * @description The human's answer to an open gate: one of its options and a comment for the
+         *     next step. The same core as `lado answer` and the popup.
+         */
+        post: operations["answer_gate_api_sessions__name__gates__gate__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/questions/{question}/answer": {
         parameters: {
             query?: never;
@@ -212,6 +253,53 @@ export interface components {
             /** Text */
             text?: string | null;
         };
+        /** GateAnswer */
+        GateAnswer: {
+            /** Option */
+            option: string;
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+        };
+        /**
+         * GateInfo
+         * @description A flow run's question to the human: open while `answer` is None.
+         */
+        GateInfo: {
+            /** Id */
+            id: number;
+            /** Run */
+            run: string;
+            /** State */
+            state: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "approval" | "choice" | "loop";
+            /** Question */
+            question: string;
+            /** Options */
+            options: string[];
+            /** Note */
+            note: string;
+            /** Note Body */
+            note_body: string;
+            /** Needs */
+            needs: components["schemas"]["NeededNote"][] | null;
+            /** Answer */
+            answer: string | null;
+            /** Comment */
+            comment: string;
+            /** Answered By */
+            answered_by: string | null;
+            /** Created At */
+            created_at: string;
+            /** Answered At */
+            answered_at: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -285,6 +373,28 @@ export interface components {
             to: string;
             /** Text */
             text: string;
+        };
+        /** NeededNote */
+        NeededNote: {
+            /** State */
+            state: string;
+            note: components["schemas"]["NoteInfo"] | null;
+        };
+        /**
+         * NoteInfo
+         * @description A note a run's step reported, with the state it was reported from.
+         */
+        NoteInfo: {
+            /** Id */
+            id: number;
+            /** State */
+            state: string;
+            /** Summary */
+            summary: string;
+            /** Body */
+            body: string;
+            /** Created At */
+            created_at: string;
         };
         /**
          * RunEventInfo
@@ -550,6 +660,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunEventInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gates_api_sessions__name__gates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_gate_api_sessions__name__gates__gate__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                gate: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sent"];
                 };
             };
             /** @description Validation Error */

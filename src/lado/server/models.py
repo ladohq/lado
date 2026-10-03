@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lado import runtime, state
+from lado import runs, runtime, state
 
 
 class Waiting(BaseModel):
@@ -45,6 +45,47 @@ class RunEventInfo(BaseModel):
     actor: str  # the agent that did it, or lado
     detail: str  # as the core wrote it; the server does not parse it
     created_at: str  # UTC, ISO 8601
+
+
+class NoteInfo(BaseModel):
+    """A note a run's step reported, with the state it was reported from."""
+
+    id: int
+    state: str
+    summary: str
+    body: str
+    created_at: str  # UTC, ISO 8601
+
+
+class NeededNote(BaseModel):
+    state: str  # a state the gate state needs
+    note: NoteInfo | None  # its latest report; None: no note yet
+
+
+class GateInfo(BaseModel):
+    """A flow run's question to the human: open while `answer` is None."""
+
+    id: int
+    run: str
+    state: str  # the gate state, or the state a loop limit kept the run out of
+    kind: Literal["approval", "choice", "loop"]
+    question: str
+    options: list[str]
+    note: str  # the note of the step that led to the gate
+    note_body: str
+    # The notes the gate state needs, as they are now: only while it is open, since what
+    # the human saw when answering is not kept. A loop limit needs none.
+    needs: list[NeededNote] | None
+    answer: str | None  # an option, or how it was closed otherwise (overridden, cancelled)
+    comment: str
+    answered_by: str | None
+    created_at: str  # UTC, ISO 8601
+    answered_at: str | None
+
+
+class GateAnswer(BaseModel):
+    option: str
+    comment: str = ""
 
 
 class History(BaseModel):
@@ -140,6 +181,41 @@ def run_event_info(event: state.Event) -> RunEventInfo:
         actor=event.agent,
         detail=event.detail,
         created_at=_utc(event.created_at),
+    )
+
+
+def note_info(note: state.Note) -> NoteInfo:
+    return NoteInfo(
+        id=note.id,
+        state=note.state,
+        summary=note.summary,
+        body=note.body,
+        created_at=_utc(note.created_at),
+    )
+
+
+def gate_info(gate: state.Gate) -> GateInfo:
+    needs = None
+    if gate.answer is None:
+        needs = [
+            NeededNote(state=name, note=note_info(note) if note else None)
+            for name, note in runs.gate_notes(gate)
+        ]
+    return GateInfo(
+        id=gate.id,
+        run=gate.run,
+        state=gate.state,
+        kind=gate.kind,
+        question=gate.question,
+        options=gate.options,
+        note=gate.note,
+        note_body=gate.note_body,
+        needs=needs,
+        answer=gate.answer,
+        comment=gate.comment,
+        answered_by=gate.answered_by or None,
+        created_at=_utc(gate.created_at),
+        answered_at=_utc(gate.answered_at) if gate.answered_at else None,
     )
 
 

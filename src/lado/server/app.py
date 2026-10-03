@@ -14,12 +14,14 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, runtime, state, terminal
+from lado import __version__, runs, runtime, state, terminal
 from lado.server import feed, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
     AgentInfo,
     Answer,
+    GateAnswer,
+    GateInfo,
     History,
     MessageInfo,
     MessageText,
@@ -135,6 +137,21 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         """What happened to the session's flow runs, oldest first."""
         known(name, has_db)
         return [models.run_event_info(e) for e in state.run_events(name)]
+
+    @app.get("/api/sessions/{name}/gates", dependencies=[Depends(guard)])
+    def gates(name: str, has_db: bool = Depends(database)) -> list[GateInfo]:
+        """The session's gates, open and closed, oldest first."""
+        known(name, has_db)
+        return [models.gate_info(g) for g in state.session_gates(name)]
+
+    @app.post("/api/sessions/{name}/gates/{gate}/answer", dependencies=[Depends(guard.changes)])
+    def answer_gate(
+        name: str, gate: int, given: GateAnswer, has_db: bool = Depends(database)
+    ) -> Sent:
+        """The human's answer to an open gate: one of its options and a comment for the
+        next step. The same core as `lado answer` and the popup."""
+        known(name, has_db)
+        return Sent(result=core(runs.answer_text, name, str(gate), given.option, given.comment))
 
     @app.post("/api/sessions/{name}/messages", dependencies=[Depends(guard.changes)])
     def write(name: str, message: MessageText, has_db: bool = Depends(database)) -> Sent:

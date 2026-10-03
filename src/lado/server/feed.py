@@ -143,12 +143,20 @@ def _event_item(session: str, key: str) -> dict | None:
     return None if event is None else models.run_event_info(event).model_dump(mode="json")
 
 
+def _gate_item(session: str, key: str) -> dict | None:
+    gate = state.get_gate(int(key))
+    if gate is None or gate.session != session:
+        return None
+    return models.gate_info(gate).model_dump(mode="json")
+
+
 # The kinds whose REST model exists, and how to build an item of it. Others' items are null.
 ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "sessions": _session_item,
     "agents": _agent_item,
     "messages": _message_item,
     "events": _event_item,
+    "gates": _gate_item,
 }
 
 # A change of kind X also changes the item of kind Y of the same session (Y's key is '':

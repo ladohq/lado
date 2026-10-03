@@ -394,3 +394,14 @@ the answer was not accepted. Only `lado answer` (or the popup's option) answers 
 Wanted: the Gates task answers gates with buttons and a comment in the chat; until then, the
 popup says plainly when the input is not one of the options, and keeps asking.
 Found: 2026-10-03, merge gate #35 of feature/ui-layout.
+
+## An open run's task cannot be amended
+
+A small addition the human asks for while a run is in `implement` (feature/ui-polish:
+AC-13..15) can only go to the developer as a message. The design note that the reviewer and
+the merge gate get does not have it, and `lado log` does not tie it to the run. The only
+other way, `lado flow-set` back to `design`, repeats the architect's review and the design
+gate for a few lines.
+Wanted: an addendum to an open run (from the supervisor, approved by the human), kept in
+`notes` and shown to every later step and gate after the design note.
+Found: 2026-10-03, feature/ui-polish.

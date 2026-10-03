@@ -346,13 +346,14 @@ time. Each task is one `feature` run, useful on its own.
    The plan, in order (the placeholders link to the items below):
    1. Live updates, the change feed (D3). Done: The change feed above.
    2. The agent terminal in the browser. Done: Terminal above.
-   3. **Human messages** (core, D7): `human` as a participant of messages, the composer's
-      API, `ask_human`, the forgotten-reply check, the supervisor's role (lado-dev and
-      `default`).
-   4. **Activity**: the chat (messages with the human, flow transitions, agent-to-agent
-      messages behind a switch), the composer, the team chips, the selected agent's
-      terminal on the right instead of the bottom panel; the session list's "+" and its
-      stopped sessions folded.
+   3. **Chat** (D7; decided with the human 2026-10-03 to bring the UI with the core, no
+      interim CLI command): `human` as a participant of messages, `ask_human`, the
+      forgotten-reply check, the composer and a plain chat in Activity (messages with the
+      human, question cards with their answer), LADO's own instructions to the supervisor.
+      After it, work moves to the chat (with the release that ships it).
+   4. **Layout**: the team chips above the chat, the selected agent's terminal on the right
+      instead of the bottom panel, flow transitions and agent-to-agent messages (behind a
+      switch) in the feed, the session list's "+" and its stopped sessions folded.
    5. **Gates**: gate cards in the chat, Needs you with its count, browser notifications.
       Then release 0.12.0: the human can work from the browser, tmux stays the fallback.
    6. Agents; Flows; Providers and environment; a pass over the look with a designer role

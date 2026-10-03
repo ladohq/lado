@@ -25,13 +25,16 @@ import {
   SessionsIcon,
   SettingsIcon,
 } from "./icons";
-import { Live, LiveContext, useLive } from "./live";
+import { isLive, Live, LiveContext, useLive } from "./live";
+import { Notifier } from "./Notifications";
 import { storeRailCollapsed, storedRailCollapsed } from "./prefs";
 import { BUNDLE_VERSION } from "./version";
 
+const NEEDS_YOU = "/needs-you"; // its link counts what waits
+
 const SECTIONS: { to: string; name: string; icon: ReactNode }[] = [
   { to: "/", name: "Home", icon: <HomeIcon /> },
-  { to: "/needs-you", name: "Needs you", icon: <NeedsYouIcon /> },
+  { to: NEEDS_YOU, name: "Needs you", icon: <NeedsYouIcon /> },
   { to: "/sessions", name: "Sessions", icon: <SessionsIcon /> },
   { to: "/projects", name: "Projects", icon: <ProjectsIcon /> },
   { to: "/kits", name: "Kits", icon: <KitsIcon /> },
@@ -63,10 +66,6 @@ export function Shell() {
     };
   }, [live]);
 
-  useEffect(() => {
-    document.title = title ? `${title} · LADO` : "LADO";
-  }, [title]);
-
   const toggle = () => {
     setCollapsed(!collapsed);
     storeRailCollapsed(!collapsed);
@@ -74,6 +73,8 @@ export function Shell() {
 
   const frame = (
     <div className={`app${collapsed ? " collapsed" : ""}`}>
+      <TabTitle title={title} />
+      <Notifier />
       <nav className="rail" aria-label="Sections">
         <div className="rail-head">
           <span className="mark">LADO</span>
@@ -91,7 +92,11 @@ export function Shell() {
         <ul>
           {SECTIONS.map((section) => (
             <li key={section.to}>
-              <RailLink {...section} collapsed={collapsed} />
+              {section.to === NEEDS_YOU ? (
+                <NeedsYouLink {...section} collapsed={collapsed} />
+              ) : (
+                <RailLink {...section} collapsed={collapsed} />
+              )}
             </li>
           ))}
         </ul>
@@ -171,19 +176,50 @@ function LinkState() {
   );
 }
 
-function RailLink(props: { to: string; name: string; icon: ReactNode; collapsed: boolean }) {
+// What waits for the human: the sum of the sessions' counts, of those not stopped (the
+// server's rule; the length of /api/waiting).
+function useWaitingCount(): number {
+  const loaded = useLive().sessions;
+  if (loaded === null || "error" in loaded) return 0;
+  return loaded.sessions.filter(isLive).reduce((sum, one) => {
+    const { gates, questions, agents } = one.waiting;
+    return sum + gates + questions + agents;
+  }, 0);
+}
+
+// The browser tab names the page, and with something waiting its count first: "(2) …".
+function TabTitle({ title }: { title: string }) {
+  const waiting = useWaitingCount();
+  useEffect(() => {
+    const named = title ? `${title} · LADO` : "LADO";
+    document.title = waiting > 0 ? `(${waiting}) ${named}` : named;
+  }, [title, waiting]);
+  return null;
+}
+
+function RailLink(props: { to: string; name: string; icon: ReactNode; collapsed: boolean; count?: number }) {
+  const label = props.count ? `${props.name}, ${props.count} waiting` : props.name;
   return (
     <NavLink
       to={props.to}
       end={props.to === "/"}
       className="rail-link"
-      aria-label={props.name}
-      title={props.collapsed ? props.name : undefined}
+      aria-label={label}
+      title={props.collapsed ? label : undefined}
     >
       {props.icon}
       <span className="rail-name">{props.name}</span>
+      {props.count ? (
+        <span className="rail-count" aria-hidden="true">
+          {props.count}
+        </span>
+      ) : null}
     </NavLink>
   );
+}
+
+function NeedsYouLink(props: { to: string; name: string; icon: ReactNode; collapsed: boolean }) {
+  return <RailLink {...props} count={useWaitingCount()} />;
 }
 
 // Starting a session from the UI comes later; until then Launch (in the top bar, and the

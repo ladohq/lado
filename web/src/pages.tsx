@@ -14,15 +14,6 @@ export function Home() {
   );
 }
 
-export function NeedsYou() {
-  useTitle("Needs you");
-  return (
-    <Placeholder title="Needs you" plan={PLANS.gates} toSessions>
-      Every gate of every session that waits for your answer, oldest first.
-    </Placeholder>
-  );
-}
-
 export function Projects() {
   useTitle("Projects");
   return (

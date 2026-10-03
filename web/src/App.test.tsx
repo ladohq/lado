@@ -20,7 +20,15 @@ const SESSIONS: SessionInfo[] = [
 ];
 
 const AGENTS: AgentInfo[] = [
-  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null },
+  {
+    name: "supervisor",
+    role: "supervisor",
+    provider: "claude",
+    status: "idle",
+    run: null,
+    task: null,
+    waiting_reason: null,
+  },
 ];
 
 // The LADO version /api/health answers (it needs no token): the bundle's own unless a test
@@ -137,7 +145,6 @@ test("following a rail link opens its section", () => {
 
 test.each([
   ["/", "Home", /docs\/design\/ui\.md#home/],
-  ["/needs-you", "Needs you", /docs\/design\/ui\.md#gates/],
   ["/projects", "Projects", /ROADMAP\.md#later-after-stage-7/],
   ["/kits", "Kits", /docs\/design\/ui\.md#kits/],
   ["/marketplace", "Marketplace", /ROADMAP\.md#later-after-stage-7/],
@@ -467,12 +474,12 @@ test("a stream refused for the token shows how to get in and does not try again"
 
 // Settings and the theme
 
-test("Settings is one flat page: Appearance, then Providers and environment", () => {
+test("Settings is one flat page: Appearance, Notifications, then Providers and environment", () => {
   open("/settings");
   const sections = screen
     .getAllByRole("heading", { level: 2 })
     .map((h) => h.textContent);
-  expect(sections).toEqual(["Appearance", "Providers and environment"]);
+  expect(sections).toEqual(["Appearance", "Notifications", "Providers and environment"]);
   const providers = screen.getByRole("region", { name: "Providers and environment" });
   expect(within(providers).getByRole("link", { name: /plan/i }).getAttribute("href")).toMatch(
     /docs\/design\/ui\.md#providers-and-environment/,

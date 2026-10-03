@@ -11,12 +11,14 @@ import {
   getMessages,
   getRunEvents,
   getSessions,
+  getWaiting,
   probeStream,
   type AgentInfo,
   type GateInfo,
   type MessageInfo,
   type RunEventInfo,
   type SessionInfo,
+  type WaitingItem,
 } from "./api";
 
 export type Change = { kind: string; session: string; key: string; op: string; item: unknown };
@@ -31,16 +33,24 @@ export type ListLoaded<T> = { items: T[] } | { error: string } | null;
 export type Link = "connecting" | "open" | "down" | "refused";
 
 // agents, messages, events, gates: the lists of each session a page watches (watch), by
-// session name.
+// session name. waiting: what waits for the human in all sessions, while watched.
 export type LiveState = {
   sessions: Loaded;
   agents: Record<string, ListLoaded<AgentInfo>>;
   messages: Record<string, ListLoaded<MessageInfo>>; // all of them: a page picks what it shows
   events: Record<string, ListLoaded<RunEventInfo>>; // the flow runs' events
   gates: Record<string, ListLoaded<GateInfo>>; // open and closed: a closed gate's item stays
+  waiting: ListLoaded<WaitingItem>;
   link: Link;
   problem: string | null;
 };
+
+// The change kinds that can change what waits for the human; a session's change does when
+// it stops or comes back (isLive).
+const WAITING_KINDS = new Set(["gates", "agents", "messages"]);
+
+// A session whose waits count: the server's rule (state.waiting_items), the same here.
+export const isLive = (session: SessionInfo) => session.status !== "stopped";
 
 type ListName = "agents" | "messages" | "events" | "gates";
 
@@ -79,9 +89,15 @@ export class Live {
     messages: {},
     events: {},
     gates: {},
+    waiting: null,
     link: "connecting",
     problem: null,
   };
+  // What waits for the human: how many pages watch it, whether a load runs, and whether
+  // another one follows it for the changes that came meanwhile.
+  private waitingWatchers = 0;
+  private waitingLoading = false;
+  private waitingAgain = false;
   private listeners = new Set<() => void>();
   private source: EventSource | null = null;
   private retry: ReturnType<typeof setTimeout> | undefined;
@@ -164,9 +180,13 @@ export class Live {
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
-  // A page that shows the session's agents, messages, run events or gates: they load now and follow the feed until
-  // the last page that watches them lets go (the returned function).
-  watch(list: ListName, session: string): () => void {
+  // A page that shows the session's agents, messages, run events or gates, or what waits
+  // for the human: they load now and follow the feed until the last page that watches them
+  // lets go (the returned function).
+  watch(list: "waiting"): () => void;
+  watch(list: ListName, session: string): () => void;
+  watch(list: ListName | "waiting", session = ""): () => void {
+    if (list === "waiting") return this.watchWaiting();
     const watched = this.watched[list];
     watched.set(session, (watched.get(session) ?? 0) + 1);
     if (!(session in this.state[list])) this.loadList(list, session);
@@ -181,6 +201,40 @@ export class Live {
       const { [session]: _, ...others } = this.state[list];
       this.set({ [list]: others });
     };
+  }
+
+  private watchWaiting(): () => void {
+    this.waitingWatchers += 1;
+    if (this.waitingWatchers === 1) this.loadWaiting();
+    return () => {
+      this.waitingWatchers -= 1;
+      if (this.waitingWatchers === 0) this.set({ waiting: null });
+    };
+  }
+
+  // What waits has no item of its own in the feed: it is loaded again whole, on reset and
+  // on each change that can change it, since a count would miss one item in place of
+  // another. One load at a time; the changes that come meanwhile make one more.
+  private loadWaiting() {
+    if (this.waitingWatchers === 0) return;
+    if (this.waitingLoading) {
+      this.waitingAgain = true;
+      return;
+    }
+    this.waitingLoading = true;
+    getWaiting()
+      .then(
+        (items) => ({ items }),
+        (error: unknown) => ({ error: message(error) }),
+      )
+      .then((loaded) => {
+        this.waitingLoading = false;
+        if (this.waitingWatchers > 0) this.set({ waiting: loaded });
+        if (this.waitingAgain) {
+          this.waitingAgain = false;
+          this.loadWaiting();
+        }
+      });
   }
 
   private loadList(list: ListName, session: string) {
@@ -225,6 +279,7 @@ export class Live {
     for (const list of Object.keys(this.watched) as ListName[]) {
       this.watched[list].forEach((_, session) => this.loadList(list, session));
     }
+    this.loadWaiting();
     const changes: Change[] = [];
     this.loading = changes;
     getSessions()
@@ -243,9 +298,12 @@ export class Live {
   private apply(change: Change) {
     const list = change.kind as ListName;
     if (list in this.watched && this.watched[list].has(change.session)) this.applyList(list, change);
+    if (WAITING_KINDS.has(change.kind)) this.loadWaiting();
     const loaded = this.state.sessions;
     if (change.kind !== "sessions" || loaded === null || "error" in loaded) return;
     const item = change.item as SessionInfo | null;
+    const before = loaded.sessions.find((one) => one.name === change.session);
+    if ((before !== undefined && isLive(before)) !== (item !== null && isLive(item))) this.loadWaiting();
     const others = loaded.sessions.filter((one) => one.name !== change.session);
     if (item === null) {
       this.set({ sessions: { sessions: others } });

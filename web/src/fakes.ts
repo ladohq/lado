@@ -194,3 +194,49 @@ export class FakeEventSource {
 }
 
 export const stream = () => FakeEventSource.all[FakeEventSource.all.length - 1];
+
+// The browser's Notification: the permission it has, the human's answer when asked
+// (`answer`), and the notifications shown; `click` is the human clicking one.
+export class FakeNotification {
+  static permission: NotificationPermission = "default";
+  static answer: NotificationPermission = "granted";
+  static asked = 0;
+  static all: FakeNotification[] = [];
+
+  static reset() {
+    FakeNotification.permission = "default";
+    FakeNotification.answer = "granted";
+    FakeNotification.asked = 0;
+    FakeNotification.all = [];
+  }
+
+  static async requestPermission(): Promise<NotificationPermission> {
+    FakeNotification.asked += 1;
+    FakeNotification.permission = FakeNotification.answer;
+    return FakeNotification.answer;
+  }
+
+  onclick: ((event: Event) => void) | null = null;
+  closed = false;
+
+  constructor(
+    readonly title: string,
+    readonly options: NotificationOptions = {},
+  ) {
+    FakeNotification.all.push(this);
+  }
+  close() {
+    this.closed = true;
+  }
+  click() {
+    act(() => this.onclick?.(new Event("click")));
+  }
+}
+
+// Whether the tab is on the screen (document.visibilityState).
+export function setVisible(visible: boolean) {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => (visible ? "visible" : "hidden"),
+  });
+}

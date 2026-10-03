@@ -26,10 +26,12 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "react-router";
 
 import { getHistory, type AgentInfo, type History } from "./api";
 import { CollapsePanelIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
+import { TERMINAL_PARAM } from "./paths";
 import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type PanelPrefs } from "./prefs";
 import { fitWidth, Splitter, useWidth } from "./Splitter";
 import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
@@ -111,6 +113,30 @@ export function TerminalPanel({ session, children }: { session: string; children
     [keep],
   );
 
+  // ?terminal=<agent> (Needs you, a notification) opens that agent's terminal once the
+  // agents are loaded, and leaves the address (replaced, so Back and a reload do not open
+  // it again); an agent the session does not have is named.
+  const [params, setParams] = useSearchParams();
+  const wanted = params.get(TERMINAL_PARAM);
+  const [missing, setMissing] = useState<string | null>(null);
+  useEffect(() => {
+    if (wanted === null || loaded === null || "error" in loaded) return;
+    if (loaded.items.some((one) => one.name === wanted)) {
+      open(wanted);
+      setMissing(null);
+    } else {
+      setMissing(wanted);
+    }
+    setParams(
+      (now) => {
+        const next = new URLSearchParams(now);
+        next.delete(TERMINAL_PARAM);
+        return next;
+      },
+      { replace: true, preventScrollReset: true },
+    );
+  }, [wanted, loaded, open, setParams]);
+
   const close = (agent: string) => {
     const left = tabs.filter((one) => one !== agent);
     setTabs(left);
@@ -146,6 +172,11 @@ export function TerminalPanel({ session, children }: { session: string; children
     <TerminalsContext.Provider value={{ open, active: panel.collapsed ? null : active }}>
       <div ref={page} className="session-page">
         <div className="session-main" style={{ minWidth: `${MAIN_MIN}px` }}>
+          {missing !== null && (
+            <p className="problem" role="alert">
+              {missing} is not in this session
+            </p>
+          )}
           {children}
         </div>
         <aside

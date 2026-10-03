@@ -562,3 +562,41 @@ test("in a stopped session a gate's buttons are off and say why", async () => {
   expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
   expect(within(card).getByText("The session is stopped: resume it to answer.")).toBeTruthy();
 });
+
+// Links from Needs you and from a notification
+
+test("an address with a card's anchor scrolls to it once the feed is loaded, after the scroll to the latest", async () => {
+  const order: string[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    order.push(this.id || this.className);
+  };
+  serve(
+    [question(5), ...Array.from({ length: 30 }, (_, i) => message(10 + i, "supervisor", "human", `note ${i}`))],
+    undefined,
+    [],
+    [gate(1)],
+  );
+  open("/sessions/lado/activity#message-5");
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  await waitFor(() => expect(order).toContain("message-5"));
+  expect(card.id).toBe("message-5");
+  cleanup();
+  order.length = 0;
+  open("/sessions/lado/activity#gate-1");
+  await gateCard(1);
+  await waitFor(() => expect(order).toContain("gate-1"));
+  // A later message scrolls to the latest as before.
+  const feed = await chat();
+  Object.defineProperty(feed, "scrollHeight", { value: 900 });
+  stream().send("change", changed(message(99, "supervisor", "human", "newer")), "11");
+  await within(feed).findByText("newer");
+  expect(feed.scrollTop).toBe(900);
+});
+
+test("a question to the human shows while the agents' messages are hidden", async () => {
+  serve([question(5), message(6, "w1", "supervisor", "between agents")]);
+  open();
+  const log = await chat();
+  expect(await within(log).findByRole("article", { name: "Question from w1" })).toBeTruthy();
+  expect(within(log).queryByText("between agents")).toBeNull();
+});

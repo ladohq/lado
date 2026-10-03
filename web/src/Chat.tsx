@@ -3,23 +3,15 @@
 // and their other events as lines, and behind a switch the agents' messages to each other,
 // live from the feed (live.ts); and the composer. What the human sends shows only once the
 // feed brings it: nothing ahead of the server.
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Link } from "react-router";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Link, useLocation } from "react-router";
 
-import {
-  answerQuestion,
-  ApiError,
-  dismissQuestion,
-  HUMAN,
-  writeMessage,
-  type GateInfo,
-  type MessageInfo,
-  type RunEventInfo,
-} from "./api";
+import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
 import { Body, clock, Preview } from "./ChatText";
 import { Gate, gateAnchor } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { sessionPath } from "./paths";
+import { Meta, Question } from "./Question";
 
 // The run events the feed shows as lines, and how it names each kind: the one list. A
 // gate's events are not in it: the gate's card or line stands for them.
@@ -95,6 +87,12 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
     const element = feed.current;
     if (element) element.scrollTop = element.scrollHeight; // the latest at the bottom
   }, [shown.length]);
+  // A link to a card (#gate-<id>, #message-<id>: Needs you, a notification) scrolls to it
+  // once the feed is loaded, after the scroll to the latest above.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (ready && hash) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.({ block: "center" });
+  }, [ready, hash]);
 
   return (
     <section className="chat" aria-label="Chat">
@@ -162,17 +160,6 @@ function answerOf(question: MessageInfo, messages: MessageInfo[]): MessageInfo |
   return messages.find((one) => one.id === question.answered_by);
 }
 
-function Meta({ message }: { message: MessageInfo }) {
-  const mine = message.from === HUMAN;
-  return (
-    <header className="chat-meta">
-      <span className="chat-from">{mine ? "you" : message.from}</span>
-      {message.to !== HUMAN && <span>to {message.to}</span>}
-      <time dateTime={message.created_at}>{clock(message.created_at)}</time>
-    </header>
-  );
-}
-
 function Message({ message }: { message: MessageInfo }) {
   const mine = message.from === HUMAN;
   const between = !withHuman(message);
@@ -198,102 +185,6 @@ function Message({ message }: { message: MessageInfo }) {
       {message.reply_state === "missing" && <p className="chat-note">{message.to} replied only in its terminal</p>}
     </article>
   );
-}
-
-function Question({ session, question, answer }: { session: string; question: MessageInfo; answer?: MessageInfo }) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const open = question.question_state === "open";
-
-  async function act(call: () => Promise<unknown>) {
-    setBusy(true);
-    setProblem(null);
-    try {
-      await call();
-    } catch (error) {
-      setProblem(error instanceof ApiError ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (text.trim()) void act(() => answerQuestion(session, question.id, { text }));
-  }
-
-  return (
-    <article className={`chat-question${open ? " open" : ""}`} aria-label={`Question from ${question.from}`}>
-      <Meta message={question} />
-      <h4 className="chat-summary">{question.summary}</h4>
-      {question.body && <Body text={question.body} />}
-      {open ? (
-        <form className="answer" onSubmit={submit}>
-          {question.choices && (
-            <div className="choices">
-              {question.choices.map((choice) => (
-                <button
-                  key={choice}
-                  type="button"
-                  className="primary"
-                  disabled={busy}
-                  onClick={() =>
-                    // What the human wrote in the field goes along as a comment.
-                    void act(() => answerQuestion(session, question.id, text.trim() ? { choice, text } : { choice }))
-                  }
-                >
-                  {choice}
-                </button>
-              ))}
-            </div>
-          )}
-          {question.free_answer && (
-            <textarea
-              aria-label="Your answer"
-              placeholder="Your answer"
-              rows={2}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-            />
-          )}
-          <div className="answer-actions">
-            {question.free_answer && (
-              <button type="submit" className="quiet" disabled={busy || !text.trim()}>
-                Submit
-              </button>
-            )}
-            <button
-              type="button"
-              className="quiet"
-              disabled={busy}
-              onClick={() => void act(() => dismissQuestion(session, question.id))}
-            >
-              Dismiss
-            </button>
-          </div>
-          {problem && (
-            <p className="field-problem" role="alert">
-              {problem}
-            </p>
-          )}
-        </form>
-      ) : (
-        <p className="chat-outcome">{outcome(question, answer)}</p>
-      )}
-    </article>
-  );
-}
-
-function outcome(question: MessageInfo, answer?: MessageInfo): string {
-  switch (question.question_state) {
-    case "answered":
-      return answer?.choice ? `Answered: ${answer.choice}` : "Answered";
-    case "dismissed":
-      return "Dismissed";
-    default:
-      return "Question closed: the agent left";
-  }
 }
 
 function Composer({ session, stopped }: { session: string; stopped: boolean }) {

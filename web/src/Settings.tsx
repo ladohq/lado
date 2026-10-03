@@ -1,6 +1,7 @@
 // Settings: one page, its sections one under the other; a new one goes at the end.
 import { useId, useState } from "react";
 
+import { NotificationsSetting } from "./Notifications";
 import { PLANS } from "./paths";
 import { Placeholder } from "./Placeholder";
 import { chooseTheme, storedTheme, type Theme } from "./prefs";
@@ -17,10 +18,21 @@ export function Settings() {
   return (
     <div className="settings">
       <Appearance />
+      <Notifications />
       <Placeholder title="Providers and environment" plan={PLANS.providers}>
         The agent CLIs LADO can run, their versions and logins, and what <code>lado doctor</code> checks.
       </Placeholder>
     </div>
+  );
+}
+
+function Notifications() {
+  const id = useId();
+  return (
+    <section className="setting" aria-labelledby={id}>
+      <h2 id={id}>Notifications</h2>
+      <NotificationsSetting />
+    </section>
   );
 }
 

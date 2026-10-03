@@ -42,6 +42,11 @@ export type History = components["schemas"]["History"];
 
 export const getSessions = () => get<SessionInfo[]>("/api/sessions");
 
+export type WaitingItem = components["schemas"]["WaitingItem"];
+
+// What waits for the human in every session not stopped, oldest first (Needs you).
+export const getWaiting = () => get<WaitingItem[]>("/api/waiting");
+
 export type Health = components["schemas"]["Health"];
 
 // The server's LADO version; needs no token.

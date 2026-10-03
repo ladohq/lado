@@ -18,7 +18,7 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
 }
 
 function agent(name: string, role: string, status: AgentInfo["status"], more: Partial<AgentInfo> = {}): AgentInfo {
-  return { name, role, provider: "claude", status, run: null, task: null, ...more };
+  return { name, role, provider: "claude", status, run: null, task: null, waiting_reason: null, ...more };
 }
 
 let sessions: SessionInfo[] = [];
@@ -131,7 +131,7 @@ test("the list groups the sessions: Needs you, Running, then Stopped folded", as
     session("gated", { waiting: { gates: 1, questions: 0, agents: 0 } }),
     session("asking", { waiting: { gates: 0, questions: 2, agents: 0 } }),
     session("stuck", { status: "tmux_gone", waiting: { gates: 0, questions: 0, agents: 1 } }),
-    session("gone", { status: "stopped", agents: 0, waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("gone", { status: "stopped", agents: 0 }), // its gates are open, but nothing waits in it
     session("old", { status: "stopped", agents: 0 }),
   ];
   open("/sessions");

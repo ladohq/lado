@@ -12,6 +12,16 @@ export function sessionPath(name: string, tab?: Tab): string {
   return tab ? `${path}/${tab}` : path;
 }
 
+// The address's parameter that opens an agent's terminal on its session's page.
+export const TERMINAL_PARAM = "terminal";
+
+export const terminalPath = (session: string, agent: string) =>
+  `${sessionPath(session, "activity")}?${TERMINAL_PARAM}=${encodeURIComponent(agent)}`;
+
+// A card in the session's chat: the chat scrolls to the element of that id.
+export const chatPath = (session: string, anchor?: string) =>
+  `${sessionPath(session, "activity")}${anchor ? `#${anchor}` : ""}`;
+
 // Where a placeholder's section is planned: an item of ROADMAP.md or of docs/design/ui.md.
 const REPO = "https://github.com/ladohq/lado/blob/main";
 
@@ -24,7 +34,6 @@ const ui = (anchor: string, label: string): Plan => ({
 
 export const PLANS = {
   home: ui("home", "Home"),
-  gates: ui("gates", "Gates"),
   kits: ui("kits", "Kits"),
   activity: ui("activity", "Activity"),
   agents: ui("agents", "Agents"),

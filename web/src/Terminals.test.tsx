@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
@@ -13,8 +13,8 @@ vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).F
 const NONE = { gates: 0, questions: 0, agents: 0 };
 const SESSION: SessionInfo = { name: "lado", repo: "/src/lado", status: "running", agents: 2, waiting: NONE };
 const AGENTS: AgentInfo[] = [
-  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null },
-  { name: "w1", role: "developer", provider: "kilo", status: "busy", run: null, task: "Build it" },
+  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, waiting_reason: null },
+  { name: "w1", role: "developer", provider: "kilo", status: "busy", run: null, task: "Build it", waiting_reason: null },
 ];
 const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 
@@ -158,6 +158,39 @@ test("the Agents tab opens an agent's terminal in the same panel", async () => {
   fireEvent.click(await within(list).findByRole("button", { name: "Open w1's terminal" }));
   expect(tab("w1").getAttribute("aria-selected")).toBe("true");
   expect(socketOf("w1", "view")).toHaveLength(1);
+});
+
+// Where the page is now: the address without the host.
+function Where() {
+  const { pathname, search } = useLocation();
+  return <output aria-label="Address">{pathname + search}</output>;
+}
+
+async function openAt(path: string) {
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <App />
+      <Where />
+    </MemoryRouter>,
+  );
+  await screen.findByRole("region", { name: "Session lado" });
+}
+
+const address = () => screen.getByRole("status", { name: "Address" }).textContent;
+
+test("?terminal= in the address opens that agent's terminal, also in a collapsed panel, and leaves the address", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 480, collapsed: true }));
+  await openAt("/sessions/lado/activity?terminal=w1");
+  await waitFor(() => expect(tab("w1").getAttribute("aria-selected")).toBe("true"));
+  expect(socketOf("w1", "view")).toHaveLength(1);
+  await waitFor(() => expect(address()).toBe("/sessions/lado/activity"));
+});
+
+test("?terminal= naming no agent of the session says so", async () => {
+  await openAt("/sessions/lado/activity?terminal=w9");
+  expect(await screen.findByText("w9 is not in this session")).toBeTruthy();
+  await waitFor(() => expect(address()).toBe("/sessions/lado/activity"));
+  expect(tabNames()).toEqual(["supervisor"]);
 });
 
 // Collapsed to a strip

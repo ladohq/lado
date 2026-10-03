@@ -117,6 +117,16 @@ export function storeAgentMessages(shown: boolean): void {
   write(AGENT_MESSAGES, shown ? "shown" : "hidden");
 }
 
+// Whether the browser notifies when something new waits for the human (off by default;
+// it also needs the browser's permission).
+const NOTIFICATIONS = "lado.notifications";
+
+export const storedNotifications = (): boolean => read(NOTIFICATIONS) === "on";
+
+export function storeNotifications(on: boolean): void {
+  write(NOTIFICATIONS, on ? "on" : "off");
+}
+
 // Whether the session list shows its stopped sessions (folded by default).
 const STOPPED = "lado.stoppedSessions";
 

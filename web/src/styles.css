@@ -145,6 +145,36 @@ button {
   flex: none;
 }
 
+/* What waits for the human, counted on Needs you's link: orange, as all that waits. */
+.rail-link {
+  position: relative;
+}
+
+.rail-count {
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--human);
+  color: var(--panel);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+
+.collapsed .rail-count {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .ghost {
   display: grid;
   place-items: center;
@@ -598,6 +628,89 @@ h3 {
 .status-loop_down::before {
   background: transparent;
   border: 1.5px solid currentColor;
+}
+
+/* Needs you: what waits, by session, the cards as in the chat. */
+
+.needs-you {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 760px;
+}
+
+.notify-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.notify-offer p {
+  margin: 0;
+}
+
+.notify-offer .field-problem {
+  flex-basis: 100%;
+}
+
+.waits-session {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.waits-session h2 a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.waits-session h2 a:hover {
+  color: var(--action);
+  text-decoration: underline;
+}
+
+.waits-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.waits-chat {
+  align-self: flex-end;
+  font-size: 13px;
+}
+
+.waits-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--human);
+  border-radius: 8px;
+  box-shadow: inset 3px 0 0 var(--human);
+  background: var(--human-ground);
+}
+
+.waits-agent .answer-actions {
+  align-items: center;
+}
+
+.waits-agent .waits-chat {
+  margin-left: auto;
+}
+
+.waits-reason {
+  margin: 0;
+}
+
+.setting-switch {
+  justify-content: flex-start;
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-size: 14px;
 }
 
 /* Settings: sections one under the other. */

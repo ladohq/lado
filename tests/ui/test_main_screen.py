@@ -137,7 +137,7 @@ def test_the_rail_works_from_the_keyboard(page: Page, server):
     log_in(page, server)
     rail = page.get_by_role("navigation", name="Sections")
     rail.get_by_role("link", name="Home").focus()
-    for _ in SECTIONS[1:5]:  # Needs you, Sessions, Projects, Kits
+    for _ in ["Launch", *SECTIONS[1:5]]:  # Launch, Needs you, Sessions, Projects, Kits
         page.keyboard.press("Tab")
     page.keyboard.press("Enter")
     expect(page.get_by_role("banner").get_by_role("heading")).to_have_text("Kits")

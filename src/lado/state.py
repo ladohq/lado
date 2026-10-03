@@ -593,6 +593,15 @@ def stop_session(name: str) -> tuple[list[Agent], int]:
     return [_agent(r) for r in rows], dropped
 
 
+def unreceived(name: str) -> int:
+    """How many of the session's messages a stop would drop now."""
+    with connect() as db:
+        return db.execute(
+            f"SELECT count(*) FROM messages WHERE session = ? AND {UNRECEIVED}",
+            (name, *UNRECEIVED_ARGS),
+        ).fetchone()[0]
+
+
 def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, int]:
     rows = db.execute(
         "SELECT * FROM agents WHERE session = ? ORDER BY created_at, rowid", (name,)

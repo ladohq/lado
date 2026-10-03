@@ -129,6 +129,21 @@ class LadoError(RuntimeError):
     pass
 
 
+class NoSuchSession(LadoError):
+    """A session to resume that LADO does not know."""
+
+
+class SessionExists(LadoError):
+    """A new session asked for under a name a session has: its status and folder."""
+
+    def __init__(self, sess: "state.Session", status: "SessionStatus"):
+        self.status, self.repo = status, sess.repo
+        super().__init__(
+            f'session "{sess.name}" exists already ({status.value}, in {sess.repo}); '
+            "resume it, or give the new session another name"
+        )
+
+
 def slug(value: str) -> str:
     """A name that is safe for tmux targets, git branches and paths."""
     return re.sub(r"[^a-z0-9_-]+", "-", value.lower()).strip("-") or "lado"
@@ -148,6 +163,19 @@ def repo_root(path: str) -> str:
         raise LadoError(f"{path} is not inside a git repository") from exc
 
 
+def check_repo(path: str) -> str:
+    """The root of the repository a session can start in at `path`, or why there is none.
+    `lado start` and the UI's folder check both ask this, so they refuse alike."""
+    if not Path(path).exists():
+        raise LadoError(f"{path} does not exist")
+    root = repo_root(path)
+    try:
+        git(root, "rev-parse", "--verify", "--quiet", "HEAD")
+    except LadoError:
+        raise LadoError(f"{path} has no commits yet: make a first commit, then start") from None
+    return root
+
+
 @dataclass
 class Started:
     session: state.Session
@@ -163,16 +191,24 @@ def start_session(
     provider: str | None = None,
     kit_names: list[str] | None = None,
     without: list[str] | None = None,
+    resume: bool | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z").
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
-    new supervisor starts with a message about the open runs (lado.runs.resume)."""
-    repo = repo_root(path)
+    new supervisor starts with a message about the open runs (lado.runs.resume).
+
+    `resume` is what the caller means: False a new session (SessionExists when the name is
+    taken), True a resume (NoSuchSession for an unknown name); None, as `lado start`, either."""
+    repo = check_repo(path)
     session = slug(name or Path(repo).name)
     old = state.get_session(session)
+    if old and resume is False:
+        raise SessionExists(old, session_status(old))
+    if not old and resume:
+        raise NoSuchSession(f'unknown session "{session}"')
     if old:
         if not old.stopped_at and tmux.has_session(session):
             loop.ensure(session)
@@ -843,9 +879,17 @@ class Stopped:
     dropped: int  # messages no agent got
 
 
-def stop_session(session: str) -> Stopped:
-    """Kill the session's agents and mark it stopped. Its history, runs and gates stay
-    until `lado start` resumes it or `lado forget` drops it; worktrees stay on disk."""
+@dataclass
+class StopPreview:
+    agents: list[str]  # the agents a stop closes
+    dropped: int  # messages no agent got, dropped by a stop now
+    open_runs: list[str]  # they stay, and go on after a resume
+    worktrees: dict[str, str]  # worktree -> branch, they stay on disk
+
+
+def stop_preview(session: str) -> StopPreview:
+    """What stopping the session would do now, refused as the stop would be; changes
+    nothing."""
     sess = state.get_session(session)
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
@@ -854,6 +898,18 @@ def stop_session(session: str) -> Stopped:
             f'session "{session}" is stopped already; resume it with `lado start`, '
             f"or drop it with `lado forget {session}`"
         )
+    return StopPreview(
+        [a.name for a in state.list_agents(session)],
+        state.unreceived(session),
+        [r.name for r in state.list_runs(session, open_only=True)],
+        session_worktrees(sess.repo, session),
+    )
+
+
+def stop_session(session: str) -> Stopped:
+    """Kill the session's agents and mark it stopped. Its history, runs and gates stay
+    until `lado start` resumes it or `lado forget` drops it; worktrees stay on disk."""
+    stop_preview(session)  # refuses an unknown or stopped session
     if tmux.has_session(session):
         tmux.kill_session(session)
     agents, dropped = state.stop_session(session)
@@ -869,9 +925,9 @@ class Forgotten:
     worktrees: dict[str, str]  # worktree -> branch, left on disk
 
 
-def forget_session(session: str, force: bool = False) -> Forgotten:
-    """Delete a stopped session with its history, runs and gates. With open runs only if
-    `force`. Worktrees and branches stay on disk."""
+def forget_preview(session: str) -> Forgotten:
+    """What forgetting the stopped session would drop and leave on disk, refused as the
+    forget would be (open runs aside); changes nothing."""
     sess = state.get_session(session)
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
@@ -880,15 +936,21 @@ def forget_session(session: str, force: bool = False) -> Forgotten:
             f'session "{session}" is not stopped; stop it first with lado stop {session}'
         )
     open_runs = [r.name for r in state.list_runs(session, open_only=True)]
-    if open_runs and not force:
+    return Forgotten(open_runs, session_worktrees(sess.repo, session))
+
+
+def forget_session(session: str, force: bool = False) -> Forgotten:
+    """Delete a stopped session with its history, runs and gates. With open runs only if
+    `force`. Worktrees and branches stay on disk."""
+    forgotten = forget_preview(session)
+    if forgotten.runs and not force:
         raise LadoError(
-            f'session "{session}" has open runs: {", ".join(open_runs)}; forget it with --force '
-            "to drop them, or resume it with lado start"
+            f'session "{session}" has open runs: {", ".join(forgotten.runs)}; forget it with '
+            "--force to drop them, or resume it with lado start"
         )
-    worktrees = session_worktrees(sess.repo, session)
     state.delete_session(session)
     loop.forget(session)
-    return Forgotten(open_runs, worktrees)
+    return forgotten
 
 
 def session_worktrees(repo: str, session: str) -> dict[str, str]:

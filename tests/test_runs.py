@@ -1077,3 +1077,32 @@ def test_the_end_of_a_run_closes_its_workers_questions(session, repo):
     runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
     runs.advance(session, "supervisor", "feature/login", "merged")
     assert _question_states(session) == [state.CLOSED]
+
+
+def test_stop_preview_tells_what_a_stop_closes_drops_and_keeps(session, repo):
+    run = runs.start(session, "feature", "Add a login page.", name="login")
+    worker = runtime.spawn_worker(session, "task", name="w1")
+    runtime.send_message(session, "supervisor", "w1", "hi")  # w1 is starting: queued
+    preview = runtime.stop_preview(session)
+    assert preview.agents == ["supervisor", "w1"]
+    assert preview.dropped == 2  # and the run's first step, to the starting supervisor
+    assert preview.open_runs == ["feature/login"]
+    assert preview.worktrees == {run.worktree: run.branch, worker.cwd: worker.branch}
+    assert state.get_session(session).stopped_at is None  # a preview changes nothing
+    assert runtime.stop_session(session).dropped == preview.dropped
+    with pytest.raises(runtime.LadoError, match="is stopped already"):
+        runtime.stop_preview(session)
+    with pytest.raises(runtime.LadoError, match='unknown session "nope"'):
+        runtime.stop_preview("nope")
+
+
+def test_forget_preview_tells_what_a_forget_drops_and_leaves_on_disk(session):
+    run = runs.start(session, "feature", "Add a login page.", name="login")
+    with pytest.raises(runtime.LadoError, match="is not stopped"):
+        runtime.forget_preview(session)
+    runtime.stop_session(session)
+    preview = runtime.forget_preview(session)
+    assert (preview.runs, preview.worktrees) == (["feature/login"], {run.worktree: run.branch})
+    assert state.get_session(session) is not None  # a preview changes nothing
+    forgotten = runtime.forget_session(session, force=True)
+    assert (forgotten.runs, forgotten.worktrees) == (preview.runs, preview.worktrees)

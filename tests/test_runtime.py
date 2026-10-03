@@ -173,6 +173,95 @@ def test_start_requires_git_repo(tmp_path, fake_tmux):
         runtime.start_session(str(tmp_path), None, None)
 
 
+def _session_in(status, repo, fake_tmux):
+    """A session "s" of `repo` that is running, stopped or whose tmux server is gone."""
+    runtime.start_session(str(repo), "s", None)
+    if status == runtime.SessionStatus.STOPPED:
+        runtime.stop_session("s")
+    elif status == runtime.SessionStatus.TMUX_GONE:
+        fake_tmux.append(("kill_session", "s"))
+
+
+def test_a_new_session_starts_with_resume_false(repo, fake_tmux):
+    started = runtime.start_session(str(repo), "s", None, resume=False)
+    assert not started.resumed
+    assert state.get_session("s").repo == str(repo)
+
+
+@pytest.mark.parametrize(
+    "status",
+    [runtime.SessionStatus.RUNNING, runtime.SessionStatus.STOPPED, runtime.SessionStatus.TMUX_GONE],
+)
+def test_resume_false_refuses_a_session_of_that_name(repo, fake_tmux, status):
+    _session_in(status, repo, fake_tmux)
+    events = len(state.list_events("s"))
+    # A running session's loop is not started here: its status says so.
+    shown = runtime.SessionStatus.LOOP_DOWN if status == runtime.SessionStatus.RUNNING else status
+    with pytest.raises(runtime.SessionExists) as error:
+        runtime.start_session(str(repo), "s", "plan", resume=False)
+    assert (error.value.status, error.value.repo) == (shown, str(repo))
+    assert f'session "s" exists already ({shown.value}, in {repo})' in str(error.value)
+    assert len(state.list_events("s")) == events  # nothing was changed
+    assert state.get_session("s").permission_mode is None
+
+
+def test_resume_true_refuses_an_unknown_session(repo, fake_tmux):
+    with pytest.raises(runtime.NoSuchSession, match='unknown session "s"'):
+        runtime.start_session(str(repo), "s", None, resume=True)
+    assert state.get_session("s") is None
+
+
+@pytest.mark.parametrize("status", [runtime.SessionStatus.STOPPED, runtime.SessionStatus.TMUX_GONE])
+def test_resume_true_resumes_a_session_not_running(repo, fake_tmux, status):
+    _session_in(status, repo, fake_tmux)
+    started = runtime.start_session(str(repo), "s", "plan", resume=True)
+    assert started.resumed
+    assert started.changes == ["permission mode: none -> plan"]
+
+
+def test_resume_true_refuses_a_running_session(repo, fake_tmux):
+    _session_in(runtime.SessionStatus.RUNNING, repo, fake_tmux)
+    with pytest.raises(runtime.LadoError, match='session "s" is already running') as error:
+        runtime.start_session(str(repo), "s", None, resume=True)
+    assert not isinstance(error.value, runtime.SessionExists)
+
+
+def test_check_repo_gives_the_root_of_a_repository_with_commits(repo):
+    (repo / "sub").mkdir()
+    assert runtime.check_repo(str(repo / "sub")) == str(repo)
+
+
+def test_check_repo_refuses_a_folder_that_is_not_there(tmp_path):
+    missing = tmp_path / "nope"
+    with pytest.raises(runtime.LadoError, match=f"^{missing} does not exist$"):
+        runtime.check_repo(str(missing))
+
+
+def test_check_repo_refuses_a_folder_outside_git(tmp_path):
+    with pytest.raises(runtime.LadoError, match=f"^{tmp_path} is not inside a git repository$"):
+        runtime.check_repo(str(tmp_path))
+
+
+def _repo_without_commits(path: Path) -> Path:
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    return path
+
+
+def test_check_repo_refuses_a_repository_without_commits(tmp_path):
+    empty = _repo_without_commits(tmp_path / "empty")
+    expected = f"^{empty} has no commits yet: make a first commit, then start$"
+    with pytest.raises(runtime.LadoError, match=expected):
+        runtime.check_repo(str(empty))
+
+
+def test_start_refuses_a_repository_without_commits(tmp_path, fake_tmux):
+    empty = _repo_without_commits(tmp_path / "empty")
+    with pytest.raises(runtime.LadoError, match="has no commits yet"):
+        runtime.start_session(str(empty), None, None)
+    assert state.list_sessions() == []
+
+
 def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     worker = runtime.spawn_worker("s", "fix the bug;")

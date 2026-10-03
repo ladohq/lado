@@ -119,3 +119,29 @@ def test_a_failing_login_shell_fails(login_shell):
     check = doctor.check_agent_env()
     assert not check.ok
     assert "exit status 2" in check.detail and "rc is broken" in check.detail
+
+
+def test_provider_status_of_an_installed_tested_cli(monkeypatch):
+    _versions(monkeypatch)
+    status = doctor.provider_status(claude.ClaudeProvider(), which=lambda cmd: cmd)
+    assert status == doctor.ProviderStatus(
+        installed=True,
+        version=claude.TESTED_VERSION,
+        detail=f"{claude.TESTED_VERSION} (Claude Code)",
+        tested_version=claude.TESTED_VERSION,
+        warning="",
+    )
+
+
+def test_provider_status_of_a_missing_cli(monkeypatch):
+    _versions(monkeypatch)
+    status = doctor.provider_status(kilo.KiloProvider(), which=lambda cmd: None)
+    assert (status.installed, status.version, status.warning) == (False, "", "")
+    assert status.detail == "`kilo` not found on PATH"
+
+
+def test_provider_status_of_an_untested_version_warns(monkeypatch):
+    _versions(monkeypatch, kilo_version="9.0.0")
+    status = doctor.provider_status(kilo.KiloProvider(), which=lambda cmd: cmd)
+    assert (status.installed, status.version) == (True, "9.0.0")
+    assert status.warning.startswith(f"LADO is tested with Kilo CLI {kilo.TESTED_VERSION}.x;")

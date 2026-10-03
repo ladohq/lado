@@ -101,6 +101,15 @@ def test_start_with_unknown_provider_fails(repo, fake_tmux, capsys):
     assert 'unknown provider "nope"; known: claude, kilo' in capsys.readouterr().err
 
 
+def test_start_in_a_repository_without_commits_fails(tmp_path, fake_tmux, capsys):
+    empty = tmp_path / "empty"
+    subprocess.run(["git", "init", "-q", str(empty)], check=True)
+    assert main(["start", str(empty), "--no-attach"]) == 1
+    assert f"{empty} has no commits yet: make a first commit, then start" in (
+        capsys.readouterr().err
+    )
+
+
 def test_start_help_lists_each_providers_permission_modes(capsys):
     with pytest.raises(SystemExit):
         main(["start", "--help"])

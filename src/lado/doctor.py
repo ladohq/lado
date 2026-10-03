@@ -40,26 +40,47 @@ def check_tool(
     return Check(name, True, _tool_version(path, flag))
 
 
+@dataclass
+class ProviderStatus:
+    """Whether a provider's CLI can run here, for `lado doctor` and the UI."""
+
+    installed: bool
+    version: str  # x.y.z from `<cli> --version`; "" when unknown
+    detail: str  # that command's first line, or why there is none
+    tested_version: str  # the version (or prefix) LADO is tested with; "" any
+    warning: str  # "" unless the version is not the tested one
+
+
+def provider_status(
+    provider: providers.Provider, which: Callable[[str], str | None]
+) -> ProviderStatus:
+    tool = check_tool(provider.title, provider.command, "--version", "", which)
+    tested = provider.tested_version
+    if not tool.ok:
+        return ProviderStatus(False, "", tool.detail, tested, "")
+    found = re.search(r"\d+\.\d+\.\d+", tool.detail)
+    version = found[0] if found else ""
+    warning = ""
+    if tested and not (version == tested or version.startswith(tested + ".")):
+        # A prefix ("7.8") stands for its versions; a full version only for itself.
+        shown = tested if tested.count(".") == 2 else f"{tested}.x"
+        warning = (
+            f"LADO is tested with {provider.title} {shown}; with other versions "
+            "agent status and message delivery may break"
+        )
+    return ProviderStatus(True, version, tool.detail, tested, warning)
+
+
 def check_provider(provider: providers.Provider, which: Callable[[str], str | None]) -> Check:
     """Only the default provider is required; the others are optional."""
-    check = check_tool(provider.title, provider.command, "--version", provider.install_hint, which)
-    if not check.ok:
+    status = provider_status(provider, which)
+    if not status.installed:
+        check = Check(provider.title, False, status.detail, provider.install_hint)
         if provider.name != providers.DEFAULT:
             check.ok, check.warning = True, True
             check.hint += f" (needed only for --provider {provider.name})"
         return check
-    found = re.search(r"\d+\.\d+\.\d+", check.detail)
-    version = found[0] if found else ""
-    tested = provider.tested_version
-    if tested and not (version == tested or version.startswith(tested + ".")):
-        # A prefix ("7.8") stands for its versions; a full version only for itself.
-        shown = tested if tested.count(".") == 2 else f"{tested}.x"
-        check.warning = True
-        check.hint = (
-            f"LADO is tested with {provider.title} {shown}; with other versions "
-            "agent status and message delivery may break"
-        )
-    return check
+    return Check(provider.title, True, status.detail, status.warning, warning=bool(status.warning))
 
 
 def check_tmux(which: Callable[[str], str | None]) -> Check:

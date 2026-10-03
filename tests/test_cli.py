@@ -527,6 +527,94 @@ def test_answer_names_a_gate_and_goes_on_with_its_session(repo, fake_tmux, capsy
     assert capsys.readouterr().out == "No open gates.\n"
 
 
+@pytest.fixture
+def terminal(monkeypatch):
+    """A real terminal (a pty) as stdin: the end the human types into, and the stdin."""
+    import pty
+
+    keyboard, tty = pty.openpty()
+    stdin = os.fdopen(tty, "r")
+    monkeypatch.setattr(cli, "POLL", 0.05)
+    yield keyboard, stdin
+    stdin.close()
+    os.close(keyboard)
+
+
+def test_a_line_is_read_while_it_is_still_wanted(terminal):
+    keyboard, stdin = terminal
+    os.write(keyboard, b"approve\n")
+    assert cli.read_line_while(stdin, lambda: True) == "approve"
+
+
+def test_typing_is_dropped_when_it_is_no_longer_wanted(terminal):
+    keyboard, stdin = terminal
+    os.write(keyboard, b"appro")  # typed, no Enter yet
+    checks = iter([True, True, False])
+    with pytest.raises(cli.NotWanted):
+        cli.read_line_while(stdin, lambda: next(checks))
+    # What was typed went with it: it does not reach the next prompt.
+    os.write(keyboard, b"x\n")
+    assert cli.read_line_while(stdin, lambda: True) == "x"
+
+
+def test_answer_notices_a_gate_answered_elsewhere(repo, fake_tmux, capsys, monkeypatch, terminal):
+    import threading
+    import time
+
+    keyboard, stdin = terminal
+    _at_gate(repo, capsys)
+    runs.start("s", "ship", "Add y", name="y")
+    runs.force("s", "ship/y", "check", "built by hand")
+    monkeypatch.setattr(sys, "stdin", stdin)
+    os.write(keyboard, b"appr")  # the human was typing
+    done = []
+    asking = threading.Thread(target=lambda: done.append(main(["answer", "s", "1"])), daemon=True)
+    asking.start()
+    out = ""
+    deadline = time.monotonic() + 10
+    while "Answer (" not in out:
+        assert time.monotonic() < deadline, out
+        time.sleep(0.02)
+        out += capsys.readouterr().out
+    runs.answer("s", "1", "reject", "from the UI")
+    while "Gate #2, session s" not in out:
+        assert time.monotonic() < deadline, out
+        time.sleep(0.02)
+        out += capsys.readouterr().out
+    os.write(keyboard, b"\n")  # leaves gate #2 open: "appr" was dropped
+    asking.join(10)
+    out += capsys.readouterr().out
+    assert done == [0]
+    assert "Gate #1 was answered elsewhere: reject by human\n" in out
+    assert out.endswith("Gate #2 stays open.\n")
+    assert state.get_gate(2).answer is None
+
+
+def test_answer_ends_when_the_last_gate_is_answered_elsewhere(
+    repo, fake_tmux, capsys, monkeypatch, terminal
+):
+    import threading
+    import time
+
+    keyboard, stdin = terminal
+    _at_gate(repo, capsys)
+    monkeypatch.setattr(sys, "stdin", stdin)
+    done = []
+    asking = threading.Thread(target=lambda: done.append(main(["answer"])), daemon=True)
+    asking.start()
+    out = ""
+    deadline = time.monotonic() + 10
+    while "Answer (" not in out:
+        assert time.monotonic() < deadline, out
+        time.sleep(0.02)
+        out += capsys.readouterr().out
+    runs.answer("s", "1", "approve")
+    asking.join(10)
+    out += capsys.readouterr().out
+    assert done == [0]
+    assert out.endswith("Gate #1 was answered elsewhere: approve by human\nNo more open gates.\n")
+
+
 def test_flow_set_moves_a_run_and_is_logged(repo, fake_tmux, capsys):
     _session_with_run(repo)
     assert main(["flow-set", "s", "ship/x", "check", "--reason", "built by hand"]) == 0

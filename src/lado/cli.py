@@ -3,10 +3,14 @@
 import argparse
 import datetime
 import os
+import select
 import shutil
 import subprocess
 import sys
+import termios
+from collections.abc import Callable
 from pathlib import Path
+from typing import TextIO
 
 from lado import (
     __version__,
@@ -23,6 +27,7 @@ from lado import (
 )
 
 PAGER = ["less", "-R"]  # for a gate's full note
+POLL = 1.0  # seconds between two checks that a gate the human is asked about is open
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -261,15 +266,21 @@ def cmd_answer(args: argparse.Namespace) -> int:
         gate = gates[0] if len(gates) == 1 else _pick(gates)
         if gate is None:
             return failed
-        option = _choose(gate)
-        comment, args.comment = args.comment, None  # -m is for the first answer only
-        if option is not None and comment is None:
-            comment = _input("Comment for the next step (Enter for none): ")
-        if option is None or comment is None:
-            print(f"Gate #{gate.id} stays open.")
-            return failed
         try:
+            option = _choose(gate)
+            comment, args.comment = args.comment, None  # -m is for the first answer only
+            if option is not None and comment is None:
+                comment = _input("Comment for the next step (Enter for none): ", gate)
+            if option is None or comment is None:
+                print(f"Gate #{gate.id} stays open.")
+                return failed
             _answer(gate.session, str(gate.id), option, comment)
+            answered = True
+        except NotWanted:
+            closed = state.get_gate(gate.id)
+            print(
+                f"Gate #{gate.id} was answered elsewhere: {closed.answer} by {closed.answered_by}"
+            )
             answered = True
         except runtime.LadoError as exc:
             print(f"lado: {exc}")
@@ -283,13 +294,39 @@ def _answer(session: str, ref: str, option: str, comment: str | None) -> None:
     print(runs.answer_text(session, ref, option, comment))
 
 
-def _input(prompt: str) -> str | None:
-    """A line the human typed; None when they end the input or press Ctrl-C."""
+class NotWanted(Exception):
+    """What the human was asked for is no longer wanted: e.g. the gate was answered in the
+    UI or in another `lado answer`."""
+
+
+def _input(prompt: str, gate: state.Gate | None = None) -> str | None:
+    """A line the human typed; None when they end the input or press Ctrl-C. While asked
+    about `gate` on a terminal, NotWanted when the gate is answered elsewhere."""
     try:
-        return input(prompt).strip()
+        if gate is None or not sys.stdin.isatty():
+            return input(prompt).strip()
+        print(prompt, end="", flush=True)
+        return read_line_while(sys.stdin, lambda: state.get_gate(gate.id).answer is None)
     except (EOFError, KeyboardInterrupt):
         print()
         return None
+
+
+def read_line_while(stdin: TextIO, wanted: Callable[[], bool]) -> str:
+    """A line typed on the terminal `stdin`, checking every POLL seconds that it is still
+    wanted. When it is not, what was typed so far is dropped, so it does not go to the next
+    prompt, and NotWanted is raised."""
+    while True:
+        ready, _, _ = select.select([stdin], [], [], POLL)
+        if ready:
+            line = stdin.readline()
+            if not line:
+                raise EOFError
+            return line.strip()
+        if not wanted():
+            termios.tcflush(stdin, termios.TCIFLUSH)
+            print()
+            raise NotWanted
 
 
 def _pick(gates: list[state.Gate]) -> state.Gate | None:
@@ -313,7 +350,7 @@ def _choose(gate: state.Gate) -> str | None:
     v = ", v for the full note" if full_note else ""
     _show_gate(gate, needed)
     while True:
-        chosen = _input(f"Answer (number or name{v}, Enter to leave it open): ")
+        chosen = _input(f"Answer (number or name{v}, Enter to leave it open): ", gate)
         if not chosen:
             return None
         if full_note and chosen.lower() == "v":

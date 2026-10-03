@@ -2,6 +2,7 @@
 the steps through the MCP tools, LADO delivers each step and cleans up at the end."""
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -318,6 +319,26 @@ def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
     log = lado_cli("log", SESSION).stdout
     assert "lado: session_stop" in log and "lado: session_resume" in log
     assert not (state.home() / "hooks.log").exists()
+
+
+def test_lado_answer_ends_when_its_gate_is_answered_elsewhere(repo, flow_kit):
+    """The popup's `lado answer` waits for the human; the gate is answered in another
+    process (the UI's server, another popup): it says so and ends, and what the human had
+    typed goes nowhere."""
+    name = "reviewed/check-it"
+    to_the_gate(name)
+    env = {"LADO_HOME": str(state.home()), "LADO_TMUX_SOCKET": tmux.socket()}
+    answer = f"{sys.executable} -m lado.cli answer {SESSION} 1; echo exited $?; sleep 600"
+    tmux.new_session("asking", "a", str(repo), env, ["sh", "-c", answer])
+    wait_for(lambda: "Answer (number or name" in tmux.capture("asking", "a"), "the question")
+    tmux.run("send-keys", "-t", "asking:a", "-l", "appr")  # typing, no Enter yet
+    result = lado_cli("answer", SESSION, "1", "reject", "-m", "add a test")
+    assert result.returncode == 0, result.stderr
+    wait_for(lambda: "exited 0" in tmux.capture("asking", "a"), "lado answer to end")
+    screen = tmux.capture("asking", "a")
+    assert "Gate #1 was answered elsewhere: reject by human\nNo more open gates.\n" in screen
+    assert "no option" not in screen
+    assert run_state(name).state == "build"
 
 
 def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):

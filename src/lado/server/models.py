@@ -23,6 +23,128 @@ class SessionInfo(BaseModel):
     status: runtime.SessionStatus
     agents: int  # agents the session has now
     waiting: Waiting
+    # Its settings, as the next resume takes them unless given anew.
+    kits: list[str]
+    provider: str
+    permission_mode: str | None
+    without: list[str]  # "agent:x", "skill:y", "mcp:z", "flow:w"
+
+
+class Where(BaseModel):
+    """Where a session runs: now only a folder (a full path, `~` allowed)."""
+
+    kind: str  # "folder"; another kind is refused for now
+    path: str
+
+
+NameState = Literal["free", "running", "stopped_here", "taken_elsewhere"]
+
+
+class FolderInfo(BaseModel):
+    """A folder as the New session window checks it."""
+
+    path: str  # as given, `~` expanded
+    ok: bool  # a session can start here
+    problem: str | None  # why not, as the core says it (runtime.check_repo)
+    root: str | None  # its git repository's root
+    branch: str | None  # the repository's current branch
+    has_commits: bool
+    subfolders: list[str]  # its folders' names, no hidden ones, at most SUBFOLDERS
+    default_name: str | None  # the name a session started here gets
+    # free; running: a session of that name runs; stopped_here: one of this folder can be
+    # resumed; taken_elsewhere: a session of another folder has it
+    name_state: NameState | None
+
+
+class RecentFolder(BaseModel):
+    path: str
+    session: SessionInfo  # its latest started session
+
+
+class KitInfo(BaseModel):
+    """A kit a session of a folder can take: the one of each name that wins the lookup."""
+
+    name: str
+    version: str
+    description: str
+    valid: bool
+    problem: str | None  # why it is not valid
+
+
+class ProviderInfo(BaseModel):
+    """A provider of LADO's registry and whether its CLI can run here."""
+
+    name: str
+    title: str
+    default: bool
+    permission_modes: list[str]
+    install_hint: str
+    installed: bool
+    version: str
+    detail: str  # its `--version` line, or why there is none
+    tested_version: str
+    warning: str  # "" unless its version is not the tested one
+
+
+class Launch(BaseModel):
+    """A new session, as `lado start` takes it."""
+
+    where: Where
+    name: str | None = None
+    kits: list[str] | None = None
+    provider: str | None = None
+    permission_mode: str | None = None
+    without: list[str] | None = None
+
+
+class Resume(BaseModel):
+    """A stopped session started again; what is given replaces its stored settings."""
+
+    kits: list[str] | None = None
+    provider: str | None = None
+    permission_mode: str | None = None
+    without: list[str] | None = None
+
+
+class Taken(BaseModel):
+    """The detail of a 409 to a new session: the session that has the name."""
+
+    message: str
+    status: runtime.SessionStatus
+    repo: str
+
+
+class Started(BaseModel):
+    session: SessionInfo
+    resumed: bool
+    changes: list[str]  # the settings a resume replaced
+    problems: list[str]  # open runs that cannot go on as they are
+
+
+class Worktree(BaseModel):
+    path: str
+    branch: str
+
+
+class StopPreview(BaseModel):
+    agents: list[str]  # the agents a stop closes
+    dropped: int  # messages no agent got, dropped by a stop now
+    open_runs: list[str]  # they stay
+    worktrees: list[Worktree]  # they stay on disk
+
+
+class Stopped(BaseModel):
+    dropped: int
+
+
+class ForgetPreview(BaseModel):
+    open_runs: list[str]  # dropped with the session (force)
+    worktrees: list[Worktree]  # left on disk
+
+
+class Forgotten(BaseModel):
+    open_runs: list[str]
+    worktrees: list[Worktree]
 
 
 AgentStatus = Literal["starting", "busy", "idle", "waiting", "stopped"]
@@ -272,4 +394,21 @@ def session_info(sess: state.Session) -> SessionInfo:
         status=runtime.session_status(sess),
         agents=len(state.list_agents(sess.name)),
         waiting=Waiting(gates=gates, questions=questions, agents=agents),
+        kits=sess.kits,
+        provider=sess.provider,
+        permission_mode=sess.permission_mode,
+        without=sess.without,
+    )
+
+
+def worktrees(found: dict[str, str]) -> list[Worktree]:
+    return [Worktree(path=path, branch=branch) for path, branch in found.items()]
+
+
+def started(done: runtime.Started) -> Started:
+    return Started(
+        session=session_info(state.get_session(done.session.name) or done.session),
+        resumed=done.resumed,
+        changes=done.changes,
+        problems=done.problems,
     )

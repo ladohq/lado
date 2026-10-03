@@ -31,6 +31,93 @@ export interface paths {
         /** Sessions */
         get: operations["sessions_api_sessions_get"];
         put?: never;
+        /**
+         * Start
+         * @description Start a new session, as `lado start` does, without attaching to it. A name a
+         *     session has is 409 with that session's status and folder; on an empty LADO_HOME
+         *     the core makes lado.db.
+         */
+        post: operations["start_api_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Folder
+         * @description A folder as the New session window checks it: whether a session can start
+         *     there (the core's reason when not), its subfolders and the session name it gives.
+         */
+        get: operations["folder_api_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/folders/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent Folders
+         * @description The folders of past sessions, the latest started first.
+         */
+        get: operations["recent_folders_api_folders_recent_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Kits
+         * @description The kits a session of the folder `where` can take, one per name.
+         */
+        get: operations["list_kits_api_kits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description LADO's providers and whether each one's CLI can run here, checked anew.
+         */
+        get: operations["list_providers_api_providers_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -163,6 +250,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume
+         * @description Start a stopped session again, in its folder; the settings given replace its
+         *     stored ones, and the answer says what changed and which open runs cannot go on.
+         */
+        post: operations["resume_api_sessions__name__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/stop-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stop Preview
+         * @description What stopping the session would do now; changes nothing.
+         */
+        get: operations["stop_preview_api_sessions__name__stop_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop
+         * @description Stop the session, as `lado stop` does: its history, runs and worktrees stay.
+         */
+        post: operations["stop_api_sessions__name__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/forget-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Forget Preview
+         * @description What forgetting the stopped session would drop and leave on disk.
+         */
+        get: operations["forget_preview_api_sessions__name__forget_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget
+         * @description Forget the stopped session with its history, as `lado forget` does; with open
+         *     runs only with `force`. Worktrees and branches stay on disk.
+         */
+        delete: operations["forget_api_sessions__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/gates/{gate}/answer": {
         parameters: {
             query?: never;
@@ -276,6 +465,44 @@ export interface components {
             /** Text */
             text?: string | null;
         };
+        /**
+         * FolderInfo
+         * @description A folder as the New session window checks it.
+         */
+        FolderInfo: {
+            /** Path */
+            path: string;
+            /** Ok */
+            ok: boolean;
+            /** Problem */
+            problem: string | null;
+            /** Root */
+            root: string | null;
+            /** Branch */
+            branch: string | null;
+            /** Has Commits */
+            has_commits: boolean;
+            /** Subfolders */
+            subfolders: string[];
+            /** Default Name */
+            default_name: string | null;
+            /** Name State */
+            name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
+        };
+        /** ForgetPreview */
+        ForgetPreview: {
+            /** Open Runs */
+            open_runs: string[];
+            /** Worktrees */
+            worktrees: components["schemas"]["Worktree"][];
+        };
+        /** Forgotten */
+        Forgotten: {
+            /** Open Runs */
+            open_runs: string[];
+            /** Worktrees */
+            worktrees: components["schemas"]["Worktree"][];
+        };
         /** GateAnswer */
         GateAnswer: {
             /** Option */
@@ -341,6 +568,39 @@ export interface components {
             text: string;
             /** Alternate */
             alternate: boolean;
+        };
+        /**
+         * KitInfo
+         * @description A kit a session of a folder can take: the one of each name that wins the lookup.
+         */
+        KitInfo: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Description */
+            description: string;
+            /** Valid */
+            valid: boolean;
+            /** Problem */
+            problem: string | null;
+        };
+        /**
+         * Launch
+         * @description A new session, as `lado start` takes it.
+         */
+        Launch: {
+            where: components["schemas"]["Where"];
+            /** Name */
+            name?: string | null;
+            /** Kits */
+            kits?: string[] | null;
+            /** Provider */
+            provider?: string | null;
+            /** Permission Mode */
+            permission_mode?: string | null;
+            /** Without */
+            without?: string[] | null;
         };
         /**
          * MessageInfo
@@ -420,6 +680,52 @@ export interface components {
             created_at: string;
         };
         /**
+         * ProviderInfo
+         * @description A provider of LADO's registry and whether its CLI can run here.
+         */
+        ProviderInfo: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Default */
+            default: boolean;
+            /** Permission Modes */
+            permission_modes: string[];
+            /** Install Hint */
+            install_hint: string;
+            /** Installed */
+            installed: boolean;
+            /** Version */
+            version: string;
+            /** Detail */
+            detail: string;
+            /** Tested Version */
+            tested_version: string;
+            /** Warning */
+            warning: string;
+        };
+        /** RecentFolder */
+        RecentFolder: {
+            /** Path */
+            path: string;
+            session: components["schemas"]["SessionInfo"];
+        };
+        /**
+         * Resume
+         * @description A stopped session started again; what is given replaces its stored settings.
+         */
+        Resume: {
+            /** Kits */
+            kits?: string[] | null;
+            /** Provider */
+            provider?: string | null;
+            /** Permission Mode */
+            permission_mode?: string | null;
+            /** Without */
+            without?: string[] | null;
+        };
+        /**
          * RunEventInfo
          * @description What happened to a flow run: its start, a transition, a gate, its end.
          */
@@ -452,6 +758,14 @@ export interface components {
             /** Agents */
             agents: number;
             waiting: components["schemas"]["Waiting"];
+            /** Kits */
+            kits: string[];
+            /** Provider */
+            provider: string;
+            /** Permission Mode */
+            permission_mode: string | null;
+            /** Without */
+            without: string[];
         };
         /**
          * SessionStatus
@@ -459,6 +773,43 @@ export interface components {
          * @enum {string}
          */
         SessionStatus: "stopped" | "running" | "tmux_gone" | "loop_down";
+        /** Started */
+        Started: {
+            session: components["schemas"]["SessionInfo"];
+            /** Resumed */
+            resumed: boolean;
+            /** Changes */
+            changes: string[];
+            /** Problems */
+            problems: string[];
+        };
+        /** StopPreview */
+        StopPreview: {
+            /** Agents */
+            agents: string[];
+            /** Dropped */
+            dropped: number;
+            /** Open Runs */
+            open_runs: string[];
+            /** Worktrees */
+            worktrees: components["schemas"]["Worktree"][];
+        };
+        /** Stopped */
+        Stopped: {
+            /** Dropped */
+            dropped: number;
+        };
+        /**
+         * Taken
+         * @description The detail of a 409 to a new session: the session that has the name.
+         */
+        Taken: {
+            /** Message */
+            message: string;
+            status: components["schemas"]["SessionStatus"];
+            /** Repo */
+            repo: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -507,6 +858,23 @@ export interface components {
             question?: components["schemas"]["MessageInfo"] | null;
             agent?: components["schemas"]["AgentInfo"] | null;
         };
+        /**
+         * Where
+         * @description Where a session runs: now only a folder (a full path, `~` allowed).
+         */
+        Where: {
+            /** Kind */
+            kind: string;
+            /** Path */
+            path: string;
+        };
+        /** Worktree */
+        Worktree: {
+            /** Path */
+            path: string;
+            /** Branch */
+            branch: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -552,6 +920,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionInfo"][];
+                };
+            };
+        };
+    };
+    start_api_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Launch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Started"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Taken"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    folder_api_folders_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recent_folders_api_folders_recent_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentFolder"][];
+                };
+            };
+        };
+    };
+    list_kits_api_kits_get: {
+        parameters: {
+            query?: {
+                where?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"][];
                 };
             };
         };
@@ -757,6 +1269,167 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GateInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_sessions__name__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resume"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Started"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_preview_api_sessions__name__stop_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_api_sessions__name__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stopped"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_preview_api_sessions__name__forget_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgetPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_api_sessions__name__delete: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Forgotten"];
                 };
             };
             /** @description Validation Error */

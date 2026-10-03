@@ -42,6 +42,190 @@
             }
           }
         }
+      },
+      "post": {
+        "summary": "Start",
+        "description": "Start a new session, as `lado start` does, without attaching to it. A name a\nsession has is 409 with that session's status and folder; on an empty LADO_HOME\nthe core makes lado.db.",
+        "operationId": "start_api_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Launch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Taken"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/folders": {
+      "get": {
+        "summary": "Folder",
+        "description": "A folder as the New session window checks it: whether a session can start\nthere (the core's reason when not), its subfolders and the session name it gives.",
+        "operationId": "folder_api_folders_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/folders/recent": {
+      "get": {
+        "summary": "Recent Folders",
+        "description": "The folders of past sessions, the latest started first.",
+        "operationId": "recent_folders_api_folders_recent_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecentFolder"
+                  },
+                  "type": "array",
+                  "title": "Response Recent Folders Api Folders Recent Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits": {
+      "get": {
+        "summary": "List Kits",
+        "description": "The kits a session of the folder `where` can take, one per name.",
+        "operationId": "list_kits_api_kits_get",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Where"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KitInfo"
+                  },
+                  "title": "Response List Kits Api Kits Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "summary": "List Providers",
+        "description": "LADO's providers and whether each one's CLI can run here, checked anew.",
+        "operationId": "list_providers_api_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Providers Api Providers Get"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/waiting": {
@@ -349,6 +533,226 @@
                     "$ref": "#/components/schemas/GateInfo"
                   },
                   "title": "Response Gates Api Sessions  Name  Gates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/resume": {
+      "post": {
+        "summary": "Resume",
+        "description": "Start a stopped session again, in its folder; the settings given replace its\nstored ones, and the answer says what changed and which open runs cannot go on.",
+        "operationId": "resume_api_sessions__name__resume_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resume"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/stop-preview": {
+      "get": {
+        "summary": "Stop Preview",
+        "description": "What stopping the session would do now; changes nothing.",
+        "operationId": "stop_preview_api_sessions__name__stop_preview_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/stop": {
+      "post": {
+        "summary": "Stop",
+        "description": "Stop the session, as `lado stop` does: its history, runs and worktrees stay.",
+        "operationId": "stop_api_sessions__name__stop_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stopped"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/forget-preview": {
+      "get": {
+        "summary": "Forget Preview",
+        "description": "What forgetting the stopped session would drop and leave on disk.",
+        "operationId": "forget_preview_api_sessions__name__forget_preview_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgetPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}": {
+      "delete": {
+        "summary": "Forget",
+        "description": "Forget the stopped session with its history, as `lado forget` does; with open\nruns only with `force`. Worktrees and branches stay on disk.",
+        "operationId": "forget_api_sessions__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forgotten"
                 }
               }
             }
@@ -696,6 +1100,152 @@
         "type": "object",
         "title": "Answer"
       },
+      "FolderInfo": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "has_commits": {
+            "type": "boolean",
+            "title": "Has Commits"
+          },
+          "subfolders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subfolders"
+          },
+          "default_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Name"
+          },
+          "name_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "free",
+                  "running",
+                  "stopped_here",
+                  "taken_elsewhere"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "ok",
+          "problem",
+          "root",
+          "branch",
+          "has_commits",
+          "subfolders",
+          "default_name",
+          "name_state"
+        ],
+        "title": "FolderInfo",
+        "description": "A folder as the New session window checks it."
+      },
+      "ForgetPreview": {
+        "properties": {
+          "open_runs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Runs"
+          },
+          "worktrees": {
+            "items": {
+              "$ref": "#/components/schemas/Worktree"
+            },
+            "type": "array",
+            "title": "Worktrees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "open_runs",
+          "worktrees"
+        ],
+        "title": "ForgetPreview"
+      },
+      "Forgotten": {
+        "properties": {
+          "open_runs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Runs"
+          },
+          "worktrees": {
+            "items": {
+              "$ref": "#/components/schemas/Worktree"
+            },
+            "type": "array",
+            "title": "Worktrees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "open_runs",
+          "worktrees"
+        ],
+        "title": "Forgotten"
+      },
       "GateAnswer": {
         "properties": {
           "option": {
@@ -880,6 +1430,121 @@
           "alternate"
         ],
         "title": "History"
+      },
+      "KitInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "description",
+          "valid",
+          "problem"
+        ],
+        "title": "KitInfo",
+        "description": "A kit a session of a folder can take: the one of each name that wins the lookup."
+      },
+      "Launch": {
+        "properties": {
+          "where": {
+            "$ref": "#/components/schemas/Where"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "kits": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kits"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "permission_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Mode"
+          },
+          "without": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Without"
+          }
+        },
+        "type": "object",
+        "required": [
+          "where"
+        ],
+        "title": "Launch",
+        "description": "A new session, as `lado start` takes it."
       },
       "MessageInfo": {
         "properties": {
@@ -1109,6 +1774,142 @@
         "title": "NoteInfo",
         "description": "A note a run's step reported, with the state it was reported from."
       },
+      "ProviderInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default"
+          },
+          "permission_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permission Modes"
+          },
+          "install_hint": {
+            "type": "string",
+            "title": "Install Hint"
+          },
+          "installed": {
+            "type": "boolean",
+            "title": "Installed"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "tested_version": {
+            "type": "string",
+            "title": "Tested Version"
+          },
+          "warning": {
+            "type": "string",
+            "title": "Warning"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "default",
+          "permission_modes",
+          "install_hint",
+          "installed",
+          "version",
+          "detail",
+          "tested_version",
+          "warning"
+        ],
+        "title": "ProviderInfo",
+        "description": "A provider of LADO's registry and whether its CLI can run here."
+      },
+      "RecentFolder": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "session"
+        ],
+        "title": "RecentFolder"
+      },
+      "Resume": {
+        "properties": {
+          "kits": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kits"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "permission_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Mode"
+          },
+          "without": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Without"
+          }
+        },
+        "type": "object",
+        "title": "Resume",
+        "description": "A stopped session started again; what is given replaces its stored settings."
+      },
       "RunEventInfo": {
         "properties": {
           "id": {
@@ -1180,6 +1981,35 @@
           },
           "waiting": {
             "$ref": "#/components/schemas/Waiting"
+          },
+          "kits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kits"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "permission_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Mode"
+          },
+          "without": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Without"
           }
         },
         "type": "object",
@@ -1188,7 +2018,11 @@
           "repo",
           "status",
           "agents",
-          "waiting"
+          "waiting",
+          "kits",
+          "provider",
+          "permission_mode",
+          "without"
         ],
         "title": "SessionInfo"
       },
@@ -1202,6 +2036,112 @@
         ],
         "title": "SessionStatus",
         "description": "Whether a session runs, as `lado ls` and the UI show it."
+      },
+      "Started": {
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/SessionInfo"
+          },
+          "resumed": {
+            "type": "boolean",
+            "title": "Resumed"
+          },
+          "changes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changes"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "resumed",
+          "changes",
+          "problems"
+        ],
+        "title": "Started"
+      },
+      "StopPreview": {
+        "properties": {
+          "agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "dropped": {
+            "type": "integer",
+            "title": "Dropped"
+          },
+          "open_runs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Runs"
+          },
+          "worktrees": {
+            "items": {
+              "$ref": "#/components/schemas/Worktree"
+            },
+            "type": "array",
+            "title": "Worktrees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agents",
+          "dropped",
+          "open_runs",
+          "worktrees"
+        ],
+        "title": "StopPreview"
+      },
+      "Stopped": {
+        "properties": {
+          "dropped": {
+            "type": "integer",
+            "title": "Dropped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dropped"
+        ],
+        "title": "Stopped"
+      },
+      "Taken": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "status",
+          "repo"
+        ],
+        "title": "Taken",
+        "description": "The detail of a 409 to a new session: the session that has the name."
       },
       "ValidationError": {
         "properties": {
@@ -1330,6 +2270,43 @@
         ],
         "title": "WaitingItem",
         "description": "One thing that waits for the human (Needs you): an open gate, an open question to\nthe human or an agent in `waiting`, with the one of `gate`, `question`, `agent` its\nkind names."
+      },
+      "Where": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "path"
+        ],
+        "title": "Where",
+        "description": "Where a session runs: now only a folder (a full path, `~` allowed)."
+      },
+      "Worktree": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "branch"
+        ],
+        "title": "Worktree"
       }
     }
   }

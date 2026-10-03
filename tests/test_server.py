@@ -90,15 +90,33 @@ def authorized(client: TestClient) -> TestClient:
 
 def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    runtime.start_session(str(repo), "t", None)
+    runtime.start_session(str(repo), "t", "plan", "kilo", without=["agent:worker"])
     runtime.stop_session("t")
     held = loop.take_lock("s")
     answer = authorized(client).get("/api/sessions")
     held.close()
     none = {"gates": 0, "questions": 0, "agents": 0}
+    defaults = {"kits": ["default"], "provider": "claude", "permission_mode": None, "without": []}
     assert answer.json() == [
-        {"name": "s", "repo": str(repo), "status": "running", "agents": 1, "waiting": none},
-        {"name": "t", "repo": str(repo), "status": "stopped", "agents": 0, "waiting": none},
+        {
+            "name": "s",
+            "repo": str(repo),
+            "status": "running",
+            "agents": 1,
+            "waiting": none,
+            **defaults,
+        },
+        {
+            "name": "t",
+            "repo": str(repo),
+            "status": "stopped",
+            "agents": 0,
+            "waiting": none,
+            "kits": ["default"],
+            "provider": "kilo",
+            "permission_mode": "plan",
+            "without": ["agent:worker"],
+        },
     ]
 
 

@@ -7,7 +7,7 @@ never migrates the database: another schema version answers 503.
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeVar
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
@@ -15,22 +15,35 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from lado import __version__, runs, runtime, state, terminal
-from lado.server import feed, models, terminals
+from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
     AgentInfo,
     Answer,
+    FolderInfo,
+    ForgetPreview,
+    Forgotten,
     GateAnswer,
     GateInfo,
     History,
+    KitInfo,
+    Launch,
     MessageInfo,
     MessageText,
+    ProviderInfo,
+    RecentFolder,
+    Resume,
     RunEventInfo,
     Sent,
     SessionInfo,
+    Started,
+    Stopped,
+    StopPreview,
+    Taken,
     WaitingItem,
 )
 
+T = TypeVar("T")
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
 BUILD_HINT = "build it with `make web` in a LADO checkout"
 
@@ -55,7 +68,7 @@ def known(name: str, has_db: bool) -> None:
         raise HTTPException(404, f'unknown session "{name}"')
 
 
-def core(action: Callable[..., str], *args) -> str:
+def core(action: Callable[..., T], *args) -> T:
     """Do what the human asked through the core; what it refuses is 400 with its reason."""
     try:
         return action(*args)
@@ -89,6 +102,27 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         if not has_db:
             return []
         return [models.session_info(sess) for sess in state.list_sessions()]
+
+    @app.get("/api/folders", dependencies=[Depends(guard)])
+    def folder(path: str, has_db: bool = Depends(database)) -> FolderInfo:
+        """A folder as the New session window checks it: whether a session can start
+        there (the core's reason when not), its subfolders and the session name it gives."""
+        return core(launch.folder_info, path, has_db)
+
+    @app.get("/api/folders/recent", dependencies=[Depends(guard)])
+    def recent_folders(has_db: bool = Depends(database)) -> list[RecentFolder]:
+        """The folders of past sessions, the latest started first."""
+        return launch.recent_folders() if has_db else []
+
+    @app.get("/api/kits", dependencies=[Depends(guard)])
+    def list_kits(where: str | None = None) -> list[KitInfo]:
+        """The kits a session of the folder `where` can take, one per name."""
+        return core(launch.kit_infos, where)
+
+    @app.get("/api/providers", dependencies=[Depends(guard)])
+    def list_providers() -> list[ProviderInfo]:
+        """LADO's providers and whether each one's CLI can run here, checked anew."""
+        return launch.provider_infos()
 
     @app.get("/api/waiting", dependencies=[Depends(guard)])
     def waiting(has_db: bool = Depends(database)) -> list[WaitingItem]:
@@ -152,6 +186,90 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         """The session's gates, open and closed, oldest first."""
         known(name, has_db)
         return [models.gate_info(g) for g in state.session_gates(name)]
+
+    @app.post(
+        "/api/sessions",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses={409: {"model": Taken}},
+    )
+    def start(given: Launch) -> Started:
+        """Start a new session, as `lado start` does, without attaching to it. A name a
+        session has is 409 with that session's status and folder; on an empty LADO_HOME
+        the core makes lado.db."""
+        if given.where.kind != "folder":
+            raise HTTPException(400, f'where of kind "{given.where.kind}" is not supported yet')
+        try:
+            done = runtime.start_session(
+                launch.full_path(given.where.path),
+                given.name,
+                given.permission_mode,
+                given.provider,
+                given.kits,
+                given.without,
+                resume=False,
+            )
+        except runtime.SessionExists as taken:
+            detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
+            raise HTTPException(409, detail.model_dump(mode="json")) from taken
+        except runtime.LadoError as refused:
+            raise HTTPException(400, str(refused)) from refused
+        return models.started(done)
+
+    @app.post("/api/sessions/{name}/resume", dependencies=[Depends(guard.changes)])
+    def resume(name: str, given: Resume, has_db: bool = Depends(database)) -> Started:
+        """Start a stopped session again, in its folder; the settings given replace its
+        stored ones, and the answer says what changed and which open runs cannot go on."""
+        known(name, has_db)
+        sess = state.get_session(name)
+        assert sess is not None
+        try:
+            done = runtime.start_session(
+                sess.repo,
+                name,
+                given.permission_mode,
+                given.provider,
+                given.kits,
+                given.without,
+                resume=True,
+            )
+        except runtime.NoSuchSession as gone:
+            raise HTTPException(404, str(gone)) from gone
+        except runtime.LadoError as refused:
+            raise HTTPException(400, str(refused)) from refused
+        return models.started(done)
+
+    @app.get("/api/sessions/{name}/stop-preview", dependencies=[Depends(guard)])
+    def stop_preview(name: str, has_db: bool = Depends(database)) -> StopPreview:
+        """What stopping the session would do now; changes nothing."""
+        known(name, has_db)
+        preview = core(runtime.stop_preview, name)
+        return StopPreview(
+            agents=preview.agents,
+            dropped=preview.dropped,
+            open_runs=preview.open_runs,
+            worktrees=models.worktrees(preview.worktrees),
+        )
+
+    @app.post("/api/sessions/{name}/stop", dependencies=[Depends(guard.changes)])
+    def stop(name: str, has_db: bool = Depends(database)) -> Stopped:
+        """Stop the session, as `lado stop` does: its history, runs and worktrees stay."""
+        known(name, has_db)
+        return Stopped(dropped=core(runtime.stop_session, name).dropped)
+
+    @app.get("/api/sessions/{name}/forget-preview", dependencies=[Depends(guard)])
+    def forget_preview(name: str, has_db: bool = Depends(database)) -> ForgetPreview:
+        """What forgetting the stopped session would drop and leave on disk."""
+        known(name, has_db)
+        preview = core(runtime.forget_preview, name)
+        return ForgetPreview(open_runs=preview.runs, worktrees=models.worktrees(preview.worktrees))
+
+    @app.delete("/api/sessions/{name}", dependencies=[Depends(guard.changes)])
+    def forget(name: str, force: bool = False, has_db: bool = Depends(database)) -> Forgotten:
+        """Forget the stopped session with its history, as `lado forget` does; with open
+        runs only with `force`. Worktrees and branches stay on disk."""
+        known(name, has_db)
+        done = core(runtime.forget_session, name, force)
+        return Forgotten(open_runs=done.runs, worktrees=models.worktrees(done.worktrees))
 
     @app.post("/api/sessions/{name}/gates/{gate}/answer", dependencies=[Depends(guard.changes)])
     def answer_gate(

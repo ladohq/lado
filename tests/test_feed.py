@@ -93,6 +93,10 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "status": "tmux_gone",
             "agents": 0,
             "waiting": {"gates": 0, "questions": 0, "agents": 0},
+            "kits": ["default"],
+            "provider": "claude",
+            "permission_mode": None,
+            "without": [],
         },
     }
     state.delete_session("s")
@@ -362,6 +366,10 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "status": "tmux_gone",
         "agents": 1,
         "waiting": {"gates": 0, "questions": 0, "agents": 0},
+        "kits": ["default"],
+        "provider": "claude",
+        "permission_mode": None,
+        "without": [],
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived
 

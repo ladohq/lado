@@ -677,6 +677,19 @@ def list_sessions() -> list[Session]:
     return [_session(r) for r in rows]
 
 
+def sessions_by_start() -> list[Session]:
+    """The sessions, the latest started (or resumed) first: by their supervisor's latest
+    `spawned` event, which each start and resume writes."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT s.*, (SELECT max(e.id) FROM events e WHERE e.session = s.name"
+            " AND e.agent = 'supervisor' AND e.kind = ?) AS started"
+            " FROM sessions s ORDER BY coalesce(started, 0) DESC, s.rowid DESC",
+            (SPAWNED,),
+        ).fetchall()
+    return [_session(r) for r in rows]
+
+
 def add_agent(agent: Agent) -> None:
     with connect() as db:
         db.execute(

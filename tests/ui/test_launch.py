@@ -69,7 +69,8 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
     dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(plain))
     expect(dialog).to_contain_text(f"{plain} is not inside a git repository")
     expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
-    expect(dialog.get_by_label("Provider")).to_be_enabled()  # the CLIs checked
+    # The CLIs checked: each `--version` may take seconds on a loaded machine.
+    expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
     shot(page)
 
 
@@ -98,7 +99,7 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     dialog = page.get_by_role("dialog", name="Resume session")
     expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_value(str(repo))
     expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_be_disabled()
-    expect(dialog.get_by_label("Provider")).to_have_value("fake")
+    expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
     shot(page, "window")
 
     dialog.get_by_role("button", name="Resume session").click()

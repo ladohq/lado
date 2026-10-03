@@ -384,7 +384,7 @@ Five layers; each change gets tests at the lowest layer that can catch its bugs:
    before teardown. A passing test keeps nothing; the folder is never cleaned by the tests.
    A timed-out wait names what it waited for and the agents' statuses and last messages.
 
-Before a release: `make check` and `make test-live` pass.
+Before a release: `make test-live` passes on main, and CI is green on the release commit (main got its `make check` at each merge).
 
 ## Design principles
 

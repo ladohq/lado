@@ -53,5 +53,5 @@ dist: web ## build the sdist and the wheel into dist/ and check that both ship t
 browser: ## install Chromium for the UI tests (Playwright)
 	uv run playwright install chromium
 
-check: lint test-js web browser ## everything; run before a release. Unit, integration and UI tests in one parallel run
+check: lint test-js web browser ## everything; run after your last change and when a merge brings new commits. Unit, integration and UI tests in one parallel run
 	uv run pytest -m 'not live' $(PYTEST_ARGS)

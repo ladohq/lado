@@ -356,3 +356,13 @@ Wanted: decide which of the human's settings an agent should get, and say so in
 `lado doctor` (e.g. warn that agents run full screen), or pin what LADO depends on (the
 renderer) in the agent's own settings.
 Found: 2026-10-03, prototype of the history in implement of feature/ui-agent-terminal.
+
+## Workers get ask_human and send_message(to="human") with no LADO-level hint
+
+LADO 0.12 gives every agent `ask_human`, and `send_message`'s docstring offers `to="human"` to
+workers too. By the human's decision (2026-10-03) the core does not restrict who writes to
+the human; kit roles do (lado-dev 0.6.0 tells its workers to route questions through the
+supervisor). A kit that forgets it lets a worker's question reach the human past the
+supervisor. Wanted: revisit with more kits in use: a worker-specific hint in LADO's own
+worker instructions, or tools only for the supervisor unless a role asks for them.
+Found: 2026-10-03, review of lado-dev 0.6.0.

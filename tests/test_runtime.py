@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import threading
@@ -44,13 +45,18 @@ def test_start_session_launches_supervisor(repo, fake_tmux, lado_home):
 
 
 @pytest.fixture
-def resolved(monkeypatch):
+def resolved(monkeypatch, fake_clis):
     """Make the resolved environment a known one; count how often it is resolved."""
     calls = []
 
     def resolve():
         calls.append(1)
-        return {"FROM_SHELL": "1", "LADO_AGENT": "parent", "KILO_DISABLE_AUTOUPDATE": "0"}
+        return {
+            "PATH": str(fake_clis),
+            "FROM_SHELL": "1",
+            "LADO_AGENT": "parent",
+            "KILO_DISABLE_AUTOUPDATE": "0",
+        }
 
     monkeypatch.setattr(agent_env, "resolve", resolve)
     return calls
@@ -109,6 +115,38 @@ def test_a_spawn_whose_environment_fails_leaves_no_worker(repo, fake_tmux, monke
     assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
 
 
+def _path_without_clis(monkeypatch, tmp_path):
+    """The resolved environment's PATH has no agent CLI on it."""
+    empty = tmp_path / "empty-bin"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": str(empty)})
+
+
+def test_a_start_whose_cli_is_not_on_the_agents_path_launches_nothing(
+    repo, fake_tmux, monkeypatch, tmp_path
+):
+    _path_without_clis(monkeypatch, tmp_path)
+    with pytest.raises(runtime.LadoError, match=r"`claude` is not on the agents' PATH") as error:
+        runtime.start_session(str(repo), "s", None)
+    assert "LADO_AGENT_ENV=inherit" in str(error.value)
+    assert fake_tmux == []
+    assert state.get_session("s") is None
+    assert not (state.home() / "agents" / "s" / "supervisor").exists()
+
+
+def test_a_spawn_whose_cli_is_not_on_the_agents_path_leaves_no_worker(
+    repo, fake_tmux, monkeypatch, tmp_path
+):
+    runtime.start_session(str(repo), "s", None)
+    _path_without_clis(monkeypatch, tmp_path)
+    with pytest.raises(runtime.LadoError, match=r"`kilo` is not on the agents' PATH"):
+        runtime.spawn_worker("s", "a task", provider="kilo")
+    assert "new_window" not in [c[0] for c in fake_tmux]
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
+    assert not (state.home() / "agents" / "s" / "worker").exists()
+
+
 def test_start_refuses_running_session(repo, fake_tmux):
     runtime.start_session(str(repo), None, None)
     with pytest.raises(runtime.LadoError, match="already running"):
@@ -140,7 +178,7 @@ def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
     worker = runtime.spawn_worker("s", "fix the bug;")
     assert (worker.name, worker.branch) == ("worker", "lado/s/worker")
     assert (repo / ".lado/worktrees/s/worker/.git").exists()
-    kind, _, window, cwd, _, cmd = fake_tmux[-1]
+    kind, _, window, cwd, cmd = fake_tmux[-1]
     assert (kind, window, cwd) == ("new_window", "worker", worker.cwd)
     assert cmd[-2] == "--"
     assert cmd[-1].startswith("fix the bug;") and "send_message" in cmd[-1]
@@ -183,7 +221,7 @@ def _prompt(cmd):
 def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")
-    for _, _, window, _, _, cmd in fake_tmux:
+    for _, _, window, _, cmd in fake_tmux:
         prompt = _prompt(cmd)
         assert "one-line summary" in prompt, window
         assert "body" in prompt and "call read_messages" in prompt, window
@@ -971,7 +1009,7 @@ def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tm
     stored = state.get_session("s")
     assert (stored.kits, stored.without) == (["team"], ["skill:style"])
     assert state.get_agent("s", "supervisor").role == "supervisor"
-    cmd = fake_tmux[0][5]
+    cmd = fake_tmux[0][-1]
     prompt = cmd[cmd.index("--append-system-prompt") + 1]
     assert prompt.startswith("You are the supervisor.")  # the role from the default kit
     assert 'agent "supervisor" in LADO session "s"' in prompt
@@ -987,7 +1025,7 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
     monkeypatch.setenv("DB_TOKEN", "t0k")
     worker = runtime.spawn_worker("s", "review it", role="reviewer")
     assert worker.role == "reviewer"
-    cmd = fake_tmux[-1][5]
+    cmd = fake_tmux[-1][-1]
     prompt = cmd[cmd.index("--append-system-prompt") + 1]
     assert prompt.startswith(f"You review. Notes are in {team_kit.resolve()}/notes.")
     assert 'You are worker "reviewer" in LADO session "s"' in prompt
@@ -998,20 +1036,21 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
     assert mcp["db"]["env"] == {"TOKEN": "t0k"}
     # The default role gets all skills; this one without the MCP server it does not have.
     runtime.spawn_worker("s", "t", without=["skill:style"])
-    cmd = fake_tmux[-1][5]
+    cmd = fake_tmux[-1][-1]
     added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
     assert sorted(p.name for p in added.iterdir()) == ["checklist"]
     runtime.spawn_worker("s", "t", role="reviewer", without=["mcp:db"])
-    mcp = json.loads(open(fake_tmux[-1][5][fake_tmux[-1][5].index("--mcp-config") + 1]).read())
+    mcp = json.loads(open(fake_tmux[-1][-1][fake_tmux[-1][-1].index("--mcp-config") + 1]).read())
     assert list(mcp["mcpServers"]) == ["lado"]
 
 
 def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, team_kit, monkeypatch):
     runtime.start_session(str(repo), "s", None, kit_names=["team"])
     monkeypatch.delenv("DB_TOKEN", raising=False)  # set only by the user's shell
-    monkeypatch.setattr(agent_env, "resolve", lambda: {"DB_TOKEN": "from-shell"})
+    path = os.environ["PATH"]
+    monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": path, "DB_TOKEN": "from-shell"})
     runtime.spawn_worker("s", "review it", role="reviewer")
-    cmd = fake_tmux[-1][5]
+    cmd = fake_tmux[-1][-1]
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
     assert mcp["db"]["env"] == {"TOKEN": "from-shell"}
 

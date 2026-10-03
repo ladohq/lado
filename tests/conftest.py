@@ -67,7 +67,19 @@ def loop_starts(monkeypatch):
 
 
 @pytest.fixture
-def fake_tmux(monkeypatch, loop_starts):
+def fake_clis(tmp_path, monkeypatch):
+    """Stand-ins for the agent CLIs on PATH, which a launch looks its CLI up on; the folder."""
+    folder = tmp_path / "fake-clis"
+    folder.mkdir()
+    for name in ("claude", "kilo", "noskills"):
+        (folder / name).write_text("#!/bin/sh\n")
+        (folder / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    return folder
+
+
+@pytest.fixture
+def fake_tmux(monkeypatch, loop_starts, fake_clis):
     """Record tmux calls instead of running them; no session loop is started either."""
     from lado import terminal, tmux
 

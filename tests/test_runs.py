@@ -941,10 +941,10 @@ def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_
     plan = "x" * 50_000
     runs.advance(session, "supervisor", "feature/login", "ready", "agreed", plan)
     worker = runs.spawn_worker(session, "feature/login")
-    _, _, window, cwd, env, argv = fake_tmux[-1]
+    _, _, window, cwd, argv = fake_tmux[-1]
     assert window == "developer"
     # tmux refuses a command over about 16 KB.
-    assert sum(len(a) + 1 for a in argv) + sum(len(k) + len(v) + 4 for k, v in env.items()) < 16_000
+    assert sum(len(a) + 1 for a in argv) < 16_000
     [step] = messages("developer")
     assert (step.sender, step.summary, step.state) == (
         "lado",

@@ -106,6 +106,14 @@ def test_a_slow_shell_times_out(shell, monkeypatch):
     assert "stuck" in str(error.value)
 
 
+def test_a_background_program_of_the_rc_files_does_not_hold_it_up(shell, monkeypatch):
+    # It keeps the shell's output open after the shell is done, as a daemon started
+    # without redirection does.
+    monkeypatch.setattr(agent_env, "TIMEOUT", 2)
+    shell(rc="sleep 4 & export FROM_RC=yes")
+    assert agent_env.resolve()["FROM_RC"] == "yes"
+
+
 def test_it_is_resolved_anew_each_time(shell, tmp_path):
     rc = tmp_path / "rc"
     rc.write_text("export VALUE=1\n")

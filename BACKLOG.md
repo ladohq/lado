@@ -511,3 +511,22 @@ in `lado ls`.
 Wanted: tmux calls raise TmuxError with "tmux not found on PATH", and the spawn cleanup
 cannot be stopped by its own tmux call failing.
 Found: 2026-10-04, fix/agent-env (fake login shell without the Homebrew PATH).
+
+## An agent whose process dies before its first hook stays `starting` for good
+
+When an agent's window closes before any hook ran (its CLI crashed at once, a bad flag),
+nothing notices: the agent stays `starting` in `lado ls` and the UI, and a session whose
+supervisor window closed vanishes from tmux although `lado start` reported success.
+Wanted: notice the window's end (tmux `remain-on-exit` with a `pane-died` hook, or a check
+in the session loop) and mark the agent `stopped` with the reason, shown in `lado ls`/UI.
+Found: 2026-10-04, review of fix/agent-env.
+
+## A login shell that starts tmux from its startup files breaks the agents' environment
+
+Startup files that start or attach tmux when `$TMUX` is unset (`[ -z "$TMUX" ] && exec tmux`,
+oh-my-zsh's tmux plugin with autostart) make `$SHELL -ilc` fail without a terminal, so every
+`lado start` and spawn stops with the shell's error. The error is loud and names
+`LADO_AGENT_ENV=inherit`, but does not say why.
+Wanted: the docs and `lado doctor`'s hint name this case and how to guard it in the rc file
+(for example, skip the autostart when the shell is not interactive on a terminal).
+Found: 2026-10-04, review of fix/agent-env.

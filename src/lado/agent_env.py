@@ -10,12 +10,16 @@ window runs `python -m lado.agent_env <file> <argv>`, which replaces its environ
 the one in the file and runs the agent's command.
 """
 
+import contextlib
 import json
 import os
+import select
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from collections.abc import Mapping
@@ -95,28 +99,37 @@ def from_shell() -> dict[str, str]:
     base = {k: os.environ[k] for k in SHELL_BASE if k in os.environ}
     base.update(PATH=SHELL_PATH, TERM="dumb")
     command = shlex.join(argv)
-    try:
-        process = subprocess.Popen(
-            argv,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=base,
-            cwd=base.get("HOME"),
-            # No controlling terminal: an interactive shell must not take the caller's.
-            start_new_session=True,
-        )
-    except OSError as exc:
-        raise AgentEnvError(
-            f"cannot run your shell for the agents' environment: {exc}\n{HINT}"
-        ) from exc
-    try:
-        out, err = process.communicate(timeout=TIMEOUT)
-    except subprocess.TimeoutExpired:
-        out, err = _kill(process)
+    # stderr goes to a file: a program the startup files leave running in the background
+    # may keep the shell's outputs open, so neither is read to its end.
+    with tempfile.TemporaryFile() as errors:
+        try:
+            process = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=errors,
+                env=base,
+                cwd=base.get("HOME"),
+                # No controlling terminal: an interactive shell must not take the caller's.
+                start_new_session=True,
+            )
+        except OSError as exc:
+            raise AgentEnvError(
+                f"cannot run your shell for the agents' environment: {exc}\n{HINT}"
+            ) from exc
+        deadline = time.monotonic() + TIMEOUT
+        with process.stdout:
+            fd = process.stdout.fileno()
+            out = _read_until(fd, end.encode(), deadline)
+            if out is None or not _drain_until_exit(process, fd, deadline):
+                _kill(process)
+                out = None
+        errors.seek(0)
+        err = errors.read()
+    if out is None:
         raise AgentEnvError(
             f"your shell did not finish in {TIMEOUT:g} s: {command}{_tail(err)}\n{HINT}"
-        ) from None
+        )
     if process.returncode != 0:
         raise AgentEnvError(
             f"your shell failed with exit status {process.returncode}: {command}{_tail(err)}"
@@ -134,17 +147,41 @@ def from_shell() -> dict[str, str]:
         ) from exc
 
 
-def _kill(process: subprocess.Popen) -> tuple[bytes, bytes]:
-    """End the shell and what it started; what it printed so far."""
-    try:
+def _read_until(fd: int, end: bytes, deadline: float) -> bytes | None:
+    """What `fd` gives until `end` or its end of file; None when the deadline comes first."""
+    out = b""
+    while end not in out:
+        left = deadline - time.monotonic()
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
+            return None
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            break
+        out += chunk
+    return out
+
+
+def _drain_until_exit(process: subprocess.Popen, fd: int, deadline: float) -> bool:
+    """Wait for the shell to exit, reading and dropping what it still prints (so it is
+    never stopped by a full or closed pipe); whether it exited before the deadline."""
+    while process.poll() is None:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return False
+        if select.select([fd], [], [], min(left, 0.05))[0] and not os.read(fd, 65536):
+            # End of file: the shell is ending, with nothing left running that holds it.
+            try:
+                process.wait(max(deadline - time.monotonic(), 0))
+            except subprocess.TimeoutExpired:
+                return False
+    return True
+
+
+def _kill(process: subprocess.Popen) -> None:
+    """End the shell and what it started."""
+    with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    try:
-        return process.communicate(timeout=1)
-    except subprocess.TimeoutExpired:  # something outside its group holds its output
-        process.kill()
-        return b"", b""
+    process.wait()
 
 
 def _tail(err: bytes) -> str:
@@ -155,7 +192,14 @@ def _tail(err: bytes) -> str:
 def command(file: Path, env: Mapping[str, str], argv: list[str]) -> list[str]:
     """The window's command that runs `argv` with exactly `env` (and tmux's own variables
     of the window). `env` goes into `file`, readable by the user only, until the window
-    reads it."""
+    reads it. Fails when `argv[0]` is not on `env`'s PATH: the window would close at once."""
+    path = env.get("PATH", os.defpath)
+    if shutil.which(argv[0], path=path) is None:
+        raise AgentEnvError(
+            f"`{argv[0]}` is not on the agents' PATH ({path}): add its folder to PATH in your "
+            f"shell's startup files, or with {SOURCE_VAR}={INHERIT} to the PATH of the process "
+            "that starts LADO"
+        )
     fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump(dict(env), f)

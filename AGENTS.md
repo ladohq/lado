@@ -195,8 +195,11 @@ schema change.
   `$SHELL -ilc` with a dump of the environment, started from a terminal's few variables
   (`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `LANG`, `SSH_AUTH_SOCK`, a system `PATH`) in
   a new session, no cache; the dump is JSON between markers, so what the startup files print
-  does not matter. No `$SHELL`, a failing shell or one slower than `agent_env.TIMEOUT` (10 s)
-  stops the launch before anything starts, with the command and the end of its stderr.
+  does not matter; LADO waits for the end marker and the shell's exit, not for its output to
+  close (a program the startup files leave in the background may hold it). No `$SHELL`, a
+  failing shell or one slower than `agent_env.TIMEOUT` (10 s) stops the launch before
+  anything starts, with the command and the end of its stderr; so does an agent CLI that is
+  not on the resolved `PATH`.
   `LADO_AGENT_ENV=inherit` takes the environment of the process that starts the agent instead
   (the tests set it). From either, `TMUX`, `TMUX_PANE`, the shell's own `PWD`, `OLDPWD`,
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; LADO's variables, then

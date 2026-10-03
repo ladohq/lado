@@ -287,7 +287,7 @@ def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
     args = {"task": "t", "role": "rev", "without": ["skill:s"]}
     asyncio.run(server.call_tool("spawn_worker", args))
     assert state.get_agent("s", "rev").role == "rev"
-    cmd = fake_tmux[-1][5]
+    cmd = fake_tmux[-1][-1]
     assert "--add-dir" not in cmd
     assert "role" in str(asyncio.run(server.call_tool("list_agents", {})))
 

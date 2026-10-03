@@ -327,9 +327,9 @@ def test_lado_answer_ends_when_its_gate_is_answered_elsewhere(repo, flow_kit):
     typed goes nowhere."""
     name = "reviewed/check-it"
     to_the_gate(name)
-    env = {"LADO_HOME": str(state.home()), "LADO_TMUX_SOCKET": tmux.socket()}
+    env = [f"LADO_HOME={state.home()}", f"LADO_TMUX_SOCKET={tmux.socket()}"]
     answer = f"{sys.executable} -m lado.cli answer {SESSION} 1; echo exited $?; sleep 600"
-    tmux.new_session("asking", "a", str(repo), env, ["sh", "-c", answer])
+    tmux.new_session("asking", "a", str(repo), ["env", *env, "sh", "-c", answer])
     wait_for(lambda: "Answer (number or name" in tmux.capture("asking", "a"), "the question")
     tmux.run("send-keys", "-t", "asking:a", "-l", "appr")  # typing, no Enter yet
     result = lado_cli("answer", SESSION, "1", "reject", "-m", "add a test")
@@ -345,7 +345,7 @@ def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):
     name = "reviewed/check-it"
     # The human's terminal: a tmux client attached to the session.
     attach = ["env", "-u", "TMUX", *tmux.attach_argv(SESSION)]
-    tmux.new_session("viewer", "v", str(repo), {}, attach)
+    tmux.new_session("viewer", "v", str(repo), attach)
     wait_for(lambda: tmux.run("list-clients", "-t", f"={SESSION}").strip(), "the client")
     # The gate opens in the worker's MCP server process; it opens the popup.
     to_the_gate(name)

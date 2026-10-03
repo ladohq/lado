@@ -230,7 +230,7 @@ def start_session(
         _add_agent(agent)
         first = _first_input(agent, agent.task, "your first messages")
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
-        tmux.new_session(session, SUPERVISOR, repo, {}, _command(agent, base_env, launch))
+        tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
     except Exception:
         providers.base.remove_config_dir(agent)
         if old:
@@ -323,7 +323,7 @@ def spawn_worker(
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         first = _first_input(agent, first, summary)
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
-        tmux.new_window(session, worker, str(worktree), {}, _command(agent, base_env, launch))
+        tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
     except Exception as exc:
         # The worker never ran: leave nothing that says it did, so the run's step still
         # waits for one and the name is free again.
@@ -975,7 +975,10 @@ def _command(agent: state.Agent, base_env: dict[str, str], launch: providers.Lau
     """The agent's window command: its CLI with `base_env`, LADO's variables and its
     provider's, in that order, and nothing of the tmux server's environment."""
     env = {**base_env, **providers.agent_env(agent), **launch.env}
-    return agent_env.command(providers.base.config_dir(agent) / "env.json", env, launch.argv)
+    try:
+        return agent_env.command(providers.base.config_dir(agent) / "env.json", env, launch.argv)
+    except agent_env.AgentEnvError as exc:
+        raise LadoError(str(exc)) from exc
 
 
 def _next_name(role: str, taken: set[str]) -> str:

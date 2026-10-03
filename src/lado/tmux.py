@@ -109,12 +109,13 @@ def _env_args(env: dict[str, str]) -> list[str]:
     return [arg for k, v in env.items() for arg in ("-e", f"{k}={v}")]
 
 
-def new_session(session: str, window: str, cwd: str, env: dict[str, str], cmd: list[str]) -> None:
-    run("new-session", "-d", "-s", session, "-n", window, "-c", cwd, *_env_args(env), *cmd)
+# A window gets the tmux server's environment; an agent's window replaces it (lado.agent_env).
+def new_session(session: str, window: str, cwd: str, cmd: list[str]) -> None:
+    run("new-session", "-d", "-s", session, "-n", window, "-c", cwd, *cmd)
 
 
-def new_window(session: str, window: str, cwd: str, env: dict[str, str], cmd: list[str]) -> None:
-    run("new-window", "-d", "-t", f"{session}:", "-n", window, "-c", cwd, *_env_args(env), *cmd)
+def new_window(session: str, window: str, cwd: str, cmd: list[str]) -> None:
+    run("new-window", "-d", "-t", f"{session}:", "-n", window, "-c", cwd, *cmd)
 
 
 def has_session(session: str) -> bool:

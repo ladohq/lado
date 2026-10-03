@@ -19,8 +19,7 @@ from lado import log, loop, state, tmux
 def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
     """The environment and the command of an agent's window, from a recorded
     `tmux.new_session` or `tmux.new_window` call (the `fake_tmux` fixture)."""
-    *_, tmux_env, cmd = call
-    assert tmux_env == {}  # all of it is in the file, so tmux's server adds nothing
+    cmd = call[-1]
     assert cmd[:3] == [sys.executable, "-m", "lado.agent_env"]
     return json.loads(Path(cmd[3]).read_text()), cmd[4:]
 

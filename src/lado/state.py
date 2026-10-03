@@ -1031,12 +1031,14 @@ def queue_message(
     session: str, sender: str, recipient: str, summary: str, body: str = "", mark: str = PENDING
 ) -> int:
     """Store a message in state `mark`: pending, or delivered when its line goes to the
-    recipient another way (its first input). Returns its id."""
+    recipient another way (its first input, or the human's UI): then it is handed over
+    now (sent_at). Returns its id."""
+    sent_at = None if mark == PENDING else time.time()
     with connect() as db:
         cur = db.execute(
-            "INSERT INTO messages (session, sender, recipient, summary, body, state, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-            (session, sender, recipient, summary, body, mark),
+            "INSERT INTO messages (session, sender, recipient, summary, body, state, sent_at,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (session, sender, recipient, summary, body, mark, sent_at),
         )
         return cur.lastrowid or 0
 
@@ -1054,8 +1056,8 @@ def add_question(
     with connect() as db:
         cur = db.execute(
             "INSERT INTO messages (session, sender, recipient, summary, body, state, kind,"
-            " choices, free_answer, question_state, created_at) VALUES"
-            " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            " choices, free_answer, question_state, sent_at, created_at) VALUES"
+            " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (
                 session,
                 sender,
@@ -1067,6 +1069,7 @@ def add_question(
                 None if choices is None else json.dumps(choices),
                 int(free_answer),
                 OPEN_QUESTION,
+                time.time(),
             ),
         )
         return cur.lastrowid or 0
@@ -1103,14 +1106,18 @@ def reply_to_question(
 
 def check_replies(session: str, agent: str) -> None:
     """At the end of the agent's turn: each message from the human it got and that is not
-    checked yet is REPLIED when the agent wrote to the human after it (a message or a
-    question), else MISSING: it replied only in its terminal. Each one is checked once.
-    Answers and dismissals of the agent's questions need no reply."""
+    checked yet is REPLIED when the agent wrote to the human after it got it (a message or
+    a question), else MISSING: it replied only in its terminal. Each one is checked once.
+    Answers and dismissals of the agent's questions need no reply.
+
+    "After it got it" compares when each was handed over (sent_at), not ids: the human's
+    message gets its id when queued, and the agent may write to the human before it is
+    handed over. A message to the human is handed over when stored."""
     with connect() as db:
         db.execute(
             "UPDATE messages SET reply_state = CASE WHEN EXISTS (SELECT 1 FROM messages r"
             " WHERE r.session = messages.session AND r.sender = messages.recipient"
-            " AND r.recipient = ? AND r.id > messages.id) THEN ? ELSE ? END"
+            " AND r.recipient = ? AND r.sent_at > messages.sent_at) THEN ? ELSE ? END"
             " WHERE session = ? AND sender = ? AND recipient = ? AND state IN (?, ?)"
             " AND reply_state IS NULL AND reply_to IS NULL",
             (HUMAN, REPLIED, MISSING, session, HUMAN, agent, DELIVERED, READ),

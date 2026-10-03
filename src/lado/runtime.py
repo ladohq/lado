@@ -510,7 +510,7 @@ def send_message(
             f"body is {len(body)} characters, the limit is {MAX_MESSAGE}; "
             "write the details to a file and send its path"
         )
-    return post(session, sender, recipient, summary, body)
+    return post(session, sender, recipient, summary, body, or_human=True)
 
 
 def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
@@ -642,25 +642,34 @@ def ask_human(
 TO_HUMAN = "delivered: the human reads it in LADO's UI"
 
 
-def post(session: str, sender: str, recipient: str, summary: str, body: str = "") -> str:
+def post(
+    session: str,
+    sender: str,
+    recipient: str,
+    summary: str,
+    body: str = "",
+    or_human: bool = False,
+) -> str:
     """Queue a message whose summary is checked already and deliver it now if the
     recipient is idle. LADO's own messages (lado.runs) come here directly: a step's body
     carries the task, which may be longer than an agent's message.
 
-    The human has no window: a message to them is delivered at once, and the UI shows it."""
+    The human has no window: a message to them is delivered at once, and the UI shows it.
+    `or_human`: an unknown recipient's error names the human too, for an agent's message."""
     if recipient == state.HUMAN:
         state.queue_message(session, sender, recipient, summary, body, state.DELIVERED)
         return TO_HUMAN
-    _running_agent(session, recipient)
+    _running_agent(session, recipient, or_human)
     state.queue_message(session, sender, recipient, summary, body)
     return _deliver(session, recipient)
 
 
-def _running_agent(session: str, name: str) -> None:
+def _running_agent(session: str, name: str, or_human: bool = False) -> None:
     agent = state.get_agent(session, name)
     if agent is None or agent.status == state.STOPPED:
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
-        raise LadoError(f'no running agent "{name}"; running agents: {names}; or "{state.HUMAN}"')
+        human = f'; or "{state.HUMAN}"' if or_human else ""
+        raise LadoError(f'no running agent "{name}"; running agents: {names}{human}')
 
 
 def _deliver(session: str, recipient: str) -> str:

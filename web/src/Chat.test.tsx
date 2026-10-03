@@ -175,6 +175,19 @@ test("a question takes an own answer, or is dismissed", async () => {
   ]);
 });
 
+test("a choice takes what the human wrote in the field along as a comment", async () => {
+  const { posted } = serve([question(5)]);
+  open();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  fireEvent.change(within(card).getByRole("textbox", { name: "Your answer" }), { target: { value: "after the tag" } });
+  fireEvent.click(within(card).getByRole("button", { name: "later" }));
+  await waitFor(() =>
+    expect(posted).toEqual([
+      { path: "/api/sessions/lado/questions/5/answer", body: { choice: "later", text: "after the tag" } },
+    ]),
+  );
+});
+
 test("a question with only choices has no field for an own answer", async () => {
   serve([question(5, { free_answer: false })]);
   open();

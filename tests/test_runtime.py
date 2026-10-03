@@ -1500,6 +1500,19 @@ def test_a_message_handed_over_at_the_turn_end_is_checked_at_the_next_one(repo, 
     assert _reply_state(mine) == state.REPLIED
 
 
+def test_what_the_agent_wrote_before_it_got_the_message_is_no_reply_to_it(repo, fake_tmux):
+    """Written in the turn before: the human's message, queued while the agent was busy,
+    has a lower id than the agent's report, but the agent had not got it yet."""
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")  # busy
+    runtime.write_as_human("s", "merge w1?")
+    mine = state.list_messages("s")[-1]
+    runtime.send_message("s", "supervisor", "human", "a report written meanwhile")
+    _hook("Stop", "supervisor")  # hands the human's message over
+    _hook("Stop", "supervisor")  # that turn wrote nothing to the human
+    assert _reply_state(mine) == state.MISSING
+
+
 def test_a_message_is_checked_once(repo, fake_tmux):
     _session_with_worker(repo)
     mine = _human_writes()
@@ -1508,3 +1521,21 @@ def test_a_message_is_checked_once(repo, fake_tmux):
     _hook("UserPromptSubmit", "supervisor")
     _hook("Stop", "supervisor")
     assert _reply_state(mine) == state.MISSING
+
+
+def test_only_an_agent_is_told_it_may_write_to_the_human(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.finish_worker("s", "w1", discard=True)
+    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "t", state.STOPPED))
+    for act in (
+        lambda: runtime.write_as_human("s", "hi", to="nobody"),
+        lambda: runtime.post("s", "lado", "nobody", "a step"),
+    ):
+        with pytest.raises(runtime.LadoError) as refused:
+            act()
+        assert str(refused.value) == 'no running agent "nobody"; running agents: supervisor'
+    with state.connect() as db:  # the question of a w1 that is not running
+        db.execute("UPDATE messages SET question_state = 'open' WHERE id = ?", (question.id,))
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.answer_question("s", question.id, "yes")
+    assert str(refused.value) == 'no running agent "w1"; running agents: supervisor'

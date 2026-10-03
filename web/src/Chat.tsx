@@ -134,7 +134,10 @@ function Question({ session, question, answer }: { session: string; question: Me
                   type="button"
                   className="primary"
                   disabled={busy}
-                  onClick={() => void act(() => answerQuestion(session, question.id, { choice }))}
+                  onClick={() =>
+                    // What the human wrote in the field goes along as a comment.
+                    void act(() => answerQuestion(session, question.id, text.trim() ? { choice, text } : { choice }))
+                  }
                 >
                   {choice}
                 </button>

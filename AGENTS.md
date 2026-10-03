@@ -194,7 +194,8 @@ schema change.
   message with `send_message(to="human")` or `ask_human`, text typed into its window in the
   window. At each turn's end, before the queue is handed over, the human's messages the
   agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
-  after them, else `missing`, which the chat shows as "replied only in its terminal".
+  after it got them (by `sent_at`, when each was handed over, not by id), else `missing`,
+  which the chat shows as "replied only in its terminal".
 - An agent's first input (a worker's task or step, a resumed supervisor's messages) goes on
   its command line. When it is longer than 2000 characters (tmux refuses commands over about
   16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its

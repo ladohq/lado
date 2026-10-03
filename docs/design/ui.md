@@ -337,7 +337,9 @@ Built in the chat task (2026-10-03):
   window in the window. The forgotten-reply check: at a turn's end, before the queue is
   handed over, each message from `human` to the agent in `delivered` or `read` that is not
   an answer or dismissal and has no `reply_state` yet gets `replied` (the agent wrote to
-  `human` after it) or `missing`; each one is checked once.
+  `human` after it got it: compared by when each was handed over, `sent_at`, not by id, as
+  the human's message is queued before it is handed over) or `missing`; each one is checked
+  once.
 - **Schema 13**: `messages` gets `kind`, `choices`, `free_answer`, `question_state`,
   `answered_by`, `reply_to`, `choice`, `reply_state`; their changes reach the feed through
   the `messages` triggers.

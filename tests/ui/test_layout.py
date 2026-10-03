@@ -19,7 +19,7 @@ def wide(page: Page):
 
 def with_worker(repo) -> str:
     session = running_session(repo)
-    runtime.spawn_worker(session, "Build the layout\nin three columns")
+    runtime.spawn_worker(session, "Build the layout\nin three columns", name="w1")
     agent_helpers.wait_for(
         lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session
     )

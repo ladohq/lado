@@ -1,17 +1,27 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
-// session on the right with the place for its gates and its tabs.
-import { useEffect, useState } from "react";
+// session on the right with its tabs. The list's width is dragged on its edge and remembered.
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router";
 
 import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { useLive, useLiveStore, type Loaded } from "./live";
-import { TerminalPanel, useOpenTerminal } from "./Terminals";
+import { MAIN_MIN, TerminalPanel, useOpenTerminal } from "./Terminals";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
 import { Placeholder } from "./Placeholder";
-import { storeAgentMessages, storedAgentMessages, storedStoppedOpen, storeStoppedOpen } from "./prefs";
+import {
+  PANEL_WIDTH,
+  SESSIONS_WIDTH,
+  storeAgentMessages,
+  storedAgentMessages,
+  storedSessionsList,
+  storedStoppedOpen,
+  storeSessionsList,
+  storeStoppedOpen,
+} from "./prefs";
 import { Launch, useTitle } from "./Shell";
+import { fitWidth, Splitter, useWidth } from "./Splitter";
 import { Team } from "./Team";
 
 // What each status means to the human, in the words of `lado ls`.
@@ -36,8 +46,18 @@ export function Sessions() {
     setStoppedOpen(!stoppedOpen);
     storeStoppedOpen(!stoppedOpen);
   };
+  const [list, setList] = useState(storedSessionsList);
+  const page = useRef<HTMLDivElement>(null);
+  const room = useWidth(page);
+  // The list leaves the session and the terminals their least widths.
+  const width = fitWidth(list.width, SESSIONS_WIDTH, room === null ? null : room - MAIN_MIN - PANEL_WIDTH.min);
+  const resize = (next: number) => {
+    setList({ width: next });
+    storeSessionsList({ width: next });
+  };
   return (
-    <div className="sessions">
+    <div ref={page} className="sessions" style={{ "--list-width": `${width}px` } as CSSProperties}>
+      <Splitter label="Resize the session list" edge="right" width={width} bounds={SESSIONS_WIDTH} onChange={resize} />
       <div className="session-list">
         <div className="session-list-head">
           <h2>Sessions</h2>
@@ -222,12 +242,6 @@ function SessionView({ name, tab, session }: { name: string; tab: Tab; session: 
         <h2>{name}</h2>
         <Status status={session.status} />
       </header>
-      <p className="gate-slot" role="note">
-        Gates of this session that wait for you will show here.{" "}
-        <a href={PLANS.gates.href} target="_blank" rel="noreferrer">
-          Plan: {PLANS.gates.label}
-        </a>
-      </p>
       <nav className="tabs" aria-label="Session sections">
         {TABS.map((one) => (
           <Link

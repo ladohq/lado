@@ -46,6 +46,38 @@ button {
   grid-template-columns: 60px minmax(0, 1fr);
 }
 
+/* A wide window is the app's window: it never scrolls, nor bounces; the regions inside
+   scroll by themselves (the session list, the feed, a page's content, a terminal). A
+   narrow one keeps its stacked layout, which the window scrolls. */
+@media (min-width: 901px) {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .app {
+    grid-template-rows: minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .rail {
+    height: 100%;
+  }
+
+  .main {
+    min-height: 0;
+  }
+
+  .content {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 .rail {
   position: sticky;
   top: 0;
@@ -307,21 +339,59 @@ h3 {
   font-size: 14px;
 }
 
-/* Sessions: three columns under the top bar, each the window's height: the list, the
-   selected session, and the terminals on the right when one is open. */
+/* Sessions: three columns under the top bar, each the window's height: the list (its width
+   in --list-width, from Sessions.tsx), the selected session, and the terminals on the right.
+   The content is the frame an expanded terminal fills. */
 
 .content:has(> .sessions) {
+  position: relative;
   padding: 0;
+  overflow: hidden;
 }
 
 .sessions {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  height: calc(100vh - 52px);
+  grid-template-columns: var(--list-width, 260px) minmax(0, 1fr);
+  height: 100%;
+}
+
+/* The edge between two columns (Splitter.tsx): a wide grip, a line where it is when the
+   pointer is over it or it has the focus. */
+.splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.splitter::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  content: "";
+}
+
+.splitter:hover::after,
+.splitter:focus-visible::after {
+  background: var(--action);
+}
+
+.splitter:focus-visible {
+  outline: none;
+}
+
+.sessions > .splitter {
+  left: calc(var(--list-width, 260px) - 4px);
 }
 
 .session-list {
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 14px 12px;
   background: var(--panel);
   border-right: 1px solid var(--line);
@@ -474,15 +544,6 @@ h3 {
 .session-head h2 {
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-.gate-slot {
-  margin: 0 0 12px;
-  padding: 8px 14px;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 14px;
 }
 
 .tabs {
@@ -669,6 +730,7 @@ h3 {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px 24px;
 }
 
@@ -679,39 +741,64 @@ h3 {
   min-height: 0;
 }
 
+/* The terminal panel: always there (its width from Terminals.tsx), collapsed to a strip, or
+   expanded over the whole content, the rail and the top bar left as they are. */
 .terminals {
   position: relative;
   display: flex;
   flex: none;
   flex-direction: column;
-  max-width: 70%;
   min-height: 0;
   background: var(--panel);
   border-left: 1px solid var(--line);
 }
 
-.term-edge {
-  position: absolute;
-  top: 0;
-  bottom: 0;
+.terminals > .splitter {
   left: -4px;
-  z-index: 2;
-  width: 8px;
-  cursor: ew-resize;
-  touch-action: none;
 }
 
-.term-edge:hover,
-.term-edge:focus-visible {
-  box-shadow: inset 2px 0 0 var(--action);
+.terminals.collapsed {
+  width: 36px;
+  align-items: center;
+}
+
+.terminals-open {
+  flex: 1;
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  writing-mode: vertical-rl;
+}
+
+.terminals-open:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.terminals.expanded {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: auto !important;
+  max-width: none;
+  border-left: 0;
 }
 
 .terminals-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 8px 0 4px;
+  padding: 0 4px;
   border-bottom: 1px solid var(--line);
+}
+
+.term-actions {
+  display: flex;
+  flex: none;
+  margin-left: auto;
 }
 
 .term-tabs {
@@ -813,22 +900,35 @@ h3 {
   margin-left: auto;
 }
 
+/* Take control's question: a modal dialog over the page. */
 .term-ask {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin: 0 12px 8px;
-  padding: 10px 12px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 18px 20px 16px;
+  background: var(--panel);
+  color: var(--ink);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--action);
-  border-radius: 6px;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px var(--shadow);
   font-size: 14px;
 }
 
+.term-ask::backdrop {
+  background: var(--shadow);
+}
+
 .term-ask p {
-  flex: 1 1 320px;
-  margin: 0;
+  margin: 0 0 12px;
+}
+
+.term-ask .switch {
+  margin-left: 0;
+}
+
+.term-ask-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .term-screen {
@@ -836,6 +936,7 @@ h3 {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--term-ground);
 }
 
@@ -882,6 +983,7 @@ h3 {
   margin: 0;
   padding: 8px 12px;
   overflow: auto;
+  overscroll-behavior: contain;
   font: 13px/1.45 var(--mono);
 }
 
@@ -1021,6 +1123,7 @@ h3 {
   gap: 10px;
   min-height: 160px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 4px;
 }
 
@@ -1270,6 +1373,7 @@ h3 {
   }
 
   .session-main {
+    min-width: 0 !important;
     min-height: calc(100vh - 52px);
     overflow: visible;
   }
@@ -1282,7 +1386,23 @@ h3 {
     border-top: 1px solid var(--line);
   }
 
-  .term-edge {
+  .terminals.collapsed {
+    height: auto;
+  }
+
+  .terminals-open {
+    writing-mode: horizontal-tb;
+  }
+
+  /* Expanded over the whole window: the content is as tall as the page here, not the
+     window. */
+  .terminals.expanded {
+    position: fixed;
+    z-index: 20;
+    height: auto;
+  }
+
+  .splitter {
     display: none;
   }
 }

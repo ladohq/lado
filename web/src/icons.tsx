@@ -77,6 +77,26 @@ export const SettingsIcon = () => (
   </Icon>
 );
 
+// The terminal panel on the right: collapse it to a strip.
+export const CollapsePanelIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M15 4.5v15" />
+    <path d="m9 10 2 2-2 2" />
+  </Icon>
+);
+
+// A terminal over the page (arrows out), or back in its panel (arrows in).
+export const ExpandIcon = ({ expanded }: { expanded: boolean }) => (
+  <Icon>
+    {expanded ? (
+      <path d="M19 5l-5 5M14 6v4h4M5 19l5-5M10 18v-4H6" />
+    ) : (
+      <path d="M14 4h6v6M20 4l-6 6M10 20H4v-6M4 20l6-6" />
+    )}
+  </Icon>
+);
+
 export const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
   <Icon>
     <rect x="3.5" y="4.5" width="17" height="15" rx="2" />

@@ -394,3 +394,20 @@ the answer was not accepted. Only `lado answer` (or the popup's option) answers 
 Wanted: the Gates task answers gates with buttons and a comment in the chat; until then, the
 popup says plainly when the input is not one of the options, and keeps asking.
 Found: 2026-10-03, merge gate #35 of feature/ui-layout.
+
+## Claude Code 2.1.288 is installed but TESTED_VERSION is 2.1.287
+
+`lado doctor` warns: the installed Claude Code is 2.1.288, `providers/claude.py`
+`TESTED_VERSION` is 2.1.287.
+Wanted: run `make test-live PROVIDER=claude` on 2.1.288 and raise `TESTED_VERSION` if it
+is green.
+Found: 2026-10-03, design of feature/ui-polish.
+
+## A terminal closed for good shows its reason twice
+
+A terminal whose socket closes for good (e.g. a stopped session) shows the reason in its
+status ("closed: session "x" is stopped") and again as the error notice beside it: the
+server sends an error frame and then closes with the same reason. Now that the
+supervisor's tab is always shown, every stopped session's page shows it twice.
+Wanted: one line with the reason (the notice left out when it repeats the close reason).
+Found: 2026-10-03, UI e2e screenshots of feature/ui-polish.

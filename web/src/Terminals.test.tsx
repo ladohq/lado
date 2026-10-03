@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeSocket, FakeXterm } from "./fakes";
+import { FakeEventSource, FakeResizeObserver, FakeSocket, FakeXterm, stream, stubDialogs } from "./fakes";
 import { RETRY_MS } from "./terminalLink";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -19,27 +19,25 @@ const AGENTS: AgentInfo[] = [
 const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 
 let history: { text: string; alternate: boolean } = { text: "line 1\nline 2", alternate: false };
-
-// The change feed: it opens with a reset, so the sessions load; no changes after.
-class StreamStub {
-  static CLOSED = 2;
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  readyState = 1;
-  constructor(readonly url: string) {}
-  addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    if (type === "reset") queueMicrotask(() => listener(new MessageEvent("reset", { lastEventId: "1" })));
-  }
-  close() {}
-}
+let narrow = false;
 
 beforeEach(() => {
   localStorage.clear();
   FakeSocket.all = [];
   FakeXterm.all = [];
+  FakeEventSource.all = [];
+  FakeEventSource.autoStart = true;
   history = { text: "line 1\nline 2", alternate: false };
+  narrow = false;
+  stubDialogs();
   vi.stubGlobal("WebSocket", FakeSocket);
-  vi.stubGlobal("EventSource", StreamStub);
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: narrow && query.includes("max-width"),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
   vi.stubGlobal(
     "fetch",
     vi.fn(async (path: string) => {
@@ -58,9 +56,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
-const panel = () => screen.queryByRole("complementary", { name: "Terminals" });
+const panel = () => screen.getByRole("complementary", { name: "Terminals" });
 
 async function open(path = "/sessions/lado") {
   render(
@@ -80,92 +79,236 @@ async function chip(agent: string) {
 
 async function openTerminal(agent: string) {
   fireEvent.click(await chip(agent));
-  return within(panel()!).getByRole("tabpanel", { name: agent });
+  return within(panel()).getByRole("tabpanel", { name: agent });
 }
 
 const socketOf = (agent: string, mode: string) =>
   FakeSocket.all.filter((socket) => socket.url === `${BASE}/${agent}/terminal?mode=${mode}`);
 
-test("the terminal panel is closed at first and no socket opens with the page", async () => {
+const tabNames = () => within(panel()).getAllByRole("tab").map((tab) => tab.textContent);
+
+function agentChange(item: AgentInfo | null, key = item?.name ?? "") {
+  stream().send("change", { kind: "agents", session: "lado", key, op: item ? "update" : "delete", item });
+}
+
+// The panel: always there, the supervisor's terminal pinned in it
+
+test("the panel shows the supervisor's terminal from the start, before any click, and it cannot be closed", async () => {
   await open();
-  await team();
-  expect(panel()).toBeNull();
-  expect(FakeSocket.all).toHaveLength(0);
+  const tab = within(panel()).getByRole("tab", { name: "supervisor" });
+  expect(tab.getAttribute("aria-selected")).toBe("true");
+  expect(within(panel()).getByRole("tabpanel", { name: "supervisor" })).toBeTruthy();
+  expect(socketOf("supervisor", "view")).toHaveLength(1);
+  expect(within(panel()).queryByRole("button", { name: "Close supervisor's terminal" })).toBeNull();
+  expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("true");
 });
 
-test("a chip opens its agent's terminal on the right, to view, the supervisor's too", async () => {
+test("a chip opens its agent's terminal on the right, to view", async () => {
   await open();
-  const view = await openTerminal("supervisor");
-  const tab = within(panel()!).getByRole("tab", { name: "supervisor" });
+  const view = await openTerminal("w1");
+  const tab = within(panel()).getByRole("tab", { name: "w1" });
   expect(tab.getAttribute("aria-selected")).toBe("true");
-  expect(socketOf("supervisor", "view")).toHaveLength(1);
-  expect(socketOf("supervisor", "control")).toHaveLength(0);
-  act(() => socketOf("supervisor", "view")[0].open());
+  expect(socketOf("w1", "view")).toHaveLength(1);
+  expect(socketOf("w1", "control")).toHaveLength(0);
+  act(() => socketOf("w1", "view")[0].open());
   expect(within(view).getByRole("status").textContent).toContain("live");
-  act(() => FakeXterm.all[0].type("x"));
-  expect(socketOf("supervisor", "view")[0].sent).toEqual([]); // in view nothing typed goes out
+  act(() => FakeXterm.all[1].type("x"));
+  expect(socketOf("w1", "view")[0].sent).toEqual([]); // in view nothing typed goes out
   expect(within(view).getByRole("button", { name: "Take control" })).toBeTruthy();
 });
 
-test("the chip of the open terminal is marked; another chip adds a tab and keeps the first socket", async () => {
+test("the chip of the shown terminal is marked; another chip adds a tab and keeps the first socket", async () => {
   await open();
   await openTerminal("w1");
   expect((await chip("w1")).getAttribute("aria-pressed")).toBe("true");
   expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("false");
+  expect(tabNames()).toEqual(["supervisor", "w1"]);
   await openTerminal("supervisor");
   expect((await chip("w1")).getAttribute("aria-pressed")).toBe("false");
-  expect(within(panel()!).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["w1", "supervisor"]);
   const [w1] = socketOf("w1", "view");
   expect(w1.closed).toBe(false); // hidden, not closed
   fireEvent.click(await chip("w1")); // selects the tab it has: no new socket
   expect(socketOf("w1", "view")).toHaveLength(1);
-  expect(within(panel()!).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
+  expect(within(panel()).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
 });
 
 test("the panel keeps its terminals while the session's tabs change", async () => {
   await open();
   await openTerminal("w1");
   fireEvent.click(screen.getByRole("link", { name: "Flows" }));
-  expect(panel()).toBeTruthy();
+  expect(tabNames()).toEqual(["supervisor", "w1"]);
   fireEvent.click(screen.getByRole("link", { name: "Activity" }));
-  expect(FakeSocket.all).toHaveLength(1); // the same terminal, not a new one
+  expect(FakeSocket.all).toHaveLength(2); // the same terminals, no new ones
 });
 
-test("× closes a tab and its socket; closing the last tab closes the panel", async () => {
+test("× closes a tab and its socket; with the last other tab closed the supervisor's is shown", async () => {
   await open();
   await openTerminal("w1");
-  await openTerminal("supervisor");
-  fireEvent.click(within(panel()!).getByRole("button", { name: "Close supervisor's terminal" }));
-  expect(socketOf("supervisor", "view")[0].closed).toBe(true);
-  expect(within(panel()!).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
-  fireEvent.click(within(panel()!).getByRole("button", { name: "Close w1's terminal" }));
+  fireEvent.click(within(panel()).getByRole("button", { name: "Close w1's terminal" }));
   expect(socketOf("w1", "view")[0].closed).toBe(true);
-  expect(panel()).toBeNull();
-});
-
-test("the panel's width changes with its edge and is remembered", async () => {
-  await open();
-  await openTerminal("w1");
-  const edge = within(panel()!).getByRole("separator", { name: "Resize the terminals" });
-  expect(edge.getAttribute("aria-orientation")).toBe("vertical");
-  const before = Number(edge.getAttribute("aria-valuenow"));
-  fireEvent.keyDown(edge, { key: "ArrowLeft" });
-  const after = Number(edge.getAttribute("aria-valuenow"));
-  expect(after).toBeGreaterThan(before);
-  expect(panel()!.style.width).toBe(`${after}px`);
-  expect(JSON.parse(localStorage.getItem("lado.terminals")!)).toEqual({ width: after });
-  cleanup();
-  await open();
-  await openTerminal("w1");
-  expect(panel()!.style.width).toBe(`${after}px`);
+  expect(tabNames()).toEqual(["supervisor"]);
+  expect(within(panel()).getByRole("tab", { name: "supervisor" }).getAttribute("aria-selected")).toBe("true");
+  expect(socketOf("supervisor", "view")[0].closed).toBe(false);
 });
 
 test("the Agents tab opens an agent's terminal in the same panel", async () => {
   await open("/sessions/lado/agents");
   const list = await screen.findByRole("table", { name: "Agents of lado" });
-  fireEvent.click(await within(list).findByRole("button", { name: "Open supervisor's terminal" }));
-  expect(within(panel()!).getByRole("tab", { name: "supervisor" }).getAttribute("aria-selected")).toBe("true");
+  fireEvent.click(await within(list).findByRole("button", { name: "Open w1's terminal" }));
+  expect(within(panel()).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
+  expect(socketOf("w1", "view")).toHaveLength(1);
+});
+
+// Collapsed to a strip
+
+const collapse = () => fireEvent.click(within(panel()).getByRole("button", { name: "Collapse terminals" }));
+const expandPanel = () => fireEvent.click(within(panel()).getByRole("button", { name: "Terminals" }));
+
+test("Collapse terminals leaves a strip whose Terminals button opens the panel again; remembered", async () => {
+  await open();
+  collapse();
+  expect(panel().classList.contains("collapsed")).toBe(true);
+  expect(within(panel()).queryByRole("tab")).toBeNull();
+  expect(JSON.parse(localStorage.getItem("lado.terminals")!)).toEqual({ width: 480, collapsed: true });
+  expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("false"); // nothing is shown
+  cleanup();
+
+  await open();
+  expect(panel().classList.contains("collapsed")).toBe(true);
+  expandPanel();
+  expect(panel().classList.contains("collapsed")).toBe(false);
+  expect(within(panel()).getByRole("tab", { name: "supervisor" }).getAttribute("aria-selected")).toBe("true");
+  expect(JSON.parse(localStorage.getItem("lado.terminals")!).collapsed).toBe(false);
+});
+
+test("a panel collapsed when the page opens opens no socket until it is opened", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 480, collapsed: true }));
+  await open();
+  await team();
+  expect(FakeSocket.all).toHaveLength(0);
+  expandPanel();
   expect(socketOf("supervisor", "view")).toHaveLength(1);
+});
+
+test("on a narrow window the panel starts collapsed", async () => {
+  narrow = true;
+  await open();
+  await team();
+  expect(panel().classList.contains("collapsed")).toBe(true);
+  expect(FakeSocket.all).toHaveLength(0);
+});
+
+test("a chip opens a collapsed panel on its agent's terminal", async () => {
+  await open();
+  collapse();
+  await openTerminal("w1");
+  expect(panel().classList.contains("collapsed")).toBe(false);
+  expect(within(panel()).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
+  expect((await chip("w1")).getAttribute("aria-pressed")).toBe("true");
+});
+
+test("collapsing the panel keeps its sockets, and in control tells the server no new size", async () => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  FakeResizeObserver.all = [];
+  localStorage.setItem("lado.askControl", "never");
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const [control] = socketOf("supervisor", "control");
+  act(() => control.open());
+  expect(control.frames).toEqual([{ type: "resize", cols: 120, rows: 30 }]);
+  collapse();
+  FakeResizeObserver.resize(() => 0); // the strip: its terminal has no room
+  expect(control.frames).toEqual([{ type: "resize", cols: 120, rows: 30 }]);
+  expect(control.closed).toBe(false);
+  expandPanel();
+  expect(control.frames).toHaveLength(2); // open again: its size goes out
+});
+
+// A terminal closed for good: Reconnect, or by itself when its agent comes back
+
+test("a terminal closed for good has Reconnect, which opens a new socket", async () => {
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  act(() => socketOf("supervisor", "view")[0].end(4404, 'session "lado" is stopped'));
+  expect(within(view).getByRole("status").textContent).toContain("is stopped");
+  fireEvent.click(within(view).getByRole("button", { name: "Reconnect" }));
+  expect(socketOf("supervisor", "view")).toHaveLength(2);
+  act(() => socketOf("supervisor", "view")[1].open());
+  expect(within(view).getByRole("status").textContent).toBe("live");
+  expect(within(view).queryByRole("button", { name: "Reconnect" })).toBeNull();
+});
+
+test("a terminal closed for good opens again when its agent comes back, also with the team not shown", async () => {
+  await open("/sessions/lado/flows"); // no team on this tab: the panel follows the agents itself
+  await waitFor(() => expect(socketOf("supervisor", "view")).toHaveLength(1));
+  act(() => socketOf("supervisor", "view")[0].end(4404, 'session "lado" is stopped'));
+  agentChange(null, "supervisor"); // stopped: its agents are gone
+  expect(socketOf("supervisor", "view")).toHaveLength(1);
+  agentChange({ ...AGENTS[0], status: "starting" }); // resumed
+  await waitFor(() => expect(socketOf("supervisor", "view")).toHaveLength(2));
+  // Still no terminal: it stays closed until its agent changes again, not in a loop.
+  act(() => socketOf("supervisor", "view")[1].end(4404, 'agent "supervisor" has no terminal'));
+  expect(socketOf("supervisor", "view")).toHaveLength(2);
+  agentChange({ ...AGENTS[0], status: "idle" });
+  await waitFor(() => expect(socketOf("supervisor", "view")).toHaveLength(3));
+});
+
+// Take control
+
+test("Take control asks in a modal dialog first; Cancel and Esc keep the terminal to view", async () => {
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  const take = within(view).getByRole("button", { name: "Take control" });
+  expect(take.getAttribute("title")).toMatch(/goes straight to supervisor/);
+  fireEvent.click(take);
+  const ask = screen.getByRole("dialog", { name: "Take control of supervisor" });
+  expect(ask.tagName).toBe("DIALOG");
+  expect(ask.hasAttribute("open")).toBe(true); // shown with showModal
+  expect(ask.textContent).toMatch(/goes straight to supervisor/);
+  fireEvent.click(within(ask).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.click(take);
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(socketOf("supervisor", "control")).toHaveLength(0);
+  expect(localStorage.getItem("lado.askControl")).toBeNull();
+});
+
+test("Don't ask again: Take control takes it at once, for every agent and after a reload", async () => {
+  await open();
+  fireEvent.click(within(panel()).getByRole("button", { name: "Take control" }));
+  const ask = screen.getByRole("dialog", { name: "Take control of supervisor" });
+  fireEvent.click(within(ask).getByRole("checkbox", { name: "Don't ask again" }));
+  fireEvent.click(within(ask).getByRole("button", { name: "Take control" }));
+  expect(socketOf("supervisor", "control")).toHaveLength(1);
+  cleanup();
+
+  await open();
+  const view = await openTerminal("w1");
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(socketOf("w1", "control")).toHaveLength(1);
+});
+
+test("without browser storage Take control asks every time", async () => {
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("denied");
+  });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("denied");
+  });
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const ask = screen.getByRole("dialog");
+  fireEvent.click(within(ask).getByRole("checkbox", { name: "Don't ask again" }));
+  fireEvent.click(within(ask).getByRole("button", { name: "Take control" }));
+  fireEvent.click(within(view).getByRole("button", { name: "Release" }));
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  vi.restoreAllMocks();
 });
 
 async function w1Terminal() {
@@ -175,21 +318,15 @@ async function w1Terminal() {
   return { view };
 }
 
-test("Take control asks first, then opens it in control; Release goes back to view", async () => {
+test("Take control opens it in control after the dialog; Release goes back to view", async () => {
   const { view } = await w1Terminal();
   fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
-  const ask = within(view).getByRole("alertdialog", { name: "Take control of w1" });
-  fireEvent.click(within(ask).getByRole("button", { name: "Cancel" }));
-  expect(socketOf("w1", "control")).toHaveLength(0);
-
-  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
-  const sure = within(view).getByRole("alertdialog", { name: "Take control of w1" });
-  fireEvent.click(within(sure).getByRole("button", { name: "Take control" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Take control" }));
   expect(socketOf("w1", "view")[0].closed).toBe(true);
   const [control] = socketOf("w1", "control");
   act(() => control.open());
   // In control what is typed goes out, and the terminal's size follows the panel.
-  act(() => FakeXterm.all[1].type("ls\r"));
+  act(() => FakeXterm.all[2].type("ls\r"));
   expect(control.frames).toEqual([
     { type: "resize", cols: 120, rows: 30 },
     { type: "input", data: "ls\r" },
@@ -199,9 +336,86 @@ test("Take control asks first, then opens it in control; Release goes back to vi
   expect(socketOf("w1", "view")).toHaveLength(2);
 });
 
+// Expanded over the page
+
+test("Expand terminal shows the panel over the page with the same socket; Restore terminal puts it back", async () => {
+  await open();
+  fireEvent.click(within(panel()).getByRole("button", { name: "Expand terminal" }));
+  expect(panel().classList.contains("expanded")).toBe(true);
+  fireEvent.click(within(panel()).getByRole("button", { name: "Restore terminal" }));
+  expect(panel().classList.contains("expanded")).toBe(false);
+  expect(FakeSocket.all).toHaveLength(1);
+  expect(FakeSocket.all[0].closed).toBe(false);
+});
+
+test("Esc restores an expanded terminal to view; in control it goes to the agent", async () => {
+  localStorage.setItem("lado.askControl", "never");
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  fireEvent.click(within(panel()).getByRole("button", { name: "Expand terminal" }));
+  const xterm = () => FakeXterm.all[FakeXterm.all.length - 1].element!;
+  fireEvent.keyDown(xterm(), { key: "Escape" });
+  expect(panel().classList.contains("expanded")).toBe(false);
+
+  fireEvent.click(within(panel()).getByRole("button", { name: "Expand terminal" }));
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const [control] = socketOf("supervisor", "control");
+  act(() => control.open());
+  fireEvent.keyDown(xterm(), { key: "Escape" });
+  act(() => FakeXterm.all[FakeXterm.all.length - 1].type("\x1b")); // xterm.js sends it on
+  expect(panel().classList.contains("expanded")).toBe(true);
+  expect(control.frames).toContainEqual({ type: "input", data: "\x1b" });
+  expect(within(view).getByText("In control")).toBeTruthy();
+  // Outside the terminal Esc restores it, in control too, which stays.
+  fireEvent.keyDown(within(panel()).getByRole("button", { name: "Restore terminal" }), { key: "Escape" });
+  expect(panel().classList.contains("expanded")).toBe(false);
+  expect(control.closed).toBe(false);
+});
+
+// Its width
+
+test("the panel's width changes with its edge and is remembered", async () => {
+  await open();
+  const edge = within(panel()).getByRole("separator", { name: "Resize the terminals" });
+  const before = Number(edge.getAttribute("aria-valuenow"));
+  fireEvent.keyDown(edge, { key: "ArrowLeft" });
+  const after = Number(edge.getAttribute("aria-valuenow"));
+  expect(after).toBeGreaterThan(before);
+  expect(panel().style.width).toBe(`${after}px`);
+  expect(JSON.parse(localStorage.getItem("lado.terminals")!)).toEqual({ width: after, collapsed: false });
+  cleanup();
+  await open();
+  expect(panel().style.width).toBe(`${after}px`);
+});
+
+test("a collapsed panel has no edge", async () => {
+  await open();
+  collapse();
+  expect(within(panel()).queryByRole("separator")).toBeNull();
+});
+
+test("in a narrow window the panel is narrowed to leave the session its room, and its width stays remembered", async () => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  FakeResizeObserver.all = [];
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 600, collapsed: false }));
+  await open();
+  FakeResizeObserver.resize((target) => (target.classList.contains("session-page") ? 800 : 1000));
+  const edge = within(panel()).getByRole("separator", { name: "Resize the terminals" });
+  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(800 - 360);
+  expect(panel().style.width).toBe("440px");
+  expect(screen.getByRole("region", { name: "Session lado" }).closest<HTMLElement>(".session-main")!.style.minWidth).toBe(
+    "360px",
+  );
+  expect(JSON.parse(localStorage.getItem("lado.terminals")!).width).toBe(600);
+  FakeResizeObserver.resize(() => 1400);
+  expect(panel().style.width).toBe("600px");
+});
+
+// Inside a terminal
+
 test("in view the wheel up opens the read-only history; Back to live closes it", async () => {
   const { view } = await w1Terminal();
-  const xterm = FakeXterm.all[0];
+  const xterm = FakeXterm.all[1];
   expect(xterm.wheel(+100)).toBe(false); // down: nothing, and never to the agent
   expect(within(view).queryByRole("region", { name: "History (read only)" })).toBeNull();
   expect(xterm.wheel(-100)).toBe(false);
@@ -214,7 +428,7 @@ test("in view the wheel up opens the read-only history; Back to live closes it",
 test("the history of a full-screen agent says where it is instead of an empty layer", async () => {
   history = { text: "", alternate: true };
   const { view } = await w1Terminal();
-  FakeXterm.all[0].wheel(-1);
+  FakeXterm.all[1].wheel(-1);
   const layer = await within(view).findByRole("region", { name: "History (read only)" });
   expect((await within(layer).findByText(/inside its CLI/)).textContent).toContain("Take control");
 });
@@ -243,7 +457,7 @@ test("an error frame shows in the terminal's bar", async () => {
 
 test("in view the terminal takes the window's size and its font shrinks until it fits", async () => {
   await w1Terminal();
-  const xterm = FakeXterm.all[0];
+  const xterm = FakeXterm.all[1];
   const font = () => Number(xterm.options.fontSize);
   // The panel holds 19 rows at 13 px (FakeFit): a window of 24 rows needs a smaller font.
   act(() => socketOf("w1", "view")[0].frame({ type: "size", cols: 80, rows: 24 }));

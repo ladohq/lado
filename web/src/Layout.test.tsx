@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeSocket, stream } from "./fakes";
+import { FakeEventSource, FakeResizeObserver, FakeSocket, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -87,7 +87,8 @@ test("the team shows every agent as a chip, the supervisor first, with its statu
   expect(within(chips[1]).getByText("developer")).toBeTruthy();
   expect(chips[1].getAttribute("title")).toBe("run feature/ui-layout\nBuild the layout");
   expect(chips[0].getAttribute("title")).toBe("supervisor");
-  expect(chips.every((chip) => chip.getAttribute("aria-pressed") === "false")).toBe(true);
+  // The panel shows the supervisor's terminal from the start.
+  expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false"]);
 });
 
 test("a chip follows its agent's changes", async () => {
@@ -144,6 +145,38 @@ test("a session moves to Needs you when the feed says something waits in it", as
   const gated = session("lado", { waiting: { gates: 1, questions: 0, agents: 0 } });
   stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: gated }, "11");
   expect(within(group("Needs you")).getByRole("link", { name: /lado/ })).toBeTruthy();
+});
+
+test("the list's width changes with its edge and is remembered", async () => {
+  open("/sessions");
+  const edge = screen.getByRole("separator", { name: "Resize the session list" });
+  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(260);
+  fireEvent.keyDown(edge, { key: "ArrowRight" });
+  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(300);
+  const columns = () => document.querySelector<HTMLElement>(".sessions")!.style.getPropertyValue("--list-width");
+  expect(columns()).toBe("300px");
+  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 300 });
+  cleanup();
+  open("/sessions");
+  expect(columns()).toBe("300px");
+  fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize the session list" }));
+  expect(columns()).toBe("260px");
+});
+
+test("in a narrow window the list is narrowed to leave the session and its terminals room, and its width stays remembered", async () => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  FakeResizeObserver.all = [];
+  localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 400 }));
+  open("/sessions");
+  const edge = screen.getByRole("separator", { name: "Resize the session list" });
+  // The session's least width (360) and the terminals' (280) come first.
+  FakeResizeObserver.resize(() => 1000);
+  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(1000 - 360 - 280);
+  FakeResizeObserver.resize(() => 700);
+  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(200);
+  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 400 });
+  FakeResizeObserver.resize(() => 1600);
+  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(400);
 });
 
 test("the list's + explains how to start a session", async () => {

@@ -58,6 +58,8 @@ export class FakeXterm {
   }
   open(element: HTMLElement) {
     this.element = element;
+    // xterm.js takes the keys it handles: they go no further up the page.
+    element.addEventListener("keydown", (event) => event.stopPropagation());
   }
   write(data: Uint8Array | string) {
     this.written += typeof data === "string" ? data : new TextDecoder().decode(data);
@@ -100,6 +102,40 @@ export class FakeFit {
     return { cols: Math.floor(960 / (0.6 * size)), rows: Math.floor(300 / (1.2 * size)) };
   }
   dispose() {}
+}
+
+// The browser's ResizeObserver: `resize` lays every observed element out at a width.
+export class FakeResizeObserver {
+  static all: FakeResizeObserver[] = [];
+  private targets: Element[] = [];
+
+  constructor(private readonly callback: (entries: { target: Element; contentRect: { width: number } }[]) => void) {
+    FakeResizeObserver.all.push(this);
+  }
+  observe(target: Element) {
+    this.targets.push(target);
+  }
+  disconnect() {
+    this.targets = [];
+  }
+  static resize(width: (target: Element) => number) {
+    act(() =>
+      FakeResizeObserver.all.forEach((observer) =>
+        observer.targets.forEach((target) => observer.callback([{ target, contentRect: { width: width(target) } }])),
+      ),
+    );
+  }
+}
+
+// jsdom has <dialog> but not showModal and close: the UI's modal dialogs need them.
+export function stubDialogs() {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.removeAttribute("open");
+    this.dispatchEvent(new Event("close"));
+  };
 }
 
 export const xtermFor = (url: string) =>

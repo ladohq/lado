@@ -213,11 +213,21 @@ Decided in the agent terminal task (2026-10-03).
   only in control (in view, and for a frame it does not know, an error frame; the socket
   stays open). Backpressure: the pty is read again only after the last output was sent.
   Close codes: 44xx for good with the reason (4401 no token, 4400 unknown mode, 4404 no
-  terminal), shown, no reconnect; 45xx for now (4500 the terminal closed, 4503 lado.db of
-  another schema), the UI opens a new socket after 2 s.
+  terminal), shown, no reconnect by itself; 45xx for now (4500 the terminal closed, 4503
+  lado.db of another schema), the UI opens a new socket after 2 s.
+- **Reconnect** (the UI polish, 2026-10-03): a terminal closed for good shows
+  **Reconnect** beside its reason, which opens a new socket in the same tab (the
+  supervisor's tab cannot be closed, so it would stay dead otherwise). It also opens again
+  by itself when its agent comes back or changes in the session's agents (the panel
+  follows them on every tab): a stopped session's supervisor is live again after
+  `lado start`, with no reload. The agent as it was at the close is kept, so an agent that
+  still has no terminal is not asked again until it changes.
 - **Modes**: every terminal opens in view, the supervisor's too (the Layout task: the human
   writes to agents in the chat, and a window is never resized without the human's own
-  step); **Take control** asks first, **Release** goes back. In control tmux
+  step); **Take control** asks first in a modal dialog (`<dialog>`, Esc is Cancel) with
+  **Don't ask again**, remembered in the browser (`lado.askControl`) for every agent; there
+  is no setting for it, and the button's tooltip always has the explanation. Without
+  browser storage it asks every time. **Release** goes back. In control tmux
   sizes the window by the client active last (`window-size latest`, tmux's default): the
   human's `lado attach` sees the window resized when the browser is the latest, and the
   other way round. In view the client never sizes it: its pty always has the window's size,
@@ -241,6 +251,11 @@ Decided in the agent terminal task (2026-10-03).
   Claude Code with `"tui": "fullscreen"` in the human's own settings (LADO's agents read
   them too) and Kilo (7.8.1) run full screen and read the mouse: the layer shows the note,
   the wheel in control goes to the CLI.
+- **Expand**: the panel's **Expand terminal** shows it over the whole content (the rail
+  and the top bar stay; `position: absolute; inset: 0` in the content, so no widths are
+  written twice; on a narrow window over the whole window), with the same terminals and
+  sockets, the mode kept; **Restore terminal** puts it back, and so does Esc, except in a
+  terminal the human controls: there Esc goes to the agent. Not remembered.
 - **Needs tmux 3.2** (`attach -f ignore-size`); `lado doctor` warns before it, and
   `terminal.open` refuses with the reason.
 
@@ -266,16 +281,34 @@ Sessions for now. The UI's texts are in English.
   in `waiting`), **Running**, and **Stopped** at the bottom, folded (remembered in the
   browser). A stopped session is under Stopped whatever waits in it: nothing in it can be
   answered. Each shows a line under its name: what waits, or its agents. The **session**
-  in the middle: its name and status, the place for its gates (a placeholder until the
-  Gates task), and the tabs **Activity | Agents | Flows | Artifacts**: Activity is the
+  in the middle: its name and status, then the tabs **Activity | Agents | Flows |
+  Artifacts** (its gates come as cards in the feed, the Gates task): Activity is the
   feed (The human in the session, below), Agents lists the agents live (name, role,
   provider, status) with **Open terminal** until the Agents task builds the whole section,
   the others placeholders naming the task that fills them. The **terminal panel** on the
-  right, on every tab (Terminal above): closed when the page opens (no socket opens with
-  the page), opened by a team chip or Open terminal; each open terminal is a tab, closed
-  with ×, and closing the last one closes the panel; a hidden tab keeps its socket, a
-  closed one closes it. Its width is dragged (or the arrow keys on its edge) and
-  remembered in the browser. Below 900 px the columns stack and the page scrolls.
+  right, on every tab (Terminal above), is always there, so the page never jumps (the UI
+  polish, 2026-10-03): its first tab is the supervisor's, pinned (no ×), shown when the
+  page opens; a team chip or Open terminal adds an agent's tab or selects it, and the
+  others close with ×, the supervisor's then shown. A tab's socket opens the first time
+  it shows in the open panel, then a hidden tab keeps it and a closed tab closes it. The
+  price: each session page opened with the panel open makes one viewer (a tmux session) on
+  the server, closed with the page. **Collapse terminals** leaves a strip with a
+  **Terminals** button that opens it again; collapsed, its terminals keep their sockets
+  but are hidden, so nothing is resized (in control too), and a panel collapsed when the
+  page opens opens no socket until it is opened. A chip opens a collapsed panel. Collapsed
+  is remembered in the browser (`lado.terminals`) and is the default below 900 px.
+- **Columns**: the list and the panel are resized on their edges with one component
+  (`Splitter.tsx`: a `separator`, dragged, the arrow keys, a double click for the default
+  width; a wide grip with a `col-resize` cursor and a line on hover and focus), within
+  bounds (list 200–480 px, panel 280–1200 px), and remembered in the browser
+  (`lado.sessionsList`, `lado.terminals`). The session in the middle keeps at least
+  360 px: in a narrower window the list and the panel are drawn narrower, but their chosen
+  widths stay remembered for a wider window.
+- **The window never scrolls** on a wide window: `html` and `body` do not scroll or bounce
+  (`overflow: hidden`, `overscroll-behavior: none`) and the frame is the window's height;
+  only regions inside scroll (the session list, the feed, the session's column, a page's
+  content, a terminal and its history), each without passing its scroll on. Below 900 px
+  the columns stack and the page scrolls, as before.
   `/sessions` with no name says "Select a session" (nothing is selected for the human); a
   name `/api/sessions` does not know says "Session <name> not found" with a link to the
   list, and the address stays as it was.

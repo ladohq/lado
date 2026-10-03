@@ -1,19 +1,30 @@
 // The terminal panel of a session page (docs/design/ui.md, Terminal and Structure): on the
-// right of the page, on every tab, closed until a terminal is opened (a team chip, or Open
-// terminal in the Agents tab); its width dragged and remembered. Each open terminal is a
-// tab, closed with ×; closing the last one closes the panel. A hidden tab keeps its socket;
-// a closed one closes it. Every terminal opens to view: the wheel opens the window's
-// history, read only; Take control asks first, then types into the agent; Release goes back.
+// right of the page, on every tab, always there, so the page never jumps. Its first tab is
+// the supervisor's, pinned (no ×); a team chip or Open terminal in the Agents tab adds an
+// agent's tab or selects it, and the others close with ×. A tab's terminal opens its socket
+// the first time it is shown in the open panel: a panel collapsed when the page opens opens
+// none. Then a hidden tab keeps its socket, a closed one closes it. The panel collapses to a
+// strip (remembered; at first on a narrow window), its width is dragged on its edge
+// (remembered; narrowed while the window leaves the session too little room), and Expand
+// shows it over the whole page with the same terminals. Every terminal opens to view: the
+// wheel opens the window's history, read only; Take control asks first in a dialog (until
+// the human says not to ask again), then types into the agent; Release goes back. A terminal
+// closed for good has Reconnect, and opens again by itself when its agent comes back.
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { getHistory, type History } from "./api";
-import { PANEL_WIDTH, storedPanel, storePanel } from "./prefs";
+import { getHistory, type AgentInfo, type History } from "./api";
+import { CollapsePanelIcon, ExpandIcon } from "./icons";
+import { useLive, useLiveStore } from "./live";
+import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type PanelPrefs } from "./prefs";
+import { fitWidth, Splitter, useWidth } from "./Splitter";
+import { SUPERVISOR } from "./Team";
 import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink";
 
-const WIDTH_STEP = 40; // pixels per arrow key on the panel's edge
+// The least width of the session beside the panel: the panel is narrowed to leave it.
+export const MAIN_MIN = 360;
 
 type Terminals = { open: (agent: string) => void; active: string | null };
 
@@ -30,115 +41,189 @@ export function useOpenTerminal(): (agent: string) => void {
   return useTerminals().open;
 }
 
-// The agent whose terminal the panel shows, or null when it is closed.
+// The agent whose terminal the panel shows, or null while the panel is collapsed.
 export function useShownTerminal(): string | null {
   return useTerminals().active;
 }
 
-export function TerminalPanel({ session, children }: { session: string; children: ReactNode }) {
-  const [tabs, setTabs] = useState<string[]>([]);
-  const [active, setActive] = useState<string | null>(null);
-  const [panel, setPanel] = useState(storedPanel);
+// Esc on an expanded panel puts it back, except where Esc is someone else's: a dialog, the
+// history layer, and the terminal of an agent the human controls (Esc goes to the agent).
+function escapeIsOurs(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return true;
+  if (target.closest("dialog, .term-history")) return false;
+  return !(target.closest(".term-xterm") && target.closest('[data-mode="control"]'));
+}
 
-  const open = useCallback((agent: string) => {
-    setTabs((now) => (now.includes(agent) ? now : [...now, agent]));
-    setActive(agent);
+export function TerminalPanel({ session, children }: { session: string; children: ReactNode }) {
+  const live = useLiveStore();
+  const loaded = useLive().agents[session] ?? null;
+  // The panel follows the agents itself, on every tab: a terminal opens again when its agent
+  // comes back.
+  useEffect(() => live.watch("agents", session), [live, session]);
+  const agents = loaded && "items" in loaded ? loaded.items : [];
+
+  const [tabs, setTabs] = useState<string[]>([SUPERVISOR]);
+  const [active, setActive] = useState(SUPERVISOR);
+  const [panel, setPanel] = useState(storedPanel);
+  const [expanded, setExpanded] = useState(false);
+  const [shown, setShown] = useState<string[]>([]); // the tabs whose terminal is made
+  const page = useRef<HTMLDivElement>(null);
+  const room = useWidth(page);
+
+  const keep = useCallback((change: Partial<PanelPrefs>) => {
+    setPanel((now) => {
+      const next = { ...now, ...change };
+      storePanel(next);
+      return next;
+    });
   }, []);
+
+  const open = useCallback(
+    (agent: string) => {
+      setTabs((now) => (now.includes(agent) ? now : [...now, agent]));
+      setActive(agent);
+      keep({ collapsed: false });
+    },
+    [keep],
+  );
 
   const close = (agent: string) => {
     const left = tabs.filter((one) => one !== agent);
     setTabs(left);
-    if (active === agent) setActive(left.length ? left[left.length - 1] : null);
+    setShown((now) => now.filter((one) => one !== agent));
+    if (active === agent) setActive(left[left.length - 1]);
   };
 
-  const resize = (width: number) => {
-    setPanel({ width });
-    storePanel({ width });
+  const collapse = () => {
+    setExpanded(false);
+    keep({ collapsed: true });
   };
+
+  // A tab's terminal is made the first time it shows in the open panel.
+  const made = panel.collapsed || shown.includes(active) ? shown : [...shown, active];
+  useEffect(() => {
+    if (made !== shown) setShown(made);
+  });
+
+  useEffect(() => {
+    if (!expanded) return;
+    const restore = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && escapeIsOurs(event.target)) setExpanded(false);
+    };
+    // Captured: xterm.js takes the keys it handles, so they never bubble up to the window.
+    window.addEventListener("keydown", restore, true);
+    return () => window.removeEventListener("keydown", restore, true);
+  }, [expanded]);
+
+  const width = fitWidth(panel.width, PANEL_WIDTH, room === null ? null : room - MAIN_MIN);
+  const classes = ["terminals", panel.collapsed && "collapsed", expanded && "expanded"].filter(Boolean).join(" ");
 
   return (
-    <TerminalsContext.Provider value={{ open, active }}>
-      <div className="session-page">
-        <div className="session-main">{children}</div>
-        {tabs.length > 0 && (
-          <aside className="terminals" aria-label="Terminals" style={{ width: `${panel.width}px` }}>
-            <Edge width={panel.width} onChange={resize} />
-            <div className="terminals-bar">
-              <div role="tablist" aria-label="Open terminals" className="term-tabs">
-                {tabs.map((agent) => (
-                  <div key={agent} className="term-tab" data-active={agent === active || undefined}>
+    <TerminalsContext.Provider value={{ open, active: panel.collapsed ? null : active }}>
+      <div ref={page} className="session-page">
+        <div className="session-main" style={{ minWidth: `${MAIN_MIN}px` }}>
+          {children}
+        </div>
+        <aside
+          className={classes}
+          aria-label="Terminals"
+          style={panel.collapsed ? undefined : { width: `${width}px` }}
+        >
+          {panel.collapsed ? (
+            <button
+              type="button"
+              className="terminals-open"
+              title="Show the terminals"
+              onClick={() => keep({ collapsed: false })}
+            >
+              Terminals
+            </button>
+          ) : (
+            <>
+              {!expanded && (
+                <Splitter
+                  label="Resize the terminals"
+                  edge="left"
+                  width={width}
+                  bounds={PANEL_WIDTH}
+                  onChange={(next) => keep({ width: next })}
+                />
+              )}
+              <div className="terminals-bar">
+                <div role="tablist" aria-label="Open terminals" className="term-tabs">
+                  {tabs.map((agent) => (
+                    <div key={agent} className="term-tab" data-active={agent === active || undefined}>
+                      <button
+                        type="button"
+                        role="tab"
+                        id={`term-tab-${agent}`}
+                        aria-selected={agent === active}
+                        aria-controls={`term-${agent}`}
+                        onClick={() => setActive(agent)}
+                      >
+                        {agent}
+                      </button>
+                      {agent !== SUPERVISOR && (
+                        <button
+                          type="button"
+                          className="term-close"
+                          aria-label={`Close ${agent}'s terminal`}
+                          title="Close"
+                          onClick={() => close(agent)}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="term-actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    aria-label={expanded ? "Restore terminal" : "Expand terminal"}
+                    title={expanded ? "Restore terminal (Esc)" : "Expand terminal over the page"}
+                    onClick={() => setExpanded(!expanded)}
+                  >
+                    <ExpandIcon expanded={expanded} />
+                  </button>
+                  {!expanded && (
                     <button
                       type="button"
-                      role="tab"
-                      id={`term-tab-${agent}`}
-                      aria-selected={agent === active}
-                      aria-controls={`term-${agent}`}
-                      onClick={() => setActive(agent)}
+                      className="ghost"
+                      aria-label="Collapse terminals"
+                      title="Collapse terminals"
+                      onClick={collapse}
                     >
-                      {agent}
+                      <CollapsePanelIcon />
                     </button>
-                    <button
-                      type="button"
-                      className="term-close"
-                      aria-label={`Close ${agent}'s terminal`}
-                      title="Close"
-                      onClick={() => close(agent)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
+            </>
+          )}
+          {tabs.map((agent) => (
+            <div
+              key={agent}
+              id={`term-${agent}`}
+              role="tabpanel"
+              aria-labelledby={`term-tab-${agent}`}
+              className="term-body"
+              hidden={panel.collapsed || agent !== active}
+            >
+              {made.includes(agent) && (
+                <AgentTerminal
+                  session={session}
+                  agent={agent}
+                  visible={!panel.collapsed && agent === active}
+                  info={agents.find((one) => one.name === agent) ?? null}
+                />
+              )}
             </div>
-            {tabs.map((agent) => (
-              <div
-                key={agent}
-                id={`term-${agent}`}
-                role="tabpanel"
-                aria-labelledby={`term-tab-${agent}`}
-                className="term-body"
-                hidden={agent !== active}
-              >
-                <AgentTerminal session={session} agent={agent} visible={agent === active} />
-              </div>
-            ))}
-          </aside>
-        )}
+          ))}
+        </aside>
       </div>
     </TerminalsContext.Provider>
-  );
-}
-
-// The panel's left edge: drag it, or use the arrow keys, to change the panel's width.
-function Edge({ width, onChange }: { width: number; onChange: (width: number) => void }) {
-  const clamp = (value: number) => Math.round(Math.min(PANEL_WIDTH.max, Math.max(PANEL_WIDTH.min, value)));
-  const drag = (event: React.PointerEvent) => {
-    const startX = event.clientX;
-    const startWidth = width;
-    const move = (moved: PointerEvent) => onChange(clamp(startWidth + startX - moved.clientX));
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-  return (
-    <div
-      role="separator"
-      aria-label="Resize the terminals"
-      aria-orientation="vertical"
-      aria-valuenow={width}
-      aria-valuemin={PANEL_WIDTH.min}
-      aria-valuemax={PANEL_WIDTH.max}
-      tabIndex={0}
-      className="term-edge"
-      onPointerDown={drag}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowLeft") onChange(clamp(width + WIDTH_STEP));
-        if (event.key === "ArrowRight") onChange(clamp(width - WIDTH_STEP));
-      }}
-    />
   );
 }
 
@@ -168,14 +253,43 @@ const PHASE: Record<LinkState["phase"], string> = {
   closed: "closed",
 };
 
-function AgentTerminal({ session, agent, visible }: { session: string; agent: string; visible: boolean }) {
+const controlText = (agent: string) =>
+  `What you type goes straight to ${agent}, as if you typed in its tmux window. Messages LADO ` +
+  "delivers to it meanwhile land among your keys.";
+
+// `info`: the agent as the session's agents list has it, or null while it is not there.
+function AgentTerminal({
+  session,
+  agent,
+  visible,
+  info,
+}: {
+  session: string;
+  agent: string;
+  visible: boolean;
+  info: AgentInfo | null;
+}) {
   const [mode, setModeNow] = useState<Mode>("view");
   const [link, setLink] = useState<LinkState>({ phase: "connecting", reason: null });
+  const [attempt, setAttempt] = useState(0); // a new socket each time it changes: Reconnect
   // Another mode is another socket: the old one's state is not shown for it.
   const setMode = (next: Mode) => {
     setLink({ phase: "connecting", reason: null });
     setModeNow(next);
   };
+  const reconnect = () => {
+    setLink({ phase: "connecting", reason: null });
+    setAttempt((now) => now + 1);
+  };
+  // A socket closed for good opens again when the agent comes back or changes (a resumed
+  // session's supervisor, starting, then idle); the agent as it was at the close is kept, so
+  // an agent that still has no terminal is not asked again until it changes.
+  const infoNow = useRef(info);
+  infoNow.current = info;
+  const closedWith = useRef<AgentInfo | null>(null);
+  useEffect(() => {
+    if (link.phase === "closed" && info !== null && info !== closedWith.current) reconnect();
+  }, [link.phase, info]);
   const [notice, setNotice] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [layer, setLayer] = useState<Layer | null>(null);
@@ -215,6 +329,7 @@ function AgentTerminal({ session, agent, visible }: { session: string; agent: st
       },
       error: setNotice,
       state: (state) => {
+        if (state.phase === "closed") closedWith.current = infoNow.current;
         setLink(state);
         if (state.phase === "open") fitNow.current();
       },
@@ -251,7 +366,7 @@ function AgentTerminal({ session, agent, visible }: { session: string; agent: st
       socket.stop();
       term.dispose();
     };
-  }, [session, agent, mode, showHistory]);
+  }, [session, agent, mode, showHistory, attempt]);
 
   useEffect(() => {
     if (visible) fitNow.current();
@@ -262,8 +377,14 @@ function AgentTerminal({ session, agent, visible }: { session: string; agent: st
       ? `${PHASE[link.phase]}: ${link.reason}`
       : PHASE[link.phase];
 
+  const takeControl = () => {
+    setAsking(false);
+    setLayer(null);
+    setMode("control");
+  };
+
   return (
-    <div className="term">
+    <div className="term" data-mode={mode}>
       <div className="term-tools">
         <span className={`term-mode term-${mode}`}>{mode === "control" ? "In control" : "Viewing"}</span>
         <span role="status" className={`term-link term-link-${link.phase}`}>
@@ -274,45 +395,81 @@ function AgentTerminal({ session, agent, visible }: { session: string; agent: st
             {notice}
           </span>
         )}
+        {link.phase === "closed" && (
+          <button type="button" className="quiet" onClick={reconnect}>
+            Reconnect
+          </button>
+        )}
         {mode === "control" ? (
           <button type="button" className="quiet" onClick={() => setMode("view")}>
             Release
           </button>
         ) : (
-          !asking && (
-            <button type="button" className="quiet" onClick={() => setAsking(true)}>
-              Take control
-            </button>
-          )
-        )}
-      </div>
-      {asking && (
-        <div role="alertdialog" aria-label={`Take control of ${agent}`} className="term-ask">
-          <p>
-            What you type goes straight to {agent}, as if you typed in its tmux window. Messages LADO
-            delivers to it meanwhile land among your keys.
-          </p>
           <button
             type="button"
-            className="primary"
-            onClick={() => {
-              setAsking(false);
-              setLayer(null);
-              setMode("control");
-            }}
+            className="quiet"
+            title={controlText(agent)}
+            onClick={() => (storedAskControl() ? setAsking(true) : takeControl())}
           >
             Take control
           </button>
-          <button type="button" className="quiet" onClick={() => setAsking(false)}>
-            Cancel
-          </button>
-        </div>
-      )}
+        )}
+      </div>
+      {asking && <ControlDialog agent={agent} onTake={takeControl} onCancel={() => setAsking(false)} />}
       <div className="term-screen">
         <div ref={box} className="term-xterm" />
         {layer && <HistoryLayer layer={layer} onClose={() => setLayer(null)} />}
       </div>
     </div>
+  );
+}
+
+// Take control's question, modal: Esc is Cancel. "Don't ask again" is remembered in the
+// browser for every agent; without browser storage it asks the next time anyway.
+function ControlDialog({ agent, onTake, onCancel }: { agent: string; onTake: () => void; onCancel: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [never, setNever] = useState(false);
+  useEffect(() => {
+    dialog.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="term-ask"
+      aria-label={`Take control of ${agent}`}
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h3>Take control of {agent}?</h3>
+      <p>{controlText(agent)}</p>
+      <label className="switch">
+        <input type="checkbox" checked={never} onChange={(event) => setNever(event.target.checked)} />
+        Don't ask again
+      </label>
+      <div className="term-ask-buttons">
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="primary"
+          autoFocus
+          onClick={() => {
+            if (never) storeAskControl(false);
+            onTake();
+          }}
+        >
+          Take control
+        </button>
+      </div>
+    </dialog>
   );
 }
 

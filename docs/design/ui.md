@@ -543,7 +543,12 @@ time. Each task is one `feature` run, useful on its own.
       2. **Needs you and notifications**: the Needs you page with its count in the rail,
          browser notifications. Then a release (0.12.0 shipped the chat): the human can
          work from the browser, tmux stays the fallback.
-   6. Agents; Flows; Providers and environment; a pass over the look with a designer role
+   6. **Launch and session control** (decided with the human 2026-10-03, after Needs you):
+      start a session from the UI (Launch, the session list's "+": repo, kit, provider,
+      permission mode), stop, resume and forget one; guarded like the composer (token and
+      Origin). How to pick the repo's folder (the browser does not see the server's files)
+      is the task's design question.
+   7. Flows; Agents; Providers and environment; a pass over the look with a designer role
       (BACKLOG), with it the rework of the rail (later, with the look pass: Launch on it,
       names under the icons when collapsed; the human kept the rail as it is in the Layout
       task); then the rest; later the desktop app.

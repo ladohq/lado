@@ -482,3 +482,32 @@ Wanted: send each provider's own exit command first, wait a bounded time, then k
 is left, and say which agents had to be killed. Seen in another orchestrator, where slow
 agents were killed too early until a delay was added.
 Found: 2026-10-04, design of feature/launch.
+
+## A message to a new agent that is still starting waits until its first turn ends
+
+A message sent to a supervisor (or a worker without a task) while it is `starting` stays
+`pending`: its session-start hook sets it `idle`, but nothing hands over the queue then
+(only turn-end and conversation-start do, and `sweep` only deals with typed messages). In
+the fake-agent test it stayed pending for 30 s, until something else made the agent work.
+Wanted: the session-start hook delivers the queue when it sets the agent `idle`, as
+CONVERSATION_START does.
+Found: 2026-10-04, fix/agent-env (integration test of the login-shell environment).
+
+## `lado doctor` looks for the agent CLIs on its own PATH, not the agents'
+
+`lado doctor` checks `claude`, `kilo` and `tmux` with `shutil.which` in its caller's
+environment, while agents now run with their login shell's PATH (`agent_env.resolve`); a
+CLI found by one may be missing for the other.
+Wanted: doctor looks the agent CLIs up on the resolved environment's PATH too and says
+where they differ.
+Found: 2026-10-04, fix/agent-env.
+
+## No tmux on an agent's PATH breaks its LADO calls with a raw error and a ghost worker
+
+When the agent's environment has no `tmux` on PATH, its `lado mcp` fails `spawn_worker`
+with a FileNotFoundError ("Error executing tool spawn_worker"), and the cleanup in
+`runtime.spawn_worker` fails the same way on `kill_window`, so the worker stays `starting`
+in `lado ls`.
+Wanted: tmux calls raise TmuxError with "tmux not found on PATH", and the spawn cleanup
+cannot be stopped by its own tmux call failing.
+Found: 2026-10-04, fix/agent-env (fake login shell without the Homebrew PATH).

@@ -19,6 +19,10 @@ for _var in ("LADO_AGENT", "LADO_SESSION", "LADO_HOME", "LADO_TMUX_SOCKET", "TMU
 # maintenance, which would still be writing in a repo while a test copies or removes it.
 os.environ.update(no_maintenance_env(os.environ))
 
+# Agents get the test run's environment (the settings above, LADO_RETRY_DELAYS), not the
+# user's login shell; tests of the shell set their own.
+os.environ["LADO_AGENT_ENV"] = "inherit"
+
 
 def _kill_tmux_server(socket: str) -> None:
     if shutil.which("tmux"):

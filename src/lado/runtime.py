@@ -14,7 +14,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lado import kits, loop, providers, state, terminal, tmux
+from lado import agent_env, kits, loop, providers, state, terminal, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 MAX_MESSAGE = 8000
@@ -194,11 +194,13 @@ def start_session(
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(repo, sess.kits, sess.without)
+    base_env = _base_env()
     role = env.supervisor()
     agent = state.Agent(
         session, SUPERVISOR, role.name, repo, None, None, state.STARTING, sess.provider
     )
-    spec = _spec(agent_cli, env, role.name, agent, _supervisor_instructions(env, session))
+    instructions = _supervisor_instructions(env, session)
+    spec = _spec(agent_cli, env, role.name, agent, instructions, base_env)
     started = Started(sess)
     if old and not old.stopped_at:
         state.stop_session(session)  # left over from a tmux session that is gone
@@ -228,7 +230,7 @@ def start_session(
         _add_agent(agent)
         first = _first_input(agent, agent.task, "your first messages")
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
-        tmux.new_session(session, SUPERVISOR, repo, _env(agent, launch), launch.argv)
+        tmux.new_session(session, SUPERVISOR, repo, {}, _command(agent, base_env, launch))
     except Exception:
         providers.base.remove_config_dir(agent)
         if old:
@@ -309,7 +311,8 @@ def spawn_worker(
         agent_cli.name,
         run=run.name if run else None,
     )
-    spec = _spec(agent_cli, env, role_def.name, agent, instructions, without or [])
+    base_env = _base_env()
+    spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
     if not run:
         exclude_worktrees(sess.repo)
         git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
@@ -320,7 +323,7 @@ def spawn_worker(
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         first = _first_input(agent, first, summary)
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
-        tmux.new_window(session, worker, str(worktree), _env(agent, launch), launch.argv)
+        tmux.new_window(session, worker, str(worktree), {}, _command(agent, base_env, launch))
     except Exception as exc:
         # The worker never ran: leave nothing that says it did, so the run's step still
         # waits for one and the name is free again.
@@ -935,10 +938,12 @@ def _spec(
     role: str,
     agent: state.Agent,
     instructions: str,
+    base_env: dict[str, str],
     without: list[str] | None = None,
 ) -> providers.AgentSpec:
     """What `agent` is given: its role from the kits plus LADO's instructions, its skills
-    and MCP servers. Fails on anything its CLI cannot do."""
+    and MCP servers, their ${ENV_VAR} from the agent's `base_env`. Fails on anything its
+    CLI cannot do."""
     resolved = env.resolve(role, without or [])
     if resolved.skills and not agent_cli.capabilities.skills:
         raise LadoError(
@@ -948,7 +953,7 @@ def _spec(
     return providers.AgentSpec(
         prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}",
         skills={name: skill.path for name, skill in resolved.skills.items()},
-        mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers()},
+        mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers(base_env)},
     )
 
 
@@ -958,8 +963,19 @@ def _add_agent(agent: state.Agent) -> None:
     state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 
-def _env(agent: state.Agent, launch: providers.Launch) -> dict[str, str]:
-    return {**providers.agent_env(agent), **launch.env}
+def _base_env() -> dict[str, str]:
+    """The environment agents start from (lado.agent_env), resolved anew for each launch."""
+    try:
+        return agent_env.resolve()
+    except agent_env.AgentEnvError as exc:
+        raise LadoError(str(exc)) from exc
+
+
+def _command(agent: state.Agent, base_env: dict[str, str], launch: providers.Launch) -> list[str]:
+    """The agent's window command: its CLI with `base_env`, LADO's variables and its
+    provider's, in that order, and nothing of the tmux server's environment."""
+    env = {**base_env, **providers.agent_env(agent), **launch.env}
+    return agent_env.command(providers.base.config_dir(agent) / "env.json", env, launch.argv)
 
 
 def _next_name(role: str, taken: set[str]) -> str:

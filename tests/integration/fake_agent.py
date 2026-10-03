@@ -30,10 +30,10 @@ modal dialog, like Claude Code's folder-trust dialog: it swallows the next input
 runs for either.
 Other lines are ignored. Each input is logged to the config's "inputs" file, and the output
 of `run`, the messages from `read` and the results of `flow_start` and `advance` to its
-"seen" file. At start the agent writes what it
-was given (prompt, skills found in its skills folder, MCP servers) to "seen", as a real agent
-CLI would load them, and starts its LADO MCP server and lists its tools while its
-session-start hook runs; like a real CLI, it keeps that one server for all its tool calls.
+"seen" file. At start the agent writes what it was given (prompt, skills found in its
+skills folder, MCP servers, its environment) to "seen", as a real agent CLI would load them,
+and starts its LADO MCP server and lists its tools while its session-start hook runs; like a
+real CLI, it keeps that one server for all its tool calls.
 """
 
 import asyncio
@@ -212,7 +212,9 @@ def work(text: str) -> bool:
 def main() -> None:
     signal.signal(signal.SIGHUP, lambda *_: os._exit(0))  # its tmux session was killed
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
-    report(prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"])
+    report(
+        prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"], environ=dict(os.environ)
+    )
     # Like Claude Code: the MCP server connects while the session-start hook runs.
     connect_mcp()
     hook("session_start")

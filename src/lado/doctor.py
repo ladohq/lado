@@ -1,5 +1,6 @@
 """`lado doctor`: check that the machine has what LADO needs."""
 
+import os
 import platform
 import re
 import shutil
@@ -7,7 +8,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from lado import providers, terminal, tmux
+from lado import agent_env, providers, terminal, tmux
 
 
 @dataclass
@@ -81,10 +82,32 @@ def check_tmux(which: Callable[[str], str | None]) -> Check:
     return check
 
 
+def check_agent_env() -> Check:
+    """Where agents' environment comes from; the login shell must give it, and soon."""
+    name = "Agent environment"
+    try:
+        if agent_env.source() == agent_env.INHERIT:
+            detail = f"from the process that starts each agent ({agent_env.SOURCE_VAR}=inherit)"
+            return Check(name, True, detail)
+        _, seconds = agent_env.timed()
+    except agent_env.AgentEnvError as exc:
+        return Check(name, False, str(exc))
+    check = Check(
+        name, True, f"from your login shell {os.environ['SHELL']}, resolved in {seconds:.1f} s"
+    )
+    if seconds > agent_env.SLOW:
+        check.warning = True
+        check.hint = (
+            "each agent's start waits for your shell this long; make its startup files faster"
+        )
+    return check
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     return [
         Check("Python", True, platform.python_version()),
         check_tmux(which),
+        check_agent_env(),
         *(check_provider(providers.get(name), which) for name in providers.names()),
     ]
 

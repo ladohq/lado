@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import time
 import uuid
+from collections.abc import Mapping
 
 DEFAULT_SOCKET = "lado"
 TIMEOUT = 10
@@ -38,9 +39,14 @@ class TmuxError(RuntimeError):
 
 
 def clean_env() -> dict[str, str]:
+    return without_agent_vars(os.environ)
+
+
+def without_agent_vars(env: Mapping[str, str]) -> dict[str, str]:
+    """`env` without the variables of the agent LADO may run in."""
     return {
         k: v
-        for k, v in os.environ.items()
+        for k, v in env.items()
         if k not in _INHERITED_AGENT_VARS and not k.startswith(_INHERITED_AGENT_PREFIXES)
     }
 

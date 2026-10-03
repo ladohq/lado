@@ -1,6 +1,8 @@
+import re
+
 import pytest
 
-from lado import doctor
+from lado import agent_env, doctor
 from lado.providers import claude, kilo
 
 
@@ -17,7 +19,8 @@ def _versions(
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     _versions(monkeypatch)
     checks = doctor.run_checks(which=lambda cmd: cmd)
-    assert [c.name for c in checks] == ["Python", "tmux", "Claude Code", "Kilo CLI"]
+    names = ["Python", "tmux", "Agent environment", "Claude Code", "Kilo CLI"]
+    assert [c.name for c in checks] == names
     assert all(c.ok and not c.warning for c in checks)
 
 
@@ -78,3 +81,41 @@ def test_main_returns_nonzero_on_failure(monkeypatch, capsys):
     )
     assert doctor.main() == 1
     assert "[FAIL] tmux" in capsys.readouterr().out
+
+
+def test_agent_environment_inherited():
+    check = doctor.check_agent_env()  # the tests run with LADO_AGENT_ENV=inherit
+    assert check.ok and not check.warning
+    assert "LADO_AGENT_ENV=inherit" in check.detail
+
+
+@pytest.fixture
+def login_shell(tmp_path, monkeypatch):
+    shell = tmp_path / "login-shell"
+    shell.write_text('#!/bin/sh\nexec /bin/sh -c "$2"\n')
+    shell.chmod(0o755)
+    monkeypatch.setenv("SHELL", str(shell))
+    monkeypatch.delenv(agent_env.SOURCE_VAR)
+    return shell
+
+
+def test_agent_environment_from_the_login_shell(login_shell):
+    check = doctor.check_agent_env()
+    assert check.ok and not check.warning
+    assert re.fullmatch(
+        rf"from your login shell {login_shell}, resolved in \d+\.\d s", check.detail
+    )
+
+
+def test_a_slow_login_shell_warns(login_shell, monkeypatch):
+    monkeypatch.setattr(agent_env, "SLOW", 0)
+    check = doctor.check_agent_env()
+    assert check.ok and check.warning
+    assert "each agent's start waits for your shell" in check.hint
+
+
+def test_a_failing_login_shell_fails(login_shell):
+    login_shell.write_text("#!/bin/sh\necho 'rc is broken' >&2\nexit 2\n")
+    check = doctor.check_agent_env()
+    assert not check.ok
+    assert "exit status 2" in check.detail and "rc is broken" in check.detail

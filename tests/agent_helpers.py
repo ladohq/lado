@@ -1,9 +1,12 @@
-"""Helpers for tests that run real agent processes: integration (fake agent) and live tests."""
+"""Helpers for tests that run real agent processes: integration (fake agent) and live tests;
+`launched` also for unit tests."""
 
 import atexit
+import json
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -11,6 +14,16 @@ from pathlib import Path
 import pytest
 
 from lado import log, loop, state, tmux
+
+
+def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
+    """The environment and the command of an agent's window, from a recorded
+    `tmux.new_session` or `tmux.new_window` call (the `fake_tmux` fixture)."""
+    *_, tmux_env, cmd = call
+    assert tmux_env == {}  # all of it is in the file, so tmux's server adds nothing
+    assert cmd[:3] == [sys.executable, "-m", "lado.agent_env"]
+    return json.loads(Path(cmd[3]).read_text()), cmd[4:]
+
 
 _template: Path | None = None  # the first repo made by this process, copied for the next ones
 

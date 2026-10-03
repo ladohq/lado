@@ -8,7 +8,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import hooks, kits, loop, providers, runs, runtime, state, tmux
+from lado import agent_env, hooks, kits, loop, providers, runs, runtime, state, tmux
 
 
 def test_slug():
@@ -19,14 +19,18 @@ def test_slug():
 def test_start_session_launches_supervisor(repo, fake_tmux, lado_home):
     started = runtime.start_session(str(repo), None, "acceptEdits")
     assert (started.session.name, started.resumed) == ("my-repo", False)
-    [(kind, session, window, cwd, env, cmd)] = fake_tmux
+    [(kind, session, window, cwd, *_)] = fake_tmux
     assert (kind, session, window, cwd) == ("new_session", "my-repo", "supervisor", str(repo))
-    assert env == {
-        "LADO_HOME": str(lado_home),
-        "LADO_SESSION": "my-repo",
-        "LADO_AGENT": "supervisor",
-        "LADO_TMUX_SOCKET": tmux.socket(),
-    }
+    env, cmd = agent_helpers.launched(fake_tmux[0])
+    assert (
+        env.items()
+        >= {
+            "LADO_HOME": str(lado_home),
+            "LADO_SESSION": "my-repo",
+            "LADO_AGENT": "supervisor",
+            "LADO_TMUX_SOCKET": tmux.socket(),
+        }.items()
+    )
     assert cmd[0] == "claude"
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())
@@ -37,6 +41,72 @@ def test_start_session_launches_supervisor(repo, fake_tmux, lado_home):
         in (settings["hooks"]["Stop"][0]["hooks"][0]["command"])
     )
     assert state.get_agent("my-repo", "supervisor").status == state.STARTING
+
+
+@pytest.fixture
+def resolved(monkeypatch):
+    """Make the resolved environment a known one; count how often it is resolved."""
+    calls = []
+
+    def resolve():
+        calls.append(1)
+        return {"FROM_SHELL": "1", "LADO_AGENT": "parent", "KILO_DISABLE_AUTOUPDATE": "0"}
+
+    monkeypatch.setattr(agent_env, "resolve", resolve)
+    return calls
+
+
+def test_agents_get_the_resolved_environment_then_lados_then_the_providers(
+    repo, fake_tmux, resolved
+):
+    runtime.start_session(str(repo), "s", None, "kilo")
+    runtime.spawn_worker("s", "a task")
+    for call, name in zip(fake_tmux, ("supervisor", "worker"), strict=True):
+        env, _ = agent_helpers.launched(call)
+        assert env["FROM_SHELL"] == "1"
+        assert env["LADO_AGENT"] == name
+        assert env["KILO_DISABLE_AUTOUPDATE"] == "1"
+    assert len(resolved) == 2  # anew for each launch
+
+
+def _broken_env():
+    raise agent_env.AgentEnvError("your shell failed with exit status 1: zsh -ilc ...")
+
+
+def test_a_start_whose_environment_fails_launches_nothing(repo, fake_tmux, monkeypatch):
+    monkeypatch.setattr(agent_env, "resolve", _broken_env)
+    with pytest.raises(runtime.LadoError, match="your shell failed with exit status 1"):
+        runtime.start_session(str(repo), "s", None)
+    assert fake_tmux == []
+    assert state.get_session("s") is None
+    assert not (state.home() / "agents" / "s").exists()
+
+
+def test_a_resume_whose_environment_fails_leaves_the_session_as_it_was(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    before = len(fake_tmux)
+    with monkeypatch.context() as m:
+        m.setattr(agent_env, "resolve", _broken_env)
+        with pytest.raises(runtime.LadoError, match="your shell failed"):
+            runtime.start_session(str(repo), "s", "plan")
+    assert len(fake_tmux) == before
+    sess = state.get_session("s")
+    assert sess.stopped_at and sess.permission_mode is None
+    assert state.list_messages("s") == []  # no "session resumed" for a resume that never was
+
+
+def test_a_spawn_whose_environment_fails_leaves_no_worker(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None)
+    monkeypatch.setattr(agent_env, "resolve", _broken_env)
+    with pytest.raises(runtime.LadoError, match="your shell failed"):
+        runtime.spawn_worker("s", "a task")
+    assert [c[0] for c in fake_tmux] == ["new_session"]
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert [e.agent for e in state.list_events("s")] == ["supervisor"]
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
 
 
 def test_start_refuses_running_session(repo, fake_tmux):
@@ -936,6 +1006,16 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
     assert list(mcp["mcpServers"]) == ["lado"]
 
 
+def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, team_kit, monkeypatch):
+    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    monkeypatch.delenv("DB_TOKEN", raising=False)  # set only by the user's shell
+    monkeypatch.setattr(agent_env, "resolve", lambda: {"DB_TOKEN": "from-shell"})
+    runtime.spawn_worker("s", "review it", role="reviewer")
+    cmd = fake_tmux[-1][5]
+    mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
+    assert mcp["db"]["env"] == {"TOKEN": "from-shell"}
+
+
 def test_spawn_worker_errors_leave_nothing_behind(repo, fake_tmux, team_kit, monkeypatch):
     runtime.start_session(str(repo), "s", None, kit_names=["team"])
     monkeypatch.delenv("DB_TOKEN", raising=False)
@@ -978,7 +1058,7 @@ def test_provider_without_skills_fails_loudly(repo, fake_tmux, team_kit, monkeyp
     runtime.start_session(
         str(repo), "s", None, "noskills", ["team"], ["skill:style", "skill:checklist"]
     )
-    assert fake_tmux[0][5] == ["noskills"]
+    assert agent_helpers.launched(fake_tmux[0])[1] == ["noskills"]
 
 
 def test_git_exclude_keeps_project_kits_visible(repo, fake_tmux, team_kit):

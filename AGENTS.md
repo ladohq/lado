@@ -42,7 +42,9 @@ Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, prov
 instead of a real agent CLI. They use a temp `LADO_HOME` and their own tmux server
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
-`LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is.
+`LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is,
+and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
+login shell (tests of the shell set their own `SHELL`).
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`
@@ -79,6 +81,8 @@ schema change.
     agent's provider does not support, before anything is launched.
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`; `LADO_TMUX_SOCKET` overrides
     the socket name and is passed on to agents).
+  - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`,
+    and `command`, the window's command that runs the agent with exactly that environment.
   - `terminal.py`: an agent's terminal for the UI (design in
     [docs/design/ui.md](docs/design/ui.md), section Terminal): `open` (a viewer tmux session
     with the agent's window linked in and a `tmux attach` on a pty), `history`, `NoTerminal`,
@@ -184,6 +188,24 @@ schema change.
 
 ## How agents talk
 
+- An agent's environment (PATH, keys, variables) is the user's login shell's, as a new
+  terminal sees it, the same whichever process starts the agent (`lado start`, the UI
+  server, an agent's `spawn_worker`) and whoever started LADO's tmux server
+  (`agent_env.resolve`). For each launch (start, resume, spawn) LADO runs
+  `$SHELL -ilc` with a dump of the environment, started from a terminal's few variables
+  (`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `LANG`, `SSH_AUTH_SOCK`, a system `PATH`) in
+  a new session, no cache; the dump is JSON between markers, so what the startup files print
+  does not matter. No `$SHELL`, a failing shell or one slower than `agent_env.TIMEOUT` (10 s)
+  stops the launch before anything starts, with the command and the end of its stderr.
+  `LADO_AGENT_ENV=inherit` takes the environment of the process that starts the agent instead
+  (the tests set it). From either, `TMUX`, `TMUX_PANE`, the shell's own `PWD`, `OLDPWD`,
+  `SHLVL` and `_`, and a parent Claude Code's variables are dropped; LADO's variables, then
+  the provider's go on top. A tmux window starts with its server's environment, so the
+  window runs `python -m lado.agent_env <file> <argv>`: it reads that environment from a file
+  in the agent's config folder (mode 600, removed once read), keeps tmux's own `TERM`,
+  `TERM_PROGRAM(_VERSION)`, `TMUX` and `TMUX_PANE`, and execs the agent's CLI, found on the
+  resolved `PATH`. `lado doctor` shows the source and how long the shell takes (a warning
+  above 2 s).
 - An agent's status (busy / idle / waiting) comes from its hooks, never from screen scraping.
   Only the end of its process marks it `stopped`. A CLI command that leaves the conversation
   for another one in the same process (Claude Code's `/clear` and `/resume`) shows it as

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import agent_helpers
 import pytest
 
 from lado import hooks, providers, runtime, state, tmux
@@ -241,12 +242,13 @@ def test_provider_chosen_per_session_and_worker(repo, fake_tmux):
     runtime.spawn_worker("s", "task", provider="claude")
     assert state.get_session("s").provider == "kilo"
     assert [a.provider for a in state.list_agents("s")] == ["kilo", "kilo", "claude"]
-    supervisor_env, supervisor_cmd = fake_tmux[0][4:]
+    supervisor_env, supervisor_cmd = agent_helpers.launched(fake_tmux[0])
     assert supervisor_cmd[0] == "kilo"
     assert supervisor_env["KILO_NO_DAEMON"] == "1"
     assert supervisor_env["LADO_AGENT"] == "supervisor"
-    assert fake_tmux[-1][5][0] == "claude"
-    assert "KILO_CONFIG" not in fake_tmux[-1][4]
+    worker_env, worker_cmd = agent_helpers.launched(fake_tmux[-1])
+    assert worker_cmd[0] == "claude"
+    assert "KILO_CONFIG" not in worker_env
 
 
 def test_unknown_provider_is_refused(repo, fake_tmux):

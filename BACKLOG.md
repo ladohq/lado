@@ -411,3 +411,20 @@ server sends an error frame and then closes with the same reason. Now that the
 supervisor's tab is always shown, every stopped session's page shows it twice.
 Wanted: one line with the reason (the notice left out when it repeats the close reason).
 Found: 2026-10-03, UI e2e screenshots of feature/ui-polish.
+
+## A tooltip can miss its keyboard focus after a click
+
+`web/src/Tooltip.tsx` sets `pressed` on pointer down and clears it only on focus. A click
+on a button that already has focus (or in Safari, where a click does not focus a button)
+leaves `pressed` set, so the next keyboard focus shows no tooltip once.
+Wanted: clear `pressed` on pointer up / click, or test `:focus-visible` on the target.
+Found: 2026-10-03, review of feature/ui-polish (Minor).
+
+## Terminals.tsx and Team.tsx import each other
+
+Terminals imports `SUPERVISOR`, `StatusDot` and `AgentTip` from Team, and Team imports
+`useOpenTerminal` / `useShownTerminal` from Terminals. It works while each is used only
+inside functions; a module-level use breaks on load order.
+Wanted: move the shared agent pieces (`SUPERVISOR`, `StatusDot`, `AgentTip`) into a module
+of their own (e.g. `agents.tsx`).
+Found: 2026-10-03, review of feature/ui-polish (Minor).

@@ -376,3 +376,13 @@ reconnect load and re-render all of it, while the human looks at the last screen
 Wanted: the latest N with "load earlier" (`?before=<id>&limit=`), or a window the feed asks
 for as it scrolls; the store's lists keep only what was loaded.
 Found: 2026-10-03, implement of feature/ui-layout.
+
+## UI e2e screenshots of parallel runs overwrite each other
+
+Every `make test-ui` / `make check` writes to the same `<temp dir>/lado-ui-shots/<test>.png`,
+whatever worktree it runs in. When a developer and a reviewer (or two runs) test at once,
+the folder holds a mix: a screenshot of the old rail showed up after the new code had passed
+the same test. The reviewer can look at the wrong build's screens.
+Wanted: a folder per worktree or per run (e.g. named after the branch or a hash of the
+repo path), printed by the tests, so each report names its own screenshots.
+Found: 2026-10-03, implement of feature/ui-layout (the rail change).

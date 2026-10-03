@@ -74,6 +74,27 @@ def test_every_rail_item_opens_its_section(page: Page, server, shot):
     shot(page, "not-found")
 
 
+def test_a_bundle_of_another_version_than_the_servers_shows_a_banner(page: Page, server, shot):
+    # The built bundle knows the version it was built for: the server's own here.
+    with page.expect_response(f"{server['url']}/api/health") as health:
+        log_in(page, server)
+    assert health.value.json()["version"] == server["version"]
+    expect(page.get_by_role("banner").get_by_role("status")).to_have_text("live")
+    expect(page.get_by_role("alert")).to_have_count(0)
+
+    # A server left running across an upgrade answers another version.
+    page.route(
+        f"{server['url']}/api/health",
+        lambda route: route.fulfill(json={"ok": True, "version": "0.0.1"}),
+    )
+    page.reload()
+    expect(page.get_by_role("alert")).to_have_text(
+        f"This page is LADO {server['version']}, the server runs 0.0.1: "
+        "run lado server stop, then lado ui."
+    )
+    shot(page)
+
+
 def test_the_launch_button_says_how_to_start_a_session(page: Page, server, shot):
     log_in(page, server)
     page.get_by_role("banner").get_by_role("button", name="Launch").click()

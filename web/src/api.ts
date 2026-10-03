@@ -42,6 +42,11 @@ export type History = components["schemas"]["History"];
 
 export const getSessions = () => get<SessionInfo[]>("/api/sessions");
 
+export type Health = components["schemas"]["Health"];
+
+// The server's LADO version; needs no token.
+export const getHealth = () => get<Health>("/api/health");
+
 const agentsPath = (session: string) => `${sessionPath(session)}/agents`;
 
 export const getAgents = (session: string) => get<AgentInfo[]>(agentsPath(session));

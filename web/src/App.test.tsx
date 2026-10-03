@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { FakeEventSource, FakeSocket, stream } from "./fakes";
+import { BUNDLE_VERSION } from "./version";
 
 // A session's page has the terminal panel (Terminals.test.tsx): no canvas, no server here.
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -22,10 +23,15 @@ const AGENTS: AgentInfo[] = [
   { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null },
 ];
 
+// The LADO version /api/health answers (it needs no token): the bundle's own unless a test
+// sets another.
+let serverVersion = BUNDLE_VERSION;
+
 // The API: /api/sessions answers `status` and `body`; a request for the event stream (the
 // shell asking why one was refused) answers `events`, or the same as /api/sessions.
 function serve(status = 200, body: unknown = SESSIONS, events?: { status: number; body: unknown }) {
   const fetch = vi.fn(async (path: string) => {
+    if (path === "/api/health") return new Response(JSON.stringify({ ok: true, version: serverVersion }));
     if (path.startsWith("/api/events")) {
       const answer = events ?? { status, body: status === 200 ? "" : body };
       return new Response(JSON.stringify(answer.body), { status: answer.status });
@@ -72,6 +78,7 @@ beforeEach(() => {
   localStorage.clear();
   delete document.documentElement.dataset.theme;
   wide(true);
+  serverVersion = BUNDLE_VERSION;
   serve();
   FakeEventSource.all = [];
   FakeEventSource.autoStart = true;
@@ -200,6 +207,35 @@ test("without the token the shell shows the server's message instead of the cont
   expect(rail()).toBeTruthy();
 });
 
+// The bundle against the server's version
+
+test("the bundle knows the LADO version it was built for", () => {
+  expect(BUNDLE_VERSION).toMatch(/^\d+\.\d+\.\d+/);
+});
+
+test("a server of the bundle's own version shows no banner", async () => {
+  const fetch = serve();
+  open("/sessions");
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/health", expect.anything()));
+  await screen.findByRole("link", { name: /lado/ });
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test.each(["/", "/sessions", "/settings"])(
+  "on %s, a server of another version shows a banner that says what to do",
+  async (path) => {
+    serverVersion = "0.0.1";
+    serve();
+    open(path);
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toBe(
+      `This page is LADO ${BUNDLE_VERSION}, the server runs 0.0.1: run lado server stop, then lado ui.`,
+    );
+    const commands = Array.from(banner.querySelectorAll("code"), (code) => code.textContent);
+    expect(commands).toEqual(["lado server stop", "lado ui"]);
+  },
+);
+
 // Sessions
 
 test("/sessions lists the sessions and asks to select one", async () => {
@@ -316,7 +352,7 @@ test("every reset loads the sessions again", async () => {
   const fetch = serve();
   open("/sessions");
   await screen.findByRole("link", { name: /lado/ });
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls.filter(([path]) => path === "/api/sessions")).toHaveLength(1);
   serve(200, [SESSIONS[0]]);
   stream().send("reset", {}, "20");
   await waitFor(() =>

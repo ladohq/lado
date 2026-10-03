@@ -494,12 +494,19 @@ def cmd_ui(args: argparse.Namespace) -> int:
         )
     if info is None:
         info = server_run.wait_ready(server_run.start_background(args.port))
-    if info["version"] != __version__:
-        print(
-            f"lado: warning: the running LADO server is version {info['version']}, this LADO is "
-            f"{__version__}; restart it with `lado server stop` and `lado ui`",
-            file=sys.stderr,
-        )
+    elif info["version"] != __version__:
+        # An old server would serve this LADO's bundle from disk against its own, older API.
+        try:
+            server_run.stop()
+        except (OSError, runtime.LadoError) as error:
+            raise runtime.LadoError(
+                f"the running LADO server is version {info['version']}, this LADO is "
+                f"{__version__}, and stopping it failed: {error}; "
+                "stop it with `lado server stop`, then run `lado ui` again"
+            ) from error
+        old = info["version"]
+        info = server_run.wait_ready(server_run.start_background(info["port"]))
+        print(f"lado: restarted the LADO server: {old} -> {info['version']}", file=sys.stderr)
     if app.bundle_missing(app.STATIC):
         print(f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr)
     url = f"{info['url']}/?token={auth.token()}"

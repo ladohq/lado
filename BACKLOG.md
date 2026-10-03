@@ -441,15 +441,3 @@ broken run. `GET …/gates` would answer 500 too.
 Wanted: an item that cannot be built is sent without what failed (here: `needs` null and a
 problem named) and the error logged once, so one bad row never stops the feed.
 Found: 2026-10-03, feature/gates (implement).
-
-## An upgraded LADO keeps an old UI server running with the new bundle
-
-After `uv tool upgrade lado`, a running `lado server` keeps the old Python code but reads
-the bundle (`static/`) from disk, so the browser gets the new UI against the old API. In
-0.14.0 → 0.15.0 the chat stayed empty: the new UI asks for `/api/sessions/<name>/gates`,
-which the old server does not have. `lado ui` reuses the running server and says nothing,
-though `server.json` names its older version.
-Wanted: `lado ui` notices the version mismatch and restarts the server, or says to run
-`lado server stop`. The page shows the API's error instead of an empty chat. The server
-could serve the bundle it started with, or refuse a newer one.
-Found: 2026-10-03, upgrade to 0.15.0.

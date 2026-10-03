@@ -1,6 +1,7 @@
 """The UI server as a process: one per LADO_HOME, started by `lado ui` in the background,
 ended by `lado server stop`. No browser: that is tests/ui/."""
 
+import json
 import os
 import socket
 import stat
@@ -82,6 +83,23 @@ def test_ui_starts_one_server_in_the_background_and_stop_ends_it():
     assert gone(info["pid"])
     assert not server_run.info_path().exists()
     assert "not running" in lado_cli("server", "stop").stdout
+
+
+def test_ui_restarts_a_server_of_another_version_on_its_port():
+    first = lado_cli("ui", "--no-open", "--port", "0")
+    assert first.returncode == 0, first.stderr
+    old = server_run.running()
+    # As if the server were started by the LADO before an upgrade.
+    server_run.info_path().write_text(json.dumps({**old, "version": "0.0.1"}))
+
+    again = lado_cli("ui", "--no-open")
+    assert again.returncode == 0, again.stderr
+    new = server_run.running()
+    assert f"lado: restarted the LADO server: 0.0.1 -> {new['version']}" in again.stderr
+    assert gone(old["pid"])
+    assert new["pid"] != old["pid"] and new["port"] == old["port"]
+    assert again.stdout == first.stdout  # the same link: same port, same token
+    lado_cli("server", "stop")
 
 
 def test_a_second_server_refuses_and_names_the_first():

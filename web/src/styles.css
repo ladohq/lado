@@ -309,6 +309,10 @@ h3 {
   border-left: 3px solid var(--ink);
 }
 
+.version-banner {
+  margin: 16px 32px 0;
+}
+
 .empty {
   margin: 0;
   padding: 40px 0;
@@ -1531,6 +1535,10 @@ h3 {
 
   .content {
     padding: 20px 16px;
+  }
+
+  .version-banner {
+    margin: 12px 16px 0;
   }
 
   .topbar {

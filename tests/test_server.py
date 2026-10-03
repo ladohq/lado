@@ -342,13 +342,73 @@ def test_ui_prints_the_link_of_the_running_server(capsys):
     lock.close()
 
 
-def test_ui_warns_about_a_server_of_another_version(capsys):
-    lock = server_run.take_lock()
-    write_info(8001, version="0.0.1")
+OLD_SERVER = {"url": "http://127.0.0.1:8001", "port": 8001, "pid": 4321, "version": "0.0.1"}
+NEW_SERVER = {**OLD_SERVER, "pid": 4322, "version": __version__}
+
+
+@pytest.fixture
+def old_server(monkeypatch):
+    """`lado ui` against a running server of another version, with the run helpers
+    replaced; returns the calls made to them."""
+    calls = []
+    monkeypatch.setattr(server_run, "running", lambda: OLD_SERVER)
+
+    def stop():
+        calls.append("stop")
+        return OLD_SERVER
+
+    def start_background(port):
+        calls.append(("start", port))
+        return "started"
+
+    def wait_ready(started):
+        calls.append(("wait", started))
+        return NEW_SERVER
+
+    monkeypatch.setattr(server_run, "stop", stop)
+    monkeypatch.setattr(server_run, "start_background", start_background)
+    monkeypatch.setattr(server_run, "wait_ready", wait_ready)
+    return calls
+
+
+def test_ui_restarts_a_server_of_another_version_on_its_port(capsys, old_server):
     assert cli.main(["ui", "--no-open"]) == 0
+    assert old_server == ["stop", ("start", 8001), ("wait", "started")]
+    out, err = capsys.readouterr()
+    assert out == f"http://127.0.0.1:8001/?token={auth.token()}\n"  # stdout: the link only
+    assert err.splitlines()[0] == f"lado: restarted the LADO server: 0.0.1 -> {__version__}"
+    assert "warning: the running" not in err
+
+
+def test_ui_with_another_port_refuses_a_server_of_another_version_too(capsys, old_server):
+    assert cli.main(["ui", "--no-open", "--port", "8002"]) == 1
+    assert old_server == []
+    assert "not on port 8002" in capsys.readouterr().err
+
+
+def test_ui_names_lado_server_stop_when_the_old_server_does_not_stop(
+    capsys, monkeypatch, old_server
+):
+    def stop():
+        raise runtime.LadoError("the LADO server (pid 4321) did not end in 10s")
+
+    monkeypatch.setattr(server_run, "stop", stop)
+    assert cli.main(["ui", "--no-open"]) == 1
+    assert old_server == []
     err = capsys.readouterr().err
-    assert "0.0.1" in err and "lado server stop" in err
-    lock.close()
+    assert "0.0.1" in err and "did not end in 10s" in err and "`lado server stop`" in err
+
+
+def test_ui_names_lado_server_stop_when_the_old_server_cannot_be_signalled(
+    capsys, monkeypatch, old_server
+):
+    def stop():
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(server_run, "stop", stop)
+    assert cli.main(["ui", "--no-open"]) == 1
+    assert old_server == []
+    assert "`lado server stop`" in capsys.readouterr().err
 
 
 def test_ui_names_server_log_when_the_server_does_not_come_up(capsys, monkeypatch):

@@ -67,8 +67,18 @@ later desktop app and a later cloud setup; the UI is its client.
   runs (a process of its own, like the session loop), waits until `/api/health` answers
   (on a timeout it names the log) and opens the browser on the link (`--no-open` prints
   it). `lado server stop` ends it. A `lado ui --port N` while the server runs on another
-  port is an error naming its address; a server of another LADO version gets a warning
-  that says to restart it.
+  port is an error naming its address.
+- Versions: an upgrade (`uv tool upgrade lado`) leaves a running server on its old Python
+  code while it reads the new bundle from disk, so the page would get an API it does not
+  know. `lado ui` therefore restarts a server whose version (`server.json`) is not its own:
+  it stops it, starts a new one on the same port and says so on stderr (`lado: restarted the
+  LADO server: <old> -> <new>`); when the stop fails, it exits with an error naming
+  `lado server stop`. The bundle knows the version it was built for (`__LADO_VERSION__`,
+  taken from `pyproject.toml` by `web/vite.config.ts` at build time) and compares it with
+  `/api/health`'s each time the change feed opens: when they differ, every page shows a
+  banner (`role="alert"`) that names both versions and says to run `lado server stop`, then
+  `lado ui`. A list a page cannot load (e.g. a 404 from an older server) shows the API's
+  error, never an empty page.
 - Host: only 127.0.0.1 or localhost for now; `--host` with anything else is refused until
   there is a real login.
 - Port: 8000, or the next free one up to 8020; `--port N` takes exactly N (busy: an error;

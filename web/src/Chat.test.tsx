@@ -258,6 +258,23 @@ test("a message the server refuses keeps its text and says why at the field", as
   expect(posted).toHaveLength(1);
 });
 
+test.each(["messages", "events", "gates"])(
+  "a feed whose %s the server cannot load (an older server: 404) says so instead of an empty chat",
+  async (list) => {
+    const { fetch } = serve([]);
+    const served = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (path: string, init?: RequestInit) =>
+      path === `/api/sessions/lado/${list}`
+        ? new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 })
+        : served(path, init),
+    );
+    open();
+    const feed = await chat();
+    expect((await within(feed).findByRole("alert")).textContent).toBe("Not Found");
+    expect(within(feed).queryByText(/No messages yet/)).toBeNull();
+  },
+);
+
 test("an empty chat says how to start", async () => {
   serve([]);
   open();

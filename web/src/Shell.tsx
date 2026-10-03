@@ -14,7 +14,7 @@ import {
 } from "react";
 import { NavLink, Outlet } from "react-router";
 
-import { onDenied } from "./api";
+import { getHealth, onDenied } from "./api";
 import {
   CollapseIcon,
   HomeIcon,
@@ -27,6 +27,7 @@ import {
 } from "./icons";
 import { Live, LiveContext, useLive } from "./live";
 import { storeRailCollapsed, storedRailCollapsed } from "./prefs";
+import { BUNDLE_VERSION } from "./version";
 
 const SECTIONS: { to: string; name: string; icon: ReactNode }[] = [
   { to: "/", name: "Home", icon: <HomeIcon /> },
@@ -107,6 +108,7 @@ export function Shell() {
           <LinkState />
           <Launch variant="top" />
         </header>
+        <VersionBanner />
         <main className="content">
           {denied !== null ? (
             <p className="problem" role="alert">
@@ -122,6 +124,32 @@ export function Shell() {
     </div>
   );
   return <LiveContext.Provider value={live}>{frame}</LiveContext.Provider>;
+}
+
+// A server of another LADO version than this bundle's (one left running across an
+// upgrade, or upgraded under an open tab) answers an API this page does not know. Asked
+// each time the change feed opens, so also after the server restarted.
+function VersionBanner() {
+  const { link } = useLive();
+  const [server, setServer] = useState<string | null>(null);
+  useEffect(() => {
+    if (link !== "open") return;
+    let current = true;
+    getHealth().then(
+      (health) => current && setServer(health.version),
+      () => {}, // the feed's link says when the server cannot be reached
+    );
+    return () => {
+      current = false;
+    };
+  }, [link]);
+  if (server === null || server === BUNDLE_VERSION) return null;
+  return (
+    <p className="problem version-banner" role="alert">
+      This page is LADO {BUNDLE_VERSION}, the server runs {server}: run <code>lado server stop</code>, then{" "}
+      <code>lado ui</code>.
+    </p>
+  );
 }
 
 // The change feed's link: live, or reconnecting while it is down (what the page shows may

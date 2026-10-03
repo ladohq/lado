@@ -30,6 +30,14 @@ export const HomeIcon = () => (
   </Icon>
 );
 
+// A plus in a square: a new session.
+export const LaunchIcon = () => (
+  <Icon>
+    <rect x="4" y="4" width="16" height="16" rx="3" />
+    <path d="M12 8.5v7M8.5 12h7" />
+  </Icon>
+);
+
 // A raised hand: someone waits for the human.
 export const NeedsYouIcon = () => (
   <Icon>

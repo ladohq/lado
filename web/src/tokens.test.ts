@@ -56,6 +56,8 @@ const PAIRS = [
   ["muted", "raised"],
   ["on-action", "action"],
   ["human", "human-ground"],
+  ["danger", "panel"],
+  ["on-danger", "danger"],
   ["term-ink", "term-ground"],
 ] as const;
 

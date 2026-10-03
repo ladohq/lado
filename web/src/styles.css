@@ -135,6 +135,14 @@ button {
   color: var(--ink);
 }
 
+/* Launch opens a window: a button that looks like the rail's links. */
+button.rail-link {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
 .rail-link[aria-current="page"] {
   background: var(--raised);
   color: var(--ink);
@@ -1716,5 +1724,456 @@ h3 {
 
   .splitter {
     display: none;
+  }
+}
+
+/* Launch and session control (docs/design/ui.md): the New session window, a session's
+   actions in its head and its row, Stop's popover and Forget's window. */
+
+.danger {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--danger);
+  color: var(--on-danger);
+  font-weight: 600;
+}
+
+.danger:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.launch-dialog,
+.question-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 22px 26px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px var(--shadow);
+  font-size: 14px;
+}
+
+.question-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.launch-dialog::backdrop,
+.question-dialog::backdrop {
+  background: var(--shadow);
+}
+
+.launch-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.launch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.launch-head h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.launch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field > label,
+.field-label {
+  font-weight: 600;
+}
+
+.field input,
+.field select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field input:disabled,
+.field select:disabled {
+  background: var(--ground);
+  color: var(--muted);
+}
+
+.launch-where input {
+  width: 100%;
+  font: 13px var(--mono);
+}
+
+.field-note {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.field-note.ok {
+  color: var(--action);
+}
+
+.field-note.bad {
+  color: var(--ink);
+  border-left: 3px solid var(--ink);
+  padding-left: 8px;
+}
+
+.field-note.warn {
+  color: var(--ink);
+}
+
+.where-box {
+  position: relative;
+}
+
+.where-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  max-height: 220px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px var(--shadow);
+  font: 13px var(--mono);
+}
+
+.where-list li {
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.where-list li:hover,
+.where-list li[aria-selected="true"] {
+  background: var(--raised);
+}
+
+.recent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chip-button {
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 12px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-button:hover {
+  background: var(--raised);
+}
+
+.kits-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border-radius: 6px;
+  background: var(--raised);
+  font-size: 13px;
+}
+
+.chip.invalid {
+  text-decoration: line-through;
+}
+
+.chip button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.chip button:hover {
+  color: var(--ink);
+}
+
+.field .add-kit {
+  height: 26px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--action);
+  font-size: 13px;
+}
+
+.launch-advanced {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.launch-advanced summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.launch-advanced .field {
+  margin-top: 10px;
+}
+
+.launch-refused {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.launch-buttons,
+.question-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.launch-buttons {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.launch-buttons button {
+  height: 36px;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--action);
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+/* A session's actions: in its head, at the right end; in its row, over the row's right end,
+   shown on hover and keyboard focus (and while their menu or question is open). */
+.session-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actions-head {
+  margin-left: auto;
+  align-self: center;
+}
+
+.session-row {
+  position: relative;
+}
+
+.actions-row {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+}
+
+.session-row:hover .actions-row,
+.session-row:focus-within .actions-row,
+.actions-row.shown {
+  opacity: 1;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.icon-button:hover,
+.icon-button[aria-expanded="true"] {
+  background: var(--raised);
+}
+
+.actions-head .icon-button {
+  width: 32px;
+  height: 32px;
+  font-size: 15px;
+}
+
+.action-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--shadow);
+}
+
+.action-menu button {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-size: 14px;
+}
+
+.action-menu button:hover,
+.action-menu button:focus-visible {
+  background: var(--raised);
+}
+
+.action-menu .danger-item {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.stop-popover {
+  right: 0;
+  left: auto;
+  z-index: 6;
+  width: min(380px, calc(100vw - 32px));
+}
+
+.actions-row .stop-popover {
+  right: auto;
+  left: 0;
+}
+
+.stop-popover h3,
+.question-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.consequences {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+
+.question-dialog p {
+  margin: 0 0 12px;
+}
+
+.left-on-disk {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--ground);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.left-on-disk ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.left-on-disk code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.question-dialog .switch {
+  margin: 0 0 12px;
+}
+
+/* What a start or resume said, under the session's head until closed. */
+.started-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.started-notice ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
+
+.started-problems {
+  padding-left: 8px;
+  border-left: 3px solid var(--ink);
+}
+
+.started-notice .quiet {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .launch-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .launch-dialog {
+    padding: 18px 16px;
   }
 }

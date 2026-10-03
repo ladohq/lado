@@ -14,6 +14,10 @@ const session = (name: string, status: SessionInfo["status"] = "running"): Sessi
   status,
   agents: 1,
   waiting: NONE,
+  kits: ["default"],
+  provider: "claude",
+  permission_mode: null,
+  without: [],
 });
 
 const item = (key: string): WaitingItem => ({

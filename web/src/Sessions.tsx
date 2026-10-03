@@ -1,11 +1,13 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
 // session on the right with its tabs. The list's width is dragged on its edge and remembered.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router";
 
 import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
+import { useLaunch, type StartedState } from "./Launch";
 import { useLive, useLiveStore, type Loaded } from "./live";
+import { SessionActions } from "./SessionControl";
 import { MAIN_MIN, TerminalPanel, useOpenTerminal } from "./Terminals";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
@@ -20,7 +22,7 @@ import {
   storeSessionsList,
   storeStoppedOpen,
 } from "./prefs";
-import { Launch, useTitle } from "./Shell";
+import { useTitle } from "./Shell";
 import { fitWidth, Splitter, useWidth } from "./Splitter";
 import { Team } from "./Team";
 
@@ -36,6 +38,7 @@ const STATUS: Record<SessionStatus, string> = {
 // The list and the session's header follow the change feed (live.ts).
 export function Sessions() {
   const loaded = useLive().sessions;
+  const launch = useLaunch();
   const [query, setQuery] = useState("");
   const [stoppedOpen, setStoppedOpen] = useState(storedStoppedOpen);
 
@@ -61,7 +64,9 @@ export function Sessions() {
       <div className="session-list">
         <div className="session-list-head">
           <h2>Sessions</h2>
-          <Launch variant="plus" />
+          <button type="button" className="plus" aria-label="New session" title="New session" onClick={() => launch()}>
+            <span aria-hidden="true">+</span>
+          </button>
         </div>
         <input
           type="search"
@@ -161,7 +166,7 @@ function Group({
       )}
       <ul>
         {sessions.map((session) => (
-          <li key={session.name}>
+          <li key={session.name} className="session-row">
             <NavLink
               to={sessionPath(session.name)}
               className={`session-link${session.status === "running" ? "" : " dim"}${waits(session) && session.status !== "stopped" ? " waits" : ""}`}
@@ -170,6 +175,7 @@ function Group({
               <span className="session-about">{about(session)}</span>
               {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
             </NavLink>
+            <SessionActions session={session} place="row" />
           </li>
         ))}
       </ul>
@@ -185,11 +191,7 @@ export function NoSession() {
   useTitle("Sessions");
   const loaded = useOutletContext<Loaded>();
   if (loaded && "sessions" in loaded && loaded.sessions.length === 0) {
-    return (
-      <p className="empty">
-        No sessions yet. Start one with <code>lado start &lt;repo&gt;</code>
-      </p>
-    );
+    return <p className="empty">No sessions yet. Start one with Launch.</p>;
   }
   return <p className="empty">Select a session</p>;
 }
@@ -217,8 +219,11 @@ export function Session() {
 
 function SessionTab({ name, tab, loaded }: { name: string; tab: Tab; loaded: Loaded }) {
   useTitle("Sessions");
+  const started = (useLocation().state as StartedState | null)?.started;
   if (loaded === null || "error" in loaded) return null; // the list says what is wrong
-  const session = loaded.sessions.find((one) => one.name === name);
+  // Just started here: the change feed may bring it a moment after the start's answer.
+  const session =
+    loaded.sessions.find((one) => one.name === name) ?? (started?.session.name === name ? started.session : undefined);
   if (session === undefined) {
     return (
       <div className="empty">
@@ -241,7 +246,9 @@ function SessionView({ name, tab, session }: { name: string; tab: Tab; session: 
       <header className="session-head">
         <h2>{name}</h2>
         <Status status={session.status} />
+        <SessionActions session={session} place="head" />
       </header>
+      <StartedNotice name={name} />
       <nav className="tabs" aria-label="Session sections">
         {TABS.map((one) => (
           <Link
@@ -264,6 +271,45 @@ function SessionView({ name, tab, session }: { name: string; tab: Tab; session: 
         </Placeholder>
       )}
     </section>
+  );
+}
+
+// What a start or resume from the New session window said: the settings a resume changed,
+// and open runs that cannot go on as they are, until the human closes it.
+function StartedNotice({ name }: { name: string }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const started = (location.state as StartedState | null)?.started;
+  if (!started || started.session.name !== name) return null;
+  const { changes, problems, resumed } = started;
+  if (changes.length === 0 && problems.length === 0) return null;
+  const close = () => navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  return (
+    <div className="started-notice">
+      {changes.length > 0 && (
+        <div role="status">
+          <span>{resumed ? "Resumed with new settings:" : "Started:"}</span>
+          <ul>
+            {changes.map((change) => (
+              <li key={change}>{change}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {problems.length > 0 && (
+        <div role="alert" className="started-problems">
+          <span>Open runs that cannot go on as they are:</span>
+          <ul>
+            {problems.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <button type="button" className="quiet" onClick={close}>
+        Close
+      </button>
+    </div>
   );
 }
 

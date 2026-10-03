@@ -9,6 +9,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly detail: unknown = message, // the answer's `detail`, an object for some (Taken)
   ) {
     super(message);
   }
@@ -26,7 +27,9 @@ export function onDenied(listener: (detail: string) => void): () => void {
 
 async function refused(answer: Response): Promise<ApiError> {
   const body = await answer.json().catch(() => null);
-  const error = new ApiError(answer.status, body?.detail ?? `${answer.status} ${answer.statusText}`);
+  const detail = body?.detail ?? `${answer.status} ${answer.statusText}`;
+  const text = typeof detail === "string" ? detail : (detail.message ?? JSON.stringify(detail));
+  const error = new ApiError(answer.status, text, detail);
   if (error.status === 401) denied?.(error.message);
   return error;
 }
@@ -66,9 +69,9 @@ export type Sent = components["schemas"]["Sent"];
 export const HUMAN = "human"; // the human as a participant of LADO's messages
 
 // A request that changes something: the browser sends its Origin, which the server checks.
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
   const answer = await fetch(path, {
-    method: "POST",
+    method,
     credentials: "same-origin",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -105,6 +108,49 @@ export const answerQuestion = (session: string, id: number, answer: { choice?: s
 
 export const dismissQuestion = (session: string, id: number) =>
   post<Sent>(`${sessionPath(session)}/questions/${id}/dismiss`);
+
+// Launch and session control (docs/design/ui.md, Launch and session control).
+
+export type FolderInfo = components["schemas"]["FolderInfo"];
+export type RecentFolder = components["schemas"]["RecentFolder"];
+export type KitInfo = components["schemas"]["KitInfo"];
+export type ProviderInfo = components["schemas"]["ProviderInfo"];
+export type Launch = components["schemas"]["Launch"];
+export type Resume = components["schemas"]["Resume"];
+export type Started = components["schemas"]["Started"];
+export type Taken = components["schemas"]["Taken"];
+export type StopPreview = components["schemas"]["StopPreview"];
+export type Stopped = components["schemas"]["Stopped"];
+export type ForgetPreview = components["schemas"]["ForgetPreview"];
+export type Forgotten = components["schemas"]["Forgotten"];
+
+const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
+
+// A folder as the server checks it for a session: the core's reason when it will not do.
+export const getFolder = (path: string) => get<FolderInfo>(`/api/folders?${query({ path })}`);
+
+export const getRecentFolders = () => get<RecentFolder[]>("/api/folders/recent");
+
+// The kits a session of the folder `where` can take, one per name.
+export const getKits = (where: string | null) =>
+  get<KitInfo[]>(where ? `/api/kits?${query({ where })}` : "/api/kits");
+
+// LADO's providers, each one's CLI checked anew.
+export const getProviders = () => get<ProviderInfo[]>("/api/providers");
+
+export const startSession = (launch: Launch) => post<Started>("/api/sessions", launch);
+
+export const resumeSession = (session: string, resume: Resume) =>
+  post<Started>(`${sessionPath(session)}/resume`, resume);
+
+export const getStopPreview = (session: string) => get<StopPreview>(`${sessionPath(session)}/stop-preview`);
+
+export const stopSession = (session: string) => post<Stopped>(`${sessionPath(session)}/stop`);
+
+export const getForgetPreview = (session: string) => get<ForgetPreview>(`${sessionPath(session)}/forget-preview`);
+
+export const forgetSession = (session: string, force: boolean) =>
+  post<Forgotten>(`${sessionPath(session)}?${query({ force: String(force) })}`, undefined, "DELETE");
 
 // Why the server refuses the event stream at `path`: an ApiError, or nothing when it would
 // open now. Reads only the answer's head; an open stream is closed at once.

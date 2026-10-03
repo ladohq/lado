@@ -15,6 +15,9 @@
   --on-action: light-dark(#ffffff, #111317);
   --human: light-dark(#b4530f, #f0a25a);
   --human-ground: light-dark(#fdf1e6, #3a2a1c);
+  /* What cannot be taken back or ends work: Stop and Forget. */
+  --danger: light-dark(#b42318, #ff8f85);
+  --on-danger: light-dark(#ffffff, #111317);
   --shadow: light-dark(#16181d1f, #0000008c);
   /* An agent's terminal: dark in both themes, as the CLIs' own colours expect. */
   --term-ground: light-dark(#1b1e24, #0d0f13);

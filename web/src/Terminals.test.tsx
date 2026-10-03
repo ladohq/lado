@@ -11,7 +11,17 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NONE = { gates: 0, questions: 0, agents: 0 };
-const SESSION: SessionInfo = { name: "lado", repo: "/src/lado", status: "running", agents: 2, waiting: NONE };
+const SESSION: SessionInfo = {
+  name: "lado",
+  repo: "/src/lado",
+  status: "running",
+  agents: 2,
+  waiting: NONE,
+  kits: ["default"],
+  provider: "claude",
+  permission_mode: null,
+  without: [],
+};
 const AGENTS: AgentInfo[] = [
   { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, waiting_reason: null },
   { name: "w1", role: "developer", provider: "kilo", status: "busy", run: null, task: "Build it", waiting_reason: null },

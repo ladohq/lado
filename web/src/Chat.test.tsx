@@ -11,9 +11,11 @@ import { FakeEventSource, FakeSocket, stream } from "./fakes";
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
+const NO_WAITS = { gates: 0, questions: 0, agents: 0 };
+const SETTINGS = { kits: ["default"], provider: "claude", permission_mode: null, without: [] };
 const SESSIONS: SessionInfo[] = [
-  { name: "lado", repo: "/src/lado", status: "running", agents: 2, waiting: { gates: 0, questions: 0, agents: 0 } },
-  { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: { gates: 0, questions: 0, agents: 0 } },
+  { name: "lado", repo: "/src/lado", status: "running", agents: 2, waiting: NO_WAITS, ...SETTINGS },
+  { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: NO_WAITS, ...SETTINGS },
 ];
 
 function message(id: number, from: string, to: string, summary: string, more: Partial<MessageInfo> = {}): MessageInfo {

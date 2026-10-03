@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeSocket, stream } from "./fakes";
+import { FakeEventSource, FakeSocket, stream, stubDialogs } from "./fakes";
 import { BUNDLE_VERSION } from "./version";
 
 // A session's page has the terminal panel (Terminals.test.tsx): no canvas, no server here.
@@ -12,11 +12,12 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NONE = { gates: 0, questions: 0, agents: 0 };
+const SETTINGS = { kits: ["default"], provider: "claude", permission_mode: null, without: [] };
 
 const SESSIONS: SessionInfo[] = [
-  { name: "lado", repo: "/src/lado", status: "running", agents: 3, waiting: NONE },
-  { name: "my app.v2", repo: "/src/app", status: "stopped", agents: 0, waiting: NONE },
-  { name: "old", repo: "/src/old", status: "loop_down", agents: 0, waiting: NONE },
+  { name: "lado", repo: "/src/lado", status: "running", agents: 3, waiting: NONE, ...SETTINGS },
+  { name: "my app.v2", repo: "/src/app", status: "stopped", agents: 0, waiting: NONE, ...SETTINGS },
+  { name: "old", repo: "/src/old", status: "loop_down", agents: 0, waiting: NONE, ...SETTINGS },
 ];
 
 const AGENTS: AgentInfo[] = [
@@ -165,20 +166,15 @@ test.each(["/nowhere/at/all", "/gates/12"])("%s is Not found with a link to Home
   expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
 });
 
-test("the top bar shows the server's address and Launch explains lado start", () => {
+test("the top bar shows the server's address; Launch is on the rail and Escape closes its window", async () => {
+  stubDialogs();
   open("/");
   const bar = screen.getByRole("banner");
   expect(within(bar).getByText(window.location.host)).toBeTruthy();
-  const launch = within(bar).getByRole("button", { name: "Launch" });
-  expect(launch.getAttribute("aria-expanded")).toBe("false");
-  fireEvent.click(launch);
-  expect(launch.getAttribute("aria-expanded")).toBe("true");
-  expect(screen.getByRole("dialog", { name: "Launch a session" }).textContent).toContain(
-    "lado start <repo>",
-  );
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+  const dialog = await screen.findByRole("dialog", { name: "New session" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(launch.getAttribute("aria-expanded")).toBe("false");
 });
 
 test("the rail collapses to icons with names and remembers it", () => {
@@ -259,8 +255,7 @@ test("/sessions lists the sessions and asks to select one", async () => {
 test("with no sessions, /sessions says how to start one", async () => {
   serve(200, []);
   open("/sessions");
-  expect(await screen.findByText(/No sessions yet/)).toBeTruthy();
-  expect(screen.getByText("lado start <repo>")).toBeTruthy();
+  expect((await screen.findByText(/No sessions yet/)).textContent).toBe("No sessions yet. Start one with Launch.");
 });
 
 test("another error of the API is shown in the list", async () => {
@@ -376,7 +371,7 @@ test("changes update the list and the session's header as they come", async () =
   expect(within(list).getByRole("link", { name: /lado/ }).className).toContain("dim");
   stream().send(
     "change",
-    change("new", { name: "new", repo: "/src/new", status: "running", agents: 1, waiting: NONE }, "insert"),
+    change("new", { name: "new", repo: "/src/new", status: "running", agents: 1, waiting: NONE, ...SETTINGS }, "insert"),
     "11",
   );
   expect(within(list).getByRole("link", { name: /new/ })).toBeTruthy();

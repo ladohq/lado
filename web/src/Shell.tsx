@@ -1,14 +1,14 @@
-// The frame around every page: the rail of sections on the left, the top bar with the
-// page's title, the server's address, the change feed's link and Launch, and the page
-// itself. The one place that handles a 401: it shows the server's own message instead of the page. It holds the tab's
-// one change feed (live.ts) for every page.
+// The frame around every page: the rail of sections on the left (with Launch after Home),
+// the top bar with the page's title, the server's address and the change feed's link, and
+// the page itself. The one place that handles a 401: it shows the server's own message
+// instead of the page. It holds the tab's one change feed (live.ts) for every page, and the
+// New session window (Launch.tsx).
 import {
   createContext,
+  Fragment,
   useContext,
   useEffect,
-  useId,
   useLayoutEffect,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -19,12 +19,14 @@ import {
   CollapseIcon,
   HomeIcon,
   KitsIcon,
+  LaunchIcon,
   MarketplaceIcon,
   NeedsYouIcon,
   ProjectsIcon,
   SessionsIcon,
   SettingsIcon,
 } from "./icons";
+import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { storeRailCollapsed, storedRailCollapsed } from "./prefs";
@@ -91,13 +93,20 @@ export function Shell() {
         </div>
         <ul>
           {SECTIONS.map((section) => (
-            <li key={section.to}>
-              {section.to === NEEDS_YOU ? (
-                <NeedsYouLink {...section} collapsed={collapsed} />
-              ) : (
-                <RailLink {...section} collapsed={collapsed} />
+            <Fragment key={section.to}>
+              <li>
+                {section.to === NEEDS_YOU ? (
+                  <NeedsYouLink {...section} collapsed={collapsed} />
+                ) : (
+                  <RailLink {...section} collapsed={collapsed} />
+                )}
+              </li>
+              {section.to === "/" && (
+                <li>
+                  <LaunchLink collapsed={collapsed} />
+                </li>
               )}
-            </li>
+            </Fragment>
           ))}
         </ul>
         <div className="rail-bottom">
@@ -111,7 +120,6 @@ export function Shell() {
             {window.location.host}
           </span>
           <LinkState />
-          <Launch variant="top" />
         </header>
         <VersionBanner />
         <main className="content">
@@ -128,7 +136,11 @@ export function Shell() {
       </div>
     </div>
   );
-  return <LiveContext.Provider value={live}>{frame}</LiveContext.Provider>;
+  return (
+    <LiveContext.Provider value={live}>
+      <LaunchProvider>{frame}</LaunchProvider>
+    </LiveContext.Provider>
+  );
 }
 
 // A server of another LADO version than this bundle's (one left running across an
@@ -222,59 +234,19 @@ function NeedsYouLink(props: { to: string; name: string; icon: ReactNode; collap
   return <RailLink {...props} count={useWaitingCount()} />;
 }
 
-// Starting a session from the UI comes later; until then Launch (in the top bar, and the
-// session list's "+") says how.
-export function Launch({ variant }: { variant: "top" | "plus" }) {
-  const id = useId();
-  const [open, setOpen] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    panel.current?.focus();
-    const away = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!panel.current?.contains(target) && !button.current?.contains(target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [open]);
-
-  const close = () => {
-    setOpen(false);
-    button.current?.focus();
-  };
-
+// Launch on the rail: it opens the New session window, as the session list's "+" does.
+function LaunchLink({ collapsed }: { collapsed: boolean }) {
+  const launch = useLaunch();
   return (
-    <div className={`launch launch-${variant}`}>
-      <button
-        ref={button}
-        type="button"
-        className={variant === "top" ? "primary" : "plus"}
-        aria-label={variant === "top" ? undefined : "New session"}
-        title={variant === "top" ? undefined : "New session"}
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={() => setOpen(!open)}
-      >
-        {variant === "top" ? "Launch" : <span aria-hidden="true">+</span>}
-      </button>
-      {open && (
-        <div
-          ref={panel}
-          id={id}
-          className="popover"
-          role="dialog"
-          aria-label="Launch a session"
-          tabIndex={-1}
-          onKeyDown={(event) => event.key === "Escape" && close()}
-        >
-          <p>Starting a session from here comes later. For now, run this in a terminal:</p>
-          <code className="command">lado start &lt;repo&gt;</code>
-          <p className="muted">The session then shows up under Sessions.</p>
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      className="rail-link"
+      aria-label="Launch"
+      title={collapsed ? "Launch" : undefined}
+      onClick={() => launch()}
+    >
+      <LaunchIcon />
+      <span className="rail-name">Launch</span>
+    </button>
   );
 }

@@ -14,7 +14,8 @@ vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).F
 const NONE = { gates: 0, questions: 0, agents: 0 };
 
 function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
-  return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, ...more };
+  const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [] };
+  return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, ...settings, ...more };
 }
 
 function agent(name: string, role: string, status: AgentInfo["status"], more: Partial<AgentInfo> = {}): AgentInfo {
@@ -198,24 +199,14 @@ test("in a narrow window the list is narrowed to leave the session and its termi
   expect(Number(edge.getAttribute("aria-valuenow"))).toBe(400);
 });
 
-test("the list's + explains how to start a session", async () => {
-  open("/sessions");
-  const plus = screen.getByRole("button", { name: "New session" });
-  fireEvent.click(plus);
-  expect(screen.getByRole("dialog", { name: "Launch a session" }).textContent).toContain("lado start <repo>");
-});
+// The top bar (Launch moved to the rail: Launch and session control, 2026-10-04)
 
-// The top bar (the rail stays as it was: the human's decision, 2026-10-03)
-
-test("the top bar has the title, the server, the link and Launch; the rail has no Launch", async () => {
+test("the top bar has the title, the server and the link", async () => {
   open("/sessions");
-  const rail = screen.getByRole("navigation", { name: "Sections" });
-  expect(within(rail).queryByRole("button", { name: "Launch" })).toBeNull();
   const bar = screen.getByRole("banner");
   expect(within(bar).getByText(window.location.host)).toBeTruthy();
   expect((await within(bar).findByRole("status")).textContent).toBe("live");
-  fireEvent.click(within(bar).getByRole("button", { name: "Launch" }));
-  expect(screen.getByRole("dialog", { name: "Launch a session" }).textContent).toContain("lado start <repo>");
+  expect(within(bar).queryByRole("button")).toBeNull();
   stream().fail(false);
   expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
 });

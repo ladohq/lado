@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- LADO's icon: three layers handing work down, in the UI's action colour (tokens.css). -->
+  <style>
+    .ground { fill: #1f5fd6; }
+    .layer { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .ground { fill: #6fa0ff; }
+      .layer { fill: #111317; }
+    }
+  </style>
+  <rect class="ground" width="32" height="32" rx="7" />
+  <rect class="layer" x="7" y="8" width="14" height="4" rx="1.5" />
+  <rect class="layer" x="9" y="14" width="14" height="4" rx="1.5" />
+  <rect class="layer" x="11" y="20" width="14" height="4" rx="1.5" />
+</svg>

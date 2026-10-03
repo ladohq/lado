@@ -8,7 +8,7 @@ import { Link, useLocation } from "react-router";
 
 import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
 import { Body, clock, Preview } from "./ChatText";
-import { Gate, gateAnchor } from "./GateCard";
+import { Gate, GateAnswer, scrollToGate } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { sessionPath } from "./paths";
 import { Meta, Question } from "./Question";
@@ -28,12 +28,16 @@ const withHuman = (message: MessageInfo) => message.from === HUMAN || message.to
 type Entry =
   | { at: number; message: MessageInfo }
   | { at: number; event: RunEventInfo }
-  | { at: number; gate: GateInfo };
+  | { at: number; gate: GateInfo }
+  | { at: number; answered: GateInfo };
 
 type Loaded = { messages: MessageInfo[]; events: RunEventInfo[]; gates: GateInfo[] };
 
+// A gate the human answered (or overrode), whose answer is also the human's bubble.
+const answeredByHuman = (gate: GateInfo) => gate.answer !== null && gate.answered_by === HUMAN && gate.answered_at !== null;
+
 // The messages, the run events and the gates shown, in time order (a message before an
-// event of the same moment); a gate where it opened.
+// event of the same moment); a gate where it opened, the human's answer when it was given.
 function entries({ messages, events, gates }: Loaded, agentMessages: boolean): Entry[] {
   const all: Entry[] = [
     ...messages
@@ -41,17 +45,22 @@ function entries({ messages, events, gates }: Loaded, agentMessages: boolean): E
       .map((message) => ({ at: Date.parse(message.created_at), message })),
     ...events.filter((one) => one.kind in RUN_EVENT_LINES).map((event) => ({ at: Date.parse(event.created_at), event })),
     ...gates.map((gate) => ({ at: Date.parse(gate.created_at), gate })),
+    ...gates.filter(answeredByHuman).map((gate) => ({ at: Date.parse(gate.answered_at ?? ""), answered: gate })),
   ];
   return all.sort((a, b) => a.at - b.at);
 }
 
-// The messages and gates, and the run events between them, consecutive ones in one list.
-function grouped(list: Entry[]): (MessageInfo | GateInfo | RunEventInfo[])[] {
-  const out: (MessageInfo | GateInfo | RunEventInfo[])[] = [];
+type Item = MessageInfo | GateInfo | { answered: GateInfo } | RunEventInfo[];
+
+// The messages, gates and answers, and the run events between them, consecutive ones in
+// one list.
+function grouped(list: Entry[]): Item[] {
+  const out: Item[] = [];
   for (const entry of list) {
     const last = out[out.length - 1];
     if ("message" in entry) out.push(entry.message);
     else if ("gate" in entry) out.push(entry.gate);
+    else if ("answered" in entry) out.push({ answered: entry.answered });
     else if (Array.isArray(last)) last.push(entry.event);
     else out.push([entry.event]);
   }
@@ -69,7 +78,8 @@ function all(
   return { messages: messages.items, events: events.items, gates: gates.items };
 }
 
-const isGate = (one: MessageInfo | GateInfo | RunEventInfo[]): one is GateInfo => !Array.isArray(one) && "options" in one;
+const isGate = (one: Item): one is GateInfo => !Array.isArray(one) && "options" in one;
+const isAnswer = (one: Item): one is { answered: GateInfo } => !Array.isArray(one) && "answered" in one;
 
 export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
   const live = useLiveStore();
@@ -110,6 +120,8 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
               <RunEvents key={`events-${one[0].id}`} session={session} events={one} />
             ) : isGate(one) ? (
               <Gate key={`gate-${one.id}`} session={session} gate={one} stopped={stopped} />
+            ) : isAnswer(one) ? (
+              <GateAnswer key={`answer-${one.answered.id}`} gate={one.answered} />
             ) : one.kind === "question" ? (
               <Question key={one.id} session={session} question={one} answer={answerOf(one, loaded.messages)} />
             ) : (
@@ -128,11 +140,7 @@ function GateHint({ gate }: { gate: GateInfo }) {
   return (
     <p className="gate-hint">
       Gate #{gate.id} waits:{" "}
-      <button
-        type="button"
-        className="link-button"
-        onClick={() => document.getElementById(gateAnchor(gate.id))?.scrollIntoView({ block: "center" })}
-      >
+      <button type="button" className="link-button" onClick={() => scrollToGate(gate.id)}>
         answer on its card
       </button>
     </p>

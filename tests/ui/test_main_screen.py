@@ -95,6 +95,24 @@ def test_a_bundle_of_another_version_than_the_servers_shows_a_banner(page: Page,
     shot(page)
 
 
+def test_a_page_loads_without_a_console_error_and_with_its_icon(page: Page, server, repo, shot):
+    """No 404 for an icon nor anything else: the page links the bundle's icon."""
+    session = running_session(repo)
+    errors: list[str] = []
+    page.on("console", lambda message: message.type == "error" and errors.append(message.text))
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    failed: list[str] = []
+    page.on("response", lambda answer: answer.status >= 400 and failed.append(answer.url))
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    expect(page.get_by_role("log", name="Chat with the session")).to_be_visible()
+    page.wait_for_load_state("networkidle")
+    shot(page)
+    assert (errors, failed) == ([], [])
+    icon = page.locator('link[rel="icon"]').get_attribute("href", timeout=1000)
+    assert page.request.get(f"{server['url']}{icon}").status == 200
+
+
 def test_the_launch_button_says_how_to_start_a_session(page: Page, server, shot):
     log_in(page, server)
     page.get_by_role("banner").get_by_role("button", name="Launch").click()

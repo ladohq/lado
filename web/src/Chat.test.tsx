@@ -537,6 +537,82 @@ test("gates are in time order among messages and run events, and a gate's events
   ]);
 });
 
+// The human's answer to a gate is also the human's bubble, where it was given.
+
+const answerBubble = async (id = 1) => within(await chat()).findByRole("article", { name: `Your answer to gate #${id}` });
+
+test("the human's answer to a gate is a bubble of theirs at its time; the gate's line stays where it opened", async () => {
+  serve(
+    [
+      message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" }),
+      message(2, "supervisor", "human", "working on it", { created_at: "2026-10-03T12:03:00Z" }),
+      message(3, "supervisor", "human", "done", { created_at: "2026-10-03T12:07:00Z" }),
+    ],
+    undefined,
+    [],
+    [closed(1, "approve", { created_at: "2026-10-03T12:01:00Z", answered_at: "2026-10-03T12:05:00Z" })],
+  );
+  open();
+  const log = await chat();
+  const bubble = await answerBubble();
+  const order = Array.from(log.querySelectorAll(":scope > article")).map((one) => one.getAttribute("aria-label"));
+  expect(order).toEqual([
+    "Message from you",
+    "Gate #1",
+    "Message from supervisor",
+    "Your answer to gate #1",
+    "Message from supervisor",
+  ]);
+  expect(bubble.className).toContain("mine");
+  expect(within(bubble).getByRole("heading").textContent).toBe("Gate #1 · approve");
+  expect(within(bubble).queryByText("ship it")).toBeNull();
+  expect(bubble.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-03T12:05:00Z");
+});
+
+test.each([
+  [closed(1, "reject", { comment: "add a test" }), "Gate #1 · reject", "add a test"],
+  [closed(1, "overridden", { comment: "built by hand" }), "Gate #1 · overridden", "built by hand"],
+])("the bubble says the answer, and the comment on a line of its own", async (one, heading, comment) => {
+  serve([], undefined, [], [one]);
+  open();
+  const bubble = await answerBubble();
+  expect(within(bubble).getByRole("heading").textContent).toBe(heading);
+  expect(within(bubble).getByText(comment).tagName).toBe("P");
+});
+
+test("a gate closed by someone else than the human has no bubble", async () => {
+  serve([], undefined, [], [closed(1, "cancelled", { answered_by: "supervisor" }), closed(2, "approve")]);
+  open();
+  await answerBubble(2);
+  expect(within(await chat()).queryByRole("article", { name: "Your answer to gate #1" })).toBeNull();
+});
+
+test("the bubble links to the gate's line and scrolls it into view", async () => {
+  serve([], undefined, [], [closed(1, "approve")]);
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  open();
+  const bubble = await answerBubble();
+  const link = within(bubble).getByRole("link", { name: "Gate #1 · approve" });
+  expect(link.getAttribute("href")).toBe("#gate-1");
+  scrolled.mockClear();
+  fireEvent.click(link);
+  expect(scrolled.mock.contexts).toEqual([await gateCard(1)]);
+});
+
+test("answering a gate on the open page puts the bubble at the bottom and scrolls to it", async () => {
+  serve([message(1, "supervisor", "human", "later", { created_at: "2026-10-03T12:02:00Z" })], undefined, [], [gate(1)]);
+  open();
+  const feed = await chat();
+  await gateCard();
+  Object.defineProperty(feed, "scrollHeight", { value: 700 });
+  feed.scrollTop = 0;
+  stream().send("change", gateChanged(closed(1, "reject", { answered_at: "2026-10-03T12:09:00Z" })), "11");
+  const bubble = await answerBubble();
+  expect(Array.from(feed.querySelectorAll(":scope > article")).at(-1)).toBe(bubble);
+  expect(feed.scrollTop).toBe(700);
+});
+
 test("while a gate is open, a hint over the composer leads to its card; the composer does not answer it", async () => {
   const { posted } = serve([], undefined, [], [closed(1, "approve"), gate(2)]);
   const scrolled = vi.fn();

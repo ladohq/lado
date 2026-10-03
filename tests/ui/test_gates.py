@@ -63,7 +63,7 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("article", name="Gate #1")
+    card = page.get_by_role("article", name="Gate #1", exact=True)
     expect(card.get_by_role("heading", name="Gate #1 · ship/x · check")).to_be_visible()
     expect(card).to_contain_text("Build it as planned?")
     expect(card.locator("strong").first).to_have_text("the plan is reviewed")
@@ -75,7 +75,7 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
         "split the form first"
     )
     card.get_by_role("button", name="Reject").click()
-    line = page.get_by_role("article", name="Gate #1")
+    line = page.get_by_role("article", name="Gate #1", exact=True)
     expect(line).to_contain_text("Gate #1 · ship/x · check: reject by human")
     expect(line).to_contain_text("split the form first")
     expect(line.get_by_role("button", name="Approve", exact=True)).to_have_count(0)
@@ -89,11 +89,35 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
     shot(page, "answered")
 
 
+def test_the_humans_answer_is_their_bubble_at_the_bottom_and_leads_to_the_gate(
+    page: Page, server, repo, shot
+):
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    feed = page.get_by_role("log", name="Chat with the session")
+    card = feed.get_by_role("article", name="Gate #1", exact=True)
+    card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it")
+    card.get_by_role("button", name="Approve", exact=True).click()
+    bubble = feed.get_by_role("article", name="Your answer to gate #1")
+    expect(bubble).to_contain_text("Gate #1 · approve")
+    expect(bubble).to_contain_text("ship it")
+    # The run's events after the answer (the run moved on) may follow it as lines.
+    expect(feed.locator(":scope > article").last).to_have_attribute(
+        "aria-label", "Your answer to gate #1"
+    )
+    expect(bubble).to_be_in_viewport()
+    shot(page, "bubble")
+    bubble.get_by_role("link", name="Gate #1 · approve").click()
+    expect(card).to_be_in_viewport()
+    expect(card).to_contain_text("Gate #1 · ship/x · check: approve by human")
+
+
 def test_a_gate_answered_with_lado_answer_folds_on_the_open_page(page: Page, server, repo, shot):
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("article", name="Gate #1")
+    card = page.get_by_role("article", name="Gate #1", exact=True)
     expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
     answer = subprocess.run(
         [sys.executable, "-m", "lado.cli", "answer", session, "1", "approve", "-m", "ship it"],

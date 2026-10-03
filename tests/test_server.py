@@ -4,6 +4,8 @@ tests/integration/test_server_process.py."""
 
 import json
 import os
+import re
+import shutil
 import socket
 import sqlite3
 import stat
@@ -175,6 +177,22 @@ def test_every_page_path_is_the_bundles_index(bundle, path):
 def test_the_bundles_files_are_served(bundle):
     assert bundle.get("/assets/app.js").text == "console.log(1)"
     assert bundle.get("/favicon.svg").text == "<svg/>"
+
+
+def test_the_icon_the_page_links_is_served(tmp_path):
+    """The UI's page links an icon from web/public, which the build puts at the bundle's
+    top; the browser gets it, so it asks for no /favicon.ico."""
+    web = Path(__file__).parent.parent / "web"
+    page = (web / "index.html").read_text()
+    links = re.findall(r'<link rel="icon"[^>]*href="/([^"]+)"', page)
+    assert links, "web/index.html links no icon"
+    shutil.copytree(web / "public", tmp_path, dirs_exist_ok=True)
+    (tmp_path / "index.html").write_text(page)
+    client = TestClient(server_app.create_app(auth.token(), PORT, static=tmp_path))
+    for link in links:
+        answer = client.get(f"/{link}")
+        assert answer.status_code == 200
+        assert answer.headers["content-type"].startswith("image/svg+xml")
 
 
 @pytest.mark.parametrize("path", ["/assets/none.js", "/assets/x", "/none.css", "/old.js"])

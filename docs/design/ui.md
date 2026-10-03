@@ -415,7 +415,13 @@ reaches the feed. LADO takes the model and builds it on what it has:
   (the popup, `lado answer`, another tab). A **closed gate** is a line, "Gate #id · run ·
   state: <answer> by <who>" (also `overridden` by `lado flow-set`, `cancelled`), its
   comment and time; a click shows its question and note, read only, without the needed
-  notes, which are not kept as they were when it was answered. While a gate is open, a
+  notes, which are not kept as they were when it was answered. The line stays where the
+  gate opened, often far above the bottom, so the **human's answer** is also the human's
+  own bubble (right side, as their messages) placed by its `answered_at`: "Gate #id ·
+  <answer>" (also `overridden`), the comment on a line below, a link to the gate's line
+  (`#gate-<id>`, scrolled into view). Only a gate whose `answered_by` is `human` has one; on
+  the open page it shows at the bottom as soon as the feed brings the closed gate, and the
+  feed scrolls to it as to a new message. While a gate is open, a
   hint over the composer ("Gate #id waits: answer on its card") scrolls to its card: the
   composer does not answer gates. Known limit (BACKLOG): when a gate state needs the state
   whose note led to it, that note shows twice.
@@ -502,7 +508,7 @@ Built in the layout task (2026-10-03, schema 14):
   Esc; `role="tooltip"`, the trigger's `aria-describedby` while it shows, no pointer
   events, kept inside the window. A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
-  gates as cards or lines (Flow gates above); their other events as quiet lines
+  gates as cards or lines and the human's answers to them (Flow gates above); their other events as quiet lines
   (`<kind> <run>: <detail>`, a link to Flows), the kinds shown as lines named in one list
   in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_open` and `gate_answer` are not in it,
   the gate stands for them); and behind the switch **Show agent

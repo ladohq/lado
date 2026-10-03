@@ -1490,6 +1490,11 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+/* The human's answer as the human's own bubble: the comment under the answer. */
+.chat-message .gate-comment {
+  margin-left: 0;
+}
+
 .gate-closed-text {
   margin: 4px 0 6px 14px;
   color: var(--ink);

@@ -16,6 +16,9 @@
   --human: light-dark(#b4530f, #f0a25a);
   --human-ground: light-dark(#fdf1e6, #3a2a1c);
   --shadow: light-dark(#16181d1f, #0000008c);
+  /* An agent's terminal: dark in both themes, as the CLIs' own colours expect. */
+  --term-ground: light-dark(#1b1e24, #0d0f13);
+  --term-ink: light-dark(#e8eaee, #e1e4e9);
 
   --sans: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;

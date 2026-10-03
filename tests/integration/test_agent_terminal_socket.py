@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 import pytest
-from test_terminal import SESSION, inputs, our_viewers, start, wait_for
+from test_agent_terminal import SESSION, inputs, our_viewers, start, wait_for
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import ClientConnection, connect
 

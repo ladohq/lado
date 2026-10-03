@@ -51,7 +51,7 @@ def test_the_link_opens_the_page_it_names_and_the_session_shows_there(
     view.get_by_role("link", name="Agents").click()
     assert page.url == f"{server['url']}/sessions/{session}/agents"
     page.reload()  # an address of the UI holds on a reload
-    expect(view.get_by_role("region", name="Agents")).to_be_visible()
+    expect(view.get_by_role("table", name=f"Agents of {session}")).to_be_visible()
 
     runtime.stop_session(session)
     page.reload()

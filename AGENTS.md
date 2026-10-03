@@ -79,6 +79,12 @@ schema change.
     agent's provider does not support, before anything is launched.
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`; `LADO_TMUX_SOCKET` overrides
     the socket name and is passed on to agents).
+  - `terminal.py`: an agent's terminal for the UI (design in
+    [docs/design/ui.md](docs/design/ui.md), section Terminal): `open` (a viewer tmux session
+    with the agent's window linked in and a `tmux attach` on a pty), `history`, `NoTerminal`,
+    and `close_viewers`, which `lado stop` and the UI server's start use; viewers are found
+    by their tmux labels (`@lado-viewer`, `@lado-home`, `@lado-session`) only. Never a
+    read-only tmux client: tmux would refuse LADO's own `send-keys` while one is attached.
   - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup, `include`, `--without`,
     validation. A provider gets an `AgentSpec` (prompt, skill folders, MCP servers), never
     the kit itself. `builtin_kits/`: kits shipped with LADO (`default`: supervisor + worker).
@@ -134,13 +140,17 @@ schema change.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
-    rules in [docs/design/ui.md](docs/design/ui.md), section Server). `auth.py`: the token,
-    the only place that checks it; `app.py`: the FastAPI app, the API under `/api` (data only
+    rules in [docs/design/ui.md](docs/design/ui.md), section Server). `auth.py`: the token
+    and, for a connection that changes something, the Origin (`Guard.check`), the only
+    place that checks them; `app.py`: the FastAPI app, the API under `/api` (data only
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
     that is a page of the UI (its router shows it); `feed.py`: the change feed behind
     `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
     journal, read only), one hub per server, `reset` and resume, the derived fields;
     `models.py`: the API's models, one form for REST and the stream's items;
+    `terminals.py`: an agent's terminal WebSocket
+    (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
+    backpressure, close codes; the agents and history endpoints are in `app.py`;
     `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`.
@@ -242,7 +252,8 @@ the worker anyway and throws that work away. The supervisor does the same with t
 tool `finish_worker`. A worker of a flow run only has its window closed while the run is
 open: the worktree and branch belong to the run.
 
-`lado stop <session>` kills the session's tmux windows and marks it stopped; its history,
+`lado stop <session>` kills the session's tmux windows and marks it stopped, then closes the
+UI's terminals of its agents (their viewer sessions); its history,
 runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names
 are free again; `lado log` keeps what they did), and messages they never got or whose body
 they never read are dropped, with the count in the output: new agents start fresh.

@@ -20,9 +20,12 @@ a surface, it takes nothing away.
    it). Now: a token of the LADO_HOME, kept until `lado server --new-token`, checked on
    every API request (and later every WebSocket): a cookie named after the server's port
    (`lado_token_<port>`, so two LADO servers on one machine do not log each other out) or
-   `Authorization: Bearer <token>`. The Origin check comes with the first request that
-   changes something (gates, the composer), with its own test. Later the layer can be
-   replaced by a real login for a remote host without touching the rest.
+   `Authorization: Bearer <token>`. A connection that changes something is also checked
+   for its Origin (`Guard.check(conn, changes=True)`, for any HTTP connection: the
+   terminal's WebSocket now, gates and the composer later): only the server's own
+   `http://127.0.0.1:<port>` and `http://localhost:<port>`, and no Origin only with a Bearer
+   token (a client that is not a browser). Later the layer can be replaced by a real login
+   for a remote host without touching the rest.
 3. **One change feed: "changes after id N".** The UI learns about changes from one stream,
    never by polling lists. SQLite triggers write every insert, update and delete of the
    tables the UI shows (sessions, agents, messages, runs, gates, notes) to the journal
@@ -128,7 +131,8 @@ Decided in the live updates task (2026-10-03).
   API): `id: <journal id>`, `event: change`, `data: {kind, session, key, op, item}`.
   **`item` is the row as it is now, in the form of its REST model, or null when the row is
   gone, whatever `op` says**; the UI uses only `item`. A kind without a REST model yet
-  (agents, messages, runs, gates, notes until their tasks) has a null item. One table in
+  (messages, runs, gates, notes until their tasks) has a null item; an agent's is its
+  `AgentInfo`, as `GET /api/sessions/{name}/agents` gives it. One table in
   `feed.py`, `ALSO`, says which change also changes another item: a change of `agents`
   also sends the session's (it counts its agents). A comment line every 15 s keeps a quiet
   stream open.
@@ -159,6 +163,75 @@ Decided in the live updates task (2026-10-03).
   3 s from the latest journal id it got (`?after=`); after a 401 it shows how to get in and
   stops. While no stream is open the top bar says "reconnecting…" with the reason.
 
+### Terminal
+
+Decided in the agent terminal task (2026-10-03).
+
+- **The core** (`lado/terminal.py`): `open(session, agent, mode)` gives a `Terminal` (read
+  its output, write input, resize, follow the window's size, close; blocking, so the server
+  reads it in a thread), `history(session, agent, lines)` the window's last lines and
+  whether it shows the alternate screen, and both raise `NoTerminal` with the reason when
+  there is none (unknown agent, session stopped, window gone; later an agent over ACP).
+  `ended()` tells whether a terminal that ended is gone for good. tmux commands only in
+  `tmux.py`; in `server/` only the endpoints (`terminals.py`: the socket's protocol).
+- **A viewer per terminal**: a tmux session of its own whose only window is the agent's,
+  linked in (`link-window`), and one `tmux attach` client to it on a pty. The order:
+  `new-session` together with its labels in one tmux call (`@lado-viewer 1`,
+  `@lado-home <LADO_HOME>`, `@lado-session <session>`: it never exists without them), then
+  `link-window`, then its own shell window is killed, then its settings: `prefix None`,
+  `prefix2 None`, `status off`, `key-table lado-viewer` (a table of its own, only the wheel
+  bound; tmux's own tables are not changed), `mouse on` only in control. A viewer cannot
+  reach another agent's window. When the agent's window is gone (`lado stop` killed the
+  session already) the link fails: `NoTerminal`, and the viewer is removed.
+- **Never a read-only client**: with a read-only client attached, tmux takes it for the
+  client of LADO's own commands and refuses `send-keys` ("client is read-only"), so no
+  message would be delivered. View is enforced by the server (it never writes to a view's
+  pty) and the UI (it sends no input in view).
+- **Stop and cleanup**: `lado stop` kills the session's tmux session first, marks it
+  stopped, then kills its viewers (they hold the agents' windows); a start after the tmux
+  session is gone kills them too. A viewer's client then ends, and its socket closes for
+  good with `session "<name>" is stopped`. `kill-window` (finishing a worker) closes the
+  window in every session, so its viewer ends with it. The server, as it starts, removes
+  the viewers of its LADO_HOME a server that died left. Viewers are found only by their
+  labels, never by name: a LADO session named `lado-view-x` and another LADO_HOME's
+  viewers stay.
+- **The socket**: `/api/sessions/{name}/agents/{agent}/terminal?mode=view|control`.
+  Another Origin is refused before the upgrade (Principle 2); without the token the socket
+  opens only to say why. From the server: the output as binary frames, `{type: "size",
+  cols, rows}` (first, and in view when the window's size changes) and `{type: "error",
+  reason}`; from the browser `{type: "input", data}` and `{type: "resize", cols, rows}`,
+  only in control (in view, and for a frame it does not know, an error frame; the socket
+  stays open). Backpressure: the pty is read again only after the last output was sent.
+  Close codes: 44xx for good with the reason (4401 no token, 4400 unknown mode, 4404 no
+  terminal), shown, no reconnect; 45xx for now (4500 the terminal closed, 4503 lado.db of
+  another schema), the UI opens a new socket after 2 s.
+- **Modes**: the supervisor's terminal opens in control (the human's chat with it); the
+  others in view, and **Take control** asks first, **Release** goes back. In control tmux
+  sizes the window by the client active last (`window-size latest`, tmux's default): the
+  human's `lado attach` sees the window resized when the browser is the latest, and the
+  other way round. In view the client never sizes it: its pty always has the window's size,
+  which the server reads from tmux every second (`#{window_width}x#{window_height}`, tmux's
+  state, not the screen) and sends as a new `size`; xterm.js takes it, and the panel
+  scrolls when the window is larger. tmux's ignore-size flag also keeps a view out while
+  another client is attached.
+- **History**: in view the wheel up opens a read-only layer over the terminal (`GET
+  /api/sessions/{name}/agents/{agent}/history?lines=N`, tmux's history and the screen,
+  wrapped lines joined) with **Back to live ↓**; xterm.js keeps no scrollback. For an agent
+  whose CLI shows the alternate screen (`#{alternate_on}`: a full-screen TUI) the layer
+  says that its history is inside its CLI and to take control to scroll it. In control the
+  wheel goes to tmux: into copy-mode for a CLI that does not read the mouse (visible in the
+  human's tmux too; LADO's next delivered message leaves copy-mode, `tmux.send_text`), and
+  to the CLI itself when it reads the mouse (its own scrolling). Only shown: statuses still
+  come from hooks.
+- **What each CLI does** (checked by hand 2026-10-03, tmux 3.7): the fake agent and
+  Claude Code (2.1.288) with its default renderer write to the main screen, so their output
+  is in tmux's history: the layer shows it, the wheel in control scrolls in copy-mode.
+  Claude Code with `"tui": "fullscreen"` in the human's own settings (LADO's agents read
+  them too) and Kilo (7.8.1) run full screen and read the mouse: the layer shows the note,
+  the wheel in control goes to the CLI.
+- **Needs tmux 3.2** (`attach -f ignore-size`); `lado doctor` warns before it, and
+  `terminal.open` refuses with the reason.
+
 ## Structure
 
 Decided with the human in task 2 (2026-10-03): a frame for all the sections to come, all of
@@ -176,7 +249,12 @@ Sessions for now. The UI's texts are in English.
   marked, stopped ones dimmed), the selected session on the right: its name and status,
   the place for its gates (a placeholder until the Gates task), and the tabs
   **Activity | Agents | Flows | Artifacts**, each a placeholder naming the task that fills
-  it. `/sessions` with no name says "Select a session" (nothing is selected for the
+  it; Agents lists the agents live (name, role, provider, status) with **Open terminal**
+  until the Agents task builds the whole section. Under them, on every tab, the
+  **terminal panel** (Terminal above): docked at the bottom, collapsible, its height dragged
+  (or the arrow keys on its edge) and remembered in the browser; its tabs are Supervisor
+  (always, first) and the agents opened from Agents, each closed with ×. A hidden tab keeps
+  its socket, a closed one closes it. `/sessions` with no name says "Select a session" (nothing is selected for the
   human); a name `/api/sessions` does not know says "Session <name> not found" with a link
   to the list, and the address stays as it was.
 - **Needs you**: the gates of all sessions (Gates task); its count comes with it.
@@ -210,8 +288,9 @@ and the supervisor. Settle it when Activity is designed.
 ## Lessons from another orchestrator's UI
 
 Taken: one event stream with replay; localhost by default; sessions that need the human
-first; answer cards by gate kind; a web terminal over a grouped tmux session per viewer; the
-server serves the bundle.
+first; answer cards by gate kind; a web terminal through a tmux session per viewer (here
+not a grouped one: its viewer could reach every agent's window and `lado stop` would leave
+the windows alive; Terminal above); the server serves the bundle.
 
 Avoided: two dozen polling timers and id-only events followed by full refetches; writes
 that bypass the event bus; no token and a terminal WebSocket open to any local page; two
@@ -240,7 +319,7 @@ time. Each task is one `feature` run, useful on its own.
    so first what that needs, in this order: the live updates (the change feed, D3; done:
    The change feed above); the
    agent terminal in the browser (the supervisor's first: today's chat with it is its
-   terminal); Gates (Needs you with its count, the gate page, a browser notification);
+   terminal; done: Terminal above); Gates (Needs you with its count, the gate page, a browser notification);
    Agents; Flows. Then Activity, Providers and environment, the composer (D4) and the
    rest; later the desktop app. The placeholders link to these items:
 
@@ -265,7 +344,9 @@ A session's tab: its flow runs, their state, who acts and the notes of each step
 ### Gates
 
 The gate page (`/gates/<id>`), Needs you (the gates of all sessions, with a count in the
-rail) and the gates banner of a session.
+rail) and the gates banner of a session. Until this task gates show only in tmux (the
+popup opens on the clients of the session's own tmux session, never on a browser's
+viewer) and in `lado ls`: a human who works only in the browser does not see them.
 
 ### Artifacts
 

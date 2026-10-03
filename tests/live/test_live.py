@@ -13,7 +13,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import loop, providers, runs, runtime, state, tmux
+from lado import loop, providers, runs, runtime, state, terminal, tmux
 from lado.providers import base
 
 pytestmark = pytest.mark.live
@@ -303,6 +303,8 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     check_agent_config(live_provider, repo, worker)
     check_no_snapshots(live_provider, repo)
 
+    # The UI's terminal on w1, open while LADO delivers to it: a viewer must not stop that.
+    viewing = terminal.open(SESSION, "w1", terminal.VIEW)
     runtime.send_message(SESSION, "supervisor", "w1", FOLLOW_UP, FOLLOW_UP_BODY)
     wait_for(
         lambda: (FOLLOW_UP, state.READ) in messages("supervisor", "w1"),
@@ -310,15 +312,18 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
         120,
     )
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
+    check_terminal(viewing)
     check_log(live_provider, summary)
     check_clear(live_provider)
 
     finish_worker(repo, worker)
 
     processes = agent_processes()
+    supervisor = terminal.open(SESSION, "supervisor", terminal.CONTROL)
     runtime.stop_session(SESSION)
     assert not tmux.has_session(SESSION)
     check_gone(processes, "stop")
+    check_terminal_ended(supervisor)
     check_loop_ended()
     check_resume(live_provider, repo)
     # Kilo updates itself unless told not to; LADO's agents must not (the Kilo provider
@@ -326,6 +331,28 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     if live_provider == "kilo":
         assert cli_version(live_provider) == version
     print(f"{live_provider}: {time.monotonic() - started:.0f}s")
+
+
+def check_terminal(term: terminal.Terminal) -> None:
+    """The terminal showed the agent's screen; its history answers, full screen or not."""
+    shown = b""
+    while (chunk := term.read(0.5)) not in (None, b""):
+        shown += chunk
+    assert shown, "the terminal showed nothing"
+    found = terminal.history(SESSION, term.agent, 200)
+    assert found.alternate or found.text.strip()
+    print(f"{term.agent}: full screen {found.alternate}")
+    term.close()
+
+
+def check_terminal_ended(term: terminal.Terminal) -> None:
+    """A terminal open at `lado stop` ends, and no viewer of the session is left."""
+    deadline = time.monotonic() + 10
+    while term.read() is not None:
+        assert time.monotonic() < deadline, "the terminal did not end at stop"
+    assert str(terminal.ended(SESSION, "supervisor")) == f'session "{SESSION}" is stopped'
+    term.close()
+    assert terminal.close_viewers(SESSION) == []
 
 
 def check_clear(provider: str) -> None:

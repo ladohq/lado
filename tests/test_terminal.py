@@ -1,6 +1,6 @@
 """An agent's terminal for the UI (lado.terminal): the viewer session's tmux commands, which
 viewers a cleanup takes, and the order of `lado stop`. With real tmux and processes:
-tests/integration/test_terminal.py."""
+tests/integration/test_agent_terminal.py."""
 
 import pytest
 
@@ -95,7 +95,6 @@ def test_no_terminal_for_an_unknown_agent_or_a_stopped_session(agent_session, co
 
 
 def test_cleanup_takes_only_viewers_labelled_with_this_lado_home(monkeypatch, commands):
-    # Unit level: tmux's answer is made up. The real tmux: tests/integration/test_terminal.py.
     home = str(state.home().resolve())
     listed = [
         ["lado-view-1", "1", home, "s"],

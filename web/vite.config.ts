@@ -7,6 +7,8 @@ export default defineConfig({
   build: {
     outDir: "../src/lado/server/static",
     emptyOutDir: true,
+    chunkSizeWarningLimit: 800, // xterm.js is about 300 kB of it
+
   },
   test: {
     environment: "jsdom",

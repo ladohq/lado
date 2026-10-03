@@ -1,6 +1,6 @@
 """An agent's terminal for the UI (lado.terminal) with real tmux and the fake agent: the
 viewer session, input and sizes, history, and that `lado stop` and finishing a worker leave
-no viewer and no agent behind. Through the UI server's WebSocket: test_terminal_socket.py."""
+no viewer and no agent behind. Through the UI server's WebSocket: test_agent_terminal_socket.py."""
 
 import json
 import os
@@ -166,6 +166,16 @@ def test_the_wheel_in_control_scrolls_tmux_history_of_a_plain_cli(repo, opened):
     term.write(WHEEL_UP)
     # copy-mode of the pane: the human's tmux shows it too.
     wait_for(lambda: pane(f"={SESSION}:=supervisor", "#{pane_in_mode}") == "1", "copy-mode")
+
+
+def test_the_wheel_in_control_goes_to_a_full_screen_cli_that_reads_the_mouse(repo, opened):
+    start(repo)
+    term = opened("supervisor", "control")
+    term.write(b"fullscreen\r")
+    output(term, "full screen")
+    term.write(WHEEL_UP + b"\r")
+    wait_for(lambda: any("\x1b[<64;" in str(i) for i in inputs("supervisor")), "the wheel")
+    assert pane(f"={SESSION}:=supervisor", "#{pane_in_mode}") == "0"
 
 
 def test_history_gives_the_windows_past_lines_and_says_when_it_is_full_screen(repo):

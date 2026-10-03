@@ -49,3 +49,26 @@ export function storedRailCollapsed(): boolean {
 export function storeRailCollapsed(collapsed: boolean): void {
   write(RAIL, collapsed ? "collapsed" : "expanded");
 }
+
+// The terminal panel of a session page: collapsed or not, and its height in pixels.
+const PANEL = "lado.terminals";
+export const PANEL_HEIGHT = { initial: 320, min: 160, max: 900 };
+
+export type PanelPrefs = { collapsed: boolean; height: number };
+
+export function storedPanel(): PanelPrefs {
+  try {
+    const found = JSON.parse(read(PANEL) ?? "{}");
+    const height = Number(found.height);
+    return {
+      collapsed: found.collapsed === true,
+      height: height >= PANEL_HEIGHT.min && height <= PANEL_HEIGHT.max ? height : PANEL_HEIGHT.initial,
+    };
+  } catch {
+    return { collapsed: false, height: PANEL_HEIGHT.initial };
+  }
+}
+
+export function storePanel(panel: PanelPrefs): void {
+  write(PANEL, JSON.stringify(panel));
+}

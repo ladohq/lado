@@ -115,6 +115,30 @@ def test_popup_opens_on_the_clients_attached_to_the_session(tmp_path):
     assert tmux.popup(session, "gone", ["true"], {}) == 0
 
 
+def test_a_command_that_meets_an_ending_server_runs_once_more(monkeypatch):
+    answers = [tmux.TmuxError("server exited unexpectedly"), "ok"]
+    calls = []
+
+    def once(args, input):
+        calls.append(args)
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(tmux, "_run_once", once)
+    monkeypatch.setattr(tmux, "SERVER_ENDED_WAIT", 0)
+    assert tmux.run("new-session", "-d") == "ok"
+    assert calls == [["new-session", "-d"]] * 2
+    monkeypatch.setattr(
+        tmux,
+        "_run_once",
+        lambda args, input: (_ for _ in ()).throw(tmux.TmuxError("can't find session: x")),
+    )
+    with pytest.raises(tmux.TmuxError, match="can't find session"):
+        tmux.run("has-session")
+
+
 def _windows(session):
     return tmux.run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
 

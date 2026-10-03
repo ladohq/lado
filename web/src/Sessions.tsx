@@ -1,10 +1,11 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
 // session on the right with the place for its gates and its tabs.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router";
 
-import type { SessionStatus } from "./api";
-import { useLive, type Loaded } from "./live";
+import type { SessionInfo, SessionStatus } from "./api";
+import { useLive, useLiveStore, type Loaded } from "./live";
+import { SUPERVISOR, TerminalPanel, useOpenTerminal } from "./Terminals";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
 import { Placeholder } from "./Placeholder";
@@ -120,6 +121,15 @@ function SessionTab({ name, tab, loaded }: { name: string; tab: Tab; loaded: Loa
     );
   }
   return (
+    // The panel keeps its terminals while the tabs change: keyed by the session only.
+    <TerminalPanel key={name} session={name}>
+      <SessionView name={name} tab={tab} session={session} />
+    </TerminalPanel>
+  );
+}
+
+function SessionView({ name, tab, session }: { name: string; tab: Tab; session: SessionInfo }) {
+  return (
     <section className="session" aria-label={`Session ${name}`}>
       <header className="session-head">
         <h2>{name}</h2>
@@ -143,9 +153,70 @@ function SessionTab({ name, tab, loaded }: { name: string; tab: Tab; loaded: Loa
           </Link>
         ))}
       </nav>
-      <Placeholder title={TAB_NAMES[tab]} plan={PLANS[tab]} level={3}>
-        {TAB_TEXT[tab]}
-      </Placeholder>
+      {tab === "agents" ? (
+        <Agents session={name} />
+      ) : (
+        <Placeholder title={TAB_NAMES[tab]} plan={PLANS[tab]} level={3}>
+          {TAB_TEXT[tab]}
+        </Placeholder>
+      )}
     </section>
+  );
+}
+
+// The session's agents, live: their roles, providers and status, and their terminals.
+// The full section (branches, worktrees, what each works on) is the Agents task's.
+function Agents({ session }: { session: string }) {
+  const live = useLiveStore();
+  const loaded = useLive().agents[session] ?? null;
+  const openTerminal = useOpenTerminal();
+  useEffect(() => live.watchAgents(session), [live, session]);
+
+  if (loaded === null) return <p className="muted">Loading…</p>;
+  if ("error" in loaded) {
+    return (
+      <p className="problem" role="alert">
+        {loaded.error}
+      </p>
+    );
+  }
+  return (
+    <table className="agents" aria-label={`Agents of ${session}`}>
+      <thead>
+        <tr>
+          <th scope="col">Agent</th>
+          <th scope="col">Role</th>
+          <th scope="col">Provider</th>
+          <th scope="col">Status</th>
+          <th scope="col">Terminal</th>
+        </tr>
+      </thead>
+      <tbody>
+        {loaded.agents.map((agent) => (
+          <tr key={agent.name}>
+            <td className="agent-name">{agent.name}</td>
+            <td>{agent.role}</td>
+            <td>{agent.provider}</td>
+            <td>
+              <span className={`status agent-${agent.status}`}>{agent.status}</span>
+            </td>
+            <td>
+              {agent.name === SUPERVISOR ? (
+                <span className="muted">in the panel</span>
+              ) : (
+                <button
+                  type="button"
+                  className="quiet"
+                  aria-label={`Open ${agent.name}'s terminal`}
+                  onClick={() => openTerminal(agent.name)}
+                >
+                  Open terminal
+                </button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

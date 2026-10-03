@@ -2,13 +2,22 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { SessionInfo } from "./api";
+import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
+import { FakeSocket } from "./fakes";
+
+// A session's page has the terminal panel (Terminals.test.tsx): no canvas, no server here.
+vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
+vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 3 },
   { name: "my app.v2", repo: "/src/app", status: "stopped", agents: 0 },
   { name: "old", repo: "/src/old", status: "loop_down", agents: 0 },
+];
+
+const AGENTS: AgentInfo[] = [
+  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle" },
 ];
 
 // The API: /api/sessions answers `status` and `body`; a request for the event stream (the
@@ -18,6 +27,9 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (path.startsWith("/api/events")) {
       const answer = events ?? { status, body: status === 200 ? "" : body };
       return new Response(JSON.stringify(answer.body), { status: answer.status });
+    }
+    if (path === "/api/sessions/lado/agents") {
+      return new Response(JSON.stringify(AGENTS), { status: 200 });
     }
     expect(path).toBe("/api/sessions");
     return new Response(JSON.stringify(body), { status });
@@ -113,6 +125,7 @@ beforeEach(() => {
   FakeEventSource.all = [];
   FakeEventSource.autoStart = true;
   vi.stubGlobal("EventSource", FakeEventSource);
+  vi.stubGlobal("WebSocket", FakeSocket);
 });
 
 afterEach(() => {
@@ -300,8 +313,8 @@ test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address"
   open("/sessions/lado/flows");
   const view = await screen.findByRole("region", { name: "Session lado" });
   expect(within(view).getByRole("region", { name: "Flows" })).toBeTruthy();
-  fireEvent.click(within(view).getByRole("link", { name: "Agents" }));
-  expect(within(view).getByRole("region", { name: "Agents" })).toBeTruthy();
+  fireEvent.click(within(view).getByRole("link", { name: "Activity" }));
+  expect(within(view).getByRole("region", { name: "Activity" })).toBeTruthy();
   expect(within(view).getByRole("link", { name: "Agents" }).getAttribute("href")).toBe(
     "/sessions/lado/agents",
   );
@@ -397,6 +410,25 @@ test("a change of another kind leaves the sessions alone", async () => {
   await within(list).findByRole("link", { name: /lado/ });
   stream().send("change", { kind: "messages", session: "lado", key: "4", op: "insert", item: null }, "11");
   expect(within(list).getAllByRole("link")).toHaveLength(3);
+});
+
+test("the Agents tab follows the agents' changes; a reset loads them again", async () => {
+  const fetch = serve();
+  open("/sessions/lado/agents");
+  const table = await screen.findByRole("table", { name: "Agents of lado" });
+  await within(table).findByText("in the panel"); // the supervisor's row
+  const agent = (name: string, status: string) => ({ name, role: "developer", provider: "kilo", status });
+  stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "insert", item: agent("w1", "starting") }, "11");
+  expect(within(table).getByText("starting")).toBeTruthy();
+  stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "update", item: agent("w1", "busy") }, "12");
+  expect(within(table).getByText("busy")).toBeTruthy();
+  stream().send("change", { kind: "agents", session: "other", key: "w1", op: "insert", item: agent("w1", "idle") }, "13");
+  stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "delete", item: null }, "14");
+  expect(within(table).queryByText("w1")).toBeNull();
+  const loads = () => fetch.mock.calls.filter(([path]) => path === "/api/sessions/lado/agents").length;
+  const before = loads();
+  stream().send("reset", {}, "20");
+  await waitFor(() => expect(loads()).toBe(before + 1));
 });
 
 test("reconnecting shows in the top bar while the stream is down", async () => {

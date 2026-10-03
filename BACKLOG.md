@@ -321,3 +321,35 @@ Wanted: a read-only connection in `state.py` for readers (the server, `loop.why_
 refuses another schema itself. Related: "Flaky: integration test of the migration refusal
 under a running session".
 Found: 2026-10-03, architect's review of the live updates design (feature/ui-live-updates).
+
+## A human who works only in the browser does not see gates
+
+The gate popup (`tmux.popup`) opens only on the clients of the session's own tmux session;
+a browser's terminal is a client of a viewer session, so it never shows the popup, and the
+UI has no gates yet. A human who left tmux for the UI misses a waiting gate until they look
+at `lado ls`. docs/design/ui.md (Tasks, Gates) says so for now.
+Wanted: the Gates task shows gates in the UI (Needs you, the gate page) and notifies the
+browser.
+Found: 2026-10-03, architect's review of the agent terminal design (feature/ui-agent-terminal).
+
+## A terminal viewer outlives a UI server that is killed
+
+A viewer tmux session (lado/terminal.py) cannot be made with `destroy-unattached on`: tmux
+destroys an unattached session at once, before its client attaches. So when the UI server is
+killed (SIGKILL, a crash), its viewers stay and keep the agents' windows linked, until the
+next server start or `lado stop` removes them by their labels. Meanwhile `lado ls` and tmux
+show extra `lado-view-*` sessions.
+Wanted: viewers go with their server: set `destroy-unattached` once the client is attached,
+or have `lado ls` and the session loop remove viewers whose server is not running.
+Found: 2026-10-03, implement of feature/ui-agent-terminal.
+
+## Agents read the human's own Claude Code settings, which change how they behave
+
+LADO gives Claude Code its settings with `--settings`, but Claude Code still reads the
+human's `~/.claude/settings.json`. With `"tui": "fullscreen"` there, every LADO agent runs
+full screen (alternate screen, mouse tracking): its output is not in tmux's history, and the
+UI's history layer can only say so. Hooks and permissions set there apply to agents as well.
+Wanted: decide which of the human's settings an agent should get, and say so in
+`lado doctor` (e.g. warn that agents run full screen), or pin what LADO depends on (the
+renderer) in the agent's own settings.
+Found: 2026-10-03, prototype of the history in implement of feature/ui-agent-terminal.

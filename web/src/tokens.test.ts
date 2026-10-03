@@ -56,6 +56,7 @@ const PAIRS = [
   ["muted", "raised"],
   ["on-action", "action"],
   ["human", "human-ground"],
+  ["term-ink", "term-ground"],
 ] as const;
 
 test.each([

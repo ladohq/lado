@@ -16,6 +16,8 @@ DEFAULT_SOCKET = "lado"
 TIMEOUT = 10
 POPUP_WIDTH, POPUP_HEIGHT = "80%", "60%"
 POPUP_BORDER, POPUP_BORDER_STYLE = "rounded", "fg=colour214"  # a soft orange
+SERVER_ENDED = "server exited unexpectedly"  # tmux's error for a server that was exiting
+SERVER_ENDED_WAIT = 0.2  # seconds before such a command runs again
 POPUP_VERSION = (3, 2)  # display-popup
 POPUP_BORDER_VERSION = (3, 3)  # its -b and -S; older tmux refuses the popup with them
 
@@ -66,6 +68,19 @@ def run_chain(*commands: list[str]) -> str:
 
 
 def _run(args: list[str], input: str | None = None) -> str:
+    try:
+        return _run_once(args, input)
+    except TmuxError as error:
+        # The server was ending as the command came (its last session was just killed, as
+        # `lado start` does to a gone session's UI viewers): it ran nothing. Once more, on
+        # a new server.
+        if str(error) != SERVER_ENDED:
+            raise
+        time.sleep(SERVER_ENDED_WAIT)
+        return _run_once(args, input)
+
+
+def _run_once(args: list[str], input: str | None) -> str:
     cmd = ["tmux", "-L", socket(), *args]
     try:
         result = subprocess.run(

@@ -500,6 +500,290 @@ h3 {
   outline-offset: 1px;
 }
 
+/* A session's agents (the Agents tab, for now its terminals). */
+.agents {
+  width: 100%;
+  max-width: 820px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.agents th {
+  padding: 6px 12px 6px 0;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 13px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.agents td {
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.agent-name {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.agent-stopped,
+.agent-starting {
+  color: var(--muted);
+}
+
+.agent-waiting {
+  color: var(--human);
+}
+
+.quiet {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.quiet:hover {
+  background: var(--raised);
+}
+
+/* The terminal panel, docked under a session's page: the page fills the window so the
+   panel sits at its bottom, and stays there while the page scrolls. */
+.session-detail {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 52px - 56px);
+}
+
+.terminals {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+  padding-top: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 -8px 24px var(--shadow);
+}
+
+.session + .terminals {
+  margin-top: 24px;
+}
+
+.term-handle {
+  height: 7px;
+  margin-bottom: -4px;
+  border-radius: 8px 8px 0 0;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.term-handle:hover,
+.term-handle:focus-visible {
+  box-shadow: inset 0 2px 0 var(--action);
+}
+
+.terminals-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.terminals.collapsed .terminals-bar {
+  border-bottom: 0;
+}
+
+.term-tabs {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.term-tab {
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.term-tab[data-active] {
+  border-bottom-color: var(--action);
+}
+
+.term-tab [role="tab"] {
+  padding: 9px 10px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 13px var(--mono);
+}
+
+.term-tab[data-active] [role="tab"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.term-close {
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.term-close:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.term-collapse {
+  margin-left: auto;
+}
+
+.term-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.term-body[hidden] {
+  display: none;
+}
+
+.term {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.term-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.term-mode {
+  font-weight: 600;
+}
+
+.term-view {
+  color: var(--muted);
+}
+
+.term-link {
+  min-width: 0;
+  color: var(--muted);
+}
+
+.term-link-closed {
+  color: var(--ink);
+}
+
+.term-notice {
+  padding-left: 8px;
+  border-left: 2px solid var(--ink);
+}
+
+.term-tools .quiet {
+  margin-left: auto;
+}
+
+.term-ask {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 12px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--action);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.term-ask p {
+  flex: 1 1 320px;
+  margin: 0;
+}
+
+.term-screen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--term-ground);
+}
+
+.term-xterm {
+  height: 100%;
+  padding: 6px 0 0 10px;
+  background: var(--term-ground);
+  color: var(--term-ink);
+}
+
+/* No scrollback in xterm.js (the history is tmux's): its scrollbar would only be an empty
+   strip. */
+.term-xterm .xterm .scrollbar {
+  display: none;
+}
+
+/* The history, read only, over the live terminal. */
+.term-history {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+
+.term-history-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.term-history-bar h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.term-history pre {
+  flex: 1;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: auto;
+  font: 13px/1.45 var(--mono);
+}
+
+.term-history-note,
+.term-history .muted {
+  margin: 0;
+  padding: 16px 12px;
+  max-width: 68ch;
+}
+
 @media (max-width: 760px) {
   .content {
     padding: 20px 16px;

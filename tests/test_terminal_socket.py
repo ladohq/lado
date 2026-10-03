@@ -1,7 +1,7 @@
 """An agent's terminal through the UI server (lado.server.terminals): who may open the
 WebSocket (token and Origin), its frames, backpressure and how it ends; the history and the
 agents endpoints. In process with FastAPI's test client and a made-up terminal; with real tmux
-and the fake agent: tests/integration/test_terminal_socket.py."""
+and the fake agent: tests/integration/test_agent_terminal_socket.py."""
 
 import asyncio
 import json

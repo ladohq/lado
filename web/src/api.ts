@@ -37,7 +37,18 @@ async function get<T>(path: string): Promise<T> {
   return (await answer.json()) as T;
 }
 
+export type AgentInfo = components["schemas"]["AgentInfo"];
+export type History = components["schemas"]["History"];
+
 export const getSessions = () => get<SessionInfo[]>("/api/sessions");
+
+const agentsPath = (session: string) => `/api/sessions/${encodeURIComponent(session)}/agents`;
+
+export const getAgents = (session: string) => get<AgentInfo[]>(agentsPath(session));
+
+// The agent's window: its last lines and whether it shows a full-screen program.
+export const getHistory = (session: string, agent: string, lines = 2000) =>
+  get<History>(`${agentsPath(session)}/${encodeURIComponent(agent)}/history?lines=${lines}`);
 
 // Why the server refuses the event stream at `path`: an ApiError, or nothing when it would
 // open now. Reads only the answer's head; an open stream is closed at once.

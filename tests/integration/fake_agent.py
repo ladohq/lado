@@ -19,7 +19,8 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
                        next input as the answer (logged as {"answer": <text>})
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     lines <n>          print the lines "line 1" to "line <n>"
-    fullscreen         switch to the alternate screen, as a full-screen CLI does
+    fullscreen         switch to the alternate screen and read the mouse, as a full-screen
+                       CLI does
     exit               end the session
 A typed "switch <seconds>" is no input but a command of the CLI itself, like Claude Code's
 /resume: the agent leaves its conversation, takes that long to pick another, and goes on in
@@ -179,7 +180,7 @@ def work(text: str) -> bool:
         elif command[0] == "lines":
             print("\n".join(f"line {n}" for n in range(1, int(command[1]) + 1)), flush=True)
         elif command[0] == "fullscreen":
-            print("\x1b[?1049h\x1b[Hfull screen", flush=True)
+            print("\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[Hfull screen", flush=True)
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
         elif command[0] == "finish":

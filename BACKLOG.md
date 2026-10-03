@@ -461,3 +461,24 @@ advance happened. A test race, not a LADO bug: queued messages go together by de
 Wanted: the test waits for the command among the lines of the latest input, or for the
 run's state.
 Found: 2026-10-03, `make check` of feature/needs-you (visit 2).
+
+## Kits do not declare the sources they need
+
+A kit's skills and roles come from kit sources registered apart, in
+`LADO_HOME/sources.yaml` (`lado sources`). A kit cannot say which sources, at which
+versions, it needs, so it is not self-contained: the same kit can behave differently on
+another machine.
+Wanted (the human's idea, 2026-10-04): a kit declares its sources and their versions in
+its own definition, and LADO resolves them. To design on its own, with "A kit cannot say
+which LADO it needs". The UI's Launch lists kits by name, version and description only, so
+it does not wait for this.
+Found: 2026-10-04, design of feature/launch.
+
+## `lado stop` kills agents without a graceful exit
+
+`lado stop` (and Stop in the UI) kills the session's tmux windows at once. An agent CLI
+gets no chance to end its turn or save its state.
+Wanted: send each provider's own exit command first, wait a bounded time, then kill what
+is left, and say which agents had to be killed. Seen in another orchestrator, where slow
+agents were killed too early until a delay was added.
+Found: 2026-10-04, design of feature/launch.

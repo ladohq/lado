@@ -149,7 +149,7 @@
     "/api/sessions/{name}/messages": {
       "get": {
         "summary": "Messages",
-        "description": "The session's messages from and to `with`, the human: the chat, oldest first.",
+        "description": "The session's messages, oldest first; with `with`, only those from and to it\n(the human: the chat).",
         "operationId": "messages_api_sessions__name__messages_get",
         "parameters": [
           {
@@ -164,10 +164,17 @@
           {
             "name": "with",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "const": "human",
-              "type": "string",
+              "anyOf": [
+                {
+                  "const": "human",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "With"
             }
           }
@@ -231,6 +238,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/events": {
+      "get": {
+        "summary": "Run Events",
+        "description": "What happened to the session's flow runs, oldest first.",
+        "operationId": "run_events_api_sessions__name__events_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunEventInfo"
+                  },
+                  "title": "Response Run Events Api Sessions  Name  Events Get"
                 }
               }
             }
@@ -444,6 +495,28 @@
               "stopped"
             ],
             "title": "Status"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
           }
         },
         "type": "object",
@@ -451,7 +524,9 @@
           "name",
           "role",
           "provider",
-          "status"
+          "status",
+          "run",
+          "task"
         ],
         "title": "AgentInfo"
       },
@@ -702,6 +777,45 @@
         "title": "MessageText",
         "description": "The human's text from the composer."
       },
+      "RunEventInfo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "run": {
+            "type": "string",
+            "title": "Run"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "run",
+          "kind",
+          "actor",
+          "detail",
+          "created_at"
+        ],
+        "title": "RunEventInfo",
+        "description": "What happened to a flow run: its start, a transition, a gate, its end."
+      },
       "Sent": {
         "properties": {
           "result": {
@@ -731,6 +845,9 @@
           "agents": {
             "type": "integer",
             "title": "Agents"
+          },
+          "waiting": {
+            "$ref": "#/components/schemas/Waiting"
           }
         },
         "type": "object",
@@ -738,7 +855,8 @@
           "name",
           "repo",
           "status",
-          "agents"
+          "agents",
+          "waiting"
         ],
         "title": "SessionInfo"
       },
@@ -792,6 +910,30 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "Waiting": {
+        "properties": {
+          "gates": {
+            "type": "integer",
+            "title": "Gates"
+          },
+          "questions": {
+            "type": "integer",
+            "title": "Questions"
+          },
+          "agents": {
+            "type": "integer",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gates",
+          "questions",
+          "agents"
+        ],
+        "title": "Waiting",
+        "description": "What in a session waits for the human: the one definition of \"needs you\"."
       }
     }
   }

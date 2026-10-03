@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -122,17 +122,28 @@ JOURNALED = {
     "runs": "{row}.name",
     "gates": "{row}.id",
     "notes": "{row}.id",
+    "events": "{row}.id",  # from version 14 on: run events only (RUN_EVENT)
 }
+ALL_OPS = ("insert", "update", "delete")
+# The writes of a table that are recorded, where not all are: an event is never changed,
+# and goes only with its session.
+JOURNALED_OPS = {"events": ("insert",)}
 # Every hook sets agents.seen_at, which the UI does not show: an update that changes it is
 # not a change. Only `seen` writes seen_at, and nothing else with it; so the condition names
 # no other column, and a column added later is recorded without a new trigger (a trigger
 # stays in lado.db as it was made).
 AGENTS_CHANGED = "OLD.seen_at IS NEW.seen_at"
+# Only a flow run's events are shown as such (the feed's lines); an agent's status event
+# would double the journal, as its agents row is recorded already. The condition, too,
+# stays in lado.db as the trigger was made.
+RUN_EVENT = "NEW.run IS NOT NULL"
+# The condition of a trigger, where there is one.
+JOURNAL_WHEN = {("agents", "update"): AGENTS_CHANGED, ("events", "insert"): RUN_EVENT}
 
 
 def _journal_trigger(table: str, op: str) -> str:
     row = "OLD" if op == "delete" else "NEW"
-    when = f" WHEN {AGENTS_CHANGED}" if (table, op) == ("agents", "update") else ""
+    when = f" WHEN {JOURNAL_WHEN[table, op]}" if (table, op) in JOURNAL_WHEN else ""
     key = JOURNALED[table].format(row=row)
     return (
         f"CREATE TRIGGER IF NOT EXISTS changes_{table}_{op} AFTER {op.upper()} ON {table}"
@@ -142,10 +153,16 @@ def _journal_trigger(table: str, op: str) -> str:
     )
 
 
+def _journal_triggers(table: str) -> list[str]:
+    return [_journal_trigger(table, op) for op in JOURNALED_OPS.get(table, ALL_OPS)]
+
+
+# The journal as version 12 made it, and the run events version 14 added to it.
+EVENTS_JOURNAL = _journal_triggers("events")
 JOURNAL = [
     CHANGES,
     CHANGES_TRIM,
-    *(_journal_trigger(t, op) for t in JOURNALED for op in ("insert", "update", "delete")),
+    *(trigger for t in JOURNALED if t != "events" for trigger in _journal_triggers(t)),
 ]
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
@@ -218,6 +235,7 @@ SCHEMA += (
             NOTES,
             *JOURNAL,
             *MESSAGES_HUMAN,
+            *EVENTS_JOURNAL,
         ]
     )
     + ";\n"
@@ -250,6 +268,7 @@ MIGRATIONS = {
     10: [NOTES],
     11: JOURNAL,
     12: MESSAGES_HUMAN,
+    13: EVENTS_JOURNAL,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -782,6 +801,27 @@ def list_events(session: str, after: int = 0) -> list[Event]:
     return [Event(*r) for r in rows]
 
 
+def run_events(session: str) -> list[Event]:
+    """The session's flow run events, oldest first."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id, agent, kind, detail, created_at, run FROM events"
+            " WHERE session = ? AND run IS NOT NULL ORDER BY id",
+            (session,),
+        ).fetchall()
+    return [Event(*r) for r in rows]
+
+
+def get_event(session: str, event_id: int) -> Event | None:
+    with connect() as db:
+        row = db.execute(
+            "SELECT id, agent, kind, detail, created_at, run FROM events"
+            " WHERE session = ? AND id = ?",
+            (session, event_id),
+        ).fetchone()
+    return Event(*row) if row else None
+
+
 def add_run(run: Run, events: list[tuple[str, str, str]], opens: Gate | None = None) -> None:
     """Store a new run, its events (actor, kind, detail) and the gate it waits at, if
     any, in one transaction."""
@@ -971,6 +1011,20 @@ def open_gates(session: str | None = None) -> list[Gate]:
             (session, session),
         ).fetchall()
     return [_gate(r) for r in rows]
+
+
+def waiting_for_human(session: str) -> tuple[int, int, int]:
+    """What in the session waits for the human: its open gates, its open questions to the
+    human and its agents in `waiting`."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT (SELECT count(*) FROM gates WHERE session = ? AND answer IS NULL),"
+            " (SELECT count(*) FROM messages WHERE session = ? AND kind = ?"
+            " AND question_state = ?),"
+            " (SELECT count(*) FROM agents WHERE session = ? AND status = ?)",
+            (session, session, QUESTION, OPEN_QUESTION, session, WAITING),
+        ).fetchone()
+    return row[0], row[1], row[2]
 
 
 def open_gate(session: str, run: str) -> Gate | None:

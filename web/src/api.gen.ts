@@ -85,7 +85,8 @@ export interface paths {
         };
         /**
          * Messages
-         * @description The session's messages from and to `with`, the human: the chat, oldest first.
+         * @description The session's messages, oldest first; with `with`, only those from and to it
+         *     (the human: the chat).
          */
         get: operations["messages_api_sessions__name__messages_get"];
         put?: never;
@@ -95,6 +96,26 @@ export interface paths {
          *     the same queue and delivery as an agent's message.
          */
         post: operations["write_api_sessions__name__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Events
+         * @description What happened to the session's flow runs, oldest first.
+         */
+        get: operations["run_events_api_sessions__name__events_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -179,6 +200,10 @@ export interface components {
              * @enum {string}
              */
             status: "starting" | "busy" | "idle" | "waiting" | "stopped";
+            /** Run */
+            run: string | null;
+            /** Task */
+            task: string | null;
         };
         /** Answer */
         Answer: {
@@ -261,6 +286,24 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * RunEventInfo
+         * @description What happened to a flow run: its start, a transition, a gate, its end.
+         */
+        RunEventInfo: {
+            /** Id */
+            id: number;
+            /** Run */
+            run: string;
+            /** Kind */
+            kind: string;
+            /** Actor */
+            actor: string;
+            /** Detail */
+            detail: string;
+            /** Created At */
+            created_at: string;
+        };
         /** Sent */
         Sent: {
             /** Result */
@@ -275,6 +318,7 @@ export interface components {
             status: components["schemas"]["SessionStatus"];
             /** Agents */
             agents: number;
+            waiting: components["schemas"]["Waiting"];
         };
         /**
          * SessionStatus
@@ -294,6 +338,18 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * Waiting
+         * @description What in a session waits for the human: the one definition of "needs you".
+         */
+        Waiting: {
+            /** Gates */
+            gates: number;
+            /** Questions */
+            questions: number;
+            /** Agents */
+            agents: number;
         };
     };
     responses: never;
@@ -410,8 +466,8 @@ export interface operations {
     };
     messages_api_sessions__name__messages_get: {
         parameters: {
-            query: {
-                with: "human";
+            query?: {
+                with?: "human" | null;
             };
             header?: never;
             path: {
@@ -463,6 +519,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_events_api_sessions__name__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunEventInfo"][];
                 };
             };
             /** @description Validation Error */

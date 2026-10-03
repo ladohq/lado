@@ -93,9 +93,10 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
     held = loop.take_lock("s")
     answer = authorized(client).get("/api/sessions")
     held.close()
+    none = {"gates": 0, "questions": 0, "agents": 0}
     assert answer.json() == [
-        {"name": "s", "repo": str(repo), "status": "running", "agents": 1},
-        {"name": "t", "repo": str(repo), "status": "stopped", "agents": 0},
+        {"name": "s", "repo": str(repo), "status": "running", "agents": 1, "waiting": none},
+        {"name": "t", "repo": str(repo), "status": "stopped", "agents": 0, "waiting": none},
     ]
 
 

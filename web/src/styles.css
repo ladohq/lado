@@ -575,10 +575,13 @@ h3 {
   font-weight: 400;
 }
 
+/* The name and status, then the actions; in a narrow column the actions go to a line of
+   their own rather than cut the name. */
 .session-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 14px;
+  gap: 6px 14px;
   margin-bottom: 10px;
 }
 
@@ -586,10 +589,14 @@ h3 {
   flex: none;
 }
 
+/* One line; a name longer than the row ends in "…", whole in its title. */
 .session-head h2 {
   min-width: 0;
+  max-width: 100%;
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .tabs {

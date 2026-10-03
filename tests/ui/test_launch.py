@@ -114,6 +114,10 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
 def test_forget_a_stopped_session(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")
+    # The name stays on one line beside the status and Resume…, its whole text in a tooltip.
+    name = page.get_by_role("region", name=f"Session {session}").locator(".session-head h2")
+    expect(name).to_have_attribute("title", session)
+    assert name.bounding_box()["height"] < 36
     page.get_by_role("button", name="Session actions").click()
     page.get_by_role("menuitem", name="Forget…").click()
     asked = page.get_by_role("dialog", name=f'Forget session "{session}"?')

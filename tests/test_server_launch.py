@@ -308,6 +308,23 @@ def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
     assert started["session"]["status"] != "stopped"
 
 
+def test_an_empty_list_of_kits_is_refused_not_replaced(client, repo, fake_tmux):
+    answer = launch(client, repo, kits=[])
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        "a session needs at least one kit",
+    )
+    assert client.get("/api/sessions").json() == []
+    runtime.start_session(str(repo), "s", None, kit_names=["default"])
+    runtime.stop_session("s")
+    answer = client.post("/api/sessions/s/resume", json={"kits": []})
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        "a session needs at least one kit",
+    )
+    assert state.get_session("s").stopped_at
+
+
 def test_a_resume_of_an_unknown_session_is_404(client, repo, fake_tmux):
     runtime.start_session(str(repo), "other", None)
     assert client.post("/api/sessions/s/resume", json={}).status_code == 404

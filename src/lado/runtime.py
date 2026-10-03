@@ -202,6 +202,8 @@ def start_session(
 
     `resume` is what the caller means: False a new session (SessionExists when the name is
     taken), True a resume (NoSuchSession for an unknown name); None, as `lado start`, either."""
+    if kit_names is not None and not kit_names:
+        raise LadoError("a session needs at least one kit")  # not silently the default
     repo = check_repo(path)
     session = slug(name or Path(repo).name)
     old = state.get_session(session)

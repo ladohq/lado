@@ -244,7 +244,7 @@ function SessionView({ name, tab, session }: { name: string; tab: Tab; session: 
   return (
     <section className="session" aria-label={`Session ${name}`}>
       <header className="session-head">
-        <h2>{name}</h2>
+        <h2 title={name}>{name}</h2>
         <Status status={session.status} />
         <SessionActions session={session} place="head" />
       </header>

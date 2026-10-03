@@ -278,6 +278,15 @@ test("kits start as the default kit; an invalid kit cannot be added and says why
   expect(within(field).queryByText("default")).toBeNull();
 });
 
+test("without a kit Start stays off and the window says why", async () => {
+  await openLaunch();
+  await ready("/src/lado");
+  const field = screen.getByRole("group", { name: "Kits" });
+  fireEvent.click(within(field).getByRole("button", { name: "Remove default" }));
+  expect(screen.getByText("a session needs at least one kit")).toBeTruthy();
+  expect(startButton().disabled).toBe(true);
+});
+
 // Provider and permission mode
 
 test("providers show checking while their CLIs are asked, a missing one is off, a warning is shown", async () => {
@@ -366,6 +375,22 @@ test("a taken name is offered to resume when the session is of this folder", asy
   expect((await within(dialog).findByRole("alert")).textContent).toContain('session "app" exists already');
   fireEvent.click(within(dialog).getByRole("button", { name: "Resume it" }));
   expect(await screen.findByRole("dialog", { name: "Resume session" })).toBeTruthy();
+});
+
+test("a taken name of a running session of this folder offers to open it, not to resume it", async () => {
+  sessions = [session("app", { repo: "/src/app" })];
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: 'session "app" exists already (running, in /src/app)', status: "running", repo: "/src/app" } }, 409);
+  await openLaunch();
+  await ready("/src/app");
+  fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "app" } });
+  fireEvent.click(startButton());
+  const dialog = screen.getByRole("dialog", { name: "New session" });
+  await within(dialog).findByRole("alert");
+  expect(within(dialog).queryByRole("button", { name: "Resume it" })).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Open it" }));
+  expect(await screen.findByRole("region", { name: "Session app" })).toBeTruthy();
+  expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull();
 });
 
 // Resume

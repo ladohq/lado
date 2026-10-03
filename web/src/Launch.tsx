@@ -30,6 +30,9 @@ export const DEBOUNCE = 200;
 const DEFAULT_KIT = "default";
 const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
 
+// A session of these statuses can be resumed; a running one only opened.
+const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);
+
 export type LaunchMode = { kind: "new" } | { kind: "resume"; session: SessionInfo };
 
 const LaunchContext = createContext<(mode?: LaunchMode) => void>(() => {});
@@ -188,7 +191,7 @@ function LaunchDialog({
     }
   };
 
-  const ready = resuming !== null || (current?.ok ?? false);
+  const ready = (resuming !== null || (current?.ok ?? false)) && kits.length > 0;
 
   const submit = async () => {
     setBusy(true);
@@ -361,9 +364,21 @@ function LaunchDialog({
             <p className="problem" role="alert">
               {refused.message}
             </p>
-            {taken && taken.repo === root && resumable(shownName) && (
+            {taken && taken.repo === root && RESUMABLE.has(taken.status) && resumable(shownName) && (
               <button type="button" className="quiet" onClick={() => resumeIt(shownName)}>
                 Resume it
+              </button>
+            )}
+            {taken && taken.repo === root && !RESUMABLE.has(taken.status) && (
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
+                  onClose();
+                  navigate(sessionPath(shownName, "activity"));
+                }}
+              >
+                Open it
               </button>
             )}
           </div>
@@ -577,6 +592,7 @@ function KitsField({
           </select>
         )}
       </div>
+      {kits.length === 0 && <span className="field-note bad">a session needs at least one kit</span>}
       {listed !== null && "error" in listed && <span className="field-note bad">{listed.error}</span>}
       {fromLast && <span className="field-note">from the last session of this folder</span>}
       {root === null && listed === null && <span className="field-note">checking…</span>}

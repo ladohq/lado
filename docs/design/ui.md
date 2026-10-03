@@ -52,7 +52,8 @@ a surface, it takes nothing away.
 | D1 | Frontend stack | React + TypeScript + Vite | Agents write it best; xterm.js and a later desktop shell fit; the built bundle ships in the wheel, users need no Node |
 | D2 | Server | FastAPI on uvicorn (Starlette, uvicorn and pydantic already come with `mcp`) | Typed requests, an OpenAPI schema from which the UI's TypeScript types are generated: one contract for the UI and later remote clients |
 | D3 | Realtime | Server-Sent Events for the change feed (resumable from the last id); a WebSocket only for terminals | One transport per job; no second channel with other topics |
-| D4 | Who the human writes to | Revised in task 2: not from the UI yet. The composer is a task of its own, later, starting with the supervisor; writing to any agent directly stays in mind | The structure comes first; one way to write when it comes |
+| D4 | Who the human writes to | Revised again 2026-10-03 (D7): the human writes in the session's Activity chat, to the supervisor by default, through LADO's message queue (sender `human`); to another agent only through the same queue | One way to write; nothing typed raw into a working agent |
+| D7 | How the human and the agents talk | A chat in Activity, not the supervisor's terminal: the human is a participant of LADO's messages; agents write to `human` with `send_message`, ask with options through `ask_human`; flow gates are cards in the same feed; the terminal stays beside it for watching and stepping in | Works with any provider, over ACP and in the cloud; the human's draft never mixes with agents' messages; gates and questions where the talk is |
 | D5 | API layout | Everything under `/api`, the bundle served by the same server | No dev proxy that must mirror every route |
 | D6 | Desktop app | Later (task 9); the browser first | A bundled server is heavy; the browser covers the need |
 
@@ -282,9 +283,31 @@ Sessions for now. The UI's texts are in English.
   colours are tokens in one file, `web/src/tokens.css` (Look below); components use only
   the tokens, and a unit test fails on a colour written anywhere else.
 
-Open question for the Activity task: another orchestrator's feed shows the human's messages
-and the gates, not the supervisor's whole console stream; there is a layer between the feed
-and the supervisor. Settle it when Activity is designed.
+### The human in the session (decided 2026-10-03, D7)
+
+Settled after reading how another orchestrator does it: its feed shows the human's messages
+and cards the orchestrator creates with tools; the orchestrator's own terminal text never
+reaches the feed. LADO takes the model and builds it on what it has:
+
+- **The human is a participant of LADO's messages** (`human`): agents write to it with
+  `send_message(to="human")` (summary and body, as to any agent); the human writes from the
+  composer to the supervisor by default, through the same queue, delivery confirmation and
+  retries (no raw paste into a working agent). No second notification system.
+- **Questions with options**: an `ask_human` tool (a question, optional choices, an optional
+  free answer). The answer, or that the human dismissed it, comes back to the agent as a
+  normal message; a dismissal is never silent.
+- **Flow gates** are cards in the same feed, answered through `runs.answer` (the flow engine
+  opens them, an agent cannot forget to).
+- **A forgotten reply is caught, not hoped for**: when the supervisor ends a turn that a
+  human message started and wrote nothing to `human`, the feed says "replied only in its
+  terminal" (the terminal is beside the feed).
+- **Layout**: the session page has the chat in the middle of Activity, the team (agents
+  with their status) as chips above it, and the selected agent's terminal on the right
+  (taking the place of the terminal panel at the bottom); the tabs stay Activity, Agents,
+  Flows (which the other orchestrator lacks), Artifacts. The session list gets "+" (Launch)
+  and its stopped sessions folded in a group at the bottom.
+- The supervisor's role says to talk to the human only this way (lado-dev and the built-in
+  `default` kit).
 
 ## Lessons from another orchestrator's UI
 
@@ -298,7 +321,10 @@ that bypass the event bus; no token and a terminal WebSocket open to any local p
 transports with different topics; several competing ways to message an agent; a one-slot
 side panel; no entry point for what waits for the human; feature flags and wireframes in
 production code; end-to-end tests with a mocked network; a terminal without reconnect or
-backpressure.
+backpressure; and in its chat: a reply that only a prompt makes the agent send, answers that
+can be lost after delivery fails, a dismissed question the agent never hears about, a
+"steer" box that pastes raw text into a working agent, and the human's messages signed as
+an unknown sender.
 
 ## Tasks
 
@@ -316,13 +342,21 @@ time. Each task is one `feature` run, useful on its own.
    and how one moves between them; layout and navigation only, sections empty. Done:
    Structure above.
 3. **Sections, one at a time**, each designed with the human and then built. Goal
-   (decided with the human 2026-10-03): develop LADO from the UI instead of the terminal,
-   so first what that needs, in this order: the live updates (the change feed, D3; done:
-   The change feed above); the
-   agent terminal in the browser (the supervisor's first: today's chat with it is its
-   terminal; done: Terminal above); Gates (Needs you with its count, the gate page, a browser notification);
-   Agents; Flows. Then Activity, Providers and environment, the composer (D4) and the
-   rest; later the desktop app. The placeholders link to these items:
+   (decided with the human 2026-10-03): develop LADO from the UI instead of the terminal.
+   The plan, in order (the placeholders link to the items below):
+   1. Live updates, the change feed (D3). Done: The change feed above.
+   2. The agent terminal in the browser. Done: Terminal above.
+   3. **Human messages** (core, D7): `human` as a participant of messages, the composer's
+      API, `ask_human`, the forgotten-reply check, the supervisor's role (lado-dev and
+      `default`).
+   4. **Activity**: the chat (messages with the human, flow transitions, agent-to-agent
+      messages behind a switch), the composer, the team chips, the selected agent's
+      terminal on the right instead of the bottom panel; the session list's "+" and its
+      stopped sessions folded.
+   5. **Gates**: gate cards in the chat, Needs you with its count, browser notifications.
+      Then release 0.12.0: the human can work from the browser, tmux stays the fallback.
+   6. Agents; Flows; Providers and environment; a pass over the look with a designer role
+      (BACKLOG); then the rest; later the desktop app.
 
 ### Providers and environment
 
@@ -331,8 +365,9 @@ checks.
 
 ### Activity
 
-A session's tab: messages, flow transitions and notes as they happen (see the open
-question in Structure).
+A session's tab: the chat with the human (The human in the session, above), flow
+transitions and notes as they happen, agent-to-agent messages behind a switch; the team as
+chips; the selected agent's terminal on the right.
 
 ### Agents
 
@@ -344,8 +379,9 @@ A session's tab: its flow runs, their state, who acts and the notes of each step
 
 ### Gates
 
-The gate page (`/gates/<id>`), Needs you (the gates of all sessions, with a count in the
-rail) and the gates banner of a session. Until this task gates show only in tmux (the
+Gates as cards in the session's chat (and the gate page, `/gates/<id>`, for a long note),
+Needs you (gates of all sessions and agents waiting for the human, with a count in the
+rail) and browser notifications. Until this task gates show only in tmux (the
 popup opens on the clients of the session's own tmux session, never on a browser's
 viewer) and in `lado ls`: a human who works only in the browser does not see them.
 

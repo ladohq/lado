@@ -350,7 +350,7 @@ test("Start sends the window's fields, says Starting… and opens the new sessio
   await act(async () => release());
   expect(await screen.findByRole("region", { name: "Session app" })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("run x needs a rev");
+  expect((await screen.findByRole("alert")).textContent).toContain("run x needs a rev");
 });
 
 test("a refused start shows the core's whole reason and keeps the window", async () => {
@@ -412,8 +412,9 @@ test("Resume fills the window from the session, sends only what changed and show
   fireEvent.click(within(dialog).getByRole("button", { name: "Resume session" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Resume session" })).toBeNull());
   expect(calls.find((c) => c.method === "POST")!.body).toEqual({ permission_mode: "default" });
-  expect(screen.getByText("permission mode: plan -> default")).toBeTruthy();
-  expect(screen.getByRole("alert").textContent).toContain("run y needs a rev");
+  // The session's page shows them after the navigation, a render after the window closed.
+  expect(await screen.findByText("permission mode: plan -> default")).toBeTruthy();
+  expect((await screen.findByRole("alert")).textContent).toContain("run y needs a rev");
 });
 
 // The session's actions, by status (in its head and in the list)

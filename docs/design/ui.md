@@ -211,8 +211,9 @@ Decided in the agent terminal task (2026-10-03).
   human's `lado attach` sees the window resized when the browser is the latest, and the
   other way round. In view the client never sizes it: its pty always has the window's size,
   which the server reads from tmux every second (`#{window_width}x#{window_height}`, tmux's
-  state, not the screen) and sends as a new `size`; xterm.js takes it, and the panel
-  scrolls when the window is larger. tmux's ignore-size flag also keeps a view out while
+  state, not the screen) and sends as a new `size`; xterm.js takes it, and its font shrinks
+  from 13 px until the whole window fits the panel (the fit addon tells how many cells fit);
+  below 8 px the panel scrolls, kept at the bottom, where the live lines are. tmux's ignore-size flag also keeps a view out while
   another client is attached.
 - **History**: in view the wheel up opens a read-only layer over the terminal (`GET
   /api/sessions/{name}/agents/{agent}/history?lines=N`, tmux's history and the screen,

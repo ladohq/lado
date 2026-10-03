@@ -211,8 +211,18 @@ test("an error frame shows in the terminal's bar", async () => {
   expect(within(panel).getByRole("alert").textContent).toContain("follows");
 });
 
-test("in view the terminal takes the window's size from the server", async () => {
+test("in view the terminal takes the window's size and its font shrinks until it fits", async () => {
   await w1Terminal();
-  act(() => socketOf("w1", "view")[0].frame({ type: "size", cols: 132, rows: 43 }));
-  expect([FakeXterm.all[1].cols, FakeXterm.all[1].rows]).toEqual([132, 43]);
+  const xterm = FakeXterm.all[1];
+  const font = () => Number(xterm.options.fontSize);
+  // The panel holds 19 rows at 13 px (FakeFit): a window of 24 rows needs a smaller font.
+  act(() => socketOf("w1", "view")[0].frame({ type: "size", cols: 80, rows: 24 }));
+  expect([xterm.cols, xterm.rows]).toEqual([80, 24]);
+  expect(font()).toBeLessThan(13);
+  expect(Math.floor(300 / (1.2 * font()))).toBeGreaterThanOrEqual(24); // all rows show
+  // A small window keeps the usual font; a huge one stops at the smallest.
+  act(() => socketOf("w1", "view")[0].frame({ type: "size", cols: 40, rows: 10 }));
+  expect(font()).toBe(13);
+  act(() => socketOf("w1", "view")[0].frame({ type: "size", cols: 400, rows: 120 }));
+  expect(font()).toBe(8);
 });

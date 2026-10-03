@@ -235,6 +235,14 @@ def test_a_terminal_that_ends_for_good_closes_with_the_reason_else_to_open_again
     assert all(t.closed for t in terms)
 
 
+def test_without_lado_db_it_ends_for_good_and_makes_none(client, terms):
+    with logged_in(client).websocket_connect(URL, headers=headers()) as ws:
+        assert ws.receive_json() == {"type": "error", "reason": 'unknown session "s"'}
+        assert closed(ws) == (4404, 'unknown session "s"')
+    assert not (state.home() / "lado.db").exists()
+    assert terms == []
+
+
 def test_a_mode_it_does_not_know_is_refused(client, session, terms):
     with logged_in(client).websocket_connect(URL + "?mode=admin", headers=headers()) as ws:
         assert ws.receive_json()["type"] == "error"

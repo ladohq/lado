@@ -51,6 +51,10 @@ async def serve(ws: WebSocket, guard: Guard, session: str, agent: str, mode: str
     if problem:
         await _end(ws, UNAVAILABLE, problem)
         return
+    # The server never makes lado.db: without one (or while it is made) there is no session.
+    if not await to_thread.run_sync(feed.database_made):
+        await _end(ws, GONE, f'unknown session "{session}"')
+        return
     try:
         term = await to_thread.run_sync(terminal.open, session, agent, mode)
     except terminal.NoTerminal as none:

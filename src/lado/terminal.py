@@ -36,7 +36,7 @@ from lado import state, tmux
 VIEW, CONTROL = "view", "control"
 MODES = (VIEW, CONTROL)
 VIEWER, HOME, SESSION = "@lado-viewer", "@lado-home", "@lado-session"
-VERSION = (3, 2)  # attach-session -f read-only,ignore-size
+VERSION = (3, 2)  # attach-session -f ignore-size (never read-only: see above)
 READ_SIZE = 65536
 
 

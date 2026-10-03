@@ -152,6 +152,23 @@ function Handle({ height, onChange }: { height: number; onChange: (height: numbe
 
 type Layer = { loading: true } | History | { error: string };
 
+const FONT = { usual: 13, least: 8 }; // pixels
+
+// The largest font, up to the usual one, at which a window of `size` fits the panel. The
+// fit addon says how many cells fit at the current font; a cell scales with the font.
+function fitFont(term: Terminal, fit: FitAddon, [cols, rows]: [number, number]): void {
+  term.options.fontSize = FONT.usual;
+  for (let tries = 0; tries < 4; tries++) {
+    const room = fit.proposeDimensions();
+    if (!room || (room.cols >= cols && room.rows >= rows)) return;
+    const now: number = term.options.fontSize ?? FONT.usual;
+    const scale = Math.min(room.cols / cols, room.rows / rows);
+    const next = Math.max(FONT.least, Math.min(now - 0.5, Math.floor(now * scale * 2) / 2));
+    if (next === now) return;
+    term.options.fontSize = next;
+  }
+}
+
 const PHASE: Record<LinkState["phase"], string> = {
   connecting: "connecting…",
   open: "live",
@@ -188,7 +205,7 @@ function AgentTerminal({ session, agent, visible }: { session: string; agent: st
     const colours = getComputedStyle(element);
     const term = new Terminal({
       fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
-      fontSize: 13,
+      fontSize: FONT.usual,
       scrollback: 0, // the history is tmux's: the wheel goes to tmux, or the history layer
       disableStdin: mode === "view",
       theme: { background: colours.backgroundColor, foreground: colours.color, cursor: colours.color },
@@ -196,10 +213,13 @@ function AgentTerminal({ session, agent, visible }: { session: string; agent: st
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(element);
+    let window_: [number, number] | null = null; // in view: the agent's window's size
     const socket = new TermLink(terminalUrl(window.location, session, agent, mode), {
       output: (data) => term.write(data),
       size: (cols, rows) => {
-        if (mode === "view") term.resize(cols, rows); // the agent's window, whole
+        if (mode !== "view") return;
+        window_ = [cols, rows];
+        fitNow.current();
       },
       error: setNotice,
       state: (state) => {
@@ -207,12 +227,21 @@ function AgentTerminal({ session, agent, visible }: { session: string; agent: st
         if (state.phase === "open") fitNow.current();
       },
     });
-    // In control the terminal fills the panel and tells the server its size; in view it
-    // has the window's size and nothing typed goes out.
+    // In control the terminal fills the panel and tells the server its size. In view it
+    // has the window's size, whole: its font shrinks until the window fits the panel (down
+    // to FONT.least; then the panel scrolls, kept at the bottom, where the live lines are).
     fitNow.current = () => {
-      if (mode !== "control" || !visibleNow.current) return;
-      fit.fit();
-      socket.resize(term.cols, term.rows);
+      if (!visibleNow.current) return;
+      if (mode === "control") {
+        fit.fit();
+        socket.resize(term.cols, term.rows);
+        return;
+      }
+      if (window_ === null) return;
+      term.resize(...window_);
+      fitFont(term, fit, window_);
+      const screen = element.parentElement;
+      if (screen) screen.scrollTop = screen.scrollHeight;
     };
     const typed = mode === "control" ? term.onData((data) => socket.input(data)) : null;
     term.attachCustomWheelEventHandler((event) => {

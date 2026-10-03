@@ -47,6 +47,12 @@ def test_an_agents_terminal_opens_to_view_with_its_history(page: Page, server, r
     expect(view.get_by_role("status")).to_have_text("live")
     expect(view).to_contain_text("Viewing")
     expect(view.locator(".xterm-rows")).to_contain_text("line 120")
+    # The whole window shows in the panel: its last row too, where the live lines are.
+    screen = view.locator(".term-screen").bounding_box()
+    last = view.locator(".xterm-rows > div").last.bounding_box()
+    assert screen["y"] <= last["y"] and last["y"] + last["height"] <= screen["y"] + screen["height"]
+    latest = view.locator(".xterm-rows > div", has_text="line 120").bounding_box()
+    assert latest["y"] + latest["height"] <= screen["y"] + screen["height"]
     shot(page, "view")
 
     view.locator(".xterm").hover()

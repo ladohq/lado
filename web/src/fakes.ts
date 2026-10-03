@@ -93,6 +93,11 @@ export class FakeFit {
   fit() {
     this.term?.resize(120, 30);
   }
+  // A panel of 960 x 300 pixels; a cell is 0.6 x 1.2 font sizes.
+  proposeDimensions() {
+    const size = Number(this.term?.options.fontSize ?? 13);
+    return { cols: Math.floor(960 / (0.6 * size)), rows: Math.floor(300 / (1.2 * size)) };
+  }
   dispose() {}
 }
 

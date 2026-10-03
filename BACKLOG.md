@@ -386,3 +386,11 @@ the same test. The reviewer can look at the wrong build's screens.
 Wanted: a folder per worktree or per run (e.g. named after the branch or a hash of the
 repo path), printed by the tests, so each report names its own screenshots.
 Found: 2026-10-03, implement of feature/ui-layout (the rail change).
+## A gate answered with free text is lost without a word
+
+The human answered the merge gate by typing "reject, стоит исправить minors?" (into the popup or a
+window); nothing took it as an answer, the gate stayed open, and nothing told the human that
+the answer was not accepted. Only `lado answer` (or the popup's option) answers a gate.
+Wanted: the Gates task answers gates with buttons and a comment in the chat; until then, the
+popup says plainly when the input is not one of the options, and keeps asking.
+Found: 2026-10-03, merge gate #35 of feature/ui-layout.

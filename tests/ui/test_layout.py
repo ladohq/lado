@@ -48,6 +48,10 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     right = panel.bounding_box()
     assert right["x"] >= chat["x"] + chat["width"]  # beside the chat, not under it
     assert right["height"] > 600  # the page's height
+    # The switch stays on the team's row: the feed keeps its height.
+    switch = page.get_by_role("checkbox", name="Show agent messages").bounding_box()
+    first = chips.first.bounding_box()
+    assert switch["y"] < first["y"] + first["height"]
     shot(page, "terminal")
 
     chips.first.click()  # a second tab; w1's keeps its socket

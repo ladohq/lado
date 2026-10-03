@@ -157,13 +157,15 @@ def _journal_triggers(table: str) -> list[str]:
     return [_journal_trigger(table, op) for op in JOURNALED_OPS.get(table, ALL_OPS)]
 
 
-# The journal as version 12 made it, and the run events version 14 added to it.
-EVENTS_JOURNAL = _journal_triggers("events")
+# The journal as version 12 made it: its tables are fixed here, so that migration step
+# stays as it was when a table is journaled later; and the run events version 14 added.
+JOURNALED_V12 = ("sessions", "agents", "messages", "runs", "gates", "notes")
 JOURNAL = [
     CHANGES,
     CHANGES_TRIM,
-    *(trigger for t in JOURNALED if t != "events" for trigger in _journal_triggers(t)),
+    *(trigger for t in JOURNALED_V12 for trigger in _journal_triggers(t)),
 ]
+EVENTS_JOURNAL = _journal_triggers("events")
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.

@@ -192,6 +192,13 @@ def test_a_run_event_is_a_change_and_an_agent_event_is_none(lado_home):
     assert journal(before) == [("events", "s", str(event_id), "insert")]
 
 
+def test_the_step_that_made_the_journal_keeps_its_six_tables():
+    """A table journaled later comes with a step of its own, never into step 11."""
+    tables = {s.split(" ON ")[1].split()[0] for s in state.MIGRATIONS[11] if "TRIGGER" in s}
+    assert tables == {"changes", "sessions", "agents", "messages", "runs", "gates", "notes"}
+    assert not any("events" in s for s in state.MIGRATIONS[11])
+
+
 def test_version_13_journals_no_events_and_migrates_to_journal_run_events(lado_home):
     state.add_session(state.Session("s", "/r", None))
     agent_helpers.previous_schema()

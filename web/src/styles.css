@@ -903,18 +903,20 @@ h3 {
   min-height: 0;
 }
 
+/* The switch keeps its place at the row's end; the chips wrap beside it. */
 .team-row {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px 16px;
 }
 
 .team {
   display: flex;
+  flex: 1;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .team-label {
@@ -993,9 +995,12 @@ h3 {
 
 .switch {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
+  height: 30px;
   margin-left: auto;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 13px;
   cursor: pointer;

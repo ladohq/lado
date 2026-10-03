@@ -8,6 +8,7 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     send <to> <summary>[ | <body>]  call the LADO MCP tool send_message; "\\n" in the body
                        is a line break
     read               call the LADO MCP tool read_messages
+    askhuman <question>[ | <choice>, <choice>...]  call the LADO MCP tool ask_human
     spawn <task>       call the LADO MCP tool spawn_worker
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
@@ -175,6 +176,12 @@ def work(text: str) -> bool:
             send(command[1], command[2])
         elif command[0] == "read":
             report(read=call_tool("read_messages", {}))
+        elif command[0] == "askhuman":
+            question, _, choices = " ".join(command[1:]).partition(" | ")
+            arguments = {"question": question}
+            if choices:
+                arguments["choices"] = choices.split(", ")
+            call_tool("ask_human", arguments)
         elif command[0] == "run":
             run_skill_file(command[1], command[2])
         elif command[0] == "lines":

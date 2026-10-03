@@ -312,6 +312,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
         120,
     )
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
+    check_human()
     check_terminal(viewing)
     check_log(live_provider, summary)
     check_clear(live_provider)
@@ -331,6 +332,24 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     if live_provider == "kilo":
         assert cli_version(live_provider) == version
     print(f"{live_provider}: {time.monotonic() - started:.0f}s")
+
+
+HUMAN_ASKS = 'From the human: reply to me with send_message(to="human", summary="ACK") only'
+
+
+def check_human() -> None:
+    """The human's message (as the UI's composer sends it) reaches w1, w1 replies to the
+    human with send_message, and the end of its turn marks the human's message replied."""
+    runtime.write_as_human(SESSION, HUMAN_ASKS, to="w1")
+    wait_for(lambda: messages("w1", "human"), "w1's reply to the human", 120)
+    assert messages("w1", "human")[0][1] == state.DELIVERED
+    wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after replying", 120)
+    [asked] = [m for m in state.list_messages(SESSION) if m.sender == "human"]
+    wait_for(
+        lambda: state.get_message(SESSION, asked.id).reply_state == state.REPLIED,
+        "the human's message to be marked replied",
+        60,
+    )
 
 
 def check_terminal(term: terminal.Terminal) -> None:

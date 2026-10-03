@@ -102,10 +102,11 @@ schema change.
     record (`state.Gate`); `runs.answer` is the only way to answer it, called from
     `lado answer`, never from an MCP tool; the answering surface (popup, CLI) stays outside
     that core.
-  - `mcp_server.py`: MCP tools for agents (`send_message`, `read_messages`, `list_agents`,
-    `flow_advance`, `flow_status`; the supervisor also gets `spawn_worker`, `finish_worker`,
-    `flow_start` and `flow_cancel`). No tool answers a gate.
-  - `hooks.py`: neutral hook logic: agent status and handing over queued messages.
+  - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
+    `list_agents`, `flow_advance`, `flow_status`; the supervisor also gets `spawn_worker`,
+    `finish_worker`, `flow_start` and `flow_cancel`). No tool answers a gate or a question.
+  - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
+    turn's end, the forgotten-reply check (How agents talk).
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update
     `tests/agent_helpers.previous_schema` (it undoes the last step). A CLI command does
@@ -115,7 +116,10 @@ schema change.
     older LADO refuses a newer database and asks to upgrade. A message counts its pastes
     (`messages.attempts`) and can end `failed` (`messages.failed_at`); an agent keeps when
     its latest hook ran
-    (`agents.seen_at`). The `events`
+    (`agents.seen_at`). From schema 13 a message has a `kind` (`message` or `question`),
+    a question its `choices`, `free_answer`, `question_state` and `answered_by`, an answer
+    or dismissal its `reply_to` and `choice`, and the human's message to an agent its
+    `reply_state` (How agents talk). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
@@ -174,8 +178,23 @@ schema change.
   refused) and an optional `body` with the details. Only one short line per message reaches
   the recipient: `[from <sender>] <summary>`, plus ` (#<id>, <n> lines: call read_messages)`
   when there is a body. `read_messages` returns the caller's delivered, unread bodies and
-  marks them `read`. The supervisor's window is also the human's chat, so it stays quiet:
-  the supervisor does not relay reports, and the details are in `lado log`.
+  marks them `read`. The supervisor stays quiet with the human: it does not relay reports,
+  and the details are in `lado log`.
+- The human is a participant of messages, `human` (design in
+  [docs/design/ui.md](docs/design/ui.md), The human in the session): agents write to it with
+  `send_message(to="human")` and ask with `ask_human` (a question, up to 6 choices, a free
+  answer by default); such a message is `delivered` at once into no window, and the UI's
+  Activity chat shows it. The human writes from the UI's composer (`runtime.write_as_human`,
+  only through the server's API; to the supervisor by default) through the same queue,
+  confirmation and retries, and the agent gets `[from human] ...`. An answer
+  (`Answer to #<id>: ...`) or dismissal (`Dismissed #<id>`) comes to the agent the same way.
+  No agent may be named `human` or `lado` (`state.RESERVED`). Messages to `human` are never
+  dropped (stop, finish), and a forgotten agent's open questions are `closed`. LADO's
+  instructions tell the supervisor to answer where the human asked: a `[from human]`
+  message with `send_message(to="human")` or `ask_human`, text typed into its window in the
+  window. At each turn's end, before the queue is handed over, the human's messages the
+  agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
+  after them, else `missing`, which the chat shows as "replied only in its terminal".
 - An agent's first input (a worker's task or step, a resumed supervisor's messages) goes on
   its command line. When it is longer than 2000 characters (tmux refuses commands over about
   16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its

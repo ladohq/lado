@@ -69,6 +69,9 @@ text is submitted together with it. Decided (2026-10-01): live with it for now. 
 when the human writes through LADO's own input (UI composer, stage 7: messages from the human
 and from agents are queued and delivered one at a time) or with the ACP runtime (stage 8: LADO
 drives the agent's input itself). Make sure the UI has a composer that goes through LADO.
+Update (2026-10-03, chat task): the UI's composer in Activity writes through LADO's queue, so
+a human who writes from the UI is not affected. Typing in the supervisor's window (tmux or
+"Take control" in the UI) still is, until ACP.
 Found: 2026-10-01, dogfooding.
 
 ## A step that needs a new worker is a relay through the supervisor

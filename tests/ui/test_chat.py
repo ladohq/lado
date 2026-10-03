@@ -49,7 +49,9 @@ def test_the_supervisor_asks_and_the_human_answers_in_a_card(page: Page, server,
     session = running_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    page.get_by_role("textbox", name="Write to the supervisor…").fill("askhuman Ship it? | yes, later")
+    page.get_by_role("textbox", name="Write to the supervisor…").fill(
+        "askhuman Ship it? | yes, later"
+    )
     page.get_by_role("button", name="Send").click()
     card = page.get_by_role("article", name="Question from supervisor")
     expect(card.get_by_role("button", name="later")).to_be_visible()

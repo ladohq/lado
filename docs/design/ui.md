@@ -112,7 +112,7 @@ later desktop app and a later cloud setup; the UI is its client.
 
 Decided in the live updates task (2026-10-03).
 
-- **The journal**: `changes(id, kind, session, key, op)` in `lado.db` (schema 12), written
+- **The journal**: `changes(id, kind, session, key, op)` in `lado.db` (from schema 12), written
   by triggers on the six tables. `kind` is the table, `key` the row in its session (an
   agent's or run's name, a message's, gate's or note's id, `''` for the session). An update
   of an agent that changes `seen_at` (every hook sets it, alone) is no change. The journal
@@ -132,8 +132,9 @@ Decided in the live updates task (2026-10-03).
   API): `id: <journal id>`, `event: change`, `data: {kind, session, key, op, item}`.
   **`item` is the row as it is now, in the form of its REST model, or null when the row is
   gone, whatever `op` says**; the UI uses only `item`. A kind without a REST model yet
-  (messages, runs, gates, notes until their tasks) has a null item; an agent's is its
-  `AgentInfo`, as `GET /api/sessions/{name}/agents` gives it. One table in
+  (runs, gates, notes until their tasks) has a null item; an agent's is its
+  `AgentInfo`, as `GET /api/sessions/{name}/agents` gives it, a message's its
+  `MessageInfo` (any message: the UI keeps those from or to the human). One table in
   `feed.py`, `ALSO`, says which change also changes another item: a change of `agents`
   also sends the session's (it counts its agents). A comment line every 15 s keeps a quiet
   stream open.
@@ -309,6 +310,53 @@ reaches the feed. LADO takes the model and builds it on what it has:
 - The supervisor's role says to talk to the human only this way (lado-dev and the built-in
   `default` kit).
 
+Built in the chat task (2026-10-03):
+
+- **Core**: `human` is a recipient without an agent: a message to it is `delivered` at once
+  and typed into no window (`runtime.post`). It is sent only by the server's API
+  (`runtime.write_as_human`): an agent's MCP tools always send as the agent, and `human`
+  and `lado` are names no agent may take (`state.RESERVED`, checked by `spawn_worker`).
+  The human's text: its first line, tabs and control characters made spaces, is the
+  summary, cut to 200 characters with "…"; the whole text is the body when it has more
+  lines or the line was cut; over 8000 characters it is refused. It goes through the queue,
+  confirmation and retries like an agent's; if it fails, `lado` tells the human in one line.
+  Messages to `human` are never dropped: stop, finish and `drop_undelivered` leave them as
+  they are and do not count them (`state.UNRECEIVED`).
+- **Questions**: `ask_human(question, details, choices, free_answer)`, for every agent; at
+  most 6 choices of at most 160 characters each, no duplicates; no choices and no free
+  answer is refused. A question is a message of kind `question` to `human` with its
+  `choices`, `free_answer` and `question_state` (`open`, `answered`, `dismissed`,
+  `closed`). The answer (`Answer to #<id>: <choice or the first line>`, the rest in the
+  body) or the dismissal (`Dismissed #<id>`) is a message from `human` to the agent with
+  `reply_to` and `choice`, queued in the transaction that sets the question's outcome and
+  `answered_by`; a question not `open` refuses both. When the agent is forgotten
+  (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn; `lado stop`), its
+  open questions are `closed` in the same transaction.
+- **Where the human asked**: LADO's instructions to the supervisor say to answer
+  `[from human] …` with `send_message(to="human")` or `ask_human`, and text typed into its
+  window in the window. The forgotten-reply check: at a turn's end, before the queue is
+  handed over, each message from `human` to the agent in `delivered` or `read` that is not
+  an answer or dismissal and has no `reply_state` yet gets `replied` (the agent wrote to
+  `human` after it) or `missing`; each one is checked once.
+- **Schema 13**: `messages` gets `kind`, `choices`, `free_answer`, `question_state`,
+  `answered_by`, `reply_to`, `choice`, `reply_state`; their changes reach the feed through
+  the `messages` triggers.
+- **API**: `GET /api/sessions/{name}/messages?with=human` (`MessageInfo`, oldest first);
+  `POST /api/sessions/{name}/messages` `{to?, text}` (default to the supervisor);
+  `POST /api/sessions/{name}/questions/{id}/answer` `{choice?, text?}` and `…/dismiss`.
+  The POSTs need the server's own Origin (`Guard.changes`), answer 503 under another
+  schema, 404 for an unknown session and 400 with the core's reason for what it refuses
+  (a stopped session, an agent that is not running, a question not open). They return
+  `{result}`; the UI shows a message only when the feed brings it.
+- **UI**: Activity is the chat: the messages from and to the human (who, to whom, time,
+  the summary, the body behind it as Markdown with any HTML left out), "not delivered" on
+  a failed one, "<agent> replied only in its terminal" on a `missing` one, and each
+  question as a card: open (orange: it waits for the human) with its choices, a field for
+  an own answer and Submit when `free_answer`, and Dismiss; then its outcome. The composer
+  under it: Enter sends, Shift+Enter is a new line; a refusal shows at the field and the
+  text stays. The feed scrolls by itself above the terminal panel; in a window under about
+  840 px the page scrolls (the Layout task moves the terminal beside the chat).
+
 ## Lessons from another orchestrator's UI
 
 Taken: one event stream with replay; localhost by default; sessions that need the human
@@ -350,10 +398,13 @@ time. Each task is one `feature` run, useful on its own.
       interim CLI command): `human` as a participant of messages, `ask_human`, the
       forgotten-reply check, the composer and a plain chat in Activity (messages with the
       human, question cards with their answer), LADO's own instructions to the supervisor.
-      After it, work moves to the chat (with the release that ships it).
+      After it, work moves to the chat (with the release that ships it). Done: The human
+      in the session above.
    4. **Layout**: the team chips above the chat, the selected agent's terminal on the right
-      instead of the bottom panel, flow transitions and agent-to-agent messages (behind a
-      switch) in the feed, the session list's "+" and its stopped sessions folded.
+      instead of the bottom panel (the chat then takes the page's height: now its feed is
+      sized to leave room for the panel under it), flow transitions and agent-to-agent
+      messages (behind a switch) in the feed (`GET …/messages` without `with`), the session
+      list's "+" and its stopped sessions folded.
    5. **Gates**: gate cards in the chat, Needs you with its count, browser notifications.
       Then release 0.12.0: the human can work from the browser, tmux stays the fallback.
    6. Agents; Flows; Providers and environment; a pass over the look with a designer role

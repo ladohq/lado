@@ -83,7 +83,9 @@ The agents still run in tmux; the app is a window onto them.
 - [ ] Local web UI (`lado ui`): sessions, agents with their status, messages, gates, notes;
   built on LADO's events, not on the terminal. Design and tasks: docs/design/ui.md
   (skeleton, live updates, session view, gates, composer)
-- [ ] Notifications when an agent waits for the human
+- [x] Notifications when an agent waits for the human: the UI's Needs you page with its count
+  on the rail and in the tab's title, and browser notifications (docs/design/ui.md,
+  Notifications)
 - [ ] Artifacts: named, versioned documents of a session (design, plan, review, report) that
   any agent writes and reads, with or without a flow; the human's main way to get results:
   attached to messages and gates and shown in the UI. Flows can require them. Agents know an

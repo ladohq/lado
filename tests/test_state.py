@@ -441,7 +441,9 @@ def test_what_waits_for_the_human_is_one_list_of_sessions_not_stopped(lado_home)
     state.add_session(state.Session("gone", "/r", None))  # tmux gone: still not stopped
     _agent_waiting("gone", "w2")
     state.add_session(state.Session("old", "/r", None))
-    state.add_run(_run(session="old"), [("supervisor", state.FLOW_START, "x")], _gate(session="old"))
+    state.add_run(
+        _run(session="old"), [("supervisor", state.FLOW_START, "x")], _gate(session="old")
+    )
     state.add_question("old", "w3", "Old?", "", None, True)
     state.stop_session("old")
 

@@ -302,8 +302,9 @@ Sessions for now. The UI's texts are in English.
   search by name, and the sessions in groups: **Needs you** (something waits for the
   human: `SessionInfo.waiting`, counted by the server: open gates, open questions, agents
   in `waiting`), **Running**, and **Stopped** at the bottom, folded (remembered in the
-  browser). A stopped session is under Stopped whatever waits in it: nothing in it can be
-  answered. Each shows a line under its name: what waits, or its agents. The **session**
+  browser). Nothing in a stopped session counts as waiting (its waiting is all zeros),
+  though its gates stay open and `lado ls` shows them: nothing in it can be answered until
+  it is resumed. Each shows a line under its name: what waits, or its agents. The **session**
   in the middle: its name and status, then the tabs **Activity | Agents | Flows |
   Artifacts** (its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents lists the agents live (name, role,
@@ -335,10 +336,34 @@ Sessions for now. The UI's texts are in English.
   `/sessions` with no name says "Select a session" (nothing is selected for the human); a
   name `/api/sessions` does not know says "Session <name> not found" with a link to the
   list, and the address stays as it was.
-- **Needs you**: the gates of all sessions (Gates task, Needs you and notifications); its
-  count comes with it. A gate has no page of its own: it is a card in its session's chat.
+- **Needs you** (`/needs-you`, the task Needs you and notifications, 2026-10-03): what
+  waits for the human in every session not stopped (`sessions.stopped_at IS NULL`, so
+  `tmux_gone` and `loop_down` count; the server and the UI apply the one rule), oldest
+  first, by session, each session's name a link to its chat: open gates as the chat's
+  `GateCard`, open questions as its question card (`Question.tsx`), both answered in
+  place; agents in `waiting` with their role, since when, and why (`waiting_reason`, or
+  "waits for you in its terminal" when LADO knows no reason), with **Open terminal**
+  (`/sessions/<name>/activity?terminal=<agent>`: the panel opens that agent's tab and
+  drops the parameter from the address, replaced, so Back and a reload do not open it
+  again; an agent the session does not have is named in a line). Each item links to its
+  card in the chat (`#gate-<id>`, `#message-<id>`; the chat scrolls there once loaded,
+  after its scroll to the latest). Nothing waiting: "Nothing waits for you". The list is
+  `GET /api/waiting` (`WaitingItem`: session, kind, key, since and the gate, question or
+  agent in the form of their own endpoints), built from `state.waiting_items`, which is
+  also what `SessionInfo.waiting` counts: the count and the list cannot differ. The live
+  store keeps it as its list `waiting` (`watch("waiting")`): an item has no row of its
+  own in the journal, so the store loads it whole again on `reset`, on every change of
+  any session's gates, agents or messages, and when a session stops or comes back; one
+  load at a time, one more for all changes that came meanwhile. A count is never the
+  trigger: one item in place of another keeps it. Answered here, in the chat or with
+  `lado answer`, an item goes without a reload. **The count**: the sum of the
+  not-stopped sessions' `waiting`, from the live session list, as a badge on the rail's
+  Needs you (also collapsed; its accessible name `Needs you, <n> waiting`), and first in
+  the tab's title while above zero: `(<n>) <page> · LADO`. A gate has no page of its
+  own: it is a card in its session's chat.
 - **Settings**: one page, its sections one under the other: Appearance (theme: system,
-  light, dark) and Providers and environment (what `lado doctor` checks; a task of its
+  light, dark), Notifications (the switch Browser notifications, below) and Providers and
+  environment (what `lado doctor` checks; a task of its
   own). New sections go below.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
@@ -487,6 +512,30 @@ Built in the layout task (2026-10-03, schema 14):
   characters), the rest behind **Show all**. The feed takes the page's height and scrolls
   by itself, the composer under it.
 
+### Notifications (decided 2026-10-03, task Needs you and notifications)
+
+So the human can work from the browser without watching tmux. The tmux popup stays as it
+is; there is no sound and no notification outside the browser.
+
+- **Off by default.** Turned on by **Enable notifications** on Needs you or the switch
+  **Browser notifications** in Settings (`lado.notifications` in the browser), each of
+  which asks the browser's permission (`Notification.requestPermission()`) and turns them
+  on only when it is granted. Turned on but no longer allowed, a browser that blocks them,
+  one that has no notifications and a page that is not a secure context are each said in
+  words, with what to do.
+- **The notifier** lives in the shell, so it works on every page. While notifications are
+  on it watches the live store's `waiting` and keeps, for the tab's life, the keys it has
+  seen (across the feed's resets): the items of its first list are only remembered; each
+  later new key, also one in place of another at the same count and one that came during a
+  gap in the feed, gives one notification, only while the tab is not on the screen
+  (`document.visibilityState`). An item seen while the tab was shown is not notified later.
+- **A notification**: `silent`, `tag` = the item's key (several LADO tabs show one), title
+  `LADO · <session>`, body the gate's question, the agent's question, `<agent> waits:
+  <reason>` or `<agent> waits for you in its terminal`. A click focuses the tab, goes to the
+  item (its card in the chat, or the agent's terminal) and closes it. An item that leaves
+  the list (answered anywhere) closes the notification this tab made for it. A notification
+  the browser refuses to show is said on Needs you and in Settings.
+
 ## Lessons from another orchestrator's UI
 
 Taken: one event stream with replay; localhost by default; sessions that need the human
@@ -542,7 +591,8 @@ time. Each task is one `feature` run, useful on its own.
          in the session above.
       2. **Needs you and notifications**: the Needs you page with its count in the rail,
          browser notifications. Then a release (0.12.0 shipped the chat): the human can
-         work from the browser, tmux stays the fallback.
+         work from the browser, tmux stays the fallback. Done: Needs you in Structure and
+         Notifications above.
    6. **Launch and session control** (decided with the human 2026-10-03, after Needs you):
       start a session from the UI (Launch, the session list's "+": repo, kit, provider,
       permission mode), stop, resume and forget one; guarded like the composer (token and
@@ -576,10 +626,10 @@ A session's tab: its flow runs, their state, who acts and the notes of each step
 ### Gates
 
 Gates as cards in the session's chat (built: Flow gates in The human in the session), Needs
-you (gates of all sessions and agents waiting for the human, with a count in the rail) and
-browser notifications. The popup still opens only on the clients of the session's own tmux
-session, never on a browser's viewer; until Needs you, a human who works only in the
-browser sees a gate in its session's chat and its count in the session list.
+you (what waits in all sessions, with a count in the rail and the tab's title) and browser
+notifications (built: Needs you in Structure, and Notifications). The popup still opens only
+on the clients of the session's own tmux session, never on a browser's viewer; a human who
+works only in the browser learns of a gate from Needs you, its count and a notification.
 
 ### Artifacts
 

@@ -159,9 +159,14 @@ schema change.
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes; the agents, history, messages, run events
     (`/api/sessions/{name}/events`) and gates (with the human's answer) endpoints are in
-    `app.py`; a gate's model is built by `models.gate_info` for REST and the feed; a session's
-    `waiting` (open gates, open questions, agents in `waiting`: the one "needs you") is
-    counted in `models.session_info`;
+    `app.py`; a gate's model is built by `models.gate_info` for REST and the feed; what
+    waits for the human (open gates, open questions, agents in `waiting`: the one "needs
+    you") is `state.waiting_items`, only of sessions not stopped (`stopped_at IS NULL`, in
+    its SQL), served as `GET /api/waiting` (`models.WaitingItem`) and counted from that same
+    list as a session's `waiting` in `models.session_info` (`state.waiting_for_human`), so
+    the list and the count cannot differ; an agent's `waiting_reason` (`AgentInfo`, only
+    for an agent in `waiting`) is `runtime.waiting_reason`, which `waiting_reasons` uses
+    too;
     `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`.

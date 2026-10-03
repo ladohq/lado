@@ -326,16 +326,6 @@ refuses another schema itself. Related: "Flaky: integration test of the migratio
 under a running session".
 Found: 2026-10-03, architect's review of the live updates design (feature/ui-live-updates).
 
-## A human who works only in the browser does not see gates
-
-The gate popup (`tmux.popup`) opens only on the clients of the session's own tmux session;
-a browser's terminal is a client of a viewer session, so it never shows the popup, and the
-UI has no gates yet. A human who left tmux for the UI misses a waiting gate until they look
-at `lado ls`. docs/design/ui.md (Tasks, Gates) says so for now.
-Wanted: the Gates task shows gates in the UI (Needs you, the gate page) and notifies the
-browser.
-Found: 2026-10-03, architect's review of the agent terminal design (feature/ui-agent-terminal).
-
 ## A terminal viewer outlives a UI server that is killed
 
 A viewer tmux session (lado/terminal.py) cannot be made with `destroy-unattached on`: tmux

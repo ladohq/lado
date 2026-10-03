@@ -751,9 +751,7 @@ def _plan(
 def waiting_reasons(session: str) -> dict[str, str]:
     """Why each agent that waits after failed messages waits, and what the human can do."""
     counts = state.failed_counts(session)
-    reasons = {
-        agent.name: _waiting_reason(agent, counts) for agent in state.list_agents(session)
-    }
+    reasons = {agent.name: _waiting_reason(agent, counts) for agent in state.list_agents(session)}
     return {name: reason for name, reason in reasons.items() if reason is not None}
 
 

@@ -252,6 +252,7 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         "status": "idle",
         "run": None,
         "task": None,
+        "waiting_reason": None,
     }
 
 

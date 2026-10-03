@@ -28,6 +28,7 @@ from lado.server.models import (
     RunEventInfo,
     Sent,
     SessionInfo,
+    WaitingItem,
 )
 
 STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in git
@@ -88,6 +89,14 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         if not has_db:
             return []
         return [models.session_info(sess) for sess in state.list_sessions()]
+
+    @app.get("/api/waiting", dependencies=[Depends(guard)])
+    def waiting(has_db: bool = Depends(database)) -> list[WaitingItem]:
+        """What waits for the human in every session not stopped, oldest first: open gates,
+        open questions to the human and agents in `waiting` (Needs you)."""
+        if not has_db:
+            return []
+        return [models.waiting_item(waits) for waits in state.waiting_items()]
 
     @app.get(
         "/api/events",

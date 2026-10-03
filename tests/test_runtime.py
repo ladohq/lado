@@ -399,6 +399,9 @@ def test_an_agent_waiting_after_swallowed_messages_says_what_to_do(repo, fake_tm
         "supervisor": "did not take 1 message: answer the dialog in its window "
         "or type any line there"
     }
+    assert runtime.waiting_reason("s", "supervisor") == runtime.waiting_reasons("s")["supervisor"]
+    assert runtime.waiting_reason("s", "w1") is None  # not waiting
+    assert runtime.waiting_reason("s", "nobody") is None
 
 
 def test_an_agent_waiting_after_unconfirmed_messages_says_so(repo, fake_tmux):
@@ -419,6 +422,7 @@ def test_an_agent_waiting_after_unconfirmed_messages_says_so(repo, fake_tmux):
     _hook("Notification", "supervisor", {"notification_type": "permission_prompt"})
     assert state.get_agent("s", "supervisor").status == state.WAITING
     assert runtime.waiting_reasons("s") == {}
+    assert runtime.waiting_reason("s", "supervisor") is None
 
 
 def test_stop_drops_failed_messages(repo, fake_tmux):

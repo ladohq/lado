@@ -428,6 +428,43 @@ def test_the_gate_closes_with_the_runs_next_write(lado_home):
     assert state.update_run(after, again, [], closes=("human", "overridden", "x", None))
 
 
+def _agent_waiting(session, name):
+    state.add_agent(state.Agent(session, name, "worker", "/w", None, None, "idle"))
+    state.add_event(session, name, state.SPAWNED)
+    state.set_status(session, name, state.WAITING)
+
+
+def test_what_waits_for_the_human_is_one_list_of_sessions_not_stopped(lado_home):
+    run, gate = _waiting(lado_home)
+    question = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
+    _agent_waiting("s", "w1")
+    state.add_session(state.Session("gone", "/r", None))  # tmux gone: still not stopped
+    _agent_waiting("gone", "w2")
+    state.add_session(state.Session("old", "/r", None))
+    state.add_run(_run(session="old"), [("supervisor", state.FLOW_START, "x")], _gate(session="old"))
+    state.add_question("old", "w3", "Old?", "", None, True)
+    state.stop_session("old")
+
+    items = state.waiting_items()
+    assert [(w.session, w.gate, w.question and w.question.id) for w in items[:2]] == [
+        ("s", state.get_gate(gate.id), None),
+        ("s", None, question),
+    ]
+    [(s1, a1), (s2, a2)] = [(w.session, w.agent.name) for w in items[2:]]
+    assert {(s1, a1), (s2, a2)} == {("s", "w1"), ("gone", "w2")}
+    assert all(w.since for w in items)
+    assert [w.since for w in items] == sorted(w.since for w in items)
+    assert items[2].since == state.list_events(items[2].session)[-1].created_at
+    assert [w.session for w in state.waiting_items("gone")] == ["gone"]
+    assert state.waiting_items("old") == []
+    assert state.waiting_for_human("s") == (1, 1, 1)
+    assert state.waiting_for_human("old") == (0, 0, 0)
+
+    state.reply_to_question("s", question, "yes", "", "yes", state.ANSWERED)
+    state.set_status("s", "w1", "busy")
+    assert [w.gate for w in state.waiting_items("s")] == [state.get_gate(gate.id)]
+
+
 def test_a_new_run_can_start_at_a_gate_and_gates_go_with_their_session(lado_home):
     state.add_session(state.Session("s", "/r", None))
     gate = _gate()

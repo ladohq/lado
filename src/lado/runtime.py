@@ -750,22 +750,35 @@ def _plan(
 
 def waiting_reasons(session: str) -> dict[str, str]:
     """Why each agent that waits after failed messages waits, and what the human can do."""
-    reasons = {}
     counts = state.failed_counts(session)
-    for agent in state.list_agents(session):
-        swallowed, unconfirmed = counts.get(agent.name, (0, 0))
-        if agent.status != state.WAITING or not swallowed + unconfirmed:
-            continue
-        why = []
-        if swallowed:
-            why.append(
-                f"did not take {_messages(swallowed)}: answer the dialog in its window "
-                "or type any line there"
-            )
-        if unconfirmed:
-            why.append(f"did not confirm {_messages(unconfirmed)} (the text typed did not match)")
-        reasons[agent.name] = "; ".join(why)
-    return reasons
+    reasons = {
+        agent.name: _waiting_reason(agent, counts) for agent in state.list_agents(session)
+    }
+    return {name: reason for name, reason in reasons.items() if reason is not None}
+
+
+def waiting_reason(session: str, name: str) -> str | None:
+    """Why the agent waits after failed messages, and what the human can do; None when it
+    does not wait, or waits for another reason (a prompt in its terminal)."""
+    agent = state.get_agent(session, name)
+    if agent is None or agent.status != state.WAITING:
+        return None
+    return _waiting_reason(agent, state.failed_counts(session))
+
+
+def _waiting_reason(agent: state.Agent, counts: dict[str, tuple[int, int]]) -> str | None:
+    swallowed, unconfirmed = counts.get(agent.name, (0, 0))
+    if agent.status != state.WAITING or not swallowed + unconfirmed:
+        return None
+    why = []
+    if swallowed:
+        why.append(
+            f"did not take {_messages(swallowed)}: answer the dialog in its window "
+            "or type any line there"
+        )
+    if unconfirmed:
+        why.append(f"did not confirm {_messages(unconfirmed)} (the text typed did not match)")
+    return "; ".join(why)
 
 
 def _messages(n: int) -> str:

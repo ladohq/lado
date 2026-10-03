@@ -324,6 +324,7 @@ def test_the_agents_of_a_session(client, session):
             "status": "starting",
             "run": None,
             "task": None,
+            "waiting_reason": None,
         }
     ]
     assert logged_in(client).get("/api/sessions/x/agents").status_code == 404

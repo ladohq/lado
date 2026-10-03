@@ -84,11 +84,35 @@ def test_a_session_counts_what_waits_for_the_human(client, session):
     assert waiting(client) == {"gates": 2, "questions": 1, "agents": 1}
 
 
-def test_a_stopped_session_keeps_only_its_gates_waiting(client, session):
+def test_nothing_waits_in_a_stopped_session(client, session):
     add_run(gate=True)
     runtime.ask_human("s", "supervisor", "Ship?", None, ["yes"])
     runtime.stop_session("s")
-    assert waiting(client) == {"gates": 1, "questions": 0, "agents": 0}
+    assert waiting(client) == {"gates": 0, "questions": 0, "agents": 0}
+    assert client.get("/api/waiting").json() == []
+
+
+def test_what_waits_is_for_the_token_holder_only(session):
+    client = TestClient(server_app.create_app(auth.token(), PORT))
+    assert client.get("/api/waiting").status_code == 401
+
+
+def test_an_agent_says_why_it_waits_only_while_it_waits(client, session, monkeypatch):
+    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "task", "idle"))
+    state.set_status("s", "w1", state.WAITING)
+    asked = []
+
+    def reason(sess, name):
+        asked.append(name)
+        return "did not take 1 message"
+
+    monkeypatch.setattr(runtime, "waiting_reason", reason)
+    supervisor, worker = client.get("/api/sessions/s/agents").json()
+    assert (supervisor["waiting_reason"], worker["waiting_reason"]) == (
+        None,
+        "did not take 1 message",
+    )
+    assert asked == ["w1"]
 
 
 def test_an_agent_says_its_run_and_the_first_line_of_its_task(client, session):

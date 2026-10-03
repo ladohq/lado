@@ -38,6 +38,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/waiting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Waiting
+         * @description What waits for the human in every session not stopped, oldest first: open gates,
+         *     open questions to the human and agents in `waiting` (Needs you).
+         */
+        get: operations["waiting_api_waiting_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -245,6 +266,8 @@ export interface components {
             run: string | null;
             /** Task */
             task: string | null;
+            /** Waiting Reason */
+            waiting_reason: string | null;
         };
         /** Answer */
         Answer: {
@@ -451,7 +474,8 @@ export interface components {
         };
         /**
          * Waiting
-         * @description What in a session waits for the human: the one definition of "needs you".
+         * @description What in a session not stopped waits for the human, counted: the items of
+         *     /api/waiting (state.waiting_items). A stopped session has none.
          */
         Waiting: {
             /** Gates */
@@ -460,6 +484,28 @@ export interface components {
             questions: number;
             /** Agents */
             agents: number;
+        };
+        /**
+         * WaitingItem
+         * @description One thing that waits for the human (Needs you): an open gate, an open question to
+         *     the human or an agent in `waiting`, with the one of `gate`, `question`, `agent` its
+         *     kind names.
+         */
+        WaitingItem: {
+            /** Session */
+            session: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gate" | "question" | "agent";
+            /** Key */
+            key: string;
+            /** Since */
+            since: string;
+            gate?: components["schemas"]["GateInfo"] | null;
+            question?: components["schemas"]["MessageInfo"] | null;
+            agent?: components["schemas"]["AgentInfo"] | null;
         };
     };
     responses: never;
@@ -506,6 +552,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionInfo"][];
+                };
+            };
+        };
+    };
+    waiting_api_waiting_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitingItem"][];
                 };
             };
         };

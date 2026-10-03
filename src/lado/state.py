@@ -1022,18 +1022,57 @@ def session_gates(session: str) -> list[Gate]:
         return [_gate(r) for r in rows.fetchall()]
 
 
-def waiting_for_human(session: str) -> tuple[int, int, int]:
-    """What in the session waits for the human: its open gates, its open questions to the
-    human and its agents in `waiting`."""
+@dataclass
+class Waits:
+    """One thing that waits for the human: an open gate, an open question to the human or
+    an agent in `waiting`; exactly one of them is set."""
+
+    session: str
+    since: str  # UTC, as lado.db keeps it: when it opened, or the agent got `waiting`
+    gate: Gate | None = None
+    question: Message | None = None
+    agent: Agent | None = None
+
+
+NOT_STOPPED = "SELECT name FROM sessions WHERE stopped_at IS NULL AND (? IS NULL OR name = ?)"
+
+
+def waiting_items(session: str | None = None) -> list[Waits]:
+    """What waits for the human in `session` (default: in every session), oldest first:
+    only in a session not stopped, since nothing in a stopped one can be answered."""
     with connect() as db:
-        row = db.execute(
-            "SELECT (SELECT count(*) FROM gates WHERE session = ? AND answer IS NULL),"
-            " (SELECT count(*) FROM messages WHERE session = ? AND kind = ?"
-            " AND question_state = ?),"
-            " (SELECT count(*) FROM agents WHERE session = ? AND status = ?)",
-            (session, session, QUESTION, OPEN_QUESTION, session, WAITING),
-        ).fetchone()
-    return row[0], row[1], row[2]
+        gates = db.execute(
+            f"SELECT * FROM gates WHERE answer IS NULL AND session IN ({NOT_STOPPED})",
+            (session, session),
+        ).fetchall()
+        questions = db.execute(
+            f"SELECT {MESSAGE_COLUMNS}, session FROM messages WHERE kind = ?"
+            f" AND question_state = ? AND session IN ({NOT_STOPPED})",
+            (QUESTION, OPEN_QUESTION, session, session),
+        ).fetchall()
+        # An agent waits since its latest status or spawn event (status_since).
+        agents = db.execute(
+            "SELECT a.*, COALESCE((SELECT e.created_at FROM events e WHERE e.session ="
+            " a.session AND e.agent = a.name AND e.kind IN (?, ?) ORDER BY e.id DESC LIMIT 1),"
+            f" a.created_at) AS since FROM agents a WHERE a.status = ?"
+            f" AND a.session IN ({NOT_STOPPED})",
+            (STATUS, SPAWNED, WAITING, session, session),
+        ).fetchall()
+    items = [Waits(r["session"], r["created_at"], gate=_gate(r)) for r in gates]
+    items += [Waits(r["session"], r["created_at"], question=_message(r)) for r in questions]
+    items += [Waits(r["session"], r["since"], agent=_agent(r)) for r in agents]
+    return sorted(items, key=lambda waits: waits.since)
+
+
+def waiting_for_human(session: str) -> tuple[int, int, int]:
+    """What in the session waits for the human (waiting_items), counted: its open gates, its
+    open questions to the human and its agents in `waiting`."""
+    items = waiting_items(session)
+    return (
+        sum(w.gate is not None for w in items),
+        sum(w.question is not None for w in items),
+        sum(w.agent is not None for w in items),
+    )
 
 
 def open_gate(session: str, run: str) -> Gate | None:

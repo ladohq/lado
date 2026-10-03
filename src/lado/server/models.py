@@ -9,7 +9,8 @@ from lado import runs, runtime, state
 
 
 class Waiting(BaseModel):
-    """What in a session waits for the human: the one definition of "needs you"."""
+    """What in a session not stopped waits for the human, counted: the items of
+    /api/waiting (state.waiting_items). A stopped session has none."""
 
     gates: int  # open gates of its runs
     questions: int  # open questions of its agents (ask_human)
@@ -34,6 +35,9 @@ class AgentInfo(BaseModel):
     status: AgentStatus
     run: str | None  # the flow run it works for
     task: str | None  # the first line of its task; None for none
+    # Only for an agent in `waiting`: why it waits after failed messages and what the human
+    # can do; None when it waits for the human in its terminal (a prompt).
+    waiting_reason: str | None
 
 
 class RunEventInfo(BaseModel):
@@ -131,6 +135,22 @@ class Sent(BaseModel):
     result: str  # what became of it: delivered, sent or queued, and why
 
 
+class WaitingItem(BaseModel):
+    """One thing that waits for the human (Needs you): an open gate, an open question to
+    the human or an agent in `waiting`, with the one of `gate`, `question`, `agent` its
+    kind names."""
+
+    session: str
+    kind: Literal["gate", "question", "agent"]
+    # gate:<id>, question:<id>, agent:<session>/<name>@<since>: a new wait of the same agent
+    # is a new item
+    key: str
+    since: str  # UTC, ISO 8601: when it opened, or the agent got `waiting`
+    gate: GateInfo | None = None
+    question: MessageInfo | None = None
+    agent: AgentInfo | None = None
+
+
 def message_info(message: state.Message) -> MessageInfo:
     return MessageInfo(
         id=message.id,
@@ -169,6 +189,31 @@ def agent_info(agent: state.Agent) -> AgentInfo:
         status=agent.status,
         run=agent.run,
         task=_first_line(agent.task),
+        waiting_reason=(
+            runtime.waiting_reason(agent.session, agent.name)
+            if agent.status == state.WAITING
+            else None
+        ),
+    )
+
+
+def waiting_item(waits: state.Waits) -> WaitingItem:
+    since = _utc(waits.since)
+    if waits.gate is not None:
+        key, kind = f"gate:{waits.gate.id}", "gate"
+    elif waits.question is not None:
+        key, kind = f"question:{waits.question.id}", "question"
+    else:
+        assert waits.agent is not None, "a wait is a gate, a question or an agent"
+        key, kind = f"agent:{waits.session}/{waits.agent.name}@{since}", "agent"
+    return WaitingItem(
+        session=waits.session,
+        kind=kind,
+        key=key,
+        since=since,
+        gate=gate_info(waits.gate) if waits.gate else None,
+        question=message_info(waits.question) if waits.question else None,
+        agent=agent_info(waits.agent) if waits.agent else None,
     )
 
 

@@ -190,3 +190,27 @@ def test_an_answer_needs_the_servers_own_origin(client, session):
     client.cookies.clear()
     assert client.post(f"{GATES}/1/answer", json={"option": "approve"}).status_code == 401
     assert state.get_gate(1).answer is None
+
+
+def test_what_waits_for_the_human_is_one_list_counted_by_each_session(client, session):
+    gate = at_gate()
+    runtime.ask_human("s", "supervisor", "Ship?", "Tests pass.", ["yes"])
+    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "task", "idle"))
+    state.set_status("s", "w1", state.WAITING)
+    answer = client.get("/api/waiting")
+    assert answer.status_code == 200
+    waits, question, agent = answer.json()
+    [asked] = [m for m in state.list_messages("s") if m.kind == state.QUESTION]
+    assert (waits["key"], waits["session"], waits["kind"]) == (f"gate:{gate.id}", "s", "gate")
+    assert waits["gate"] == client.get(GATES).json()[0]  # the gate as the session has it
+    assert waits["since"] == waits["gate"]["created_at"]
+    assert (waits["question"], waits["agent"]) == (None, None)
+    assert (question["key"], question["kind"]) == (f"question:{asked.id}", "question")
+    assert question["question"]["summary"] == "Ship?"
+    assert question["since"] == question["question"]["created_at"]
+    assert (agent["kind"], agent["agent"]["name"]) == ("agent", "w1")
+    assert agent["key"] == f"agent:s/w1@{agent['since']}"
+    assert agent["since"].endswith("Z")
+    assert agent["agent"]["waiting_reason"] is None  # it waits in its terminal
+    [sess] = client.get("/api/sessions").json()
+    assert sum(sess["waiting"].values()) == len(answer.json()) == 3

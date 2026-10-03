@@ -44,6 +44,29 @@
         }
       }
     },
+    "/api/waiting": {
+      "get": {
+        "summary": "Waiting",
+        "description": "What waits for the human in every session not stopped, oldest first: open gates,\nopen questions to the human and agents in `waiting` (Needs you).",
+        "operationId": "waiting_api_waiting_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WaitingItem"
+                  },
+                  "type": "array",
+                  "title": "Response Waiting Api Waiting Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/events": {
       "get": {
         "summary": "Events",
@@ -620,6 +643,17 @@
               }
             ],
             "title": "Task"
+          },
+          "waiting_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Reason"
           }
         },
         "type": "object",
@@ -629,7 +663,8 @@
           "provider",
           "status",
           "run",
-          "task"
+          "task",
+          "waiting_reason"
         ],
         "title": "AgentInfo"
       },
@@ -1230,7 +1265,71 @@
           "agents"
         ],
         "title": "Waiting",
-        "description": "What in a session waits for the human: the one definition of \"needs you\"."
+        "description": "What in a session not stopped waits for the human, counted: the items of\n/api/waiting (state.waiting_items). A stopped session has none."
+      },
+      "WaitingItem": {
+        "properties": {
+          "session": {
+            "type": "string",
+            "title": "Session"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "gate",
+              "question",
+              "agent"
+            ],
+            "title": "Kind"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "since": {
+            "type": "string",
+            "title": "Since"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "kind",
+          "key",
+          "since"
+        ],
+        "title": "WaitingItem",
+        "description": "One thing that waits for the human (Needs you): an open gate, an open question to\nthe human or an agent in `waiting`, with the one of `gate`, `question`, `agent` its\nkind names."
       }
     }
   }

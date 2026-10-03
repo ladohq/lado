@@ -87,6 +87,9 @@ const socketOf = (agent: string, mode: string) =>
 
 const tabNames = () => within(panel()).getAllByRole("tab").map((tab) => tab.textContent);
 
+// A tab is named after its agent and its status, as the agent's chip.
+const tab = (agent: string) => within(panel()).getByRole("tab", { name: new RegExp(`^${agent},`) });
+
 function agentChange(item: AgentInfo | null, key = item?.name ?? "") {
   stream().send("change", { kind: "agents", session: "lado", key, op: item ? "update" : "delete", item });
 }
@@ -95,8 +98,7 @@ function agentChange(item: AgentInfo | null, key = item?.name ?? "") {
 
 test("the panel shows the supervisor's terminal from the start, before any click, and it cannot be closed", async () => {
   await open();
-  const tab = within(panel()).getByRole("tab", { name: "supervisor" });
-  expect(tab.getAttribute("aria-selected")).toBe("true");
+  expect(tab("supervisor").getAttribute("aria-selected")).toBe("true");
   expect(within(panel()).getByRole("tabpanel", { name: "supervisor" })).toBeTruthy();
   expect(socketOf("supervisor", "view")).toHaveLength(1);
   expect(within(panel()).queryByRole("button", { name: "Close supervisor's terminal" })).toBeNull();
@@ -106,8 +108,7 @@ test("the panel shows the supervisor's terminal from the start, before any click
 test("a chip opens its agent's terminal on the right, to view", async () => {
   await open();
   const view = await openTerminal("w1");
-  const tab = within(panel()).getByRole("tab", { name: "w1" });
-  expect(tab.getAttribute("aria-selected")).toBe("true");
+  expect(tab("w1").getAttribute("aria-selected")).toBe("true");
   expect(socketOf("w1", "view")).toHaveLength(1);
   expect(socketOf("w1", "control")).toHaveLength(0);
   act(() => socketOf("w1", "view")[0].open());
@@ -129,7 +130,7 @@ test("the chip of the shown terminal is marked; another chip adds a tab and keep
   expect(w1.closed).toBe(false); // hidden, not closed
   fireEvent.click(await chip("w1")); // selects the tab it has: no new socket
   expect(socketOf("w1", "view")).toHaveLength(1);
-  expect(within(panel()).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
+  expect(tab("w1").getAttribute("aria-selected")).toBe("true");
 });
 
 test("the panel keeps its terminals while the session's tabs change", async () => {
@@ -147,7 +148,7 @@ test("× closes a tab and its socket; with the last other tab closed the supervi
   fireEvent.click(within(panel()).getByRole("button", { name: "Close w1's terminal" }));
   expect(socketOf("w1", "view")[0].closed).toBe(true);
   expect(tabNames()).toEqual(["supervisor"]);
-  expect(within(panel()).getByRole("tab", { name: "supervisor" }).getAttribute("aria-selected")).toBe("true");
+  expect(tab("supervisor").getAttribute("aria-selected")).toBe("true");
   expect(socketOf("supervisor", "view")[0].closed).toBe(false);
 });
 
@@ -155,7 +156,7 @@ test("the Agents tab opens an agent's terminal in the same panel", async () => {
   await open("/sessions/lado/agents");
   const list = await screen.findByRole("table", { name: "Agents of lado" });
   fireEvent.click(await within(list).findByRole("button", { name: "Open w1's terminal" }));
-  expect(within(panel()).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
+  expect(tab("w1").getAttribute("aria-selected")).toBe("true");
   expect(socketOf("w1", "view")).toHaveLength(1);
 });
 
@@ -177,7 +178,7 @@ test("Collapse terminals leaves a strip whose Terminals button opens the panel a
   expect(panel().classList.contains("collapsed")).toBe(true);
   expandPanel();
   expect(panel().classList.contains("collapsed")).toBe(false);
-  expect(within(panel()).getByRole("tab", { name: "supervisor" }).getAttribute("aria-selected")).toBe("true");
+  expect(tab("supervisor").getAttribute("aria-selected")).toBe("true");
   expect(JSON.parse(localStorage.getItem("lado.terminals")!).collapsed).toBe(false);
 });
 
@@ -203,7 +204,7 @@ test("a chip opens a collapsed panel on its agent's terminal", async () => {
   collapse();
   await openTerminal("w1");
   expect(panel().classList.contains("collapsed")).toBe(false);
-  expect(within(panel()).getByRole("tab", { name: "w1" }).getAttribute("aria-selected")).toBe("true");
+  expect(tab("w1").getAttribute("aria-selected")).toBe("true");
   expect((await chip("w1")).getAttribute("aria-pressed")).toBe("true");
 });
 
@@ -370,6 +371,49 @@ test("Esc restores an expanded terminal to view; in control it goes to the agent
   fireEvent.keyDown(within(panel()).getByRole("button", { name: "Restore terminal" }), { key: "Escape" });
   expect(panel().classList.contains("expanded")).toBe(false);
   expect(control.closed).toBe(false);
+});
+
+// The tabs: their agents' status, many of them, their tooltip
+
+const dotOf = (element: Element) => element.querySelector(".dot")!.className;
+
+test("each tab shows its agent's status as a small dot that follows the agent; an agent gone is stopped", async () => {
+  await open();
+  await openTerminal("w1");
+  expect(tab("supervisor").getAttribute("aria-label")).toBe("supervisor, idle");
+  expect(dotOf(tab("supervisor"))).toBe("dot dot-small dot-idle");
+  expect(dotOf(tab("w1"))).toBe("dot dot-small dot-busy");
+  agentChange({ ...AGENTS[1], status: "waiting" });
+  expect(dotOf(tab("w1"))).toBe("dot dot-small dot-waiting");
+  expect(tab("w1").getAttribute("aria-label")).toBe("w1, waiting");
+  agentChange(null, "w1");
+  expect(dotOf(tab("w1"))).toBe("dot dot-small dot-stopped");
+  expect(tab("w1").getAttribute("aria-label")).toBe("w1, stopped");
+});
+
+test("the collapsed strip shows a small dot per open terminal, named by its agent and status", async () => {
+  await open();
+  await openTerminal("w1");
+  collapse();
+  const dots = within(panel()).getByRole("list", { name: "Open terminals" });
+  const items = within(dots).getAllByRole("listitem");
+  expect(items.map((item) => item.getAttribute("title"))).toEqual(["supervisor: idle", "w1: busy"]);
+  expect(items.map(dotOf)).toEqual(["dot dot-small dot-idle", "dot dot-small dot-busy"]);
+});
+
+test("a tab's name is cut to fit (its whole name in its tooltip), and the selected tab is scrolled into view", async () => {
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  await open();
+  await openTerminal("w1");
+  expect(tab("w1").querySelector(".term-tab-name")!.textContent).toBe("w1");
+  expect(tab("w1").hasAttribute("title")).toBe(false);
+  expect(scrolled.mock.instances.at(-1)).toBe(tab("w1"));
+  expect(scrolled).toHaveBeenLastCalledWith({ inline: "nearest", block: "nearest" });
+  fireEvent.click(tab("supervisor"));
+  expect(scrolled.mock.instances.at(-1)).toBe(tab("supervisor"));
+  fireEvent.focus(tab("w1"));
+  expect(screen.getByRole("tooltip").textContent).toBe("w1 · developer · kilo");
 });
 
 // Its width

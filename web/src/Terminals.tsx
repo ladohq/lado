@@ -1,10 +1,13 @@
 // The terminal panel of a session page (docs/design/ui.md, Terminal and Structure): on the
 // right of the page, on every tab, always there, so the page never jumps. Its first tab is
-// the supervisor's, pinned (no ×); a team chip or Open terminal in the Agents tab adds an
-// agent's tab or selects it, and the others close with ×. A tab's terminal opens its socket
+// the supervisor's, pinned (no ×, kept at the left); a team chip or Open terminal in the
+// Agents tab adds an agent's tab or selects it (scrolled into view), and the others close
+// with ×. A tab shows its agent's status (a small dot, live; stopped when the agent is not
+// listed) and its name, cut to fit; the tabs stay on one line and scroll sideways, the
+// wheel too; its tooltip says who the agent is (Tooltip.tsx). A tab's terminal opens its socket
 // the first time it is shown in the open panel: a panel collapsed when the page opens opens
 // none. Then a hidden tab keeps its socket, a closed one closes it. The panel collapses to a
-// strip (remembered; at first on a narrow window), its width is dragged on its edge
+// strip with a dot per open terminal (remembered; at first on a narrow window), its width is dragged on its edge
 // (remembered; narrowed while the window leaves the session too little room), and Expand
 // shows it over the whole page with the same terminals. Every terminal opens to view: the
 // wheel opens the window's history, read only; Take control asks first in a dialog (until
@@ -13,14 +16,24 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { getHistory, type AgentInfo, type History } from "./api";
 import { CollapsePanelIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
 import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type PanelPrefs } from "./prefs";
 import { fitWidth, Splitter, useWidth } from "./Splitter";
-import { SUPERVISOR } from "./Team";
+import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
+import { Tooltip } from "./Tooltip";
 import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink";
 
 // The least width of the session beside the panel: the panel is narrowed to leave it.
@@ -61,6 +74,9 @@ export function TerminalPanel({ session, children }: { session: string; children
   // comes back.
   useEffect(() => live.watch("agents", session), [live, session]);
   const agents = loaded && "items" in loaded ? loaded.items : [];
+  const infoOf = (agent: string) => agents.find((one) => one.name === agent) ?? null;
+  // An agent not in the session's list (gone, or not loaded yet) shows as stopped.
+  const statusOf = (agent: string) => infoOf(agent)?.status ?? "stopped";
 
   const [tabs, setTabs] = useState<string[]>([SUPERVISOR]);
   const [active, setActive] = useState(SUPERVISOR);
@@ -69,6 +85,14 @@ export function TerminalPanel({ session, children }: { session: string; children
   const [shown, setShown] = useState<string[]>([]); // the tabs whose terminal is made
   const page = useRef<HTMLDivElement>(null);
   const room = useWidth(page);
+  const tabList = useRef<HTMLDivElement>(null);
+
+  // The selected tab, chosen here or by a chip, scrolls into the tabs' view.
+  useEffect(() => {
+    tabList.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [active, panel.collapsed]);
 
   const keep = useCallback((change: Partial<PanelPrefs>) => {
     setPanel((now) => {
@@ -130,14 +154,23 @@ export function TerminalPanel({ session, children }: { session: string; children
           style={panel.collapsed ? undefined : { width: `${width}px` }}
         >
           {panel.collapsed ? (
-            <button
-              type="button"
-              className="terminals-open"
-              title="Show the terminals"
-              onClick={() => keep({ collapsed: false })}
-            >
-              Terminals
-            </button>
+            <>
+              <button
+                type="button"
+                className="terminals-open"
+                title="Show the terminals"
+                onClick={() => keep({ collapsed: false })}
+              >
+                Terminals
+              </button>
+              <ul className="terminals-dots" aria-label="Open terminals">
+                {tabs.map((agent) => (
+                  <li key={agent} title={`${agent}: ${statusOf(agent)}`} aria-label={`${agent}, ${statusOf(agent)}`}>
+                    <StatusDot status={statusOf(agent)} small />
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : (
             <>
               {!expanded && (
@@ -150,19 +183,37 @@ export function TerminalPanel({ session, children }: { session: string; children
                 />
               )}
               <div className="terminals-bar">
-                <div role="tablist" aria-label="Open terminals" className="term-tabs">
+                <div
+                  ref={tabList}
+                  role="tablist"
+                  aria-label="Open terminals"
+                  className="term-tabs"
+                  onWheel={(event) => {
+                    // The wheel scrolls the tabs sideways.
+                    if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY;
+                  }}
+                >
                   {tabs.map((agent) => (
-                    <div key={agent} className="term-tab" data-active={agent === active || undefined}>
-                      <button
-                        type="button"
-                        role="tab"
-                        id={`term-tab-${agent}`}
-                        aria-selected={agent === active}
-                        aria-controls={`term-${agent}`}
-                        onClick={() => setActive(agent)}
-                      >
-                        {agent}
-                      </button>
+                    <div
+                      key={agent}
+                      className={`term-tab${agent === SUPERVISOR ? " pinned" : ""}`}
+                      data-active={agent === active || undefined}
+                      style={{ "--chars": agent.length } as CSSProperties}
+                    >
+                      <Tooltip tip={<AgentTip name={agent} info={infoOf(agent)} />}>
+                        <button
+                          type="button"
+                          role="tab"
+                          id={`term-tab-${agent}`}
+                          aria-label={`${agent}, ${statusOf(agent)}`}
+                          aria-selected={agent === active}
+                          aria-controls={`term-${agent}`}
+                          onClick={() => setActive(agent)}
+                        >
+                          <StatusDot status={statusOf(agent)} small />
+                          <span className="term-tab-name">{agent}</span>
+                        </button>
+                      </Tooltip>
                       {agent !== SUPERVISOR && (
                         <button
                           type="button"
@@ -207,7 +258,7 @@ export function TerminalPanel({ session, children }: { session: string; children
               key={agent}
               id={`term-${agent}`}
               role="tabpanel"
-              aria-labelledby={`term-tab-${agent}`}
+              aria-label={agent}
               className="term-body"
               hidden={panel.collapsed || agent !== active}
             >
@@ -216,7 +267,7 @@ export function TerminalPanel({ session, children }: { session: string; children
                   session={session}
                   agent={agent}
                   visible={!panel.collapsed && agent === active}
-                  info={agents.find((one) => one.name === agent) ?? null}
+                  info={infoOf(agent)}
                 />
               )}
             </div>

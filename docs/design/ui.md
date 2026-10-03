@@ -251,6 +251,16 @@ Decided in the agent terminal task (2026-10-03).
   Claude Code with `"tui": "fullscreen"` in the human's own settings (LADO's agents read
   them too) and Kilo (7.8.1) run full screen and read the mouse: the layer shows the note,
   the wheel in control goes to the CLI.
+- **Tabs** (the human's additions to the UI polish, 2026-10-03): left of its agent's name
+  a tab shows the agent's status as the team chip's dot, smaller (`StatusDot`, one
+  component, `dot-small`), from the session's agents list, live; an agent not in the list
+  shows as stopped; the tab's accessible name has the status too. The collapsed strip shows
+  a column of these dots under **Terminals**, one per open tab, each titled with the agent
+  and its status. Many tabs stay on one line: a name is cut with an ellipsis down to about
+  72 px (a shorter name stays whole), then the row scrolls sideways (the wheel too) under a
+  thin bar; the supervisor's tab stays at the left (sticky), the tab selected here or by a
+  chip scrolls into view, and Expand and Collapse at the right never move. The whole name
+  is in the tab's tooltip (below), not in a `title`.
 - **Expand**: the panel's **Expand terminal** shows it over the whole content (the rail
   and the top bar stay; `position: absolute; inset: 0` in the content, so no widths are
   written twice; on a narrow window over the whole window), with the same terminals and
@@ -423,9 +433,16 @@ Built in the layout task (2026-10-03, schema 14):
   count later; `AgentInfo` has `run` and `task` (the first line of its task).
 - **Activity**: the team above the feed, a chip per agent, the supervisor first: a status
   dot that differs in colour and shape (busy a full circle, idle a ring, waiting an orange
-  diamond, starting a dashed ring, stopped a grey square), its name and role, a tooltip
-  with its run and the first line of its task; the chip of the terminal the panel shows
-  is marked. A chip opens the agent's terminal in the panel, or selects its tab. The feed
+  diamond, starting a dashed ring, stopped a grey square), its name and role, a tooltip;
+  the chip of the terminal the panel shows is marked. The tooltip (the UI polish, the
+  human's decision, 2026-10-03) is the UI's own (`Tooltip.tsx`, one component for the
+  chips and the terminal tabs), not the browser's `title`: compact, from `AgentInfo`
+  only: `name · role · provider` (the role left out when it is the name), and
+  `flow <run>` on a second line when the agent works for a run; no task, no status (the
+  status is in the accessible name). It shows 300 ms after the pointer enters, at once on
+  the keyboard's focus (not a click's), goes when the pointer leaves, the focus goes or on
+  Esc; `role="tooltip"`, the trigger's `aria-describedby` while it shows, no pointer
+  events, kept inside the window. A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
   events as quiet lines (`<kind> <run>: <detail>`, a link to Flows), the kinds shown as
   lines named in one list in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; the Gates task takes

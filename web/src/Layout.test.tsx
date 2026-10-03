@@ -85,10 +85,29 @@ test("the team shows every agent as a chip, the supervisor first, with its statu
   const dots = chips.map((chip) => chip.querySelector(".dot")!.className);
   expect(new Set(dots).size).toBe(5);
   expect(within(chips[1]).getByText("developer")).toBeTruthy();
-  expect(chips[1].getAttribute("title")).toBe("run feature/ui-layout\nBuild the layout");
-  expect(chips[0].getAttribute("title")).toBe("supervisor");
+  expect(chips.some((chip) => chip.hasAttribute("title"))).toBe(false); // the tooltip, below
   // The panel shows the supervisor's terminal from the start.
   expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false"]);
+});
+
+test("a chip's tooltip: name · role · provider, and its flow run on a second line", async () => {
+  agents = [
+    agent("supervisor", "supervisor", "idle"),
+    agent("w1", "developer", "busy", { provider: "kilo", run: "feature/ui-polish", task: "Build it" }),
+  ];
+  open();
+  const team = await screen.findByRole("group", { name: "Team" });
+  const tip = async (name: string) => {
+    const chip = await within(team).findByRole("button", { name: new RegExp(`^${name},`) });
+    fireEvent.focus(chip);
+    const shown = screen.getByRole("tooltip");
+    expect(chip.getAttribute("aria-describedby")).toBe(shown.id);
+    const lines = [...shown.querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+    fireEvent.blur(chip);
+    return lines;
+  };
+  expect(await tip("w1")).toEqual(["w1 · developer · kilo", "flow feature/ui-polish"]); // no task, no status
+  expect(await tip("supervisor")).toEqual(["supervisor · claude"]); // the role is its name
 });
 
 test("a chip follows its agent's changes", async () => {

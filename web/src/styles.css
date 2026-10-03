@@ -763,9 +763,9 @@ h3 {
 }
 
 .terminals-open {
-  flex: 1;
+  flex: none;
   width: 100%;
-  padding: 12px 0;
+  padding: 14px 0;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -776,6 +776,45 @@ h3 {
 .terminals-open:hover {
   background: var(--raised);
   color: var(--ink);
+}
+
+/* Under it, a small dot per open terminal. */
+.terminals-dots {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.terminals-dots li {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+/* The UI's own tooltip (Tooltip.tsx): compact, over everything, never in the pointer's way. */
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 320px;
+  padding: 5px 9px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px var(--shadow);
+  font-size: 12.5px;
+  line-height: 1.45;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+
+.tooltip-line + .tooltip-line {
+  color: var(--muted);
 }
 
 .terminals.expanded {
@@ -801,17 +840,40 @@ h3 {
   margin-left: auto;
 }
 
+/* The tabs stay on one line: names are cut with an ellipsis down to about 72 px (a shorter
+   name whole: --chars, the name's length, in a monospace font), then the row scrolls
+   sideways under a thin bar. The supervisor's tab stays at the left; the panel's buttons
+   on the right never move. */
 .term-tabs {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
 }
 
+/* A tab shrinks down to its name's least width plus what is around it: the padding, the dot
+   and its gap (33 px), and × (26 px). */
 .term-tab {
+  --name: min(72px, calc(var(--chars) * 1ch));
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
+  min-width: calc(var(--name) + 59px);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  background: var(--panel);
+  font: 13px var(--mono);
+}
+
+.term-tab.pinned {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: calc(var(--name) + 33px);
+  box-shadow: 1px 0 0 var(--line);
 }
 
 .term-tab[data-active] {
@@ -819,11 +881,23 @@ h3 {
 }
 
 .term-tab [role="tab"] {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   padding: 9px 10px 8px;
   border: 0;
   background: transparent;
   color: var(--muted);
   font: 13px var(--mono);
+  white-space: nowrap;
+}
+
+.term-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .term-tab[data-active] [role="tab"] {
@@ -832,6 +906,7 @@ h3 {
 }
 
 .term-close {
+  flex: none;
   width: 22px;
   height: 22px;
   margin-right: 4px;
@@ -1064,10 +1139,16 @@ h3 {
    circle; idle: a ring; waiting (for the human): an orange diamond; starting: a dashed
    ring; stopped: a small grey square. */
 .dot {
+  --dot: 9px;
   flex: none;
-  width: 9px;
-  height: 9px;
+  width: var(--dot);
+  height: var(--dot);
   border-radius: 50%;
+}
+
+/* On a terminal's tab and the collapsed strip: the same marks, smaller. */
+.dot-small {
+  --dot: 7px;
 }
 
 .dot-busy {
@@ -1089,8 +1170,8 @@ h3 {
 }
 
 .dot-stopped {
-  width: 8px;
-  height: 8px;
+  width: calc(var(--dot) - 1px);
+  height: calc(var(--dot) - 1px);
   border-radius: 1px;
   background: var(--muted);
 }
@@ -1387,11 +1468,18 @@ h3 {
   }
 
   .terminals.collapsed {
+    flex-direction: row;
     height: auto;
   }
 
   .terminals-open {
+    flex: 1;
     writing-mode: horizontal-tb;
+  }
+
+  .terminals-dots {
+    flex-direction: row;
+    margin: 0 12px;
   }
 
   /* Expanded over the whole window: the content is as tall as the page here, not the

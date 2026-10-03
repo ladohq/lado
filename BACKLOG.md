@@ -428,3 +428,13 @@ inside functions; a module-level use breaks on load order.
 Wanted: move the shared agent pieces (`SUPERVISOR`, `StatusDot`, `AgentTip`) into a module
 of their own (e.g. `agents.tsx`).
 Found: 2026-10-03, review of feature/ui-polish (Minor).
+## An open run's task cannot be amended
+
+A small addition the human asks for while a run is in `implement` (feature/ui-polish:
+AC-13..15) can only go to the developer as a message. The design note that the reviewer and
+the merge gate get does not have it, and `lado log` does not tie it to the run. The only
+other way, `lado flow-set` back to `design`, repeats the architect's review and the design
+gate for a few lines.
+Wanted: an addendum to an open run (from the supervisor, approved by the human), kept in
+`notes` and shown to every later step and gate after the design note.
+Found: 2026-10-03, feature/ui-polish.

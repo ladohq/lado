@@ -366,3 +366,12 @@ supervisor). A kit that forgets it lets a worker's question reach the human past
 supervisor. Wanted: revisit with more kits in use: a worker-specific hint in LADO's own
 worker instructions, or tools only for the supervisor unless a role asks for them.
 Found: 2026-10-03, review of lado-dev 0.6.0.
+
+## A gate answered with free text is lost without a word
+
+The human answered the merge gate by typing "reject, стоит исправить minors?" (into the popup or a
+window); nothing took it as an answer, the gate stayed open, and nothing told the human that
+the answer was not accepted. Only `lado answer` (or the popup's option) answers a gate.
+Wanted: the Gates task answers gates with buttons and a comment in the chat; until then, the
+popup says plainly when the input is not one of the options, and keeps asking.
+Found: 2026-10-03, merge gate #35 of feature/ui-layout.

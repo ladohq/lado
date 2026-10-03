@@ -153,28 +153,17 @@ test("the list's + explains how to start a session", async () => {
   expect(screen.getByRole("dialog", { name: "Launch a session" }).textContent).toContain("lado start <repo>");
 });
 
-// The rail and the top bar
+// The top bar (the rail stays as it was: the human's decision, 2026-10-03)
 
-test("Launch is the rail's first control; the top bar has the title, the server and the link", async () => {
+test("the top bar has the title, the server, the link and Launch; the rail has no Launch", async () => {
   open("/sessions");
   const rail = screen.getByRole("navigation", { name: "Sections" });
-  const launch = within(rail).getByRole("button", { name: "Launch" });
-  expect(rail.querySelector("button.launch-button")).toBe(launch);
-  fireEvent.click(launch);
-  expect(screen.getByRole("dialog", { name: "Launch a session" }).textContent).toContain("lado start <repo>");
+  expect(within(rail).queryByRole("button", { name: "Launch" })).toBeNull();
   const bar = screen.getByRole("banner");
-  expect(within(bar).queryByRole("button", { name: "Launch" })).toBeNull();
   expect(within(bar).getByText(window.location.host)).toBeTruthy();
   expect((await within(bar).findByRole("status")).textContent).toBe("live");
+  fireEvent.click(within(bar).getByRole("button", { name: "Launch" }));
+  expect(screen.getByRole("dialog", { name: "Launch a session" }).textContent).toContain("lado start <repo>");
   stream().fail(false);
   expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
-});
-
-test("the collapsed rail keeps each section's name under its icon", () => {
-  open("/");
-  fireEvent.click(screen.getByRole("button", { name: "Collapse menu" }));
-  const rail = screen.getByRole("navigation", { name: "Sections" });
-  const kits = within(rail).getByRole("link", { name: "Kits" });
-  expect(kits.querySelector(".rail-name")!.textContent).toBe("Kits");
-  expect(within(rail).getByRole("button", { name: "Launch" }).textContent).toContain("Launch");
 });

@@ -43,7 +43,7 @@ button {
 }
 
 .app.collapsed {
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: 60px minmax(0, 1fr);
 }
 
 .rail {
@@ -130,58 +130,19 @@ button {
   color: var(--ink);
 }
 
-.collapsed .rail {
-  padding: 10px 6px 14px;
-}
-
 .collapsed .rail-head {
   justify-content: center;
   padding-left: 0;
 }
 
-.collapsed .mark {
+.collapsed .mark,
+.collapsed .rail-name {
   display: none;
 }
 
-/* Collapsed: each icon with its name in small type under it. */
 .collapsed .rail-link {
-  flex-direction: column;
   justify-content: center;
-  gap: 2px;
-  height: auto;
-  padding: 6px 0;
-  font-size: 11px;
-  line-height: 1.2;
-  white-space: normal;
-  text-align: center;
-}
-
-/* Launch: the rail's first control, larger than the sections. */
-.launch-rail {
-  margin-bottom: 12px;
-}
-
-.launch-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 40px;
-}
-
-.launch-plus {
-  font-size: 20px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.collapsed .launch-button {
-  flex-direction: column;
-  gap: 2px;
-  height: 52px;
   padding: 0;
-  font-size: 11px;
 }
 
 .main {
@@ -267,6 +228,12 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 8px 24px var(--shadow);
+}
+
+/* Launch at the top bar's right end opens to the left. */
+.launch-top .popover {
+  right: 0;
+  left: auto;
 }
 
 .popover p {

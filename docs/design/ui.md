@@ -250,14 +250,15 @@ Decided with the human in task 2 (2026-10-03): a frame for all the sections to c
 them visible from the start; a section not built yet is a placeholder. The work is in
 Sessions for now. The UI's texts are in English.
 
-- **Rail** on the left, top to bottom: **Launch** (a large button, the rail's first
-  control), Home, Needs you, Sessions, Projects, Kits, Marketplace; Settings apart at the
-  bottom. A button collapses it to icons, each with its name in small type under it (and
-  as its accessible name; the button has `aria-expanded`). The browser remembers the
-  choice; a window narrower than 900 px starts collapsed. Launch only explains for now:
-  starting a session from the UI comes later, until then `lado start <repo>`.
-- **Top bar**: the page's title on the left; on the right the server's address and the
-  change feed's link (`live`, or `reconnecting…` with the reason).
+- **Rail** on the left, top to bottom: Home, Needs you, Sessions, Projects, Kits,
+  Marketplace; Settings apart at the bottom. A button collapses it to icons (each with its
+  name as tooltip and accessible name; the button has `aria-expanded`). The browser
+  remembers the choice; a window narrower than 900 px starts collapsed. (The Layout task
+  left it as it is, by the human's decision; its rework comes later, Tasks.)
+- **Top bar**: the page's title on the left; on the right the server's address, the
+  change feed's link (`live`, or `reconnecting…` with the reason) and **Launch**. Launch
+  only explains for now: starting a session from the UI comes later, until then
+  `lado start <repo>`.
 - **Sessions** (the Layout task, 2026-10-03): three columns under the top bar, each the
   window's height. The **list** on the left: "+" in its head (it explains, as Launch), the
   search by name, and the sessions in groups: **Needs you** (something waits for the
@@ -455,7 +456,9 @@ time. Each task is one `feature` run, useful on its own.
       Then a release (0.12.0 shipped the chat): the human can work from the browser, tmux
       stays the fallback.
    6. Agents; Flows; Providers and environment; a pass over the look with a designer role
-      (BACKLOG); then the rest; later the desktop app.
+      (BACKLOG), with it the rework of the rail (later, with the look pass: Launch on it,
+      names under the icons when collapsed; the human kept the rail as it is in the Layout
+      task); then the rest; later the desktop app.
 
 ### Providers and environment
 

@@ -1,7 +1,6 @@
-// The frame around every page: the rail of sections on the left with Launch on top, the top
-// bar with the page's title, the server's address and the change feed's link, and the page
-// itself. The one place that
-// handles a 401: it shows the server's own message instead of the page. It holds the tab's
+// The frame around every page: the rail of sections on the left, the top bar with the
+// page's title, the server's address, the change feed's link and Launch, and the page
+// itself. The one place that handles a 401: it shows the server's own message instead of the page. It holds the tab's
 // one change feed (live.ts) for every page.
 import {
   createContext,
@@ -88,7 +87,6 @@ export function Shell() {
             <CollapseIcon collapsed={collapsed} />
           </button>
         </div>
-        <Launch variant="rail" />
         <ul>
           {SECTIONS.map((section) => (
             <li key={section.to}>
@@ -107,6 +105,7 @@ export function Shell() {
             {window.location.host}
           </span>
           <LinkState />
+          <Launch variant="top" />
         </header>
         <main className="content">
           {denied !== null ? (
@@ -159,9 +158,9 @@ function RailLink(props: { to: string; name: string; icon: ReactNode; collapsed:
   );
 }
 
-// Starting a session from the UI comes later; until then Launch (the rail's first control,
-// and the session list's "+") says how.
-export function Launch({ variant }: { variant: "rail" | "plus" }) {
+// Starting a session from the UI comes later; until then Launch (in the top bar, and the
+// session list's "+") says how.
+export function Launch({ variant }: { variant: "top" | "plus" }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -188,17 +187,14 @@ export function Launch({ variant }: { variant: "rail" | "plus" }) {
       <button
         ref={button}
         type="button"
-        className={variant === "rail" ? "primary launch-button" : "plus"}
-        aria-label={variant === "rail" ? "Launch" : "New session"}
-        title={variant === "rail" ? undefined : "New session"}
+        className={variant === "top" ? "primary" : "plus"}
+        aria-label={variant === "top" ? undefined : "New session"}
+        title={variant === "top" ? undefined : "New session"}
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen(!open)}
       >
-        <span className="launch-plus" aria-hidden="true">
-          +
-        </span>
-        {variant === "rail" && <span className="rail-name">Launch</span>}
+        {variant === "top" ? "Launch" : <span aria-hidden="true">+</span>}
       </button>
       {open && (
         <div

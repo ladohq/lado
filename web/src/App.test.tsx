@@ -152,9 +152,11 @@ test("an unknown address is Not found with a link to Home", () => {
   expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
 });
 
-test("Launch in the rail explains lado start and closes with Escape", () => {
+test("the top bar shows the server's address and Launch explains lado start", () => {
   open("/");
-  const launch = within(rail()).getByRole("button", { name: "Launch" });
+  const bar = screen.getByRole("banner");
+  expect(within(bar).getByText(window.location.host)).toBeTruthy();
+  const launch = within(bar).getByRole("button", { name: "Launch" });
   expect(launch.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(launch);
   expect(launch.getAttribute("aria-expanded")).toBe("true");

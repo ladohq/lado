@@ -58,6 +58,9 @@ def handle(
     elif event.kind == providers.WAITING:
         state.set_status(session, agent, state.WAITING)
     elif event.kind == providers.TURN_END:
+        # The human's messages this turn got: did it write to the human? Before the inbox is
+        # handed over, so what the next turn gets is checked when that one ends.
+        state.check_replies(session, agent)
         # Mark idle first, then collect the inbox: lado.runtime.send_message does it the
         # other way round, so a message sent in between is always picked up by one of us.
         state.set_status(session, agent, state.IDLE)

@@ -16,6 +16,7 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.spawn_worker("s", "task")
     supervisor_tools = [
+        "ask_human",
         "finish_worker",
         "flow_advance",
         "flow_cancel",
@@ -28,6 +29,7 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     ]
     assert _tools("s", "supervisor") == supervisor_tools
     assert _tools("s", "w1") == [
+        "ask_human",
         "flow_advance",
         "flow_status",
         "list_agents",
@@ -141,6 +143,7 @@ ACCEPTED = {
     "flow_advance": "run, outcome, note_summary, note_body",
     "flow_status": "run",
     "send_message": "to, summary, body",
+    "ask_human": "question, details, choices, free_answer",
     "read_messages": "none",
     "spawn_worker": "task, name, provider, role, without, run",
     "flow_start": "flow, task, name, human_language",
@@ -286,3 +289,29 @@ def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
     cmd = fake_tmux[-1][5]
     assert "--add-dir" not in cmd
     assert "role" in str(asyncio.run(server.call_tool("list_agents", {})))
+
+
+def test_an_agent_writes_to_and_asks_the_human(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.spawn_worker("s", "task")
+    sent = _call("s", "w1", "send_message", {"to": "human", "summary": "a milestone"})
+    assert sent == runtime.TO_HUMAN
+    asked = _call(
+        "s",
+        "w1",
+        "ask_human",
+        {"question": "Merge?", "choices": ["yes", "no"], "free_answer": False},
+    )
+    message, question = state.list_messages("s")
+    assert asked.startswith(f"question #{question.id} asked")
+    assert (message.recipient, message.kind) == ("human", state.MESSAGE)
+    assert (question.sender, question.choices, question.free_answer) == ("w1", ["yes", "no"], False)
+    with pytest.raises(ToolError, match="no choices and no free answer"):
+        _call("s", "w1", "ask_human", {"question": "Merge?", "free_answer": False})
+
+
+def test_the_tools_tell_agents_about_the_human(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    tools = {t.name: t for t in asyncio.run(mcp_server.build("s", "supervisor").list_tools())}
+    assert 'to="human"' in tools["send_message"].description
+    assert "message from human" in tools["ask_human"].description

@@ -29,13 +29,18 @@ FIRST_INPUT_LIMIT = 2000
 # What every agent must know about LADO, appended to its role prompt from the kit. Kits only
 # describe the role.
 SUPERVISOR_INSTRUCTIONS = """\
-You are agent "supervisor" in LADO session "{session}". The human talks to you in this window.
+You are agent "supervisor" in LADO session "{session}".
+The human follows the session in LADO's UI. Answer where the human asked: answer a message \
+"[from human] ..." with send_message(to="human"), and ask with ask_human (with choices when \
+there are some); answer text typed straight into your window in this window.
 Use the `lado` MCP tools:
 - spawn_worker: start a worker agent on a task, in its own git worktree and a branch created \
 from your current HEAD. Give it the goal, the relevant files and how to check the result. \
 `role` picks the kind of worker{default_role}. Roles:
 {roles}
-- send_message: talk to another agent, e.g. to answer a worker's question.
+- send_message: talk to another agent, e.g. to answer a worker's question, or to the human.
+- ask_human: ask the human a question, with choices and, by default, a free answer. It \
+does not wait: the answer or the dismissal comes as a message from human.
 - read_messages: read the full text of the messages you got.
 - list_agents: see the agents, their role, status, branch and worktree.
 - finish_worker: once you merged a worker's branch, end that worker; its window, worktree \

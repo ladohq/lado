@@ -37,6 +37,8 @@ def test_builtin_default_kit():
     gate = " ".join(env.supervisor().body.split())
     assert "Wait for the human's explicit OK before you merge it and call finish_worker" in gate
     assert "Without that OK, do not merge or finish the worker." in gate
+    assert "in your window" not in gate  # LADO's instructions say where the human talks
+    assert "ask_human" in gate
     assert env.kits[0].where == "built-in"
 
 

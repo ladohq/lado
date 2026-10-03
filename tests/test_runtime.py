@@ -107,6 +107,15 @@ def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
     assert "lado log" in supervisor
 
 
+def test_the_supervisor_is_told_to_answer_the_human_where_they_asked(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
+    assert "The human talks to you in this window" not in supervisor
+    assert 'answer a message "[from human] ..." with send_message(to="human")' in supervisor
+    assert "ask with ask_human" in supervisor
+    assert "answer text typed straight into your window in this window" in supervisor
+
+
 def _mcp_ready(agent, instance=None):
     """What the agent's LADO MCP server records when Claude Code has listed its tools."""
     instance = instance or state.get_agent("s", agent).instance
@@ -1425,3 +1434,77 @@ def test_stopping_the_session_closes_its_open_questions(repo, fake_tmux):
     runtime.ask_human("s", "supervisor", "second?")
     runtime.stop_session("s")
     assert _question_states() == [state.CLOSED, state.CLOSED]
+
+
+def _human_writes(text="merge w1?", agent="supervisor"):
+    """The human's message typed into the idle agent and confirmed by its prompt."""
+    state.set_status("s", agent, state.IDLE)
+    runtime.write_as_human("s", text, to=agent)
+    message = state.list_messages("s")[-1]
+    _hook("UserPromptSubmit", agent, {"prompt": runtime.format_message(message)})
+    return message
+
+
+def _reply_state(message):
+    return state.get_message("s", message.id).reply_state
+
+
+def test_a_turn_that_wrote_nothing_to_the_human_is_flagged(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.MISSING
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        lambda: runtime.send_message("s", "supervisor", "human", "merged"),
+        lambda: runtime.ask_human("s", "supervisor", "merge w2 too?"),
+    ],
+)
+def test_a_turn_that_wrote_to_the_human_is_not_flagged(repo, fake_tmux, reply):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    reply()
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.REPLIED
+
+
+def test_a_body_read_in_a_turn_without_a_reply_is_flagged(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes("merge w1?\nthen tag it")
+    assert [m.id for m in state.read_messages("s", "supervisor")] == [mine.id]
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.MISSING
+
+
+def test_an_answer_to_a_question_needs_no_reply(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.answer_question("s", question.id, "yes")
+    answer = state.list_messages("s")[-1]
+    _hook("UserPromptSubmit", "w1", {"prompt": runtime.format_message(answer)})
+    _hook("Stop", "w1")
+    assert _reply_state(answer) is None
+
+
+def test_a_message_handed_over_at_the_turn_end_is_checked_at_the_next_one(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")  # busy
+    runtime.write_as_human("s", "merge w1?")
+    mine = state.list_messages("s")[-1]
+    assert _hook("Stop", "supervisor")["reason"] == "[from human] merge w1?"
+    assert _reply_state(mine) is None
+    runtime.send_message("s", "supervisor", "human", "merged")
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.REPLIED
+
+
+def test_a_message_is_checked_once(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _hook("Stop", "supervisor")
+    runtime.send_message("s", "supervisor", "human", "merged, late")
+    _hook("UserPromptSubmit", "supervisor")
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.MISSING

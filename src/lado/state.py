@@ -1101,6 +1101,22 @@ def reply_to_question(
     return reply
 
 
+def check_replies(session: str, agent: str) -> None:
+    """At the end of the agent's turn: each message from the human it got and that is not
+    checked yet is REPLIED when the agent wrote to the human after it (a message or a
+    question), else MISSING: it replied only in its terminal. Each one is checked once.
+    Answers and dismissals of the agent's questions need no reply."""
+    with connect() as db:
+        db.execute(
+            "UPDATE messages SET reply_state = CASE WHEN EXISTS (SELECT 1 FROM messages r"
+            " WHERE r.session = messages.session AND r.sender = messages.recipient"
+            " AND r.recipient = ? AND r.id > messages.id) THEN ? ELSE ? END"
+            " WHERE session = ? AND sender = ? AND recipient = ? AND state IN (?, ?)"
+            " AND reply_state IS NULL AND reply_to IS NULL",
+            (HUMAN, REPLIED, MISSING, session, HUMAN, agent, DELIVERED, READ),
+        )
+
+
 def get_message(session: str, message_id: int) -> Message | None:
     with connect() as db:
         row = db.execute(

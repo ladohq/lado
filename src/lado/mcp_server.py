@@ -120,7 +120,8 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
 
     @server.tool()
     def send_message(to: str, summary: str, body: str | None = None) -> str:
-        """Send a message to another agent in this session, e.g. to="supervisor".
+        """Send a message to another agent in this session, e.g. to="supervisor", or to the
+        human with to="human" (they read it in LADO's UI).
 
         `summary` is one line (at most 200 characters) and is all the recipient sees at
         first; put the details in `body`, which it reads with read_messages. It is delivered
@@ -128,6 +129,23 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         """
         with _reasons():
             return runtime.send_message(session, agent, to, summary, body)
+
+    @server.tool()
+    def ask_human(
+        question: str,
+        details: str | None = None,
+        choices: list[str] | None = None,
+        free_answer: bool = True,
+    ) -> str:
+        """Ask the human a question in LADO's UI, e.g. a decision with your recommendation.
+
+        `question` is one line; `details` the rest. `choices` (at most 6, each one short
+        line) are buttons; with `free_answer` the human may also answer in their own words.
+        It does not wait: the answer, or that the human dismissed the question, comes as a
+        message from human: "Answer to #<id>: ..." or "Dismissed #<id>".
+        """
+        with _reasons():
+            return runtime.ask_human(session, agent, question, details, choices, free_answer)
 
     @server.tool()
     def read_messages() -> list[dict]:

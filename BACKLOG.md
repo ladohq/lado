@@ -441,3 +441,12 @@ broken run. `GET …/gates` would answer 500 too.
 Wanted: an item that cannot be built is sent without what failed (here: `needs` null and a
 problem named) and the error logged once, so one bad row never stops the feed.
 Found: 2026-10-03, feature/gates (implement).
+
+## The version banner gives a stale tab the wrong advice
+
+A tab opened before an upgrade keeps its old bundle. Once `lado ui` restarts the server,
+that tab sees the new server's version and says to run `lado server stop` and `lado ui`,
+though reloading the page is enough. Stopping the server is needless there.
+Wanted: the banner first offers to reload the page, and names `lado server stop` and
+`lado ui` only when the versions still differ after a reload.
+Found: 2026-10-03, review of fix/stale-ui-server.

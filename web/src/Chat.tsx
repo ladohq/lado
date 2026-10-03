@@ -36,16 +36,17 @@ type Loaded = { messages: MessageInfo[]; events: RunEventInfo[]; gates: GateInfo
 // A gate the human answered (or overrode), whose answer is also the human's bubble.
 const answeredByHuman = (gate: GateInfo) => gate.answer !== null && gate.answered_by === HUMAN && gate.answered_at !== null;
 
-// The messages, the run events and the gates shown, in time order (a message before an
-// event of the same moment); a gate where it opened, the human's answer when it was given.
+// The messages, the run events and the gates shown, in time order (a message or the
+// human's answer to a gate before an event of the same moment: the answer moves the run in
+// the same transaction); a gate where it opened, the human's answer when it was given.
 function entries({ messages, events, gates }: Loaded, agentMessages: boolean): Entry[] {
   const all: Entry[] = [
     ...messages
       .filter((one) => agentMessages || withHuman(one))
       .map((message) => ({ at: Date.parse(message.created_at), message })),
+    ...gates.filter(answeredByHuman).map((gate) => ({ at: Date.parse(gate.answered_at ?? ""), answered: gate })),
     ...events.filter((one) => one.kind in RUN_EVENT_LINES).map((event) => ({ at: Date.parse(event.created_at), event })),
     ...gates.map((gate) => ({ at: Date.parse(gate.created_at), gate })),
-    ...gates.filter(answeredByHuman).map((gate) => ({ at: Date.parse(gate.answered_at ?? ""), answered: gate })),
   ];
   return all.sort((a, b) => a.at - b.at);
 }

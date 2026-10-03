@@ -569,6 +569,18 @@ test("the human's answer to a gate is a bubble of theirs at its time; the gate's
   expect(bubble.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-03T12:05:00Z");
 });
 
+test("the human's answer comes before the run's events of the same moment, which it caused", async () => {
+  const at = "2026-10-03T12:05:00.123Z";
+  serve([], undefined, [event(5, "flow", "check -approved-> end", at)], [closed(1, "approve", { answered_at: at })]);
+  open();
+  const log = await chat();
+  await answerBubble();
+  const order = Array.from(log.querySelectorAll(":scope > article, :scope > ol > li")).map(
+    (one) => one.getAttribute("aria-label") ?? one.textContent,
+  );
+  expect(order).toEqual(["Gate #1", "Your answer to gate #1", expect.stringContaining("check -approved-> end")]);
+});
+
 test.each([
   [closed(1, "reject", { comment: "add a test" }), "Gate #1 · reject", "add a test"],
   [closed(1, "overridden", { comment: "built by hand" }), "Gate #1 · overridden", "built by hand"],

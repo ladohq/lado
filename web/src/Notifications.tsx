@@ -16,6 +16,7 @@ const INSECURE =
 const DENIED =
   "The browser blocks notifications for this page: allow them in the site's settings (the icon left of the address), then turn them on again.";
 const DISMISSED = "The browser did not allow notifications: turn them on again and allow them.";
+const ASK_AGAIN = "The browser asks again before it shows notifications: turn them on again and allow them.";
 
 type Support = "ok" | "unsupported" | "insecure";
 
@@ -25,7 +26,12 @@ function support(): Support {
 }
 
 // Whether the human turned them on here, and why the last try or notification failed.
-type Chosen = { enabled: boolean; failure: string | null };
+// A failure holds while the browser's permission is the one it came with (`permission`):
+// allowed or blocked later in the site's settings, it no longer says what is so.
+type Failure = { text: string; permission: NotificationPermission };
+type Chosen = { enabled: boolean; failure: Failure | null };
+
+const failed = (text: string): Failure => ({ text, permission: Notification.permission });
 
 let chosen: Chosen = { enabled: storedNotifications(), failure: null };
 const listeners = new Set<() => void>();
@@ -45,7 +51,7 @@ const subscribe = (listener: () => void) => {
 async function enable() {
   if (support() !== "ok") return choose({ enabled: false, failure: null });
   const answer = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-  if (answer !== "granted") return choose({ enabled: false, failure: answer === "denied" ? DENIED : DISMISSED });
+  if (answer !== "granted") return choose({ enabled: false, failure: failed(answer === "denied" ? DENIED : DISMISSED) });
   storeNotifications(true);
   choose({ enabled: true, failure: null });
 }
@@ -66,12 +72,11 @@ function useNotifications(): { on: boolean; problem: string | null; possible: bo
   const kind = support();
   if (kind === "unsupported") return { on: false, problem: UNSUPPORTED, possible: false };
   if (kind === "insecure") return { on: false, problem: INSECURE, possible: false };
-  const allowed = Notification.permission === "granted";
-  return {
-    on: enabled && allowed,
-    problem: failure ?? (enabled && !allowed ? DENIED : null),
-    possible: true,
-  };
+  // Turned on here, the permission may have changed since: blocked, or reset to ask.
+  const { permission } = Notification;
+  const lost = !enabled || permission === "granted" ? null : permission === "denied" ? DENIED : ASK_AGAIN;
+  const holds = failure !== null && failure.permission === permission ? failure.text : null;
+  return { on: enabled && permission === "granted", problem: holds ?? lost, possible: true };
 }
 
 // On Needs you: whether they are on, or the button that turns them on.
@@ -164,7 +169,7 @@ function Notify() {
         };
         shown.current.set(item.key, notification);
       } catch (error) {
-        choose({ ...chosen, failure: `The browser did not show a notification: ${String(error)}` });
+        choose({ ...chosen, failure: failed(`The browser did not show a notification: ${String(error)}`) });
       }
     }
   }, [loaded, navigate]);

@@ -139,7 +139,10 @@ schema change.
     session, key, op) in the writer's transaction, so no code path reports changes by hand;
     an agent update that changes `seen_at` is none (`AGENTS_CHANGED`: only `state.seen`
     writes it, and nothing else with it; keep it so, since the condition names no other
-    column and a trigger stays in `lado.db` as it was made), and each insert drops changes older than
+    column and a trigger stays in `lado.db` as it was made; when the agent has messages that
+    failed after its previous hook, `state.seen` also writes `status = status` in its own
+    statement, a change, since why it waits, `waiting_reason`, changes with `seen_at`), and
+    each insert drops changes older than
     the latest `CHANGES_KEPT`. From schema 14 `events` is journaled too, key its id, but
     only inserts (`JOURNALED_OPS`) of a flow run's events (`RUN_EVENT`: `run IS NOT NULL`;
     a status event would double the journal); a trigger's condition is in `JOURNAL_WHEN`.

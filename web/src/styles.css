@@ -662,14 +662,11 @@ h3 {
   gap: 10px;
 }
 
+/* The session's name opens its chat: a link, as the others on the page. */
 .waits-session h2 a {
-  color: var(--ink);
-  text-decoration: none;
-}
-
-.waits-session h2 a:hover {
   color: var(--action);
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .waits-item {
@@ -692,14 +689,6 @@ h3 {
   border-radius: 8px;
   box-shadow: inset 3px 0 0 var(--human);
   background: var(--human-ground);
-}
-
-.waits-agent .answer-actions {
-  align-items: center;
-}
-
-.waits-agent .waits-chat {
-  margin-left: auto;
 }
 
 .waits-reason {

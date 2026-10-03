@@ -746,9 +746,17 @@ def seen(session: str, name: str) -> None:
     """Record that a hook of the agent ran now. The only writer of seen_at, which it sets
     alone: an update of it is no change for the UI (AGENTS_CHANGED). Its failed messages
     that no hook ran after (a dialog swallowed them) go back to the queue, with their
-    attempts from 0."""
+    attempts from 0. When it has messages that failed after its previous hook, why it waits
+    (runtime.waiting_reason, from failed_counts) changes with seen_at: that is recorded as a
+    change of the agent, which the UI then shows again."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            "UPDATE agents SET status = status WHERE session = ? AND name = ? AND EXISTS"
+            " (SELECT 1 FROM messages m WHERE m.session = agents.session"
+            " AND m.recipient = agents.name AND m.state = ? AND m.failed_at > agents.seen_at)",
+            (session, name, FAILED),
+        )
         db.execute(
             "UPDATE messages SET state = ?, attempts = 0 WHERE session = ? AND recipient = ?"
             " AND state = ? AND sent_at > (SELECT seen_at FROM agents"
@@ -1050,13 +1058,13 @@ def waiting_items(session: str | None = None) -> list[Waits]:
             f" AND question_state = ? AND session IN ({NOT_STOPPED})",
             (QUESTION, OPEN_QUESTION, session, session),
         ).fetchall()
-        # An agent waits since its latest status or spawn event (status_since).
+        # An agent waits since it got `waiting` (STATUS_EVENTS, as status_since says); one
+        # with no such event, written without LADO's runtime, since it was added.
         agents = db.execute(
-            "SELECT a.*, COALESCE((SELECT e.created_at FROM events e WHERE e.session ="
-            " a.session AND e.agent = a.name AND e.kind IN (?, ?) ORDER BY e.id DESC LIMIT 1),"
-            f" a.created_at) AS since FROM agents a WHERE a.status = ?"
-            f" AND a.session IN ({NOT_STOPPED})",
-            (STATUS, SPAWNED, WAITING, session, session),
+            "SELECT a.*, COALESCE(e.created_at, a.created_at) AS since FROM agents a"
+            f" LEFT JOIN ({STATUS_EVENTS}) e ON e.session = a.session AND e.agent = a.name"
+            f" WHERE a.status = ? AND a.session IN ({NOT_STOPPED})",
+            (*status_events_args(session), WAITING, session, session),
         ).fetchall()
     items = [Waits(r["session"], r["created_at"], gate=_gate(r)) for r in gates]
     items += [Waits(r["session"], r["created_at"], question=_message(r)) for r in questions]
@@ -1095,14 +1103,23 @@ def _utc(created_at: str) -> datetime.datetime:
     return datetime.datetime.fromisoformat(created_at).replace(tzinfo=datetime.timezone.utc)
 
 
+# When each agent of `session` (NULL: of every session) got its current status: its latest
+# "status" or "spawned" event. The one rule for status_since and waiting_items; its
+# arguments: status_events_args(session).
+STATUS_EVENTS = (
+    "SELECT session, agent, created_at FROM events WHERE id IN (SELECT MAX(id) FROM events"
+    " WHERE kind IN (?, ?) AND (? IS NULL OR session = ?) GROUP BY session, agent)"
+)
+
+
+def status_events_args(session: str | None) -> tuple:
+    return (STATUS, SPAWNED, session, session)
+
+
 def status_since(session: str) -> dict[str, datetime.datetime]:
     """When each agent got its current status: its latest "status" or "spawned" event (UTC)."""
     with connect() as db:
-        rows = db.execute(
-            "SELECT agent, created_at FROM events WHERE id IN"
-            " (SELECT MAX(id) FROM events WHERE session = ? AND kind IN (?, ?) GROUP BY agent)",
-            (session, STATUS, SPAWNED),
-        ).fetchall()
+        rows = db.execute(STATUS_EVENTS, status_events_args(session)).fetchall()
     return {r["agent"]: _utc(r["created_at"]) for r in rows}
 
 

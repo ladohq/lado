@@ -139,6 +139,26 @@ def test_a_hook_that_only_marks_the_agent_seen_is_not_a_change(lado_home):
     assert state.get_agent("s", "w1").seen_at > 0
 
 
+def test_a_hook_after_a_failure_is_a_change_of_the_agent(lado_home):
+    """Why the agent waits (failed messages after its latest hook) changes with seen_at
+    alone when a message it saw stays failed: the UI hears of it as a change of the agent."""
+    with state.connect() as db:
+        setup_agent(db)
+        db.execute(
+            "INSERT INTO messages (session, sender, recipient, summary, state, sent_at,"
+            " failed_at) VALUES ('s', 'w2', 'w1', 'report', ?, 1, 2)",
+            (state.FAILED,),
+        )
+        db.execute("UPDATE agents SET seen_at = 1.5")  # a hook after the paste, before it failed
+    state.set_status("s", "w1", state.WAITING)
+    before = last()
+    state.seen("s", "w1")  # its hooks ran after the paste: it stays failed, unconfirmed
+    assert journal(before) == [("agents", "s", "w1", "update")]
+    before = last()
+    state.seen("s", "w1")  # the failure is older than its latest hook now
+    assert journal(before) == []
+
+
 def test_deleting_a_session_records_what_went_with_it(lado_home):
     with state.connect() as db:
         setup_agent(db)

@@ -440,3 +440,24 @@ though reloading the page is enough. Stopping the server is needless there.
 Wanted: the banner first offers to reload the page, and names `lado server stop` and
 `lado ui` only when the versions still differ after a reload.
 Found: 2026-10-03, review of fix/stale-ui-server.
+
+## The session list has its own copy of "not stopped"
+
+web/src/Sessions.tsx (`grouped`) splits the sessions with its own `status === "stopped"`,
+while the rail's count and the live store's reloads of what waits use `live.isLive`. Both
+say the same now, but a change to one rule leaves the session list's groups apart from
+the count.
+Wanted: `grouped` (and `about`, `waits`) take the rule from `isLive`.
+Found: 2026-10-03, review of feature/needs-you.
+
+## Flaky: integration test of the note a step needs after a gate
+
+`tests/integration/test_flow_runs.py::test_a_step_gets_the_note_it_needs_after_a_gate_and_after_flow_set`
+failed once in a full `make check` (it passes alone). The test waits until the
+supervisor's latest input is exactly the human's command, but LADO typed the step line
+from `lado` and that command together as one prompt (`[from lado] flow …: step design …
+\n[from human] advance …`), so the latest input never equals the command, although the
+advance happened. A test race, not a LADO bug: queued messages go together by design.
+Wanted: the test waits for the command among the lines of the latest input, or for the
+run's state.
+Found: 2026-10-03, `make check` of feature/needs-you (visit 2).

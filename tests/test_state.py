@@ -457,6 +457,9 @@ def test_what_waits_for_the_human_is_one_list_of_sessions_not_stopped(lado_home)
     assert all(w.since for w in items)
     assert [w.since for w in items] == sorted(w.since for w in items)
     assert items[2].since == state.list_events(items[2].session)[-1].created_at
+    for waits in items[2:]:  # the time `lado ls` shows
+        since = state.status_since(waits.session)[waits.agent.name]
+        assert datetime.datetime.fromisoformat(waits.since).replace(tzinfo=since.tzinfo) == since
     assert [w.session for w in state.waiting_items("gone")] == ["gone"]
     assert state.waiting_items("old") == []
     assert state.waiting_for_human("s") == (1, 1, 1)

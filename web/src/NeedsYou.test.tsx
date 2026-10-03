@@ -176,6 +176,10 @@ test("what waits shows by session: a gate's card, a question's card and a waitin
   expect(within(w2).getByText("did not take 1 message: answer the dialog in its window")).toBeTruthy();
   const w3 = within(lado).getByRole("article", { name: "w3 waits" });
   expect(within(w3).getByText("waits for you in its terminal")).toBeTruthy();
+  // An agent's link to the chat is under its card, as a gate's and a question's.
+  expect(within(w2).queryByRole("link")).toBeNull();
+  const chats = within(lado).getAllByRole("link", { name: "lado's chat" });
+  expect(chats.map((one) => one.getAttribute("href"))).toEqual(["/sessions/lado/activity", "/sessions/lado/activity"]);
 });
 
 test("a gate and a question are answered in place; an answered one goes when the feed says so", async () => {
@@ -324,6 +328,18 @@ describe("notifications", () => {
     open();
     expect(await screen.findByText("This browser cannot show notifications.")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Enable notifications" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("turned on, but the browser's permission reset to ask, says to allow them again, not that it blocks them", async () => {
+    localStorage.setItem("lado.notifications", "on");
+    FakeNotification.permission = "default";
+    open();
+    expect(await screen.findByText(/The browser asks again before it shows notifications/)).toBeTruthy();
+    expect(screen.queryByText(/blocks notifications/)).toBeNull();
+    FakeNotification.permission = "denied";
+    cleanup();
+    open();
+    expect(await screen.findByText(/The browser blocks notifications for this page/)).toBeTruthy();
   });
 
   test("each new item shows one silent notification, tagged by its key; what waited at the start does not", async () => {

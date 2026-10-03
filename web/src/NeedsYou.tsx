@@ -74,7 +74,13 @@ function Waits({ item }: { item: WaitingItem }) {
       </div>
     );
   }
-  return item.agent ? <WaitingAgent session={session} agent={item.agent} since={item.since} /> : null;
+  if (!item.agent) return null;
+  return (
+    <div className="waits-item">
+      <WaitingAgent session={session} agent={item.agent} since={item.since} />
+      <ChatLink to={chatPath(session)} label={`${session}'s chat`} />
+    </div>
+  );
 }
 
 function ChatLink({ to, label }: { to: string; label: string }) {
@@ -104,9 +110,6 @@ function WaitingAgent({ session, agent, since }: { session: string; agent: Agent
         >
           Open terminal
         </button>
-        <Link className="waits-chat" to={chatPath(session)} aria-label={`${session}'s chat`}>
-          In the chat
-        </Link>
       </div>
     </article>
   );

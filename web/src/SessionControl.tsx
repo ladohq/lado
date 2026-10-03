@@ -3,7 +3,7 @@
 // session is gone, to mark it stopped), Resume one that does not run, Forget one that is
 // stopped. Stop asks in a popover, Forget in a modal window; both say first what they do,
 // from the server's preview.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
 import {
@@ -39,8 +39,20 @@ const messageOf = (error: unknown) => (error instanceof ApiError ? error.message
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+// Where a row's menu or popover goes: fixed under its row's actions, so the session list's
+// scrolling box does not cut it; a head's stays in its place (styles.css).
+function useBelow(anchor: RefObject<HTMLElement | null>, fixed: boolean): CSSProperties | undefined {
+  const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
+  useLayoutEffect(() => {
+    const box = anchor.current?.getBoundingClientRect();
+    if (!fixed || !box) return;
+    setStyle({ position: "fixed", top: box.bottom + 6, left: Math.max(8, box.left), right: "auto" });
+  }, [anchor, fixed]);
+  return style;
+}
+
 // Closes on Escape and on a press outside `box`.
-function useDismiss(open: boolean, box: React.RefObject<HTMLElement | null>, close: () => void) {
+function useDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: () => void) {
   useEffect(() => {
     if (!open) return;
     const away = (event: MouseEvent) => {
@@ -59,6 +71,7 @@ export function SessionActions({ session, place }: { session: SessionInfo; place
   const more = useRef<HTMLButtonElement>(null);
   const close = () => setShown(null);
   useDismiss(shown === "menu" || shown === "stop", box, close);
+  const below = useBelow(box, place === "row" && (shown === "menu" || shown === "stop"));
 
   const act = (action: Action) => {
     if (action === "resume") {
@@ -103,6 +116,7 @@ export function SessionActions({ session, place }: { session: SessionInfo; place
       {shown === "menu" && (
         <ActionMenu
           label={place === "row" ? `Actions for ${session.name}` : "Session actions"}
+          style={below}
           actions={actions}
           onAction={act}
           onClose={() => {
@@ -111,7 +125,7 @@ export function SessionActions({ session, place }: { session: SessionInfo; place
           }}
         />
       )}
-      {shown === "stop" && <StopPopover session={session.name} onClose={close} />}
+      {shown === "stop" && <StopPopover session={session.name} style={below} onClose={close} />}
       {shown === "forget" && <ForgetDialog session={session.name} onClose={close} />}
     </div>
   );
@@ -119,11 +133,13 @@ export function SessionActions({ session, place }: { session: SessionInfo; place
 
 function ActionMenu({
   label,
+  style,
   actions,
   onAction,
   onClose,
 }: {
   label: string;
+  style?: CSSProperties;
   actions: Action[];
   onAction: (action: Action) => void;
   onClose: () => void;
@@ -138,6 +154,7 @@ function ActionMenu({
       role="menu"
       aria-label={label}
       className="action-menu"
+      style={style}
       onKeyDown={(event) => {
         const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
         const at = items.indexOf(document.activeElement as HTMLButtonElement);
@@ -204,7 +221,15 @@ function stopItems(preview: StopPreview): string[] {
   ];
 }
 
-function StopPopover({ session, onClose }: { session: string; onClose: () => void }) {
+function StopPopover({
+  session,
+  style,
+  onClose,
+}: {
+  session: string;
+  style?: CSSProperties;
+  onClose: () => void;
+}) {
   const preview = usePreview(() => getStopPreview(session));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
@@ -230,6 +255,7 @@ function StopPopover({ session, onClose }: { session: string; onClose: () => voi
       role="dialog"
       aria-label={title}
       className="popover stop-popover"
+      style={style}
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;

@@ -408,8 +408,8 @@ function WhereField({
   const prefix = (split?.prefix ?? "").toLowerCase();
   const options =
     open && listed && split && listed.path === split.parent
-      ? listed.subfolders.filter((one) => one.toLowerCase().startsWith(prefix))
-      : [];
+      ? listed.subfolders.filter((one) => one.toLowerCase().startsWith(prefix) && one !== split.prefix)
+      : []; // a folder typed in full is not suggested again: its check shows under the field
 
   const pick = (folderName: string) => {
     if (!split) return;

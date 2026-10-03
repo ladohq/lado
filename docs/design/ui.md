@@ -103,6 +103,13 @@ later desktop app and a later cloud setup; the UI is its client.
   removed must not get HTML instead of JS. Deeper down a dot belongs to a name
   (`/sessions/a.b` is a page). `/api/<unknown>` is a JSON 404. Every other path gets
   `index.html`, and the UI's router shows the page or Not found.
+- Endpoints that start or end processes (Launch and session control): `POST /api/sessions`
+  (start), `POST /api/sessions/{name}/resume`, `POST /api/sessions/{name}/stop` and
+  `DELETE /api/sessions/{name}` (forget) change state like the composer and are guarded
+  the same way (`Guard.changes`: the token and the server's own Origin). The lookups the
+  New session window makes (`GET /api/folders`, `/api/folders/recent`, `/api/kits`,
+  `/api/providers`, the stop and forget previews) need the token; `/api/providers` runs
+  each CLI's `--version` on every request.
 - Data only through `lado.state` and `lado.runtime`, no SQL in the server but the journal's
   read-only reader (`feed.Journal`, The change feed below). The server never
   migrates `lado.db`: every data endpoint first reads the schema version read-only and
@@ -288,24 +295,25 @@ Decided with the human in task 2 (2026-10-03): a frame for all the sections to c
 them visible from the start; a section not built yet is a placeholder. The work is in
 Sessions for now. The UI's texts are in English.
 
-- **Rail** on the left, top to bottom: Home, Needs you, Sessions, Projects, Kits,
+- **Rail** on the left, top to bottom: Home, **Launch** (a button that opens the New
+  session window: Launch and session control, below), Needs you, Sessions, Projects, Kits,
   Marketplace; Settings apart at the bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
-  remembers the choice; a window narrower than 900 px starts collapsed. (The Layout task
-  left it as it is, by the human's decision; its rework comes later, Tasks.)
-- **Top bar**: the page's title on the left; on the right the server's address, the
-  change feed's link (`live`, or `reconnecting…` with the reason) and **Launch**. Launch
-  only explains for now: starting a session from the UI comes later, until then
-  `lado start <repo>`.
+  remembers the choice; a window narrower than 900 px starts collapsed.
+- **Top bar**: the page's title on the left; on the right the server's address and the
+  change feed's link (`live`, or `reconnecting…` with the reason).
 - **Sessions** (the Layout task, 2026-10-03): three columns under the top bar, each the
-  window's height. The **list** on the left: "+" in its head (it explains, as Launch), the
+  window's height. The **list** on the left: "+" in its head (it opens the New session
+  window, as Launch), the
   search by name, and the sessions in groups: **Needs you** (something waits for the
   human: `SessionInfo.waiting`, counted by the server: open gates, open questions, agents
   in `waiting`), **Running**, and **Stopped** at the bottom, folded (remembered in the
   browser). Nothing in a stopped session counts as waiting (its waiting is all zeros),
   though its gates stay open and `lado ls` shows them: nothing in it can be answered until
-  it is resumed. Each shows a line under its name: what waits, or its agents. The **session**
-  in the middle: its name and status, then the tabs **Activity | Agents | Flows |
+  it is resumed. Each shows a line under its name: what waits, or its agents, and on hover
+  or keyboard focus of the row its main action as an icon (■ Stop, ▶ Resume) and ⋯ with
+  all its actions (Launch and session control, below). The **session**
+  in the middle: its name, status and actions, then the tabs **Activity | Agents | Flows |
   Artifacts** (its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents lists the agents live (name, role,
   provider, status) with **Open terminal** until the Agents task builds the whole section,
@@ -518,6 +526,55 @@ Built in the layout task (2026-10-03, schema 14):
   characters), the rest behind **Show all**. The feed takes the page's height and scrolls
   by itself, the composer under it.
 
+### Launch and session control (decided 2026-10-04, task feature/launch)
+
+The human starts, stops, resumes and forgets sessions from the browser. The server calls
+the same core functions as the CLI (`runtime.start_session`, `stop_session`,
+`forget_session`), so the decisions and their texts are the core's; the UI shows them.
+
+- **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
+  list's "+"): **Where** is a folder only for now (the request's `where` is
+  `{kind: "folder", path}`; another kind is refused, so Projects can add theirs). The path
+  is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
+  under the field "✓ git repository · branch X", or the core's reason from
+  `runtime.check_repo` (does not exist, not inside a git repository, no commits yet), and
+  Start stays off until it will do. Subfolders are suggested from the folder up to the last
+  `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
+  (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
+  **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
+  says of it (`name_state`): taken by a running session, by a session of another folder,
+  or a stopped session of this folder with **Resume it**, which turns the window to Resume.
+  **Kits** (chips, "+ Add kit" from `/api/kits?where=`: the kit of each name the lookup
+  takes; one that does not load is listed off with `lado kits check <name>`),
+  **Provider** (`/api/providers`: each provider of the registry with
+  `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
+  a version warning shows under it) and **Permission mode** (the provider's modes; a mode
+  the new provider lacks goes back to `default`, and the window says so). Kits, provider
+  and mode of a new session come from the folder's last session ("from the last session
+  of this folder"), else LADO's defaults; only the UI does this, `lado start` is
+  unchanged. **Advanced** (folded): the `--without` items. Start shows "Starting…" with
+  the fields off; a refusal is shown whole (`role="alert"`) and the window stays; a name
+  taken (409, `Taken`: its status and folder) offers Resume it for a session of this
+  folder. On success the window closes and the session's Activity opens; the `Started`
+  answer's `problems` (open runs that cannot go on) and a resume's `changes` show under
+  the session's head until closed. No first message, no tmux attach.
+- **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
+  mode and Advanced filled from the session (`SessionInfo` carries its settings) and
+  changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).
+- **Actions by status** (`SessionControl.tsx`), in the session's head and its list row:
+  running and `loop_down`: ⋯ with Stop session…; stopped: Resume… and ⋯ with Resume… and
+  Forget…; `tmux_gone`: Resume… and ⋯ with Resume… and Stop session… (which marks it
+  stopped). The row shows its main action as an icon (■ Stop, ▶ Resume); Forget is only
+  in ⋯, and only for a stopped session.
+- **Stop** asks in a popover by its button: `Stop session "<name>"?`, what it does from
+  `stop-preview` (its agents are closed, the messages they did not get are dropped,
+  branches, worktrees, open runs and the history stay, it can be resumed) and the button
+  `Stop <name>`; the name is in the request's address. The page stays on the session.
+- **Forget** asks in a modal window: the history is deleted for good, the worktrees and
+  branches left on disk (`forget-preview`), and with open runs a box to tick
+  ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,
+  `/sessions`.
+
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 
 So the human can work from the browser without watching tmux. The tmux popup stays as it
@@ -602,12 +659,12 @@ time. Each task is one `feature` run, useful on its own.
    6. **Launch and session control** (decided with the human 2026-10-03, after Needs you):
       start a session from the UI (Launch, the session list's "+": repo, kit, provider,
       permission mode), stop, resume and forget one; guarded like the composer (token and
-      Origin). How to pick the repo's folder (the browser does not see the server's files)
-      is the task's design question.
+      Origin). Done: Launch and session control above (a typed path checked by the
+      server, with subfolders and recent folders).
    7. Flows; Agents; Providers and environment; a pass over the look with a designer role
-      (BACKLOG), with it the rework of the rail (later, with the look pass: Launch on it,
-      names under the icons when collapsed; the human kept the rail as it is in the Layout
-      task); then the rest; later the desktop app.
+      (BACKLOG), with it the rework of the rail (later, with the look pass: names under the
+      icons when collapsed; Launch moved onto it with Launch and session control); then the
+      rest; later the desktop app.
 
 ### Providers and environment
 

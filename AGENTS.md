@@ -68,9 +68,18 @@ schema change.
 ## Layout
 
 - `src/lado/`: the Python package.
-  - `cli.py`: the `lado` command. `doctor.py`: environment checks.
+  - `cli.py`: the `lado` command. `doctor.py`: environment checks; a provider's state
+    (installed, version, tested version, warning) is `doctor.provider_status`, which
+    `lado doctor` formats and the UI's `GET /api/providers` serves.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
-    messages to them.
+    messages to them. Whether a folder can hold a session is `check_repo` (its repository's
+    root, or why not: does not exist, not inside a git repository, no commits yet), asked
+    by `start_session` and the UI's folder check. `start_session(resume=...)` takes what
+    the caller means: `False` a new session (`SessionExists`, with that session's status
+    and folder, when the name is taken), `True` a resume (`NoSuchSession` for an unknown
+    name), `None` either, as `lado start`. `stop_preview` and `forget_preview` say what a
+    stop or forget would do now, refused alike; `stop_session` and `forget_session` use
+    them.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events; `claude.py`: Claude Code; `kilo.py`: Kilo CLI, with
     `kilo_plugin.js`, the Kilo plugin that runs LADO's hooks). A provider writes the agent's
@@ -174,6 +183,15 @@ schema change.
     the list and the count cannot differ; an agent's `waiting_reason` (`AgentInfo`, only
     for an agent in `waiting`) is `runtime.waiting_reason`, which `waiting_reasons` uses
     too;
+    `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
+    control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, subfolders, the
+    default name and whether a session has it), `/api/folders/recent`, `/api/kits?where=`
+    (the kit of each name the lookup takes, an invalid one `valid: false`) and
+    `/api/providers`; `app.py` has the session control: `POST /api/sessions` (a new
+    session, 409 `Taken` for a taken name), `POST …/{name}/resume`, `GET …/stop-preview`,
+    `POST …/stop`, `GET …/forget-preview`, `DELETE /api/sessions/{name}?force=`, all
+    through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the
+    session's kits, provider, permission mode and without;
     `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`.
@@ -293,7 +311,8 @@ schema change.
 
 ## Try it locally
 
-`uv run lado start <repo>` runs the working copy. Use `LADO_HOME=/tmp/some-dir` and
+`uv run lado start <repo>` runs the working copy (a repository without commits is refused:
+make a first commit). The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
 `lado log <session>` shows what happened in a session: messages between agents (one line

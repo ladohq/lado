@@ -43,11 +43,12 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
 
 @pytest.fixture
 def server(tmp_path):
-    """A real `lado server` on a free port; its server.json. Stopped after the test, and no
-    server process may be left."""
+    """A real `lado server` on a free port; its server.json. It is `lado` with the fake
+    providers (fake_provider.py), so a session it starts runs the fake agent. Stopped after
+    the test, and no server process may be left."""
     with open(tmp_path / "server.out", "w") as out:
         process = subprocess.Popen(
-            [sys.executable, "-m", "lado.cli", "server", "--port", "0"],
+            [sys.executable, str(fake_provider.LADO), "server", "--port", "0"],
             stdout=out,
             stderr=subprocess.STDOUT,
             env=os.environ,

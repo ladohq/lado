@@ -497,10 +497,12 @@ Found: 2026-10-04, fix/agent-env (integration test of the login-shell environmen
 
 `lado doctor` checks `claude`, `kilo` and `tmux` with `shutil.which` in its caller's
 environment, while agents now run with their login shell's PATH (`agent_env.resolve`); a
-CLI found by one may be missing for the other.
+CLI found by one may be missing for the other. The UI's New session window shows the same
+check (`GET /api/providers`, `doctor.provider_status` with the server's PATH), so it can
+offer a provider whose start then fails with "not on the agents' PATH", or the other way.
 Wanted: doctor looks the agent CLIs up on the resolved environment's PATH too and says
 where they differ.
-Found: 2026-10-04, fix/agent-env.
+Found: 2026-10-04, fix/agent-env; the UI's case in feature/launch.
 
 ## No tmux on an agent's PATH breaks its LADO calls with a raw error and a ghost worker
 

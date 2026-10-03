@@ -204,6 +204,18 @@ test("subfolders are suggested from the parent of what is typed and picked with 
   expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
 });
 
+test("a folder typed in full is not suggested again", async () => {
+  folders["/src/"] = folder("/src/", { ok: false, problem: "no", subfolders: ["lado", "lado-kits"] });
+  await openLaunch();
+  type("/src/lado-kits");
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/folders?path=%2Fsrc%2F")).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
+  type("/src/lado");
+  const list = await screen.findByRole("listbox", { name: "Folders" });
+  expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["lado-kits/"]);
+});
+
 test("a recent folder is one click, and its last session gives kits, provider and mode", async () => {
   recent = [
     {

@@ -232,7 +232,7 @@ function Composer({ session, stopped }: { session: string; stopped: boolean }) {
     >
       <textarea
         aria-label="Write to the supervisor…"
-        placeholder={stopped ? "The session is stopped: resume it with lado start" : "Write to the supervisor…"}
+        placeholder={stopped ? "The session is stopped: resume it to write" : "Write to the supervisor…"}
         rows={2}
         value={text}
         disabled={stopped}

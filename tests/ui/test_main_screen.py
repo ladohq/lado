@@ -113,15 +113,6 @@ def test_a_page_loads_without_a_console_error_and_with_its_icon(page: Page, serv
     assert page.request.get(f"{server['url']}{icon}").status == 200
 
 
-def test_the_launch_button_says_how_to_start_a_session(page: Page, server, shot):
-    log_in(page, server)
-    page.get_by_role("banner").get_by_role("button", name="Launch").click()
-    expect(page.get_by_role("dialog", name="Launch a session")).to_contain_text("lado start <repo>")
-    shot(page)
-    page.keyboard.press("Escape")
-    expect(page.get_by_role("dialog")).to_have_count(0)
-
-
 def test_the_rail_collapses_and_stays_so(page: Page, server, shot):
     log_in(page, server)
     rail = page.get_by_role("navigation", name="Sections")

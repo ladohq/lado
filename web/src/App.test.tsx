@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeSocket } from "./fakes";
+import { FakeEventSource, FakeSocket, stream } from "./fakes";
 
 // A session's page has the terminal panel (Terminals.test.tsx): no canvas, no server here.
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -31,6 +31,7 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (path === "/api/sessions/lado/agents") {
       return new Response(JSON.stringify(AGENTS), { status: 200 });
     }
+    if (path.endsWith("/messages?with=human")) return new Response("[]"); // the chat (Chat.test.tsx)
     expect(path).toBe("/api/sessions");
     return new Response(JSON.stringify(body), { status });
   });
@@ -59,59 +60,6 @@ function wide(matches: boolean) {
   );
 }
 
-// The browser's EventSource as the server drives it: `start` opens it and sends reset, as
-// a new stream does; the tests send changes and errors themselves.
-class FakeEventSource {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSED = 2;
-  static all: FakeEventSource[] = [];
-  static autoStart = true;
-
-  readyState = FakeEventSource.CONNECTING;
-  onopen: ((event: Event) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-  private listeners = new Map<string, ((event: MessageEvent) => void)[]>();
-  private lastId = "";
-
-  constructor(readonly url: string) {
-    FakeEventSource.all.push(this);
-    if (FakeEventSource.autoStart) queueMicrotask(() => this.start());
-  }
-
-  addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
-  }
-
-  close() {
-    this.readyState = FakeEventSource.CLOSED;
-  }
-
-  start(id = "10") {
-    this.open();
-    this.send("reset", {}, id);
-  }
-
-  open() {
-    this.readyState = FakeEventSource.OPEN;
-    act(() => this.onopen?.(new Event("open")));
-  }
-
-  // An event with an `id:` line when `id` is given; without one the browser keeps the last.
-  send(type: string, data: unknown, id?: string) {
-    if (id !== undefined) this.lastId = id;
-    const event = new MessageEvent(type, { data: JSON.stringify(data), lastEventId: this.lastId });
-    act(() => this.listeners.get(type)?.forEach((listener) => listener(event)));
-  }
-
-  // A network error (the browser tries again itself) or a refused answer (it gives up).
-  fail(closed: boolean) {
-    this.readyState = closed ? FakeEventSource.CLOSED : FakeEventSource.CONNECTING;
-    act(() => this.onerror?.(new Event("error")));
-  }
-}
-
-const stream = () => FakeEventSource.all[FakeEventSource.all.length - 1];
 
 function change(session: string, item: SessionInfo | null, op = "update") {
   return { kind: "sessions", session, key: "", op, item };
@@ -302,7 +250,7 @@ test("a session opens on its Activity tab with its status and the gates' place",
   expect(within(tabs).getByRole("link", { name: "Activity" }).getAttribute("aria-current")).toBe(
     "page",
   );
-  expect(within(view).getByRole("region", { name: "Activity" })).toBeTruthy();
+  expect(within(view).getByRole("region", { name: "Chat" })).toBeTruthy();
   const current = screen.getByRole("navigation", { name: "Sessions" });
   expect(within(current).getByRole("link", { name: /lado/ }).getAttribute("aria-current")).toBe(
     "page",
@@ -314,7 +262,7 @@ test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address"
   const view = await screen.findByRole("region", { name: "Session lado" });
   expect(within(view).getByRole("region", { name: "Flows" })).toBeTruthy();
   fireEvent.click(within(view).getByRole("link", { name: "Activity" }));
-  expect(within(view).getByRole("region", { name: "Activity" })).toBeTruthy();
+  expect(within(view).getByRole("region", { name: "Chat" })).toBeTruthy();
   expect(within(view).getByRole("link", { name: "Agents" }).getAttribute("href")).toBe(
     "/sessions/lado/agents",
   );

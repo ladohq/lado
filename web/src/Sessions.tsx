@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useOutletContext, useParams } from "react-router";
 
 import type { SessionInfo, SessionStatus } from "./api";
+import { Chat } from "./Chat";
 import { useLive, useLiveStore, type Loaded } from "./live";
 import { SUPERVISOR, TerminalPanel, useOpenTerminal } from "./Terminals";
 import { NotFound } from "./pages";
@@ -155,6 +156,8 @@ function SessionView({ name, tab, session }: { name: string; tab: Tab; session: 
       </nav>
       {tab === "agents" ? (
         <Agents session={name} />
+      ) : tab === "activity" ? (
+        <Chat session={name} stopped={session.status === "stopped"} />
       ) : (
         <Placeholder title={TAB_NAMES[tab]} plan={PLANS[tab]} level={3}>
           {TAB_TEXT[tab]}
@@ -170,7 +173,7 @@ function Agents({ session }: { session: string }) {
   const live = useLiveStore();
   const loaded = useLive().agents[session] ?? null;
   const openTerminal = useOpenTerminal();
-  useEffect(() => live.watchAgents(session), [live, session]);
+  useEffect(() => live.watch("agents", session), [live, session]);
 
   if (loaded === null) return <p className="muted">Loading…</p>;
   if ("error" in loaded) {
@@ -192,7 +195,7 @@ function Agents({ session }: { session: string }) {
         </tr>
       </thead>
       <tbody>
-        {loaded.agents.map((agent) => (
+        {loaded.items.map((agent) => (
           <tr key={agent.name}>
             <td className="agent-name">{agent.name}</td>
             <td>{agent.role}</td>

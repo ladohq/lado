@@ -4,37 +4,77 @@
 // are one path); a `change` carries its item as it is now, or null when it is gone.
 import { createContext, useContext, useSyncExternalStore } from "react";
 
-import { ApiError, getAgents, getSessions, probeStream, type AgentInfo, type SessionInfo } from "./api";
+import {
+  ApiError,
+  getAgents,
+  getMessages,
+  getSessions,
+  HUMAN,
+  probeStream,
+  type AgentInfo,
+  type MessageInfo,
+  type SessionInfo,
+} from "./api";
 
 export type Change = { kind: string; session: string; key: string; op: string; item: unknown };
 
 export type Loaded = { sessions: SessionInfo[] } | { error: string } | null;
 
-export type AgentsLoaded = { agents: AgentInfo[] } | { error: string } | null;
+// A list of one session a page watches: its items, why it could not load, or loading.
+export type ListLoaded<T> = { items: T[] } | { error: string } | null;
 
 // connecting: before the first open; down: no stream now, one comes again; refused: the
 // token is wrong, the shell says how to get in and nothing is tried again.
 export type Link = "connecting" | "open" | "down" | "refused";
 
-// agents: the agents of each session a page watches (watchAgents), by session name.
+// agents, messages: the lists of each session a page watches (watch), by session name.
 export type LiveState = {
   sessions: Loaded;
-  agents: Record<string, AgentsLoaded>;
+  agents: Record<string, ListLoaded<AgentInfo>>;
+  messages: Record<string, ListLoaded<MessageInfo>>; // the chat: those from or to the human
   link: Link;
   problem: string | null;
+};
+
+type ListName = "agents" | "messages";
+
+// How a list of a session is loaded and follows the feed: the change kind that is its, an
+// item's key (the change's), which items it keeps and in what order.
+type ListKind<T> = {
+  load: (session: string) => Promise<T[]>;
+  key: (item: T) => string;
+  keeps: (item: T) => boolean;
+  order?: (a: T, b: T) => number;
+};
+
+const LISTS: { agents: ListKind<AgentInfo>; messages: ListKind<MessageInfo> } = {
+  agents: { load: getAgents, key: (agent) => agent.name, keeps: () => true },
+  messages: {
+    load: getMessages,
+    key: (message) => String(message.id),
+    keeps: (message) => message.from === HUMAN || message.to === HUMAN,
+    order: (a, b) => a.id - b.id,
+  },
 };
 
 export const RETRY_MS = 3000; // the pause before a new stream when the server closed one
 
 export class Live {
-  private state: LiveState = { sessions: null, agents: {}, link: "connecting", problem: null };
+  private state: LiveState = {
+    sessions: null,
+    agents: {},
+    messages: {},
+    link: "connecting",
+    problem: null,
+  };
   private listeners = new Set<() => void>();
   private source: EventSource | null = null;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private lastId = ""; // the latest journal id the stream sent; derived changes have none
   private loading: Change[] | null = null; // changes that came while a load runs
-  private watched = new Map<string, number>(); // session -> pages that watch its agents
-  private agentLoads = new Map<string, Change[]>(); // a session's agents being loaded
+  // Per list, session -> pages that watch it, and the changes that came while it loads.
+  private watched: Record<ListName, Map<string, number>> = { agents: new Map(), messages: new Map() };
+  private listLoads: Record<ListName, Map<string, Change[]>> = { agents: new Map(), messages: new Map() };
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -99,59 +139,67 @@ export class Live {
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
-  // A page that shows the session's agents: they load now and follow the feed until the
-  // last page that watches them lets go (the returned function).
-  watchAgents(session: string): () => void {
-    this.watched.set(session, (this.watched.get(session) ?? 0) + 1);
-    if (!(session in this.state.agents)) this.loadAgents(session);
+  // A page that shows the session's agents or chat: they load now and follow the feed until
+  // the last page that watches them lets go (the returned function).
+  watch(list: ListName, session: string): () => void {
+    const watched = this.watched[list];
+    watched.set(session, (watched.get(session) ?? 0) + 1);
+    if (!(session in this.state[list])) this.loadList(list, session);
     return () => {
-      const left = (this.watched.get(session) ?? 1) - 1;
+      const left = (watched.get(session) ?? 1) - 1;
       if (left > 0) {
-        this.watched.set(session, left);
+        watched.set(session, left);
         return;
       }
-      this.watched.delete(session);
-      this.agentLoads.delete(session);
-      const { [session]: _, ...others } = this.state.agents;
-      this.set({ agents: others });
+      watched.delete(session);
+      this.listLoads[list].delete(session);
+      const { [session]: _, ...others } = this.state[list];
+      this.set({ [list]: others });
     };
   }
 
-  private loadAgents(session: string) {
+  private loadList(list: ListName, session: string) {
+    const kind = LISTS[list] as ListKind<unknown>;
     const changes: Change[] = [];
-    this.agentLoads.set(session, changes);
-    this.set({ agents: { ...this.state.agents, [session]: this.state.agents[session] ?? null } });
-    getAgents(session)
+    this.listLoads[list].set(session, changes);
+    const current = this.state[list];
+    this.set({ [list]: { ...current, [session]: current[session] ?? null } });
+    kind
+      .load(session)
       .then(
-        (agents) => ({ agents }),
+        (items) => ({ items: items.filter(kind.keeps) }),
         (error: unknown) => ({ error: message(error) }),
       )
-      .then((agents) => {
-        if (this.agentLoads.get(session) !== changes) return; // a later load, or let go
-        this.agentLoads.delete(session);
-        this.set({ agents: { ...this.state.agents, [session]: agents } });
-        changes.forEach((change) => this.applyAgent(change));
+      .then((loaded) => {
+        if (this.listLoads[list].get(session) !== changes) return; // a later load, or let go
+        this.listLoads[list].delete(session);
+        this.set({ [list]: { ...this.state[list], [session]: loaded } });
+        changes.forEach((change) => this.applyList(list, change));
       });
   }
 
-  private applyAgent(change: Change) {
-    const pending = this.agentLoads.get(change.session);
+  private applyList(list: ListName, change: Change) {
+    const pending = this.listLoads[list].get(change.session);
     if (pending) {
       pending.push(change);
       return;
     }
-    const loaded = this.state.agents[change.session];
+    const kind = LISTS[list] as ListKind<unknown>;
+    const loaded = this.state[list][change.session] as ListLoaded<unknown> | undefined;
     if (!loaded || "error" in loaded) return;
-    const item = change.item as AgentInfo | null;
-    const others = loaded.agents.filter((one) => one.name !== change.key);
-    const at = loaded.agents.findIndex((one) => one.name === change.key);
-    const agents =
-      item === null ? others : at < 0 ? [...others, item] : loaded.agents.map((one, i) => (i === at ? item : one));
-    this.set({ agents: { ...this.state.agents, [change.session]: { agents } } });
+    const item = change.item === null || !kind.keeps(change.item) ? null : change.item;
+    const others = loaded.items.filter((one) => kind.key(one) !== change.key);
+    const at = loaded.items.findIndex((one) => kind.key(one) === change.key);
+    let items =
+      item === null ? others : at < 0 ? [...others, item] : loaded.items.map((one, i) => (i === at ? item : one));
+    if (kind.order) items = [...items].sort(kind.order);
+    this.set({ [list]: { ...this.state[list], [change.session]: { items } } });
   }
 
   private load() {
-    this.watched.forEach((_, session) => this.loadAgents(session));
+    for (const list of Object.keys(this.watched) as ListName[]) {
+      this.watched[list].forEach((_, session) => this.loadList(list, session));
+    }
     const changes: Change[] = [];
     this.loading = changes;
     getSessions()
@@ -168,7 +216,8 @@ export class Live {
   }
 
   private apply(change: Change) {
-    if (change.kind === "agents" && this.watched.has(change.session)) this.applyAgent(change);
+    const list = change.kind as ListName;
+    if (list in this.watched && this.watched[list].has(change.session)) this.applyList(list, change);
     const loaded = this.state.sessions;
     if (change.kind !== "sessions" || loaded === null || "error" in loaded) return;
     const item = change.item as SessionInfo | null;
@@ -194,7 +243,7 @@ export function useLive(): LiveState {
   return useSyncExternalStore(live.subscribe, live.get);
 }
 
-// The store itself, for a page that asks it to watch something (watchAgents).
+// The store itself, for a page that asks it to watch something (watch).
 export function useLiveStore(): Live {
   const live = useContext(LiveContext);
   if (live === null) throw new Error("useLive outside the shell");

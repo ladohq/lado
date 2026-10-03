@@ -42,13 +42,46 @@ export type History = components["schemas"]["History"];
 
 export const getSessions = () => get<SessionInfo[]>("/api/sessions");
 
-const agentsPath = (session: string) => `/api/sessions/${encodeURIComponent(session)}/agents`;
+const agentsPath = (session: string) => `${sessionPath(session)}/agents`;
 
 export const getAgents = (session: string) => get<AgentInfo[]>(agentsPath(session));
 
 // The agent's window: its last lines and whether it shows a full-screen program.
 export const getHistory = (session: string, agent: string, lines = 2000) =>
   get<History>(`${agentsPath(session)}/${encodeURIComponent(agent)}/history?lines=${lines}`);
+
+export type MessageInfo = components["schemas"]["MessageInfo"];
+export type Sent = components["schemas"]["Sent"];
+
+export const HUMAN = "human"; // the human as a participant of LADO's messages
+
+// A request that changes something: the browser sends its Origin, which the server checks.
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const answer = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!answer.ok) throw await refused(answer);
+  return (await answer.json()) as T;
+}
+
+const sessionPath = (session: string) => `/api/sessions/${encodeURIComponent(session)}`;
+
+// The chat: the session's messages from and to the human, oldest first.
+export const getMessages = (session: string) =>
+  get<MessageInfo[]>(`${sessionPath(session)}/messages?with=${HUMAN}`);
+
+// The human's text to an agent of the session (default: the supervisor).
+export const writeMessage = (session: string, text: string) =>
+  post<Sent>(`${sessionPath(session)}/messages`, { text });
+
+export const answerQuestion = (session: string, id: number, answer: { choice?: string; text?: string }) =>
+  post<Sent>(`${sessionPath(session)}/questions/${id}/answer`, answer);
+
+export const dismissQuestion = (session: string, id: number) =>
+  post<Sent>(`${sessionPath(session)}/questions/${id}/dismiss`);
 
 // Why the server refuses the event stream at `path`: an ApiError, or nothing when it would
 // open now. Reads only the answer's head; an open stream is closed at once.

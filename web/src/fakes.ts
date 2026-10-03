@@ -1,5 +1,6 @@
 // Fakes for the UI's unit tests (not part of the bundle: only tests import this file). jsdom
-// has no canvas for xterm.js and no server for WebSockets.
+// has no canvas for xterm.js, no server for WebSockets and no EventSource.
+import { act } from "@testing-library/react";
 
 // A WebSocket the test drives: it opens, sends frames and closes as the server would.
 export class FakeSocket {
@@ -103,3 +104,57 @@ export class FakeFit {
 
 export const xtermFor = (url: string) =>
   FakeXterm.all[FakeSocket.all.findIndex((socket) => socket.url === url)];
+
+// The browser's EventSource as the server drives it: `start` opens it and sends reset, as
+// a new stream does; the tests send changes and errors themselves.
+export class FakeEventSource {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSED = 2;
+  static all: FakeEventSource[] = [];
+  static autoStart = true;
+
+  readyState = FakeEventSource.CONNECTING;
+  onopen: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  private listeners = new Map<string, ((event: MessageEvent) => void)[]>();
+  private lastId = "";
+
+  constructor(readonly url: string) {
+    FakeEventSource.all.push(this);
+    if (FakeEventSource.autoStart) queueMicrotask(() => this.start());
+  }
+
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+
+  close() {
+    this.readyState = FakeEventSource.CLOSED;
+  }
+
+  start(id = "10") {
+    this.open();
+    this.send("reset", {}, id);
+  }
+
+  open() {
+    this.readyState = FakeEventSource.OPEN;
+    act(() => this.onopen?.(new Event("open")));
+  }
+
+  // An event with an `id:` line when `id` is given; without one the browser keeps the last.
+  send(type: string, data: unknown, id?: string) {
+    if (id !== undefined) this.lastId = id;
+    const event = new MessageEvent(type, { data: JSON.stringify(data), lastEventId: this.lastId });
+    act(() => this.listeners.get(type)?.forEach((listener) => listener(event)));
+  }
+
+  // A network error (the browser tries again itself) or a refused answer (it gives up).
+  fail(closed: boolean) {
+    this.readyState = closed ? FakeEventSource.CLOSED : FakeEventSource.CONNECTING;
+    act(() => this.onerror?.(new Event("error")));
+  }
+}
+
+export const stream = () => FakeEventSource.all[FakeEventSource.all.length - 1];

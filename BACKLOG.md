@@ -601,3 +601,23 @@ one key (`agents.waiting_for`, the latest request's): when an earlier request is
 last, the agent is busy while one is still open, or waiting after the latest is answered.
 Wanted: a set of open request keys per agent; the wait ends when it is empty.
 Found: 2026-10-04, feature/waiting-ends (implement, Kilo 7.8.3 source).
+
+## Claude's waiting hooks unchecked in permission mode auto
+
+feature/waiting-ends checked PermissionRequest and PostToolUse by hand with Claude Code
+2.1.289 in the modes default, bypassPermissions and dontAsk, not in auto: Claude Code says
+"auto mode unavailable for this model" for Haiku. If auto's classifier refuses a call after
+PermissionRequest, no hook comes and the agent shows waiting until its turn ends.
+Wanted: the check in auto on a model that has it (the human's OK: it is paid); if
+PermissionRequest runs there without a dialog, a hook that ends the wait (PermissionDenied).
+Found: 2026-10-04, review of feature/waiting-ends.
+
+## Claude's TESTED_VERSION is older than the hooks LADO now relies on
+
+`providers/claude.py` has `TESTED_VERSION = "2.1.287"`, but the waiting hooks
+(PermissionRequest without tool_use_id, its tool_input equal to PostToolUse's, async
+PostToolUse) were checked with 2.1.289 only; `lado doctor` warns about 2.1.289 and not
+about 2.1.287.
+Wanted: before the release, `make test-live PROVIDER=claude` on 2.1.289 (with the human's
+OK) and TESTED_VERSION raised to it.
+Found: 2026-10-04, review of feature/waiting-ends.

@@ -266,8 +266,8 @@ schema change.
   other status drops the key. `RESUMED` leaves the queue alone: a busy agent gets it when
   its turn ends.
   Claude Code (checked by hand with 2.1.289): `PermissionRequest` runs just before a dialog
-  shows, in every permission mode (with `bypassPermissions` only for an `AskUserQuestion`
-  question, never for a call `dontAsk` refuses), and `Elicitation` before an MCP server's
+  shows (with `bypassPermissions` only for an `AskUserQuestion` question, never for a call
+  `dontAsk` refuses; mode `auto` not checked, BACKLOG.md), and `Elicitation` before an MCP server's
   form; the tool call's `PostToolUse` or `PostToolUseFailure` (async: they run after every
   tool) and `ElicitationResult` are the answer. `PermissionRequest` has no `tool_use_id`,
   so the key is the tool and its input (an `AskUserQuestion`'s questions only: its answer

@@ -19,10 +19,12 @@ TESTED_VERSION = "2.1.287"
 
 # Claude Code hook events and the neutral events they stand for.
 #
-# A dialog for the human: PermissionRequest runs just before Claude Code shows one, in
-# every permission mode, also for an AskUserQuestion question (with bypassPermissions only
-# for that) and never for a call that dontAsk refuses; Elicitation before an MCP server's
-# form. Their answer: the tool call's PostToolUse or PostToolUseFailure, or
+# A dialog for the human: PermissionRequest runs just before Claude Code shows one, also
+# for an AskUserQuestion question (with bypassPermissions only for that) and never for a
+# call that dontAsk refuses; Elicitation before an MCP server's form. Checked in the modes
+# default, bypassPermissions and dontAsk; not in auto (Claude Code offers it to no Haiku,
+# BACKLOG.md): if its classifier refuses a call after PermissionRequest, no hook ends the
+# wait before the turn's end. Their answer: the tool call's PostToolUse or PostToolUseFailure, or
 # ElicitationResult. The pair has the same key (_request_key), so a subagent's tool or the
 # next tool after a refusal does not end the wait. When the human refuses a permission or
 # dismisses a question, no hook runs at all: the agent stays waiting until the human types

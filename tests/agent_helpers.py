@@ -91,11 +91,16 @@ def previous_schema() -> None:
 def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on."""
+    assert state.MIGRATIONS[14] == state.NOTES_STEP
     assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
     assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
-    assert 13 <= version <= state.SCHEMA_VERSION == 14
+    assert 13 <= version <= state.SCHEMA_VERSION == 15
     with state.connect() as db:
-        db.execute("DROP TRIGGER changes_events_insert")
+        for statement in state.NOTES_STEP:
+            column = statement.split("ADD COLUMN ")[1].split()[0]
+            db.execute(f"ALTER TABLE notes DROP COLUMN {column}")
+        if version <= 14:
+            db.execute("DROP TRIGGER changes_events_insert")
         if version == 13:
             for statement in state.MESSAGES_HUMAN:
                 column = statement.split("ADD COLUMN ")[1].split()[0]

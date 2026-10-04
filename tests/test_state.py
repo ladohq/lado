@@ -547,7 +547,7 @@ def test_version_10_database_keeps_the_notes_of_runs(lado_home):
 def _moved(run, to, note, body="", kind=state.REPORT):
     """Move `run` to state `to` with the note reported from where it was."""
     after = dataclasses.replace(run, state=to, note=note, note_body=body)
-    assert state.update_run(run, after, [], noted=(run.state, kind))
+    assert state.update_run(run, after, [], noted=state.Noted(run.state, kind))
     return after
 
 
@@ -561,7 +561,7 @@ def test_every_note_is_kept_with_the_state_it_was_reported_from(lado_home):
     # A write that moves nothing keeps no note.
     stale = dataclasses.replace(run, state="other")
     lost = dataclasses.replace(run, note="lost")
-    assert not state.update_run(stale, lost, [], noted=("other", state.REPORT))
+    assert not state.update_run(stale, lost, [], noted=state.Noted("other", state.REPORT))
     notes = state.latest_notes("s", "feature/x")
     assert set(notes) == {"design", "implement"}
     design = notes["design"]
@@ -658,3 +658,48 @@ def test_version_12_messages_become_plain_messages_in_version_13(lado_home):
     [message] = state.list_messages("s")  # migrates
     assert (message.kind, message.choices, message.question_state) == (state.MESSAGE, None, None)
     assert (message.reply_to, message.choice, message.reply_state) == (None, None, None)
+
+
+def test_version_14_notes_get_an_empty_actor_outcome_and_target(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    run = _run()
+    state.add_run(run, [("supervisor", state.FLOW_START, "started")])
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db.execute(
+        "INSERT INTO notes (session, run, state, kind, summary) VALUES"
+        " ('s', 'feature/x', 'design', 'report', 'old design')"
+    )
+    db.commit()
+    db.close()
+    [note] = state.run_notes("s")  # migrates
+    assert (note.run, note.state, note.kind, note.summary) == (
+        "feature/x",
+        "design",
+        state.REPORT,
+        "old design",
+    )
+    assert (note.actor, note.outcome, note.target) == ("", "", "")
+
+
+def test_run_notes_are_the_steps_of_the_session_in_order(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    x, y = _run("feature/x"), _run("feature/y")
+    for run in (x, y):
+        state.add_run(run, [("supervisor", state.FLOW_START, "started")])
+    after = dataclasses.replace(x, state="implement", note="designed", note_body="plan")
+    step = state.Noted("design", state.REPORT, "supervisor", "ready", "implement")
+    assert state.update_run(x, after, [], noted=step)
+    _moved(y, "implement", "y designed")
+    _moved(after, "design", "set by the human: again", kind=state.OVERRIDE)
+    notes = state.run_notes("s")
+    assert [(n.run, n.summary) for n in notes] == [
+        ("feature/x", "designed"),
+        ("feature/y", "y designed"),
+        ("feature/x", "set by the human: again"),
+    ]
+    first = notes[0]
+    assert (first.state, first.kind, first.body) == ("design", state.REPORT, "plan")
+    assert (first.actor, first.outcome, first.target) == ("supervisor", "ready", "implement")
+    assert notes[0].id < notes[1].id < notes[2].id
+    assert [n.summary for n in state.run_notes("s", "feature/y")] == ["y designed"]

@@ -12,10 +12,10 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS notes (
     body TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))  -- UTC
 )"""
+# A note is the record of the step that reported it, from version 15 on: who reported it,
+# the outcome and the state the outcome leads to. When a loop limit kept the run out of
+# `target`, the run waits before it at a loop gate, the run's next note. '' in notes from
+# before, and the outcome of the human's flow-set.
+NOTES_STEP = [
+    "ALTER TABLE notes ADD COLUMN actor TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE notes ADD COLUMN outcome TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE notes ADD COLUMN target TEXT NOT NULL DEFAULT ''",
+]
 # The change journal, from version 12 on: one row for each insert, update and delete of the
 # tables the UI shows, written by triggers in the writer's own transaction, so a change by
 # any process (CLI, hooks, MCP server, session loop) is in it. The UI server reads it
@@ -238,6 +247,7 @@ SCHEMA += (
             *JOURNAL,
             *MESSAGES_HUMAN,
             *EVENTS_JOURNAL,
+            *NOTES_STEP,
         ]
     )
     + ";\n"
@@ -271,6 +281,7 @@ MIGRATIONS = {
     11: JOURNAL,
     12: MESSAGES_HUMAN,
     13: EVENTS_JOURNAL,
+    14: NOTES_STEP,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -460,6 +471,26 @@ class Note:
     body: str
     created_at: str
     id: int = 0
+    run: str = ""
+    kind: str = REPORT
+    actor: str = ""  # who reported it; '' before version 15
+    outcome: str = ""  # '' before version 15 and for the human's flow-set
+    target: str = ""  # where the outcome leads (NOTES_STEP); '' before version 15
+
+
+@dataclass(frozen=True)
+class Noted:
+    """How update_run keeps the new note: the state it was reported from, its kind (REPORT
+    or OVERRIDE), and the step: who reported it, the outcome and where it leads."""
+
+    state: str
+    kind: str
+    actor: str = ""
+    outcome: str = ""
+    target: str = ""
+
+
+NOTE_COLUMNS = "state, summary, body, created_at, id, run, kind, actor, outcome, target"
 
 
 # Who closes a run's open gate, the answer, a comment, and the id of the gate that must be
@@ -912,15 +943,14 @@ def update_run(
     events: list[tuple[str, str, str]],
     opens: Gate | None = None,
     closes: Close | None = None,
-    noted: tuple[str, str] | None = None,
+    noted: Noted | None = None,
 ) -> bool:
     """Write `after` and the events (actor, kind, detail) in one transaction, but only if
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
     was written. In the same transaction `closes` closes the run's open gate (nothing is
     written if it names a gate that is not open), the gate `opens` is stored (its id
-    set), and `after`'s note is kept as `noted` says, if given: (state, REPORT or
-    OVERRIDE)."""
+    set), and `after`'s note is kept as `noted` says, if given."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -951,9 +981,15 @@ def update_run(
                 _open_gate(db, opens)
             if noted is not None:
                 db.execute(
-                    "INSERT INTO notes (session, run, state, kind, summary, body)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
-                    (before.session, before.name, *noted, after.note, after.note_body),
+                    "INSERT INTO notes (session, run, state, kind, actor, outcome, target,"
+                    " summary, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        before.session,
+                        before.name,
+                        *astuple(noted),
+                        after.note,
+                        after.note_body,
+                    ),
                 )
         db.execute("COMMIT")
     return bool(cur.rowcount)
@@ -964,7 +1000,7 @@ def latest_notes(session: str, run: str) -> dict[str, Note]:
     a state's report."""
     with connect() as db:
         rows = db.execute(
-            "SELECT state, summary, body, created_at, id FROM notes WHERE id IN"
+            f"SELECT {NOTE_COLUMNS} FROM notes WHERE id IN"
             " (SELECT MAX(id) FROM notes WHERE session = ? AND run = ? AND kind = ?"
             " GROUP BY state)",
             (session, run, REPORT),
@@ -977,11 +1013,22 @@ def last_note(session: str, run: str) -> Note | None:
     step's note, since each note a step gets is kept when the run moves on."""
     with connect() as db:
         row = db.execute(
-            "SELECT state, summary, body, created_at, id FROM notes"
-            " WHERE session = ? AND run = ? ORDER BY id DESC LIMIT 1",
+            f"SELECT {NOTE_COLUMNS} FROM notes WHERE session = ? AND run = ?"
+            " ORDER BY id DESC LIMIT 1",
             (session, run),
         ).fetchone()
     return Note(*row) if row else None
+
+
+def run_notes(session: str, run: str | None = None) -> list[Note]:
+    """Every note of the session's runs (or of `run`), oldest first: the steps they took."""
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT {NOTE_COLUMNS} FROM notes WHERE session = ? AND (? IS NULL OR run = ?)"
+            " ORDER BY id",
+            (session, run, run),
+        ).fetchall()
+    return [Note(*r) for r in rows]
 
 
 def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:

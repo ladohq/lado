@@ -1106,3 +1106,70 @@ def test_forget_preview_tells_what_a_forget_drops_and_leaves_on_disk(session):
     assert state.get_session(session) is not None  # a preview changes nothing
     forgotten = runtime.forget_session(session, force=True)
     assert (forgotten.runs, forgotten.worktrees) == (preview.runs, preview.worktrees)
+
+
+def steps(session):
+    """Each kept note as (state, kind, actor, outcome, target, summary)."""
+    return [
+        (n.state, n.kind, n.actor, n.outcome, n.target, n.summary)
+        for n in state.run_notes(session, "feature/login")
+    ]
+
+
+def test_each_advance_keeps_its_step_who_reported_the_outcome_and_where_it_leads(session):
+    advance_to_review(session)
+    assert steps(session) == [
+        ("design", state.REPORT, "supervisor", "ready", "implement", "design agreed"),
+        ("implement", state.REPORT, "developer", "done", "review", "built"),
+    ]
+
+
+def test_a_gate_answer_is_a_step_of_the_human(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "approve", "ship it")
+    assert steps(session)[-1] == (
+        "gated",
+        state.REPORT,
+        "human",
+        "approved",
+        "done",
+        "approved: ship it",
+    )
+
+
+def test_a_choice_gate_answer_keeps_the_chosen_outcome(session, team):
+    flow = FEATURE.replace(
+        "gate: approval\n    ask: Ship it?\n    outcomes: {approved: done, rejected: implement}",
+        "gate: choice\n    ask: Where to?\n    outcomes: {ship: done, rework: implement}",
+    ).replace("{merged: done}", "{merged: done, hold: gated}")
+    write(team / "flows" / "feature.yaml", flow)
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "rework")
+    assert steps(session)[-1][:5] == ("gated", state.REPORT, "human", "rework", "implement")
+
+
+def test_a_step_into_a_loop_limit_names_the_state_it_was_kept_out_of(session):
+    advance_to_review(session)
+    runs.advance(session, "reviewer", "feature/login", "again", "first look")
+    runs.advance(session, "reviewer", "feature/login", "again", "second look")
+    [gate] = state.open_gates(session)
+    runs.answer(session, str(gate.id), "continue", "one more")
+    assert steps(session)[-2:] == [
+        ("review", state.REPORT, "reviewer", "again", "review", "second look"),
+        ("review", state.OVERRIDE, "human", "continue", "review", "continue: one more"),
+    ]
+
+
+def test_flow_set_is_a_step_of_the_human_with_no_outcome(session):
+    advance_to_review(session)
+    runs.force(session, "feature/login", "implement", "rework the form")
+    assert steps(session)[-1] == (
+        "review",
+        state.OVERRIDE,
+        "human",
+        "",
+        "implement",
+        "set by the human: rework the form",
+    )

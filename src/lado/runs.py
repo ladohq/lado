@@ -138,7 +138,7 @@ def advance(
         caller,
         gate,
         notices=own,
-        noted=(run.state, state.REPORT),
+        noted=state.Noted(run.state, state.REPORT, caller, outcome, target),
     )
 
 
@@ -169,7 +169,8 @@ def answer(
     after, events, opens = _enter(noted, flow, target, limit=found.kind != LOOP)
     transition = (by, state.FLOW, f"{run.state} -{outcome}-> {target}")
     # A loop limit is no state of the flow: its answer must not stand for a state's report.
-    noted = (found.state, state.OVERRIDE if found.kind == LOOP else state.REPORT)
+    kind = state.OVERRIDE if found.kind == LOOP else state.REPORT
+    noted = state.Noted(found.state, kind, by, outcome, target)
     after = _commit(run, after, [transition, *events], flow, by, opens, closes, noted=noted)
     if after.status == state.ACTIVE:
         # A worker got the step; the supervisor only hears that the run moved on.
@@ -272,7 +273,7 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     after, events, gate = _enter(noted, flow, target, limit=False)
     forced = (HUMAN, state.FLOW_SET, f"{run.state} -> {target}: {reason}")
     closes = (HUMAN, "overridden", reason, None)
-    noted = (run.state, state.OVERRIDE)
+    noted = state.Noted(run.state, state.OVERRIDE, HUMAN, "", target)
     return _commit(run, after, [forced, *events], flow, HUMAN, gate, closes, noted=noted)
 
 
@@ -506,7 +507,7 @@ def _commit(
     opens: state.Gate | None = None,
     closes: state.Close | None = None,
     notices: list[str] | None = None,
-    noted: tuple[str, str] | None = None,
+    noted: state.Noted | None = None,
 ) -> state.Run:
     """Store the move from `before` to `after`, keeping `after`'s note as `noted` says
     (state.update_run), and tell whoever acts now."""

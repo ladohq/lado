@@ -221,7 +221,7 @@ def test_the_step_that_made_the_journal_keeps_its_six_tables():
 
 def test_version_13_journals_no_events_and_migrates_to_journal_run_events(lado_home):
     state.add_session(state.Session("s", "/r", None))
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(14)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()

@@ -1144,20 +1144,26 @@ def _spec(
     and MCP servers, their ${ENV_VAR} from the agent's `base_env`. Fails on anything its
     CLI cannot do."""
     resolved = env.resolve(role, without or [])
+    cannot = f'{agent_cli.title} cannot load skills, but agent "{agent.name}" ({role}) gets'
+    if resolved.skills and not agent_cli.capabilities.skills:
+        raise LadoError(
+            f"{cannot} {', '.join(resolved.skills)}; switch them off with --without skill:<name>"
+        )
     skills = {name: skill.path for name, skill in resolved.skills.items()}
     read = []
     # The lead's lead skills: their files are written by _write_lead_skills.
     lead_skills = env.lead_skills() if role == env.lead.name else []
     config = providers.base.config_path(agent)
     for lead_skill in lead_skills:
+        if not agent_cli.capabilities.skills:
+            source = env.kit_supervisors[lead_skill.kit]
+            raise LadoError(
+                f"{cannot} the lead skill {lead_skill.name}; switch its kit's supervisor off "
+                f"with --without agent:{source.name}@{lead_skill.kit}"
+            )
         skills[lead_skill.name] = config / LEAD_SKILLS / lead_skill.name
     if lead_skills:
         read.append(config / LEAD_FILES)
-    if skills and not agent_cli.capabilities.skills:
-        raise LadoError(
-            f'{agent_cli.title} cannot load skills, but agent "{agent.name}" ({role}) gets '
-            f"{', '.join(skills)}; switch them off with --without skill:<name>"
-        )
     return providers.AgentSpec(
         prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}",
         skills=skills,

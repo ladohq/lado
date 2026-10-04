@@ -304,10 +304,11 @@ class Environment:
             )
             skill = lead_skills.get(kit)
             if skill is None:
+                # The default kit's: switching the others off keeps it the lead, so no hint;
+                # each other kit's line says how to make that one the lead.
                 found.append(
                     f"kit {kit}'s supervisor leads as LADO's built-in supervisor (several kits "
-                    f"have a supervisor); to make another the lead, switch the others off: "
-                    f"{others}"
+                    "have a supervisor)"
                 )
                 continue
             found.append(

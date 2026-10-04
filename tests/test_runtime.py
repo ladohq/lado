@@ -2069,3 +2069,19 @@ def test_a_skill_that_cannot_be_copied_names_the_skill_and_its_kit(
     with pytest.raises(runtime.LadoError, match="cannot copy skill notes of kit boss"):
         runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"])
     assert state.get_session("s") is None and not _lead_dir(lado_home).exists()
+
+
+def test_a_provider_without_skills_names_the_way_out_of_lead_skills(
+    repo, fake_tmux, boss_kit, monkeypatch
+):
+    monkeypatch.setitem(providers._PROVIDERS, "noskills", _NoSkills())
+    kit_names = ["default", "boss"]
+    with pytest.raises(runtime.LadoError) as e:
+        runtime.start_session(str(repo), "s", None, "noskills", kit_names, ["skill:notes"])
+    assert str(e.value) == (
+        'No Skills CLI cannot load skills, but agent "supervisor" (supervisor) gets the lead '
+        "skill lead-boss; switch its kit's supervisor off with --without agent:chief@boss"
+    )
+    runtime.start_session(
+        str(repo), "s", None, "noskills", kit_names, ["skill:notes", "agent:chief@boss"]
+    )

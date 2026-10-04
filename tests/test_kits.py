@@ -356,9 +356,9 @@ def test_warnings_say_how_kit_supervisors_are_used(repo, project):
         "built-in supervisor's skill lead-a; to make it the lead, switch the others off: "
         "--without agent:supervisor@default",
         "MCP servers of kit a's supervisor (db, web) are not available to the session's lead",
+        # Switching kit a's supervisor off would not make another the lead: no way out here.
         "kit default's supervisor leads as LADO's built-in supervisor (several kits have a "
-        "supervisor); to make another the lead, switch the others off: --without "
-        "agent:supervisor@a",
+        "supervisor)",
     ]
     assert kits.resolve(repo, ["a", "default"], ["mcp:db", "mcp:web@a"]).warnings[1:] == [
         env.warnings[2]

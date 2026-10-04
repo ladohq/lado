@@ -12,7 +12,7 @@ import subprocess
 import time
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from lado import agent_env, kits, loop, providers, state, terminal, tmux
@@ -592,7 +592,9 @@ def work_state(session: str, name: str) -> WorkState:
 def _work_state(repo: str, worker: state.Agent) -> WorkState:
     branch = worker.branch
     behind, ahead = git(repo, "rev-list", "--left-right", "--count", f"HEAD...{branch}").split()
-    sha, at, subject = git(repo, "log", "-1", "--format=%H%x00%cI%x00%s", branch).split("\0", 2)
+    # The commit time as seconds: git's ISO form ends in "Z" for UTC (git 2.45+), which
+    # Python 3.10's fromisoformat does not read.
+    sha, at, subject = git(repo, "log", "-1", "--format=%H%x00%ct%x00%s", branch).split("\0", 2)
     changes = git(worker.cwd, "status", "--porcelain").splitlines()
     return WorkState(
         branch,
@@ -600,7 +602,7 @@ def _work_state(repo: str, worker: state.Agent) -> WorkState:
         int(ahead),
         int(behind),
         changes,
-        Commit(sha, subject, datetime.fromisoformat(at)),
+        Commit(sha, subject, datetime.fromtimestamp(int(at), timezone.utc)),
     )
 
 

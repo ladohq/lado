@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import re
@@ -1254,6 +1255,17 @@ def test_work_state_tells_how_a_workers_branch_stands_against_the_repo(repo, fak
     head = runtime.git(worker.cwd, "rev-parse", "HEAD")
     assert (work.last_commit.sha, work.last_commit.subject) == (head, "add two.txt")
     assert work.last_commit.at.tzinfo is not None
+
+
+def test_work_state_reads_the_time_of_a_commit_made_in_utc(repo, fake_tmux, monkeypatch):
+    # git 2.45+ writes such a time with "Z", which Python 3.10's fromisoformat refuses.
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-10-04T11:00:00 +0000")
+    _commit(worker.cwd)
+    at = runtime.work_state("s", "w1").last_commit.at
+    assert at == datetime.datetime(2026, 10, 4, 11, 0, tzinfo=datetime.timezone.utc)
+    assert runtime.finish_preview("s", "w1").refused.startswith("branch lado/s/w1")
 
 
 def test_work_state_refuses_an_agent_without_a_branch(repo, fake_tmux):

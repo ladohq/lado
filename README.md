@@ -65,6 +65,9 @@ lado start . --kit kit-a --kit kit-b --without agent:reviewer@kit-b
 ```
 
 Names are shared in a session: a flow of kit-b that calls `reviewer` then gets kit-a's.
+A kit's supervisor is no role: `--without agent:<name>` that names one is read as
+`agent:<name>@<its kit>` (so sessions of older LADOs resume as before); when several kits'
+supervisors have that name, give the kit.
 
 ## The web UI
 

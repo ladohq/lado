@@ -776,7 +776,7 @@ def resolve(
     here, or a loaded kit, fetched already (fetch). In this order:
 
     1. the `without` items of one kit ("agent:x@k", "skill:y@k", "mcp:z@k", "flow:f@k")
-       switch it off in that kit;
+       switch it off in that kit; "agent:x" of a kit's supervisor x is "agent:x@" its kit;
     2. the lead: the supervisor of the one kit that has one, else LADO's built-in supervisor;
     3. the kits' supervisors are no roles: one leads, the others are not in the session;
     4. the roles, flows and skills of the kits are combined: a name twice is an error;
@@ -790,6 +790,7 @@ def resolve(
     env_kits = list(taken.values())
     without = list(without)
     excluded = parse_without(without)
+    _supervisors_by_kit(excluded, env_kits)
     plain = _check_at_kit(excluded, {k.name: k for k in env_kits})
     trimmed = [_trim(kit, excluded) for kit in env_kits]
 
@@ -829,13 +830,6 @@ def resolve(
                 )
     env_flows = _merge([(k, k.flows) for k in trimmed], "flow")
 
-    for name in sorted(plain["agent"]):
-        kit = next((k for k in env_kits if k.supervisor == name), None)
-        if kit:
-            raise KitError(
-                f"cannot switch off agent:{name}: it is the supervisor of kit {kit.name}; "
-                f"use --without agent:{name}@{kit.name}"
-            )
     mcp = {m for a in [*agents.values(), lead] for m in a.mcp}
     every_skill = {**{s: v for own in private.values() for s, v in own.items()}, **skills}
     _check_known(plain, every_skill, mcp, set(agents), set(env_flows))
@@ -845,10 +839,13 @@ def resolve(
         k: {n: s for n, s in own.items() if n not in plain["skill"]} for k, own in private.items()
     }
     env_flows = {n: f for n, f in env_flows.items() if n not in plain["flow"]}
+    # A skill an agent names that is switched off, in the session or in the kit it came
+    # from, is no error.
+    off_skills = {name for name, _ in excluded["skill"]}
     for agent in [*agents.values(), lead]:
         visible = {**skills, **private.get(agent.kit, {})}
         for skill in agent.skills or []:
-            if skill not in visible and not _off(excluded["skill"], skill, agent.kit):
+            if skill not in visible and skill not in off_skills:
                 raise KitError(
                     f'{agent.path}: skill "{skill}" is not visible to agent "{agent.name}" '
                     f'(kit "{agent.kit}"): not a skill of the session\'s kits or of kit '
@@ -858,6 +855,29 @@ def resolve(
         agents = {n: _without_mcp(a, plain["mcp"]) for n, a in agents.items()}
         lead = _without_mcp(lead, plain["mcp"])
     return Environment(env_kits, agents, skills, lead, supervisors, without, env_flows, private)
+
+
+def _supervisors_by_kit(
+    excluded: dict[str, set[tuple[str, str | None]]], session_kits: list[Kit]
+) -> None:
+    """Read agent:<name> that names a kit's supervisor as agent:<name>@<that kit>, as
+    sessions of older LADOs stored it; a kit supervisor is no role to switch off after the
+    kits combine. Several kits' supervisors of that name: an error with each way out."""
+    for name, kit_name in sorted(excluded["agent"], key=lambda i: (i[1] or "", i[0])):
+        owners = [k.name for k in session_kits if k.supervisor == name]
+        if kit_name is not None or not owners:
+            continue
+        if len(owners) > 1:
+            options = [f"agent:{name}@{k}" for k in owners]
+            raise KitError(
+                f"cannot switch off agent:{name}: it is the supervisor of kits {_and(owners)}; "
+                f"use {' or '.join(f'--without {o}' for o in options)}",
+                options,
+            )
+        excluded["agent"].add((name, owners[0]))
+        # A role of that name in another kit is still switched off in the whole session.
+        if not any(name in k.agents and k.supervisor != name for k in session_kits):
+            excluded["agent"].discard((name, None))
 
 
 def _trim(kit: Kit, excluded: dict[str, set[tuple[str, str | None]]]) -> Kit:

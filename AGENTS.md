@@ -106,7 +106,8 @@ schema change.
     folder relative to the kit), `supervisor` (the kit's agent that leads a session; the
     agent name `supervisor` is reserved for it), `--without` (`kind:name@kit` in one kit
     before the kits combine, `kind:name` in the whole session after; the order is in
-    `resolve`'s docstring), the session's lead (`Environment.lead`, kept apart from the
+    `resolve`'s docstring; `agent:<name>` of a kit's supervisor is read as `@` its kit,
+    `_supervisors_by_kit`, as older LADOs stored it), the session's lead (`Environment.lead`, kept apart from the
     worker roles: the one kit supervisor, else the built-in default kit's supervisor, with
     `Environment.warnings` for the kit supervisors not used; `lead_line` says who leads),
     a name in two kits refused with both ways out (`KitError.switch_off`), a flow state of

@@ -1208,8 +1208,8 @@ def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
 def test_start_errors_leave_no_session(repo, fake_tmux):
     with pytest.raises(kits.KitError, match='kit "nope" not found'):
         runtime.start_session(str(repo), "s", None, kit_names=["nope"])
-    with pytest.raises(kits.KitError, match="use --without agent:supervisor@default"):
-        runtime.start_session(str(repo), "s", None, without=["agent:supervisor"])
+    with pytest.raises(kits.KitError, match="kit default has no agent nope"):
+        runtime.start_session(str(repo), "s", None, without=["agent:nope@default"])
     assert state.get_session("s") is None and fake_tmux == []
 
 

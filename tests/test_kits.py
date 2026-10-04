@@ -270,14 +270,26 @@ def test_several_kit_supervisors_the_builtin_one_leads(repo, project):
 
 def test_a_kit_supervisor_is_switched_off_with_its_kit(repo, project):
     make_kit(project, "mine", agents={"lead": ({}, ""), "w": ({}, "")}, supervisor="lead")
-    with pytest.raises(
-        kits.KitError,
-        match="cannot switch off agent:lead: it is the supervisor "
-        "of kit mine; use --without agent:lead@mine",
-    ):
-        kits.resolve(repo, ["mine"], ["agent:lead"])
     env = kits.resolve(repo, ["mine"], ["agent:lead@mine"])
     assert env.lead.kit == "default"
+    # Without @kit, as sessions of older LADOs stored it: the supervisor of the one kit
+    # that has it by that name.
+    env = kits.resolve(repo, ["default", "mine"], ["agent:supervisor"])
+    assert (env.lead.name, env.lead.kit, env.warnings) == ("lead", "mine", [])
+    assert env.without == ["agent:supervisor"]
+    assert kits.resolve(repo, ["mine"], ["agent:lead"]).lead.kit == "default"
+
+
+def test_a_supervisor_name_of_several_kits_needs_its_kit(repo, project):
+    make_kit(project, "a", agents={"supervisor": ({}, ""), "x": ({}, "")}, supervisor=kits.LEAD)
+    make_kit(project, "b", agents={"supervisor": ({}, ""), "y": ({}, "")}, supervisor=kits.LEAD)
+    with pytest.raises(
+        kits.KitError,
+        match="cannot switch off agent:supervisor: it is the supervisor of kits a and b; "
+        "use --without agent:supervisor@a or --without agent:supervisor@b",
+    ) as e:
+        kits.resolve(repo, ["a", "b"], ["agent:supervisor"])
+    assert e.value.switch_off == ["agent:supervisor@a", "agent:supervisor@b"]
 
 
 def test_the_leads_mcp_server_is_switched_off_by_name(repo, project):
@@ -375,6 +387,14 @@ def test_skills_and_mcp_are_switched_off_in_one_kit(repo, project):
         env.resolve("x", ["skill:t@a"])
     with pytest.raises(kits.KitError, match="cannot be switched off for one agent"):
         env.resolve("x", ["agent:y@b"])
+
+
+def test_a_skill_an_agent_names_may_be_switched_off_in_its_kit(repo, project):
+    """As with skill:style for the whole session: switched off is no error."""
+    make_kit(project, "a", agents={"dev": ({"skills": ["style"]}, "")})
+    make_kit(project, "b", skills=["style"])
+    for item in ("skill:style", "skill:style@b"):
+        assert kits.resolve(repo, ["a", "b"], [item]).resolve("dev").skills == {}
 
 
 @pytest.mark.parametrize(

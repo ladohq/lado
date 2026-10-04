@@ -708,3 +708,12 @@ the repository may hold several kits in `kits/<name>/`, which is refused too.
 Wanted: the hint says `lado kits add <url>` (the latest release) and names the
 one-kit-per-repository rule, or the hint is dropped with sources.yaml support.
 Found: 2026-10-05, feature/kit-marketplaces-core (implement).
+
+## Flaky: vitest "the tab without an agent opens the supervisor" under load
+
+`make check` failed once in `web/src/Agents.test.tsx` > "the tab without an agent opens the
+supervisor, and an unknown one is not found" with `TestingLibraryElementError: Unable to
+find role="region" and name "Agent supervisor"` (the file took 26 s, load average 100);
+the file alone passed (27 passed) and the next `make check` was green with no change.
+Wanted: the test waits for the region (`findByRole`) instead of expecting it at once.
+Found: 2026-10-05, feature/kit-marketplaces-core (implement).

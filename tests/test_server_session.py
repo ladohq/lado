@@ -61,9 +61,9 @@ def test_the_events_of_an_unknown_session_are_404(client, session):
 def test_messages_without_with_are_all_the_sessions_messages(client, session):
     runtime.send_message("s", "supervisor", "human", "to the human")
     state.queue_message("s", "w1", "supervisor", "between agents", "")
-    every = client.get("/api/sessions/s/messages").json()
+    every = client.get("/api/sessions/s/messages").json()["items"]
     assert [m["summary"] for m in every] == ["to the human", "between agents"]
-    chat = client.get("/api/sessions/s/messages", params={"with": "human"}).json()
+    chat = client.get("/api/sessions/s/messages", params={"with": "human"}).json()["items"]
     assert [m["summary"] for m in chat] == ["to the human"]
 
 

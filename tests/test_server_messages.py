@@ -1,6 +1,9 @@
 """The human's messages in the UI server's API: the chat's list, the composer, answering and
 dismissing questions. In process, with FastAPI's test client."""
 
+import json
+from pathlib import Path
+
 import pytest
 from agent_helpers import previous_schema
 from fastapi.testclient import TestClient
@@ -36,7 +39,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
     runtime.write_as_human("s", "thanks")
     answer = client.get(MESSAGES, params={"with": "human"})
     assert answer.status_code == 200
-    told, asked, thanks = answer.json()
+    told, asked, thanks = answer.json()["items"]
     assert told["created_at"].endswith("Z") and "T" in told["created_at"]
     del told["created_at"], asked["created_at"], thanks["created_at"]
     assert told == {
@@ -146,3 +149,81 @@ def test_a_change_under_another_schema_is_503_and_migrates_nothing(client, sessi
     answer = client.post(path, json={"text": "hi"})
     assert answer.status_code == 503
     assert state.schema_version() == state.SCHEMA_VERSION - 1
+
+
+CASES = json.loads(
+    (Path(__file__).parent.parent / "web" / "src" / "messageFilter.cases.json").read_text()
+)
+
+
+@pytest.fixture
+def table(repo, fake_tmux) -> dict[int, int]:
+    """The case table's messages in session "s", with their times: case id -> real id."""
+    runtime.start_session(str(repo), "s", None)
+    ids = {}
+    for one in CASES["messages"]:
+        real = state.queue_message("s", one["from"], one["to"], f"m{one['id']}")
+        stored = one["created_at"].replace("T", " ").removesuffix("Z")
+        with state.connect() as db:
+            db.execute("UPDATE messages SET created_at = ? WHERE id = ?", (stored, real))
+        ids[one["id"]] = real
+    return ids
+
+
+@pytest.mark.parametrize("case", CASES["cases"], ids=lambda case: json.dumps(case["filter"]))
+def test_a_filter_takes_the_messages_of_the_case_table(client, table, case):
+    params = {
+        key: table[value] if key in ("before", "after") else value
+        for key, value in case["filter"].items()
+    }
+    answer = client.get(MESSAGES, params=params)
+    assert answer.status_code == 200
+    by_real = {real: mine for mine, real in table.items()}
+    assert [by_real[m["id"]] for m in answer.json()["items"]] == case["ids"]
+
+
+def summaries(page: dict) -> list[str]:
+    return [m["summary"] for m in page["items"]]
+
+
+def test_limit_gives_the_latest_oldest_first_and_whether_there_are_earlier(client, table):
+    page = client.get(MESSAGES, params={"limit": 2}).json()
+    assert (summaries(page), page["earlier"]) == (["m5", "m6"], True)
+    page = client.get(MESSAGES, params={"limit": 2, "before": table[5]}).json()
+    assert (summaries(page), page["earlier"]) == (["m3", "m4"], True)
+    page = client.get(MESSAGES, params={"limit": 3, "with": "human"}).json()  # exactly 3
+    assert (summaries(page), page["earlier"]) == (["m3", "m4", "m6"], False)
+    page = client.get(MESSAGES, params={"limit": 5, "with": "human"}).json()  # fewer than 5
+    assert (summaries(page), page["earlier"]) == (["m3", "m4", "m6"], False)
+    page = client.get(MESSAGES, params={"limit": 5, "before": table[1]}).json()  # none
+    assert (summaries(page), page["earlier"]) == ([], False)
+
+
+def test_earlier_counts_the_kind_and_the_times_not_the_cursors(client, table):
+    # A range up to the window (after, before) still says what lies before it.
+    page = client.get(MESSAGES, params={"after": table[3], "before": table[6]}).json()
+    assert (summaries(page), page["earlier"]) == (["m4", "m5"], True)
+    page = client.get(MESSAGES, params={"with": "human", "after": table[3]}).json()
+    assert (summaries(page), page["earlier"]) == (["m4", "m6"], True)
+    since = "2026-10-04T15:05:00Z"
+    page = client.get(MESSAGES, params={"since": since, "limit": 2}).json()
+    assert (summaries(page), page["earlier"]) == (["m5", "m6"], True)
+    page = client.get(MESSAGES, params={"since": since, "limit": 3}).json()
+    assert (summaries(page), page["earlier"]) == (["m4", "m5", "m6"], False)
+
+
+def test_without_limit_every_message_that_matches(client, table):
+    page = client.get(MESSAGES).json()
+    assert (summaries(page), page["earlier"]) == ([f"m{n}" for n in range(1, 7)], False)
+
+
+@pytest.mark.parametrize(
+    "params", [{"since": "yesterday"}, {"until": "2026-13-01"}, {"limit": 0}, {"with": "w1"}]
+)
+def test_a_wrong_parameter_is_422(client, table, params):
+    assert client.get(MESSAGES, params=params).status_code == 422
+
+
+def test_the_messages_are_for_the_token_holder_only(table):
+    client = TestClient(server_app.create_app(auth.token(), PORT))
+    assert client.get(MESSAGES).status_code == 401

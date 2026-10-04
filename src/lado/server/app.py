@@ -5,6 +5,7 @@ TypeScript types are made). Data comes only through lado.state and lado.runtime;
 never migrates the database: another schema version answers 503.
 """
 
+import datetime
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, TypeVar
@@ -32,7 +33,7 @@ from lado.server.models import (
     History,
     KitInfo,
     Launch,
-    MessageInfo,
+    MessagePage,
     MessageText,
     NoteInfo,
     ProviderInfo,
@@ -211,16 +212,29 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     def messages(
         name: str,
         with_: Literal["human"] | None = Query(None, alias="with"),
+        agent: str | None = None,
+        before: int | None = None,
+        after: int | None = None,
+        since: datetime.datetime | None = None,
+        until: datetime.datetime | None = None,
+        limit: int | None = Query(None, ge=1),
         has_db: bool = Depends(database),
-    ) -> list[MessageInfo]:
-        """The session's messages, oldest first; with `with`, only those from and to it
-        (the human: the chat)."""
+    ) -> MessagePage:
+        """The session's messages, oldest first: with `with`, only those from and to it
+        (the human: the chat), with `agent` from and to that agent; ids below `before` and
+        above `after`; made from the second of `since` to the end of the second of `until`;
+        the latest `limit` of them, or all without it."""
         known(name, has_db)
-        return [
-            models.message_info(m)
-            for m in state.list_messages(name)
-            if with_ is None or with_ in (m.sender, m.recipient)
-        ]
+        where = state.MessageFilter(
+            with_=with_,
+            agent=agent,
+            before=before,
+            after=after,
+            since=None if since is None else models.db_second(since),
+            until=None if until is None else models.db_second(until, after=True),
+        )
+        items, earlier = state.message_page(name, where, limit)
+        return MessagePage(items=[models.message_info(m) for m in items], earlier=earlier)
 
     @app.get("/api/sessions/{name}/events", dependencies=[Depends(guard)])
     def run_events(name: str, has_db: bool = Depends(database)) -> list[RunEventInfo]:

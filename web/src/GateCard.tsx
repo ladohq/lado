@@ -29,11 +29,10 @@ export function Gate({ session, gate, stopped }: { session: string; gate: GateIn
 // The DOM id of a gate's place in the feed, for the hint over the composer and the answer.
 export const gateAnchor = (id: number) => `gate-${id}`;
 
-export const scrollToGate = (id: number) => document.getElementById(gateAnchor(id))?.scrollIntoView({ block: "center" });
-
 // The human's answer to a gate, also as the human's own bubble where it was given (the
-// gate's line stays where the gate opened): the answer, the comment; it leads to the line.
-export function GateAnswer({ gate }: { gate: GateInfo }) {
+// gate's line stays where the gate opened): the answer, the comment; it leads to the line
+// (`go`: the chat's way to a card, which loads up to it).
+export function GateAnswer({ gate, go }: { gate: GateInfo; go: (anchor: string) => void }) {
   const when = gate.answered_at ?? gate.created_at;
   return (
     <article className="chat-message mine" aria-label={`Your answer to gate #${gate.id}`}>
@@ -46,7 +45,7 @@ export function GateAnswer({ gate }: { gate: GateInfo }) {
           href={`#${gateAnchor(gate.id)}`}
           onClick={(event) => {
             event.preventDefault();
-            scrollToGate(gate.id);
+            go(gateAnchor(gate.id));
           }}
         >
           Gate #{gate.id} · {gate.answer}

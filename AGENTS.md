@@ -202,7 +202,13 @@ schema change.
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes; the agents, history, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), runs and notes
-    endpoints are in `app.py`; a gate's model is built by `models.gate_info`, a run's by
+    endpoints are in `app.py`; `GET …/messages` gives a page, `MessagePage {items,
+    earlier}`, of the messages a filter takes (`with`, `agent`, the id cursors `before`
+    and `after`, the times `since` and `until` by whole seconds via `models.db_second`,
+    the latest `limit` or all without it), filtered in SQL (`state.MessageFilter`,
+    `state.message_page`); `web/src/messageFilter.cases.json` is the one case table of
+    that filter and of the UI's feed rule (docs/design/ui.md, Message windows); a gate's
+    model is built by `models.gate_info`, a run's by
     `models.run_info` (its flow from the run's snapshot), for REST and the feed; when
     `runs.flow_of` cannot read the snapshot (`runs.SnapshotError`, the only error they
     catch), both build the item without the flow (no `states`, no `needs`) and name it in

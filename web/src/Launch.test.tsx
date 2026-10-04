@@ -116,6 +116,7 @@ beforeEach(() => {
       if (url.pathname === "/api/folders/recent") return json(recent);
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers());
+      if (url.pathname.endsWith("/messages")) return json({ items: [], earlier: false });
       return json([]);
     }),
   );

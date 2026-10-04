@@ -506,17 +506,6 @@ Wanted: the same refusal as the other commands in a stopped session (`session "s
 stopped; …`), which says what to do.
 Found: 2026-10-04, feature/agents-tab (implement).
 
-## An agent's page says "No messages yet" though it has messages
-
-On 0.18.0 the supervisor's page in the Agents tab of session `lado` showed "No messages
-yet", though after its spawn (2026-10-04T15:04:49Z) there were messages to and from it:
-from `lado` (#751), its questions to the human (#756, #757) and the human's answers.
-Not traced yet: the filter in `Agents.tsx` (`AgentMessages`: `one.from === name ||
-one.to === name` within the agent's lifetime) or which messages the live `messages` store
-loads for the session.
-Wanted: an agent's page lists its latest messages from and to it in its lifetime.
-Found: 2026-10-04, feature/flows-list (design).
-
 ## Flaky UI test: a gate answered with `lado answer` loses the rail's "Needs you" count
 
 `tests/ui/test_needs_you.py::test_a_gate_answered_with_lado_answer_goes_without_a_reload`
@@ -647,3 +636,12 @@ about 2.1.287.
 Wanted: before the release, `make test-live PROVIDER=claude` on 2.1.289 (with the human's
 OK) and TESTED_VERSION raised to it.
 Found: 2026-10-04, review of feature/waiting-ends.
+
+## The Flows tab loads every note of the session
+
+`GET /api/sessions/{name}/notes` returns all notes of all runs of the session with their
+bodies: 1.7 MB for session `lado` on 0.18.0, and it only grows, as messages did before
+feature/chat-paging.
+Wanted: notes in windows with a cursor, as the chat's messages (`live.ts`
+`watchMessages`), loaded per run or by pages.
+Found: 2026-10-05, feature/chat-paging (design).

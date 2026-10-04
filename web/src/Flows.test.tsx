@@ -130,13 +130,13 @@ function serve({ runs = [], notes = [], events = [], gates = [], agents = [] }: 
         return new Response(JSON.stringify({ result: "approved" }));
       }
       if (path === "/api/sessions") return new Response(JSON.stringify(SESSIONS));
-      const of = (list: unknown[]) => new Response(JSON.stringify(list));
+      const of = (list: unknown) => new Response(JSON.stringify(list));
       if (path.endsWith("/runs")) return of(runs);
       if (path.endsWith("/notes")) return of(notes);
       if (path.endsWith("/events")) return of(events);
       if (path.endsWith("/gates")) return of(gates);
       if (path.endsWith("/agents")) return of(agents.map((name) => ({ ...AGENT, name })));
-      if (path.endsWith("/messages")) return of([]);
+      if (path.includes("/messages?")) return of({ items: [], earlier: false });
       return new Response("{}", { status: 404 });
     }),
   );

@@ -67,7 +67,9 @@ beforeEach(() => {
           ? history
           : path === "/api/sessions"
             ? [SESSION]
-            : [];
+            : path.includes("/messages?")
+              ? { items: [], earlier: false }
+              : [];
       return new Response(JSON.stringify(body), { status: 200 });
     }),
   );

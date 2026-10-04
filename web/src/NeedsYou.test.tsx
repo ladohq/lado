@@ -129,6 +129,7 @@ beforeEach(() => {
       if (path === "/api/sessions") return new Response(JSON.stringify(sessions));
       if (path === "/api/waiting") return new Response(JSON.stringify(waiting));
       if (path.endsWith("/agents")) return new Response(JSON.stringify(agents));
+      if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
       return new Response("[]");
     }),
   );

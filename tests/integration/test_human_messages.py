@@ -65,7 +65,7 @@ def inputs(agent: str = "supervisor") -> list:
 def chat(api) -> list[dict]:
     answer = api.get(f"/api/sessions/{SESSION}/messages", params={"with": "human"})
     assert answer.status_code == 200
-    return answer.json()
+    return answer.json()["items"]
 
 
 def test_the_humans_message_reaches_the_agent_and_its_reply_the_human(api, session):

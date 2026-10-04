@@ -1461,6 +1461,74 @@ def list_messages(session: str, after: int = 0) -> list[Message]:
     return [_message(r) for r in rows]
 
 
+@dataclass(frozen=True)
+class MessageFilter:
+    """Which of a session's messages a page of them takes (the UI's chat and Agents tab):
+    from or to `with_` and `agent`, ids between the cursors `after` and `before`, and
+    `created_at` from `since` to `until`, both in lado.db's form; `until` is exclusive."""
+
+    with_: str | None = None
+    agent: str | None = None
+    before: int | None = None
+    after: int | None = None
+    since: str | None = None
+    until: str | None = None
+
+    def where(self, cursors: bool = True) -> tuple[str, list]:
+        """The SQL condition and its parameters; without the cursors when not `cursors`."""
+        terms, params = ["session = ?"], []
+        for name in (self.with_, self.agent):
+            if name is not None:
+                terms.append("(sender = ? OR recipient = ?)")
+                params += [name, name]
+        if self.since is not None:
+            terms.append("created_at >= ?")
+            params.append(self.since)
+        if self.until is not None:
+            terms.append("created_at < ?")
+            params.append(self.until)
+        if cursors and self.before is not None:
+            terms.append("id < ?")
+            params.append(self.before)
+        if cursors and self.after is not None:
+            terms.append("id > ?")
+            params.append(self.after)
+        return " AND ".join(terms), params
+
+
+def message_page(
+    session: str, where: MessageFilter, limit: int | None = None
+) -> tuple[list[Message], bool]:
+    """The latest `limit` messages that match (all without a limit), oldest first, and
+    whether messages of the same kind and times come before the first of them (the cursors
+    aside: a range up to a page still says what lies before it)."""
+    condition, params = where.where()
+    with connect() as db:
+        if limit is None:
+            rows = db.execute(
+                f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE {condition} ORDER BY id",
+                [session, *params],
+            ).fetchall()
+        else:
+            rows = db.execute(
+                f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE {condition}"
+                " ORDER BY id DESC LIMIT ?",
+                [session, *params, limit],
+            ).fetchall()[::-1]
+        if rows:
+            first = rows[0]["id"]
+        elif where.before is not None:
+            first = where.before
+        else:
+            first = 0 if where.after is None else where.after + 1
+        kind, kind_params = where.where(cursors=False)
+        earlier = db.execute(
+            f"SELECT EXISTS (SELECT 1 FROM messages WHERE {kind} AND id < ?)",
+            [session, *kind_params, first],
+        ).fetchone()[0]
+    return [_message(r) for r in rows], bool(earlier)
+
+
 def read_messages(session: str, recipient: str) -> list[Message]:
     """Mark the recipient's delivered messages that have a body read and return them, oldest
     first. Each one is returned once."""

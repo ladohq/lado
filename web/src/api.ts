@@ -103,8 +103,29 @@ async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T
 
 const sessionPath = (session: string) => `/api/sessions/${encodeURIComponent(session)}`;
 
-// The session's messages, oldest first: with the human and between the agents.
-export const getMessages = (session: string) => get<MessageInfo[]>(`${sessionPath(session)}/messages`);
+export type MessagePage = components["schemas"]["MessagePage"];
+
+// Which of a session's messages a page takes (the server's filter): from and to `with` or
+// `agent`, ids between the cursors `after` and `before`, made from the second of `since` to
+// the end of the second of `until`; the latest `limit` of them, all without one.
+export type MessageQuery = {
+  with?: "human";
+  agent?: string;
+  before?: number;
+  after?: number;
+  since?: string;
+  until?: string;
+  limit?: number;
+};
+
+// A page of the session's messages, oldest first, and whether earlier ones match.
+export const getMessages = (session: string, given: MessageQuery = {}) => {
+  const params = Object.entries(given)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => [key, String(value)]);
+  const search = params.length ? `?${new URLSearchParams(params)}` : "";
+  return get<MessagePage>(`${sessionPath(session)}/messages${search}`);
+};
 
 export type RunEventInfo = components["schemas"]["RunEventInfo"];
 

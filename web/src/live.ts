@@ -18,6 +18,8 @@ import {
   type AgentInfo,
   type GateInfo,
   type MessageInfo,
+  type MessagePage,
+  type MessageQuery,
   type NoteInfo,
   type RunEventInfo,
   type RunInfo,
@@ -36,12 +38,65 @@ export type ListLoaded<T> = { items: T[] } | { error: string } | null;
 // token is wrong, the shell says how to get in and nothing is tried again.
 export type Link = "connecting" | "open" | "down" | "refused";
 
-// agents, messages, events, gates, runs, notes: the lists of each session a page watches
-// (watch), by session name. waiting: what waits for the human in all sessions, while watched.
+// A window of a session's messages a page watches (watchMessages): the latest `limit` of one
+// kind (the server's filter without the cursors) when it opens, then the earlier pages it
+// asks for (loadEarlier, loadUpTo) and the feed's newer ones. A session grows without end:
+// no page loads all of its messages.
+export type MessageSpec = Omit<MessageQuery, "before" | "after" | "limit"> & { limit: number };
+export type MessageFilter = Omit<MessageQuery, "limit">;
+
+// Its items oldest first, whether messages of its kind come before them, the time from which
+// it holds every one of its kind (null: it holds all; a page shows what else it has, such as
+// gates, from then on), whether earlier ones load now and why they could not.
+export type MessageWindow = {
+  items: MessageInfo[];
+  earlier: boolean;
+  from: string | null;
+  loadingEarlier: boolean;
+  problem: string | null;
+};
+export type WindowLoaded = MessageWindow | { error: string } | null;
+
+const filterOf = ({ limit: _, ...filter }: MessageSpec): MessageFilter => filter;
+
+export const windowKey = (spec: MessageSpec) =>
+  JSON.stringify([spec.with ?? null, spec.agent ?? null, spec.since ?? null, spec.until ?? null, spec.limit]);
+
+const second = (time: string) => Math.floor(Date.parse(time) / 1000) * 1000;
+
+// Whether a message is one the filter takes: the server's rule (state.MessageFilter, the
+// case table messageFilter.cases.json checks both), for the feed's changes.
+export function matches(message: Pick<MessageInfo, "id" | "from" | "to" | "created_at">, filter: MessageFilter): boolean {
+  const party = (name?: string) => name === undefined || message.from === name || message.to === name;
+  const at = Date.parse(message.created_at);
+  return (
+    party(filter.with) &&
+    party(filter.agent) &&
+    (filter.before === undefined || message.id < filter.before) &&
+    (filter.after === undefined || message.id > filter.after) &&
+    (filter.since === undefined || at >= second(filter.since)) &&
+    (filter.until === undefined || at < second(filter.until) + 1000)
+  );
+}
+
+// A watched window: its pages, the loads under way and the changes that came meanwhile.
+type Watched = {
+  session: string;
+  spec: MessageSpec;
+  key: string;
+  watchers: number;
+  loads: number;
+  loadingEarlier: boolean;
+  pending: Change[];
+};
+
+// agents, events, gates, runs, notes: the lists of each session a page watches (watch), by
+// session name; messages: its windows, by session and windowKey. waiting: what waits for the
+// human in all sessions, while watched.
 export type LiveState = {
   sessions: Loaded;
   agents: Record<string, ListLoaded<AgentInfo>>;
-  messages: Record<string, ListLoaded<MessageInfo>>; // all of them: a page picks what it shows
+  messages: Record<string, Record<string, WindowLoaded>>;
   events: Record<string, ListLoaded<RunEventInfo>>; // the flow runs' events
   gates: Record<string, ListLoaded<GateInfo>>; // open and closed: a closed gate's item stays
   runs: Record<string, ListLoaded<RunInfo>>; // open and closed, newest first
@@ -58,7 +113,7 @@ const WAITING_KINDS = new Set(["gates", "agents", "messages"]);
 // A session whose waits count: the server's rule (state.waiting_items), the same here.
 export const isLive = (session: SessionInfo) => session.status !== "stopped";
 
-type ListName = "agents" | "messages" | "events" | "gates" | "runs" | "notes";
+type ListName = "agents" | "events" | "gates" | "runs" | "notes";
 
 // How a list of a session is loaded and follows the feed: the change kind that is its, an
 // item's key (the change's), which items it keeps and in what order.
@@ -71,19 +126,12 @@ type ListKind<T> = {
 
 const LISTS: {
   agents: ListKind<AgentInfo>;
-  messages: ListKind<MessageInfo>;
   events: ListKind<RunEventInfo>;
   gates: ListKind<GateInfo>;
   runs: ListKind<RunInfo>;
   notes: ListKind<NoteInfo>;
 } = {
   agents: { load: getAgents, key: (agent) => agent.name, keeps: () => true },
-  messages: {
-    load: getMessages,
-    key: (message) => String(message.id),
-    keeps: () => true,
-    order: (a, b) => a.id - b.id,
-  },
   events: { load: getRunEvents, key: (event) => String(event.id), keeps: () => true, order: (a, b) => a.id - b.id },
   gates: { load: getGates, key: (gate) => String(gate.id), keeps: () => true, order: (a, b) => a.id - b.id },
   runs: {
@@ -123,7 +171,6 @@ export class Live {
   // Per list, session -> pages that watch it, and the changes that came while it loads.
   private watched: Record<ListName, Map<string, number>> = {
     agents: new Map(),
-    messages: new Map(),
     events: new Map(),
     gates: new Map(),
     runs: new Map(),
@@ -131,12 +178,12 @@ export class Live {
   };
   private listLoads: Record<ListName, Map<string, Change[]>> = {
     agents: new Map(),
-    messages: new Map(),
     events: new Map(),
     gates: new Map(),
     runs: new Map(),
     notes: new Map(),
   };
+  private windows = new Map<string, Watched>(); // by session and windowKey
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -224,6 +271,131 @@ export class Live {
     };
   }
 
+  // A page that shows a window of the session's messages: its latest page loads now and it
+  // follows the feed until the last page that watches it lets go (the returned function).
+  watchMessages(session: string, spec: MessageSpec): () => void {
+    const key = windowKey(spec);
+    const id = `${session}\n${key}`;
+    let watched = this.windows.get(id);
+    if (!watched) {
+      watched = { session, spec, key, watchers: 0, loads: 0, loadingEarlier: false, pending: [] };
+      this.windows.set(id, watched);
+      this.setWindow(watched, null);
+      this.loadLatest(watched);
+    }
+    watched.watchers += 1;
+    const mine = watched;
+    return () => {
+      mine.watchers -= 1;
+      if (mine.watchers > 0 || this.windows.get(id) !== mine) return;
+      this.windows.delete(id);
+      const { [key]: _, ...others } = this.state.messages[session] ?? {};
+      const { [session]: __, ...sessions } = this.state.messages;
+      this.set({ messages: Object.keys(others).length ? { ...sessions, [session]: others } : sessions });
+    };
+  }
+
+  // The window as the store has it now: undefined when no page watches it.
+  messagesOf(session: string, spec: MessageSpec): WindowLoaded | undefined {
+    return messageWindow(this.state, session, spec);
+  }
+
+  // The page of the window's messages before its first one; one load at a time.
+  loadEarlier(session: string, spec: MessageSpec) {
+    const watched = this.windows.get(`${session}\n${windowKey(spec)}`);
+    const now = watched && this.windowOf(watched);
+    if (!watched || !now || !("items" in now) || !now.earlier || watched.loadingEarlier) return;
+    watched.loadingEarlier = true;
+    this.setWindow(watched, { ...now, loadingEarlier: true, problem: null });
+    const before = now.items[0]?.id;
+    this.loadInto(watched, { ...filterOf(spec), limit: spec.limit, before }, (loaded, got) => {
+      watched.loadingEarlier = false;
+      if (!loaded || !("items" in loaded)) return loaded;
+      if ("error" in got) return { ...loaded, loadingEarlier: false, problem: got.error };
+      return { ...prepend(loaded, got, null), loadingEarlier: false, problem: null };
+    });
+  }
+
+  // The window's messages from a message (`id`) or a time (`at`, a gate's or a run event's)
+  // on, in one load, when it lies before the window: a link leads there.
+  loadUpTo(session: string, spec: MessageSpec, target: { id: number } | { at: string }): Promise<void> {
+    const watched = this.windows.get(`${session}\n${windowKey(spec)}`);
+    const now = watched && this.windowOf(watched);
+    if (!watched || !now || !("items" in now) || !now.earlier) return Promise.resolve();
+    const first = now.items[0];
+    if (first && ("id" in target ? target.id >= first.id : Date.parse(target.at) >= Date.parse(first.created_at))) {
+      return Promise.resolve();
+    }
+    const range = "id" in target ? { after: target.id - 1 } : { since: target.at };
+    const since = "at" in target ? target.at : null;
+    return this.loadInto(watched, { ...filterOf(spec), ...range, before: first?.id }, (loaded, got) => {
+      if (!loaded || !("items" in loaded)) return loaded;
+      if ("error" in got) return { ...loaded, problem: got.error };
+      return { ...loaded, ...prepend(loaded, got, since), problem: null };
+    });
+  }
+
+  private windowOf(watched: Watched): WindowLoaded {
+    return this.state.messages[watched.session]?.[watched.key] ?? null;
+  }
+
+  private setWindow(watched: Watched, loaded: WindowLoaded) {
+    const session = this.state.messages[watched.session] ?? {};
+    this.set({ messages: { ...this.state.messages, [watched.session]: { ...session, [watched.key]: loaded } } });
+  }
+
+  // The latest page, when the window opens or after a reset that finds it empty.
+  private loadLatest(watched: Watched) {
+    void this.loadInto(watched, { ...filterOf(watched.spec), limit: watched.spec.limit }, (_, got) =>
+      "error" in got ? got : { ...got, from: fromOf(got, null), loadingEarlier: false, problem: null },
+    );
+  }
+
+  // One load into the window: the changes that come while any load runs wait and are
+  // applied after the last one, as a whole list's are (loadList).
+  private loadInto(
+    watched: Watched,
+    query: MessageQuery,
+    merge: (loaded: WindowLoaded, got: MessagePage | { error: string }) => WindowLoaded,
+  ): Promise<void> {
+    watched.loads += 1;
+    return getMessages(watched.session, query)
+      .then(
+        (page) => page,
+        (error: unknown) => ({ error: message(error) }),
+      )
+      .then((got) => {
+        if (this.windows.get(`${watched.session}\n${watched.key}`) !== watched) return; // let go
+        watched.loads -= 1;
+        this.setWindow(watched, merge(this.windowOf(watched), got));
+        if (watched.loads > 0) return;
+        const changes = watched.pending;
+        watched.pending = [];
+        changes.forEach((change) => this.applyWindow(watched, change));
+      });
+  }
+
+  // The feed's change of a message: one the window's filter takes is added after its last,
+  // put in its place inside it, and left out before it while earlier ones are not loaded;
+  // one it does not take, or a message gone, leaves it.
+  private applyWindow(watched: Watched, change: Change) {
+    if (watched.loads > 0) {
+      watched.pending.push(change);
+      return;
+    }
+    const now = this.windowOf(watched);
+    if (!now || !("items" in now)) return;
+    const item = change.item as MessageInfo | null;
+    const others = now.items.filter((one) => String(one.id) !== change.key);
+    if (item === null || !matches(item, filterOf(watched.spec))) {
+      if (others.length !== now.items.length) this.setWindow(watched, { ...now, items: others });
+      return;
+    }
+    const first = now.items[0];
+    if (now.earlier && first && item.id < first.id) return;
+    this.setWindow(watched, { ...now, items: [...others, item].sort((a, b) => a.id - b.id) });
+  }
+
   private watchWaiting(): () => void {
     this.waitingWatchers += 1;
     if (this.waitingWatchers === 1) this.loadWaiting();
@@ -300,6 +472,7 @@ export class Live {
     for (const list of Object.keys(this.watched) as ListName[]) {
       this.watched[list].forEach((_, session) => this.loadList(list, session));
     }
+    this.windows.forEach((watched) => this.reloadWindow(watched));
     this.loadWaiting();
     const changes: Change[] = [];
     this.loading = changes;
@@ -316,9 +489,29 @@ export class Live {
       });
   }
 
+  // After a gap in the feed: the window again from its first message to the latest, so it
+  // keeps what the human scrolled back to; an empty one as when it opened.
+  private reloadWindow(watched: Watched) {
+    const now = this.windowOf(watched);
+    const first = now && "items" in now ? now.items[0] : undefined;
+    if (!first) {
+      this.loadLatest(watched);
+      return;
+    }
+    const since = now && "items" in now ? now.from : null;
+    void this.loadInto(watched, { ...filterOf(watched.spec), after: first.id - 1 }, (_, got) =>
+      "error" in got ? got : { ...got, from: fromOf(got, since), loadingEarlier: watched.loadingEarlier, problem: null },
+    );
+  }
+
   private apply(change: Change) {
     const list = change.kind as ListName;
     if (list in this.watched && this.watched[list].has(change.session)) this.applyList(list, change);
+    if (change.kind === "messages") {
+      this.windows.forEach((watched) => {
+        if (watched.session === change.session) this.applyWindow(watched, change);
+      });
+    }
     if (WAITING_KINDS.has(change.kind)) this.loadWaiting();
     const loaded = this.state.sessions;
     if (change.kind !== "sessions" || loaded === null || "error" in loaded) return;
@@ -334,6 +527,32 @@ export class Live {
     const sessions = at < 0 ? [...others, item] : loaded.sessions.map((one, i) => (i === at ? item : one));
     this.set({ sessions: { sessions } });
   }
+}
+
+// An earlier page in front of the window: its items take the place of the same ones there.
+// `since`: the time the page was asked from, when it was.
+function prepend(
+  window: MessageWindow,
+  page: MessagePage,
+  since: string | null,
+): Pick<MessageWindow, "items" | "earlier" | "from"> {
+  const fresh = new Set(page.items.map((one) => one.id));
+  const items = [...page.items, ...window.items.filter((one) => !fresh.has(one.id))].sort((a, b) => a.id - b.id);
+  return { items, earlier: page.earlier, from: fromOf({ items, earlier: page.earlier }, since ?? window.from) };
+}
+
+// The time from which a window holds every message of its kind: its first message's, or
+// an earlier time it was loaded from; null when nothing comes before it.
+function fromOf(page: MessagePage, since: string | null): string | null {
+  if (!page.earlier) return null;
+  const first = page.items[0]?.created_at ?? null;
+  if (since === null || first === null) return first ?? since;
+  return Date.parse(since) < Date.parse(first) ? since : first;
+}
+
+// A window of the session's messages as the store has it: undefined when no page watches it.
+export function messageWindow(state: LiveState, session: string, spec: MessageSpec): WindowLoaded | undefined {
+  return state.messages[session]?.[windowKey(spec)];
 }
 
 function message(error: unknown): string {

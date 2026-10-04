@@ -274,8 +274,10 @@ export interface paths {
         };
         /**
          * Messages
-         * @description The session's messages, oldest first; with `with`, only those from and to it
-         *     (the human: the chat).
+         * @description The session's messages, oldest first: with `with`, only those from and to it
+         *     (the human: the chat), with `agent` from and to that agent; ids below `before` and
+         *     above `after`; made from the second of `since` to the end of the second of `until`;
+         *     the latest `limit` of them, or all without it.
          */
         get: operations["messages_api_sessions__name__messages_get"];
         put?: never;
@@ -853,6 +855,17 @@ export interface components {
             reply_state: ("replied" | "missing") | null;
             /** Created At */
             created_at: string;
+        };
+        /**
+         * MessagePage
+         * @description A page of a session's messages, oldest first, and whether messages that match come
+         *     before its first one.
+         */
+        MessagePage: {
+            /** Items */
+            items: components["schemas"]["MessageInfo"][];
+            /** Earlier */
+            earlier: boolean;
         };
         /**
          * MessageText
@@ -1598,6 +1611,12 @@ export interface operations {
         parameters: {
             query?: {
                 with?: "human" | null;
+                agent?: string | null;
+                before?: number | null;
+                after?: number | null;
+                since?: string | null;
+                until?: string | null;
+                limit?: number | null;
             };
             header?: never;
             path: {
@@ -1613,7 +1632,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MessageInfo"][];
+                    "application/json": components["schemas"]["MessagePage"];
                 };
             };
             /** @description Validation Error */

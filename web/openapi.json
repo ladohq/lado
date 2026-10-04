@@ -567,7 +567,7 @@
     "/api/sessions/{name}/messages": {
       "get": {
         "summary": "Messages",
-        "description": "The session's messages, oldest first; with `with`, only those from and to it\n(the human: the chat).",
+        "description": "The session's messages, oldest first: with `with`, only those from and to it\n(the human: the chat), with `agent` from and to that agent; ids below `before` and\nabove `after`; made from the second of `since` to the end of the second of `until`;\nthe latest `limit` of them, or all without it.",
         "operationId": "messages_api_sessions__name__messages_get",
         "parameters": [
           {
@@ -595,6 +595,105 @@
               ],
               "title": "With"
             }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
           }
         ],
         "responses": {
@@ -603,11 +702,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/MessageInfo"
-                  },
-                  "title": "Response Messages Api Sessions  Name  Messages Get"
+                  "$ref": "#/components/schemas/MessagePage"
                 }
               }
             }
@@ -2298,6 +2393,28 @@
         ],
         "title": "MessageInfo",
         "description": "A message, a question to the human (kind \"question\") or an answer to one."
+      },
+      "MessagePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MessageInfo"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "earlier": {
+            "type": "boolean",
+            "title": "Earlier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "earlier"
+        ],
+        "title": "MessagePage",
+        "description": "A page of a session's messages, oldest first, and whether messages that match come\nbefore its first one."
       },
       "MessageText": {
         "properties": {

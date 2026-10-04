@@ -4,9 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { GateInfo, MessageInfo, RunEventInfo, SessionInfo } from "./api";
+import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeSocket, stream } from "./fakes";
+import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -56,8 +56,27 @@ function event(id: number, kind: string, detail: string, created_at = "2026-10-0
 
 type Posted = { path: string; body: unknown };
 
-// The API: the sessions, a session's messages (`chat`) and run events (`events`), and the
-// POSTs, which answer `answer`.
+// The server's page of `all` for a query: with, before, after, since (by the second it
+// names no less), the latest `limit`, and whether earlier ones of the kind come before.
+function page(all: MessageInfo[], query: URLSearchParams): MessagePage {
+  const number = (name: string) => Number(query.get(name) ?? NaN);
+  const party = query.get("with");
+  const since = query.get("since");
+  const kind = all.filter(
+    (one) =>
+      (party === null || one.from === party || one.to === party) &&
+      (since === null || Date.parse(one.created_at) >= Math.floor(Date.parse(since) / 1000) * 1000),
+  );
+  const taken = kind.filter(
+    (one) => !(one.id >= number("before")) && !(one.id <= number("after")),
+  );
+  const items = query.has("limit") ? taken.slice(-number("limit")) : taken;
+  const bound = items[0]?.id ?? number("before");
+  return { items, earlier: kind.some((one) => one.id < bound) };
+}
+
+// The API: the sessions, a session's messages (`chat`, by pages; each query in `queries`)
+// and run events (`events`), and the POSTs, which answer `answer`.
 function serve(
   chat: MessageInfo[],
   answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } },
@@ -65,14 +84,17 @@ function serve(
   gates: GateInfo[] = [],
 ) {
   const posted: Posted[] = [];
+  const queries: Record<string, string>[] = [];
   const fetch = vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       posted.push({ path, body: init.body ? JSON.parse(String(init.body)) : undefined });
       return new Response(JSON.stringify(answer.body), { status: answer.status });
     }
     if (path === "/api/sessions") return new Response(JSON.stringify(SESSIONS));
-    if (path.startsWith("/api/sessions/") && path.endsWith("/messages")) {
-      return new Response(JSON.stringify(chat));
+    const url = new URL(path, "http://lado");
+    if (url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/messages")) {
+      queries.push(Object.fromEntries(url.searchParams));
+      return new Response(JSON.stringify(page(chat, url.searchParams)));
     }
     if (path.startsWith("/api/sessions/") && path.endsWith("/events")) {
       return new Response(JSON.stringify(events));
@@ -84,7 +106,7 @@ function serve(
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetch);
-  return { fetch, posted };
+  return { fetch, posted, queries };
 }
 
 function open(path = "/sessions/lado/activity") {
@@ -113,6 +135,8 @@ beforeEach(() => {
   FakeEventSource.autoStart = true;
   vi.stubGlobal("EventSource", FakeEventSource);
   vi.stubGlobal("WebSocket", FakeSocket);
+  FakeIntersectionObserver.all = [];
+  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
 
 afterEach(() => {
@@ -266,7 +290,7 @@ test.each(["messages", "events", "gates"])(
     const { fetch } = serve([]);
     const served = fetch.getMockImplementation()!;
     fetch.mockImplementation(async (path: string, init?: RequestInit) =>
-      path === `/api/sessions/lado/${list}`
+      new URL(path, "http://lado").pathname === `/api/sessions/lado/${list}`
         ? new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 })
         : served(path, init),
     );
@@ -313,8 +337,8 @@ test("a short body to the human has no Show all", async () => {
   expect(within(card).queryByRole("button", { name: "Show all" })).toBeNull();
 });
 
-test("the agents' messages to each other show behind a switch that only changes the view and is remembered", async () => {
-  const { fetch } = serve([
+test("the agents' messages to each other show behind a switch that loads the window of all messages and is remembered", async () => {
+  const { queries } = serve([
     message(1, "human", "supervisor", "merge w1"),
     message(2, "supervisor", "w1", "please merge", { body: "details" }),
     message(3, "supervisor", "human", "merged"),
@@ -323,17 +347,21 @@ test("the agents' messages to each other show behind a switch that only changes 
   const log = await chat();
   await within(log).findByText("merged");
   expect(headings(log)).toEqual(["merge w1", "merged"]);
-  const loads = () => fetch.mock.calls.filter(([path]) => String(path).includes("/messages")).length;
-  const before = loads();
+  expect(queries).toEqual([{ with: "human", limit: "50" }]);
   const toggle = screen.getByRole("checkbox", { name: "Show agent messages" });
   expect((toggle as HTMLInputElement).checked).toBe(false);
   fireEvent.click(toggle);
+  await within(log).findByText("please merge");
   expect(headings(log)).toEqual(["merge w1", "please merge", "merged"]);
+  expect(queries.at(-1)).toEqual({ limit: "50" });
   const between = within(log).getByRole("article", { name: "Message from supervisor to w1" });
   expect(within(between).getByText("to w1")).toBeTruthy();
-  expect(loads()).toBe(before); // one list in the store: the switch loads nothing
   stream().send("change", changed(message(4, "w1", "supervisor", "done")), "11");
   expect(headings(log)).toContain("done");
+  fireEvent.click(toggle);
+  await waitFor(() => expect(headings(log)).toEqual(["merge w1", "merged"]));
+  fireEvent.click(toggle);
+  await within(log).findByText("please merge");
   cleanup();
   open();
   const again = await chat();
@@ -703,7 +731,7 @@ test("an address with a card's anchor scrolls to it once the feed is loaded, aft
   // A later message scrolls to the latest as before.
   const feed = await chat();
   Object.defineProperty(feed, "scrollHeight", { value: 900 });
-  stream().send("change", changed(message(99, "supervisor", "human", "newer")), "11");
+  stream().send("change", changed(message(99, "supervisor", "human", "newer", { created_at: "2026-10-03T12:01:00Z" })), "11");
   await within(feed).findByText("newer");
   expect(feed.scrollTop).toBe(900);
 });
@@ -714,4 +742,161 @@ test("a question to the human shows while the agents' messages are hidden", asyn
   const log = await chat();
   expect(await within(log).findByRole("article", { name: "Question from w1" })).toBeTruthy();
   expect(within(log).queryByText("between agents")).toBeNull();
+});
+
+// Pages: the chat opens with the latest messages and loads earlier ones when the human
+// scrolls to the top.
+
+// Messages 1..n to and from the human, one a minute from 2 Oct 10:00 on.
+const history = (n: number, first = 1) =>
+  Array.from({ length: n }, (_, i) =>
+    message(first + i, i % 2 ? "supervisor" : "human", i % 2 ? "human" : "supervisor", `note ${first + i}`, {
+      created_at: new Date(Date.UTC(2026, 9, 2, 10, i)).toISOString(),
+    }),
+  );
+
+// The feed's height grows with what it shows: 100 pixels for each message.
+function measured(feed: HTMLElement) {
+  Object.defineProperty(feed, "scrollHeight", {
+    configurable: true,
+    get: () => 100 * feed.querySelectorAll("article").length,
+  });
+}
+
+test("the chat opens with one page of the human's messages, the latest ones, at the bottom", async () => {
+  const { queries } = serve([...history(70), message(71, "w1", "supervisor", "between agents")]);
+  open();
+  const log = await chat();
+  await within(log).findByText("note 70");
+  expect(queries).toEqual([{ with: "human", limit: "50" }]);
+  expect(within(log).getAllByRole("article")).toHaveLength(50);
+  expect(within(log).queryByText("note 20")).toBeNull();
+  expect(within(log).queryByText(/Start of session/)).toBeNull();
+});
+
+test("at the top the chat loads the earlier page and keeps what the human sees in place", async () => {
+  const { queries, fetch } = serve(history(70));
+  open();
+  const log = await chat();
+  await within(log).findByText("note 70");
+  measured(log);
+  log.scrollTop = 0;
+  fireEvent.scroll(log);
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const plain = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    await held;
+    return plain(path, init);
+  });
+  FakeIntersectionObserver.show();
+  expect(within(log).getByRole("status").textContent).toBe("Loading earlier messages…");
+  FakeIntersectionObserver.show(); // one load at a time
+  release();
+  await within(log).findByText("note 1");
+  expect(queries.slice(1)).toEqual([{ with: "human", limit: "50", before: "21" }]);
+  expect(log.scrollTop).toBe(2000); // 20 messages above the one that was at the top
+  expect(within(log).queryByRole("status")).toBeNull();
+  expect(within(log).getByText("Start of session lado · 2 Oct")).toBeTruthy();
+});
+
+test("a new message scrolls to it only when the human was at the bottom", async () => {
+  serve(history(10));
+  open();
+  const log = await chat();
+  await within(log).findByText("note 10");
+  measured(log);
+  expect(within(log).getByText("Start of session lado · 2 Oct")).toBeTruthy();
+  stream().send("change", changed(message(11, "supervisor", "human", "newer")), "11");
+  await within(log).findByText("newer");
+  expect(log.scrollTop).toBe(1100);
+  log.scrollTop = 300; // the human scrolled up to read
+  fireEvent.scroll(log);
+  stream().send("change", changed(message(12, "supervisor", "human", "newest")), "12");
+  await within(log).findByText("newest");
+  expect(log.scrollTop).toBe(300);
+});
+
+test("earlier messages that cannot load say why and load again on Retry", async () => {
+  const { fetch, queries } = serve(history(70));
+  open();
+  const log = await chat();
+  await within(log).findByText("note 70");
+  const plain = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path: string, init?: RequestInit) =>
+    path.includes("before=")
+      ? new Response(JSON.stringify({ detail: "lado.db is newer" }), { status: 503 })
+      : plain(path, init),
+  );
+  FakeIntersectionObserver.show();
+  const problem = await within(log).findByRole("alert");
+  expect(problem.textContent).toContain("lado.db is newer");
+  fetch.mockImplementation(plain);
+  fireEvent.click(within(problem).getByRole("button", { name: "Retry" }));
+  await within(log).findByText("note 1");
+  expect(queries.filter((one) => one.before)).toHaveLength(1);
+});
+
+test("gates and run events before the first loaded message wait until the messages before them are loaded", async () => {
+  const old = new Date(Date.UTC(2026, 9, 2, 10, 5, 30)).toISOString();
+  serve(
+    history(70),
+    undefined,
+    [event(5, "flow_start", "at design", old)],
+    [closed(1, "approve", { created_at: old, answered_at: old })],
+  );
+  open();
+  const log = await chat();
+  await within(log).findByText("note 70");
+  expect(within(log).queryByRole("article", { name: "Gate #1" })).toBeNull();
+  expect(within(log).queryByRole("article", { name: "Your answer to gate #1" })).toBeNull();
+  expect(within(log).queryByText(/at design/)).toBeNull();
+  FakeIntersectionObserver.show();
+  await within(log).findByText("note 1");
+  expect(within(log).getByRole("article", { name: "Gate #1" })).toBeTruthy();
+  expect(within(log).getByText(/at design/)).toBeTruthy();
+});
+
+test("a link to a message or a gate before the window loads up to it in one request and scrolls there", async () => {
+  const scrolled: string[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this.id);
+  };
+  const old = new Date(Date.UTC(2026, 9, 2, 10, 3, 30)).toISOString();
+  const { queries } = serve([...history(70), question(80, { created_at: "2026-10-02T12:00:00.000Z" })], undefined, [], [
+    gate(1, { created_at: old }),
+  ]);
+  open("/sessions/lado/activity#message-12");
+  const log = await chat();
+  await within(log).findByText("note 12");
+  await waitFor(() => expect(scrolled).toContain("message-12"));
+  expect(queries).toEqual([
+    { with: "human", limit: "50" },
+    { with: "human", after: "11", before: "22" },
+  ]);
+  expect(within(log).queryByText("note 11")).toBeNull();
+  cleanup();
+  scrolled.length = 0;
+  const again = serve([...history(70), question(80, { created_at: "2026-10-02T12:00:00.000Z" })], undefined, [], [
+    gate(1, { created_at: old }),
+  ]);
+  open("/sessions/lado/activity#gate-1");
+  await gateCard(1);
+  await waitFor(() => expect(scrolled).toContain("gate-1"));
+  expect(again.queries).toEqual([
+    { with: "human", limit: "50" },
+    { with: "human", since: old, before: "22" },
+  ]);
+});
+
+test("a link to a message that is not in the chat loads once and scrolls nowhere", async () => {
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  const { queries } = serve([message(3, "w1", "supervisor", "between agents"), ...history(60, 10)]);
+  open("/sessions/lado/activity#message-3");
+  const log = await chat();
+  await within(log).findByText("note 69");
+  await waitFor(() => expect(queries).toHaveLength(2));
+  // Only the terminal panel scrolls its tab into view.
+  expect(scrolled.mock.contexts.filter((one) => log.contains(one as Node))).toEqual([]);
 });

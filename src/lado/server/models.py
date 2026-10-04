@@ -353,6 +353,14 @@ class MessageInfo(BaseModel):
     created_at: str  # UTC, ISO 8601
 
 
+class MessagePage(BaseModel):
+    """A page of a session's messages, oldest first, and whether messages that match come
+    before its first one."""
+
+    items: list[MessageInfo]
+    earlier: bool
+
+
 class MessageText(BaseModel):
     """The human's text from the composer."""
 
@@ -408,6 +416,18 @@ def message_info(message: state.Message) -> MessageInfo:
 def _utc(created_at: str) -> str:
     """A time as lado.db keeps it ("YYYY-MM-DD HH:MM:SS", UTC) in ISO 8601."""
     return created_at.replace(" ", "T") + "Z"
+
+
+def db_second(when: datetime.datetime, after: bool = False) -> str:
+    """The start of the second of `when` (UTC when it names no zone), or with `after` of the
+    next second, as lado.db keeps times: a time from the UI has milliseconds that a row of
+    the same second may not have."""
+    if when.tzinfo is not None:
+        when = when.astimezone(datetime.timezone.utc)
+    second = when.replace(microsecond=0, tzinfo=None)
+    if after:
+        second += datetime.timedelta(seconds=1)
+    return second.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _first_line(text: str | None) -> str | None:

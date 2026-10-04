@@ -50,7 +50,8 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
       return new Response(JSON.stringify(AGENTS), { status: 200 });
     }
     // The feed's messages and run events (Chat.test.tsx), the runs and their steps (Flows.test.tsx).
-    if (["/messages", "/events", "/runs", "/notes", "/gates"].some((end) => path.endsWith(end))) {
+    if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
+    if (["/events", "/runs", "/notes", "/gates"].some((end) => path.endsWith(end))) {
       return new Response("[]");
     }
     expect(path).toBe("/api/sessions");

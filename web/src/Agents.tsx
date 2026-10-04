@@ -18,13 +18,12 @@ import {
   type AgentInfo,
   type FinishedAgentInfo,
   type FinishPreviewInfo,
-  type MessageInfo,
   type RunInfo,
 } from "./api";
 import { Composer } from "./Chat";
 import { clock, Preview, since } from "./ChatText";
 import { isOpen } from "./Flows";
-import { useLive, useLiveStore } from "./live";
+import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } from "./live";
 import { ListPage, type Entry } from "./ListPage";
 import { agentPath, runPath, sessionPath } from "./paths";
 import { storeAgentMessages, storedAgentsFinishedOpen, storeAgentsFinishedOpen } from "./prefs";
@@ -90,18 +89,13 @@ export function Agents({
   const live = useLiveStore();
   const state = useLive();
   useEffect(() => live.watch("agents", session), [live, session]);
-  useEffect(() => live.watch("messages", session), [live, session]);
   useEffect(() => live.watch("runs", session), [live, session]);
 
   const loaded = state.agents[session] ?? null;
   const agents = loaded && "items" in loaded ? agentOrder(loaded.items) : null;
   const finished = useFinished(session, agents);
-  const messages = state.messages[session];
   const runs = state.runs[session];
-  const lists = {
-    messages: messages && "items" in messages ? messages.items : [],
-    runs: runs && "items" in runs ? runs.items : [],
-  };
+  const lists = { runs: runs && "items" in runs ? runs.items : [] };
 
   let notice;
   if (loaded === null) {
@@ -120,7 +114,7 @@ export function Agents({
   if (alive) {
     page = <AgentPage key={alive.name} session={session} agent={alive} stopped={stopped} lists={lists} />;
   } else if (record && record.name === agent) {
-    page = <FinishedPage session={session} record={record} messages={lists.messages} />;
+    page = <FinishedPage session={session} record={record} />;
   } else if (finishedId !== undefined && finished === null) {
     page = <p className="muted">Loading…</p>;
   } else {
@@ -211,7 +205,7 @@ function finishedEntry(session: string, one: FinishedAgentInfo): Entry {
   };
 }
 
-type Lists = { messages: MessageInfo[]; runs: RunInfo[] };
+type Lists = { runs: RunInfo[] };
 
 // Where the work stands in git: asked when the page opens, again when the agent becomes idle
 // (it may have committed) and on Refresh; no polling. The last answer stays while a new one
@@ -343,7 +337,7 @@ function AgentPage({
           </>
         )}
       </dl>
-      <AgentMessages session={session} name={agent.name} from={agent.spawned_at} messages={lists.messages} />
+      <AgentMessages session={session} name={agent.name} from={agent.spawned_at} />
       {!stopped && (
         <div className="agent-composer">
           <Composer session={session} stopped={stopped} to={agent.name} inputRef={composer} />
@@ -385,28 +379,16 @@ function Work({ work }: { work: ReturnType<typeof useWork> }) {
   );
 }
 
-// The agent's latest messages, from and to it, in its lifetime only: a name is used again.
-function AgentMessages({
-  session,
-  name,
-  from,
-  to,
-  messages,
-}: {
-  session: string;
-  name: string;
-  from: string | null;
-  to?: string;
-  messages: MessageInfo[];
-}) {
+// The agent's latest messages, from and to it, in its lifetime only (a name is used again):
+// a window of the session's messages the server takes them from, one load.
+function AgentMessages({ session, name, from, to }: { session: string; name: string; from: string | null; to?: string }) {
   const navigate = useNavigate();
-  const start = from === null ? -Infinity : Date.parse(from);
-  const end = to === undefined ? Infinity : Date.parse(to);
-  const mine = messages.filter((one) => {
-    const at = Date.parse(one.created_at);
-    return (one.from === name || one.to === name) && at >= start && at <= end;
-  });
-  const latest = mine.slice(-MESSAGES);
+  const live = useLiveStore();
+  const spec: MessageSpec = { agent: name, since: from ?? undefined, until: to, limit: MESSAGES };
+  const key = windowKey(spec);
+  useEffect(() => live.watchMessages(session, spec), [live, session, key]); // key: the spec's
+  const window = messageWindow(useLive(), session, spec);
+  const latest = window && "items" in window ? window.items : [];
   const all = () => {
     storeAgentMessages(true);
     navigate(sessionPath(session, "activity"));
@@ -414,7 +396,13 @@ function AgentMessages({
   return (
     <section className="agent-messages" aria-label="Messages">
       <h4>Messages</h4>
-      {latest.length === 0 ? (
+      {!window ? (
+        <p className="muted">Loading…</p>
+      ) : "error" in window ? (
+        <p className="problem" role="alert">
+          {window.error}
+        </p>
+      ) : latest.length === 0 ? (
         <p className="muted">No messages yet</p>
       ) : (
         <ol>
@@ -435,15 +423,7 @@ function AgentMessages({
   );
 }
 
-function FinishedPage({
-  session,
-  record,
-  messages,
-}: {
-  session: string;
-  record: FinishedAgentInfo;
-  messages: MessageInfo[];
-}) {
+function FinishedPage({ session, record }: { session: string; record: FinishedAgentInfo }) {
   return (
     <section className="agent-page" aria-label={`Agent ${record.name}`}>
       <header className="agent-head">
@@ -460,13 +440,7 @@ function FinishedPage({
           finished <time dateTime={record.finished_at}>{clock(record.finished_at)}</time> · {record.detail}
         </p>
       </header>
-      <AgentMessages
-        session={session}
-        name={record.name}
-        from={record.spawned_at}
-        to={record.finished_at}
-        messages={messages}
-      />
+      <AgentMessages session={session} name={record.name} from={record.spawned_at} to={record.finished_at} />
     </section>
   );
 }

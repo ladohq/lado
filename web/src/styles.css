@@ -1300,12 +1300,36 @@ h3 {
   min-height: 160px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  overflow-anchor: none; /* the chat keeps its place itself when earlier messages come */
   padding-right: 4px;
 }
 
 .chat-feed > *,
 .composer {
   max-width: 860px;
+}
+
+/* The top of the feed: where earlier messages load, or the start of the session. */
+.chat-top {
+  flex: none;
+  min-height: 1px;
+}
+
+.chat-loading,
+.chat-start {
+  margin: 0;
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.chat-loading.problem {
+  color: var(--danger);
+}
+
+.chat-start {
+  border-bottom: 1px solid var(--line);
 }
 
 /* A flow run's events between the messages: quiet lines, centred. */

@@ -144,6 +144,33 @@ export function columnWidth(width: number | null) {
 export const wideColumn = () => columnWidth(1000);
 export const narrowColumn = () => columnWidth(700);
 
+// The browser's IntersectionObserver: `show` says each observed element is in view (or not),
+// as the browser does when one is observed and when it comes into view.
+export class FakeIntersectionObserver {
+  static all: FakeIntersectionObserver[] = [];
+  targets: Element[] = [];
+
+  constructor(private readonly callback: (entries: { target: Element; isIntersecting: boolean }[]) => void) {
+    FakeIntersectionObserver.all.push(this);
+  }
+  observe(target: Element) {
+    this.targets.push(target);
+  }
+  unobserve(target: Element) {
+    this.targets = this.targets.filter((one) => one !== target);
+  }
+  disconnect() {
+    this.targets = [];
+  }
+  static show(visible = true) {
+    act(() =>
+      FakeIntersectionObserver.all.forEach((observer) =>
+        observer.callback(observer.targets.map((target) => ({ target, isIntersecting: visible }))),
+      ),
+    );
+  }
+}
+
 // jsdom has <dialog> but not showModal and close: the UI's modal dialogs need them.
 export function stubDialogs() {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {

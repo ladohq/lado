@@ -142,6 +142,32 @@ type Asked = { path: string; method: string; body: unknown };
 
 let asked: Asked[] = [];
 
+// The server's page of an agent's messages: from and to `agent`, made from the second of
+// `since` to the end of the second of `until`, the latest `limit`.
+function agentPage(all: MessageInfo[], query: URLSearchParams) {
+  const agent = query.get("agent");
+  const since = query.get("since");
+  const until = query.get("until");
+  const second = (time: string) => Math.floor(Date.parse(time) / 1000) * 1000;
+  const taken = all.filter((one) => {
+    const at = Date.parse(one.created_at);
+    return (
+      (agent === null || one.from === agent || one.to === agent) &&
+      (since === null || at >= second(since)) &&
+      (until === null || at < second(until) + 1000)
+    );
+  });
+  const limit = Number(query.get("limit") ?? taken.length);
+  return { items: taken.slice(-limit), earlier: taken.length > limit };
+}
+
+// The queries of the messages the page asked for.
+const messageQueries = () =>
+  asked
+    .map((one) => new URL(one.path, "http://lado"))
+    .filter((url) => url.pathname.endsWith("/messages"))
+    .map((url) => Object.fromEntries(url.searchParams));
+
 function serve(data: Data = {}) {
   const {
     agents = [SUPERVISOR, DEVELOPER, WAITING],
@@ -172,7 +198,8 @@ function serve(data: Data = {}) {
       const preview = data.preview ?? { removes_worktree: true, refused: null, work: WORK.work };
       return "status" in preview ? of({ detail: preview.detail }, preview.status) : of(preview);
     }
-    if (path.endsWith("/messages")) return of(messages);
+    const url = new URL(path, "http://lado");
+    if (url.pathname.endsWith("/messages")) return of(agentPage(messages, url.searchParams));
     if (path.endsWith("/runs")) return of(runs);
     if (["/events", "/notes", "/gates"].some((end) => path.endsWith(end))) return of([]);
     if (path.includes("/history")) return of({ text: "", alternate: false });
@@ -483,6 +510,7 @@ test("an agent's page has its latest 10 messages of its own lifetime, and All in
   const region = await page("developer");
   const box = within(region).getByRole("region", { name: "Messages" });
   const lines = await within(box).findAllByRole("listitem");
+  expect(messageQueries()).toEqual([{ agent: "developer", since: "2026-10-04T10:40:00.000Z", limit: "10" }]);
   expect(lines).toHaveLength(10);
   expect(lines[0].textContent).toContain("message 11");
   expect(lines[9].textContent).toContain("message 20");
@@ -495,6 +523,43 @@ test("an agent's page has its latest 10 messages of its own lifetime, and All in
   expect(address()).toBe("/sessions/lado/activity");
   expect(localStorage.getItem("lado.agentMessages")).toBe("shown");
   expect((screen.getByRole("checkbox", { name: "Show agent messages" }) as HTMLInputElement).checked).toBe(true);
+});
+
+test("the supervisor's page has its messages, also one of the second it was spawned in", async () => {
+  const spawned = "2026-10-04T09:00:00.000Z";
+  serve({
+    agents: [agent("supervisor", { spawned_at: "2026-10-04T15:04:49.286Z" }), DEVELOPER],
+    messages: [
+      message(1, "supervisor", "developer", spawned, { summary: "before its spawn" }),
+      message(2, "lado", "supervisor", "2026-10-04T15:04:49.100Z", { summary: "its first input" }),
+      message(3, "supervisor", "human", "2026-10-04T16:04:45.215Z", { summary: "a question" }),
+    ],
+  });
+  open("/sessions/lado/agents/supervisor");
+  const box = within(await page("supervisor")).getByRole("region", { name: "Messages" });
+  const lines = await within(box).findAllByRole("listitem");
+  expect(lines.map((one) => one.textContent)).toEqual([
+    expect.stringContaining("its first input"),
+    expect.stringContaining("a question"),
+  ]);
+});
+
+test("an agent's messages say they load, and why they could not", async () => {
+  const fetch = serve();
+  const served = fetch.getMockImplementation()!;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  fetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (!path.includes("/messages?")) return served(path, init);
+    await held;
+    return new Response(JSON.stringify({ detail: "lado.db is newer" }), { status: 503 });
+  });
+  open("/sessions/lado/agents/developer");
+  const box = within(await page("developer")).getByRole("region", { name: "Messages" });
+  expect(within(box).getByText("Loading…")).toBeTruthy();
+  expect(within(box).queryByText("No messages yet")).toBeNull();
+  release();
+  expect((await within(box).findByRole("alert")).textContent).toBe("lado.db is newer");
 });
 
 test("two agents of one name: the live one's page has none of the finished one's messages", async () => {
@@ -519,6 +584,12 @@ test("a finished agent's page is read only, with its messages between its spawn 
     expect.stringContaining("to the old developer"),
     expect.stringContaining("the old developer reports"),
   ]);
+  expect(messageQueries()).toContainEqual({
+    agent: "developer",
+    since: "2026-10-04T08:00:00.000Z",
+    until: "2026-10-04T09:12:00.000Z",
+    limit: "10",
+  });
   expect(within(region).queryByRole("button", { name: /Finish|Write|Open terminal/ })).toBeNull();
   expect(within(region).queryByRole("textbox")).toBeNull();
   const nav = await list();

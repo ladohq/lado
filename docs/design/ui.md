@@ -179,7 +179,7 @@ Decided in the live updates task (2026-10-03).
   gone, whatever `op` says**; the UI uses only `item`. A kind without a REST model yet
   (runs, notes until their tasks) has a null item; an agent's is its
   `AgentInfo`, as `GET /api/sessions/{name}/agents` gives it, a message's its
-  `MessageInfo` (any message: the store keeps them all, Activity picks what it shows), a
+  `MessageInfo` (any message: each window of the store takes those its filter takes), a
   run event's its `RunEventInfo`, a gate's its `GateInfo` (`models.gate_info`, as
   `GET /api/sessions/{name}/gates` gives it: a closed gate's item replaces the open one's,
   it is never null). One table in `feed.py`, `ALSO`, says which change also
@@ -198,6 +198,27 @@ Decided in the live updates task (2026-10-03).
   the load after a gap are one path) and gets every change after it. With a position the
   journal has, the stream sends what came after it, then the current value of every
   derived field.
+- **Message windows** (feature/chat-paging, 2026-10-05): a session's messages grow without
+  end (5 MB for session `lado` on 0.18.0), so no page loads them whole. `GET
+  /api/sessions/{name}/messages` takes the kind (`with=human`, `agent=<name>`: from and to
+  it), id cursors (`before`, `after`), times (`since`: from the start of its second;
+  `until`: to the end of its second, so a time with milliseconds keeps a row of the same
+  second; ISO 8601, another value 422) and `limit` (the latest n; without it every message
+  that matches), all in SQL (`state.MessageFilter`, `state.message_page`; no index: `ORDER
+  BY id DESC LIMIT` walks the rowid). It answers `MessagePage {items (oldest first),
+  earlier}`: whether messages of the kind and times (cursors aside) come before the first
+  item. The store (`live.ts`) keeps windows by session and filter (`watchMessages`): the
+  latest page when one opens; `loadEarlier` (the page before its first message, one at a
+  time); `loadUpTo` (from a message id or a time up to the window, one request). A
+  window's `from` is the time from which it holds every message of its kind (null when it
+  holds all). The feed's rule (`matches`, the server's filter in the browser; one case
+  table, `web/src/messageFilter.cases.json`, checks both): a change the filter takes is
+  added after the last item, put in its place inside the window, and left out before it
+  while earlier ones are not loaded; one it does not take, or null, leaves it. While any
+  load into a window runs, its changes wait and are applied after the last one, as a whole
+  list's are. On `reset` a window loads again from its first message (`after=<first - 1>`),
+  so it keeps what the human scrolled back to. Other lists (agents, events, gates, runs,
+  notes) stay whole; notes are next (BACKLOG.md).
 - **Derived fields**: the hub computes them every 3 s and sends a change when one differs
   from its last value. Such a synthetic change has no `id:` line: the browser keeps its
   position, and no journal id is taken or repeated. The snapshots after a resume make sure
@@ -548,7 +569,7 @@ Built in the layout task (2026-10-03, schema 14):
   (`RunEventInfo {id, run, kind, actor, detail, created_at}`, oldest first); the server
   does not parse `detail`.
 - **API**: `GET …/messages` without `with` gives all the session's messages (`with=human`
-  stays); `SessionInfo.waiting {gates, questions, agents}` counts what waits for the human
+  stays; pages since feature/chat-paging: The change feed, Message windows); `SessionInfo.waiting {gates, questions, agents}` counts what waits for the human
   (open gates, open questions, agents in `waiting`), computed in `models.session_info` from
   the tables: the one definition of "needs you" for the session list now and the rail's
   count later; `AgentInfo` has `run` and `task` (the first line of its task).
@@ -570,10 +591,26 @@ Built in the layout task (2026-10-03, schema 14):
   in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_open` and `gate_answer` are not in it,
   the gate stands for them); and behind the switch **Show agent
   messages** (off by default, remembered in the browser) the agents' messages to each
-  other. The store keeps all the session's messages, so the switch only changes the view.
+  other. The chat shows a window of messages (Message windows above): the latest 50 with
+  the human, with the switch on the latest 50 of all; the switch changes the window.
   A body to the human shows at once: its first 8 lines that are not blank (at most 1500
   characters), the rest behind **Show all**. The feed takes the page's height and scrolls
   by itself, the composer under it.
+- **Pages of the chat** (feature/chat-paging, the human's choice 2026-10-04: loaded by
+  themselves on scroll, not with a button): gates and run events come whole, but while
+  earlier messages are not loaded only those from the window's `from` on show. An unseen
+  marker at the top of the feed (an `IntersectionObserver`, 200 px ahead) loads the page
+  before when it comes into view, observed again after each load so a page that does not
+  fill the feed loads the next; meanwhile "Loading earlier messages…" (`role=status`); a
+  load that failed says why with **Retry** (`role=alert`); with nothing earlier, "Start of
+  session <name> · <day>". The scroll rule: to the bottom when the chat opens or changes
+  its window, and when an entry comes at the bottom while the human is there (within
+  40 px); entries put in front keep what the human sees in place (the height added is
+  added to the scroll; the feed has `overflow-anchor: none`). A link to a card
+  (`#message-<id>`, `#gate-<id>`: Needs you, the human's answer to a gate, the hint over
+  the composer) scrolls to it; a card before the window is loaded up to in one request (a
+  message by its id, a gate by its time), then scrolled to; one that is still not there
+  (a message the chat does not show) scrolls nowhere.
 
 ### Launch and session control (decided 2026-10-04, task feature/launch)
 
@@ -769,8 +806,10 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   talk in AGENTS.md) and **Finish…** (not for the supervisor); why it waits; Branch,
   Work (asked when the page opens, when the agent becomes idle and with Refresh; "as of"
   its time; no polling), Worktree, Task (first lines, Show all); its latest 10 messages
-  from and to it, only in its lifetime (a name is used again), and **All in Activity**,
-  which turns Show agent messages on.
+  from and to it, only in its lifetime (a name is used again: one request,
+  `agent=<name>&since=<spawned_at>&limit=10`, a finished agent's with
+  `until=<finished_at>`; the server and the feed's rule filter, the page does not), and
+  **All in Activity**, which turns Show agent messages on.
 - **Finish…** asks in a dialog with what the preview says: the branch and worktree go,
   or, for a worker of a run that keeps its worktree, only its window closes. A refusal
   shows its reason and **Discard work…**, which asks again with what is lost (commits not

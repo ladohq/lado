@@ -196,9 +196,9 @@ def _call(session, agent, tool, args=None):
 def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: k\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    runtime.start_session(str(repo), "s", None, kit_names=["k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
     run = _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
     assert (run["run"], run["state"], run["acting"]) == ("ship/x", "build", "worker (not spawned)")
     [run] = _call("s", "supervisor", "flow_status", {"run": "ship/x"})
@@ -225,9 +225,9 @@ SHORT = {"run", "flow", "state", "status", "acting", "outcomes", "gate", "visits
 def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: k\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    runtime.start_session(str(repo), "s", None, kit_names=["k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
     task = "Add x. " + "Details. " * 50
     args = {"flow": "ship", "task": task, "name": "x", "human_language": "ru"}
     run = _call("s", "supervisor", "flow_start", args)
@@ -253,12 +253,12 @@ def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, f
 def test_no_agent_can_answer_a_gate(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: k\n")
     gated = SHIP.replace("{done: merge}", "{done: check}") + (
         "  check: {gate: approval, ask: 'Go?', outcomes: {approved: merge, rejected: build}}\n"
     )
     (kit / "flows" / "ship.yaml").write_text(gated)
-    runtime.start_session(str(repo), "s", None, kit_names=["k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
     _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
     _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
     waiting = _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "done"})
@@ -278,11 +278,11 @@ def test_spawn_worker_needs_a_task_without_a_run(repo, fake_tmux):
 def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "agents").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: k\n")
     (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: reviews\n---\nReview.\n")
     (kit / "skills" / "s").mkdir(parents=True)
     (kit / "skills" / "s" / "SKILL.md").write_text("---\nname: s\ndescription: d\n---\n")
-    runtime.start_session(str(repo), "s", None, kit_names=["k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
     server = mcp_server.build("s", "supervisor")
     args = {"task": "t", "role": "rev", "without": ["skill:s"]}
     asyncio.run(server.call_tool("spawn_worker", args))

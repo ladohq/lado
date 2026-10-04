@@ -68,7 +68,7 @@ def passive_kit(repo) -> str:
     kit = repo / ".lado" / "kits" / "live"
     (kit / "agents").mkdir(parents=True)
     (kit / "flows").mkdir()
-    (kit / "kit.yaml").write_text("name: live\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: live\n")
     (kit / "agents" / "passive.md").write_text(PASSIVE_SUPERVISOR)
     (kit / "flows" / "tiny.yaml").write_text(TINY_FLOW)
     return kit.name
@@ -78,7 +78,7 @@ def start_session(repo, provider: str) -> None:
     """Start the session with the passive supervisor and wait until it is idle."""
     kit = passive_kit(repo)
     runtime.start_session(
-        str(repo), SESSION, "bypassPermissions", provider, [kit], ["agent:supervisor"]
+        str(repo), SESSION, "bypassPermissions", provider, ["default", kit], ["agent:supervisor"]
     )
     assert state.get_agent(SESSION, "supervisor").role == "passive"
 

@@ -1010,7 +1010,9 @@ def test_a_failed_resume_keeps_the_settings_it_had(repo, fake_tmux, monkeypatch,
         else:
             m.setattr(runs, "resume", _fail)
         with pytest.raises(tmux.TmuxError, match="command too long"):
-            runtime.start_session(str(repo), "s", "plan", "kilo", ["team"], ["skill:style"])
+            runtime.start_session(
+                str(repo), "s", "plan", "kilo", ["default", "team"], ["skill:style"]
+            )
     sess = state.get_session("s")
     assert (sess.provider, sess.kits, sess.without, sess.permission_mode) == (
         "claude",
@@ -1060,14 +1062,14 @@ def test_resume_refuses_another_repo(repo, tmp_path, fake_tmux):
 
 
 def test_resume_replaces_the_settings_given_and_keeps_the_others(repo, fake_tmux, team_kit):
-    runtime.start_session(str(repo), "s", "plan", kit_names=["team"])
+    runtime.start_session(str(repo), "s", "plan", kit_names=["default", "team"])
     runtime.stop_session("s")
     started = runtime.start_session(str(repo), "s", None, "kilo", without=["skill:style"])
     assert started.changes == ["provider: claude -> kilo", "without: none -> skill:style"]
     sess = state.get_session("s")
     assert (sess.provider, sess.kits, sess.without, sess.permission_mode) == (
         "kilo",
-        ["team"],
+        ["default", "team"],
         ["skill:style"],
         "plan",
     )
@@ -1076,8 +1078,8 @@ def test_resume_replaces_the_settings_given_and_keeps_the_others(repo, fake_tmux
         == "provider: claude -> kilo; without: none -> skill:style"
     )
     runtime.stop_session("s")
-    started = runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
-    assert started.changes == ["kits: team -> default, team"]
+    started = runtime.start_session(str(repo), "s", None, kit_names=["default"], without=[])
+    assert started.changes == ["kits: default, team -> default", "without: skill:style -> none"]
 
 
 def _write(path, text):
@@ -1089,7 +1091,7 @@ def _write(path, text):
 def team_kit(repo):
     """A project kit on top of the default kit: a reviewer role, two skills, an MCP server."""
     kit = repo / ".lado" / "kits" / "team"
-    _write(kit / "kit.yaml", "name: team\ninclude: [default]\n")
+    _write(kit / "kit.yaml", "name: team\n")
     _write(
         kit / "agents" / "reviewer.md",
         "---\nname: reviewer\ndescription: reviews branches\nskills: [checklist]\n"
@@ -1103,11 +1105,11 @@ def team_kit(repo):
 
 def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tmux, team_kit):
     sess = runtime.start_session(
-        str(repo), "s", None, kit_names=["team"], without=["skill:style"]
+        str(repo), "s", None, kit_names=["default", "team"], without=["skill:style"]
     ).session
-    assert (sess.kits, sess.without) == (["team"], ["skill:style"])
+    assert (sess.kits, sess.without) == (["default", "team"], ["skill:style"])
     stored = state.get_session("s")
-    assert (stored.kits, stored.without) == (["team"], ["skill:style"])
+    assert (stored.kits, stored.without) == (["default", "team"], ["skill:style"])
     assert state.get_agent("s", "supervisor").role == "supervisor"
     cmd = fake_tmux[0][-1]
     prompt = cmd[cmd.index("--append-system-prompt") + 1]
@@ -1121,7 +1123,7 @@ def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tm
 
 
 def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypatch):
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     monkeypatch.setenv("DB_TOKEN", "t0k")
     worker = runtime.spawn_worker("s", "review it", role="reviewer")
     assert worker.role == "reviewer"
@@ -1145,7 +1147,7 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
 
 
 def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, team_kit, monkeypatch):
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     monkeypatch.delenv("DB_TOKEN", raising=False)  # set only by the user's shell
     path = os.environ["PATH"]
     monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": path, "DB_TOKEN": "from-shell"})
@@ -1156,7 +1158,7 @@ def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, tea
 
 
 def test_spawn_worker_errors_leave_nothing_behind(repo, fake_tmux, team_kit, monkeypatch):
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     monkeypatch.delenv("DB_TOKEN", raising=False)
     with pytest.raises(kits.KitError, match="environment variable DB_TOKEN is not set"):
         runtime.spawn_worker("s", "t", role="reviewer")
@@ -1193,9 +1195,9 @@ class _NoSkills(providers.Provider):
 def test_provider_without_skills_fails_loudly(repo, fake_tmux, team_kit, monkeypatch):
     monkeypatch.setitem(providers._PROVIDERS, "noskills", _NoSkills())
     with pytest.raises(runtime.LadoError, match="No Skills CLI cannot load skills.*checklist"):
-        runtime.start_session(str(repo), "s", None, "noskills", kit_names=["team"])
+        runtime.start_session(str(repo), "s", None, "noskills", kit_names=["default", "team"])
     runtime.start_session(
-        str(repo), "s", None, "noskills", ["team"], ["skill:style", "skill:checklist"]
+        str(repo), "s", None, "noskills", ["default", "team"], ["skill:style", "skill:checklist"]
     )
     assert agent_helpers.launched(fake_tmux[0])[1] == ["noskills"]
 

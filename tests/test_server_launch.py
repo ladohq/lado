@@ -286,7 +286,7 @@ def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
 ):
     kit = repo / ".lado" / "kits" / "team"
     (kit / "agents").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: team\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: team\n")
     (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\nYou review.\n")
     (kit / "flows").mkdir()
     (kit / "flows" / "ship.yaml").write_text(
@@ -294,7 +294,7 @@ def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
         "  build:\n    agent: rev\n    do: Build.\n    outcomes: {done: end}\n"
         "  end:\n    end: true\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     runs.start("s", "ship", "Add x", name="x")
     runtime.stop_session("s")
     answer = client.post(

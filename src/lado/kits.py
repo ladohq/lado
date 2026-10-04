@@ -28,7 +28,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import flows, sources, state
+from lado import __version__, flows, gitcache, sources, state
 from lado.flows import Flow
 from lado.providers.base import McpServer
 
@@ -37,7 +37,10 @@ DEFAULT_KIT = "default"
 DEFAULT_ROLE = "worker"
 BUILTIN = Path(__file__).with_name("builtin_kits")
 
-KIT_KEYS = {"name", "version", "description", "include", "default_agent"}
+KIT_KEYS = {"name", "version", "description", "dependencies", "default_agent"}
+DEPENDENCY_KEYS = {"lado", "skills"}
+PACK_KEYS = {"from", "folders"}
+LADO_NEEDS = re.compile(r">=\s*(\d+)\.(\d+)(?:\.(\d+))?")
 AGENT_KEYS = {"name", "description", "supervisor", "skills", "mcp"}
 MCP_KEYS = {"command", "env"}
 WITHOUT_KINDS = ("agent", "skill", "mcp", "flow")
@@ -59,6 +62,27 @@ class Skill:
     description: str
     path: Path  # the skill's folder
     kit: str
+    pack: str | None = None  # the pack of the kit's dependencies it comes from
+
+
+@dataclass(frozen=True)
+class Pack:
+    """A skill pack a kit depends on (dependencies.skills): SKILL.md folders, no kit.yaml."""
+
+    name: str
+    address: str  # a git address, or a folder relative to the kit's
+    ref: str | None  # the tag or commit of a git address
+    folders: tuple[str, ...]  # where its skills are, inside it; empty: all of skills/
+    path: Path | None  # its folder; None: a git pack not fetched yet
+    skills: dict[str, Skill] | None  # None: not fetched yet
+
+    @property
+    def spec(self) -> str:
+        return f"{self.address}@{self.ref}" if self.ref else self.address
+
+    @property
+    def label(self) -> str:
+        return f"{self.name}@{self.ref}" if self.ref else self.name
 
 
 @dataclass(frozen=True)
@@ -88,18 +112,22 @@ class Kit:
     where: str  # project, user or built-in; "path" for a kit loaded from a path
     version: str
     description: str
-    include: list[str]
     default_agent: str | None
     agents: dict[str, AgentDef]
-    skills: dict[str, Skill]
+    skills: dict[str, Skill]  # its own, in skills/
     origin: sources.Source | None = None  # the source the kit was found in
     pack: bool = False  # a skill pack: SKILL.md folders without a kit.yaml
     flows: dict[str, Flow] = field(default_factory=dict)
+    packs: dict[str, Pack] = field(default_factory=dict)  # dependencies.skills
 
     @property
     def source(self) -> str:
         revision = self.origin.revision() if self.origin else None
         return f"{self.where}{f' @ {revision}' if revision else ''}: {self.path}"
+
+    def unfetched(self) -> list[str]:
+        """The packs not in the cache yet (fetch gets them)."""
+        return [name for name, pack in self.packs.items() if pack.skills is None]
 
 
 @dataclass(frozen=True)
@@ -140,12 +168,24 @@ class ResolvedAgent:
 
 @dataclass
 class Environment:
-    kits: list[Kit]  # every kit taken in, included ones first
+    kits: list[Kit]  # every kit taken in, in the order given
     agents: dict[str, AgentDef]
-    skills: dict[str, Skill]
+    shared: dict[str, Skill]  # every agent's: the kits' own skills, packs of kits without agents
     default_agent: str | None
     without: list[str] = field(default_factory=list)
     flows: dict[str, Flow] = field(default_factory=dict)
+    private: dict[str, dict[str, Skill]] = field(default_factory=dict)  # kit -> its packs' skills
+
+    def visible(self, agent: AgentDef) -> dict[str, Skill]:
+        """The skills `agent` may have: the shared ones and its own kit's packs'."""
+        return {**self.shared, **self.private.get(agent.kit, {})}
+
+    def all_skills(self) -> dict[str, Skill]:
+        found = dict(self.shared)
+        for skills in self.private.values():
+            for name, skill in skills.items():
+                found.setdefault(name, skill)
+        return found
 
     def flow(self, name: str) -> Flow:
         """Flow `name`, once every role it names is an agent of this environment."""
@@ -194,11 +234,11 @@ class Environment:
             raise KitError(
                 "an agent or flow cannot be switched off for one agent; use skill: or mcp:"
             )
-        _check_known(excluded, self.skills, self._all_mcp(), set(), set())
+        _check_known(excluded, self.all_skills(), self._all_mcp(), set(), set())
         agent = self.agents[name]
-        wanted = list(self.skills) if agent.skills is None else agent.skills
-        skills = {s: self.skills[s] for s in wanted if s in self.skills}
-        skills = {s: v for s, v in skills.items() if s not in excluded["skill"]}
+        visible = self.visible(agent)
+        wanted = list(visible) if agent.skills is None else agent.skills
+        skills = {s: visible[s] for s in wanted if s in visible and s not in excluded["skill"]}
         mcp = {m: v for m, v in agent.mcp.items() if m not in excluded["mcp"]}
         return ResolvedAgent(agent, skills, mcp)
 
@@ -344,7 +384,7 @@ def load(
         if not errors:
             errors.append(f"{path / KIT_FILE}: expected a mapping")
         raise KitError("\n".join(errors))
-    _unknown_keys(meta, KIT_KEYS, path / KIT_FILE, errors)
+    _unknown_keys(meta, KIT_KEYS | {"include"}, path / KIT_FILE, errors)  # include: below
     name = meta.get("name")
     if not isinstance(name, str) or not NAME.fullmatch(name):
         errors.append(f"{path / KIT_FILE}: name must be lowercase letters, digits, - or _")
@@ -353,15 +393,19 @@ def load(
     version = meta.get("version")
     if version is not None and not SEMVER.fullmatch(str(version)):
         errors.append(f"{path / KIT_FILE}: version must be X.Y.Z or X.Y.Z-<prerelease>")
-    include = meta.get("include", [])
-    if not _str_list(include):
-        errors.append(f"{path / KIT_FILE}: include must be a list of kit names")
-        include = []
+    if "include" in meta:
+        errors.append(
+            f"{path / KIT_FILE}: include is gone: a kit takes skill packs from "
+            "dependencies.skills (<name>: <git-url>@<version>); a kit no longer includes "
+            "another kit"
+        )
     default_agent = meta.get("default_agent")
     if default_agent is not None and not isinstance(default_agent, str):
         errors.append(f"{path / KIT_FILE}: default_agent must be an agent name")
     kit_name = name if isinstance(name, str) else path.name
     skills = _load_skills(path, kit_name, errors)
+    packs = _load_dependencies(meta.get("dependencies", {}), path, kit_name, errors)
+    _check_unique(skills, packs, path / KIT_FILE, errors)
     agents = _load_agents(path, kit_name, errors)
     kit_flows = _load_flows(path, kit_name, errors)
     if errors:
@@ -372,13 +416,175 @@ def load(
         where=where,
         version="" if version is None else str(version),
         description=str(meta.get("description", "")),
-        include=list(include),
         default_agent=default_agent,
         agents=agents,
         skills=skills,
         origin=origin,
         flows=kit_flows,
+        packs=packs,
     )
+
+
+def fetch(kit: Kit) -> Kit:
+    """`kit` with every pack of its dependencies in the cache: the git packs not fetched yet
+    are cloned (gitcache), then checked as load checks a pack that is there."""
+    if not kit.unfetched():
+        return kit
+    errors: list[str] = []
+    packs = dict(kit.packs)
+    for name in kit.unfetched():
+        where = f"{kit.path / KIT_FILE}: dependencies.skills.{name}"
+        try:
+            clone = gitcache.fetch_pinned(packs[name].address, packs[name].ref or "")
+        except gitcache.GitError as exc:
+            errors.append(f"{where}: {exc}")
+            continue
+        packs[name] = _fill_pack(packs[name], clone.resolve(), kit.name, where, errors)
+    _check_unique(kit.skills, packs, kit.path / KIT_FILE, errors)
+    if errors:
+        raise KitError("\n".join(errors))
+    return dataclasses.replace(kit, packs=packs)
+
+
+def _load_dependencies(value: object, path: Path, kit_name: str, errors: list[str]) -> dict:
+    file = path / KIT_FILE
+    if not isinstance(value, dict):
+        errors.append(f"{file}: dependencies must be a mapping")
+        return {}
+    _unknown_keys(value, DEPENDENCY_KEYS, f"{file}: dependencies", errors)
+    need = value.get("lado")
+    if need is not None:
+        match = LADO_NEEDS.fullmatch(need.strip()) if isinstance(need, str) else None
+        if not match:
+            errors.append(f'{file}: dependencies.lado must be ">=X.Y" or ">=X.Y.Z"')
+        elif _version(__version__) < tuple(int(n or 0) for n in match.groups()):
+            errors.append(
+                f'{file}: kit "{kit_name}" needs LADO {need.strip()}, this is {__version__}; '
+                "upgrade LADO"
+            )
+    entries = value.get("skills", {})
+    if not isinstance(entries, dict):
+        errors.append(
+            f"{file}: dependencies.skills must map pack names to <address>@<ref> "
+            "or {from, folders}"
+        )
+        return {}
+    packs = {}
+    for name, spec in entries.items():
+        pack = _load_pack_entry(name, spec, path, kit_name, errors)
+        if pack:
+            packs[name] = pack
+    return packs
+
+
+def _load_pack_entry(
+    name: object, spec: object, path: Path, kit_name: str, errors: list[str]
+) -> Pack | None:
+    """One entry of dependencies.skills; its skills when it is a local folder or in the cache."""
+    file = path / KIT_FILE
+    if not isinstance(name, str) or not NAME.fullmatch(name):
+        errors.append(
+            f'{file}: dependencies.skills: "{name}" is not a valid pack name '
+            "(lowercase letters, digits, - or _)"
+        )
+        return None
+    where = f"{file}: dependencies.skills.{name}"
+    count = len(errors)
+    folders: list[str] = []
+    if isinstance(spec, dict):
+        _unknown_keys(spec, PACK_KEYS, where, errors)
+        folders = spec.get("folders", [])
+        if not _str_list(folders):
+            errors.append(f"{where}: folders must be a list of folders inside the pack")
+            folders = []
+        for folder in folders:
+            if Path(folder).is_absolute() or ".." in Path(folder).parts or not Path(folder).parts:
+                errors.append(f'{where}: "{folder}": folders are relative paths inside the pack')
+        if "from" not in spec:
+            errors.append(f"{where}: from is missing")
+        spec = spec.get("from")
+    if not isinstance(spec, str):
+        if len(errors) == count:
+            errors.append(f"{where}: expected <address>@<ref> or {{from, folders}}")
+        return None
+    if len(errors) > count:
+        return None
+    location, ref = gitcache.split_ref(spec)
+    pack = Pack(name, location, ref, tuple(Path(f).as_posix() for f in folders), None, None)
+    if gitcache.is_git(location):
+        if not ref:
+            errors.append(f"{where}: pin a version: {location}@<tag or commit>")
+            return None
+        clone = gitcache.clone_dir(location, ref)
+        return (
+            _fill_pack(pack, clone.resolve(), kit_name, where, errors) if clone.is_dir() else pack
+        )
+    if ref:
+        errors.append(f"{where}: a local pack has no version; drop @{ref}")
+        return None
+    if Path(location).is_absolute() or location.startswith("~"):
+        errors.append(f"{where}: a local pack is a path relative to the kit folder: {location}")
+        return None
+    folder = (path / location).resolve()
+    clone = gitcache.clone_root(path)
+    if clone and not _inside(folder, clone):
+        errors.append(
+            f"{where}: local pack outside the kit's repository works only on this machine; "
+            "use <git-url>@<ref>"
+        )
+        return None
+    if not folder.is_dir():
+        errors.append(f"{where}: {folder} does not exist")
+        return None
+    return _fill_pack(pack, folder, kit_name, where, errors)
+
+
+def _fill_pack(pack: Pack, folder: Path, kit_name: str, where: str, errors: list[str]) -> Pack:
+    """`pack` read from `folder`: its skills."""
+    stray = _stray_kit_file(folder)
+    if stray:
+        errors.append(f"{where}: {pack.spec} is a kit, not a skill pack ({stray})")
+        return pack
+    skills: dict[str, Skill] = {}
+    for sub in pack.folders or ("skills",):
+        if pack.folders and not (folder / sub).is_dir():
+            errors.append(f"{where}: folder {folder / sub} does not exist")
+            continue
+        for skill_dir in _skill_dirs(folder / sub):
+            skill = _load_skill(skill_dir, kit_name, errors, pack.name)
+            if skill:
+                _add_skill(skills, skill, where, errors)
+    return dataclasses.replace(pack, path=folder, skills=skills)
+
+
+def _check_unique(own: dict[str, Skill], packs: dict[str, Pack], file: Path, errors: list[str]):
+    """One name is one skill folder in a kit: its own skills and its packs' together."""
+    skills = dict(own)
+    for pack in packs.values():
+        for skill in (pack.skills or {}).values():
+            _add_skill(skills, skill, str(file), errors)
+
+
+def _add_skill(skills: dict[str, Skill], skill: Skill, where: str, errors: list[str]) -> None:
+    other = skills.setdefault(skill.name, skill)
+    if other.path != skill.path:
+        errors.append(
+            f'{where}: skill "{skill.name}" is in {other.path} and in {skill.path}; '
+            "choose them with folders in dependencies.skills"
+        )
+
+
+def _inside(path: Path, folder: Path) -> bool:
+    try:
+        path.relative_to(folder)
+    except ValueError:
+        return False
+    return True
+
+
+def _version(text: str) -> tuple[int, ...]:
+    match = re.match(r"(\d+)\.(\d+)\.(\d+)", text)
+    return tuple(int(n) for n in match.groups()) if match else (0, 0, 0)
 
 
 def _load_pack(found: Found) -> Kit:
@@ -414,26 +620,39 @@ def _load_pack(found: Found) -> Kit:
 def resolve(
     repo: str | Path | None, kits: Iterable[str | Kit], without: Iterable[str] = ()
 ) -> Environment:
-    """Combine kits (names or loaded kits) and what they include into one environment, then
-    switch off the `without` items ("agent:x", "skill:y", "mcp:z")."""
+    """Combine kits into one environment, then switch off the `without` items ("agent:x",
+    "skill:y", "mcp:z", "flow:f"). A kit is a name, looked up, loaded and fetched here, or a
+    loaded kit, fetched already (fetch)."""
     taken: dict[Path, Kit] = {}
-
-    def visit(kit: Kit, stack: list[str]) -> None:
-        if kit.path in taken:
-            return
-        for name in kit.include:
-            if name in stack:
-                raise KitError(f"kits include each other: {' -> '.join([*stack, name])}")
-            visit(find(name, repo).load(), [*stack, name])
-        taken[kit.path] = kit
-
     for item in kits:
-        kit = item if isinstance(item, Kit) else find(item, repo).load()
-        visit(kit, [kit.name])
+        kit = item if isinstance(item, Kit) else fetch(find(item, repo).load())
+        if kit.unfetched():
+            raise KitError(f'kit "{kit.name}": pack not fetched yet: {", ".join(kit.unfetched())}')
+        taken.setdefault(kit.path, kit)
 
     env_kits = list(taken.values())
     agents = _merge(env_kits, "agents", "agent")
     skills = _merge(env_kits, "skills", "skill")
+    # A kit without agents (by what it holds, before --without) shares its packs.
+    owner = {name: kit for kit in env_kits for name in kit.skills}
+    for kit in env_kits:
+        for skill in [] if kit.agents else _pack_skills(kit).values():
+            other = skills.setdefault(skill.name, skill)
+            if other.path != skill.path:
+                raise KitError(
+                    f'skill "{skill.name}" is defined by two kits: {owner[skill.name].name} '
+                    f"({other.path}) and {kit.name} ({skill.path})"
+                )
+            owner.setdefault(skill.name, kit)
+    private = {kit.name: _pack_skills(kit) for kit in env_kits if kit.agents}
+    for kit_name, own in private.items():
+        for skill in own.values():
+            other = skills.get(skill.name)
+            if other and other.path != skill.path:
+                raise KitError(
+                    f'skill "{skill.name}" comes from two folders for the agents of kit '
+                    f'"{kit_name}": {other.path} and {skill.path}'
+                )
     env_flows = _merge(env_kits, "flows", "flow")
     defaults = {k.default_agent: k for k in env_kits if k.default_agent}
     if len(defaults) > 1:
@@ -444,20 +663,35 @@ def resolve(
     without = list(without)
     excluded = parse_without(without)
     mcp = {m for a in agents.values() for m in a.mcp}
-    _check_known(excluded, skills, mcp, set(agents), set(env_flows))
+    every_skill = {**{s: v for own in private.values() for s, v in own.items()}, **skills}
+    _check_known(excluded, every_skill, mcp, set(agents), set(env_flows))
     agents = {n: a for n, a in agents.items() if n not in excluded["agent"]}
     skills = {n: s for n, s in skills.items() if n not in excluded["skill"]}
+    private = {
+        k: {n: s for n, s in own.items() if n not in excluded["skill"]}
+        for k, own in private.items()
+    }
     env_flows = {n: f for n, f in env_flows.items() if n not in excluded["flow"]}
     for agent in agents.values():
+        visible = {**skills, **private.get(agent.kit, {})}
         for skill in agent.skills or []:
-            if skill not in skills and skill not in excluded["skill"]:
-                raise KitError(f'{agent.path}: skill "{skill}" is not in the kits')
+            if skill not in visible and skill not in excluded["skill"]:
+                raise KitError(
+                    f'{agent.path}: skill "{skill}" is not visible to agent "{agent.name}" '
+                    f'(kit "{agent.kit}"): not a skill of the session\'s kits or of kit '
+                    f'"{agent.kit}"\'s dependencies'
+                )
         if excluded["mcp"]:
             mcp = {m: v for m, v in agent.mcp.items() if m not in excluded["mcp"]}
             agents[agent.name] = dataclasses.replace(agent, mcp=mcp)
     if default_agent and default_agent not in agents and default_agent not in excluded["agent"]:
         raise KitError(f'default_agent "{default_agent}" is not an agent of the kits')
-    return Environment(env_kits, agents, skills, default_agent, without, env_flows)
+    return Environment(env_kits, agents, skills, default_agent, without, env_flows, private)
+
+
+def _pack_skills(kit: Kit) -> dict[str, Skill]:
+    """The skills of a kit's packs (fetched)."""
+    return {name: s for pack in kit.packs.values() for name, s in (pack.skills or {}).items()}
 
 
 def parse_without(items: Iterable[str]) -> dict[str, set[str]]:
@@ -550,7 +784,9 @@ def _load_skills(kit: Path, kit_name: str, errors: list[str]) -> dict[str, Skill
     return skills
 
 
-def _load_skill(path: Path, kit_name: str, errors: list[str]) -> Skill | None:
+def _load_skill(
+    path: Path, kit_name: str, errors: list[str], pack: str | None = None
+) -> Skill | None:
     skill_md = path / "SKILL.md"
     if not skill_md.is_file():
         errors.append(f"{path}: no SKILL.md")
@@ -567,7 +803,7 @@ def _load_skill(path: Path, kit_name: str, errors: list[str]) -> Skill | None:
     elif not isinstance(description, str) or not description.strip():
         errors.append(f"{skill_md}: description is missing")
     else:
-        return Skill(name, description, path, kit_name)
+        return Skill(name, description, path, kit_name, pack)
     return None
 
 
@@ -726,7 +962,7 @@ def _yaml_file(path: Path, errors: list[str]) -> object:
     return None
 
 
-def _unknown_keys(meta: dict, allowed: set[str], path: Path, errors: list[str]) -> None:
+def _unknown_keys(meta: dict, allowed: set[str], path: Path | str, errors: list[str]) -> None:
     unknown = sorted(map(str, set(meta) - allowed))
     if unknown:
         errors.append(

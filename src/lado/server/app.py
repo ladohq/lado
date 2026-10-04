@@ -30,10 +30,12 @@ from lado.server.models import (
     Launch,
     MessageInfo,
     MessageText,
+    NoteInfo,
     ProviderInfo,
     RecentFolder,
     Resume,
     RunEventInfo,
+    RunInfo,
     Sent,
     SessionInfo,
     Started,
@@ -186,6 +188,18 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         """The session's gates, open and closed, oldest first."""
         known(name, has_db)
         return [models.gate_info(g) for g in state.session_gates(name)]
+
+    @app.get("/api/sessions/{name}/runs", dependencies=[Depends(guard)])
+    def flow_runs(name: str, has_db: bool = Depends(database)) -> list[RunInfo]:
+        """The session's flow runs, open and closed, newest first."""
+        known(name, has_db)
+        return [models.run_info(r) for r in reversed(state.list_runs(name))]
+
+    @app.get("/api/sessions/{name}/notes", dependencies=[Depends(guard)])
+    def notes(name: str, has_db: bool = Depends(database)) -> list[NoteInfo]:
+        """The notes of the session's flow runs, oldest first: each is a step a run took."""
+        known(name, has_db)
+        return [models.note_info(n) for n in state.run_notes(name)]
 
     @app.post(
         "/api/sessions",

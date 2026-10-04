@@ -150,6 +150,16 @@ def _gate_item(session: str, key: str) -> dict | None:
     return models.gate_info(gate).model_dump(mode="json")
 
 
+def _run_item(session: str, key: str) -> dict | None:
+    run = state.get_run(session, key)
+    return None if run is None else models.run_info(run).model_dump(mode="json")
+
+
+def _note_item(session: str, key: str) -> dict | None:
+    note = state.get_note(session, int(key))
+    return None if note is None else models.note_info(note).model_dump(mode="json")
+
+
 # The kinds whose REST model exists, and how to build an item of it. Others' items are null.
 ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "sessions": _session_item,
@@ -157,13 +167,31 @@ ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "messages": _message_item,
     "events": _event_item,
     "gates": _gate_item,
+    "runs": _run_item,
+    "notes": _note_item,
 }
 
-# A change of kind X also changes the item of kind Y of the same session (Y's key is '':
-# the session's own). The session's item counts its agents and what waits for the human in
-# it (open gates and questions, agents in `waiting`). Each such session item asks tmux for
-# its status (runtime.session_status): collapsed, once per session in a batch.
-ALSO = {"agents": "sessions", "gates": "sessions", "messages": "sessions"}
+
+def _the_session(session: str) -> list[str]:
+    return [""]
+
+
+def _open_runs(session: str) -> list[str]:
+    return [run.name for run in state.list_runs(session, open_only=True)]
+
+
+# A change of kind X also changes the items of kind Y of the same session whose keys the
+# function gives. The session's item ('') counts its agents and what waits for the human in
+# it (open gates and questions, agents in `waiting`); each such item asks tmux for its
+# status (runtime.session_status): collapsed, once per session in a batch. Who acts in an
+# open run (runs.acting) depends on the session's agents: any change of one, as the agent
+# that was a run's worker may be deleted already (runtime.close_worker), so its run cannot
+# be told.
+ALSO: dict[str, list[tuple[str, Callable[[str], list[str]]]]] = {
+    "agents": [("sessions", _the_session), ("runs", _open_runs)],
+    "gates": [("sessions", _the_session)],
+    "messages": [("sessions", _the_session)],
+}
 
 
 def _session_statuses() -> dict[Change, object]:
@@ -189,12 +217,16 @@ def derived() -> dict[Change, object]:
 
 def collapse(changes: list[Change]) -> list[Change]:
     """One change per row, with its latest id, in the order of those ids; with the changes
-    ALSO adds."""
+    ALSO adds. Reads lado.db for their keys, once per kind and session."""
     latest: dict[tuple[str, str, str], Change] = {}
+    keys: dict[tuple[str, str], list[str]] = {}
     for change in changes:
         ones = [change]
-        if change.kind in ALSO:
-            ones.append(Change(ALSO[change.kind], change.session, "", "update", change.id))
+        for kind, of in ALSO.get(change.kind, []):
+            if (kind, change.session) not in keys:
+                keys[kind, change.session] = of(change.session)
+            for key in keys[kind, change.session]:
+                ones.append(Change(kind, change.session, key, "update", change.id))
         for one in ones:
             row = (one.kind, one.session, one.key)
             latest.pop(row, None)

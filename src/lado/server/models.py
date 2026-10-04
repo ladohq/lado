@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lado import runs, runtime, state
+from lado import flows, runs, runtime, state
 
 
 class Waiting(BaseModel):
@@ -174,13 +174,58 @@ class RunEventInfo(BaseModel):
 
 
 class NoteInfo(BaseModel):
-    """A note a run's step reported, with the state it was reported from."""
+    """A note a run's step reported, with the state it was reported from: the record of
+    the step (state.NOTES_STEP)."""
 
     id: int
+    run: str
     state: str
+    kind: Literal["report", "override"]  # override: kept, but never a state's report
+    actor: str  # who reported it; '' in notes from before LADO 0.18
+    outcome: str  # '' in notes from before LADO 0.18 and for the human's flow-set
+    # Where the outcome leads; a loop limit kept the run out of it when its next note is
+    # the loop gate's answer. '' in notes from before LADO 0.18.
+    target: str
     summary: str
     body: str
     created_at: str  # UTC, ISO 8601
+
+
+class FlowStateInfo(BaseModel):
+    """A state of a run's flow, as the run's snapshot has it."""
+
+    name: str
+    kind: Literal["work", "gate", "end"]
+    agent: str | None  # work: the role that acts
+    gate: Literal["approval", "choice"] | None
+    ask: str | None  # gate: the question for the human
+    outcomes: dict[str, str]  # outcome -> the state it leads to
+    max_visits: int | None
+    needs: list[str]
+
+
+class RunInfo(BaseModel):
+    """A flow run: where it is, who acts and its flow."""
+
+    name: str
+    flow: str
+    kit: dict[str, str]  # name, version and source of the flow's kit
+    task: str
+    state: str
+    status: Literal["active", "waiting", "ended", "cancelled"]
+    reason: str  # why it waits for the human, or was cancelled
+    # Who acts next, as the core says it (runs.acting): the supervisor, a worker,
+    # "<role> (not spawned)", "human", or '' for a closed run. The UI does not parse it.
+    acting: str
+    visits: dict[str, int]  # state -> times entered
+    gate: int | None  # the id of its open gate
+    worktree: str
+    branch: str
+    language: str  # the human's language, for the notes; '' for none given
+    created_at: str  # UTC, ISO 8601
+    since: str  # UTC, ISO 8601: its latest event, since when it is where it is
+    ended_at: str | None  # an ended or cancelled run's: its latest event
+    states: list[FlowStateInfo]  # in the order the flow declares them
 
 
 class NeededNote(BaseModel):
@@ -354,10 +399,53 @@ def run_event_info(event: state.Event) -> RunEventInfo:
 def note_info(note: state.Note) -> NoteInfo:
     return NoteInfo(
         id=note.id,
+        run=note.run,
         state=note.state,
+        kind=note.kind,
+        actor=note.actor,
+        outcome=note.outcome,
+        target=note.target,
         summary=note.summary,
         body=note.body,
         created_at=_utc(note.created_at),
+    )
+
+
+def flow_state_info(found: flows.State) -> FlowStateInfo:
+    return FlowStateInfo(
+        name=found.name,
+        kind=found.kind,
+        agent=found.agent or None,
+        gate=found.gate or None,
+        ask=found.ask or None,
+        outcomes=found.outcomes,
+        max_visits=found.max_visits,
+        needs=list(found.needs),
+    )
+
+
+def run_info(run: state.Run) -> RunInfo:
+    last = state.last_run_event(run.session, run.name)
+    since = _utc(last.created_at if last else run.created_at)
+    gate = state.open_gate(run.session, run.name) if run.status == state.WAITING else None
+    return RunInfo(
+        name=run.name,
+        flow=run.flow,
+        kit=run.kit,
+        task=run.task,
+        state=run.state,
+        status=run.status,
+        reason=run.reason,
+        acting=runs.acting(run),
+        visits=run.visits,
+        gate=gate.id if gate else None,
+        worktree=run.worktree,
+        branch=run.branch,
+        language=run.language,
+        created_at=_utc(run.created_at),
+        since=since,
+        ended_at=since if run.status not in state.OPEN else None,
+        states=[flow_state_info(s) for s in runs.flow_of(run).states.values()],
     )
 
 

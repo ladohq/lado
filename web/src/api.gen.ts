@@ -250,6 +250,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Flow Runs
+         * @description The session's flow runs, open and closed, newest first.
+         */
+        get: operations["flow_runs_api_sessions__name__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notes
+         * @description The notes of the session's flow runs, oldest first: each is a step a run took.
+         */
+        get: operations["notes_api_sessions__name__notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/resume": {
         parameters: {
             query?: never;
@@ -466,6 +506,33 @@ export interface components {
             text?: string | null;
         };
         /**
+         * FlowStateInfo
+         * @description A state of a run's flow, as the run's snapshot has it.
+         */
+        FlowStateInfo: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "work" | "gate" | "end";
+            /** Agent */
+            agent: string | null;
+            /** Gate */
+            gate: ("approval" | "choice") | null;
+            /** Ask */
+            ask: string | null;
+            /** Outcomes */
+            outcomes: {
+                [key: string]: string;
+            };
+            /** Max Visits */
+            max_visits: number | null;
+            /** Needs */
+            needs: string[];
+        };
+        /**
          * FolderInfo
          * @description A folder as the New session window checks it.
          */
@@ -665,13 +732,27 @@ export interface components {
         };
         /**
          * NoteInfo
-         * @description A note a run's step reported, with the state it was reported from.
+         * @description A note a run's step reported, with the state it was reported from: the record of
+         *     the step (state.NOTES_STEP).
          */
         NoteInfo: {
             /** Id */
             id: number;
+            /** Run */
+            run: string;
             /** State */
             state: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "report" | "override";
+            /** Actor */
+            actor: string;
+            /** Outcome */
+            outcome: string;
+            /** Target */
+            target: string;
             /** Summary */
             summary: string;
             /** Body */
@@ -742,6 +823,53 @@ export interface components {
             detail: string;
             /** Created At */
             created_at: string;
+        };
+        /**
+         * RunInfo
+         * @description A flow run: where it is, who acts and its flow.
+         */
+        RunInfo: {
+            /** Name */
+            name: string;
+            /** Flow */
+            flow: string;
+            /** Kit */
+            kit: {
+                [key: string]: string;
+            };
+            /** Task */
+            task: string;
+            /** State */
+            state: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "waiting" | "ended" | "cancelled";
+            /** Reason */
+            reason: string;
+            /** Acting */
+            acting: string;
+            /** Visits */
+            visits: {
+                [key: string]: number;
+            };
+            /** Gate */
+            gate: number | null;
+            /** Worktree */
+            worktree: string;
+            /** Branch */
+            branch: string;
+            /** Language */
+            language: string;
+            /** Created At */
+            created_at: string;
+            /** Since */
+            since: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** States */
+            states: components["schemas"]["FlowStateInfo"][];
         };
         /** Sent */
         Sent: {
@@ -1269,6 +1397,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GateInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    flow_runs_api_sessions__name__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    notes_api_sessions__name__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteInfo"][];
                 };
             };
             /** @description Validation Error */

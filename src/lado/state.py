@@ -875,6 +875,26 @@ def run_events(session: str) -> list[Event]:
     return [Event(*r) for r in rows]
 
 
+def last_run_event(session: str, run: str) -> Event | None:
+    """The run's latest event: since when it is where it is, or when it ended."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT id, agent, kind, detail, created_at, run FROM events"
+            " WHERE session = ? AND run = ? ORDER BY id DESC LIMIT 1",
+            (session, run),
+        ).fetchone()
+    return Event(*row) if row else None
+
+
+def get_note(session: str, note_id: int) -> Note | None:
+    with connect() as db:
+        row = db.execute(
+            f"SELECT {NOTE_COLUMNS} FROM notes WHERE session = ? AND id = ?",
+            (session, note_id),
+        ).fetchone()
+    return Note(*row) if row else None
+
+
 def get_event(session: str, event_id: int) -> Event | None:
     with connect() as db:
         row = db.execute(

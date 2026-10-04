@@ -3,6 +3,7 @@ process, so the stream is read over HTTP as the browser reads it; the writers ar
 and lado.runtime in the same process. Writers in other processes are in
 tests/integration/test_server_process.py."""
 
+import dataclasses
 import socket
 import sqlite3
 import threading
@@ -116,21 +117,73 @@ def test_the_item_is_the_rows_current_state_whatever_the_op(streams, fake_tmux):
     assert change.id == last_change()
 
 
-def test_kinds_without_a_model_yet_come_with_a_null_item(streams):
+# The smallest flow a run can have: its item is built from the run's snapshot.
+SNAPSHOT = {
+    "name": "feature",
+    "description": "d",
+    "start": "design",
+    "states": {
+        "design": {"agent": "supervisor", "do": "Design it.", "outcomes": {"ready": "done"}},
+        "done": {"end": True},
+    },
+}
+
+
+def bare_run() -> state.Run:
+    return state.Run("s", "feature/x", "feature", SNAPSHOT, {}, "x", "design", "/w", "b")
+
+
+def test_a_runs_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
     state.add_session(state.Session("s", "/r", None))
     stream = streams()
     stream.next()
-    run = state.Run("s", "feature/x", "feature", {}, {}, "x", "design", "/w", "b")
-    state.add_run(run, [])
+    state.add_run(bare_run(), [("lado", state.FLOW_START, "at design")])
     added = stream.until(is_change("runs", "s"))[-1]
-    assert added.data["item"] is None and added.data["op"] == "insert"
+    item = added.data["item"]
+    assert (added.data["key"], added.data["op"]) == ("feature/x", "insert")
+    assert (item["name"], item["state"], item["acting"]) == (
+        "feature/x",
+        "design",
+        "supervisor (not spawned)",
+    )
+    assert [s["name"] for s in item["states"]] == ["design", "done"]
+    state.delete_session("s")
+    gone = stream.until(is_change("runs", "s"))[-1]
+    assert (gone.data["op"], gone.data["item"]) == ("delete", None)
+
+
+def test_a_notes_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
+    state.add_session(state.Session("s", "/r", None))
+    run = bare_run()
+    state.add_run(run, [])
+    stream = streams()
+    stream.next()
+    after = dataclasses.replace(run, state="done", status=state.ENDED, note="designed")
+    step = state.Noted("design", state.REPORT, "supervisor", "ready", "done")
+    assert state.update_run(run, after, [], noted=step)
+    [note] = state.run_notes("s")
+    added = stream.until(is_change("notes", "s"))[-1]
+    assert (added.data["key"], added.data["op"]) == (str(note.id), "insert")
+    item = added.data["item"]
+    del item["created_at"]
+    assert item == {
+        "id": note.id,
+        "run": "feature/x",
+        "state": "design",
+        "kind": "report",
+        "actor": "supervisor",
+        "outcome": "ready",
+        "target": "done",
+        "summary": "designed",
+        "body": "",
+    }
 
 
 def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
     state.add_session(state.Session("s", "/r", None))
     stream = streams()
     stream.next()
-    run = state.Run("s", "feature/x", "feature", {}, {}, "x", "design", "/w", "b")
+    run = bare_run()
     state.add_run(run, [("lado", state.FLOW_START, "at design")])
     [event] = state.run_events("s")
     added = stream.until(is_change("events", "s"))[-1]
@@ -191,8 +244,8 @@ def test_a_gate_and_a_question_change_what_waits_in_their_session(streams, repo,
     runtime.start_session(str(repo), "s", None)
     stream = streams()
     stream.next()
-    run = state.Run("s", "feature/x", "feature", {}, {}, "x", "design", "/w", "b")
-    # A loop limit: its item needs no flow, and this run has none.
+    run = bare_run()
+    # A loop limit: its item needs no notes.
     gate = state.Gate("s", "feature/x", "design", "loop", "Again?", ["continue", "cancel"])
     state.add_run(run, [], gate)
     stream.until(lambda e: waiting_of("s")(e) and e.data["item"]["waiting"]["gates"] == 1)
@@ -434,3 +487,44 @@ def test_the_journal_is_read_only(streams):
     stream = streams(after=0)
     stream.quiet(0.3)
     assert (path.stat().st_mtime_ns, path.read_bytes()) == before
+
+
+def run_item(stream, acting: str):
+    """The stream's events up to the change of run ship/x whose acting is `acting`."""
+    return stream.until(
+        lambda e: (
+            is_change("runs", "s")(e)
+            and e.data["key"] == "ship/x"
+            and e.data["item"]["acting"] == acting
+        )
+    )
+
+
+def test_any_change_of_the_sessions_agents_updates_who_acts_in_its_open_runs(
+    streams, repo, fake_tmux
+):
+    kit = repo / ".lado" / "kits" / "team"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "agents").mkdir()
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "agents" / "developer.md").write_text(
+        "---\nname: developer\ndescription: d\n---\nYou build.\n"
+    )
+    (kit / "flows" / "ship.yaml").write_text(
+        "name: ship\ndescription: d\nstart: build\nstates:\n"
+        "  build: {agent: developer, do: Build it., outcomes: {done: end}}\n"
+        "  end: {end: true}\n"
+    )
+    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runs.start("s", "ship", "Add x", name="x")
+    state.add_run(dataclasses.replace(bare_run(), session="s", name="feature/closed"), [])
+    runs.cancel("s", "feature/closed", "not needed")
+    stream = streams()
+    stream.next()
+    runs.spawn_worker("s", "ship/x")
+    run_item(stream, "developer")
+    [worker] = [a for a in state.list_agents("s") if a.run == "ship/x"]
+    runtime.close_worker("s", worker, "test")
+    seen = run_item(stream, "developer (not spawned)")
+    # Only open runs are updated; a closed one's acting cannot change.
+    assert not any(is_change("runs", "s")(e) and e.data["key"] == "feature/closed" for e in seen)

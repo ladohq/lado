@@ -550,6 +550,94 @@
         }
       }
     },
+    "/api/sessions/{name}/runs": {
+      "get": {
+        "summary": "Flow Runs",
+        "description": "The session's flow runs, open and closed, newest first.",
+        "operationId": "flow_runs_api_sessions__name__runs_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunInfo"
+                  },
+                  "title": "Response Flow Runs Api Sessions  Name  Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/notes": {
+      "get": {
+        "summary": "Notes",
+        "description": "The notes of the session's flow runs, oldest first: each is a step a run took.",
+        "operationId": "notes_api_sessions__name__notes_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteInfo"
+                  },
+                  "title": "Response Notes Api Sessions  Name  Notes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{name}/resume": {
       "post": {
         "summary": "Resume",
@@ -1099,6 +1187,98 @@
         },
         "type": "object",
         "title": "Answer"
+      },
+      "FlowStateInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "work",
+              "gate",
+              "end"
+            ],
+            "title": "Kind"
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approval",
+                  "choice"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate"
+          },
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Outcomes"
+          },
+          "max_visits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Visits"
+          },
+          "needs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Needs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "agent",
+          "gate",
+          "ask",
+          "outcomes",
+          "max_visits",
+          "needs"
+        ],
+        "title": "FlowStateInfo",
+        "description": "A state of a run's flow, as the run's snapshot has it."
       },
       "FolderInfo": {
         "properties": {
@@ -1746,9 +1926,33 @@
             "type": "integer",
             "title": "Id"
           },
+          "run": {
+            "type": "string",
+            "title": "Run"
+          },
           "state": {
             "type": "string",
             "title": "State"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "report",
+              "override"
+            ],
+            "title": "Kind"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
           },
           "summary": {
             "type": "string",
@@ -1766,13 +1970,18 @@
         "type": "object",
         "required": [
           "id",
+          "run",
           "state",
+          "kind",
+          "actor",
+          "outcome",
+          "target",
           "summary",
           "body",
           "created_at"
         ],
         "title": "NoteInfo",
-        "description": "A note a run's step reported, with the state it was reported from."
+        "description": "A note a run's step reported, with the state it was reported from: the record of\nthe step (state.NOTES_STEP)."
       },
       "ProviderInfo": {
         "properties": {
@@ -1948,6 +2157,129 @@
         ],
         "title": "RunEventInfo",
         "description": "What happened to a flow run: its start, a transition, a gate, its end."
+      },
+      "RunInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "flow": {
+            "type": "string",
+            "title": "Flow"
+          },
+          "kit": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Kit"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "waiting",
+              "ended",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "acting": {
+            "type": "string",
+            "title": "Acting"
+          },
+          "visits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Visits"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate"
+          },
+          "worktree": {
+            "type": "string",
+            "title": "Worktree"
+          },
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "since": {
+            "type": "string",
+            "title": "Since"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "states": {
+            "items": {
+              "$ref": "#/components/schemas/FlowStateInfo"
+            },
+            "type": "array",
+            "title": "States"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "flow",
+          "kit",
+          "task",
+          "state",
+          "status",
+          "reason",
+          "acting",
+          "visits",
+          "gate",
+          "worktree",
+          "branch",
+          "language",
+          "created_at",
+          "since",
+          "ended_at",
+          "states"
+        ],
+        "title": "RunInfo",
+        "description": "A flow run: where it is, who acts and its flow."
       },
       "Sent": {
         "properties": {

@@ -86,7 +86,16 @@ def test_an_open_gate_comes_with_its_note_and_the_notes_it_needs(client, session
         "needs": [
             {
                 "state": "plan",
-                "note": {"state": "plan", "summary": "the plan", "body": "step 1\nstep 2"},
+                "note": {
+                    "run": "ship/x",
+                    "state": "plan",
+                    "kind": "report",
+                    "actor": "supervisor",
+                    "outcome": "ready",
+                    "target": "build",
+                    "summary": "the plan",
+                    "body": "step 1\nstep 2",
+                },
             },
             {"state": "polish", "note": None},
         ],

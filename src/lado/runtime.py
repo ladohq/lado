@@ -40,7 +40,7 @@ pass it on and do not answer it; if it changes the plan, take it into account.
 Use the `lado` MCP tools:
 - spawn_worker: start a worker agent on a task, in its own git worktree and a branch created \
 from your current HEAD. Give it the goal, the relevant files and how to check the result. \
-`role` picks the kind of worker{default_role}. Roles:
+`role` picks the kind of worker{default_role} Roles:
 {roles}
 - send_message: talk to another agent, e.g. to answer a worker's question, or to the human.
 - ask_human: ask the human a question, with choices and, by default, a free answer. It \
@@ -186,6 +186,8 @@ class Started:
     resumed: bool = False  # a stopped session started again, with its history and runs
     changes: list[str] = field(default_factory=list)  # settings a resume replaced
     problems: list[str] = field(default_factory=list)  # open runs that cannot go on as they are
+    lead: str = ""  # who leads the session (kits.Environment.lead_line)
+    warnings: list[str] = field(default_factory=list)  # the kits' supervisors not used
 
 
 def start_session(
@@ -237,13 +239,12 @@ def start_session(
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(repo, sess.kits, sess.without)
     base_env = _base_env()
-    role = env.supervisor()
     agent = state.Agent(
-        session, SUPERVISOR, role.name, repo, None, None, state.STARTING, sess.provider
+        session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
     instructions = _supervisor_instructions(env, session)
-    spec = _spec(agent_cli, env, role.name, agent, instructions, base_env)
-    started = Started(sess)
+    spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env)
+    started = Started(sess, lead=env.lead_line(), warnings=env.warnings)
     if old and not old.stopped_at:
         state.stop_session(session)  # left over from a tmux session that is gone
         terminal.close_viewers(session)  # they may keep its agents' windows alive
@@ -312,8 +313,9 @@ def spawn_worker(
     run: state.Run | None = None,
     has_step: bool = False,
 ) -> state.Agent:
-    """Start a worker with `role` from the session's kits (default: the kits' default_agent,
-    else "worker"), minus the `without` items ("skill:y", "mcp:z") for this worker.
+    """Start a worker with `role` from the session's kits (required unless the session has
+    one worker role), minus the `without` items ("skill:y", "mcp:z", each optionally @kit)
+    for this worker.
     `has_step`: the task holds a step of `run`, which the worker reports with flow_advance;
     any other task it reports with send_message.
 
@@ -323,7 +325,7 @@ def spawn_worker(
     agent_cli = _provider(provider or sess.provider)
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(sess.repo, sess.kits, sess.without)
-    role_def = env.worker_role(role)
+    role_def = env.role(role)
     taken = {a.name for a in state.list_agents(session)}
     # A worker of a stopped launch of the session may have left its branch.
     branches = git(sess.repo, "branch", "--list", "--format=%(refname:short)", f"lado/{session}/*")
@@ -1096,12 +1098,19 @@ def _check_permission_mode(agent_cli: providers.Provider, mode: str | None) -> N
 
 
 def _supervisor_instructions(env: kits.Environment, session: str) -> str:
-    roles = "\n".join(f"  - {a.name}: {a.description}" for a in env.roles()) or "  (none)"
-    default = env.default_agent or (kits.DEFAULT_ROLE if kits.DEFAULT_ROLE in env.agents else "")
-    default_role = f' (default: "{default}")' if default else ""
-    text = SUPERVISOR_INSTRUCTIONS.format(session=session, roles=roles, default_role=default_role)
+    roles = env.roles()
+    listed = "\n".join(f"  - {a.name} (kit {a.kit}): {a.description}" for a in roles)
+    if len(roles) == 1:
+        default_role = f'; it may be left out: "{roles[0].name}" is the only one.'
+    else:
+        default_role = "; required: this session has several." if roles else "."
+    text = SUPERVISOR_INSTRUCTIONS.format(
+        session=session, roles=listed or "  (none)", default_role=default_role
+    )
     if env.flows:
-        listed = "\n".join(f"  - {f.name}: {f.description}" for f in env.flows.values())
+        listed = "\n".join(
+            f"  - {f.name} (kit {f.kit}): {f.description}" for f in env.flows.values()
+        )
         text += FLOW_INSTRUCTIONS.format(flows=listed)
     return text
 

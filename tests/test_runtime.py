@@ -1104,9 +1104,11 @@ def team_kit(repo):
 
 
 def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tmux, team_kit):
-    sess = runtime.start_session(
+    started = runtime.start_session(
         str(repo), "s", None, kit_names=["default", "team"], without=["skill:style"]
-    ).session
+    )
+    sess = started.session
+    assert (started.lead, started.warnings) == ("lead: supervisor of kit default", [])
     assert (sess.kits, sess.without) == (["default", "team"], ["skill:style"])
     stored = state.get_session("s")
     assert (stored.kits, stored.without) == (["default", "team"], ["skill:style"])
@@ -1115,8 +1117,9 @@ def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tm
     prompt = cmd[cmd.index("--append-system-prompt") + 1]
     assert prompt.startswith("You are the supervisor.")  # the role from the default kit
     assert 'agent "supervisor" in LADO session "s"' in prompt
-    assert '`role` picks the kind of worker (default: "worker")' in prompt
-    assert "  - reviewer: reviews branches" in prompt
+    assert "`role` picks the kind of worker; required: this session has several. Roles:" in prompt
+    assert "  - reviewer (kit team): reviews branches" in prompt
+    assert "  - worker (kit default): " in prompt
     # The supervisor lists no skills, so it gets all of them except the one switched off.
     added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
     assert sorted(p.name for p in added.iterdir()) == ["checklist"]
@@ -1136,8 +1139,8 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
     assert mcp["db"]["command"] == f"{team_kit.resolve()}/db.sh"
     assert mcp["db"]["env"] == {"TOKEN": "t0k"}
-    # The default role gets all skills; this one without the MCP server it does not have.
-    runtime.spawn_worker("s", "t", without=["skill:style"])
+    # The worker role gets all skills; this one without the MCP server it does not have.
+    runtime.spawn_worker("s", "t", role="worker", without=["skill:style"])
     cmd = fake_tmux[-1][-1]
     added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
     assert sorted(p.name for p in added.iterdir()) == ["checklist"]
@@ -1165,15 +1168,47 @@ def test_spawn_worker_errors_leave_nothing_behind(repo, fake_tmux, team_kit, mon
     with pytest.raises(kits.KitError, match='no worker role "boss"'):
         runtime.spawn_worker("s", "t", role="boss")
     with pytest.raises(kits.KitError, match="no such skill"):
-        runtime.spawn_worker("s", "t", without=["skill:nope"])
+        runtime.spawn_worker("s", "t", role="worker", without=["skill:nope"])
+    with pytest.raises(
+        kits.KitError, match="role is required: this session has several worker roles: worker, "
+    ):
+        runtime.spawn_worker("s", "t")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
     assert not (repo / ".lado" / "worktrees").exists()
+
+
+def test_spawn_worker_takes_the_only_role(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    cmd = fake_tmux[0][-1]
+    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    assert '`role` picks the kind of worker; it may be left out: "worker" is the only one.' in (
+        prompt
+    )
+    assert runtime.spawn_worker("s", "t").role == "worker"
+
+
+def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
+    _write(team_kit / "kit.yaml", "name: team\nsupervisor: boss\n")
+    _write(team_kit / "agents" / "boss.md", "---\nname: boss\ndescription: d\n---\nYou lead.\n")
+    started = runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    assert started.lead == "lead: boss of kit team"
+    assert state.get_agent("s", "supervisor").role == "boss"
+    cmd = fake_tmux[0][-1]
+    assert cmd[cmd.index("--append-system-prompt") + 1].startswith("You lead.")
+    started = runtime.start_session(str(repo), "t", None, kit_names=["default", "team"])
+    assert started.lead == (
+        "lead: LADO's built-in supervisor (kits default and team each have a supervisor)"
+    )
+    assert [w.split(":")[0] for w in started.warnings] == [
+        "kit default's supervisor is not used",
+        "kit team's supervisor is not used",
+    ]
 
 
 def test_start_errors_leave_no_session(repo, fake_tmux):
     with pytest.raises(kits.KitError, match='kit "nope" not found'):
         runtime.start_session(str(repo), "s", None, kit_names=["nope"])
-    with pytest.raises(kits.KitError, match="no agent with `supervisor: true`"):
+    with pytest.raises(kits.KitError, match="use --without agent:supervisor@default"):
         runtime.start_session(str(repo), "s", None, without=["agent:supervisor"])
     assert state.get_session("s") is None and fake_tmux == []
 

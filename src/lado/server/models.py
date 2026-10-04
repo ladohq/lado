@@ -118,6 +118,14 @@ class Taken(BaseModel):
     repo: str
 
 
+class Refused(BaseModel):
+    """The detail of a 400 to a start or resume that the session's kits refuse: why, and
+    the --without items that would each resolve it (a name in two kits), if any."""
+
+    message: str
+    switch_off: list[str]
+
+
 class Started(BaseModel):
     session: SessionInfo
     resumed: bool

@@ -936,6 +936,17 @@ export interface components {
             session: components["schemas"]["SessionInfo"];
         };
         /**
+         * Refused
+         * @description The detail of a 400 to a start or resume that the session's kits refuse: why, and
+         *     the --without items that would each resolve it (a name in two kits), if any.
+         */
+        Refused: {
+            /** Message */
+            message: string;
+            /** Switch Off */
+            switch_off: string[];
+        };
+        /**
          * Resume
          * @description A stopped session started again; what is given replaces its stored settings.
          */
@@ -1235,6 +1246,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Started"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
                 };
             };
             /** @description Conflict */
@@ -1788,6 +1808,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Started"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
                 };
             };
             /** @description Validation Error */

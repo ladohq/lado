@@ -18,6 +18,7 @@ import {
   type ProviderInfo,
   type RecentFolder,
   type SessionInfo,
+  type Refused,
   type Started,
   type Taken,
 } from "./api";
@@ -107,6 +108,13 @@ function parentOf(path: string): { parent: string; prefix: string } | null {
 
 const splitWithout = (text: string) => text.split(/[\s,]+/).filter(Boolean);
 
+// "agent:reviewer@kit-a" as the button that switches it off says it.
+const switchOffLabel = (item: string) => {
+  const [, rest = item] = item.split(/:(.*)/);
+  const [name, kit] = rest.split("@");
+  return kit ? `Switch off ${name} of ${kit}` : `Switch off ${name}`;
+};
+
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((one, i) => one === b[i]);
 
 function LaunchDialog({
@@ -120,6 +128,7 @@ function LaunchDialog({
 }) {
   const resuming = mode.kind === "resume" ? mode.session : null;
   const dialog = useRef<HTMLDialogElement>(null);
+  const advanced = useRef<HTMLDetailsElement>(null);
   const navigate = useNavigate();
   const live = useLive();
   const ids = useId();
@@ -227,6 +236,14 @@ function LaunchDialog({
 
   const title = resuming ? "Resume session" : "New session";
   const taken = refused?.status === 409 ? (refused.detail as Taken) : null;
+  const detail = refused?.status === 400 ? refused.detail : null;
+  const switchOff =
+    detail !== null && typeof detail === "object" && "switch_off" in detail ? (detail as Refused).switch_off : [];
+  const addSwitchOff = (item: string) => {
+    const listed = splitWithout(without);
+    if (!listed.includes(item)) setWithout([...listed, item].join(", "));
+    if (advanced.current) advanced.current.open = true;
+  };
 
   return (
     <dialog
@@ -345,18 +362,20 @@ function LaunchDialog({
           </div>
         </div>
 
-        <details className="launch-advanced">
+        <details className="launch-advanced" ref={advanced}>
           <summary>Advanced: switch off agents, skills, MCP servers or flows</summary>
           <label className="field">
             Switch off
             <input
               value={without}
               disabled={busy}
-              placeholder="agent:reviewer, skill:style"
+              placeholder="agent:reviewer@kit-b, skill:style"
               onChange={(event) => setWithout(event.target.value)}
             />
           </label>
-          <span className="field-note">kind:name, separated by commas; kinds: agent, skill, mcp, flow</span>
+          <span className="field-note">
+            kind:name or kind:name@kit, separated by commas; kinds: agent, skill, mcp, flow
+          </span>
         </details>
 
         {refused && (
@@ -364,6 +383,17 @@ function LaunchDialog({
             <p className="problem" role="alert">
               {refused.message}
             </p>
+            {switchOff.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className="quiet"
+                disabled={busy || splitWithout(without).includes(item)}
+                onClick={() => addSwitchOff(item)}
+              >
+                {switchOffLabel(item)}
+              </button>
+            ))}
             {taken && taken.repo === root && RESUMABLE.has(taken.status) && resumable(shownName) && (
               <button type="button" className="quiet" onClick={() => resumeIt(shownName)}>
                 Resume it

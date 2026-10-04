@@ -457,7 +457,7 @@ def test_advance_refuses_other_agents_and_unknown_outcomes(session, caller, outc
 
 def test_a_supervisor_step_is_only_for_the_supervisor(session):
     runs.start(session, "feature", "x", name="login")
-    runtime.spawn_worker(session, "task")
+    runtime.spawn_worker(session, "task", role="developer")
     with pytest.raises(runtime.LadoError, match="is for the supervisor"):
         runs.advance(session, "developer", "feature/login", "ready")
 
@@ -948,7 +948,7 @@ def test_status_shows_a_run_whose_flow_cannot_be_read_with_its_problem(session):
 def test_the_supervisor_is_told_the_flows_and_a_run_worker_how_to_report(session, fake_tmux):
     supervisor = fake_tmux[0][-1]
     prompt = supervisor[supervisor.index("--append-system-prompt") + 1]
-    assert "  - feature: New feature, reviewed." in prompt
+    assert "  - feature (kit team): New feature, reviewed." in prompt
     assert "Flows are optional" in prompt and "flow_start" in prompt
     assert "human_language: the language the human writes to you in" in prompt
     to_implement(session)
@@ -975,7 +975,7 @@ def test_a_run_worker_reports_each_step_only_with_flow_advance(session, fake_tmu
 
 def test_every_worker_is_told_whose_messages_are_its_instructions(session, fake_tmux):
     """A worker on a cautious model refused a task that came as "[from ...]"."""
-    runtime.spawn_worker(session, "task")
+    runtime.spawn_worker(session, "task", role="worker")
     to_implement(session)
     runs.spawn_worker(session, "feature/login")
     for worker in (fake_tmux[-2][-1], fake_tmux[-1][-1]):
@@ -1089,6 +1089,32 @@ def test_a_long_first_input_of_a_resumed_supervisor_comes_as_a_message(
     assert argv[-1] == (
         f"[from lado] your first messages (#{first.id}, 2 lines: call read_messages)"
     )
+
+
+@pytest.mark.parametrize("kit_names", [["solo"], ["default", "solo"]])
+def test_a_step_of_a_kits_supervisor_is_the_sessions_lead(repo, fake_tmux, kit_names):
+    """Kit solo's supervisor is named lead; it leads alone, or LADO's built-in one leads."""
+    kit = repo / ".lado" / "kits" / "solo"
+    write(kit / "kit.yaml", "name: solo\nsupervisor: lead\n")
+    for role in ("lead", "developer", "reviewer"):
+        write(kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nx\n")
+    flow = FEATURE.replace("agent: supervisor", "agent: lead")
+    write(kit / "flows" / "feature.yaml", flow.replace("{merged: done}", "{merged: gated}"))
+    runtime.start_session(str(repo), "s", None, kit_names=kit_names)
+    run = runs.start("s", "feature", "Plan it", name="plan")
+    assert runs.acting(run) == "supervisor"
+    step = messages("supervisor")[-1]
+    assert step.summary == "flow feature/plan: step design"
+    with pytest.raises(runtime.LadoError, match="has no step for a lead now"):
+        runs.spawn_worker("s", run.name, role="lead")
+    started = restart("s", repo)
+    assert started.problems == []
+    resumed = messages("supervisor")[-2]
+    assert "- feature/plan at design: your step; it follows as a message from lado." in (
+        resumed.body
+    )
+    runs.advance("s", "supervisor", run.name, "ready")
+    assert runs.acting(state.get_run("s", run.name)) == "developer (not spawned)"
 
 
 def test_resume_reports_runs_whose_roles_are_gone(session, repo):
@@ -1221,7 +1247,7 @@ def test_the_end_of_a_run_closes_its_workers_questions(session, repo):
 
 def test_stop_preview_tells_what_a_stop_closes_drops_and_keeps(session, repo):
     run = runs.start(session, "feature", "Add a login page.", name="login")
-    worker = runtime.spawn_worker(session, "task", name="w1")
+    worker = runtime.spawn_worker(session, "task", name="w1", role="worker")
     runtime.send_message(session, "supervisor", "w1", "hi")  # w1 is starting: queued
     preview = runtime.stop_preview(session)
     assert preview.agents == ["supervisor", "w1"]

@@ -60,6 +60,38 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
     shot(page)
 
 
+def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server, repo, shot):
+    for kit in ("kit-a", "kit-b"):
+        folder = repo / ".lado" / "kits" / kit
+        (folder / "agents").mkdir(parents=True)
+        (folder / "kit.yaml").write_text(f"name: {kit}\n")
+        (folder / "agents" / "reviewer.md").write_text(
+            f"---\nname: reviewer\ndescription: reviews for {kit}\n---\nReview.\n"
+        )
+    log_in(page, server)
+    page.get_by_role("button", name="New session").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_label("Add kit").select_option("kit-a")
+    dialog.get_by_label("Add kit").select_option("kit-b")
+    dialog.get_by_role("button", name="Start session").click()
+    expect(dialog.get_by_role("alert")).to_contain_text('agent "reviewer" is defined by two kits')
+    dialog.get_by_role("button", name="Switch off reviewer of kit-b").click()
+    expect(dialog.get_by_role("textbox", name=re.compile("Switch off"))).to_have_value(
+        "agent:reviewer@kit-b"
+    )
+    expect(dialog.get_by_role("button", name="Switch off reviewer of kit-b")).to_be_disabled()
+    dialog.get_by_role("button", name="Switch off reviewer of kit-a").scroll_into_view_if_needed()
+    shot(page, "refused")
+
+    dialog.get_by_role("button", name="Start session").click()
+    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    assert state.get_session("my-repo").without == ["agent:reviewer@kit-b"]
+    idle("my-repo")
+
+
 def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tmp_path, shot):
     plain = tmp_path / "plain"
     plain.mkdir()

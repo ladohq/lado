@@ -362,7 +362,6 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     """Queue LADO's messages for the new supervisor of a resumed session: one about the
     open runs, then the steps of the runs at a supervisor state again. Returns a line for
     each run that needs a role the session has no more or whose flow cannot be read."""
-    supervisor = env.supervisor().name
     lines, problems, steps = [], [], []
     open_runs = state.list_runs(sess.name, open_only=True)
     for run in open_runs:
@@ -383,7 +382,7 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
             )
         elif run.status == state.WAITING:
             what = f"waits for the human: {run.reason}"
-        elif current.agent == supervisor:
+        elif _lead_step(current):
             what = "your step; it follows as a message from lado."
             steps.append(run)
         else:
@@ -393,7 +392,9 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
                 "task."
             )
         lines.append(f"- {run.name} at {run.state}: {what}")
-        roles = {s.agent for s in flow.states.values() if s.kind == flows.WORK}
+        roles = {
+            s.agent for s in flow.states.values() if s.kind == flows.WORK and not _lead_step(s)
+        }
         gone = sorted(roles - set(env.agents))
         if gone:
             problem = (
@@ -691,11 +692,16 @@ def _to_supervisor(run: state.Run, what: str, body: str = "") -> tuple[str, str]
     return summary, body
 
 
+def _lead_step(current: flows.State) -> bool:
+    """Whether a work state is the session's lead's: kits name the step of a kit's
+    supervisor kits.LEAD in the flow, so the snapshot says it, whichever agent leads."""
+    return current.agent == kits.LEAD
+
+
 def _acting_agent(run: state.Run, current: flows.State) -> str | None:
-    """The agent that does a work state: the supervisor for the supervisor's role, else
-    the run's first worker with the role; None if it has none."""
-    supervisor = state.get_agent(run.session, SUPERVISOR)
-    if supervisor and current.agent == supervisor.role:
+    """The agent that does a work state: the supervisor for the lead's step, else the run's
+    first worker with the role; None if it has none."""
+    if _lead_step(current):
         return SUPERVISOR
     for worker in _workers(run):
         if worker.role == current.agent:
@@ -704,8 +710,7 @@ def _acting_agent(run: state.Run, current: flows.State) -> str | None:
 
 
 def _check_actor(run: state.Run, current: flows.State, caller: str) -> None:
-    supervisor = state.get_agent(run.session, SUPERVISOR)
-    if supervisor and current.agent == supervisor.role:
+    if _lead_step(current):
         allowed, who = caller == SUPERVISOR, "the supervisor"
     else:
         me = state.get_agent(run.session, caller)

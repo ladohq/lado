@@ -179,10 +179,10 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         ) -> dict:
             """Start a new worker agent on `task` in its own git worktree and branch.
 
-            `role` is one of the session's worker roles (default: the kits' default). Without
-            `name`, the worker is named after its role: "developer", else "developer-2", ….
-            `without` switches off skills or MCP servers for this worker, e.g.
-            ["skill:x", "mcp:y"].
+            `role` is one of the session's worker roles, required unless the session has
+            one. Without `name`, the worker is named after its role: "developer", else
+            "developer-2", …. `without` switches off skills or MCP servers for this worker,
+            e.g. ["skill:x", "mcp:y"], or only those of one kit: ["skill:x@kit"].
             `provider` is the agent CLI to run it with, e.g. "claude" or "kilo" (default: the
             session's). The worker reports back with send_message when it is done or blocked,
             or with flow_advance when it finished a step of a run.

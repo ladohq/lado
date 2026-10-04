@@ -37,6 +37,7 @@ from lado.server.models import (
     NoteInfo,
     ProviderInfo,
     RecentFolder,
+    Refused,
     Resume,
     RunEventInfo,
     RunInfo,
@@ -80,6 +81,12 @@ def core(action: Callable[..., T], *args) -> T:
         return action(*args)
     except runtime.LadoError as refused:
         raise HTTPException(400, str(refused)) from refused
+
+
+def _kits_refused(refused: kits.KitError) -> HTTPException:
+    """A start or resume the session's kits refuse: 400 with Refused."""
+    detail = Refused(message=str(refused), switch_off=refused.switch_off)
+    return HTTPException(400, detail.model_dump(mode="json"))
 
 
 def bundle_missing(static: Path) -> bool:
@@ -242,7 +249,7 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     @app.post(
         "/api/sessions",
         dependencies=[Depends(guard.changes), Depends(database)],
-        responses={409: {"model": Taken}},
+        responses={400: {"model": Refused}, 409: {"model": Taken}},
     )
     def start(given: Launch) -> Started:
         """Start a new session, as `lado start` does, without attaching to it. A name a
@@ -263,11 +270,17 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
             raise HTTPException(409, detail.model_dump(mode="json")) from taken
-        except (runtime.LadoError, kits.KitError) as refused:
+        except kits.KitError as refused:
+            raise _kits_refused(refused) from refused
+        except runtime.LadoError as refused:
             raise HTTPException(400, str(refused)) from refused
         return models.started(done)
 
-    @app.post("/api/sessions/{name}/resume", dependencies=[Depends(guard.changes)])
+    @app.post(
+        "/api/sessions/{name}/resume",
+        dependencies=[Depends(guard.changes)],
+        responses={400: {"model": Refused}},
+    )
     def resume(name: str, given: Resume, has_db: bool = Depends(database)) -> Started:
         """Start a stopped session again, in its folder; the settings given replace its
         stored ones, and the answer says what changed and which open runs cannot go on."""
@@ -286,7 +299,9 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
             )
         except runtime.NoSuchSession as gone:
             raise HTTPException(404, str(gone)) from gone
-        except (runtime.LadoError, kits.KitError) as refused:
+        except kits.KitError as refused:
+            raise _kits_refused(refused) from refused
+        except runtime.LadoError as refused:
             raise HTTPException(400, str(refused)) from refused
         return models.started(done)
 

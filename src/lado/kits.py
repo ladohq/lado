@@ -44,14 +44,16 @@ from lado.providers.base import McpServer
 
 KIT_FILE = "kit.yaml"
 DEFAULT_KIT = "default"
-DEFAULT_ROLE = "worker"
+# The session's lead agent is named so, whichever kit's supervisor it is; a flow state of a
+# kit's supervisor names it (lado.runs gives such a step to the lead).
+LEAD = "supervisor"
 BUILTIN = Path(__file__).with_name("builtin_kits")
 
-KIT_KEYS = {"name", "version", "description", "dependencies", "default_agent"}
+KIT_KEYS = {"name", "version", "description", "supervisor", "dependencies"}
 DEPENDENCY_KEYS = {"lado", "skills"}
 PACK_KEYS = {"from", "folders"}
 LADO_NEEDS = re.compile(r">=\s*(\d+)\.(\d+)(?:\.(\d+))?")
-AGENT_KEYS = {"name", "description", "supervisor", "skills", "mcp"}
+AGENT_KEYS = {"name", "description", "skills", "mcp"}
 MCP_KEYS = {"command", "env"}
 WITHOUT_KINDS = ("agent", "skill", "mcp", "flow")
 
@@ -63,7 +65,11 @@ HARDCODED_PATH = re.compile(r"(?:^|(?<=[\s\"'`(=:,\[]))(~/|/[A-Za-z0-9._-]+/)[^\
 
 
 class KitError(RuntimeError):
-    pass
+    """`switch_off`: the --without items that would each resolve the problem, if any."""
+
+    def __init__(self, message: str, switch_off: Iterable[str] = ()):
+        super().__init__(message)
+        self.switch_off = list(switch_off)
 
 
 @dataclass(frozen=True)
@@ -107,7 +113,6 @@ class McpDef:
 class AgentDef:
     name: str
     description: str
-    supervisor: bool
     skills: list[str] | None  # None: all skills of the environment
     mcp: dict[str, McpDef]
     body: str  # the role prompt, ${KIT_DIR} substituted
@@ -122,7 +127,7 @@ class Kit:
     where: str  # project, user or built-in; "path" for a kit loaded from a path
     version: str
     description: str
-    default_agent: str | None
+    supervisor: str | None  # the agent of this kit that leads a session (kit.yaml)
     agents: dict[str, AgentDef]
     skills: dict[str, Skill]  # its own, in skills/
     flows: dict[str, Flow] = field(default_factory=dict)
@@ -186,10 +191,11 @@ class ResolvedAgent:
 
 @dataclass
 class Environment:
-    kits: list[Kit]  # every kit taken in, in the order given
-    agents: dict[str, AgentDef]
+    kits: list[Kit]  # every kit taken in, in the order given, before --without
+    agents: dict[str, AgentDef]  # the worker roles
     shared: dict[str, Skill]  # every agent's: the kits' own skills, packs of kits without agents
-    default_agent: str | None
+    lead: AgentDef  # the session's lead: the one kit supervisor, else LADO's built-in one
+    supervisors: dict[str, str] = field(default_factory=dict)  # kit -> its supervisor, in use
     without: list[str] = field(default_factory=list)
     flows: dict[str, Flow] = field(default_factory=dict)
     private: dict[str, dict[str, Skill]] = field(default_factory=dict)  # kit -> its packs' skills
@@ -208,7 +214,8 @@ class Environment:
         return list(found.values())
 
     def flow(self, name: str) -> Flow:
-        """Flow `name`, once every role it names is an agent of this environment."""
+        """Flow `name`, once every role it names is an agent of this environment (a step of
+        LEAD is the lead's)."""
         found = self.flows.get(name)
         if found is None:
             raise KitError(f'no flow "{name}"; flows: {", ".join(self.flows) or "none"}')
@@ -216,54 +223,80 @@ class Environment:
         errors = [
             f'{found.path}: state "{s.name}": no role "{s.agent}" in this session; roles: {roles}'
             for s in found.states.values()
-            if s.kind == flows.WORK and s.agent not in self.agents
+            if s.kind == flows.WORK and s.agent != LEAD and s.agent not in self.agents
         ]
         if errors:
             raise KitError("\n".join(errors))
         return found
 
-    def supervisor(self) -> AgentDef:
-        found = [a for a in self.agents.values() if a.supervisor]
-        if not found:
-            raise KitError("no agent with `supervisor: true` in the kits")
-        if len(found) > 1:
-            names = ", ".join(f"{a.name} ({a.kit})" for a in found)
-            raise KitError(
-                f"more than one agent with `supervisor: true`: {names}; "
-                "switch all but one off with --without agent:<name>"
-            )
-        return found[0]
+    def lead_line(self) -> str:
+        """Who leads the session, and why when it is LADO's built-in supervisor."""
+        if len(self.supervisors) == 1:
+            return f"lead: {self.lead.name} of kit {self.lead.kit}"
+        if not self.supervisors:
+            return "lead: LADO's built-in supervisor (no kit has a supervisor)"
+        return (
+            f"lead: LADO's built-in supervisor (kits {_and(list(self.supervisors))} each have "
+            "a supervisor)"
+        )
+
+    @property
+    def warnings(self) -> list[str]:
+        """The kits' supervisors that do not lead, each with the way to keep it."""
+        if len(self.supervisors) < 2:
+            return []
+        return [
+            f"kit {kit}'s supervisor is not used: LADO's built-in supervisor leads (several "
+            "kits have a supervisor); to keep one, switch the others off: "
+            + " ".join(f"--without agent:{s}@{k}" for k, s in self.supervisors.items() if k != kit)
+            for kit in self.supervisors
+        ]
 
     def roles(self) -> list[AgentDef]:
-        """Agents a supervisor can start as workers."""
-        return [a for a in self.agents.values() if not a.supervisor]
+        """Agents the lead can start as workers."""
+        return list(self.agents.values())
 
-    def worker_role(self, role: str | None) -> AgentDef:
-        name = role or self.default_agent or DEFAULT_ROLE
+    def role(self, name: str | None) -> AgentDef:
+        """Worker role `name`; None: the session's only one."""
+        if name is None:
+            if len(self.agents) == 1:
+                return next(iter(self.agents.values()))
+            if not self.agents:
+                raise KitError("no worker roles in this session")
+            raise KitError(
+                f"role is required: this session has several worker roles: {', '.join(self.agents)}"
+            )
         agent = self.agents.get(name)
-        if agent is None or agent.supervisor:
-            roles = ", ".join(a.name for a in self.roles()) or "none"
+        if agent is None:
+            roles = ", ".join(self.agents) or "none"
             raise KitError(f'no worker role "{name}" in this session; roles: {roles}')
         return agent
 
     def resolve(self, name: str, without: Iterable[str] = ()) -> ResolvedAgent:
-        """Agent `name` with its skills and MCP servers, minus `without` (skill: and mcp:
-        items, on top of the session's)."""
+        """Agent `name` (a role or the lead) with its skills and MCP servers, minus `without`
+        (skill: and mcp: items, on top of the session's; with @kit only what comes from that
+        kit)."""
         excluded = parse_without(without)
         if excluded["agent"] or excluded["flow"]:
             raise KitError(
                 "an agent or flow cannot be switched off for one agent; use skill: or mcp:"
             )
-        _check_known(excluded, {s.name for s in self.all_skills()}, self._all_mcp(), set(), set())
-        agent = self.agents[name]
+        by_name = {k.name: k for k in self.kits}
+        plain = _check_at_kit(excluded, by_name)
+        _check_known(plain, {s.name for s in self.all_skills()}, self._all_mcp(), set(), set())
+        agent = self.lead if name == self.lead.name else self.agents[name]
         visible = self.visible(agent)
         wanted = list(visible) if agent.skills is None else agent.skills
-        skills = {s: visible[s] for s in wanted if s in visible and s not in excluded["skill"]}
-        mcp = {m: v for m, v in agent.mcp.items() if m not in excluded["mcp"]}
+        skills = {
+            s: visible[s]
+            for s in wanted
+            if s in visible and not _off(excluded["skill"], s, visible[s].kit)
+        }
+        mcp = {m: v for m, v in agent.mcp.items() if not _off(excluded["mcp"], m, agent.kit)}
         return ResolvedAgent(agent, skills, mcp)
 
     def _all_mcp(self) -> set[str]:
-        return {m for a in self.agents.values() for m in a.mcp}
+        return {m for a in [*self.agents.values(), self.lead] for m in a.mcp}
 
 
 def search_path(repo: str | Path | None) -> list[tuple[str, Path]]:
@@ -530,15 +563,25 @@ def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Ki
             "dependencies.skills (<name>: <git-url>@<version>); a kit no longer includes "
             "another kit"
         )
-    default_agent = meta.get("default_agent")
-    if default_agent is not None and not isinstance(default_agent, str):
-        errors.append(f"{path / KIT_FILE}: default_agent must be an agent name")
     kit_name = name if isinstance(name, str) else path.name
+    supervisor = meta.get("supervisor")
+    if supervisor is not None and not isinstance(supervisor, str):
+        errors.append(f"{path / KIT_FILE}: supervisor must be an agent name")
+        supervisor = None
     skills = _load_skills(path, kit_name, errors)
     packs = _load_dependencies(meta.get("dependencies", {}), path, kit_name, errors)
     _check_unique(skills, packs, path / KIT_FILE, errors)
     agents = _load_agents(path, kit_name, errors)
-    kit_flows = _load_flows(path, kit_name, errors)
+    if supervisor is not None and supervisor not in agents:
+        errors.append(
+            f'{path / KIT_FILE}: supervisor "{supervisor}" is not an agent of kit "{kit_name}"'
+        )
+    if LEAD in agents and supervisor != LEAD:
+        errors.append(
+            f'{agents[LEAD].path}: agent name "{LEAD}" is reserved for the session\'s lead; '
+            f"rename it, or make it the kit's lead with `supervisor: {LEAD}` in {KIT_FILE}"
+        )
+    kit_flows = _load_flows(path, kit_name, supervisor, errors)
     if errors:
         raise KitError("\n".join(errors))
     return Kit(
@@ -547,7 +590,7 @@ def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Ki
         where=where,
         version="" if version is None else str(version),
         description=str(meta.get("description", "")),
-        default_agent=default_agent,
+        supervisor=supervisor,
         agents=agents,
         skills=skills,
         flows=kit_flows,
@@ -720,31 +763,53 @@ def _version(text: str) -> tuple[int, ...]:
 def resolve(
     repo: str | Path | None, kits: Iterable[str | Kit], without: Iterable[str] = ()
 ) -> Environment:
-    """Combine kits into one environment, then switch off the `without` items ("agent:x",
-    "skill:y", "mcp:z", "flow:f"). A kit is a name, looked up, loaded and fetched here, or a
-    loaded kit, fetched already (fetch)."""
+    """Combine kits into one environment. A kit is a name, looked up, loaded and fetched
+    here, or a loaded kit, fetched already (fetch). In this order:
+
+    1. the `without` items of one kit ("agent:x@k", "skill:y@k", "mcp:z@k", "flow:f@k")
+       switch it off in that kit;
+    2. the lead: the supervisor of the one kit that has one, else LADO's built-in supervisor;
+    3. the kits' supervisors are no roles: one leads, the others are not in the session;
+    4. the roles, flows and skills of the kits are combined: a name twice is an error;
+    5. the other `without` items ("agent:x", ...) switch it off in the whole session."""
     taken: dict[Path, Kit] = {}
     for item in kits:
         kit = item if isinstance(item, Kit) else fetch(find(item, repo).load())
         if kit.unfetched():
             raise KitError(f'kit "{kit.name}": pack not fetched yet: {", ".join(kit.unfetched())}')
         taken.setdefault(kit.path, kit)
-
     env_kits = list(taken.values())
-    agents = _merge(env_kits, "agents", "agent")
-    skills = _merge(env_kits, "skills", "skill")
+    without = list(without)
+    excluded = parse_without(without)
+    plain = _check_at_kit(excluded, {k.name: k for k in env_kits})
+    trimmed = [_trim(kit, excluded) for kit in env_kits]
+
+    supervisors = {k.name: k.supervisor for k in trimmed if k.supervisor}
+    leading = [k for k in trimmed if k.supervisor]
+    roles = [(k, {n: a for n, a in k.agents.items() if n != k.supervisor}) for k in trimmed]
+    if len(leading) == 1:
+        lead = leading[0].agents[leading[0].supervisor]
+        # No role may take the lead's name.
+        agents = _merge([(leading[0], {lead.name: lead}), *roles], "agent")
+        del agents[lead.name]
+    else:
+        builtin = load(BUILTIN / DEFAULT_KIT, "built-in")
+        lead = builtin.agents[builtin.supervisor]
+        agents = _merge(roles, "agent")
+    skills = _merge([(k, k.skills) for k in trimmed], "skill")
     # A kit without agents (by what it holds, before --without) shares its packs.
-    owner = {name: kit for kit in env_kits for name in kit.skills}
-    for kit in env_kits:
-        for skill in [] if kit.agents else _pack_skills(kit).values():
+    had_agents = {k.name for k in env_kits if k.agents}
+    owner = {name: kit for kit in trimmed for name in kit.skills}
+    for kit in trimmed:
+        for skill in [] if kit.name in had_agents else _pack_skills(kit).values():
             other = skills.setdefault(skill.name, skill)
             if other.path != skill.path:
-                raise KitError(
-                    f'skill "{skill.name}" is defined by two kits: {owner[skill.name].name} '
-                    f"({other.path}) and {kit.name} ({skill.path})"
+                first = owner[skill.name].name
+                raise _twice(
+                    "skill", skill.name, (first, str(other.path)), (kit.name, str(skill.path))
                 )
             owner.setdefault(skill.name, kit)
-    private = {kit.name: _pack_skills(kit) for kit in env_kits if kit.agents}
+    private = {kit.name: _pack_skills(kit) for kit in trimmed if kit.name in had_agents}
     for kit_name, own in private.items():
         for skill in own.values():
             other = skills.get(skill.name)
@@ -753,40 +818,72 @@ def resolve(
                     f'skill "{skill.name}" comes from two folders for the agents of kit '
                     f'"{kit_name}": {other.path} and {skill.path}'
                 )
-    env_flows = _merge(env_kits, "flows", "flow")
-    defaults = {k.default_agent: k for k in env_kits if k.default_agent}
-    if len(defaults) > 1:
-        sources = ", ".join(f'"{d}" ({k.source})' for d, k in defaults.items())
-        raise KitError(f"kits set different default agents: {sources}")
-    default_agent = next(iter(defaults), None)
+    env_flows = _merge([(k, k.flows) for k in trimmed], "flow")
 
-    without = list(without)
-    excluded = parse_without(without)
-    mcp = {m for a in agents.values() for m in a.mcp}
+    for name in sorted(plain["agent"]):
+        kit = next((k for k in env_kits if k.supervisor == name), None)
+        if kit:
+            raise KitError(
+                f"cannot switch off agent:{name}: it is the supervisor of kit {kit.name}; "
+                f"use --without agent:{name}@{kit.name}"
+            )
+    mcp = {m for a in [*agents.values(), lead] for m in a.mcp}
     every_skill = {**{s: v for own in private.values() for s, v in own.items()}, **skills}
-    _check_known(excluded, every_skill, mcp, set(agents), set(env_flows))
-    agents = {n: a for n, a in agents.items() if n not in excluded["agent"]}
-    skills = {n: s for n, s in skills.items() if n not in excluded["skill"]}
+    _check_known(plain, every_skill, mcp, set(agents), set(env_flows))
+    agents = {n: a for n, a in agents.items() if n not in plain["agent"]}
+    skills = {n: s for n, s in skills.items() if n not in plain["skill"]}
     private = {
-        k: {n: s for n, s in own.items() if n not in excluded["skill"]}
-        for k, own in private.items()
+        k: {n: s for n, s in own.items() if n not in plain["skill"]} for k, own in private.items()
     }
-    env_flows = {n: f for n, f in env_flows.items() if n not in excluded["flow"]}
-    for agent in agents.values():
+    env_flows = {n: f for n, f in env_flows.items() if n not in plain["flow"]}
+    for agent in [*agents.values(), lead]:
         visible = {**skills, **private.get(agent.kit, {})}
         for skill in agent.skills or []:
-            if skill not in visible and skill not in excluded["skill"]:
+            if skill not in visible and not _off(excluded["skill"], skill, agent.kit):
                 raise KitError(
                     f'{agent.path}: skill "{skill}" is not visible to agent "{agent.name}" '
                     f'(kit "{agent.kit}"): not a skill of the session\'s kits or of kit '
                     f'"{agent.kit}"\'s dependencies'
                 )
-        if excluded["mcp"]:
-            mcp = {m: v for m, v in agent.mcp.items() if m not in excluded["mcp"]}
-            agents[agent.name] = dataclasses.replace(agent, mcp=mcp)
-    if default_agent and default_agent not in agents and default_agent not in excluded["agent"]:
-        raise KitError(f'default_agent "{default_agent}" is not an agent of the kits')
-    return Environment(env_kits, agents, skills, default_agent, without, env_flows, private)
+    if plain["mcp"]:
+        agents = {n: _without_mcp(a, plain["mcp"]) for n, a in agents.items()}
+        lead = _without_mcp(lead, plain["mcp"])
+    return Environment(env_kits, agents, skills, lead, supervisors, without, env_flows, private)
+
+
+def _trim(kit: Kit, excluded: dict[str, set[tuple[str, str | None]]]) -> Kit:
+    """`kit` without the items switched off in it (kind:name@kit)."""
+
+    def on(kind: str, name: str) -> bool:
+        return (name, kit.name) not in excluded[kind]
+
+    off_mcp = {name for name, k in excluded["mcp"] if k == kit.name}
+    agents = {n: _without_mcp(a, off_mcp) for n, a in kit.agents.items() if on("agent", n)}
+    packs = {
+        n: dataclasses.replace(
+            p, skills={s: v for s, v in (p.skills or {}).items() if on("skill", s)}
+        )
+        for n, p in kit.packs.items()
+    }
+    return dataclasses.replace(
+        kit,
+        supervisor=kit.supervisor if kit.supervisor in agents else None,
+        agents=agents,
+        skills={n: s for n, s in kit.skills.items() if on("skill", n)},
+        flows={n: f for n, f in kit.flows.items() if on("flow", n)},
+        packs=packs,
+    )
+
+
+def _without_mcp(agent: AgentDef, names: set[str]) -> AgentDef:
+    if not names & set(agent.mcp):
+        return agent
+    return dataclasses.replace(agent, mcp={m: v for m, v in agent.mcp.items() if m not in names})
+
+
+def _off(items: set[tuple[str, str | None]], name: str, kit: str) -> bool:
+    """Whether `name` of `kit` is switched off by `items`: by name, or by name@kit."""
+    return (name, None) in items or (name, kit) in items
 
 
 def _pack_skills(kit: Kit) -> dict[str, Skill]:
@@ -794,16 +891,65 @@ def _pack_skills(kit: Kit) -> dict[str, Skill]:
     return {name: s for pack in kit.packs.values() for name, s in (pack.skills or {}).items()}
 
 
-def parse_without(items: Iterable[str]) -> dict[str, set[str]]:
-    excluded: dict[str, set[str]] = {kind: set() for kind in WITHOUT_KINDS}
+def parse_without(items: Iterable[str]) -> dict[str, set[tuple[str, str | None]]]:
+    """kind -> {(name, kit)} of "kind:name" (kit None: the whole session) and
+    "kind:name@kit" (that kit only)."""
+    excluded: dict[str, set[tuple[str, str | None]]] = {kind: set() for kind in WITHOUT_KINDS}
     for item in items:
-        kind, _, name = item.partition(":")
-        if kind not in excluded or not name:
+        kind, _, rest = item.partition(":")
+        name, at, kit = rest.partition("@")
+        if kind not in excluded or not name or (at and not kit):
             raise KitError(
-                f'"{item}": expected agent:<name>, skill:<name>, mcp:<name> or flow:<name>'
+                f'"{item}": expected agent:<name>, skill:<name>, mcp:<name> or flow:<name>, '
+                "each optionally @<kit>"
             )
-        excluded[kind].add(name)
+        excluded[kind].add((name, kit or None))
     return excluded
+
+
+def _check_at_kit(
+    excluded: dict[str, set[tuple[str, str | None]]], session_kits: dict[str, Kit]
+) -> dict[str, set[str]]:
+    """Check that each kind:name@kit item names a kit of the session and a thing it has;
+    returns the items without @kit, kind -> names."""
+    for kind, items in excluded.items():
+        for name, kit_name in sorted(items, key=lambda i: (i[1] or "", i[0])):
+            if kit_name is None:
+                continue
+            item = f"{kind}:{name}@{kit_name}"
+            kit = session_kits.get(kit_name)
+            if kit is None:
+                raise KitError(
+                    f"cannot switch off {item}: no kit {kit_name} in this session; "
+                    f"kits: {', '.join(session_kits)}"
+                )
+            has = {
+                "agent": list(kit.agents),
+                "flow": list(kit.flows),
+                "skill": [*kit.skills, *_pack_skills(kit)],
+                "mcp": list(dict.fromkeys(m for a in kit.agents.values() for m in a.mcp)),
+            }[kind]
+            if name not in has:
+                raise KitError(
+                    f"cannot switch off {item}: kit {kit_name} has no {kind} {name}; "
+                    f"it has: {', '.join(has) or 'none'}"
+                )
+    return {kind: {n for n, k in items if k is None} for kind, items in excluded.items()}
+
+
+def _twice(what: str, name: str, first: tuple[str, str], second: tuple[str, str]) -> KitError:
+    """The error for `name` in two kits, each given as (kit, where), with the two ways out."""
+    options = [f"{what}:{name}@{first[0]}", f"{what}:{name}@{second[0]}"]
+    return KitError(
+        f'{what} "{name}" is defined by two kits: {first[0]} ({first[1]}) and '
+        f"{second[0]} ({second[1]}); switch one off: --without {options[0]} or "
+        f"--without {options[1]}",
+        options,
+    )
+
+
+def _and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def lint(kit: Kit) -> list[str]:
@@ -848,16 +994,15 @@ def _hardcoded(text: str, where: str) -> list[str]:
     ]
 
 
-def _merge(kits: list[Kit], attr: str, what: str) -> dict:
+def _merge(parts: list[tuple[Kit, dict]], what: str) -> dict:
+    """The items of each (kit, items) in one namespace; a name twice is an error."""
     merged: dict = {}
     owner: dict[str, Kit] = {}
-    for kit in kits:
-        for name, item in getattr(kit, attr).items():
+    for kit, items in parts:
+        for name, item in items.items():
             if name in merged:
-                raise KitError(
-                    f'{what} "{name}" is defined by two kits: '
-                    f"{owner[name].name} ({owner[name].source}) and {kit.name} ({kit.source})"
-                )
+                first = owner[name]
+                raise _twice(what, name, (first.name, first.source), (kit.name, kit.source))
             merged[name], owner[name] = item, kit
     return merged
 
@@ -925,7 +1070,9 @@ def _load_agents(kit: Path, kit_name: str, errors: list[str]) -> dict[str, Agent
     return agents
 
 
-def _load_flows(kit: Path, kit_name: str, errors: list[str]) -> dict[str, Flow]:
+def _load_flows(
+    kit: Path, kit_name: str, supervisor: str | None, errors: list[str]
+) -> dict[str, Flow]:
     found = {}
     folder = kit / "flows"
     for path in sorted(folder.iterdir()) if folder.is_dir() else []:
@@ -936,10 +1083,30 @@ def _load_flows(kit: Path, kit_name: str, errors: list[str]) -> dict[str, Flow]:
         data = _yaml_file(path, errors)
         if len(errors) > count:
             continue
+        data = _lead_steps(data, supervisor)
         flow = flows.parse(data, path.stem, kit_name, str(path), errors)
         if flow:
             found[flow.name] = flow
     return found
+
+
+def _lead_steps(data: object, supervisor: str | None) -> object:
+    """A flow's data with each state of the kit's supervisor given to the session's lead
+    (LEAD), before it is parsed: the run's snapshot keeps the lead's name."""
+    states = data.get("states") if isinstance(data, dict) else None
+    if not supervisor or supervisor == LEAD or not isinstance(states, dict):
+        return data
+    return {
+        **data,
+        "states": {
+            name: (
+                {**raw, "agent": LEAD}
+                if isinstance(raw, dict) and raw.get("agent") == supervisor
+                else raw
+            )
+            for name, raw in states.items()
+        },
+    }
 
 
 def _load_agent(path: Path, kit: Path, kit_name: str, errors: list[str]) -> AgentDef | None:
@@ -954,9 +1121,6 @@ def _load_agent(path: Path, kit: Path, kit_name: str, errors: list[str]) -> Agen
     description = meta.get("description")
     if not isinstance(description, str) or not description.strip():
         errors.append(f"{path}: description is missing")
-    supervisor = meta.get("supervisor", False)
-    if not isinstance(supervisor, bool):
-        errors.append(f"{path}: supervisor must be true or false")
     skills = meta.get("skills")
     if skills is not None and not _str_list(skills):
         errors.append(f"{path}: skills must be a list of skill names")
@@ -967,7 +1131,7 @@ def _load_agent(path: Path, kit: Path, kit_name: str, errors: list[str]) -> Agen
         errors.append(str(exc))
     if len(errors) > count:
         return None
-    return AgentDef(name, description, supervisor, skills, mcp, body.strip(), kit_name, path)
+    return AgentDef(name, description, skills, mcp, body.strip(), kit_name, path)
 
 
 def _load_mcp(value: object, path: Path, kit: Path, errors: list[str]) -> dict[str, McpDef]:

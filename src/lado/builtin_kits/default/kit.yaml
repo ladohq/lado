@@ -1,3 +1,4 @@
 name: default
 version: 0.1.0
 description: A supervisor that delegates to general-purpose coding workers.
+supervisor: supervisor

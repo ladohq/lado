@@ -143,6 +143,29 @@ def test_start_with_kits_and_without(repo, fake_tmux):
     assert (sess.kits, sess.without) == (["default", "team"], ["agent:rev"])
 
 
+def test_start_says_who_leads_and_which_supervisor_is_not_used(repo, fake_tmux, capsys):
+    kit = _kit(repo, "team")
+    (kit / "kit.yaml").write_text("name: team\nsupervisor: rev\n")
+    assert main(["start", str(repo), "--name", "s", "--kit", "team", "--no-attach"]) == 0
+    captured = capsys.readouterr()
+    assert "lead: rev of kit team\n" in captured.out and captured.err == ""
+    assert main(["stop", "s"]) == 0
+    capsys.readouterr()
+    # A resume with one more kit that has a supervisor.
+    args = ["start", str(repo), "--name", "s", "--kit", "default", "--kit", "team"]
+    assert main([*args, "--no-attach"]) == 0
+    captured = capsys.readouterr()
+    assert (
+        "lead: LADO's built-in supervisor (kits default and team each have a supervisor)\n"
+        in captured.out
+    )
+    assert (
+        "lado: kit team's supervisor is not used: LADO's built-in supervisor leads (several "
+        "kits have a supervisor); to keep one, switch the others off: "
+        "--without agent:supervisor@default\n"
+    ) in captured.err
+
+
 def test_start_with_bad_kit_fails(repo, fake_tmux, capsys):
     assert main(["start", str(repo), "--kit", "nope", "--no-attach"]) == 1
     assert 'lado: kit "nope" not found' in capsys.readouterr().err
@@ -184,9 +207,22 @@ def test_kits_show(repo, capsys):
     out = capsys.readouterr().out
     assert f"team 1.0.0  (project: {kit.resolve()})" in out
     assert f"rev  from team: {kit.resolve()}/agents/rev.md" in out
-    assert "supervisor  [supervisor]  from default" in out
+    assert out.startswith("lead: supervisor of kit default\nKits:\n")
+    assert "  supervisor  [lead]  from default" in out
     assert "  worker" not in out
     assert "Switched off: agent:worker" in out
+
+
+def test_kits_show_warns_about_a_supervisor_not_used(repo, capsys):
+    kit = _kit(repo, "team")
+    (kit / "kit.yaml").write_text("name: team\nsupervisor: rev\n")
+    assert main(["kits", "--repo", str(repo), "show", "default", "team"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.startswith(
+        "lead: LADO's built-in supervisor (kits default and team each have a supervisor)\n"
+    )
+    assert "warning: kit default's supervisor is not used: " in captured.err
+    assert "warning: kit team's supervisor is not used: " in captured.err
 
 
 def test_kits_show_lists_each_version_of_a_skill(tmp_path, repo, capsys):
@@ -769,7 +805,7 @@ def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
 def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
     run = _session_with_run(repo)
     runs.force("s", "ship/x", "check", "built by hand")
-    runtime.spawn_worker("s", "task", name="w1")  # starting: a message to it waits
+    runtime.spawn_worker("s", "task", name="w1", role="worker")  # starting: a message waits
     runtime.send_message("s", "supervisor", "w1", "hi")
     capsys.readouterr()
     assert main(["stop", "s"]) == 0
@@ -854,7 +890,23 @@ def test_kits_show_lists_flows_with_their_source(repo, capsys):
     assert main(["kits", "--repo", str(repo), "show", "default", "team"]) == 0
     out = capsys.readouterr().out
     assert f"Flows:\n  ship  from team (project): {kit.resolve()}/flows/ship.yaml" in out
-    assert "    build and ship" in out
+    assert "    build and ship\n    build: rev (team)\n" in out
+
+
+def test_kits_show_names_whose_role_does_each_step(repo, capsys):
+    """Kit b's flow calls a role of the same name as its own, switched off: kit a's."""
+    _kit(repo, "a")
+    kit = _kit(repo, "b")
+    (kit / "flows").mkdir()
+    (kit / "flows" / "ship.yaml").write_text(
+        SHIP.replace(
+            "  build:", "  plan: {agent: supervisor, do: Plan., outcomes: {ok: build}}\n  build:"
+        ).replace("start: build", "start: plan")
+    )
+    args = ["kits", "--repo", str(repo), "show", "default", "a", "b", "--without", "agent:rev@b"]
+    assert main(args) == 0
+    out = capsys.readouterr().out
+    assert "    plan: the lead (supervisor of kit default)\n    build: rev (a)\n" in out
 
 
 def test_kits_check_warns_about_a_flow_role_of_another_kit(repo, capsys):
@@ -869,6 +921,10 @@ def test_kits_check_warns_about_a_flow_role_of_another_kit(repo, capsys):
     ) in captured.err
     assert "team: OK (1 agents, 0 skills, 0 packs and 1 flows)" in captured.out
     (kit / "flows" / "ship.yaml").write_text(SHIP)
+    assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
+    assert "warning" not in capsys.readouterr().err
+    # A step of the supervisor is the session's lead's, whichever kit leads.
+    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: supervisor"))
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
     assert "warning" not in capsys.readouterr().err
 

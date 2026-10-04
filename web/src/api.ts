@@ -9,7 +9,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    readonly detail: unknown = message, // the answer's `detail`, an object for some (Taken)
+    readonly detail: unknown = message, // the answer's `detail`, an object for some (Taken, Refused)
   ) {
     super(message);
   }
@@ -149,6 +149,7 @@ export type Launch = components["schemas"]["Launch"];
 export type Resume = components["schemas"]["Resume"];
 export type Started = components["schemas"]["Started"];
 export type Taken = components["schemas"]["Taken"];
+export type Refused = components["schemas"]["Refused"];
 export type StopPreview = components["schemas"]["StopPreview"];
 export type Stopped = components["schemas"]["Stopped"];
 export type ForgetPreview = components["schemas"]["ForgetPreview"];

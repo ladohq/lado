@@ -36,7 +36,6 @@ PASSIVE_SUPERVISOR = """\
 ---
 name: passive
 description: Only acknowledges messages; for the live test.
-supervisor: true
 ---
 You are a passive supervisor in an automated test. When a message arrives, reply with the
 single word ACK. Never use any tool: no spawn_worker, finish_worker or send_message, no
@@ -68,7 +67,7 @@ def passive_kit(repo) -> str:
     kit = repo / ".lado" / "kits" / "live"
     (kit / "agents").mkdir(parents=True)
     (kit / "flows").mkdir()
-    (kit / "kit.yaml").write_text("name: live\n")
+    (kit / "kit.yaml").write_text("name: live\nsupervisor: passive\n")
     (kit / "agents" / "passive.md").write_text(PASSIVE_SUPERVISOR)
     (kit / "flows" / "tiny.yaml").write_text(TINY_FLOW)
     return kit.name
@@ -77,9 +76,16 @@ def passive_kit(repo) -> str:
 def start_session(repo, provider: str) -> None:
     """Start the session with the passive supervisor and wait until it is idle."""
     kit = passive_kit(repo)
-    runtime.start_session(
-        str(repo), SESSION, "bypassPermissions", provider, ["default", kit], ["agent:supervisor"]
+    # The default kit's supervisor is switched off in its kit only, so the live kit's leads.
+    started = runtime.start_session(
+        str(repo),
+        SESSION,
+        "bypassPermissions",
+        provider,
+        ["default", kit],
+        ["agent:supervisor@default"],
     )
+    assert started.lead == "lead: passive of kit live"
     assert state.get_agent(SESSION, "supervisor").role == "passive"
 
     def supervisor_idle() -> bool:

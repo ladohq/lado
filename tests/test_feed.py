@@ -148,7 +148,7 @@ def test_a_runs_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
     assert (item["name"], item["state"], item["acting"]) == (
         "feature/x",
         "design",
-        "supervisor (not spawned)",
+        "supervisor",  # the lead's step
     )
     assert [s["name"] for s in item["states"]] == ["design", "done"]
     state.delete_session("s")

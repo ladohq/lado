@@ -68,6 +68,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflict",
             "content": {
@@ -875,6 +885,16 @@
                 }
               }
             }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "422": {
             "description": "Validation Error",
@@ -2463,6 +2483,28 @@
           "session"
         ],
         "title": "RecentFolder"
+      },
+      "Refused": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "switch_off": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Switch Off"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "switch_off"
+        ],
+        "title": "Refused",
+        "description": "The detail of a 400 to a start or resume that the session's kits refuse: why, and\nthe --without items that would each resolve it (a name in two kits), if any."
       },
       "Resume": {
         "properties": {

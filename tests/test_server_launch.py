@@ -286,6 +286,29 @@ def test_a_start_the_core_refuses_is_400_with_its_reason(client, tmp_path, repo,
     assert 'permission mode "dontAsk" is not supported by Kilo CLI' in answer.json()["detail"]
 
 
+def test_a_name_in_two_kits_is_refused_with_the_ways_to_switch_one_off(client, repo, fake_tmux):
+    for name in ("a", "b"):
+        kit = repo / ".lado" / "kits" / name
+        (kit / "agents").mkdir(parents=True)
+        (kit / "kit.yaml").write_text(f"name: {name}\n")
+        (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\n")
+    answer = launch(client, repo, kits=["a", "b"])
+    assert answer.status_code == 400
+    detail = answer.json()["detail"]
+    assert detail["switch_off"] == ["agent:rev@a", "agent:rev@b"]
+    assert detail["message"].startswith('agent "rev" is defined by two kits: a (')
+    assert client.get("/api/sessions").json() == []
+    assert launch(client, repo, kits=["a", "b"], without=["agent:rev@b"]).status_code == 200
+    runtime.stop_session("my-repo")
+    answer = client.post("/api/sessions/my-repo/resume", json={"without": []})
+    assert answer.status_code == 400
+    assert answer.json()["detail"]["switch_off"] == ["agent:rev@a", "agent:rev@b"]
+    schema = client.get("/openapi.json").json()
+    for path in ("/api/sessions", "/api/sessions/{name}/resume"):
+        refused = schema["paths"][path]["post"]["responses"]["400"]
+        assert refused["content"]["application/json"]["schema"]["$ref"].endswith("/Refused")
+
+
 def test_a_kit_not_found_says_how_to_move_from_sources_yaml(client, repo, fake_tmux, lado_home):
     lado_home.mkdir(exist_ok=True)
     (lado_home / "sources.yaml").write_text(
@@ -293,7 +316,9 @@ def test_a_kit_not_found_says_how_to_move_from_sources_yaml(client, repo, fake_t
     )
     answer = launch(client, repo, kits=["mine"])
     assert answer.status_code == 400
-    detail = answer.json()["detail"]
+    refused = answer.json()["detail"]
+    assert refused["switch_off"] == []
+    detail = refused["message"]
     assert detail.startswith('kit "mine" not found; looked in ')
     assert f"{lado_home / 'sources.yaml'} is no longer read" in detail
     assert client.get("/api/sessions").json() == []

@@ -48,7 +48,7 @@ def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
     supervisor = seen("supervisor")
     assert supervisor["prompt"].startswith("You are the supervisor.")
     assert f'agent "supervisor" in LADO session "{SESSION}"' in supervisor["prompt"]
-    assert "  - reviewer: reviews a branch" in supervisor["prompt"]
+    assert "  - reviewer (kit itkit): reviews a branch" in supervisor["prompt"]
     assert supervisor["skills"] == {"notes": "take notes", "plan": "make a plan"}
     assert list(supervisor["mcp"]) == ["lado"]
 

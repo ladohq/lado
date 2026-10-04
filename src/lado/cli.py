@@ -50,6 +50,9 @@ def cmd_start(args: argparse.Namespace) -> int:
             print(f"lado: {problem}", file=sys.stderr)
     else:
         print(f'Started session "{sess.name}" in {sess.repo}')
+    print(started.lead)
+    for warning in started.warnings:
+        print(f"lado: {warning}", file=sys.stderr)
     if args.no_attach or not sys.stdout.isatty():
         print(f"Attach with: lado attach {sess.name}")
         return 0
@@ -128,6 +131,9 @@ def _sources_warning(unless_in: str = "") -> None:
 def cmd_kits_show(args: argparse.Namespace) -> int:
     repo = _repo_or_none(args.repo)
     env = kits.resolve(repo, args.names, args.without)
+    print(env.lead_line())
+    for warning in env.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
     print("Kits:")
     labels = {}  # (kit, pack) -> the pack's name@ref
     for kit in env.kits:
@@ -142,11 +148,10 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
         return f"{labels[skill.kit, skill.pack]} ({skill.kit})" if skill.pack else skill.kit
 
     print("Agents:")
-    for agent in env.agents.values():
+    for agent in [env.lead, *env.agents.values()]:
         resolved = env.resolve(agent.name)
-        flag = "  [supervisor]" if agent.supervisor else ""
-        default = "  [default]" if agent.name == env.default_agent else ""
-        print(f"  {agent.name}{flag}{default}  from {agent.kit}: {agent.path}")
+        flag = "  [lead]" if agent is env.lead else ""
+        print(f"  {agent.name}{flag}  from {agent.kit}: {agent.path}")
         skills = ", ".join(f"{s.name} ({origin(s)})" for s in resolved.skills.values()) or "none"
         print(f"    skills{' (all)' if agent.skills is None else ''}: {skills}")
         for mcp in resolved.mcp.values():
@@ -160,9 +165,18 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
     for flow in env.flows.values():
         print(f"  {flow.name}  from {flow.kit} ({where[flow.kit]}): {flow.path}")
         print(f"    {flow.description}")
+        for step in flow.states.values():
+            if step.kind != flows.WORK:
+                continue
+            if step.agent == kits.LEAD:
+                who = f"the lead ({env.lead.name} of kit {env.lead.kit})"
+            elif step.agent in env.agents:
+                who = f"{step.agent} ({env.agents[step.agent].kit})"
+            else:
+                who = f"{step.agent} (no such role in this session)"
+            print(f"    {step.name}: {who}")
     if env.without:
         print(f"Switched off: {', '.join(env.without)}")
-    env.supervisor()  # a session needs exactly one
     return 0
 
 
@@ -185,7 +199,7 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     # A flow may take a role from another kit of the session.
     for flow in kit.flows.values():
         for step in flow.states.values():
-            if step.kind == flows.WORK and step.agent not in kit.agents:
+            if step.kind == flows.WORK and step.agent not in (*kit.agents, kits.LEAD):
                 doubts.append(
                     f'flow "{flow.name}": state "{step.name}": role "{step.agent}" is not in '
                     f'kit "{kit.name}"; a session needs a kit that has it'
@@ -577,8 +591,11 @@ def _without_arg(parser: argparse.ArgumentParser, default: list[str] | None = No
         "--without",
         action="append",
         default=default,
-        metavar="KIND:NAME",
-        help="switch off agent:<name>, skill:<name>, mcp:<name> or flow:<name>; repeatable",
+        metavar="KIND:NAME[@KIT]",
+        help=(
+            "switch off agent:<name>, skill:<name>, mcp:<name> or flow:<name> in the session, "
+            "or with @<kit> in that kit only, before the kits are combined; repeatable"
+        ),
     )
 
 

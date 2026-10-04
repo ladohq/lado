@@ -1,3 +1,5 @@
+import json
+import re
 import shutil
 import subprocess
 
@@ -5,7 +7,7 @@ import pytest
 import yaml
 from agent_helpers import init_repo, publish
 
-from lado import gitcache, kits
+from lado import flows, gitcache, kits
 
 
 def make_kit(base, name, agents=None, skills=(), **meta):
@@ -31,11 +33,13 @@ def project(repo):
 
 def test_builtin_default_kit():
     env = kits.resolve(None, ["default"])
-    assert list(env.agents) == ["supervisor", "worker"]
-    assert env.supervisor().name == "supervisor"
+    assert list(env.agents) == ["worker"]
+    assert (env.lead.name, env.lead.kit) == ("supervisor", "default")
+    assert env.lead_line() == "lead: supervisor of kit default"
     assert [a.name for a in env.roles()] == ["worker"]
-    assert env.worker_role(None).name == "worker"
-    gate = " ".join(env.supervisor().body.split())
+    assert env.role(None).name == "worker"
+    assert env.resolve("supervisor").agent is env.lead
+    gate = " ".join(env.lead.body.split())
     assert "Wait for the human's explicit OK before you merge it and call finish_worker" in gate
     assert "Without that OK, do not merge or finish the worker." in gate
     assert "in your window" not in gate  # LADO's instructions say where the human talks
@@ -57,7 +61,13 @@ def test_load_reads_agents_and_skills(project):
     assert kit.skills["a"].path == (path / "skills" / "a").resolve()
     rev = kit.agents["rev"]
     assert rev.body == f"Review. Tools in {path.resolve()}/bin; keep ${{HOME}}."
-    assert (rev.skills, rev.supervisor, rev.kit) == (["a"], False, "k")
+    assert (rev.skills, rev.kit) == (["a"], "k")
+    assert kit.supervisor is None
+
+
+def test_kit_names_its_supervisor(project):
+    path = make_kit(project, "k", agents={"boss": ({}, ""), "w": ({}, "")}, supervisor="boss")
+    assert kits.load(path).supervisor == "boss"
 
 
 @pytest.mark.parametrize(
@@ -86,9 +96,23 @@ def test_load_reads_agents_and_skills(project):
         ),
         (
             lambda p: (p / "agents" / "w.md").write_text(
-                "---\nname: w\ndescription: d\nsupervisor: yes please\n---\n"
+                "---\nname: w\ndescription: d\nsupervisor: true\n---\n"
             ),
-            "supervisor must be true or false",
+            "unknown keys supervisor",
+        ),
+        (
+            lambda p: (p / "kit.yaml").write_text("name: k\ndefault_agent: w\n"),
+            "unknown keys default_agent",
+        ),
+        (
+            lambda p: (p / "kit.yaml").write_text("name: k\nsupervisor: ghost\n"),
+            'supervisor "ghost" is not an agent of kit "k"',
+        ),
+        (
+            lambda p: (p / "agents" / "supervisor.md").write_text(
+                "---\nname: supervisor\ndescription: d\n---\n"
+            ),
+            'agent name "supervisor" is reserved for the session\'s lead',
         ),
         (
             lambda p: (p / "agents" / "w.md").write_text(
@@ -154,13 +178,13 @@ def test_mcp_variables(project, monkeypatch):
 
 def test_lookup_order(repo, project, lado_home):
     user = lado_home / "kits"
-    make_kit(user, "default", agents={"boss": ({"supervisor": True}, "user boss")})
+    make_kit(user, "default", agents={"boss": ({}, "user boss")}, supervisor="boss")
     found = kits.find("default", repo)
     assert (found.where, found.path) == ("user", user / "default")
-    make_kit(project, "default", agents={"boss": ({"supervisor": True}, "project boss")})
+    make_kit(project, "default", agents={"boss": ({}, "project boss")}, supervisor="boss")
     found = kits.find("default", repo)
     assert (found.where, found.path) == ("project", project / "default")
-    assert kits.resolve(repo, ["default"]).supervisor().body == "project boss"
+    assert kits.resolve(repo, ["default"]).lead.body == "project boss"
     assert kits.find("default", None).where == "user"
     found = [(f.name, f.where, by) for f, by in kits.available(repo)]
     assert found == [
@@ -178,7 +202,7 @@ def test_kits_combine_in_a_session(repo, project):
     make_kit(project, "top", agents={"rev": ({}, "")})
     env = kits.resolve(repo, ["base", "extra", "default", "top"])
     assert [k.name for k in env.kits] == ["base", "extra", "default", "top"]
-    assert list(env.agents) == ["w", "supervisor", "worker", "rev"]
+    assert list(env.agents) == ["w", "worker", "rev"]
     assert list(env.shared) == ["s1", "s2"]
     # The same kit given twice is one kit.
     assert len(kits.resolve(repo, ["top", "base", "top"]).kits) == 2
@@ -190,19 +214,185 @@ def test_name_clash_names_both_kits(repo, project):
     with pytest.raises(kits.KitError, match='skill "s" is defined by two kits: a .* and b'):
         kits.resolve(repo, ["a", "b"])
     make_kit(project, "c", agents={"worker": ({}, "")})
-    with pytest.raises(kits.KitError, match='agent "worker" is defined by two kits: default'):
+    with pytest.raises(kits.KitError, match='agent "worker" is defined by two kits: default') as e:
         kits.resolve(repo, ["default", "c"])
+    assert "switch one off: --without agent:worker@default or --without agent:worker@c" in str(
+        e.value
+    )
+    assert e.value.switch_off == ["agent:worker@default", "agent:worker@c"]
 
 
-def test_two_supervisors_need_one_switched_off(repo, project):
-    make_kit(project, "mine", agents={"lead": ({"supervisor": True}, "")})
-    env = kits.resolve(repo, ["default", "mine"])
-    with pytest.raises(kits.KitError, match="more than one agent with `supervisor: true`"):
-        env.supervisor()
-    env = kits.resolve(repo, ["default", "mine"], ["agent:supervisor"])
-    assert env.supervisor().name == "lead"
-    with pytest.raises(kits.KitError, match="no agent with `supervisor: true`"):
-        kits.resolve(repo, ["mine"], ["agent:lead"]).supervisor()
+def test_one_kit_supervisor_leads(repo, project):
+    make_kit(project, "mine", agents={"lead": ({}, "boss"), "w": ({}, "")}, supervisor="lead")
+    make_kit(project, "extra", skills=["s"])  # a kit without agents changes nothing
+    env = kits.resolve(repo, ["mine", "extra"])
+    assert (env.lead.name, env.lead.kit, env.lead.body) == ("lead", "mine", "boss")
+    assert list(env.agents) == ["w"] and [a.name for a in env.roles()] == ["w"]
+    assert env.lead_line() == "lead: lead of kit mine" and env.warnings == []
+    assert list(env.resolve("lead").skills) == ["s"]
+
+
+def test_no_kit_supervisor_the_builtin_one_leads(repo, project):
+    make_kit(project, "team", agents={"w": ({}, "")})
+    env = kits.resolve(repo, ["team"])
+    assert (env.lead.name, env.lead.kit) == ("supervisor", "default")
+    assert env.lead.path == kits.BUILTIN / "default" / "agents" / "supervisor.md"
+    assert list(env.agents) == ["w"]  # not the built-in worker
+    assert env.lead_line() == "lead: LADO's built-in supervisor (no kit has a supervisor)"
+    assert env.warnings == []
+    env = kits.resolve(repo, ["team", "default"], ["agent:supervisor@default"])
+    assert env.lead.path == kits.BUILTIN / "default" / "agents" / "supervisor.md"
+    assert list(env.agents) == ["w", "worker"]
+
+
+def test_several_kit_supervisors_the_builtin_one_leads(repo, project):
+    make_kit(
+        project, "a", agents={"supervisor": ({}, "a boss"), "x": ({}, "")}, supervisor=kits.LEAD
+    )
+    make_kit(
+        project, "b", agents={"supervisor": ({}, "b boss"), "y": ({}, "")}, supervisor=kits.LEAD
+    )
+    env = kits.resolve(repo, ["a", "b"])
+    assert env.lead.path == kits.BUILTIN / "default" / "agents" / "supervisor.md"
+    assert list(env.agents) == ["x", "y"]
+    assert env.lead_line() == (
+        "lead: LADO's built-in supervisor (kits a and b each have a supervisor)"
+    )
+    assert env.warnings == [
+        "kit a's supervisor is not used: LADO's built-in supervisor leads (several kits have "
+        "a supervisor); to keep one, switch the others off: --without agent:supervisor@b",
+        "kit b's supervisor is not used: LADO's built-in supervisor leads (several kits have "
+        "a supervisor); to keep one, switch the others off: --without agent:supervisor@a",
+    ]
+    env = kits.resolve(repo, ["a", "b"], ["agent:supervisor@b"])
+    assert (env.lead.kit, env.lead.body, env.warnings) == ("a", "a boss", [])
+
+
+def test_a_kit_supervisor_is_switched_off_with_its_kit(repo, project):
+    make_kit(project, "mine", agents={"lead": ({}, ""), "w": ({}, "")}, supervisor="lead")
+    with pytest.raises(
+        kits.KitError,
+        match="cannot switch off agent:lead: it is the supervisor "
+        "of kit mine; use --without agent:lead@mine",
+    ):
+        kits.resolve(repo, ["mine"], ["agent:lead"])
+    env = kits.resolve(repo, ["mine"], ["agent:lead@mine"])
+    assert env.lead.kit == "default"
+
+
+def test_the_leads_mcp_server_is_switched_off_by_name(repo, project):
+    mcp = {"db": {"command": ["db"]}}
+    make_kit(project, "mine", agents={"lead": ({"mcp": mcp}, ""), "w": ({}, "")}, supervisor="lead")
+    env = kits.resolve(repo, ["mine"], ["mcp:db"])
+    assert env.resolve("lead").mcp == {}
+    assert list(kits.resolve(repo, ["mine"]).resolve("lead", ["mcp:db@mine"]).mcp) == []
+
+
+def test_a_lead_step_of_a_kit_flow_is_the_sessions_lead(repo, project):
+    path = make_kit(project, "mine", agents={"lead": ({}, ""), "w": ({}, "")}, supervisor="lead")
+    (path / "flows").mkdir()
+    (path / "flows" / "f.yaml").write_text(LEAD_FLOW)
+    flow = kits.resolve(repo, ["mine"]).flow("f")
+    assert flow.states["plan"].agent == kits.LEAD
+    assert flow.states["build"].agent == "w"
+    assert flow.snapshot["states"]["plan"]["agent"] == kits.LEAD
+    rebuilt = flows.from_snapshot(json.loads(json.dumps(flow.snapshot)), "mine")
+    assert rebuilt.states["plan"].agent == kits.LEAD
+
+
+LEAD_FLOW = """\
+name: f
+description: plan then build
+start: plan
+states:
+  plan: {agent: lead, do: plan it, outcomes: {ok: build}}
+  build: {agent: w, do: build it, outcomes: {ok: end}}
+  end: {end: true}
+"""
+
+
+def test_role_is_required_when_the_session_has_several(repo, project):
+    make_kit(project, "k", agents={"rev": ({}, ""), "dev": ({}, "")})
+    env = kits.resolve(repo, ["k"])
+    with pytest.raises(
+        kits.KitError, match="role is required: this session has several worker roles: dev, rev"
+    ):
+        env.role(None)
+    assert env.role("rev").name == "rev"
+    with pytest.raises(kits.KitError, match='no worker role "supervisor" in this session'):
+        env.role("supervisor")
+    assert kits.resolve(repo, ["k"], ["agent:dev"]).role(None).name == "rev"
+
+
+def test_the_same_name_in_two_kits_is_resolved_with_at_kit(repo, project):
+    a = make_kit(project, "a", agents={"reviewer": ({}, "a rev")})
+    b = make_kit(project, "b", agents={"reviewer": ({}, "b rev")})
+    for kit, flow in ((a, "fa"), (b, "fb"), (b, "same")):
+        (kit / "flows").mkdir(exist_ok=True)
+        (kit / "flows" / f"{flow}.yaml").write_text(REVIEW_FLOW.format(name=flow))
+    (a / "flows" / "same.yaml").write_text(REVIEW_FLOW.format(name="same"))
+    with pytest.raises(kits.KitError, match='agent "reviewer" is defined by two kits'):
+        kits.resolve(repo, ["a", "b"])
+    with pytest.raises(kits.KitError, match='flow "same" is defined by two kits') as e:
+        kits.resolve(repo, ["a", "b"], ["agent:reviewer@b"])
+    assert e.value.switch_off == ["flow:same@a", "flow:same@b"]
+    env = kits.resolve(repo, ["a", "b"], ["agent:reviewer@b", "flow:same@a"])
+    assert env.agents["reviewer"].body == "a rev"
+    assert env.flow("fb").kit == "b"  # kit b's flow calls kit a's reviewer
+    assert env.flows["same"].kit == "b"
+    assert env.without == ["agent:reviewer@b", "flow:same@a"]
+
+
+REVIEW_FLOW = """\
+name: {name}
+description: review
+start: review
+states:
+  review: {{agent: reviewer, do: review it, outcomes: {{ok: end}}}}
+  end: {{end: true}}
+"""
+
+
+def test_skills_and_mcp_are_switched_off_in_one_kit(repo, project):
+    mcp = {"db": {"command": ["db"]}}
+    a = make_kit(project, "a", agents={"x": ({"mcp": mcp}, "")}, skills=["s"])
+    make_pack(a / "pack", ["tdd"])
+    (a / "kit.yaml").write_text(
+        yaml.safe_dump({"name": "a", "dependencies": {"skills": {"p": "pack"}}})
+    )
+    make_kit(project, "b", agents={"y": ({"mcp": mcp}, "")}, skills=["t"])
+    env = kits.resolve(repo, ["a", "b"], ["skill:s@a", "skill:tdd@a", "mcp:db@b"])
+    assert list(env.resolve("x").skills) == ["t"]
+    assert list(env.resolve("x").mcp) == ["db"]
+    assert list(env.resolve("y").mcp) == []
+    env = kits.resolve(repo, ["a", "b"])
+    # For one agent: only the skill or server from that kit.
+    assert list(env.resolve("y", ["skill:s@a"]).skills) == ["t"]
+    assert list(env.resolve("x", ["skill:tdd@a", "skill:t@b"]).skills) == ["s"]
+    assert list(env.resolve("x", ["mcp:db@a"]).mcp) == []
+    assert list(env.resolve("y", ["mcp:db@a"]).mcp) == ["db"]
+    with pytest.raises(kits.KitError, match="kit a has no skill t"):
+        env.resolve("x", ["skill:t@a"])
+    with pytest.raises(kits.KitError, match="cannot be switched off for one agent"):
+        env.resolve("x", ["agent:y@b"])
+
+
+@pytest.mark.parametrize(
+    ("item", "error"),
+    [
+        ("agent:nope@a", "cannot switch off agent:nope@a: kit a has no agent nope; it has: x"),
+        ("skill:t@a", "cannot switch off skill:t@a: kit a has no skill t; it has: s"),
+        ("mcp:db@b", "cannot switch off mcp:db@b: kit b has no mcp db; it has: none"),
+        ("flow:f@a", "cannot switch off flow:f@a: kit a has no flow f; it has: none"),
+        ("agent:x@zz", "cannot switch off agent:x@zz: no kit zz in this session; kits: a, b"),
+        ("agent:x@", "expected agent:<name>"),
+    ],
+)
+def test_without_at_kit_errors(repo, project, item, error):
+    make_kit(project, "a", agents={"x": ({"mcp": {"db": {"command": ["db"]}}}, "")}, skills=["s"])
+    make_kit(project, "b", agents={"y": ({}, "")}, skills=["t"])
+    with pytest.raises(kits.KitError, match=re.escape(error)):
+        kits.resolve(repo, ["a", "b"], [item])
 
 
 def test_without(repo, project):
@@ -224,7 +414,7 @@ def test_without(repo, project):
     with pytest.raises(kits.KitError, match="cannot be switched off for one agent"):
         env.resolve("w", ["agent:rev"])
     with pytest.raises(kits.KitError, match="no worker role"):
-        kits.resolve(repo, ["k"], ["agent:w"]).worker_role("w")
+        kits.resolve(repo, ["k"], ["agent:w"]).role("w")
 
 
 @pytest.mark.parametrize(
@@ -232,7 +422,7 @@ def test_without(repo, project):
     [
         ("skill:nope", "cannot switch off skill:nope: no such skill; there are: s"),
         ("mcp:nope", "no such mcp; there are: none"),
-        ("agent:nope", "no such agent; there are: supervisor, worker"),
+        ("agent:nope", "no such agent; there are: worker"),
         ("tool:x", "expected agent:<name>, skill:<name>, mcp:<name> or flow:<name>"),
         ("skill", "expected agent:<name>"),
     ],
@@ -250,23 +440,6 @@ def test_agent_skills(repo, project):
     assert list(env.resolve("b").skills) == ["s"]
     make_kit(project, "bad", agents={"a": ({"skills": ["missing"]}, "")})
     with pytest.raises(kits.KitError, match='skill "missing" is not visible to agent "a"'):
-        kits.resolve(repo, ["bad"])
-
-
-def test_default_agent(repo, project):
-    make_kit(project, "k", agents={"rev": ({}, "")}, default_agent="rev")
-    env = kits.resolve(repo, ["default", "k"])
-    assert env.worker_role(None).name == "rev"
-    assert env.worker_role("worker").name == "worker"
-    with pytest.raises(
-        kits.KitError, match='no worker role "supervisor" in this session; roles: worker, rev'
-    ):
-        env.worker_role("supervisor")
-    make_kit(project, "j", agents={"x": ({}, "")}, default_agent="x")
-    with pytest.raises(kits.KitError, match="kits set different default agents"):
-        kits.resolve(repo, ["default", "k", "j"])
-    make_kit(project, "bad", default_agent="ghost")
-    with pytest.raises(kits.KitError, match='default_agent "ghost" is not an agent'):
         kits.resolve(repo, ["bad"])
 
 
@@ -774,7 +947,7 @@ def test_a_broken_link_does_not_stop_other_kits(tmp_path, repo, lado_home):
     (found,) = [f for f, _ in kits.available(repo) if f.name == "gone"]
     with pytest.raises(kits.KitError, match="gone: broken link → .*; run `lado kits remove gone`"):
         found.load()
-    assert kits.resolve(repo, ["default"]).supervisor().name == "supervisor"
+    assert kits.resolve(repo, ["default"]).lead.name == "supervisor"
     kits.remove("gone")
     assert links(lado_home) == []
 

@@ -363,6 +363,33 @@ test("a refused start shows the core's whole reason and keeps the window", async
   expect(startButton().disabled).toBe(false);
 });
 
+test("a name in two kits offers to switch off either one, into the Switch off field", async () => {
+  answers["POST /api/sessions"] = () =>
+    json(
+      {
+        detail: {
+          message: 'agent "reviewer" is defined by two kits: kit-a (…) and kit-b (…)',
+          switch_off: ["agent:reviewer@kit-a", "agent:reviewer@kit-b"],
+        },
+      },
+      400,
+    );
+  await openLaunch();
+  await ready("/src/app");
+  const field = screen.getByRole("textbox", { name: /Switch off/ }) as HTMLInputElement;
+  expect(field.placeholder).toBe("agent:reviewer@kit-b, skill:style");
+  expect(screen.getByText("kind:name or kind:name@kit, separated by commas; kinds: agent, skill, mcp, flow")).toBeTruthy();
+  fireEvent.change(field, { target: { value: "skill:x" } });
+  fireEvent.click(startButton());
+  const dialog = screen.getByRole("dialog", { name: "New session" });
+  expect((await within(dialog).findByRole("alert")).textContent).toContain('agent "reviewer" is defined by two kits');
+  expect(within(dialog).getByRole("button", { name: "Switch off reviewer of kit-a" })).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Switch off reviewer of kit-b" }));
+  expect(field.value).toBe("skill:x, agent:reviewer@kit-b");
+  expect((dialog.querySelector("details.launch-advanced") as HTMLDetailsElement).open).toBe(true);
+  expect(calls.filter((c) => c.method === "POST")).toHaveLength(1); // started again only by Start
+});
+
 test("a taken name is offered to resume when the session is of this folder", async () => {
   sessions = [session("app", { status: "stopped", repo: "/src/app" })];
   answers["POST /api/sessions"] = () =>

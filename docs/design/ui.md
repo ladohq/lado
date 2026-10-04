@@ -601,10 +601,14 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the new provider lacks goes back to `default`, and the window says so). Kits, provider
   and mode of a new session come from the folder's last session ("from the last session
   of this folder"), else LADO's defaults; only the UI does this, `lado start` is
-  unchanged. **Advanced** (folded): the `--without` items. Start shows "Starting…" with
+  unchanged. **Advanced** (folded): the `--without` items, `kind:name` or `kind:name@kit`
+  (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with
   the fields off; a refusal is shown whole (`role="alert"`) and the window stays; a name
   taken (409, `Taken`: its status and folder) offers Resume it for a session of this
-  folder. On success the window closes and the session's Activity opens; the `Started`
+  folder. A start or resume the kits refuse is 400 `Refused` (`message`, `switch_off`):
+  for a name in two kits, one button per item ("Switch off reviewer of kit-a", "… of
+  kit-b") adds it to the Switch off field and opens Advanced; Start starts again. The
+  window does not yet show who will lead the session (BACKLOG). On success the window closes and the session's Activity opens; the `Started`
   answer's `problems` (open runs that cannot go on) and a resume's `changes` show under
   the session's head until closed. No first message, no tmux attach.
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,

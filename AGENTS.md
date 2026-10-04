@@ -103,7 +103,14 @@ schema change.
   - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup (project
     `<repo>/.lado/kits`, then `LADO_HOME/kits`, then built-in), `dependencies` (`lado`: the
     oldest LADO the kit runs with; `skills`: skill packs by `<git-url>@<tag|commit>` or a
-    folder relative to the kit), `--without`, validation, and the installed kits:
+    folder relative to the kit), `supervisor` (the kit's agent that leads a session; the
+    agent name `supervisor` is reserved for it), `--without` (`kind:name@kit` in one kit
+    before the kits combine, `kind:name` in the whole session after; the order is in
+    `resolve`'s docstring), the session's lead (`Environment.lead`, kept apart from the
+    worker roles: the one kit supervisor, else the built-in default kit's supervisor, with
+    `Environment.warnings` for the kit supervisors not used; `lead_line` says who leads),
+    a name in two kits refused with both ways out (`KitError.switch_off`), a flow state of
+    a kit's supervisor read as the lead's (`kits.LEAD`), validation, and the installed kits:
     `lado kits add/update/remove` keep links in `LADO_HOME/kits` (what is there is
     installed; no second list). `load` never uses the network (a git pack not in the cache
     yet is `Pack.skills is None`); `fetch` clones it; `resolve` builds an `Environment` only
@@ -123,7 +130,10 @@ schema change.
     and its validator. `runs.py`: flow runs: start (own worktree and branch, shared by the
     run's workers), step messages from `lado`, `flow_advance`, loop limits, gates (the run
     waits for the human), end (finish workers, remove the worktree if merged), cancel and
-    `lado flow-set`. A run keeps a snapshot of its flow. A waiting run has one open gate
+    `lado flow-set`. A run keeps a snapshot of its flow. A step whose `agent` is
+    `kits.LEAD` (`supervisor`) is the session's lead's (`runs._lead_step`, by the name in
+    the snapshot, never by the supervisor's role): the step of a kit's supervisor, and so
+    also `agent: supervisor` in a kit with no supervisor of its own. A waiting run has one open gate
     record (`state.Gate`); `runs.answer` is the only way to answer it, called from
     `lado answer` and the UI server's API, never from an MCP tool; the answering surface
     (popup, CLI, UI) stays outside that core.
@@ -379,6 +389,10 @@ the resumed session lacks is reported on stderr and in that body; `flow_cancel` 
 `lado flow-set` move it on. While a session is stopped, nothing starts or moves in it:
 `lado answer`, `lado flow-set`, spawning workers and starting, advancing or cancelling runs
 are refused (`runtime.running_session`); `lado answer` with no session skips its gates.
+`spawn_worker` needs `role` unless the session has one worker role (`Environment.role`);
+the lead's instructions say which, and list each role and flow with its kit.
+`lado start` (also a resume) prints who leads (`lead: ...`) and, on stderr, each kit
+supervisor not used.
 A worker started without a name (`spawn_worker`, also for a run) is named after its role,
 made valid like a given name (`slug`: `Code Reviewer` gives `code-reviewer`): `developer`,
 or `developer-2`, `developer-3`… when that is taken. A name is taken by a running agent of
@@ -503,6 +517,11 @@ LADO borrows ideas from other orchestrators but must not repeat their mistakes:
   (`--kit a --kit b`). Adding a first agent to a kit without agents makes its packs
   private to it, and the other kits' agents lose them (loudly only when their `skills:`
   names one).
+- **One lead, one rule.** If exactly one kit of a session has a supervisor (`supervisor:`
+  in its kit.yaml), it leads; otherwise LADO's built-in supervisor leads, and each kit
+  supervisor not used is named loudly with the `--without agent:<name>@<kit>` that keeps
+  another. A kit with skills or roles only never changes who leads; the order of the kits
+  never matters.
 - **No hardcoded paths.** Resources refer to each other by relative paths or `${KIT_DIR}` /
   `${SKILL_DIR}`, never by absolute or home-directory paths.
 - **Never touch the user's global agent config.** Configure each agent process on its own.

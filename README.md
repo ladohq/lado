@@ -37,6 +37,7 @@ skill packs from outside, pinned to a version, and may name the LADO it needs:
 ```yaml
 name: my-team
 version: 1.0.0
+supervisor: lead        # the agent of this kit that leads a session; optional
 dependencies:
   lado: ">=0.19"
   skills:
@@ -47,6 +48,23 @@ dependencies:
 lado kits add https://github.com/<owner>/<kits>@v1.0.0   # or a local folder
 lado start . --kit default --kit my-team
 ```
+
+Who leads a session: if exactly one of its kits has a supervisor, that one; otherwise
+LADO's built-in supervisor, and LADO warns about each kit supervisor it does not use.
+`lado start` and `lado kits show` print who leads. The supervisor starts workers with
+`spawn_worker(role=...)`; the role may be left out only when the session has one.
+
+`--without kind:name` switches off an agent, flow, skill or MCP server (kinds `agent`,
+`flow`, `skill`, `mcp`) in the whole session. `--without kind:name@kit` switches it off in
+that kit only, before the kits are combined: so two kits with a role of the same name, or
+each with its supervisor, run together:
+
+```bash
+lado start . --kit default --kit my-team --without agent:supervisor@default
+lado start . --kit kit-a --kit kit-b --without agent:reviewer@kit-b
+```
+
+Names are shared in a session: a flow of kit-b that calls `reviewer` then gets kit-a's.
 
 ## The web UI
 

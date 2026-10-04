@@ -582,3 +582,30 @@ note says "Nothing is ready to use yet", while sessions, kits, flows and the web
 Wanted: a README that says what runs today (start a session, the UI, kits) and links the
 docs.
 Found: 2026-10-04, feature/server-host (implement).
+
+## The New session window does not say who will lead the session
+
+`lado start` and `lado kits show` print `lead: ...` and warn about each kit supervisor that
+is not used; the New session window shows neither before Start, so the human learns only
+after the start (or not at all) that LADO's built-in supervisor leads.
+Wanted: the window shows the lead line and the warnings for the chosen kits and Switch off
+items (an endpoint over `kits.resolve`), before Start.
+Found: 2026-10-04, design of feature/without-at-kit.
+
+## lado-dev in lado-kits still uses the old kit format
+
+LADO 0.19.0 reads the lead from `supervisor:` in kit.yaml; `supervisor: true` in an agent
+and `default_agent` in kit.yaml are unknown keys now. lado-dev on the lado-0.19 branch of
+the lado-kits repo still has both, so it fails to load with 0.19.0.
+Wanted: lado-dev with `supervisor: supervisor` in kit.yaml, without `default_agent` and
+`supervisor: true`, before the 0.19.0 release (the supervisor does it after the merge).
+Found: 2026-10-04, design of feature/without-at-kit.
+
+## Flaky: vitest "the tab without an agent opens the supervisor"
+
+`make web` failed once in `src/Agents.test.tsx` > "the tab without an agent opens the
+supervisor, and an unknown one is not found" with `Unable to find role="region" and name
+"Agent supervisor"`; the file alone and the next `make web` passed. Probably a wait shorter
+than the render under the full run's load.
+Wanted: the test waits for what it checks (findBy with a timeout that holds under load).
+Found: 2026-10-04, feature/without-at-kit (implement).

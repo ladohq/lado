@@ -2,7 +2,7 @@
 
 A kit is a directory:
 
-    kit.yaml            name, version, description, dependencies, default_agent
+    kit.yaml            name, version, description, supervisor, dependencies
     agents/<name>.md    YAML frontmatter + the role prompt
     skills/<name>/      a SKILL.md folder, always handled as a whole
     flows/<name>.yaml   a flow (lado.flows)
@@ -21,8 +21,17 @@ Kits are looked up by name in the project (<repo>/.lado/kits), then in LADO_HOME
 among the kits built into LADO; the first hit wins. LADO_HOME/kits holds what is installed:
 folders, and links that `lado kits add` makes to a kit in the git cache or in a local folder.
 
-Several kits combine into one Environment for a session. Their agents, flows and own skills
-are one namespace: a name twice is an error. The skills of a kit's packs are its agents'
+`supervisor` in kit.yaml names the agent of the kit that leads a session; the name
+"supervisor" is reserved for it. A flow state of that agent is the lead's step: it is read
+as LEAD, so a run's snapshot gives it to the session's lead, whoever that is.
+
+Several kits combine into one Environment for a session (resolve says in which order).
+Exactly one kit with a supervisor: it leads; none or several: LADO's built-in supervisor
+leads (the default kit's), and a kit supervisor that does not lead is not in the session.
+`--without kind:name@kit` switches a thing off in one kit before the kits combine, so two
+kits with one name run together; `kind:name` switches it off in the whole session after.
+Their roles, flows and own skills are one namespace: a name twice is an error that names
+both ways out (KitError.switch_off). The skills of a kit's packs are its agents'
 only, so two kits may take two versions of one pack; a kit without agents (by what it holds,
 before --without) shares its packs with every agent of the session. Adding a first agent to
 such a kit makes its packs private: the agents of other kits lose them, loudly only when

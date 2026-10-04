@@ -1,5 +1,5 @@
 // Launch and session control (docs/design/ui.md, Launch and session control): the New
-// session window, its Resume mode, the session's actions in its head and in the list, Stop
+// session window, its Resume mode, the session's actions in its head, its list row's menu, Stop
 // and Forget.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
@@ -445,60 +445,144 @@ test("Resume fills the window from the session, sends only what changed and show
   expect((await screen.findByRole("alert")).textContent).toContain("run y needs a rev");
 });
 
-// The session's actions, by status (in its head and in the list)
+// The session's actions, by status: icons in its head; its list row has only the entry's menu
 
 const head = () => document.querySelector(".session-head") as HTMLElement;
 
-async function menuItems(container: HTMLElement, label: RegExp | string) {
-  fireEvent.click(within(container).getByRole("button", { name: label }));
-  const menu = await screen.findByRole("menu");
-  const items = within(menu)
-    .getAllByRole("menuitem")
-    .map((item) => item.textContent);
-  fireEvent.keyDown(menu, { key: "Escape" });
-  return items;
-}
-
 test.each([
-  ["running", [], ["Stop session…"]],
-  ["loop_down", [], ["Stop session…"]],
-  ["stopped", ["Resume…"], ["Resume…", "Forget…"]],
-  ["tmux_gone", ["Resume…"], ["Resume…", "Stop session…"]],
-] as const)("a %s session's head has %j and its menu %j", async (status, buttons, items) => {
+  ["running", ["Stop session…"]],
+  ["loop_down", ["Stop session…"]],
+  ["stopped", ["Resume…", "Forget…"]],
+  ["tmux_gone", ["Resume…", "Stop session…"]],
+] as const)("a %s session's head has the icons %j, each with its tooltip, and no menu", async (status, labels) => {
   sessions = [session("lado", { status })];
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
-  const shown = within(head())
-    .getAllByRole("button")
-    .map((button) => button.getAttribute("aria-label") ?? button.textContent);
-  expect(shown).toEqual([...buttons, "Session actions"]);
-  expect(await menuItems(head(), "Session actions")).toEqual(items);
+  const buttons = within(head()).getAllByRole("button");
+  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(labels);
+  for (const button of buttons) {
+    expect(button.querySelector("svg")).toBeTruthy();
+    expect(button.getAttribute("title")).toBeNull(); // the UI's tooltip, not the browser's
+    fireEvent.focus(button);
+    expect(screen.getByRole("tooltip").textContent).toBe(button.getAttribute("aria-label"));
+    fireEvent.blur(button);
+  }
+  expect(within(head()).queryByRole("button", { name: "Session actions" })).toBeNull();
+  expect(head().querySelector("[aria-haspopup='menu']")).toBeNull();
+});
+
+test("Forget is drawn in the colour of a dangerous action", async () => {
+  sessions = [session("lado", { status: "stopped" })];
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(within(head()).getByRole("button", { name: "Forget…" }).classList).toContain("danger-icon");
+  expect(within(head()).getByRole("button", { name: "Resume…" }).classList).not.toContain("danger-icon");
+});
+
+const row = async (name: string) => (await screen.findByRole("link", { name: new RegExp(name) })).closest("li") as HTMLElement;
+
+async function openRowMenu(name: string) {
+  fireEvent.click(within(await row(name)).getByRole("button", { name: `Actions for ${name}` }));
+  return screen.findByRole("menu", { name });
+}
+
+test.each(["running", "loop_down", "stopped", "tmux_gone"] as const)(
+  "a %s session's row has only its menu, of Copy link and Open in new tab",
+  async (status) => {
+    sessions = [session("lado", { status })];
+    localStorage.setItem("lado.stoppedSessions", "open");
+    open("/sessions");
+    const buttons = within(await row("lado")).getAllByRole("button");
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Actions for lado"]);
+    const menu = await openRowMenu("lado");
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Copy link", "Open in new tab"]);
+  },
+);
+
+test("Open in new tab is a link to the session's page in a new tab", async () => {
+  sessions = [session("my app")];
+  open("/sessions");
+  const menu = await openRowMenu("my app");
+  const item = within(menu).getByRole("menuitem", { name: "Open in new tab" });
+  expect(item.tagName).toBe("A");
+  expect(item.getAttribute("href")).toBe("/sessions/my%20app");
+  expect(item.getAttribute("target")).toBe("_blank");
+  expect(item.getAttribute("rel")).toBe("noopener");
+});
+
+test("the row's menu is used from the keyboard: the first item has the focus, arrows move, Esc closes", async () => {
+  open("/sessions");
+  const menu = await openRowMenu("lado");
+  const [copy, tab] = within(menu).getAllByRole("menuitem");
+  expect(document.activeElement).toBe(copy);
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(tab);
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(copy);
+  fireEvent.keyDown(menu, { key: "ArrowUp" });
+  expect(document.activeElement).toBe(tab);
+  fireEvent.keyDown(menu, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(document.activeElement).toBe(within(await row("lado")).getByRole("button", { name: "Actions for lado" }));
+});
+
+test("a press outside the row's menu closes it", async () => {
+  open("/sessions");
+  await openRowMenu("lado");
+  fireEvent.mouseDown(document.body);
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+function clipboard(writeText: ((text: string) => Promise<void>) | undefined) {
+  Object.defineProperty(navigator, "clipboard", {
+    value: writeText ? { writeText } : undefined,
+    configurable: true,
+  });
+}
+
+afterEach(() => clipboard(undefined));
+
+test("Copy link copies the session page's address, without the token, and says so outside the menu", async () => {
+  const writeText = vi.fn(async () => {});
+  clipboard(writeText);
+  sessions = [session("my app")];
+  open("/sessions?token=secret");
+  const menu = await openRowMenu("my app");
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy link" }));
+  const status = within(await row("my app")).getByRole("status");
+  await waitFor(() => expect(status.textContent).toBe("Link copied"));
+  expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/sessions/my%20app`);
+  expect(screen.queryByRole("menu")).toBeNull();
 });
 
 test.each([
-  ["running", "Stop lado", ["Stop session…"]],
-  ["loop_down", "Stop lado", ["Stop session…"]],
-  ["stopped", "Resume lado", ["Resume…", "Forget…"]],
-  ["tmux_gone", "Resume lado", ["Resume…", "Stop session…"]],
-] as const)("a %s session's row has %s and the rest in its menu", async (status, main, items) => {
-  sessions = [session("lado", { status })];
-  localStorage.setItem("lado.stoppedSessions", "open");
+  ["no Clipboard API", undefined],
+  ["a refused copy", async () => Promise.reject(new Error("not allowed"))],
+] as const)("with %s Copy link shows the address selected, to copy by hand", async (_, writeText) => {
+  clipboard(writeText);
   open("/sessions");
-  const row = (await screen.findByRole("link", { name: /lado/ })).closest("li") as HTMLElement;
-  const buttons = within(row).getAllByRole("button");
-  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([main, "More actions for lado"]);
-  expect(await menuItems(row, "More actions for lado")).toEqual(items);
+  const menu = await openRowMenu("lado");
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy link" }));
+  const asked = await screen.findByRole("dialog", { name: "Link to lado" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  const field = within(asked).getByRole("textbox", { name: "Link" }) as HTMLInputElement;
+  expect(field.value).toBe(`${window.location.origin}/sessions/lado`);
+  expect(document.activeElement).toBe(field);
+  expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+  expect(within(asked).getByText("Press ⌘C / Ctrl+C to copy")).toBeTruthy();
+  expect(within(await row("lado")).getByRole("status").textContent).toBe("");
+  fireEvent.keyDown(asked, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Link to lado" })).toBeNull();
 });
 
-test("Stop from the list names the session, says what it does and stops that one", async () => {
-  sessions = [session("lado"), session("other")];
-  answers["GET /api/sessions/other/stop-preview"] = () =>
+test("Stop from the head says what it does, stops the session and the page stays", async () => {
+  answers["GET /api/sessions/lado/stop-preview"] = () =>
     json({ agents: ["supervisor", "w1"], dropped: 2, open_runs: ["feature/x"], worktrees: [] });
-  answers["POST /api/sessions/other/stop"] = () => json({ dropped: 2 });
+  answers["POST /api/sessions/lado/stop"] = () => json({ dropped: 2 });
   open("/sessions/lado");
-  const row = (await screen.findByRole("link", { name: /other/ })).closest("li") as HTMLElement;
-  fireEvent.click(within(row).getByRole("button", { name: "Stop other" }));
-  const asked = await screen.findByRole("dialog", { name: 'Stop session "other"?' });
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
+  const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
   await within(asked).findByText("its 2 agents are closed");
   expect(within(asked).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
     "its 2 agents are closed",
@@ -506,10 +590,22 @@ test("Stop from the list names the session, says what it does and stops that one
     "branches, worktrees, 1 open run and the history stay",
     "you can resume it later",
   ]);
-  fireEvent.click(within(asked).getByRole("button", { name: "Stop other" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: 'Stop session "other"?' })).toBeNull());
-  expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/sessions/other/stop"]);
+  fireEvent.click(within(asked).getByRole("button", { name: "Stop lado" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: 'Stop session "lado"?' })).toBeNull());
+  expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/sessions/lado/stop"]);
   expect(screen.getByRole("region", { name: "Session lado" })).toBeTruthy(); // the page stays
+});
+
+test("Stop of a session whose tmux session is gone is in its head beside Resume", async () => {
+  sessions = [session("lado", { status: "tmux_gone" })];
+  answers["GET /api/sessions/lado/stop-preview"] = () => json({ agents: [], dropped: 0, open_runs: [], worktrees: [] });
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
+  const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
+  expect(await within(asked).findByText("it has no agents to close")).toBeTruthy();
+  fireEvent.keyDown(asked, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: 'Stop session "lado"?' })).toBeNull();
 });
 
 test("a refused stop says why in its popover", async () => {
@@ -517,8 +613,7 @@ test("a refused stop says why in its popover", async () => {
   answers["POST /api/sessions/lado/stop"] = () => json({ detail: 'session "lado" is stopped already' }, 400);
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
-  fireEvent.click(within(head()).getByRole("button", { name: "Session actions" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Stop session…" }));
+  fireEvent.click(within(head()).getByRole("button", { name: "Stop session…" }));
   const asked = await screen.findByRole("dialog", { name: 'Stop session "lado"?' });
   fireEvent.click(await within(asked).findByRole("button", { name: "Stop lado" }));
   expect((await within(asked).findByRole("alert")).textContent).toBe('session "lado" is stopped already');
@@ -531,8 +626,7 @@ test("Forget lists what stays on disk and needs the open runs ticked, then leave
   answers["DELETE /api/sessions/lado"] = () => json({ open_runs: ["feature/x"], worktrees: [] });
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
-  fireEvent.click(within(head()).getByRole("button", { name: "Session actions" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Forget…" }));
+  fireEvent.click(within(head()).getByRole("button", { name: "Forget…" }));
   const asked = await screen.findByRole("dialog", { name: 'Forget session "lado"?' });
   expect(asked.hasAttribute("open")).toBe(true); // modal
   expect(within(asked).getByText("Its history (messages, runs, notes, gates) is deleted. This cannot be undone.")).toBeTruthy();

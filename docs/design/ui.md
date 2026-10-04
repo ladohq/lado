@@ -357,8 +357,8 @@ Sessions for now. The UI's texts are in English.
   browser). Nothing in a stopped session counts as waiting (its waiting is all zeros),
   though its gates stay open and `lado ls` shows them: nothing in it can be answered until
   it is resumed. Each shows a line under its name: what waits, or its agents, and on hover
-  or keyboard focus of the row its main action as an icon (■ Stop, ▶ Resume) and ⋯ with
-  all its actions (Launch and session control, below). The **session**
+  or keyboard focus of the row ⋯ with the entry's menu, Copy link and Open in new tab; the
+  session's own actions are in its head (Launch and session control, below). The **session**
   in the middle: its name, status and actions, then the tabs **Activity | Agents | Flows |
   Artifacts** (its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents the agents and what each does (Agents
@@ -651,11 +651,23 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
   changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).
-- **Actions by status** (`SessionControl.tsx`), in the session's head and its list row:
-  running and `loop_down`: ⋯ with Stop session…; stopped: Resume… and ⋯ with Resume… and
-  Forget…; `tmux_gone`: Resume… and ⋯ with Resume… and Stop session… (which marks it
-  stopped). The row shows its main action as an icon (■ Stop, ▶ Resume); Forget is only
-  in ⋯, and only for a stopped session.
+- **Actions by status** (`SessionControl.tsx`; task feature/session-controls, 2026-10-05:
+  a Stop in the list row was too easy to hit), only in the session's head, as icons with a
+  tooltip and the same accessible name: running and `loop_down`: Stop session…; stopped:
+  Resume… and Forget… (in the colour of a dangerous action); `tmux_gone`: Resume… and Stop
+  session… (which marks it stopped). The head has no ⋯.
+- **The list row's menu** (`SessionRowMenu.tsx`, on the shared `Menu.tsx`): ⋯ holds
+  actions on the entry only, and only ones that work now; no placeholders for features
+  that do not exist (no Rename, Pin or colour until they do). **Copy link** copies the
+  session page's address (`location.origin` + its path), says "Link copied" in the row
+  (`role="status"`, outside the menu, which closes) and goes after 2 s; without the
+  Clipboard API (the page not on localhost or https, e.g. `--host` over http) or when the
+  copy is refused, a popover shows the address selected with "Press ⌘C / Ctrl+C to copy".
+  **Open in new tab** is a link to the same page (`target="_blank"`, `rel="noopener"`).
+  The address has no token: the login is the browser's cookie, so another browser gets
+  401 and the Shell's message to open the login link. In a future desktop app (Stage 7) a
+  webview may open a new tab in the system browser, without the cookie; the Desktop stage
+  decides.
 - **Stop** asks in a popover by its button: `Stop session "<name>"?`, what it does from
   `stop-preview` (its agents are closed, the messages they did not get are dropped,
   branches, worktrees, open runs and the history stay, it can be resumed) and the button

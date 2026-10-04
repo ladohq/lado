@@ -1,9 +1,9 @@
-// A session's actions (docs/design/ui.md, Launch and session control), in its head and in
-// its row of the session list, by its status: Stop a session that runs (or whose tmux
-// session is gone, to mark it stopped), Resume one that does not run, Forget one that is
-// stopped. Stop asks in a popover, Forget in a modal window; both say first what they do,
-// from the server's preview.
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+// A session's actions (docs/design/ui.md, Launch and session control), icons in its head
+// by its status: Stop a session that runs (or whose tmux session is gone, to mark it
+// stopped), Resume one that does not run, Forget one that is stopped. Stop asks in a
+// popover, Forget in a modal window; both say first what they do, from the server's
+// preview. The session list's rows have none of them (Sessions.tsx, SessionRowMenu).
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 import {
@@ -16,13 +16,18 @@ import {
   type SessionInfo,
   type StopPreview,
 } from "./api";
+import { ForgetIcon, ResumeIcon, StopIcon } from "./icons";
 import { useLaunch } from "./Launch";
+import { useBelow, useDismiss } from "./Menu";
+import { Tooltip } from "./Tooltip";
 
 type Action = "stop" | "resume" | "forget";
 
 const LABELS: Record<Action, string> = { stop: "Stop session…", resume: "Resume…", forget: "Forget…" };
 
-// What can be done to a session of each status; the first is its main action.
+const ICONS: Record<Action, ReactNode> = { stop: <StopIcon />, resume: <ResumeIcon />, forget: <ForgetIcon /> };
+
+// What can be done to a session of each status, in the order of its head's icons.
 function actionsOf(session: SessionInfo): Action[] {
   switch (session.status) {
     case "running":
@@ -39,39 +44,13 @@ const messageOf = (error: unknown) => (error instanceof ApiError ? error.message
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-// Where a row's menu or popover goes: fixed under its row's actions, so the session list's
-// scrolling box does not cut it; a head's stays in its place (styles.css).
-function useBelow(anchor: RefObject<HTMLElement | null>, fixed: boolean): CSSProperties | undefined {
-  const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
-  useLayoutEffect(() => {
-    const box = anchor.current?.getBoundingClientRect();
-    if (!fixed || !box) return;
-    setStyle({ position: "fixed", top: box.bottom + 6, left: Math.max(8, box.left), right: "auto" });
-  }, [anchor, fixed]);
-  return style;
-}
-
-// Closes on Escape and on a press outside `box`.
-function useDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: () => void) {
-  useEffect(() => {
-    if (!open) return;
-    const away = (event: MouseEvent) => {
-      if (!box.current?.contains(event.target as Node)) close();
-    };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [open, box, close]);
-}
-
-export function SessionActions({ session, place }: { session: SessionInfo; place: "head" | "row" }) {
+export function SessionActions({ session }: { session: SessionInfo }) {
   const launch = useLaunch();
-  const actions = actionsOf(session);
-  const [shown, setShown] = useState<"menu" | "stop" | "forget" | null>(null);
+  const [shown, setShown] = useState<"stop" | "forget" | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  const more = useRef<HTMLButtonElement>(null);
   const close = () => setShown(null);
-  useDismiss(shown === "menu" || shown === "stop", box, close);
-  const below = useBelow(box, place === "row" && (shown === "menu" || shown === "stop"));
+  useDismiss(shown === "stop", box, close);
+  const below = useBelow(box, shown === "stop", true);
 
   const act = (action: Action) => {
     if (action === "resume") {
@@ -82,103 +61,24 @@ export function SessionActions({ session, place }: { session: SessionInfo; place
     }
   };
 
-  const main = actions[0];
   return (
-    <div ref={box} className={`session-actions actions-${place}${shown ? " shown" : ""}`}>
-      {place === "row" ? (
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={`${main === "stop" ? "Stop" : "Resume"} ${session.name}`}
-          title={main === "stop" ? "Stop" : "Resume"}
-          onClick={() => act(main)}
-        >
-          <span aria-hidden="true">{main === "stop" ? "■" : "▶"}</span>
-        </button>
-      ) : (
-        main === "resume" && (
-          <button type="button" className="primary" onClick={() => act("resume")}>
-            Resume…
+    <div ref={box} className="session-actions">
+      {actionsOf(session).map((action) => (
+        <Tooltip key={action} tip={LABELS[action]}>
+          <button
+            type="button"
+            className={`icon-button${action === "forget" ? " danger-icon" : ""}`}
+            aria-label={LABELS[action]}
+            aria-haspopup={action === "resume" ? undefined : "dialog"}
+            aria-expanded={action === "resume" ? undefined : shown === action}
+            onClick={() => act(action)}
+          >
+            {ICONS[action]}
           </button>
-        )
-      )}
-      <button
-        ref={more}
-        type="button"
-        className="icon-button"
-        aria-label={place === "row" ? `More actions for ${session.name}` : "Session actions"}
-        aria-haspopup="menu"
-        aria-expanded={shown === "menu"}
-        onClick={() => setShown(shown === "menu" ? null : "menu")}
-      >
-        <span aria-hidden="true">⋯</span>
-      </button>
-      {shown === "menu" && (
-        <ActionMenu
-          label={place === "row" ? `Actions for ${session.name}` : "Session actions"}
-          style={below}
-          actions={actions}
-          onAction={act}
-          onClose={() => {
-            close();
-            more.current?.focus();
-          }}
-        />
-      )}
+        </Tooltip>
+      ))}
       {shown === "stop" && <StopPopover session={session.name} style={below} onClose={close} />}
       {shown === "forget" && <ForgetDialog session={session.name} onClose={close} />}
-    </div>
-  );
-}
-
-function ActionMenu({
-  label,
-  style,
-  actions,
-  onAction,
-  onClose,
-}: {
-  label: string;
-  style?: CSSProperties;
-  actions: Action[];
-  onAction: (action: Action) => void;
-  onClose: () => void;
-}) {
-  const menu = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    menu.current?.querySelector<HTMLButtonElement>("button")?.focus();
-  }, []);
-  return (
-    <div
-      ref={menu}
-      role="menu"
-      aria-label={label}
-      className="action-menu"
-      style={style}
-      onKeyDown={(event) => {
-        const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-        const at = items.indexOf(document.activeElement as HTMLButtonElement);
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onClose();
-        } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          const step = event.key === "ArrowDown" ? 1 : -1;
-          items[(at + step + items.length) % items.length]?.focus();
-        }
-      }}
-    >
-      {actions.map((action) => (
-        <button
-          key={action}
-          type="button"
-          role="menuitem"
-          className={action === "resume" ? "" : "danger-item"}
-          onClick={() => onAction(action)}
-        >
-          {LABELS[action]}
-        </button>
-      ))}
     </div>
   );
 }
@@ -221,15 +121,7 @@ function stopItems(preview: StopPreview): string[] {
   ];
 }
 
-function StopPopover({
-  session,
-  style,
-  onClose,
-}: {
-  session: string;
-  style?: CSSProperties;
-  onClose: () => void;
-}) {
+function StopPopover({ session, style, onClose }: { session: string; style?: CSSProperties; onClose: () => void }) {
   const preview = usePreview(() => getStopPreview(session));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);

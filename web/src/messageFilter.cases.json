@@ -1,5 +1,5 @@
 {
-  "about": "Which messages a filter of GET /api/sessions/{name}/messages takes: one table for the server's SQL (tests/test_server_messages.py) and the feed rule of live.ts (live.test.ts). created_at is as the API gives it; the 15:07:00 row has whole seconds, as older rows do. since and until count whole seconds: since from the start of its second, until to the end of its.",
+  "about": "Which messages a filter of GET /api/sessions/{name}/messages takes: one table for the server's SQL (tests/test_server_messages.py) and the feed rule of live.ts (live.messages.test.ts). created_at is as the API gives it; the 15:07:00 row has whole seconds, as older rows do. since and until count whole seconds: since from the start of its second, until to the end of its.",
   "messages": [
     { "id": 1, "from": "supervisor", "to": "w1", "created_at": "2026-10-04T15:04:48.900Z" },
     { "id": 2, "from": "lado", "to": "w1", "created_at": "2026-10-04T15:04:49.000Z" },

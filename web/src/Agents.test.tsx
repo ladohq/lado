@@ -525,6 +525,20 @@ test("an agent's page has its latest 10 messages of its own lifetime, and All in
   expect((screen.getByRole("checkbox", { name: "Show agent messages" }) as HTMLInputElement).checked).toBe(true);
 });
 
+test("a message from the feed keeps the page at the latest 10, the new one last", async () => {
+  serve({ messages: MESSAGES });
+  open("/sessions/lado/agents/developer");
+  const box = within(await page("developer")).getByRole("region", { name: "Messages" });
+  expect(await within(box).findAllByRole("listitem")).toHaveLength(10);
+  const newer = message(40, "developer", "supervisor", "2026-10-04T11:00:00.000Z", { summary: "the newest" });
+  stream().send("change", { kind: "messages", session: "lado", key: "40", op: "insert", item: newer }, "11");
+  await within(box).findByText(/the newest/);
+  const lines = within(box).getAllByRole("listitem");
+  expect(lines).toHaveLength(10);
+  expect(lines[9].textContent).toContain("the newest");
+  expect(lines[0].textContent).toContain("message 12");
+});
+
 test("the supervisor's page has its messages, also one of the second it was spawned in", async () => {
   const spawned = "2026-10-04T09:00:00.000Z";
   serve({

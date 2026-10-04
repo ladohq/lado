@@ -388,7 +388,7 @@ function AgentMessages({ session, name, from, to }: { session: string; name: str
   const key = windowKey(spec);
   useEffect(() => live.watchMessages(session, spec), [live, session, key]); // key: the spec's
   const window = messageWindow(useLive(), session, spec);
-  const latest = window && "items" in window ? window.items : [];
+  const latest = window && "items" in window ? window.items.slice(-MESSAGES) : []; // the feed adds to it
   const all = () => {
     storeAgentMessages(true);
     navigate(sessionPath(session, "activity"));

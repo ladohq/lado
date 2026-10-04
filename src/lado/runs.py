@@ -196,7 +196,8 @@ def now(run: state.Run) -> str:
         gate = state.open_gate(run.session, run.name)
         return f"waiting for human: {f'gate #{gate.id}' if gate else run.reason}"
     if run.status == state.ACTIVE:
-        return f"→ {acting(run)}"
+        who, problem = acting_or_problem(run)
+        return problem.line() if problem else f"→ {who}"
     return f"{run.status}: {run.reason}" if run.reason else run.status
 
 
@@ -355,12 +356,19 @@ def _restore_worktree(repo: str, run: state.Run) -> None:
 def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     """Queue LADO's messages for the new supervisor of a resumed session: one about the
     open runs, then the steps of the runs at a supervisor state again. Returns a line for
-    each run that needs a role the session has no more."""
+    each run that needs a role the session has no more or whose flow cannot be read."""
     supervisor = env.supervisor().name
     lines, problems, steps = [], [], []
     open_runs = state.list_runs(sess.name, open_only=True)
     for run in open_runs:
-        flow = flow_of(run)
+        try:
+            flow = flow_of(run)
+        except SnapshotError as error:
+            # Neither its step nor an answer nor lado flow-set can be had without the flow.
+            problem = f"{error.line()}; it cannot go on: cancel the run with flow_cancel"
+            problems.append(f"run {run.name}: {problem}")
+            lines.append(f"- {run.name} at {run.state}: {problem}.")
+            continue
         current = flow.states[run.state]
         gate = state.open_gate(sess.name, run.name) if run.status == state.WAITING else None
         if gate:
@@ -400,7 +408,16 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
 
 
 class SnapshotError(LadoError):
-    """A run's flow snapshot cannot be read: not JSON, or a flow this LADO refuses."""
+    """A run's flow snapshot cannot be read: not JSON, or a flow this LADO refuses. The
+    message names the run; `reason` says why without it."""
+
+    def __init__(self, run: state.Run, reason: str):
+        super().__init__(f'run "{run.name}": {reason}')
+        self.reason = reason
+
+    def line(self) -> str:
+        """The reason on one line: the validator gives one problem per line."""
+        return "; ".join(self.reason.splitlines())
 
 
 def flow_of(run: state.Run) -> flows.Flow:
@@ -408,13 +425,13 @@ def flow_of(run: state.Run) -> flows.Flow:
     try:
         data = json.loads(run.snapshot)
     except ValueError as error:
-        raise SnapshotError(f'run "{run.name}": its flow snapshot is not JSON: {error}') from None
+        raise SnapshotError(run, f"its flow snapshot is not JSON: {error}") from None
     if not isinstance(data, dict):
-        raise SnapshotError(f'run "{run.name}": its flow snapshot is not a mapping')
+        raise SnapshotError(run, "its flow snapshot is not a mapping")
     try:
         return flows.from_snapshot(data, run.kit.get("name", ""))
     except ValueError as error:
-        raise SnapshotError(f'run "{run.name}": its flow cannot be read: {error}') from None
+        raise SnapshotError(run, f"its flow cannot be read: {error}") from None
 
 
 def acting(run: state.Run) -> str:
@@ -426,6 +443,16 @@ def acting(run: state.Run) -> str:
     current = flow_of(run).states[run.state]
     who = _acting_agent(run, current)
     return who or f"{current.agent} (not spawned)"
+
+
+def acting_or_problem(run: state.Run) -> tuple[str, SnapshotError | None]:
+    """Who acts next (`acting`) and None; when the run's flow cannot be read, what is
+    known without it and the error: '' for an active run, whose actor is its state's
+    agent, named only in the flow. A waiting or closed run's actor needs no flow."""
+    try:
+        return acting(run), None
+    except SnapshotError as error:
+        return "", error
 
 
 def status(session: str, caller: str, run_name: str | None = None) -> list[dict]:
@@ -691,21 +718,28 @@ def _workers(run: state.Run) -> list[state.Agent]:
 
 def describe(run: state.Run, full: bool = False) -> dict:
     """Where the run is and who acts; `full` adds the task, why it waits or was cancelled,
-    and its worktree and branch."""
-    current = flow_of(run).states[run.state]
+    and its worktree and branch. A run whose flow cannot be read has its `problem` and no
+    outcomes."""
+    try:
+        flow, problem = flow_of(run), None
+    except SnapshotError as error:
+        flow, problem = None, error
+    active = run.status == state.ACTIVE
     gate = state.open_gate(run.session, run.name) if run.status == state.WAITING else None
     short = {
         "run": run.name,
         "flow": run.flow,
         "state": run.state,
         "status": run.status,
-        "acting": acting(run),
-        "outcomes": current.outcomes if run.status == state.ACTIVE else {},
+        "acting": acting_or_problem(run)[0],
+        "outcomes": flow.states[run.state].outcomes if flow and active else {},
         "gate": gate and {"id": gate.id, "question": gate.question, "options": gate.options},
         "visits": run.visits,
         "note": run.note,
         "language": run.language,
     }
+    if problem:
+        short["problem"] = str(problem)
     if not full:
         return short
     return {

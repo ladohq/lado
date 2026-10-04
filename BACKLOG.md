@@ -510,16 +510,6 @@ Wanted: the docs and `lado doctor`'s hint name this case and how to guard it in 
 (for example, skip the autostart when the shell is not interactive on a terminal).
 Found: 2026-10-04, review of fix/agent-env.
 
-## A run whose flow snapshot cannot be read breaks `lado ls`, `flow_status` and a resume
-
-The UI copes with such a run (`problem`), the core does not: `runs.now` → `runs.acting` →
-`flow_of` raises `runs.SnapshotError` for an active run, so `lado ls` stops at that run
-with an error; `flow_status` (`runs.status`) fails for the supervisor's every-open-run
-list; `runs.resume` reads every open run's flow, so `lado start` cannot resume the session.
-Wanted: these show such a run with its problem and go on with the others; a resume reports
-it as it reports a run whose role is missing, so the human can `flow_cancel` or `flow-set` it.
-Found: 2026-10-04, fix/unreadable-snapshot (implement).
-
 ## A snapshot's problem of several lines shows as one line in the UI
 
 When the validator refuses a run's flow snapshot, `problem` (`RunInfo`, `GateInfo`) holds
@@ -528,3 +518,13 @@ one error per line (`flows.from_snapshot` joins them with "\n"). The run page
 `.gate-problem`) put it in a `<p>`, so the lines run together without a break.
 Wanted: `white-space: pre-wrap` on both (or one line per error).
 Found: 2026-10-04, review of fix/unreadable-snapshot (Minor).
+
+## `lado answer` without a gate stops at a gate whose run's flow cannot be read
+
+`lado answer` (no arguments, or a session) and the gate popup show each open gate with the
+notes it needs (`cli._choose` → `runs.gate_notes` → `runs.flow_of`). A gate of a run whose
+flow snapshot cannot be read raises `runs.SnapshotError`: the command ends with that error,
+and the other open gates are not asked about.
+Wanted: such a gate is shown with its problem (it can only be left open; the run is
+cancelled with `flow_cancel`) and `lado answer` goes on with the other gates.
+Found: 2026-10-04, fix/snapshot-core (implement).

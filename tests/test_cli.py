@@ -331,6 +331,33 @@ def test_ls_shows_open_runs_with_who_acts(repo, fake_tmux, capsys):
     assert "gate #1" not in capsys.readouterr().out
 
 
+def test_ls_shows_a_run_whose_flow_cannot_be_read_and_goes_on(repo, fake_tmux, capsys):
+    _session_with_run(repo)
+    runs.start("s", "ship", "Add y", name="y")
+    agent_helpers.spoil_snapshot("s", "ship/x", "{not json")
+    capsys.readouterr()
+    assert main(["ls"]) == 0
+    x, y = capsys.readouterr().out.splitlines()[-2:]
+    assert x.startswith("  run ship/x  build  its flow snapshot is not JSON: Expecting")
+    assert y.split()[:5] == ["run", "ship/y", "build", "→", "rev"]
+
+
+def test_the_human_cannot_move_a_run_whose_flow_cannot_be_read(repo, fake_tmux, capsys):
+    _session_with_run(repo)
+    runs.force("s", "ship/x", "check", "built by hand")
+    agent_helpers.spoil_snapshot("s", "ship/x", "{not json")
+    capsys.readouterr()
+    for argv in (
+        ["answer", "s", "1", "approve"],
+        ["flow-set", "s", "ship/x", "build", "--reason", "r"],
+    ):
+        assert main(argv) == 1
+        err = capsys.readouterr().err
+        assert err.startswith('lado: run "ship/x": its flow snapshot is not JSON: ')
+        assert "Traceback" not in err
+    assert state.open_gate("s", "ship/x").answer is None  # the gate is still open
+
+
 def _at_gate(repo, capsys):
     _session_with_run(repo)
     runs.force("s", "ship/x", "check", "built by hand")

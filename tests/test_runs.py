@@ -122,6 +122,49 @@ def test_who_acts_in_a_run_whose_flow_cannot_be_read(session):
     assert runs.acting(waiting) == runs.HUMAN
 
 
+def test_what_is_known_of_who_acts_without_the_flow(session):
+    run = runs.start(session, "feature", "Add x", name="x")
+    assert runs.acting_or_problem(run) == ("supervisor", None)
+    spoil_snapshot(session, run.name, "{not json")
+    spoilt = state.get_run(session, run.name)
+    acting, problem = runs.acting_or_problem(spoilt)
+    assert acting == ""  # an active run's actor is its state's agent, named only in its flow
+    assert isinstance(problem, runs.SnapshotError)
+    assert str(problem).startswith('run "feature/x": its flow snapshot is not JSON')
+    waiting = dataclasses.replace(spoilt, status=state.WAITING)
+    assert runs.acting_or_problem(waiting) == (runs.HUMAN, None)
+    closed = dataclasses.replace(spoilt, status=state.CANCELLED)
+    assert runs.acting_or_problem(closed) == ("", None)
+
+
+def test_where_a_run_whose_flow_cannot_be_read_is_now(session):
+    run = runs.start(session, "feature", "Add x", name="x")
+    spoil_snapshot(session, run.name, '{"name": "feature", "start": "design", "states": {}}')
+    now = runs.now(state.get_run(session, run.name))
+    # One line, for lado ls, though the validator gives one error per line.
+    assert now == (
+        "its flow cannot be read: snapshot: description is missing; "
+        "snapshot: states must map state names to states"
+    )
+
+
+def test_a_run_whose_flow_cannot_be_read_is_only_cancelled(session):
+    run = to_implement(session)
+    runs.spawn_worker(session, run.name)
+    spoil_snapshot(session, run.name, "{not json")
+    for move in (
+        lambda: runs.advance(session, "developer", run.name, "done"),
+        lambda: runs.force(session, run.name, "review", "by hand"),
+    ):
+        with pytest.raises(runs.SnapshotError, match="its flow snapshot is not JSON"):
+            move()
+    assert state.get_run(session, run.name).state == "implement"
+    [finished] = runs.cancel(session, run.name, "broken")
+    assert finished.worker.name == "developer"
+    cancelled = state.get_run(session, run.name)
+    assert (cancelled.status, cancelled.reason) == (state.CANCELLED, "broken")
+
+
 def test_a_supervisor_step_is_sent_to_the_supervisor(session):
     runs.start(session, "feature", "Add a login page", name="login")
     [step] = messages("supervisor")
@@ -861,6 +904,25 @@ def test_status_shows_a_worker_its_own_run(session):
     ]
 
 
+def test_status_shows_a_run_whose_flow_cannot_be_read_with_its_problem(session):
+    to_gate(session)  # feature/login, waiting at the gate
+    runs.start(session, "feature", "other", name="other")
+    runs.start(session, "feature", "fine", name="fine")
+    for name in ("feature/login", "feature/other"):
+        spoil_snapshot(session, name, "{not json")
+    login, other, fine = runs.status(session, "supervisor")
+    problem = 'run "feature/other": its flow snapshot is not JSON: Expecting'
+    assert other["problem"].startswith(problem)
+    assert (other["state"], other["acting"], other["outcomes"]) == ("design", "", {})
+    assert login["problem"].startswith('run "feature/login": its flow snapshot is not JSON')
+    assert (login["acting"], login["gate"]["question"]) == ("human", "Ship it?")
+    assert "problem" not in fine  # the others as before
+    assert fine["outcomes"] == {"ready": "implement"}
+    [full] = runs.status(session, "supervisor", "feature/other")
+    assert full["problem"].startswith(problem)
+    assert full["task"] == "other"
+
+
 def test_the_supervisor_is_told_the_flows_and_a_run_worker_how_to_report(session, fake_tmux):
     supervisor = fake_tmux[0][-1]
     prompt = supervisor[supervisor.index("--append-system-prompt") + 1]
@@ -1020,6 +1082,33 @@ def test_resume_reports_runs_whose_roles_are_gone(session, repo):
         "or move it on with lado flow-set."
     )
     assert state.get_agent(session, "supervisor")  # the session started anyway
+
+
+def test_resume_reports_runs_whose_flow_cannot_be_read_and_resumes_the_others(
+    session, repo, fake_tmux
+):
+    to_gate(session)  # feature/login, waiting at the gate
+    runs.start(session, "feature", "Plan it", name="plan")  # the supervisor's step
+    runs.start(session, "feature", "Build it", name="build")
+    for name in ("feature/login", "feature/build"):
+        spoil_snapshot(session, name, "{not json")
+    why = "its flow snapshot is not JSON: Expecting property name enclosed in double quotes"
+    started = restart(session, repo)
+    assert [p.split(": ", 1)[0] for p in started.problems] == [
+        "run feature/login",
+        "run feature/build",
+    ]
+    for problem in started.problems:
+        assert why in problem
+        assert problem.endswith("; it cannot go on: cancel the run with flow_cancel")
+    resumed, step = messages("supervisor")[-2:]
+    assert resumed.summary == "session resumed: 3 open runs"
+    login, plan, build = resumed.body.splitlines()
+    assert login.startswith(f"- feature/login at gated: {why}")
+    assert login.endswith("; it cannot go on: cancel the run with flow_cancel.")
+    assert plan == "- feature/plan at design: your step; it follows as a message from lado."
+    assert build.startswith(f"- feature/build at design: {why}")
+    assert step.summary == "flow feature/plan: step design"
 
 
 def test_a_worker_after_resume_takes_over_the_runs_worktree(session, repo, fake_tmux):

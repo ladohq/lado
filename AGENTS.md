@@ -426,6 +426,12 @@ questions stay as written.
 `lado flow-set <session> <run> <state> --reason TEXT` puts a flow run into a state: the
 human's override, past a gate or a loop limit; it closes the run's open gate as `overridden`.
 `lado ls` shows each open run with its state and who acts next.
+A run whose flow snapshot cannot be read (`runs.SnapshotError`) is shown with its problem
+and the rest goes on: `lado ls` prints the reason instead of who acts, `flow_status` gives
+it `problem` and no outcomes, a resume reports it on stderr and in the `session resumed`
+body; only `flow_cancel` moves it (advancing, answering and `lado flow-set` refuse with
+the error), and who acts without the flow is `runs.acting_or_problem`, for the core and
+the UI alike.
 
 ## Testing
 

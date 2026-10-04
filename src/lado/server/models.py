@@ -447,16 +447,13 @@ def run_info(run: state.Run) -> RunInfo:
     last = state.last_run_event(run.session, run.name)
     since = _utc(last.created_at if last else run.created_at)
     gate = state.open_gate(run.session, run.name) if run.status == state.WAITING else None
+    acting, _ = runs.acting_or_problem(run)
     problem = None
     try:
         states = [flow_state_info(s) for s in runs.flow_of(run).states.values()]
-        acting = runs.acting(run)
     except runs.SnapshotError as error:
         problem = _unreadable(run.session, error)
         states = []
-        # Without the flow: "human" for a waiting run and '' for a closed one, as ever;
-        # '' for an active one, whose actor is its state's agent, named only in the flow.
-        acting = "" if run.status == state.ACTIVE else runs.acting(run)
     return RunInfo(
         name=run.name,
         flow=run.flow,

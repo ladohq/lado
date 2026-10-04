@@ -79,33 +79,55 @@ test("session.idle sends nothing when the hook prints nothing", async () => {
   assert.deepEqual(client.prompts, [])
 })
 
-test("permission.asked and question.asked run their hooks", async () => {
-  const { plugin } = await load({
-    "permission.asked": hook("permission.asked"),
-    "question.asked": hook("question.asked"),
-  })
-  const properties = { sessionID: "s1", permission: "edit" }
-  await plugin.event({ event: { type: "permission.asked", properties } })
-  await plugin.event({ event: { type: "question.asked", properties: { sessionID: "s1" } } })
+// Kilo 7.8's requests for the human and their answers: a request has its `id`, an answer
+// names it as `requestID`. A permission refused is replied with reply "reject".
+const REQUESTS = {
+  "permission.asked": { id: "per_1", sessionID: "s1", permission: "edit", patterns: ["*"] },
+  "permission.replied": { requestID: "per_1", sessionID: "s1", reply: "reject" },
+  "question.asked": { id: "que_1", sessionID: "s1", questions: [] },
+  "question.replied": { requestID: "que_1", sessionID: "s1", answers: [["yes"]] },
+  "question.rejected": { requestID: "que_1", sessionID: "s1" },
+}
+
+function requestHooks() {
+  return Object.fromEntries(Object.keys(REQUESTS).map((event) => [event, hook(event)]))
+}
+
+test("requests for the human and their answers run their hooks with the request's id", async () => {
+  const { plugin } = await load(requestHooks())
+  for (const [type, properties] of Object.entries(REQUESTS)) {
+    await plugin.event({ event: { type, properties } })
+  }
   assert.deepEqual(calls(), [
-    { event: "permission.asked", payload: properties },
-    { event: "question.asked", payload: { sessionID: "s1" } },
+    { event: "permission.asked", payload: { sessionID: "s1", id: "per_1" } },
+    { event: "permission.replied", payload: { sessionID: "s1", id: "per_1" } },
+    { event: "question.asked", payload: { sessionID: "s1", id: "que_1" } },
+    { event: "question.replied", payload: { sessionID: "s1", id: "que_1" } },
+    { event: "question.rejected", payload: { sessionID: "s1", id: "que_1" } },
   ])
 })
 
-test("events of subagent sessions are ignored", async () => {
+test("requests of subagent sessions are reported, their other events are not", async () => {
   const { plugin, client } = await load({
     "chat.message": hook("chat.message"),
     "session.idle": hook("session.idle", "queued"),
-    "permission.asked": hook("permission.asked"),
+    ...requestHooks(),
   })
   const info = { id: "sub", parentID: "s1" }
   await plugin.event({ event: { type: "session.created", properties: { info } } })
   await plugin["chat.message"]({ sessionID: "sub" }, { parts: [{ type: "text", text: "x" }] })
   await plugin.event({ event: { type: "session.idle", properties: { sessionID: "sub" } } })
-  await plugin.event({ event: { type: "permission.asked", properties: { sessionID: "sub" } } })
   assert.deepEqual(calls(), [])
   assert.deepEqual(client.prompts, [])
+  // The agent waits for the human all the same when its subagent asks.
+  for (const [type, properties] of Object.entries(REQUESTS)) {
+    await plugin.event({ event: { type, properties: { ...properties, sessionID: "sub" } } })
+  }
+  assert.deepEqual(
+    calls().map((call) => [call.event, call.payload.sessionID]),
+    Object.keys(REQUESTS).map((event) => [event, "sub"]),
+  )
+  rmSync(log)
   // The main session is still reported.
   await plugin.event({ event: { type: "session.idle", properties: { sessionID: "s1" } } })
   assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1" } }])

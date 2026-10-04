@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -105,6 +105,10 @@ NOTES_STEP = [
     "ALTER TABLE notes ADD COLUMN outcome TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE notes ADD COLUMN target TEXT NOT NULL DEFAULT ''",
 ]
+# The request a waiting agent waits for the human to answer (a provider's id for it, see
+# lado.hooks), from version 16 on; NULL when it waits for none in particular or does not
+# wait. Only an answer to that request ends the wait (`resume`).
+AGENTS_WAITING_FOR = "ALTER TABLE agents ADD COLUMN waiting_for TEXT"
 # The change journal, from version 12 on: one row for each insert, update and delete of the
 # tables the UI shows, written by triggers in the writer's own transaction, so a change by
 # any process (CLI, hooks, MCP server, session loop) is in it. The UI server reads it
@@ -248,6 +252,7 @@ SCHEMA += (
             *MESSAGES_HUMAN,
             *EVENTS_JOURNAL,
             *NOTES_STEP,
+            AGENTS_WAITING_FOR,
         ]
     )
     + ";\n"
@@ -282,6 +287,7 @@ MIGRATIONS = {
     12: MESSAGES_HUMAN,
     13: EVENTS_JOURNAL,
     14: NOTES_STEP,
+    15: [AGENTS_WAITING_FOR],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -366,6 +372,7 @@ class Agent:
     instance: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     run: str | None = None  # the flow run it works for
     seen_at: float = 0  # when its latest hook ran (time.time()); 0 for none yet
+    waiting_for: str | None = None  # the request it waits for, while waiting (`wait`)
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
 
 
@@ -790,12 +797,46 @@ def set_status(session: str, name: str, status: str) -> None:
 
 
 def _set_status(db: sqlite3.Connection, session: str, name: str, status: str) -> None:
+    # An agent that waits for nothing in particular has no key; one that stops waiting none.
     cur = db.execute(
-        "UPDATE agents SET status = ? WHERE session = ? AND name = ? AND status != ?",
+        "UPDATE agents SET status = ?, waiting_for = NULL"
+        " WHERE session = ? AND name = ? AND status != ?",
         (status, session, name, status),
     )
     if cur.rowcount:
         _add_event(db, session, name, STATUS, status)
+
+
+def wait(session: str, name: str, key: str = "") -> None:
+    """The agent waits for the human to answer request `key` (a provider's id for it; one
+    open request at a time, so a new one replaces the key). Without a key it waits for
+    nothing in particular, and a key it already waits for stays: only its answer, or a
+    change of status, ends that wait."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        _set_status(db, session, name, WAITING)
+        if key:
+            db.execute(
+                "UPDATE agents SET waiting_for = ? WHERE session = ? AND name = ?",
+                (key, session, name),
+            )
+        db.execute("COMMIT")
+
+
+def resume(session: str, name: str, key: str) -> None:
+    """The human answered request `key`: an agent waiting for it, or for no request in
+    particular, works again. Any other agent stays as it is, so a late answer cannot undo
+    an idle, starting or stopped agent, nor an answer to another request end its wait."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        cur = db.execute(
+            "UPDATE agents SET status = ?, waiting_for = NULL WHERE session = ? AND name = ?"
+            " AND status = ? AND (waiting_for IS NULL OR waiting_for = ?)",
+            (BUSY, session, name, WAITING, key),
+        )
+        if cur.rowcount:
+            _add_event(db, session, name, STATUS, BUSY)
+        db.execute("COMMIT")
 
 
 def seen(session: str, name: str) -> None:
@@ -1601,6 +1642,7 @@ def _agent(row: sqlite3.Row) -> Agent:
         instance=row["instance"],
         run=row["run"],
         seen_at=row["seen_at"],
+        waiting_for=row["waiting_for"],
         created_at=row["created_at"],
     )
 

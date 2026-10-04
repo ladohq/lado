@@ -18,6 +18,11 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     sleep <seconds>    work that long
     ask                ask the human for a permission: run the waiting hook, and take the
                        next input as the answer (logged as {"answer": <text>})
+    wait <key>         run the waiting hook for request <key>, as a dialog for the human
+                       opens
+    resume <key>       run the resumed hook for request <key>, as the human answered it
+    hold               print "holding <n>" (the n-th hold) and take the next input, with
+                       no hook (logged as {"held": <text>}): the turn goes on after it
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
     lines <n>          print the lines "line 1" to "line <n>"
     fullscreen         switch to the alternate screen and read the mouse, as a full-screen
@@ -55,9 +60,9 @@ PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
 config = json.load(open(sys.argv[1]))
 
 
-def hook(event: str, prompt: str = "") -> str:
+def hook(event: str, prompt: str = "", key: str = "") -> str:
     """Run the agent's hook for `event`; returns what it printed."""
-    payload = json.dumps({"prompt": prompt})
+    payload = json.dumps({"prompt": prompt, "key": key})
     result = subprocess.run(config["hooks"][event], input=payload, capture_output=True, text=True)
     return result.stdout.strip()
 
@@ -161,8 +166,12 @@ def read_input() -> str | None:
     return text.split(PASTE_END, 1)[0]
 
 
+holds = 0  # how often `hold` ran
+
+
 def work(text: str) -> bool:
     """Act on the commands in `text`. Returns True for exit."""
+    global holds
     for line in text.splitlines():
         command = re.sub(r"^\[from [^\]]*\] ", "", line.strip()).split(" ", 2)
         if command[0] == "exit":
@@ -172,6 +181,14 @@ def work(text: str) -> bool:
         elif command[0] == "ask":
             hook("waiting")
             log_input({"answer": read_input()})
+        elif command[0] == "wait":
+            hook("waiting", key=command[1])
+        elif command[0] == "resume":
+            hook("resumed", key=command[1])
+        elif command[0] == "hold":
+            holds += 1
+            print(f"holding {holds}", flush=True)
+            log_input({"held": read_input()})
         elif command[0] == "send":
             send(command[1], command[2])
         elif command[0] == "read":

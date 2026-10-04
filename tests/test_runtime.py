@@ -627,10 +627,40 @@ def test_an_agent_waiting_after_unconfirmed_messages_says_so(repo, fake_tmux):
     _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
     assert runtime.waiting_reasons("s") == {}  # busy again
     # Later it waits for a permission: the old failure is not why.
-    _hook("Notification", "supervisor", {"notification_type": "permission_prompt"})
+    _hook("PermissionRequest", "supervisor", {"tool_name": "Bash", "tool_input": {}})
     assert state.get_agent("s", "supervisor").status == state.WAITING
     assert runtime.waiting_reasons("s") == {}
     assert runtime.waiting_reason("s", "supervisor") is None
+
+
+def test_an_agent_waiting_after_swallowed_messages_works_again_after_any_tool(repo, fake_tmux):
+    """A wait for no request in particular: the agent's first tool call says the human
+    answered the dialog. Its messages wait for its turn's end, as for any busy agent."""
+    _retry_until_failed(_swallowed_report(repo, fake_tmux))
+    typed = len(_typed(fake_tmux))
+    assert _hook("PostToolUse", "supervisor", {"tool_name": "Read", "tool_input": {}}) is None
+    assert state.get_agent("s", "supervisor").status == state.BUSY
+    assert len(_typed(fake_tmux)) == typed  # nothing typed into a busy agent
+    report = state.list_messages("s")[0]
+    assert (report.state, report.attempts) == (state.PENDING, 0)  # back in the queue
+    assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
+
+
+def test_a_waiting_agent_works_again_once_the_human_answered_its_dialog(repo, fake_tmux):
+    _session_with_worker(repo)
+    bash = {"tool_name": "Bash", "tool_input": {"command": "make"}}
+    _hook("PermissionRequest", "w1", bash)
+    assert state.get_agent("s", "w1").status == state.WAITING
+    # Its subagent reads a file meanwhile: the dialog is still open.
+    _hook("PostToolUse", "w1", {"tool_name": "Read", "tool_input": {}, "agent_id": "a1"})
+    assert state.get_agent("s", "w1").status == state.WAITING
+    assert [w.agent.name for w in state.waiting_items("s")] == ["w1"]
+    _hook("PostToolUse", "w1", {**bash, "tool_response": {"stdout": ""}})
+    assert state.get_agent("s", "w1").status == state.BUSY
+    assert state.waiting_items("s") == []
+    _hook("Stop", "w1")
+    _hook("PostToolUse", "w1", bash)  # an async hook that comes after the turn's end
+    assert state.get_agent("s", "w1").status == state.IDLE
 
 
 def test_stop_drops_failed_messages(repo, fake_tmux):
@@ -778,7 +808,7 @@ def test_status_hooks(repo, fake_tmux):
     _hook("SessionStart", "w1")
     assert state.get_agent("s", "supervisor").status == state.IDLE  # no task yet
     assert state.get_agent("s", "w1").status == state.BUSY  # started with a task
-    _hook("Notification", "w1", {"notification_type": "permission_prompt"})
+    _hook("PermissionRequest", "w1", {"tool_name": "Bash", "tool_input": {}})
     assert state.get_agent("s", "w1").status == state.WAITING
     _hook("Notification", "w1", {"notification_type": "idle_prompt"})
     assert state.get_agent("s", "w1").status == state.WAITING

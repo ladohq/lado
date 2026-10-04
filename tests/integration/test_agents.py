@@ -217,6 +217,65 @@ def test_nothing_is_typed_into_an_agent_that_asks_the_human(repo):
     assert inputs("supervisor")[:2] == ["ask", {"answer": "yes"}]
 
 
+def holding(agent: str, n: int) -> None:
+    """Wait until the agent holds its turn for the n-th time (fake agent's `hold`)."""
+    wait_for(lambda: f"holding {n}" in tmux.capture(SESSION, agent), f"{agent} holding {n}")
+
+
+def run_hook(agent: str, event: str, key: str) -> None:
+    """Run the agent's hook as its CLI would on its own, e.g. an async hook that comes late."""
+    config = json.loads((state.home() / "agents" / SESSION / agent / "fake.json").read_text())
+    payload = json.dumps({"key": key})
+    subprocess.run(config["hooks"][event], input=payload, text=True, check=True)
+
+
+def waiting_agents() -> list[str]:
+    return [w.agent.name for w in state.waiting_items(SESSION) if w.agent]
+
+
+def test_only_the_answer_to_its_request_ends_an_agent_s_wait(repo):
+    start(repo)
+    tmux.send_text(SESSION, "supervisor", "wait k1\nresume k2\nhold\nresume k1\nhold")
+    holding("supervisor", 1)
+    # Another request's answer, e.g. a subagent's tool: the human is still needed.
+    assert status("supervisor") == state.WAITING
+    assert waiting_agents() == ["supervisor"]
+    assert lado_cli("ls").stdout.splitlines()[1].split()[3] == state.WAITING
+    tmux.send_text(SESSION, "supervisor", "go on")
+    holding("supervisor", 2)
+    assert status("supervisor") == state.BUSY  # answered, and still in its turn
+    assert waiting_agents() == []
+    tmux.send_text(SESSION, "supervisor", "go on")
+    wait_status("supervisor", state.IDLE)
+    run_hook("supervisor", "resumed", "k1")  # late: after the turn's end
+    assert status("supervisor") == state.IDLE
+
+
+def test_an_agent_waiting_after_failed_messages_gets_them_when_its_turn_ends(repo):
+    start(repo)
+    swallowed_report()
+    for attempt in range(2, 2 + len(runtime.RETRY_DELAYS)):  # every paste is swallowed
+        tmux.send_text(SESSION, "supervisor", "dialog")
+        later(runtime.RETRY_DELAYS[-1])
+        runtime.sweep(SESSION)
+        wait_for(
+            lambda n=attempt: tmux.capture(SESSION, "supervisor").count("swallowed") == n,
+            f"paste {attempt} swallowed",
+        )
+    later(runtime.RETRY_DELAYS[-1])
+    runtime.sweep(SESSION)
+    assert message_states("supervisor")[0] == state.FAILED
+    assert status("supervisor") == state.WAITING
+    # The human answered the dialog; the agent works and a tool of it ends.
+    run_hook("supervisor", "resumed", "x")
+    assert status("supervisor") == state.BUSY
+    assert message_states("supervisor")[0] == state.PENDING  # back in the queue, not typed
+    assert inputs("supervisor") == []
+    tmux.send_text(SESSION, "supervisor", "sleep 0")  # its turn, which ends
+    wait_for(lambda: got_line("supervisor", "[from w1] report"), "the report at the turn's end")
+    assert inputs("supervisor")[0] == "sleep 0"
+
+
 def test_stop_kills_agents_and_keeps_worktrees(repo):
     start(repo)
     worker = runtime.spawn_worker(SESSION, "sleep 0", name="w1")

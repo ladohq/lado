@@ -582,3 +582,22 @@ note says "Nothing is ready to use yet", while sessions, kits, flows and the web
 Wanted: a README that says what runs today (start a session, the UI, kits) and links the
 docs.
 Found: 2026-10-04, feature/server-host (implement).
+
+## A refused permission leaves the Claude agent waiting until the human types
+
+When the human refuses a Claude Code permission dialog (or dismisses an AskUserQuestion
+question) without a comment, Claude Code interrupts the turn and runs no hook: no
+PostToolUse, PermissionDenied or Stop (checked with 2.1.289). The agent stays `waiting`,
+LADO types nothing into it and its queue waits, until the human types a line.
+Wanted: the agent idle once the turn is interrupted, its queue handed over; needs a sign
+of the interruption from Claude Code (none found in its hooks).
+Found: 2026-10-04, feature/waiting-ends (implement, manual check).
+
+## One key per waiting agent, though Kilo can have several requests open
+
+Kilo keeps a list of open permission and question requests per session and shows the
+lists of the agent and its subagents together, so several can be open at once. LADO keeps
+one key (`agents.waiting_for`, the latest request's): when an earlier request is answered
+last, the agent is busy while one is still open, or waiting after the latest is answered.
+Wanted: a set of open request keys per agent; the wait ends when it is empty.
+Found: 2026-10-04, feature/waiting-ends (implement, Kilo 7.8.3 source).

@@ -56,7 +56,10 @@ def handle(
         state.set_status(session, agent, state.BUSY)
         state.confirm_sent(session, agent, event.prompt, format_message)
     elif event.kind == providers.WAITING:
-        state.set_status(session, agent, state.WAITING)
+        state.wait(session, agent, event.key)
+    elif event.kind == providers.RESUMED:
+        # Busy again; its queue waits for the turn's end, as for any busy agent.
+        state.resume(session, agent, event.key)
     elif event.kind == providers.TURN_END:
         # The human's messages this turn got: did it write to the human? Before the inbox is
         # handed over, so what the next turn gets is checked when that one ends.

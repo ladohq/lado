@@ -30,7 +30,8 @@ OFFICIAL = state.OFFICIAL_MARKETPLACE
 OFFICIAL_URL = "https://github.com/ladohq/marketplace.git"
 LIST_FILE = "marketplace.yaml"
 NAME = re.compile(r"[a-z0-9-]+")
-KIT_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")  # as lado.kits.NAME
+# A kit's name, here and in kit.yaml (lado.kits.NAME is this one).
+KIT_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 
 
 class MarketplaceError(RuntimeError):

@@ -98,12 +98,12 @@ def _about(kit: kits.Kit) -> str:
 def cmd_kits_add(args: argparse.Namespace) -> int:
     plan = kits.plan_add(args.spec, args.marketplace, args.pre)
     _warn(plan.warnings)
+    _print_plan(plan)
     if plan.needs_confirmation and not args.yes:
-        _print_plan(plan)
         if not sys.stdin.isatty():
             print("lado: not installed: confirm with --yes", file=sys.stderr)
             return 1
-        if input("Install? [y/N] ").strip().lower() not in ("y", "yes"):
+        if (_input("Install? [y/N] ") or "").lower() not in ("y", "yes"):
             print("Not installed.")
             return 1
     kit = kits.install(plan)
@@ -115,7 +115,8 @@ def cmd_kits_add(args: argparse.Namespace) -> int:
 
 def _print_plan(plan: kits.Install) -> None:
     print(f"Kit {plan.name} {plan.kit.version} from {plan.source}: {plan.address}")
-    print(f"  version {plan.tag}, commit {plan.commit}")
+    if plan.tag:
+        print(f"  version {plan.tag}, commit {plan.commit}")
     servers = ", ".join(_mcp_line(mcp) for mcp in plan.mcp.values()) or "none"
     print(f"  MCP servers it starts: {servers}")
 
@@ -135,6 +136,7 @@ def cmd_kits_update(args: argparse.Namespace) -> int:
     if plan.tag == plan.installed:
         print(f'Kit "{plan.name}" is at {plan.tag} already.')
         return 0
+    _print_plan(plan)
     _warn(
         f"{plan.name} {plan.tag} starts an MCP server {plan.installed} did not: "
         f"{_mcp_line(plan.mcp[name])}"

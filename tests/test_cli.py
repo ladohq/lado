@@ -365,11 +365,27 @@ def test_kits_add_from_git_shows_the_plan_and_asks(tmp_path, capsys, lado_home, 
     tty(monkeypatch, "n")
     assert main(["kits", "add", url]) == 1
     assert capsys.readouterr().out.endswith("Install? [y/N] Not installed.\n")
+
+    def end_of_input(prompt):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", end_of_input)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    assert main(["kits", "add", url]) == 1  # Ctrl-D: no traceback
+    assert capsys.readouterr().out.endswith("\nNot installed.\n")
+    assert not link.exists()
     tty(monkeypatch, "y")
     assert main(["kits", "add", url]) == 0
     clone = gitcache.clone_dir(url, "v1.0.0").resolve()
     assert f'Added kit "team" 1.0.0: {link} → {clone}\n' in capsys.readouterr().out
     assert link.resolve() == clone
+    # With --yes, too, the plan says what was installed.
+    assert main(["kits", "remove", "team"]) == 0
+    capsys.readouterr()
+    assert main(["kits", "add", url, "--yes"]) == 0
+    assert capsys.readouterr().out.startswith(
+        f"Kit team 1.0.0 from git: {url}\n  version v1.0.0, commit {commit}\n"
+    )
 
 
 def test_kits_add_of_the_official_marketplace_and_a_folder_does_not_ask(
@@ -382,11 +398,18 @@ def test_kits_add_of_the_official_marketplace_and_a_folder_does_not_ask(
     monkeypatch.setattr(marketplaces, "OFFICIAL_URL", official)
     tty(monkeypatch, None)
     assert main(["kits", "add", "team", "-m", "official"]) == 0
-    assert 'Added kit "team" 1.0.0 (official)' in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.startswith(f"Kit team 1.0.0 from official: {url}\n  version v1.0.0, commit ")
+    assert 'Added kit "team" 1.0.0 (official)' in out
     assert main(["kits", "remove", "team"]) == 0
+    capsys.readouterr()
     folder = _kit(tmp_path / "dev", "team")
     assert main(["kits", "add", str(folder)]) == 0
-    assert 'Added kit "team" 1.0.0 (folder)' in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.startswith(
+        f"Kit team 1.0.0 from folder: {folder.resolve()}\n  MCP servers it starts: none\n"
+    )
+    assert 'Added kit "team" 1.0.0 (folder)' in out
     assert main(["kits", "remove", "team"]) == 0
     other = publish(init_repo(tmp_path / "other"), {"marketplace.yaml": f"kits:\n  team: {url}\n"})
     assert main(["marketplaces", "add", "other", other]) == 0
@@ -409,6 +432,11 @@ def test_kits_update_does_not_ask_and_warns_about_new_mcp_servers(
     captured = capsys.readouterr()
     link = lado_home / "kits" / "team"
     new = gitcache.clone_dir(url, "v1.1.0").resolve()
+    commit = gitcache.commit(new)
+    assert captured.out.startswith(
+        f"Kit team 1.1.0 from git: {url}\n  version v1.1.0, commit {commit}\n"
+        "  MCP servers it starts: db (db-server)\n"
+    )
     assert f'Updated kit "team" from v1.0.0 to v1.1.0: {link} → {new}\n' in captured.out
     assert "running sessions get v1.1.0 for new agents only" in captured.out
     assert (

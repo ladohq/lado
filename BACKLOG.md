@@ -717,3 +717,12 @@ find role="region" and name "Agent supervisor"` (the file took 26 s, load averag
 the file alone passed (27 passed) and the next `make check` was green with no change.
 Wanted: the test waits for the region (`findByRole`) instead of expecting it at once.
 Found: 2026-10-05, feature/kit-marketplaces-core (implement).
+
+## Flaky: vitest "the Agents tab follows the agents' changes" under load
+
+`make check` failed once in `web/src/App.test.tsx` > "the Agents tab follows the agents'
+changes; a reset loads them again" with `TestingLibraryElementError: Unable to find
+role="navigation" and name "Agents"` at load average 238; the same commit was green on the
+next run with no change (296 passed).
+Wanted: the test waits for the navigation (`findByRole`) or gets its own timeout.
+Found: 2026-10-05, review of feature/kit-marketplaces-core.

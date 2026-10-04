@@ -73,7 +73,7 @@ AGENT_KEYS = {"name", "description", "skills", "mcp"}
 MCP_KEYS = {"command", "env"}
 WITHOUT_KINDS = ("agent", "skill", "mcp", "flow")
 
-NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+NAME = marketplaces.KIT_NAME
 SEMVER = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 # A path that only works on one machine: ~/..., or /dir/... at the start of a word.
@@ -565,7 +565,7 @@ def outdated() -> list[Outdated]:
     return rows
 
 
-OFFICIAL = "official"  # Install.source of a kit from the official marketplace
+OFFICIAL = marketplaces.OFFICIAL  # Install.source of a kit from the official marketplace
 
 
 def _plan_git(

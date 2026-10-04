@@ -8,7 +8,7 @@ import agent_helpers
 import pytest
 from agent_helpers import init_repo, publish
 
-from lado import __version__, cli, gitcache, runs, runtime, state
+from lado import __version__, cli, gitcache, marketplaces, runs, runtime, state
 from lado.cli import format_duration, main
 
 
@@ -145,7 +145,7 @@ def test_start_with_kits_and_without(repo, fake_tmux):
 
 def test_start_says_who_leads_and_which_supervisor_is_not_used(repo, fake_tmux, capsys):
     kit = _kit(repo, "team")
-    (kit / "kit.yaml").write_text("name: team\nsupervisor: rev\n")
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\nsupervisor: rev\n")
     assert main(["start", str(repo), "--name", "s", "--kit", "team", "--no-attach"]) == 0
     captured = capsys.readouterr()
     assert "lead: rev of kit team\n" in captured.out and captured.err == ""
@@ -182,12 +182,19 @@ def test_kits_lists_where_each_kit_is(repo, capsys, monkeypatch, tmp_path, lado_
         "    a: https://example.com/a.git@v1\n    b: https://example.com/b.git@v1\n"
     )
     local = _kit(tmp_path / "dev", "mine")
-    url = publish(init_repo(tmp_path / "solo"), {"kit.yaml": "name: solo\n"}, tag="v1")
+    solo = "name: solo\nversion: 1.0.0\n"
+    url = publish(init_repo(tmp_path / "solo"), {"kit.yaml": solo}, tag="v1.0.0")
+    market = publish(
+        init_repo(tmp_path / "market"), {"marketplace.yaml": f"kits:\n  solo: {url}\n"}
+    )
+    assert main(["marketplaces", "add", "ours", market]) == 0
     assert main(["kits", "add", str(local)]) == 0
-    assert main(["kits", "add", f"{url}@v1"]) == 0
+    assert main(["kits", "add", url, "--yes"]) == 0
     _kit(tmp_path / "gone", "gone")
     assert main(["kits", "add", str(tmp_path / "gone" / ".lado" / "kits" / "gone")]) == 0
     shutil.rmtree(tmp_path / "gone")
+    many = publish(init_repo(tmp_path / "many"), {"kits/old/kit.yaml": "name: old\n"}, "v1")
+    (lado_home / "kits" / "old").symlink_to(gitcache.fetch_pinned(many, "v1") / "kits" / "old")
     capsys.readouterr()
     monkeypatch.chdir(repo)
     assert main(["kits"]) == 0
@@ -196,7 +203,15 @@ def test_kits_lists_where_each_kit_is(repo, capsys, monkeypatch, tmp_path, lado_
         f"team             project   {kit}\n  1.0.0    about team; 2 packs not fetched yet" in out
     )
     assert f"mine             user      {lado_home / 'kits' / 'mine'} → {local.resolve()}" in out
-    assert f"solo             user      {lado_home / 'kits' / 'solo'} → {url}@v1" in out
+    # Which marketplace lists it is read from its clone, not kept.
+    assert (
+        f"solo             user      {lado_home / 'kits' / 'solo'} → {url}@v1.0.0 "
+        "(marketplace ours)\n  1.0.0"
+    ) in out
+    assert (
+        "  installed from a multi-kit repository, no longer supported; `lado kits remove old` "
+        "and add it again\n"
+    ) in out
     assert "gone             user" in out
     assert "  invalid: gone: broken link → " in out and "run `lado kits remove gone`" in out
     assert "default          built-in" in out
@@ -223,7 +238,7 @@ def test_kits_show_lists_the_lead_skills_of_supervisors_that_do_not_lead(repo, c
         "mcp: {db: {command: [db]}}\n---\nReview.\n"
     )
     kit = _kit(repo, "team", body)
-    (kit / "kit.yaml").write_text("name: team\nsupervisor: rev\n")
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\nsupervisor: rev\n")
     (kit / "skills" / "notes").mkdir(parents=True)
     (kit / "skills" / "notes" / "SKILL.md").write_text("---\nname: notes\ndescription: n\n---\n")
     assert main(["kits", "--repo", str(repo), "show", "default", "team"]) == 0
@@ -314,27 +329,178 @@ def test_kits_check(repo, capsys, monkeypatch):
     assert main(["kits", "check", "nope"]) == 1
 
 
-def test_kits_add_update_remove(tmp_path, repo, capsys, lado_home):
+def team_repo(tmp_path, *versions, agent=None):
+    """A kit "team" with a tag v<version> for each version: (work repo, URL)."""
     work = init_repo(tmp_path / "team")
-    files = {"kits/team/kit.yaml": "name: team\nversion: 1.0.0\n"}
-    url = publish(work, files, tag="v1.0.0")
-    publish(work, {"kits/team/kit.yaml": "name: team\nversion: 1.1.0\n"}, tag="v1.1.0")
+    url = ""
+    for version in versions:
+        files = {"kit.yaml": f"name: team\nversion: {version}\n"}
+        if agent:
+            files["agents/w.md"] = agent
+        url = publish(work, files, tag=f"v{version}")
+    return work, url
+
+
+def tty(monkeypatch, answer: str | None):
+    """stdin a terminal where the human types `answer`, or a pipe for None."""
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: answer is not None)
+    monkeypatch.setattr("builtins.input", lambda prompt: print(prompt, end="") or answer)
+
+
+def test_kits_add_from_git_shows_the_plan_and_asks(tmp_path, capsys, lado_home, monkeypatch):
+    mcp = "---\nname: w\ndescription: d\nmcp: {db: {command: [db-server, --ro]}}\n---\n"
+    work, url = team_repo(tmp_path, "1.0.0", agent=mcp)
+    commit = gitcache.commit(gitcache.fetch_pinned(url, "v1.0.0"))
     link = lado_home / "kits" / "team"
-    assert main(["kits", "add", f"{url}@v1.0.0", "--kit", "team"]) == 0
-    old = gitcache.clone_dir(url, "v1.0.0").resolve() / "kits" / "team"
-    assert f'Added kit "team" 1.0.0: {link} → {old}' in capsys.readouterr().out
-
-    assert main(["kits", "update", "team", "v1.1.0"]) == 0
-    new = gitcache.clone_dir(url, "v1.1.0").resolve() / "kits" / "team"
-    out = capsys.readouterr().out
-    assert f'Updated kit "team" to v1.1.0 (1.1.0): {link} → {new}' in out
-    assert "running sessions get v1.1.0 for new agents only" in out
-
-    assert main(["kits", "add", f"{url}@v1.1.0"]) == 1
-    assert 'kit "team" is installed already' in capsys.readouterr().err
+    tty(monkeypatch, None)
     assert main(["kits", "add", url]) == 1
-    assert f"lado: pin a version: {url}@<tag or commit>" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert captured.out == (
+        f"Kit team 1.0.0 from git: {url}\n"
+        f"  version v1.0.0, commit {commit}\n"
+        "  MCP servers it starts: db (db-server --ro)\n"
+    )
+    assert captured.err == "lado: not installed: confirm with --yes\n"
+    assert not link.exists()
+    tty(monkeypatch, "n")
+    assert main(["kits", "add", url]) == 1
+    assert capsys.readouterr().out.endswith("Install? [y/N] Not installed.\n")
+    tty(monkeypatch, "y")
+    assert main(["kits", "add", url]) == 0
+    clone = gitcache.clone_dir(url, "v1.0.0").resolve()
+    assert f'Added kit "team" 1.0.0: {link} → {clone}\n' in capsys.readouterr().out
+    assert link.resolve() == clone
 
+
+def test_kits_add_of_the_official_marketplace_and_a_folder_does_not_ask(
+    tmp_path, capsys, lado_home, monkeypatch
+):
+    _, url = team_repo(tmp_path, "1.0.0")
+    official = publish(
+        init_repo(tmp_path / "official"), {"marketplace.yaml": f"kits:\n  team: {url}\n"}
+    )
+    monkeypatch.setattr(marketplaces, "OFFICIAL_URL", official)
+    tty(monkeypatch, None)
+    assert main(["kits", "add", "team", "-m", "official"]) == 0
+    assert 'Added kit "team" 1.0.0 (official)' in capsys.readouterr().out
+    assert main(["kits", "remove", "team"]) == 0
+    folder = _kit(tmp_path / "dev", "team")
+    assert main(["kits", "add", str(folder)]) == 0
+    assert 'Added kit "team" 1.0.0 (folder)' in capsys.readouterr().out
+    assert main(["kits", "remove", "team"]) == 0
+    other = publish(init_repo(tmp_path / "other"), {"marketplace.yaml": f"kits:\n  team: {url}\n"})
+    assert main(["marketplaces", "add", "other", other]) == 0
+    assert main(["kits", "add", "team@v1.0.0", "-m", "other"]) == 1
+    assert "lado: not installed: confirm with --yes" in capsys.readouterr().err
+    assert main(["kits", "add", "team@v1.0.0", "-m", "other", "--yes"]) == 0
+    assert 'Added kit "team" 1.0.0 (marketplace other)' in capsys.readouterr().out
+
+
+def test_kits_update_does_not_ask_and_warns_about_new_mcp_servers(
+    tmp_path, capsys, lado_home, monkeypatch
+):
+    work, url = team_repo(tmp_path, "1.0.0")
+    assert main(["kits", "add", url, "--yes"]) == 0
+    agent = "---\nname: w\ndescription: d\nmcp: {db: {command: [db-server]}}\n---\n"
+    publish(work, {"kit.yaml": "name: team\nversion: 1.1.0\n", "agents/w.md": agent}, "v1.1.0")
+    capsys.readouterr()
+    tty(monkeypatch, None)
+    assert main(["kits", "update", "team"]) == 0
+    captured = capsys.readouterr()
+    link = lado_home / "kits" / "team"
+    new = gitcache.clone_dir(url, "v1.1.0").resolve()
+    assert f'Updated kit "team" from v1.0.0 to v1.1.0: {link} → {new}\n' in captured.out
+    assert "running sessions get v1.1.0 for new agents only" in captured.out
+    assert (
+        "lado: WARNING: team v1.1.0 starts an MCP server v1.0.0 did not: db (db-server)\n"
+    ) in captured.err
+    assert main(["kits", "update", "team"]) == 0
+    assert capsys.readouterr().out == 'Kit "team" is at v1.1.0 already.\n'
+    assert main(["kits", "update", "team", "v1.0.0"]) == 0
+    assert link.resolve() == gitcache.clone_dir(url, "v1.0.0").resolve()
+
+
+def test_kits_outdated(tmp_path, capsys, lado_home):
+    work, url = team_repo(tmp_path, "1.0.0")
+    assert main(["kits", "add", url, "--yes"]) == 0
+    publish(work, {"kit.yaml": "name: team\nversion: 1.1.0\n"}, "v1.1.0")
+    publish(work, {"kit.yaml": "name: team\nversion: 1.2.0-rc.1\n"}, "v1.2.0-rc.1")
+    assert main(["kits", "add", str(_kit(tmp_path / "dev", "mine"))]) == 0
+    # The tag of the installed version is moved.
+    git = ["git", "-C", str(work)]
+    subprocess.run([*git, "tag", "-f", "v1.0.0", "v1.1.0"], check=True, capture_output=True)
+    subprocess.run([*git, "push", "-q", "-f", url, "v1.0.0"], check=True, capture_output=True)
+    capsys.readouterr()
+    assert main(["kits", "outdated"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "mine             -          local, not checked\n"
+        "team             v1.0.0     latest v1.1.0  pre: v1.2.0-rc.1\n"
+    )
+    assert captured.err.startswith("lado: WARNING: tag v1.0.0 of ")
+
+
+def test_kits_add_refusals(tmp_path, capsys, lado_home):
+    _, url = team_repo(tmp_path, "1.0.0")
+    assert main(["kits", "add", "lado-dev"]) == 1
+    assert "for a kit of a marketplace add -m <marketplace>" in capsys.readouterr().err
+    assert main(["kits", "add", "lado-dev", "-m", "nowhere"]) == 1
+    assert 'lado: no marketplace "nowhere"; lado marketplaces lists them' in (
+        capsys.readouterr().err
+    )
+    assert main(["kits", "add", f"{url}@main", "--yes"]) == 1
+    assert "a kit is pinned by its version tag vX.Y.Z" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main(["kits", "add", url, "--kit", "team"])  # --kit is gone
+    assert "unrecognized arguments: --kit team" in capsys.readouterr().err
+    assert main(["kits", "add", url, "--yes"]) == 0
+    assert main(["kits", "add", url, "--yes"]) == 1
+    assert 'kit "team" is installed already' in capsys.readouterr().err
+
+
+def test_marketplaces_commands(tmp_path, capsys, lado_home, monkeypatch):
+    monkeypatch.setattr(marketplaces, "OFFICIAL_URL", "file:///nowhere/official.git")
+    work = init_repo(tmp_path / "ours")
+    market = publish(work, {"marketplace.yaml": "kits:\n  a: https://example.com/a.git\n"})
+    assert main(["marketplaces"]) == 0
+    assert capsys.readouterr().out == (
+        "official  enabled   file:///nowhere/official.git  updated never\n"
+    )
+    assert main(["marketplaces", "add", "ours", market]) == 0
+    assert capsys.readouterr().out == f'Added marketplace "ours": {market} (1 kit)\n'
+    assert main(["marketplaces", "disable", "ours"]) == 0
+    assert main(["marketplaces", "list"]) == 0
+    assert f"ours      disabled  {market}  updated 20" in capsys.readouterr().out
+    assert main(["marketplaces", "enable", "ours"]) == 0
+    publish(
+        work, {"marketplace.yaml": "kits:\n  a: https://e.com/a.git\n  b: https://e.com/b.git\n"}
+    )
+    capsys.readouterr()
+    assert main(["marketplaces", "update", "ours"]) == 0
+    assert capsys.readouterr().out == 'Updated marketplace "ours" (2 kits)\n'
+    # Each enabled one: the official one is not there, the others are updated all the same.
+    assert main(["marketplaces", "update"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("lado: official: cannot clone file:///nowhere/official.git")
+    assert captured.out == 'Updated marketplace "ours" (2 kits)\n'
+    assert main(["marketplaces", "remove", "official"]) == 1
+    err = capsys.readouterr().err
+    assert err == (
+        "lado: the official marketplace cannot be removed; disable it: "
+        "lado marketplaces disable official\n"
+    )
+    assert main(["marketplaces", "remove", "ours"]) == 0
+    assert capsys.readouterr().out == 'Removed marketplace "ours"; kits installed from it stay\n'
+
+
+def test_kits_add_update_remove(tmp_path, repo, capsys, lado_home):
+    _, url = team_repo(tmp_path, "1.0.0", "1.1.0")
+    link = lado_home / "kits" / "team"
+    assert main(["kits", "add", f"{url}@v1.0.0", "--yes"]) == 0
+    capsys.readouterr()
+    assert main(["kits", "update", "team", "v1.1.0"]) == 0
+    new = gitcache.clone_dir(url, "v1.1.0").resolve()
+    capsys.readouterr()
     assert main(["kits", "remove", "team"]) == 0
     assert f'Removed kit "team": {link} → {new}; the folder stays' in capsys.readouterr().out
     assert not link.exists() and new.is_dir()
@@ -351,12 +517,15 @@ def test_kits_check_fetches_packs_and_warns_about_a_version(tmp_path, repo, caps
     files = {
         "kit.yaml": f"name: team\nversion: 1.0.0\ndependencies:\n  skills:\n    p: {pack}@v1\n"
     }
-    url = publish(init_repo(tmp_path / "team"), files, tag="v2.0.0")
-    assert main(["kits", "add", f"{url}@v2.0.0"]) == 0
-    capsys.readouterr()
+    work = init_repo(tmp_path / "team")
+    url = publish(work, files, tag="v2.0.0")
+    # Pinned to a commit by an older LADO, which did not check the version.
+    commit = gitcache.commit(work)
+    (repo / ".lado" / "kits").mkdir(parents=True)
+    (repo / ".lado" / "kits" / "team").symlink_to(gitcache.fetch_pinned(url, commit))
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
     captured = capsys.readouterr()
-    assert f"warning: team: version 1.0.0 in kit.yaml, but {url}@v2.0.0 is at v2.0.0" in (
+    assert f"warning: team: version 1.0.0 in kit.yaml, but {url}@{commit} is at v2.0.0" in (
         captured.err
     )
     assert "team: OK (0 agents, 1 skills, 1 packs and 0 flows)" in captured.out

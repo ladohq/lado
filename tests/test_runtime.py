@@ -1122,7 +1122,7 @@ def _write(path, text):
 def team_kit(repo):
     """A project kit on top of the default kit: a reviewer role, two skills, an MCP server."""
     kit = repo / ".lado" / "kits" / "team"
-    _write(kit / "kit.yaml", "name: team\n")
+    _write(kit / "kit.yaml", "name: team\nversion: 1.0.0\n")
     _write(
         kit / "agents" / "reviewer.md",
         "---\nname: reviewer\ndescription: reviews branches\nskills: [checklist]\n"
@@ -1219,7 +1219,7 @@ def test_spawn_worker_takes_the_only_role(repo, fake_tmux):
 
 
 def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
-    _write(team_kit / "kit.yaml", "name: team\nsupervisor: boss\n")
+    _write(team_kit / "kit.yaml", "name: team\nversion: 1.0.0\nsupervisor: boss\n")
     _write(team_kit / "agents" / "boss.md", "---\nname: boss\ndescription: d\n---\nYou lead.\n")
     started = runtime.start_session(str(repo), "s", None, kit_names=["team"])
     assert started.lead == "lead: boss of kit team"
@@ -1958,7 +1958,7 @@ def boss_kit(repo):
     """Kit boss with a supervisor that names its skill notes (with a script, and a link to a
     file outside the kit) and has an MCP server; with the default kit, it does not lead."""
     kit = repo / ".lado" / "kits" / "boss"
-    _write(kit / "kit.yaml", "name: boss\nsupervisor: chief\n")
+    _write(kit / "kit.yaml", "name: boss\nversion: 1.0.0\nsupervisor: chief\n")
     _write(
         kit / "agents" / "chief.md",
         "---\nname: chief\ndescription: 'Chief: leads \"boss\" work'\nskills: [notes]\n"
@@ -2036,7 +2036,7 @@ def test_lead_skills_are_written_anew_at_each_start(repo, fake_tmux, boss_kit, l
 
 def test_a_lead_skill_says_when_its_supervisor_lists_no_skills(repo, fake_tmux, lado_home):
     kit = repo / ".lado" / "kits" / "boss"
-    _write(kit / "kit.yaml", "name: boss\nsupervisor: chief\n")
+    _write(kit / "kit.yaml", "name: boss\nversion: 1.0.0\nsupervisor: chief\n")
     _write(kit / "agents" / "chief.md", "---\nname: chief\ndescription: c\n---\nLead.\n")
     runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"])
     skill_md = _lead_dir(lado_home) / "lead-skills" / "lead-boss" / "SKILL.md"

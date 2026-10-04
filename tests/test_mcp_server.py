@@ -196,7 +196,7 @@ def _call(session, agent, tool, args=None):
 def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\n")
+    (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
     run = _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
@@ -225,7 +225,7 @@ SHORT = {"run", "flow", "state", "status", "acting", "outcomes", "gate", "visits
 def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\n")
+    (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
     task = "Add x. " + "Details. " * 50
@@ -253,7 +253,7 @@ def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, f
 def test_no_agent_can_answer_a_gate(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\n")
+    (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     gated = SHIP.replace("{done: merge}", "{done: check}") + (
         "  check: {gate: approval, ask: 'Go?', outcomes: {approved: merge, rejected: build}}\n"
     )
@@ -278,7 +278,7 @@ def test_spawn_worker_needs_a_task_without_a_run(repo, fake_tmux):
 def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "k"
     (kit / "agents").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: k\n")
+    (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: reviews\n---\nReview.\n")
     (kit / "skills" / "s").mkdir(parents=True)
     (kit / "skills" / "s" / "SKILL.md").write_text("---\nname: s\ndescription: d\n---\n")

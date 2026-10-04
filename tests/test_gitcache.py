@@ -108,3 +108,60 @@ def test_fetch_errors_leave_nothing(work, lado_home, ref, error):
 def test_git_error_names_the_address_and_ref(lado_home):
     with pytest.raises(gitcache.GitError, match="cannot get file:///nowhere/x.git@v1: .*"):
         gitcache.fetch_pinned("file:///nowhere/x.git", "v1")
+
+
+def test_versions_sort_by_semver_precedence():
+    tags = [
+        "v1.0.0",
+        "v1.10.0-rc.2",
+        "v1.2.0",
+        "v1.10.0-rc.10",
+        "v1.10.0-beta",
+        "v1.10.0-rc.2.1",
+        "v1.10.0-1",
+        "v0.9.0",
+        "release",
+        "1.11.0",
+    ]
+    assert gitcache.sorted_versions(tags) == [
+        "v0.9.0",
+        "v1.0.0",
+        "v1.2.0",
+        "v1.10.0-1",  # numeric identifiers are lower than alphanumeric ones
+        "v1.10.0-beta",
+        "v1.10.0-rc.2",
+        "v1.10.0-rc.2.1",  # a longer set of identifiers is higher when the rest is equal
+        "v1.10.0-rc.10",  # numbers compare as numbers
+    ]
+    assert gitcache.latest(tags) == "v1.2.0"  # a pre-release only when asked for
+    assert gitcache.latest(tags, pre=True) == "v1.10.0-rc.10"
+    assert gitcache.latest([*tags, "v1.10.0"], pre=True) == "v1.10.0"
+    assert gitcache.latest(["v2.0.0-rc1", "main"]) is None
+    assert gitcache.latest([]) is None
+
+
+def test_remote_tags_give_the_commit_of_each_tag(work):
+    url = publish(work, {"a": "1"}, tag="v1.0.0")
+    first = head(work)
+    subprocess.run(["git", "-C", str(work), "commit", "-q", "--allow-empty", "-m", "2"], check=True)
+    # An annotated tag names its tag object; its commit is what counts.
+    subprocess.run(["git", "-C", str(work), "tag", "-a", "-m", "two", "v2.0.0"], check=True)
+    subprocess.run(["git", "-C", str(work), "push", "-q", "--tags", url, "main"], check=True)
+    assert gitcache.remote_tags(url) == {"v1.0.0": first, "v2.0.0": head(work)}
+    with pytest.raises(gitcache.GitError, match="cannot read the tags of file:///nowhere.git: "):
+        gitcache.remote_tags("file:///nowhere.git")
+
+
+def test_clone_branch_and_refresh_follow_the_main_branch(work, tmp_path):
+    url = publish(work, {"a": "1"})
+    folder = tmp_path / "market"
+    gitcache.clone_branch(url, folder)
+    assert (folder / "a").read_text() == "1" and gitcache.commit(folder) == head(work)
+    assert gitcache.address(folder) == url
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".market")] == []
+    publish(work, {"a": "2"})
+    gitcache.refresh(folder)
+    assert (folder / "a").read_text() == "2" and gitcache.commit(folder) == head(work)
+    with pytest.raises(gitcache.GitError, match="cannot clone file:///nowhere.git: "):
+        gitcache.clone_branch("file:///nowhere.git", tmp_path / "other")
+    assert not (tmp_path / "other").exists()

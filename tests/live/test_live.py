@@ -67,7 +67,7 @@ def passive_kit(repo) -> str:
     kit = repo / ".lado" / "kits" / "live"
     (kit / "agents").mkdir(parents=True)
     (kit / "flows").mkdir()
-    (kit / "kit.yaml").write_text("name: live\nsupervisor: passive\n")
+    (kit / "kit.yaml").write_text("name: live\nversion: 1.0.0\nsupervisor: passive\n")
     (kit / "agents" / "passive.md").write_text(PASSIVE_SUPERVISOR)
     (kit / "flows" / "tiny.yaml").write_text(TINY_FLOW)
     return kit.name

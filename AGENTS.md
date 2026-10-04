@@ -119,7 +119,13 @@ schema change.
     a name in two kits refused with both ways out (`KitError.switch_off`), a flow state of
     a kit's supervisor read as the lead's (`kits.LEAD`), validation, and the installed kits:
     `lado kits add/update/remove` keep links in `LADO_HOME/kits` (what is there is
-    installed; no second list). `load` never uses the network (a git pack not in the cache
+    installed; no second list). A kit is one repository with kit.yaml at its root;
+    `version` is required of every kit and must agree with the tag `vX.Y.Z` it is installed
+    by (a commit, a branch or `kits/<name>/` is refused). `plan_add` / `plan_update` say what
+    an add or update would do (an `Install`: tag, commit, source, MCP servers, whether to
+    ask, warnings such as a moved tag; the clone made, no link) and print nothing;
+    `install` makes the link; `outdated` compares each installed kit with its remote's tags.
+    The installed tag and commit are its clone's, kept nowhere else. `load` never uses the network (a git pack not in the cache
     yet is `Pack.skills is None`); `fetch` clones it; `resolve` builds an `Environment` only
     from fetched kits. An agent sees the session kits' own skills, its own kit's packs and
     the packs of kits without agents (`Environment.shared`, `.private`). A provider gets an
@@ -132,7 +138,19 @@ schema change.
   - `gitcache.py`: the git cache: one clone per (address, tag or commit) in
     `LADO_HOME/cache/<repo>-<hash>/<quote(ref)>`, made in a temporary folder and renamed;
     a clone that is there is never fetched again; a branch is refused. Packs and
-    `lado kits add/update` use `fetch_pinned`. Nothing cleans it yet.
+    `lado kits add/update` use `fetch_pinned`. Nothing cleans it yet. `remote_tags` (`git
+    ls-remote`, an annotated tag's commit) is the one look at a remote's tags per add,
+    update or outdated; `latest` sorts `VERSION_TAG`s by semver precedence (a pre-release
+    only with `pre`). `clone_branch` and `refresh` keep a marketplace's clone on its main
+    branch. All of LADO's git commands for kits and marketplaces are here.
+  - `marketplaces.py`: kit marketplaces, git repositories with `marketplace.yaml` at the
+    root (`kits:` kit name -> git address), kept in the `marketplaces` table (`list_`,
+    `add`, `remove`, `set_enabled`, `update`); the official one is a row made with the
+    table, no url (`OFFICIAL_URL`), never removed, only disabled. Its clone in
+    `LADO_HOME/marketplaces/<name>/` is a cache: made on first use, made again when its
+    origin is another address. `resolve` finds a kit's address for `lado kits add -m`;
+    `source_of` names the marketplace of an address from the clones there are, no network.
+    `MarketplaceError`; it does not import `kits`.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
     a work or gate state's optional `needs` lists the states whose latest notes its step
     gets or the human sees at the gate)
@@ -193,7 +211,11 @@ schema change.
     the latest `CHANGES_KEPT`. From schema 14 `events` is journaled too, key its id, but
     only inserts (`JOURNALED_OPS`) of a flow run's events (`RUN_EVENT`: `run IS NOT NULL`;
     a status event would double the journal); a trigger's condition is in `JOURNAL_WHEN`.
-    A new table the UI shows gets its triggers in `JOURNALED`.
+    A new table the UI shows gets its triggers in `JOURNALED`. From schema 17 the
+    `marketplaces` table (name, url, enabled, updated_at; `state.Marketplace`) holds the kit
+    marketplaces; the `official` row is made with it (in `SCHEMA` and in the migration),
+    and its changes are journaled with session `''` (`JOURNAL_SESSION`); the feed sends them
+    with `item: null`.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -387,13 +409,27 @@ schema change.
 make a first commit). The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
-`lado kits add <git-url>@<tag|commit>` (or a folder, linked and read in place, the way to
-develop a kit) installs kits into `LADO_HOME/kits`; `--kit NAME` picks some of a repository
-with `kits/<name>/`. `lado kits update <name> <tag|commit>` moves a kit installed from git
-to another version: running sessions build their kits again at each spawn and run start, so
-only their new agents get it (the output says so); the old clone stays in the cache.
-`lado kits remove <name>` drops the link. `lado kits` lists every kit with where it comes
-from; `lado kits show` names each kit's packs and where each agent's skills come from.
+`lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository into `LADO_HOME/kits`:
+without a tag its latest release, with `--pre` its latest version of all. A folder (linked
+and read in place, the way to develop a kit) has no version. `lado kits add <kit>[@vX.Y.Z]
+-m <marketplace>` takes the kit's address from that marketplace's list; without `-m` LADO
+never looks in a marketplace. A kit not from the official marketplace or a folder shows
+what would be installed (address, version, commit, MCP servers) and asks `Install? [y/N]`;
+`--yes` skips the question, and without a terminal it is required. A kit whose latest
+version needs a newer LADO is refused. `lado kits update <name> [vX.Y.Z]` moves a kit
+installed from git to its latest or another version without asking, and warns on stderr
+about the MCP servers the installed version did not start: running sessions build their
+kits again at each spawn and run start, so only their new agents get it (the output says
+so); the old clone stays in the cache. `lado kits outdated` checks each installed kit
+against its remote's tags and says why it does not check a folder, a kit pinned to a
+commit or one from an older LADO's `kits/<name>/`. A tag that points to another commit
+than the installed one is a loud warning (outdated, update, add). `lado kits remove <name>`
+drops the link. `lado kits` lists every kit with its version and where it comes from (the
+marketplace that lists it, read from the clones); `lado kits show` names each kit's packs
+and where each agent's skills come from.
+`lado marketplaces [list]`, `add <name> <git-url>`, `remove <name>`, `enable|disable
+<name>` and `update [<name>]` manage the marketplaces; `official`
+(github.com/ladohq/marketplace) is always there and can only be disabled.
 
 `lado log <session>` shows what happened in a session: messages between agents (one line
 with their delivery state and summary, the body indented below) and agent events (spawned,

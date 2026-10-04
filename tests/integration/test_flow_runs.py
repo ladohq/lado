@@ -88,7 +88,7 @@ states:
 def flow_kit(repo):
     kit = repo / ".lado" / "kits" / "itflow"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: itflow\n")
+    (kit / "kit.yaml").write_text("name: itflow\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     (kit / "flows" / "gated.yaml").write_text(GATED)
     (kit / "flows" / "reviewed.yaml").write_text(REVIEWED)

@@ -105,6 +105,18 @@ def test_each_write_of_a_table_is_one_change(lado_home, table):
         assert journal(before) == [(table, "s", key, op)], statement
 
 
+def test_each_write_of_a_marketplace_is_one_change_of_no_session(lado_home):
+    for statement, op in (
+        ("INSERT INTO marketplaces (name, url) VALUES ('team', 'file:///m.git')", "insert"),
+        ("UPDATE marketplaces SET enabled = 0 WHERE name = 'team'", "update"),
+        ("DELETE FROM marketplaces WHERE name = 'team'", "delete"),
+    ):
+        before = last()
+        with state.connect() as db:
+            db.execute(statement)
+        assert journal(before) == [("marketplaces", "", "team", op)], statement
+
+
 def test_a_change_of_any_agent_column_but_seen_at_is_recorded(lado_home):
     with state.connect() as db:
         setup_agent(db)

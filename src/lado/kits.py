@@ -20,6 +20,11 @@ relative to the kit's. A pack is SKILL.md folders (anywhere under skills/, or un
 Kits are looked up by name in the project (<repo>/.lado/kits), then in LADO_HOME/kits, then
 among the kits built into LADO; the first hit wins. LADO_HOME/kits holds what is installed:
 folders, and links that `lado kits add` makes to a kit in the git cache or in a local folder.
+A kit is one repository with kit.yaml at its root, installed by a version tag vX.Y.Z that
+must agree with its kit.yaml `version` (required of every kit): plan_add and plan_update say
+what an add or update would do (the clone made, nothing linked), install does it. Which tag
+and commit a kit is at is its clone's (gitcache), kept nowhere else; which marketplace lists
+it is read from the marketplaces' clones (lado.marketplaces.source_of).
 
 `supervisor` in kit.yaml names the agent of the kit that leads a session; the name
 "supervisor" is reserved for it. A flow state of that agent is the lead's step: it is read
@@ -49,7 +54,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import __version__, flows, gitcache, state
+from lado import __version__, flows, gitcache, marketplaces, state
 from lado.flows import Flow
 from lado.providers.base import McpServer
 
@@ -407,53 +412,270 @@ def available(repo: str | Path | None) -> list[tuple[Found, str | None]]:
     return listed
 
 
-def add(spec: str, only: Iterable[str] = ()) -> list[Kit]:
-    """Install the kits of a git repository (`<address>@<tag or commit>`, cloned into the
-    git cache) or a local folder (read in place): a link LADO_HOME/kits/<name> to each kit,
-    the one at its root or those in kits/<name>/ (`only`: these of them). Each kit is loaded
-    and fetched; when one fails, no link of this call stays."""
-    location, ref = gitcache.split_ref(spec)
-    if gitcache.is_git(location):
-        if not ref:
-            raise KitError(f"pin a version: {location}@<tag or commit>")
-        root = _cache(location, ref)
-    else:
-        root = Path(location).expanduser().resolve()
-        if ref and not root.is_dir():
-            raise KitError(f"{location}: a local folder has no version; drop @{ref}")
-        if not root.is_dir():
-            raise KitError(f"{location} is not a folder")
-    found = _kits_in(root, spec)
-    only = list(only)
-    for name in only:
-        if name not in found:
-            raise KitError(f'no kit "{name}" in {spec}; kits there: {", ".join(found)}')
-    chosen = {n: p for n, p in found.items() if not only or n in only}
-    for name in chosen:
-        link = installed() / name
-        if link.exists() or link.is_symlink():
+@dataclass(frozen=True)
+class Install:
+    """What `lado kits add` or `update` would do (plan_add, plan_update); install does it.
+    A plan has the kit in the git cache, loaded and fetched, but changes no link."""
+
+    name: str
+    address: str  # the git address, or the folder
+    tag: str | None  # the version tag; None for a folder
+    commit: str | None  # the commit the kit's clone is at; None for a folder
+    source: str  # "official", "marketplace <name>", "git" or "folder"
+    kit: Kit
+    installed: str | None = None  # an update's: the tag or commit installed now
+    needs_confirmation: bool = False  # an add not from the official marketplace or a folder
+    new_mcp: tuple[str, ...] = ()  # an update's: MCP servers the installed version did not have
+    warnings: tuple[str, ...] = ()  # a moved tag
+
+    @property
+    def mcp(self) -> dict[str, McpDef]:
+        """The MCP servers the kit's agents start, by name."""
+        return {name: mcp for a in self.kit.agents.values() for name, mcp in a.mcp.items()}
+
+
+@dataclass(frozen=True)
+class Outdated:
+    """An installed kit against the versions its repository has now (outdated)."""
+
+    name: str
+    installed: str  # its tag or commit; '' when not from git
+    latest: str | None = None  # the highest release
+    pre: str | None = None  # a pre-release higher than the latest release
+    note: str = ""  # why it was not checked; '' when it was
+    warnings: tuple[str, ...] = ()  # a moved tag
+
+
+def plan_add(spec: str, market: str | None = None, pre: bool = False) -> Install:
+    """What adding a kit would do: a git address (`<address>[@vX.Y.Z]`), a folder, or with
+    `market` a kit's name (`<kit>[@vX.Y.Z]`) in that marketplace. Without a tag it takes
+    the latest release, with `pre` the latest version of all. Changes no link."""
+    if market:
+        name, _, ref = spec.partition("@")
+        address = marketplaces.resolve(market, name)
+        source = OFFICIAL if market == marketplaces.OFFICIAL else f"marketplace {market}"
+        again = f"lado kits add {name}@{{tag}} -m {market}"
+        plan = _plan_git(address, ref or None, pre, source, again, None)
+        if plan.name != name:
             raise KitError(
-                f'kit "{name}" is installed already: {link}; `lado kits remove {name}` first'
+                f'marketplace "{market}" lists "{name}" at {address}, but its kit is "{plan.name}"'
             )
-    made: list[Path] = []
+    else:
+        location, ref = gitcache.split_ref(spec)
+        if gitcache.is_git(location):
+            plan = _plan_git(location, ref, pre, "git", f"lado kits add {location}@{{tag}}", None)
+        else:
+            plan = _plan_folder(spec)
+    link = installed() / plan.name
+    if link.exists() or link.is_symlink():
+        raise KitError(
+            f'kit "{plan.name}" is installed already: {link}; `lado kits update {plan.name}` '
+            f"or `lado kits remove {plan.name}` first"
+        )
+    return plan
+
+
+def plan_update(name: str, tag: str | None = None, pre: bool = False) -> Install:
+    """What moving kit `name`, installed from git, to `tag` (or its latest version) would
+    do. Its address is its clone's; changes no link."""
+    clone, address = _installed_clone(name)
+    current = gitcache.ref(clone)
+    old = _kit_or_none(installed() / name)
+    plan = _plan_git(
+        address,
+        tag,
+        pre,
+        _source(address),
+        f"lado kits update {name} {{tag}}",
+        (current, clone),
+    )
+    if plan.name != name:
+        raise KitError(f'{address}@{plan.tag}: the kit is named "{plan.name}", not "{name}"')
+    before = set(_mcp_names(old)) if old else set()
+    return dataclasses.replace(
+        plan,
+        installed=current,
+        needs_confirmation=False,  # the human's decision: an update warns, never asks
+        new_mcp=tuple(sorted(set(plan.mcp) - before)),
+    )
+
+
+def install(plan: Install) -> Kit:
+    """Make the link LADO_HOME/kits/<name> lead to the plan's kit: a new one for an add,
+    replaced in one step for an update (the old version stays in the cache)."""
+    link = installed() / plan.name
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if plan.installed is None:
+        if link.exists() or link.is_symlink():
+            raise KitError(f'kit "{plan.name}" is installed already: {link}')
+        link.symlink_to(plan.kit.path, target_is_directory=True)
+    else:
+        temp = link.with_name(f".{plan.name}.new")
+        temp.unlink(missing_ok=True)
+        temp.symlink_to(plan.kit.path, target_is_directory=True)
+        os.replace(temp, link)
+    return dataclasses.replace(plan.kit, where="user")
+
+
+def outdated() -> list[Outdated]:
+    """Each kit in LADO_HOME/kits against the version tags of its repository now (the
+    network, once per kit from git); the others say why they are not checked."""
+    rows = []
+    base = installed()
+    entries = sorted(base.iterdir()) if base.is_dir() else []
+    for link in entries:
+        if link.name.startswith("."):
+            continue
+        name = link.name
+        target = link.resolve()
+        clone = gitcache.clone_root(target) if link.is_symlink() else None
+        if link.is_symlink() and not link.exists():
+            rows.append(Outdated(name, "", note=f"broken link; run `lado kits remove {name}`"))
+        elif clone is None:
+            rows.append(Outdated(name, "", note="local, not checked"))
+        elif clone != target:
+            rows.append(Outdated(name, gitcache.ref(clone), note=_multi_kit(name)))
+        elif not gitcache.VERSION_TAG.fullmatch(current := gitcache.ref(clone)):
+            rows.append(
+                Outdated(
+                    name,
+                    current,
+                    note=f"pinned to commit {current}; `lado kits update {name}` moves it to "
+                    "a version tag",
+                )
+            )
+        else:
+            try:
+                address = gitcache.address(clone)
+                tags = gitcache.remote_tags(address)
+            except gitcache.GitError as exc:
+                rows.append(Outdated(name, current, note=f"cannot check: {exc}"))
+                continue
+            latest = gitcache.latest(tags)
+            newest = gitcache.latest(tags, pre=True)
+            rows.append(
+                Outdated(
+                    name,
+                    current,
+                    latest=latest,
+                    pre=newest if newest != latest else None,
+                    warnings=tuple(_moved(address, current, clone, tags)),
+                )
+            )
+    return rows
+
+
+OFFICIAL = "official"  # Install.source of a kit from the official marketplace
+
+
+def _plan_git(
+    address: str,
+    ref: str | None,
+    pre: bool,
+    source: str,
+    again: str,
+    current: tuple[str, Path] | None,
+) -> Install:
+    """The plan for the kit at `address`: `ref` or the latest version tag (one look at the
+    remote's tags), its clone in the cache, loaded, checked and fetched. `again` is the
+    command that takes another tag ({tag}); `current` an update's installed ref and clone."""
     try:
-        loaded = []
-        for name, path in chosen.items():
-            link = installed() / name
-            link.parent.mkdir(parents=True, exist_ok=True)
-            link.symlink_to(path, target_is_directory=True)
-            made.append(link)
-            loaded.append(fetch(load(link, "user")))
-    except BaseException:
-        for link in made:
-            link.unlink()
-        raise
-    return loaded
+        tags = gitcache.remote_tags(address)
+    except gitcache.GitError as exc:
+        raise KitError(str(exc)) from None
+    tag = _pick(address, tags, ref, pre)
+    cached = gitcache.clone_dir(address, tag).is_dir()
+    clone = _cache(address, tag)
+    warnings = []
+    if current and gitcache.VERSION_TAG.fullmatch(current[0]):
+        warnings += _moved(address, current[0], current[1], tags)
+    if cached and not (current and current[0] == tag):
+        warnings += _moved(address, tag, clone, tags)
+    _check_root(clone, f"{address}@{tag}")
+    need = _lado_needed(clone)
+    if need:
+        older = [t for t in gitcache.sorted_versions(tags) if pre or "-" not in t]
+        older = older[: older.index(tag)] if tag in older else []
+        hint = f", or add an older version: {again.format(tag=older[-1])}" if older else ""
+        version = _yaml_file(clone / KIT_FILE, []).get("version")
+        raise KitError(
+            f"{_kit_name(clone)} {version} needs LADO {need}, this is {__version__}; "
+            f"upgrade LADO{hint}"
+        )
+    kit = fetch(load(clone, "user", named_folder=False))
+    if kit.version != tag[1:]:
+        raise KitError(
+            f"{address}@{tag}: kit.yaml says version {kit.version}; the tag and kit.yaml must agree"
+        )
+    return Install(
+        name=kit.name,
+        address=address,
+        tag=tag,
+        commit=_commit(clone),
+        source=source,
+        kit=kit,
+        needs_confirmation=source != OFFICIAL,
+        warnings=tuple(warnings),
+    )
 
 
-def update(name: str, ref: str) -> Kit:
-    """Point the link of kit `name`, installed from git, to the same kit at `ref`; the link
-    is replaced in one step. The clone of the old version stays in the cache."""
+def _plan_folder(spec: str) -> Install:
+    location, ref = gitcache.split_ref(spec)
+    root = Path(spec).expanduser().resolve()  # a folder's name may have an @
+    if ref and not root.is_dir():
+        raise KitError(f"{location}: a local folder has no version; drop @{ref}")
+    if not root.is_dir():
+        if not re.search(r"[/\\~]", location) and not location.startswith("."):
+            raise KitError(
+                f'"{location}" is neither a git address nor a folder; for a kit of a '
+                "marketplace add -m <marketplace> (lado marketplaces lists them)"
+            )
+        raise KitError(f"{location} is not a folder")
+    _check_root(root, location)
+    kit = fetch(load(root, "user", named_folder=False))
+    return Install(kit.name, str(root), None, None, "folder", kit)
+
+
+def _pick(address: str, tags: dict[str, str], ref: str | None, pre: bool) -> str:
+    """The version tag to take: `ref`, which must be one, or the latest."""
+    versions = gitcache.sorted_versions(tags)
+    if ref:
+        if not gitcache.VERSION_TAG.fullmatch(ref):
+            raise KitError(
+                f"{address}@{ref}: a kit is pinned by its version tag vX.Y.Z; to try an "
+                "unreleased kit, tag a pre-release (vX.Y.Z-rc.1) or add its folder"
+            )
+        if ref not in tags:
+            listed = ", ".join(versions) or "none"
+            raise KitError(f"{address} has no tag {ref}; its versions: {listed}")
+        return ref
+    tag = gitcache.latest(tags, pre)
+    if tag:
+        return tag
+    if versions:
+        raise KitError(
+            f"{address} has pre-releases only ({', '.join(versions)}): add --pre or @<tag>"
+        )
+    raise KitError(f"{address} has no version tags vX.Y.Z")
+
+
+def _moved(address: str, tag: str, clone: Path, tags: dict[str, str]) -> list[str]:
+    """A warning when the remote's `tag` points to another commit than `clone` is at."""
+    remote = tags.get(tag)
+    try:
+        local = gitcache.commit(clone)
+    except gitcache.GitError:
+        return []  # a damaged clone is reported where it is read
+    if remote is None or remote == local:
+        return []
+    return [
+        f"tag {tag} of {address} now points to {remote}, installed {local}; the kit was "
+        "changed under the same version"
+    ]
+
+
+def _installed_clone(name: str) -> tuple[Path, str]:
+    """The clone in the git cache that the link of kit `name` leads to, and its address."""
     link = _installed_entry(name)
     if not link.is_symlink():
         raise KitError(f"{link}: {name} is a folder LADO did not install; nothing to update")
@@ -463,19 +685,70 @@ def update(name: str, ref: str) -> Kit:
         raise KitError(
             f"{name} links to the folder {target}: it is read in place, nothing to update"
         )
+    if clone != target:
+        raise KitError(f"{name}: {_multi_kit(name)}")
     try:
-        address = gitcache.address(clone)
+        return clone, gitcache.address(clone)
     except gitcache.GitError as exc:
         raise KitError(f"cannot read the clone {clone}: {exc}") from None
-    new = _cache(address, ref) / target.relative_to(clone)
-    kit = fetch(load(new, "user", named_folder=False))
-    if kit.name != name:
-        raise KitError(f'{new / KIT_FILE}: at {ref} the kit is named "{kit.name}", not "{name}"')
-    temp = link.with_name(f".{name}.new")
-    temp.unlink(missing_ok=True)
-    temp.symlink_to(new, target_is_directory=True)
-    os.replace(temp, link)
-    return kit
+
+
+def multi_kit(name: str) -> str | None:
+    """Why kit `name` in LADO_HOME/kits cannot be updated when it was installed from a
+    repository's kits/<name>/ (older LADOs did that), else None."""
+    link = installed() / name
+    target = link.resolve()
+    clone = gitcache.clone_root(target) if link.is_symlink() else None
+    if clone is None or clone == target:
+        return None
+    return _multi_kit(name)
+
+
+def _multi_kit(name: str) -> str:
+    return (
+        "installed from a multi-kit repository, no longer supported; "
+        f"`lado kits remove {name}` and add it again"
+    )
+
+
+def _source(address: str) -> str:
+    market = marketplaces.source_of(address)
+    if market is None:
+        return "git"
+    return OFFICIAL if market == marketplaces.OFFICIAL else f"marketplace {market}"
+
+
+def _kit_or_none(path: Path) -> Kit | None:
+    try:
+        return load(path, "user")
+    except KitError:
+        return None  # an older version LADO cannot read: each MCP server counts as new
+
+
+def _mcp_names(kit: Kit) -> list[str]:
+    return [name for agent in kit.agents.values() for name in agent.mcp]
+
+
+def _commit(clone: Path) -> str:
+    try:
+        return gitcache.commit(clone)
+    except gitcache.GitError as exc:
+        raise KitError(f"cannot read the clone {clone}: {exc}") from None
+
+
+def _lado_needed(path: Path) -> str | None:
+    """`X.Y[.Z]` when the kit at `path` needs a newer LADO than this one, else None."""
+    meta = _yaml_file(path / KIT_FILE, [])
+    deps = meta.get("dependencies") if isinstance(meta, dict) else None
+    need = deps.get("lado") if isinstance(deps, dict) else None
+    match = LADO_NEEDS.fullmatch(need.strip()) if isinstance(need, str) else None
+    if match and _too_old(match):
+        return need.strip().removeprefix(">=").strip()
+    return None
+
+
+def _too_old(need: re.Match) -> bool:
+    return _version(__version__) < tuple(int(n or 0) for n in need.groups())
 
 
 def remove(name: str) -> Path:
@@ -503,19 +776,21 @@ def _cache(address: str, ref: str) -> Path:
         raise KitError(str(exc)) from None
 
 
-def _kits_in(root: Path, spec: str) -> dict[str, Path]:
-    """The kits of a repository or folder: the one at its root, or those in kits/<name>/."""
+def _check_root(root: Path, spec: str) -> None:
+    """A kit to install has kit.yaml at the root of its repository or folder."""
     if (root / KIT_FILE).is_file():
-        return {_kit_name(root): root}
-    found = {p.name: p for p in _in_folder_paths(root / "kits")}
-    if found:
-        return found
+        return
+    if _in_folder_paths(root / "kits"):
+        raise KitError(
+            f"{spec}: kits in kits/<name>/ are no longer supported: a kit is one repository "
+            "with kit.yaml at its root"
+        )
     if _skill_dirs(root / "skills") or _skill_dirs(root):
         raise KitError(
             f"{spec} is a skill pack, not a kit: list it under dependencies.skills of a kit; "
             "a kit without agents shares its packs with the whole session"
         )
-    raise KitError(f"no kit in {spec}: a kit has kit.yaml at the root or in kits/<name>/")
+    raise KitError(f"no kit in {spec}: a kit has kit.yaml at its root")
 
 
 def cached_origin(path: Path) -> str | None:
@@ -628,7 +903,9 @@ def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Ki
     elif named_folder and name != entry:
         errors.append(f'{path / KIT_FILE}: name "{name}" differs from the folder "{entry}"')
     version = meta.get("version")
-    if version is not None and not SEMVER.fullmatch(str(version)):
+    if version is None:
+        errors.append(f"{path / KIT_FILE}: version is missing; add `version: X.Y.Z`")
+    elif not SEMVER.fullmatch(str(version)):
         errors.append(f"{path / KIT_FILE}: version must be X.Y.Z or X.Y.Z-<prerelease>")
     if "include" in meta:
         errors.append(
@@ -661,7 +938,7 @@ def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Ki
         name=kit_name,
         path=path,
         where=where,
-        version="" if version is None else str(version),
+        version=str(version),
         description=str(meta.get("description", "")),
         supervisor=supervisor,
         agents=agents,
@@ -703,7 +980,7 @@ def _load_dependencies(value: object, path: Path, kit_name: str, errors: list[st
         match = LADO_NEEDS.fullmatch(need.strip()) if isinstance(need, str) else None
         if not match:
             errors.append(f'{file}: dependencies.lado must be ">=X.Y" or ">=X.Y.Z"')
-        elif _version(__version__) < tuple(int(n or 0) for n in match.groups()):
+        elif _too_old(match):
             errors.append(
                 f'{file}: kit "{kit_name}" needs LADO {need.strip()}, this is {__version__}; '
                 "upgrade LADO"
@@ -1071,10 +1348,8 @@ def _and(names: list[str]) -> str:
 
 def lint(kit: Kit) -> list[str]:
     """Problems a kit can run with but should not have: paths that only work on one
-    machine (use ${KIT_DIR} or a relative path instead), a missing version."""
+    machine (use ${KIT_DIR} or a relative path instead)."""
     problems = []
-    if not kit.version:
-        problems.append(f"{kit.path / KIT_FILE}: version is missing; use X.Y.Z")
     for agent in kit.agents.values():
         raw = _frontmatter(agent.path.read_text(), agent.path, [])[1]
         problems += _hardcoded(raw, str(agent.path))

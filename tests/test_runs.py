@@ -1095,7 +1095,7 @@ def test_a_long_first_input_of_a_resumed_supervisor_comes_as_a_message(
 def test_a_step_of_a_kits_supervisor_is_the_sessions_lead(repo, fake_tmux, kit_names):
     """Kit solo's supervisor is named lead; it leads alone, or LADO's built-in one leads."""
     kit = repo / ".lado" / "kits" / "solo"
-    write(kit / "kit.yaml", "name: solo\nsupervisor: lead\n")
+    write(kit / "kit.yaml", "name: solo\nversion: 1.0.0\nsupervisor: lead\n")
     for role in ("lead", "developer", "reviewer"):
         write(kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nx\n")
     flow = FEATURE.replace("agent: supervisor", "agent: lead")

@@ -203,6 +203,21 @@ def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
     }
 
 
+def test_a_marketplaces_change_comes_without_an_item(streams):
+    """No REST model of a marketplace yet: the UI hears of the change, with no session."""
+    stream = streams()
+    stream.next()
+    state.add_marketplace("team", "file:///m.git")
+    added = stream.until(is_change("marketplaces", ""))[-1]
+    assert added.data == {
+        "kind": "marketplaces",
+        "session": "",
+        "key": "team",
+        "op": "insert",
+        "item": None,
+    }
+
+
 def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "team"
     (kit / "flows").mkdir(parents=True)

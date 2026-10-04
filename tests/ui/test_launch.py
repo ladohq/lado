@@ -64,7 +64,7 @@ def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server,
     for kit in ("kit-a", "kit-b"):
         folder = repo / ".lado" / "kits" / kit
         (folder / "agents").mkdir(parents=True)
-        (folder / "kit.yaml").write_text(f"name: {kit}\n")
+        (folder / "kit.yaml").write_text(f"name: {kit}\nversion: 1.0.0\n")
         (folder / "agents" / "reviewer.md").write_text(
             f"---\nname: reviewer\ndescription: reviews for {kit}\n---\nReview.\n"
         )

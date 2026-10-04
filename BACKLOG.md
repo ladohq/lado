@@ -667,3 +667,44 @@ alone passed (19 passed) and the next `make check` was green. The test takes abo
 when it passes, so vitest's default 5 s timeout leaves no margin.
 Wanted: the test made shorter (fewer steps or fake timers) or given its own timeout.
 Found: 2026-10-05, feature/lead-skills (implement, review fixes).
+
+## A kit whose tag was moved cannot be installed again with the new content
+
+`lado kits outdated`, `update` and `add` warn when a remote tag now points to another commit
+than the clone in `LADO_HOME/cache`, but a clone there is never fetched again: the kit
+stays at the old commit until someone deletes that clone by hand.
+Wanted: a way to take the moved tag's new content (with the warning and a confirmation),
+together with the cache cleaning above.
+Found: 2026-10-05, design of feature/kit-marketplaces-core.
+
+## `lado kits check <folder>` for a marketplace's CI
+
+A marketplace's CI (github.com/ladohq/marketplace) has to check each listed kit: its
+kit.yaml at the root, `version` equal to its tag, the name equal to the name in
+`marketplace.yaml`. LADO has no command that does all of that for a folder or address.
+Wanted: `lado kits check` covering those checks, for the marketplace's CI and its index.json.
+Found: 2026-10-05, design of feature/kit-marketplaces-core.
+
+## lado-dev lives in the multi-kit repository lado-kits
+
+lado-dev is installed from `kits/lado-dev/` of lado-kits. From LADO 0.20.0 such a kit keeps
+working, but `lado kits update` and a new `lado kits add` refuse it (no longer supported).
+Wanted: lado-dev in a repository of its own, kit.yaml at the root, `version` set and tags
+vX.Y.Z, before its next update.
+Found: 2026-10-05, design of feature/kit-marketplaces-core.
+
+## A moved tag of a skill pack goes unnoticed
+
+A kit's `dependencies.skills` pins packs by tag too, but nothing compares the cached clone
+of a pack with the remote's tag, as `lado kits outdated` does for a kit.
+Wanted: the same moved-tag warning for packs (next to the cache cleaning).
+Found: 2026-10-05, design of feature/kit-marketplaces-core.
+
+## The sources.yaml migration hint suggests refs that `lado kits add` now refuses
+
+`kits.migration_hint` prints `lado kits add <url>@<ref>` with the ref of an older LADO's
+sources.yaml, often a commit or `v1`; from 0.20.0 a kit is added only by a tag vX.Y.Z, and
+the repository may hold several kits in `kits/<name>/`, which is refused too.
+Wanted: the hint says `lado kits add <url>` (the latest release) and names the
+one-kit-per-repository rule, or the hint is dropped with sources.yaml support.
+Found: 2026-10-05, feature/kit-marketplaces-core (implement).

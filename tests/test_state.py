@@ -55,6 +55,33 @@ def test_version_1_database_is_migrated(lado_home):
         assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION
 
 
+def test_the_official_marketplace_is_in_a_new_database_and_after_the_migration(lado_home):
+    official = state.Marketplace("official", None, True, None)
+    assert state.list_marketplaces() == [official]
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
+    db.close()
+    assert not any("marketplaces" in name for name in names)
+    assert state.list_marketplaces() == [official]  # migrates
+    with state.connect() as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION == 17
+
+
+def test_marketplaces_are_added_changed_and_removed(lado_home):
+    assert state.add_marketplace("team", "file:///m.git")
+    assert not state.add_marketplace("team", "file:///other.git")
+    state.update_marketplace("team", enabled=False)
+    state.update_marketplace("team", updated_at="2026-10-05 10:00:00")
+    assert state.get_marketplace("team") == state.Marketplace(
+        "team", "file:///m.git", False, "2026-10-05 10:00:00"
+    )
+    assert [m.name for m in state.list_marketplaces()] == ["official", "team"]
+    assert state.delete_marketplace("team")
+    assert not state.delete_marketplace("team")
+    assert state.get_marketplace("team") is None
+
+
 def test_incompatible_database_is_reported(lado_home):
     lado_home.mkdir()
     sqlite3.connect(lado_home / "lado.db").execute("CREATE TABLE sessions (name TEXT)")
@@ -816,7 +843,7 @@ def test_version_14_notes_get_an_empty_actor_outcome_and_target(lado_home):
 def test_version_15_agents_wait_for_no_key(lado_home):
     state.add_session(state.Session("s", "/r", None))
     state.add_agent(_agent(status=state.WAITING))
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(16)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
     columns = {row[1] for row in db.execute("PRAGMA table_info(agents)")}
     db.close()

@@ -16,9 +16,11 @@ from lado import (
     __version__,
     doctor,
     flows,
+    gitcache,
     kits,
     log,
     loop,
+    marketplaces,
     providers,
     runs,
     runtime,
@@ -75,7 +77,13 @@ def cmd_kits(args: argparse.Namespace) -> int:
                 else "invalid; see: lado kits check " + str(kit.path)
             )
         target = f" → {link}" if link else ""
+        address = link and kits.cached_origin(kit.path.resolve())
+        market = address and marketplaces.source_of(gitcache.split_ref(address)[0])
+        target += f" (marketplace {market})" if market else ""
+        old = kit.where == "user" and kits.multi_kit(kit.name)
         print(f"{kit.name:<16} {kit.where:<9} {kit.path}{target}{note}\n  {about}")
+        if old:
+            print(f"  {old}")
     if not found:
         print("No kits found.")
     return 0
@@ -88,18 +96,112 @@ def _about(kit: kits.Kit) -> str:
 
 
 def cmd_kits_add(args: argparse.Namespace) -> int:
-    for kit in kits.add(args.spec, args.kit or []):
-        link = kits.installed() / kit.name
-        print(f'Added kit "{kit.name}" {kit.version or "-"}: {link} → {kit.path}')
+    plan = kits.plan_add(args.spec, args.marketplace, args.pre)
+    _warn(plan.warnings)
+    if plan.needs_confirmation and not args.yes:
+        _print_plan(plan)
+        if not sys.stdin.isatty():
+            print("lado: not installed: confirm with --yes", file=sys.stderr)
+            return 1
+        if input("Install? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("Not installed.")
+            return 1
+    kit = kits.install(plan)
+    source = "" if plan.source == "git" else f" ({plan.source})"
+    link = kits.installed() / kit.name
+    print(f'Added kit "{kit.name}" {kit.version}{source}: {link} → {kit.path}')
     return 0
+
+
+def _print_plan(plan: kits.Install) -> None:
+    print(f"Kit {plan.name} {plan.kit.version} from {plan.source}: {plan.address}")
+    print(f"  version {plan.tag}, commit {plan.commit}")
+    servers = ", ".join(_mcp_line(mcp) for mcp in plan.mcp.values()) or "none"
+    print(f"  MCP servers it starts: {servers}")
+
+
+def _mcp_line(mcp: kits.McpDef) -> str:
+    return f"{mcp.name} ({' '.join(mcp.command)})"
+
+
+def _warn(warnings) -> None:
+    for warning in warnings:
+        print(f"lado: WARNING: {warning}", file=sys.stderr)
 
 
 def cmd_kits_update(args: argparse.Namespace) -> int:
-    kit = kits.update(args.name, args.ref)
+    plan = kits.plan_update(args.name, args.tag, args.pre)
+    _warn(plan.warnings)
+    if plan.tag == plan.installed:
+        print(f'Kit "{plan.name}" is at {plan.tag} already.')
+        return 0
+    _warn(
+        f"{plan.name} {plan.tag} starts an MCP server {plan.installed} did not: "
+        f"{_mcp_line(plan.mcp[name])}"
+        for name in plan.new_mcp
+    )
+    kit = kits.install(plan)
     link = kits.installed() / kit.name
-    print(f'Updated kit "{kit.name}" to {args.ref} ({kit.version or "-"}): {link} → {kit.path}')
-    print(f"running sessions get {args.ref} for new agents only")
+    print(f'Updated kit "{kit.name}" from {plan.installed} to {plan.tag}: {link} → {kit.path}')
+    print(f"running sessions get {plan.tag} for new agents only")
     return 0
+
+
+def cmd_kits_outdated(args: argparse.Namespace) -> int:
+    for row in kits.outdated():
+        _warn(row.warnings)
+        if row.note:
+            about = row.note
+        else:
+            pre = f"  pre: {row.pre}" if row.pre else ""
+            about = f"latest {row.latest or '-'}{pre}"
+        print(f"{row.name:<16} {row.installed or '-':<10} {about}")
+    return 0
+
+
+def cmd_marketplaces(args: argparse.Namespace) -> int:
+    for market in marketplaces.list_():
+        enabled = "enabled" if market.enabled else "disabled"
+        updated = market.updated_at or "never"
+        print(f"{market.name:<9} {enabled:<9} {marketplaces.url(market)}  updated {updated}")
+    return 0
+
+
+def _kits_count(name: str) -> str:
+    count = len(marketplaces.kits(name))
+    return f"{count} kit{'' if count == 1 else 's'}"
+
+
+def cmd_marketplaces_add(args: argparse.Namespace) -> int:
+    market = marketplaces.add(args.name, args.url)
+    print(f'Added marketplace "{market.name}": {market.url} ({_kits_count(market.name)})')
+    return 0
+
+
+def cmd_marketplaces_remove(args: argparse.Namespace) -> int:
+    marketplaces.remove(args.name)
+    print(f'Removed marketplace "{args.name}"; kits installed from it stay')
+    return 0
+
+
+def cmd_marketplaces_enable(args: argparse.Namespace) -> int:
+    market = marketplaces.set_enabled(args.name, args.enable)
+    print(f'Marketplace "{market.name}" {"enabled" if market.enabled else "disabled"}')
+    return 0
+
+
+def cmd_marketplaces_update(args: argparse.Namespace) -> int:
+    names = [args.name] if args.name else [m.name for m in marketplaces.list_() if m.enabled]
+    failed = False
+    for name in names:
+        try:
+            marketplaces.update(name)
+        except marketplaces.MarketplaceError as exc:
+            print(f"lado: {name}: {exc}", file=sys.stderr)
+            failed = True
+            continue
+        print(f'Updated marketplace "{name}" ({_kits_count(name)})')
+    return 1 if failed else 0
 
 
 def cmd_kits_remove(args: argparse.Namespace) -> int:
@@ -114,7 +216,7 @@ def cmd_sources(args: argparse.Namespace) -> int:
         "lado: "
         + (
             kits.migration_hint()
-            or "lado sources is gone: install kits with `lado kits add <git-url>@<tag|commit>` "
+            or "lado sources is gone: install kits with `lado kits add <git-url>[@vX.Y.Z]` "
             "or `lado kits add <folder>`; list skill packs under dependencies.skills of a kit"
         ),
         file=sys.stderr,
@@ -658,25 +760,60 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("kit", help="kit folder or name")
     check.set_defaults(func=cmd_kits_check)
     add = kits_sub.add_parser(
-        "add", help=f"install the kits of a git repository or a folder in {kits.installed()}"
+        "add", help=f"install a kit from git, a marketplace or a folder in {kits.installed()}"
     )
     add.add_argument(
         "spec",
-        metavar="<git-url@tag|commit|folder>",
-        help="a git URL pinned to a tag or commit (cloned into the cache) or a folder (linked, "
-        "read in place); its kit at the root or its kits in kits/<name>/",
+        metavar="<git-url[@vX.Y.Z]|folder|kit[@vX.Y.Z]>",
+        help="a git URL (cloned into the cache at the version tag, by default the latest "
+        "release), a folder (linked, read in place), or with -m a kit's name in a marketplace; "
+        "the kit's kit.yaml at the root",
     )
+    add.add_argument("-m", "--marketplace", help="the marketplace that lists the kit")
+    add.add_argument("--pre", action="store_true", help="the latest version may be a pre-release")
     add.add_argument(
-        "--kit", action="append", metavar="NAME", help="only this kit of it; repeatable"
+        "--yes", action="store_true", help="install without asking (not from official)"
     )
     add.set_defaults(func=cmd_kits_add)
-    update = kits_sub.add_parser("update", help="move a kit installed from git to another version")
+    update = kits_sub.add_parser(
+        "update", help="move a kit installed from git to its latest or another version"
+    )
     update.add_argument("name")
-    update.add_argument("ref", metavar="<tag|commit>")
+    update.add_argument("tag", nargs="?", metavar="vX.Y.Z", help="default: the latest release")
+    update.add_argument(
+        "--pre", action="store_true", help="the latest version may be a pre-release"
+    )
     update.set_defaults(func=cmd_kits_update)
+    outdated = kits_sub.add_parser(
+        "outdated", help="installed kits against the versions their repositories have now"
+    )
+    outdated.set_defaults(func=cmd_kits_outdated)
     remove = kits_sub.add_parser("remove", help="remove an installed kit's link")
     remove.add_argument("name")
     remove.set_defaults(func=cmd_kits_remove)
+
+    markets = commands.add_parser(
+        "marketplaces", help="list, add, remove, enable, disable and update kit marketplaces"
+    )
+    markets.set_defaults(func=cmd_marketplaces)
+    markets_sub = markets.add_subparsers(metavar="<command>")
+    markets_sub.add_parser("list", help="the marketplaces").set_defaults(func=cmd_marketplaces)
+    market_add = markets_sub.add_parser("add", help="add a marketplace: a git repository")
+    market_add.add_argument("name")
+    market_add.add_argument("url", metavar="git-url")
+    market_add.set_defaults(func=cmd_marketplaces_add)
+    market_remove = markets_sub.add_parser("remove", help="remove a marketplace (not official)")
+    market_remove.add_argument("name")
+    market_remove.set_defaults(func=cmd_marketplaces_remove)
+    for verb, enable in (("enable", True), ("disable", False)):
+        toggle = markets_sub.add_parser(verb, help=f"{verb} a marketplace")
+        toggle.add_argument("name")
+        toggle.set_defaults(func=cmd_marketplaces_enable, enable=enable)
+    market_update = markets_sub.add_parser(
+        "update", help="fetch the latest list of a marketplace, or of each enabled one"
+    )
+    market_update.add_argument("name", nargs="?")
+    market_update.set_defaults(func=cmd_marketplaces_update)
     # Gone: says how to move to `lado kits add`.
     sources_cmd = commands.add_parser("sources", help="gone: see lado kits add")
     sources_cmd.add_argument("rest", nargs=argparse.REMAINDER)
@@ -799,7 +936,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command != "stop":
             runtime.check_migration()
         return args.func(args)
-    except (runtime.LadoError, tmux.TmuxError, kits.KitError) as exc:
+    except (
+        runtime.LadoError,
+        tmux.TmuxError,
+        kits.KitError,
+        marketplaces.MarketplaceError,
+    ) as exc:
         print(f"lado: {exc}", file=sys.stderr)
         return 1
 

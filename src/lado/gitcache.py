@@ -11,7 +11,13 @@ A clone is made in a temporary folder beside it and renamed into place, so no pr
 half a clone; of two processes cloning at once, the one that loses removes its copy.
 Nothing removes old clones yet.
 
-Skill packs (kits.fetch) and `lado kits add/update` both use fetch_pinned.
+Skill packs (kits.fetch) and `lado kits add/update` both use fetch_pinned. A kit is pinned
+to a version tag vX.Y.Z (VERSION_TAG); remote_tags is the one look at a remote's tags, the
+only network use besides cloning: the latest version (latest, by semver precedence) and
+whether a tag was moved since its clone was made.
+
+The clone of a marketplace (lado.marketplaces) follows its main branch instead:
+clone_branch makes it, refresh brings it up to date. All of LADO's git commands run here.
 """
 
 import hashlib
@@ -20,6 +26,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 from urllib.parse import quote, unquote
 
@@ -117,6 +124,77 @@ def versions(clone: Path) -> list[str]:
     """The versions the tags vX.Y.Z on the clone's commit give it."""
     tags = _git(clone, "tag", "--points-at", "HEAD").split()
     return [m.group(1) for t in tags if (m := VERSION_TAG.fullmatch(t))]
+
+
+def _precedence(version: str) -> tuple:
+    """The sort key of a version X.Y.Z[-pre] by semver precedence: a pre-release is lower
+    than its release; its dot-separated identifiers compare in turn, numbers as numbers and
+    lower than words, and a longer list is higher when the rest is equal."""
+    core, _, pre = version.partition("-")
+    numbers = tuple(int(n) for n in core.split("."))
+    if not pre:
+        return (numbers, (1,))
+    ids = tuple((0, int(i), "") if i.isdigit() else (1, 0, i) for i in pre.split("."))
+    return (numbers, (0, ids))
+
+
+def sorted_versions(tags: Iterable[str]) -> list[str]:
+    """The version tags vX.Y.Z[-pre] among `tags`, lowest first."""
+    found = [t for t in tags if VERSION_TAG.fullmatch(t)]
+    return sorted(found, key=lambda t: _precedence(t[1:]))
+
+
+def latest(tags: Iterable[str], pre: bool = False) -> str | None:
+    """The highest release tag among `tags`, or with `pre` the highest version tag of all;
+    None when there is none."""
+    found = [t for t in sorted_versions(tags) if pre or "-" not in t]
+    return found[-1] if found else None
+
+
+def remote_tags(address: str) -> dict[str, str]:
+    """Each tag of the repository at `address` with the commit it points to (an annotated
+    tag's commit, not its tag object). Uses the network."""
+    try:
+        output = _git(None, "ls-remote", "--tags", address)
+    except GitError as exc:
+        raise GitError(f"cannot read the tags of {address}: {exc}") from None
+    tags: dict[str, str] = {}
+    for line in output.splitlines():
+        commit, _, name = line.partition("\t")
+        name = name.removeprefix("refs/tags/")
+        if name.endswith("^{}"):
+            tags[name[:-3]] = commit
+        else:
+            tags.setdefault(name, commit)
+    return tags
+
+
+def clone_branch(address: str, folder: Path) -> None:
+    """Clone `address` at its main branch into `folder`, which must not exist; made in a
+    temporary folder beside it and renamed, so no one sees half a clone."""
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    temp = Path(tempfile.mkdtemp(prefix=f".{folder.name}-", dir=folder.parent))
+    try:
+        _git(None, "clone", "--quiet", address, str(temp))
+        os.rename(temp, folder)
+    except (GitError, OSError) as exc:
+        shutil.rmtree(temp, ignore_errors=True)
+        raise GitError(f"cannot clone {address}: {exc}") from None
+
+
+def refresh(folder: Path) -> None:
+    """Bring a clone made by clone_branch to its remote's main branch now."""
+    try:
+        _git(folder, "fetch", "--quiet", "--prune", "origin")
+        _git(folder, "remote", "set-head", "origin", "--auto")
+        _git(folder, "checkout", "--quiet", "--detach", "origin/HEAD")
+    except GitError as exc:
+        raise GitError(f"cannot update {folder}: {exc}") from None
+
+
+def commit(clone: Path) -> str:
+    """The commit `clone` is at."""
+    return _git(clone, "rev-parse", "HEAD")
 
 
 def _git(cwd: Path | None, *args: str) -> str:

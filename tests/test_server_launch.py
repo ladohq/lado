@@ -290,7 +290,7 @@ def test_a_name_in_two_kits_is_refused_with_the_ways_to_switch_one_off(client, r
     for name in ("a", "b"):
         kit = repo / ".lado" / "kits" / name
         (kit / "agents").mkdir(parents=True)
-        (kit / "kit.yaml").write_text(f"name: {name}\n")
+        (kit / "kit.yaml").write_text(f"name: {name}\nversion: 1.0.0\n")
         (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\n")
     answer = launch(client, repo, kits=["a", "b"])
     assert answer.status_code == 400
@@ -340,7 +340,7 @@ def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
 ):
     kit = repo / ".lado" / "kits" / "team"
     (kit / "agents").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: team\n")
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\nYou review.\n")
     (kit / "flows").mkdir()
     (kit / "flows" / "ship.yaml").write_text(

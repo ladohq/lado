@@ -21,7 +21,7 @@ def write(path: Path, text: str) -> None:
 def kit(repo):
     """A project kit: the default kit plus a reviewer with a skill and an MCP server."""
     kit = repo / ".lado" / "kits" / "itkit"
-    write(kit / "kit.yaml", "name: itkit\n")
+    write(kit / "kit.yaml", "name: itkit\nversion: 1.0.0\n")
     write(
         kit / "agents" / "reviewer.md",
         "---\nname: reviewer\ndescription: reviews a branch\nskills: [notes]\n"

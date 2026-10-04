@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -109,6 +109,21 @@ NOTES_STEP = [
 # lado.hooks), from version 16 on; NULL when it waits for none in particular or does not
 # wait. Only an answer to that request ends the wait (`resume`).
 AGENTS_WAITING_FOR = "ALTER TABLE agents ADD COLUMN waiting_for TEXT"
+# Kit marketplaces (lado.marketplaces), from version 17 on: git repositories that list kits
+# by name. They belong to no session. The official one is a row like the others, made with
+# the table, but has no url (its address is lado.marketplaces.OFFICIAL_URL) and is never
+# removed, only disabled.
+MARKETPLACES = """
+CREATE TABLE IF NOT EXISTS marketplaces (
+    name TEXT PRIMARY KEY,
+    url TEXT,  -- NULL for the official one
+    enabled INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT  -- UTC: when its clone was last brought up to date; NULL for never
+)"""
+OFFICIAL_MARKETPLACE = "official"
+MARKETPLACES_OFFICIAL = (
+    f"INSERT OR IGNORE INTO marketplaces (name) VALUES ('{OFFICIAL_MARKETPLACE}')"
+)
 # The change journal, from version 12 on: one row for each insert, update and delete of the
 # tables the UI shows, written by triggers in the writer's own transaction, so a change by
 # any process (CLI, hooks, MCP server, session loop) is in it. The UI server reads it
@@ -117,7 +132,7 @@ AGENTS_WAITING_FOR = "ALTER TABLE agents ADD COLUMN waiting_for TEXT"
 CHANGES = """
 CREATE TABLE IF NOT EXISTS changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind TEXT NOT NULL,  -- the table: sessions | agents | messages | runs | gates | notes
+    kind TEXT NOT NULL,  -- the table: sessions | agents | messages | runs | gates | notes | ...
     session TEXT NOT NULL,
     key TEXT NOT NULL,
     op TEXT NOT NULL  -- insert | update | delete
@@ -136,7 +151,11 @@ JOURNALED = {
     "gates": "{row}.id",
     "notes": "{row}.id",
     "events": "{row}.id",  # from version 14 on: run events only (RUN_EVENT)
+    "marketplaces": "{row}.name",  # from version 17 on
 }
+# The session of a change, where it is not the row's session column: a session is its own,
+# a marketplace belongs to none ('').
+JOURNAL_SESSION = {"sessions": "{row}.name", "marketplaces": "''"}
 ALL_OPS = ("insert", "update", "delete")
 # The writes of a table that are recorded, where not all are: an event is never changed,
 # and goes only with its session.
@@ -158,11 +177,11 @@ def _journal_trigger(table: str, op: str) -> str:
     row = "OLD" if op == "delete" else "NEW"
     when = f" WHEN {JOURNAL_WHEN[table, op]}" if (table, op) in JOURNAL_WHEN else ""
     key = JOURNALED[table].format(row=row)
+    session = JOURNAL_SESSION.get(table, "{row}.session").format(row=row)
     return (
         f"CREATE TRIGGER IF NOT EXISTS changes_{table}_{op} AFTER {op.upper()} ON {table}"
         f"{when} BEGIN INSERT INTO changes (kind, session, key, op)"
-        f" VALUES ('{table}', {row}.{'name' if table == 'sessions' else 'session'},"
-        f" CAST({key} AS TEXT), '{op}'); END"
+        f" VALUES ('{table}', {session}, CAST({key} AS TEXT), '{op}'); END"
     )
 
 
@@ -179,6 +198,7 @@ JOURNAL = [
     *(trigger for t in JOURNALED_V12 for trigger in _journal_triggers(t)),
 ]
 EVENTS_JOURNAL = _journal_triggers("events")
+MARKETPLACES_TABLE = [MARKETPLACES, MARKETPLACES_OFFICIAL, *_journal_triggers("marketplaces")]
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.
@@ -253,6 +273,7 @@ SCHEMA += (
             *EVENTS_JOURNAL,
             *NOTES_STEP,
             AGENTS_WAITING_FOR,
+            *MARKETPLACES_TABLE,
         ]
     )
     + ";\n"
@@ -288,6 +309,7 @@ MIGRATIONS = {
     13: EVENTS_JOURNAL,
     14: NOTES_STEP,
     15: [AGENTS_WAITING_FOR],
+    16: MARKETPLACES_TABLE,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -385,6 +407,14 @@ class Session:
     kits: list[str] = field(default_factory=lambda: ["default"])
     without: list[str] = field(default_factory=list)  # switched-off agents, skills, MCP
     stopped_at: str | None = None  # UTC; None while it runs
+
+
+@dataclass(frozen=True)
+class Marketplace:
+    name: str
+    url: str | None  # None for the official one
+    enabled: bool
+    updated_at: str | None  # UTC; None while its clone was never brought up to date
 
 
 @dataclass
@@ -1753,6 +1783,48 @@ def _gate(row: sqlite3.Row) -> Gate:
         created_at=row["created_at"],
         answered_at=row["answered_at"],
     )
+
+
+def list_marketplaces() -> list[Marketplace]:
+    with connect() as db:
+        rows = db.execute("SELECT * FROM marketplaces ORDER BY name").fetchall()
+    return [_marketplace(row) for row in rows]
+
+
+def get_marketplace(name: str) -> Marketplace | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM marketplaces WHERE name = ?", (name,)).fetchone()
+    return _marketplace(row) if row else None
+
+
+def add_marketplace(name: str, url: str) -> bool:
+    """False, with nothing changed, when a marketplace of that name exists already."""
+    with connect() as db:
+        added = db.execute(
+            "INSERT OR IGNORE INTO marketplaces (name, url) VALUES (?, ?)", (name, url)
+        ).rowcount
+    return added == 1
+
+
+def update_marketplace(
+    name: str, *, enabled: bool | None = None, updated_at: str | None = None
+) -> None:
+    """Set what is given of a marketplace: whether it is enabled, when it was updated."""
+    with connect() as db:
+        if enabled is not None:
+            db.execute("UPDATE marketplaces SET enabled = ? WHERE name = ?", (enabled, name))
+        if updated_at is not None:
+            db.execute("UPDATE marketplaces SET updated_at = ? WHERE name = ?", (updated_at, name))
+
+
+def delete_marketplace(name: str) -> bool:
+    """False when there is no marketplace of that name."""
+    with connect() as db:
+        return db.execute("DELETE FROM marketplaces WHERE name = ?", (name,)).rowcount == 1
+
+
+def _marketplace(row: sqlite3.Row) -> Marketplace:
+    return Marketplace(row["name"], row["url"], bool(row["enabled"]), row["updated_at"])
 
 
 def _session(row: sqlite3.Row) -> Session:

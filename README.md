@@ -31,8 +31,10 @@ There is nothing else to run yet; see [ROADMAP.md](ROADMAP.md).
 
 ## Kits
 
-A kit is a team: agent roles, flows and skills, in a folder with a `kit.yaml`. It takes
-skill packs from outside, pinned to a version, and may name the LADO it needs:
+A kit is a team: agent roles, flows and skills, in a git repository (or a folder) with a
+`kit.yaml` at its root. Its versions are the repository's tags `vX.Y.Z` (pre-releases such
+as `v1.3.0-rc.1` too), and `version` in kit.yaml must say the same. It takes skill packs
+from outside, pinned to a version, and may name the LADO it needs:
 
 ```yaml
 name: my-team
@@ -45,8 +47,24 @@ dependencies:
 ```
 
 ```bash
-lado kits add https://github.com/<owner>/<kits>@v1.0.0   # or a local folder
+lado kits add https://github.com/<owner>/my-team   # the latest release; @v1.0.0 for that one
+lado kits add ./my-team                            # a local folder, read in place
+lado kits add lado-dev -m official                 # a kit of a marketplace
+lado kits outdated                                 # newer versions of the installed kits
+lado kits update my-team                           # to the latest release
 lado start . --kit default --kit my-team
+```
+
+A kit from anywhere but the official marketplace (github.com/ladohq/marketplace) or a
+folder shows what it installs, its MCP servers too, and asks first (`--yes` to skip).
+Marketplaces are git repositories with a `marketplace.yaml` that maps kit names to their
+repositories:
+
+```bash
+lado marketplaces                                  # list them
+lado marketplaces add team https://github.com/<owner>/marketplace
+lado marketplaces update                           # fetch their latest lists
+lado marketplaces disable official                 # remove works for the others
 ```
 
 Who leads a session: if exactly one of its kits has a supervisor, that one; otherwise

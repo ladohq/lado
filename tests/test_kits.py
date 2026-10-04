@@ -7,7 +7,7 @@ import pytest
 import yaml
 from agent_helpers import init_repo, publish
 
-from lado import flows, gitcache, kits
+from lado import flows, gitcache, kits, marketplaces
 
 
 def make_kit(base, name, agents=None, skills=(), **meta):
@@ -481,7 +481,7 @@ def test_skills_and_mcp_are_switched_off_in_one_kit(repo, project):
     a = make_kit(project, "a", agents={"x": ({"mcp": mcp}, "")}, skills=["s"])
     make_pack(a / "pack", ["tdd"])
     (a / "kit.yaml").write_text(
-        yaml.safe_dump({"name": "a", "dependencies": {"skills": {"p": "pack"}}})
+        yaml.safe_dump({"name": "a", "version": "1.0.0", "dependencies": {"skills": {"p": "pack"}}})
     )
     make_kit(project, "b", agents={"y": ({"mcp": mcp}, "")}, skills=["t"])
     env = kits.resolve(repo, ["a", "b"], ["skill:s@a", "skill:tdd@a", "mcp:db@b"])
@@ -852,9 +852,13 @@ def test_fetch_errors_name_the_kit(tmp_path, project):
 
 def test_a_local_pack_of_a_kit_from_the_cache_stays_in_its_clone(tmp_path, project):
     files = {
-        "kits/team/kit.yaml": "name: team\ndependencies:\n  skills:\n    p: ../../packs/p\n",
+        "kits/team/kit.yaml": (
+            "name: team\nversion: 1.0.0\ndependencies:\n  skills:\n    p: ../../packs/p\n"
+        ),
         "packs/p/skills/tdd/SKILL.md": SKILL_MD,
-        "kits/out/kit.yaml": "name: out\ndependencies:\n  skills:\n    p: ../../../outside\n",
+        "kits/out/kit.yaml": (
+            "name: out\nversion: 1.0.0\ndependencies:\n  skills:\n    p: ../../../outside\n"
+        ),
     }
     url = publish(init_repo(tmp_path / "kits"), files, tag="v1")
     make_pack(tmp_path / "outside", ["s"])
@@ -955,52 +959,184 @@ def links(lado_home):
     return sorted(p.name for p in folder.iterdir()) if folder.is_dir() else []
 
 
-def test_add_a_kit_from_the_root_of_a_git_repository(tmp_path, repo, lado_home):
-    work = init_repo(tmp_path / "team-kit")
-    url = publish(work, {"kit.yaml": TEAM, "agents/w.md": AGENT}, tag="v1.0.0")
-    (kit,) = kits.add(f"{url}@v1.0.0")
+def rev(work, ref) -> str:
+    return subprocess.run(
+        ["git", "-C", str(work), "rev-parse", f"{ref}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def kit_repo(tmp_path, *versions, name="team", files=None):
+    """A kit's repository with a tag v<version> for each version, its kit.yaml saying it,
+    published to a bare repo: (the work repo, the bare repo's URL)."""
+    work = init_repo(tmp_path / f"{name}-kit")
+    url = ""
+    for version in versions:
+        kit_yaml = f"name: {name}\nversion: {version}\n"
+        url = publish(work, {"kit.yaml": kit_yaml, **(files or {})}, tag=f"v{version}")
+    return work, url
+
+
+def move_tag(work, url, tag):
+    """Make a new commit and move `tag` to it, on the remote too (a force push)."""
+    git = ["git", "-C", str(work)]
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "changed"], check=True)
+    subprocess.run([*git, "tag", "-f", tag], check=True, capture_output=True)
+    subprocess.run([*git, "push", "-q", "-f", url, tag], check=True, capture_output=True)
+
+
+def test_add_takes_the_latest_release_and_the_plan_changes_nothing(
+    tmp_path, repo, lado_home, capsys
+):
+    work, url = kit_repo(tmp_path, "1.0.0", "1.1.0", "1.2.0-rc.1", files={"agents/w.md": AGENT})
+    plan = kits.plan_add(url)
+    assert (plan.name, plan.address, plan.tag, plan.commit) == (
+        "team",
+        url,
+        "v1.1.0",
+        rev(work, "v1.1.0"),
+    )
+    assert (plan.source, plan.needs_confirmation, plan.installed, plan.warnings) == (
+        "git",
+        True,
+        None,
+        (),
+    )
+    assert plan.kit.version == "1.1.0"
+    assert links(lado_home) == [] and capsys.readouterr() == ("", "")
+    kit = kits.install(plan)
     link = lado_home / "kits" / "team"
-    clone = gitcache.clone_dir(url, "v1.0.0").resolve()
-    assert link.is_symlink() and link.resolve() == clone
-    # The name is checked against the link's, not the clone's folder (v1.0.0).
+    clone = gitcache.clone_dir(url, "v1.1.0").resolve()
+    assert link.is_symlink() and link.resolve() == clone == kit.path
     found = kits.find("team", repo)
-    assert (found.where, found.path, found.link()) == ("user", link, f"{url}@v1.0.0")
+    assert (found.where, found.path, found.link()) == ("user", link, f"{url}@v1.1.0")
     loaded = found.load()
     assert (loaded.name, loaded.path, list(loaded.agents)) == ("team", clone, ["w"])
-    assert loaded.source == f"user {url}@v1.0.0: {clone}"
+    assert loaded.source == f"user {url}@v1.1.0: {clone}"
     assert kits.warnings(loaded) == []
-
-
-def test_add_the_kits_of_a_repository_or_some_of_them(tmp_path, lado_home):
-    files = {
-        "kits/a/kit.yaml": "name: a\nversion: 1.0.0\n",
-        "kits/b/kit.yaml": "name: b\nversion: 2.0.0\n",
-    }
-    url = publish(init_repo(tmp_path / "many"), files, tag="v3")
-    assert [k.name for k in kits.add(f"{url}@v3", ["b"])] == ["b"]
-    assert links(lado_home) == ["b"]
-    # A kit that is not a kit's version warns.
-    assert kits.warnings(kits.find("b", None).load()) == []
-    with pytest.raises(kits.KitError, match=r'no kit "c" in .*; kits there: a, b'):
-        kits.add(f"{url}@v3", ["c"])
     with pytest.raises(
-        kits.KitError, match='kit "b" is installed already: .*; `lado kits remove b`'
+        kits.KitError, match='kit "team" is installed already: .*; `lado kits update team`'
     ):
-        kits.add(f"{url}@v3")
-    assert links(lado_home) == ["b"]  # nothing of a refused add stays
-    kits.remove("b")
-    assert [k.name for k in kits.add(f"{url}@v3")] == ["a", "b"]
+        kits.plan_add(url)
+
+
+def test_add_takes_a_pre_release_when_asked(tmp_path, lado_home):
+    _, url = kit_repo(tmp_path, "1.0.0", "1.1.0-rc.2", "1.1.0-rc.10")
+    assert kits.plan_add(url, pre=True).tag == "v1.1.0-rc.10"
+    assert kits.plan_add(f"{url}@v1.1.0-rc.2").tag == "v1.1.0-rc.2"
+    assert kits.plan_add(f"{url}@v1.0.0").tag == "v1.0.0"
+
+
+@pytest.mark.parametrize(
+    ("ref", "error"),
+    [
+        ("{commit}", "{url}@{commit}: a kit is pinned by its version tag vX.Y.Z"),
+        ("main", "{url}@main: a kit is pinned by its version tag vX.Y.Z; to try an unreleased "),
+        ("1.0.0", "{url}@1.0.0: a kit is pinned by its version tag vX.Y.Z"),
+        ("v9.9.9", "{url} has no tag v9.9.9; its versions: v1.0.0"),
+    ],
+)
+def test_add_takes_only_a_version_tag_it_has(tmp_path, lado_home, ref, error):
+    work, url = kit_repo(tmp_path, "1.0.0")
+    values = {"url": url, "commit": rev(work, "HEAD")}
+    with pytest.raises(kits.KitError, match=re.escape(error.format(**values))):
+        kits.plan_add(f"{url}@{ref.format(**values)}")
+
+
+def test_the_tag_and_kit_yaml_must_agree(tmp_path, lado_home):
+    url = publish(init_repo(tmp_path / "team"), {"kit.yaml": TEAM}, tag="v1.2.0")
+    with pytest.raises(
+        kits.KitError,
+        match=re.escape(
+            f"{url}@v1.2.0: kit.yaml says version 1.0.0; the tag and kit.yaml must agree"
+        ),
+    ):
+        kits.plan_add(url)
+
+
+def test_a_repository_without_releases_is_refused(tmp_path, lado_home):
+    work = init_repo(tmp_path / "team")
+    url = publish(work, {"kit.yaml": TEAM})
+    with pytest.raises(kits.KitError, match=re.escape(f"{url} has no version tags vX.Y.Z")):
+        kits.plan_add(url)
+    subprocess.run(["git", "-C", str(work), "tag", "v1.0.0-rc.1"], check=True)
+    subprocess.run(["git", "-C", str(work), "push", "-q", url, "v1.0.0-rc.1"], check=True)
+    with pytest.raises(
+        kits.KitError,
+        match=re.escape(f"{url} has pre-releases only (v1.0.0-rc.1): add --pre or @<tag>"),
+    ):
+        kits.plan_add(url)
+
+
+def test_the_latest_version_that_needs_a_newer_lado_is_refused(tmp_path, lado_home):
+    work, url = kit_repo(tmp_path, "1.3.0")
+    kit_yaml = 'name: team\nversion: 1.4.0\ndependencies:\n  lado: ">=99.1"\n'
+    publish(work, {"kit.yaml": kit_yaml}, tag="v1.4.0")
+    with pytest.raises(kits.KitError) as exc:
+        kits.plan_add(url)
+    assert str(exc.value) == (
+        f"team 1.4.0 needs LADO 99.1, this is {kits.__version__}; upgrade LADO, or add an "
+        f"older version: lado kits add {url}@v1.3.0"
+    )
+    assert links(lado_home) == []
+
+
+def test_a_bare_name_is_no_kit_of_a_marketplace_without_m(lado_home):
+    with pytest.raises(kits.KitError) as exc:
+        kits.plan_add("lado-dev")
+    assert str(exc.value) == (
+        '"lado-dev" is neither a git address nor a folder; for a kit of a marketplace add '
+        "-m <marketplace> (lado marketplaces lists them)"
+    )
+    assert not (lado_home / "marketplaces").exists()
+
+
+def marketplace(tmp_path, name="team-m", **listed):
+    murl = publish(
+        init_repo(tmp_path / f"{name}-market"),
+        {"marketplace.yaml": "kits:\n" + "".join(f"  {k}: {u}\n" for k, u in listed.items())},
+    )
+    return marketplaces.add(name, murl)
+
+
+def test_add_a_kit_of_a_marketplace(tmp_path, lado_home, monkeypatch):
+    _, url = kit_repo(tmp_path, "1.0.0", "1.1.0")
+    marketplace(tmp_path, team=url, other=url)
+    plan = kits.plan_add("team", market="team-m")
+    assert (plan.tag, plan.address, plan.source, plan.needs_confirmation) == (
+        "v1.1.0",
+        url,
+        "marketplace team-m",
+        True,
+    )
+    assert kits.plan_add("team@v1.0.0", market="team-m").tag == "v1.0.0"
+    with pytest.raises(
+        kits.KitError,
+        match=re.escape(f'marketplace "team-m" lists "other" at {url}, but its kit is "team"'),
+    ):
+        kits.plan_add("other", market="team-m")
+    with pytest.raises(marketplaces.MarketplaceError, match='no kit "nope" in marketplace'):
+        kits.plan_add("nope", market="team-m")
+    official = publish(
+        init_repo(tmp_path / "official"), {"marketplace.yaml": f"kits:\n  team: {url}\n"}
+    )
+    monkeypatch.setattr(marketplaces, "OFFICIAL_URL", official)
+    plan = kits.plan_add("team", market="official")
+    assert (plan.source, plan.needs_confirmation) == ("official", False)
 
 
 def test_add_a_local_folder_links_it(tmp_path, repo, lado_home):
-    folder = tmp_path / "dev"
-    make_kit(folder / "kits", "team", agents={"w": ({}, "Work.")})
-    (kit,) = kits.add(str(folder))
+    folder = make_kit(tmp_path / "dev", "team", agents={"w": ({}, "Work.")})
+    plan = kits.plan_add(str(folder))
+    assert (plan.source, plan.tag, plan.needs_confirmation) == ("folder", None, False)
+    kit = kits.install(plan)
     link = lado_home / "kits" / "team"
-    assert link.resolve() == (folder / "kits" / "team").resolve()
-    assert kits.find("team", repo).link() == str((folder / "kits" / "team").resolve())
+    assert link.resolve() == folder.resolve()
+    assert kits.find("team", repo).link() == str(folder.resolve())
     # Read in place: a change in the folder is the kit's.
-    (folder / "kits" / "team" / "agents" / "w.md").write_text(AGENT.replace("Work.", "Changed."))
+    (folder / "agents" / "w.md").write_text(AGENT.replace("Work.", "Changed."))
     assert kits.find("team", repo).load().agents["w"].body == "Changed."
     assert kit.where == "user"
 
@@ -1008,26 +1144,32 @@ def test_add_a_local_folder_links_it(tmp_path, repo, lado_home):
 @pytest.mark.parametrize(
     ("spec", "error"),
     [
-        ("{url}", "pin a version: {url}@<tag or commit>"),
-        ("{url}@main", "main is a branch of {url}; pin a tag or a commit"),
-        ("{pack}@v1", "{pack}@v1 is a skill pack, not a kit: list it under dependencies.skills"),
-        ("{bad}@v1", 'agents/w.md: name "x" differs'),
+        (
+            "{many}",
+            "{many}@v1.0.0: kits in kits/<name>/ are no longer supported: a kit is one "
+            "repository with kit.yaml at its root",
+        ),
+        ("{pack}", "{pack}@v1.0.0 is a skill pack, not a kit: list it under dependencies.skills"),
+        ("{bad}", 'agents/w.md: name "x" differs'),
         ("{tmp}/nowhere", "nowhere is not a folder"),
-        ("{tmp}/empty", "no kit in .*empty: a kit has kit.yaml at the root or in kits/<name>/"),
+        ("{tmp}/empty@v1.0.0", "a local folder has no version; drop @v1.0.0"),
+        ("{tmp}/empty", "no kit in .*empty: a kit has kit.yaml at its root"),
+        ("{tmp}/dev", "dev: kits in kits/<name>/ are no longer supported"),
     ],
 )
 def test_add_errors_leave_no_link(tmp_path, lado_home, spec, error):
-    url = publish(init_repo(tmp_path / "team"), {"kit.yaml": TEAM}, tag="v1")
-    pack = publish(init_repo(tmp_path / "pack"), {"skills/tdd/SKILL.md": SKILL_MD}, tag="v1")
+    many = publish(init_repo(tmp_path / "many"), {"kits/a/kit.yaml": TEAM}, tag="v1.0.0")
+    pack = publish(init_repo(tmp_path / "pack"), {"skills/tdd/SKILL.md": SKILL_MD}, tag="v1.0.0")
     bad = publish(
-        init_repo(tmp_path / "bad"), {"kit.yaml": TEAM, "agents/w.md": AGENT.replace("w", "x")}
+        init_repo(tmp_path / "bad"),
+        {"kit.yaml": TEAM, "agents/w.md": AGENT.replace("w", "x")},
+        tag="v1.0.0",
     )
-    subprocess.run(["git", "-C", str(tmp_path / "bad"), "tag", "v1"], check=True)
-    subprocess.run(["git", "-C", str(tmp_path / "bad"), "push", "-q", bad, "v1"], check=True)
     (tmp_path / "empty").mkdir()
-    values = {"url": url, "pack": pack, "bad": bad, "tmp": tmp_path}
+    make_kit(tmp_path / "dev" / "kits", "a")
+    values = {"many": many, "pack": pack, "bad": bad, "tmp": tmp_path}
     with pytest.raises(kits.KitError, match=error.format(**values)):
-        kits.add(spec.format(**values))
+        kits.install(kits.plan_add(spec.format(**values)))
     assert links(lado_home) == []
 
 
@@ -1035,34 +1177,124 @@ def test_add_refuses_a_name_taken_by_a_folder(tmp_path, lado_home):
     make_kit(lado_home / "kits", "team")
     make_kit(tmp_path / "dev", "team")
     with pytest.raises(kits.KitError, match='kit "team" is installed already'):
-        kits.add(str(tmp_path / "dev" / "team"))
+        kits.plan_add(str(tmp_path / "dev" / "team"))
 
 
-def test_update_moves_the_link_to_another_version(tmp_path, repo, lado_home):
-    work = init_repo(tmp_path / "team")
-    url = publish(work, {"kit.yaml": TEAM}, tag="v1.0.0")
-    publish(work, {"kit.yaml": TEAM.replace("1.0.0", "1.1.0")}, tag="v1.1.0")
-    kits.add(f"{url}@v1.0.0")
-    kit = kits.update("team", "v1.1.0")
-    assert (kit.version, kit.path) == ("1.1.0", gitcache.clone_dir(url, "v1.1.0").resolve())
+def test_update_goes_to_the_latest_and_names_new_mcp_servers(tmp_path, repo, lado_home):
+    work, url = kit_repo(tmp_path, "1.0.0")
+    kits.install(kits.plan_add(url))
+    agent = "---\nname: w\ndescription: d\nmcp: {db: {command: [db]}, fs: {command: [fs]}}\n---\n"
+    publish(work, {"kit.yaml": TEAM.replace("1.0.0", "1.1.0"), "agents/w.md": agent}, "v1.1.0")
+    plan = kits.plan_update("team")
+    assert (plan.tag, plan.installed, plan.new_mcp, plan.needs_confirmation) == (
+        "v1.1.0",
+        "v1.0.0",
+        ("db", "fs"),
+        False,
+    )
+    assert plan.source == "git" and sorted(plan.mcp) == ["db", "fs"]
     link = lado_home / "kits" / "team"
+    assert link.resolve() == gitcache.clone_dir(url, "v1.0.0").resolve()  # a plan only
+    kit = kits.install(plan)
+    assert (kit.version, kit.path) == ("1.1.0", gitcache.clone_dir(url, "v1.1.0").resolve())
     assert link.resolve() == kit.path and links(lado_home) == ["team"]
     assert kits.find("team", repo).link() == f"{url}@v1.1.0"
     # The old version stays in the cache for the agents that run it.
     assert gitcache.clone_dir(url, "v1.0.0").is_dir()
-    with pytest.raises(kits.KitError, match="main is a branch"):
-        kits.update("team", "main")
+    back = kits.plan_update("team", "v1.0.0")
+    assert (back.tag, back.new_mcp) == ("v1.0.0", ())
+    with pytest.raises(kits.KitError, match="a kit is pinned by its version tag"):
+        kits.plan_update("team", "main")
     assert link.resolve() == kit.path
+
+
+def test_update_moves_a_kit_pinned_to_a_commit_to_a_version_tag(tmp_path, lado_home):
+    work, url = kit_repo(tmp_path, "1.0.0", "1.1.0")
+    commit = rev(work, "v1.0.0")
+    (lado_home / "kits").mkdir(parents=True)
+    (lado_home / "kits" / "team").symlink_to(gitcache.fetch_pinned(url, commit))
+    plan = kits.plan_update("team")
+    assert (plan.installed, plan.tag) == (commit, "v1.1.0")
+
+
+def test_a_kit_of_a_multi_kit_repository_cannot_be_updated(tmp_path, lado_home):
+    url = publish(init_repo(tmp_path / "many"), {"kits/team/kit.yaml": TEAM}, tag="v1.0.0")
+    (lado_home / "kits").mkdir(parents=True)
+    clone = gitcache.fetch_pinned(url, "v1.0.0")
+    (lado_home / "kits" / "team").symlink_to(clone / "kits" / "team")
+    with pytest.raises(kits.KitError) as exc:
+        kits.plan_update("team")
+    assert str(exc.value) == (
+        "team: installed from a multi-kit repository, no longer supported; "
+        "`lado kits remove team` and add it again"
+    )
+
+
+def test_a_moved_tag_is_warned_about(tmp_path, lado_home):
+    work, url = kit_repo(tmp_path, "1.0.0")
+    installed = rev(work, "v1.0.0")
+    kits.install(kits.plan_add(url))
+    move_tag(work, url, "v1.0.0")
+    moved = (
+        f"tag v1.0.0 of {url} now points to {rev(work, 'v1.0.0')}, installed {installed}; "
+        "the kit was changed under the same version"
+    )
+    assert kits.plan_update("team").warnings == (moved,)
+    (row,) = kits.outdated()
+    assert row.warnings == (moved,)
+    kits.remove("team")
+    # Added again with a clone in the cache already: the same check, with the same tag.
+    plan = kits.plan_add(f"{url}@v1.0.0")
+    assert plan.warnings == (moved,) and plan.commit == installed
+
+
+def test_outdated_checks_each_kit_from_git_and_says_why_not_the_others(tmp_path, lado_home):
+    work, url = kit_repo(tmp_path, "1.0.0")
+    kits.install(kits.plan_add(url))
+    publish(work, {"kit.yaml": TEAM.replace("1.0.0", "1.1.0")}, "v1.1.0")
+    publish(work, {"kit.yaml": TEAM.replace("1.0.0", "1.2.0-rc.1")}, "v1.2.0-rc.1")
+    _, solo = kit_repo(tmp_path, "2.0.0", name="solo")
+    kits.install(kits.plan_add(solo))
+    kits.install(kits.plan_add(str(make_kit(tmp_path / "dev", "local"))))
+    make_kit(lado_home / "kits", "mine")
+    pinned_work, pinned = kit_repo(tmp_path, "1.0.0", name="pinned")
+    commit = rev(pinned_work, "HEAD")
+    (lado_home / "kits" / "pinned").symlink_to(gitcache.fetch_pinned(pinned, commit))
+    many = publish(init_repo(tmp_path / "many"), {"kits/old/kit.yaml": TEAM}, tag="v1.0.0")
+    (lado_home / "kits" / "old").symlink_to(gitcache.fetch_pinned(many, "v1.0.0") / "kits" / "old")
+    rows = {row.name: row for row in kits.outdated()}
+    assert list(rows) == ["local", "mine", "old", "pinned", "solo", "team"]
+    team = rows["team"]
+    assert (team.installed, team.latest, team.pre, team.note) == (
+        "v1.0.0",
+        "v1.1.0",
+        "v1.2.0-rc.1",
+        "",
+    )
+    assert (rows["solo"].installed, rows["solo"].latest, rows["solo"].pre) == (
+        "v2.0.0",
+        "v2.0.0",
+        None,
+    )
+    assert rows["local"].note == "local, not checked"
+    assert rows["mine"].note == "local, not checked"
+    assert rows["pinned"].note == (
+        f"pinned to commit {commit}; `lado kits update pinned` moves it to a version tag"
+    )
+    assert rows["old"].note == (
+        "installed from a multi-kit repository, no longer supported; "
+        "`lado kits remove old` and add it again"
+    )
 
 
 def test_update_and_remove_refuse_what_lado_did_not_install(tmp_path, lado_home):
     make_kit(lado_home / "kits", "mine")
     make_kit(tmp_path / "dev", "local")
-    kits.add(str(tmp_path / "dev" / "local"))
+    kits.install(kits.plan_add(str(tmp_path / "dev" / "local")))
     with pytest.raises(kits.KitError, match="mine is a folder LADO did not install; nothing to"):
-        kits.update("mine", "v1")
+        kits.plan_update("mine")
     with pytest.raises(kits.KitError, match="local links to the folder .*dev/local: it is read in"):
-        kits.update("local", "v1")
+        kits.plan_update("local")
     with pytest.raises(kits.KitError, match="not installed by LADO; delete .*mine yourself"):
         kits.remove("mine")
     with pytest.raises(kits.KitError, match='no kit "nope" in '):
@@ -1073,7 +1305,7 @@ def test_update_and_remove_refuse_what_lado_did_not_install(tmp_path, lado_home)
 
 def test_a_broken_link_does_not_stop_other_kits(tmp_path, repo, lado_home):
     make_kit(tmp_path / "dev", "gone")
-    kits.add(str(tmp_path / "dev" / "gone"))
+    kits.install(kits.plan_add(str(tmp_path / "dev" / "gone")))
     shutil.rmtree(tmp_path / "dev")
     (found,) = [f for f, _ in kits.available(repo) if f.name == "gone"]
     with pytest.raises(kits.KitError, match="gone: broken link → .*; run `lado kits remove gone`"):
@@ -1083,12 +1315,23 @@ def test_a_broken_link_does_not_stop_other_kits(tmp_path, repo, lado_home):
     assert links(lado_home) == []
 
 
-def test_kit_version_is_compared_with_the_tags_of_its_clone(tmp_path):
+def test_kit_version_is_compared_with_the_tags_of_its_clone(tmp_path, lado_home):
+    """A kit pinned to a commit by an older LADO may disagree with its tag."""
     work = init_repo(tmp_path / "team")
     url = publish(work, {"kit.yaml": TEAM}, tag="v1.1.0")
-    (kit,) = kits.add(f"{url}@v1.1.0")
-    assert kits.warnings(kit) == [f"team: version 1.0.0 in kit.yaml, but {url}@v1.1.0 is at v1.1.0"]
-    assert kits.lint(kits.load(make_kit(tmp_path, "nov", version=None))) != []
+    kit = kits.load(gitcache.fetch_pinned(url, rev(work, "HEAD")), named_folder=False)
+    assert kits.warnings(kit) == [
+        f"team: version 1.0.0 in kit.yaml, but {url}@{rev(work, 'HEAD')} is at v1.1.0"
+    ]
+
+
+def test_a_kit_without_a_version_does_not_load(tmp_path):
+    path = make_kit(tmp_path, "nov", version=None)
+    with pytest.raises(kits.KitError) as exc:
+        kits.load(path)
+    assert f"{path.resolve() / 'kit.yaml'}: version is missing; add `version: X.Y.Z`" in str(
+        exc.value
+    )
 
 
 SOURCES_YAML = """\
@@ -1140,10 +1383,10 @@ def test_find_says_how_to_move_from_sources_yaml(tmp_path, repo, lado_home):
 
 
 def test_a_damaged_clone_is_a_kit_error_not_a_crash(tmp_path, lado_home):
-    url = publish(init_repo(tmp_path / "team"), {"kit.yaml": TEAM}, tag="v1.1.0")
-    (kit,) = kits.add(f"{url}@v1.1.0")
+    _, url = kit_repo(tmp_path, "1.1.0")
+    kit = kits.install(kits.plan_add(url))
     shutil.rmtree(kit.path / ".git")
     with pytest.raises(kits.KitError, match=f"cannot read the clone {kit.path}: "):
-        kits.update("team", "v1.2.0")
+        kits.plan_update("team")
     (warning,) = kits.warnings(kit)
     assert warning.startswith(f"team: cannot read the version tags of {kit.path}: ")

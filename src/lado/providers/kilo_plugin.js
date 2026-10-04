@@ -24,6 +24,16 @@ function run(argv, payload) {
   })
 }
 
+// Requests for the human and their answers (Kilo 7.8): a request has its `id`, an answer
+// names it as `requestID`. A refused permission is a "permission.replied" too.
+const REQUESTS = new Set([
+  "permission.asked",
+  "permission.replied",
+  "question.asked",
+  "question.replied",
+  "question.rejected",
+])
+
 export const LadoPlugin = async ({ client, directory }, options = {}) => {
   const hooks = options?.hooks ?? {}
   // Sessions of subagents (task tool): their turns are not the agent's turns.
@@ -46,10 +56,15 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
         if (event.type === "session.created" && props.info?.parentID) {
           subagents.add(props.info.id)
         }
+        if (REQUESTS.has(event.type)) {
+          // A subagent's request waits for the human as much as the agent's own; the id
+          // tells the answer to one request from the answer to another.
+          const id = props.id ?? props.requestID
+          await run(hooks[event.type], { sessionID: props.sessionID, id })
+          return
+        }
         if (subagents.has(props.sessionID)) return
-        if (event.type === "permission.asked" || event.type === "question.asked") {
-          await run(hooks[event.type], { sessionID: props.sessionID, permission: props.permission })
-        } else if (event.type === "session.idle") {
+        if (event.type === "session.idle") {
           const text = await run(hooks["session.idle"], { sessionID: props.sessionID })
           if (text) {
             await client.session.promptAsync({

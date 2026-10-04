@@ -16,13 +16,20 @@ TESTED_VERSION = "7.8"
 
 PLUGIN = Path(__file__).with_name("kilo_plugin.js")
 
-# Events the plugin reports and the neutral events they stand for.
+# Events the plugin reports and the neutral events they stand for. A request for the human
+# and its answer carry the request's id (the plugin's "id"), also a subagent's; a refused
+# permission is "permission.replied" too (Kilo 7.8 has no "permission.rejected"). Kilo can
+# have several requests open at once (it lists them per session); LADO keeps one key, the
+# latest request's (BACKLOG.md: a set of keys).
 EVENTS = {
     "plugin.init": base.SESSION_START,
     "chat.message": base.PROMPT_SUBMIT,
     "session.idle": base.TURN_END,
     "permission.asked": base.WAITING,
+    "permission.replied": base.RESUMED,
     "question.asked": base.WAITING,
+    "question.replied": base.RESUMED,
+    "question.rejected": base.RESUMED,
     "dispose": base.SESSION_END,
 }
 
@@ -56,6 +63,7 @@ class KiloProvider(base.Provider):
         if mode == "bypassPermissions":
             # --auto still announces each permission and approves it at once: not a wait.
             events.remove("permission.asked")
+            events.remove("permission.replied")
         permission: dict = {"external_directory": {f"{state.home()}/**": "allow"}}
         if mode == "default":
             permission["edit"] = "ask"  # Kilo's default agent edits without asking
@@ -108,7 +116,7 @@ class KiloProvider(base.Provider):
         if native not in EVENTS:
             return None
         data = json.loads(payload) if payload.strip() else {}
-        return base.Event(EVENTS[native], data.get("prompt", ""))
+        return base.Event(EVENTS[native], data.get("prompt", ""), data.get("id") or "")
 
     def continue_output(self, text: str) -> str | None:
         # The plugin sends whatever the turn-end hook prints as the next user message.

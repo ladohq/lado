@@ -609,3 +609,41 @@ supervisor, and an unknown one is not found" with `Unable to find role="region" 
 than the render under the full run's load.
 Wanted: the test waits for what it checks (findBy with a timeout that holds under load).
 Found: 2026-10-04, feature/without-at-kit (implement).
+## A refused permission leaves the Claude agent waiting until the human types
+
+When the human refuses a Claude Code permission dialog (or dismisses an AskUserQuestion
+question) without a comment, Claude Code interrupts the turn and runs no hook: no
+PostToolUse, PermissionDenied or Stop (checked with 2.1.289). The agent stays `waiting`,
+LADO types nothing into it and its queue waits, until the human types a line.
+Wanted: the agent idle once the turn is interrupted, its queue handed over; needs a sign
+of the interruption from Claude Code (none found in its hooks).
+Found: 2026-10-04, feature/waiting-ends (implement, manual check).
+
+## One key per waiting agent, though Kilo can have several requests open
+
+Kilo keeps a list of open permission and question requests per session and shows the
+lists of the agent and its subagents together, so several can be open at once. LADO keeps
+one key (`agents.waiting_for`, the latest request's): when an earlier request is answered
+last, the agent is busy while one is still open, or waiting after the latest is answered.
+Wanted: a set of open request keys per agent; the wait ends when it is empty.
+Found: 2026-10-04, feature/waiting-ends (implement, Kilo 7.8.3 source).
+
+## Claude's waiting hooks unchecked in permission mode auto
+
+feature/waiting-ends checked PermissionRequest and PostToolUse by hand with Claude Code
+2.1.289 in the modes default, bypassPermissions and dontAsk, not in auto: Claude Code says
+"auto mode unavailable for this model" for Haiku. If auto's classifier refuses a call after
+PermissionRequest, no hook comes and the agent shows waiting until its turn ends.
+Wanted: the check in auto on a model that has it (the human's OK: it is paid); if
+PermissionRequest runs there without a dialog, a hook that ends the wait (PermissionDenied).
+Found: 2026-10-04, review of feature/waiting-ends.
+
+## Claude's TESTED_VERSION is older than the hooks LADO now relies on
+
+`providers/claude.py` has `TESTED_VERSION = "2.1.287"`, but the waiting hooks
+(PermissionRequest without tool_use_id, its tool_input equal to PostToolUse's, async
+PostToolUse) were checked with 2.1.289 only; `lado doctor` warns about 2.1.289 and not
+about 2.1.287.
+Wanted: before the release, `make test-live PROVIDER=claude` on 2.1.289 (with the human's
+OK) and TESTED_VERSION raised to it.
+Found: 2026-10-04, review of feature/waiting-ends.

@@ -20,6 +20,7 @@ EVENTS = (
     base.PROMPT_SUBMIT,
     base.TURN_END,
     base.WAITING,
+    base.RESUMED,
     base.SESSION_END,
     base.CONVERSATION_END,
     base.CONVERSATION_START,
@@ -79,7 +80,7 @@ class FakeProvider(base.Provider):
         if native not in EVENTS:
             return None
         data = json.loads(payload) if payload.strip() else {}
-        return base.Event(native, data.get("prompt", ""))
+        return base.Event(native, data.get("prompt", ""), data.get("key", ""))
 
     def continue_output(self, text: str) -> str | None:
         return text

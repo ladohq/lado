@@ -83,7 +83,8 @@ schema change.
     a worker's branch stands against the repo's current branch and what its worktree has
     not committed (the UI's Agents tab shows both).
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
-    `Launch`, neutral hook events; `claude.py`: Claude Code; `kilo.py`: Kilo CLI, with
+    `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
+    `EVENTS` maps its native events; `claude.py`: Claude Code; `kilo.py`: Kilo CLI, with
     `kilo_plugin.js`, the Kilo plugin that runs LADO's hooks). A provider writes the agent's
     config, returns its argv and env and translates its hook events. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
@@ -167,7 +168,8 @@ schema change.
     limit, from the state it kept the run out of) is kept but never taken for a state's
     report. From schema 15 a note is the record of its step: `actor`, `outcome` (none for
     a flow-set) and `target`, written by `update_run` from the transition (`state.Noted`);
-    `state.run_notes` lists them (the UI's Flows tab). Events, messages,
+    `state.run_notes` lists them (the UI's Flows tab). From schema 16 an agent keeps the
+    request it waits for, `agents.waiting_for` (How agents talk; not in the API). Events, messages,
     runs, notes and gates go with their session, which `lado stop` only marks stopped
     (`sessions.stopped_at`) and `lado forget` deletes. How long an
     agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
@@ -263,6 +265,30 @@ schema change.
   for another one in the same process (Claude Code's `/clear` and `/resume`) shows it as
   `starting` until the CLI is ready again; messages to it wait in the queue meanwhile and are
   typed in when it is `idle` again.
+- An agent `waiting` for the human (a dialog in its terminal) is `busy` again as soon as the
+  human answers there: the neutral `WAITING` and `RESUMED` come in pairs with the same key
+  (`Event.key`, the provider's id of the request), and only `RESUMED` with the key it waits
+  for ends the wait (`state.wait`, `state.resume`: one conditional update, kept in
+  `agents.waiting_for`). One open request at a time: a new one replaces the key, so of two
+  open dialogs only the answer to the latest ends the wait (the agent shows `waiting`
+  longer, never shorter). A wait without a key (failed messages, `runtime.sweep`) keeps the
+  key of a wait already open, and any `RESUMED` ends it. A `RESUMED` of an agent not
+  `waiting` (a late async hook after its turn's end, a stopped agent) changes nothing; any
+  other status drops the key. `RESUMED` leaves the queue alone: a busy agent gets it when
+  its turn ends.
+  Claude Code (checked by hand with 2.1.289): `PermissionRequest` runs just before a dialog
+  shows (with `bypassPermissions` only for an `AskUserQuestion` question, never for a call
+  `dontAsk` refuses; mode `auto` not checked, BACKLOG.md), and `Elicitation` before an MCP server's
+  form; the tool call's `PostToolUse` or `PostToolUseFailure` (async: they run after every
+  tool) and `ElicitationResult` are the answer. `PermissionRequest` has no `tool_use_id`,
+  so the key is the tool and its input (an `AskUserQuestion`'s questions only: its answer
+  adds to the input), or the MCP server of an elicitation. When the human refuses a
+  permission or dismisses a question, no hook runs: the agent stays `waiting` until the
+  human types (BACKLOG.md); a refusal with a comment ends the wait at the turn's end.
+  `Notification` is not used. Kilo: the plugin reports `permission.asked`,
+  `question.asked` (WAITING) and `permission.replied` (also a refusal),
+  `question.replied`, `question.rejected` (RESUMED) with the request's id, also for
+  subagents' sessions; with `--auto` the permission events are not reported.
 - A message is a one-line `summary` (at most 200 characters; a longer or multi-line one is
   refused) and an optional `body` with the details. Only one short line per message reaches
   the recipient: `[from <sender>] <summary>`, plus ` (#<id>, <n> lines: call read_messages)`

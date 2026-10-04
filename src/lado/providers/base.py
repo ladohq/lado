@@ -14,6 +14,7 @@ SESSION_START = "session_start"
 PROMPT_SUBMIT = "prompt_submit"  # the agent received input, e.g. a typed message
 TURN_END = "turn_end"
 WAITING = "waiting"  # the agent needs the human, e.g. a permission prompt
+RESUMED = "resumed"  # the human answered what the agent waited for; it works again
 SESSION_END = "session_end"
 # The agent leaves its conversation for another one and its process goes on (Claude Code's
 # /clear and /resume): not ready until CONVERSATION_START, but not gone either.
@@ -24,7 +25,10 @@ CONVERSATION_START = "conversation_start"  # ready again, in the other conversat
 @dataclass(frozen=True)
 class Capabilities:
     status_events: bool  # hooks report when the agent starts, works and stops
-    permission_event: bool  # a hook reports that the agent waits for the human
+    # A hook reports that the agent waits for the human (WAITING). A provider that reports
+    # it reports the answer too (RESUMED), with the same key: else the agent would look
+    # waiting until its turn ends.
+    permission_event: bool
     deliver_on_turn_end: bool  # the turn-end hook can hand the agent its queued messages
     skills: bool  # the agent loads SKILL.md folders that LADO places for it
     # The session-start hook can hold the first turn until the CLI has listed LADO's MCP
@@ -36,6 +40,9 @@ class Capabilities:
 class Event:
     kind: str  # one of the neutral events above
     prompt: str = ""  # the input the agent received, for PROMPT_SUBMIT
+    # For WAITING and RESUMED: the provider's id of the request waited for or answered, so
+    # that only its answer ends the wait (lado.state.resume); "" where there is none.
+    key: str = ""
 
 
 @dataclass(frozen=True)

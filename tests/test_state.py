@@ -162,6 +162,86 @@ def test_status_change_is_an_event_once(lado_home):
     assert state.get_agent("s", "w1").status == state.IDLE
 
 
+def _status_events():
+    return [e.detail for e in state.list_events("s") if e.kind == state.STATUS]
+
+
+def _waiting_agent(key=""):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_agent(_agent(status=state.BUSY))
+    state.wait("s", "w1", key)
+
+
+def test_a_wait_with_a_key_keeps_the_key(lado_home):
+    _waiting_agent("k1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.status, agent.waiting_for) == (state.WAITING, "k1")
+    assert _status_events() == ["waiting"]
+    state.wait("s", "w1", "k2")  # the next request: its key replaces the first one
+    agent = state.get_agent("s", "w1")
+    assert (agent.status, agent.waiting_for) == (state.WAITING, "k2")
+    assert _status_events() == ["waiting"]
+
+
+def test_a_wait_without_a_key_does_not_wipe_the_key_of_a_waiting_agent(lado_home):
+    _waiting_agent("k1")
+    state.wait("s", "w1")
+    assert state.get_agent("s", "w1").waiting_for == "k1"
+    state.set_status("s", "w1", state.WAITING)  # e.g. a sweep's failed messages
+    assert state.get_agent("s", "w1").waiting_for == "k1"
+    assert _status_events() == ["waiting"]
+
+
+def test_a_wait_without_a_key_has_none(lado_home):
+    _waiting_agent()
+    agent = state.get_agent("s", "w1")
+    assert (agent.status, agent.waiting_for) == (state.WAITING, None)
+
+
+def test_resume_with_the_key_waited_for_makes_the_agent_busy(lado_home):
+    _waiting_agent("k1")
+    state.resume("s", "w1", "k1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.status, agent.waiting_for) == (state.BUSY, None)
+    assert _status_events() == ["waiting", "busy"]
+
+
+def test_resume_with_another_key_changes_nothing(lado_home):
+    _waiting_agent("k1")
+    state.resume("s", "w1", "k2")
+    state.resume("s", "w1", "")
+    agent = state.get_agent("s", "w1")
+    assert (agent.status, agent.waiting_for) == (state.WAITING, "k1")
+    assert _status_events() == ["waiting"]
+
+
+def test_any_resume_ends_a_wait_without_a_key(lado_home):
+    _waiting_agent()
+    state.resume("s", "w1", "x")
+    assert state.get_agent("s", "w1").status == state.BUSY
+    assert _status_events() == ["waiting", "busy"]
+
+
+@pytest.mark.parametrize("status", [state.IDLE, state.BUSY, state.STARTING, state.STOPPED])
+def test_resume_of_an_agent_not_waiting_changes_nothing(lado_home, status):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_agent(_agent(status=status))
+    state.resume("s", "w1", "k1")
+    state.resume("s", "w1", "")
+    assert state.get_agent("s", "w1").status == status
+    assert _status_events() == []
+
+
+@pytest.mark.parametrize("status", [state.IDLE, state.BUSY, state.STARTING, state.STOPPED])
+def test_leaving_waiting_drops_the_key(lado_home, status):
+    _waiting_agent("k1")
+    state.set_status("s", "w1", status)
+    assert state.get_agent("s", "w1").waiting_for is None
+    state.wait("s", "w1")  # waiting again, from something without a key
+    state.resume("s", "w1", "other")  # so any answer ends it
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
 def _event_at(agent, kind, created_at, detail=""):
     with state.connect() as db:
         db.execute(
@@ -715,7 +795,7 @@ def test_version_14_notes_get_an_empty_actor_outcome_and_target(lado_home):
     state.add_session(state.Session("s", "/r", None))
     run = _run()
     state.add_run(run, [("supervisor", state.FLOW_START, "started")])
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(15)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
     db.execute(
         "INSERT INTO notes (session, run, state, kind, summary) VALUES"
@@ -731,6 +811,20 @@ def test_version_14_notes_get_an_empty_actor_outcome_and_target(lado_home):
         "old design",
     )
     assert (note.actor, note.outcome, note.target) == ("", "", "")
+
+
+def test_version_15_agents_wait_for_no_key(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_agent(_agent(status=state.WAITING))
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    columns = {row[1] for row in db.execute("PRAGMA table_info(agents)")}
+    db.close()
+    assert "waiting_for" not in columns
+    agent = state.get_agent("s", "w1")  # migrates
+    assert (agent.status, agent.waiting_for) == (state.WAITING, None)
+    state.resume("s", "w1", "k1")  # a wait from before has no key: any answer ends it
+    assert state.get_agent("s", "w1").status == state.BUSY
 
 
 def test_run_notes_are_the_steps_of_the_session_in_order(lado_home):

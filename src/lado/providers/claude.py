@@ -1,5 +1,6 @@
 """Claude Code as a LADO provider."""
 
+import hashlib
 import json
 import shutil
 
@@ -16,14 +17,33 @@ from lado.providers import base
 # (hold_first_turn, lado.hooks). The live test checks this in w1's transcript.
 TESTED_VERSION = "2.1.287"
 
-# Claude Code hook events and the neutral events they stand for. Notification is mapped
-# in parse_event: only permission prompts mean the agent waits for the human.
+# Claude Code hook events and the neutral events they stand for.
+#
+# A dialog for the human: PermissionRequest runs just before Claude Code shows one, also
+# for an AskUserQuestion question (with bypassPermissions only for that) and never for a
+# call that dontAsk refuses; Elicitation before an MCP server's form. Checked in the modes
+# default, bypassPermissions and dontAsk; not in auto (Claude Code offers it to no Haiku,
+# BACKLOG.md): if its classifier refuses a call after PermissionRequest, no hook ends the
+# wait before the turn's end. Their answer: the tool call's PostToolUse or PostToolUseFailure, or
+# ElicitationResult. The pair has the same key (_request_key), so a subagent's tool or the
+# next tool after a refusal does not end the wait. When the human refuses a permission or
+# dismisses a question, no hook runs at all: the agent stays waiting until the human types
+# (BACKLOG.md); when the human refuses with a comment, until its turn ends. Notification
+# says the same as these, about 6 s later, so it is not used. Checked by hand with Claude
+# Code 2.1.289.
 EVENTS = {
     "SessionStart": base.SESSION_START,
     "UserPromptSubmit": base.PROMPT_SUBMIT,
     "Stop": base.TURN_END,
     "SessionEnd": base.SESSION_END,
+    "PermissionRequest": base.WAITING,
+    "Elicitation": base.WAITING,
+    "PostToolUse": base.RESUMED,
+    "PostToolUseFailure": base.RESUMED,
+    "ElicitationResult": base.RESUMED,
 }
+# Hooks that run without holding Claude Code up: one runs after every tool call.
+ASYNC = ("PostToolUse", "PostToolUseFailure", "ElicitationResult")
 
 # /clear and /resume end Claude Code's session (SessionEnd with this reason) and start
 # another one in the same process (SessionStart with it as source); /exit ends it with
@@ -85,13 +105,14 @@ class ClaudeProvider(base.Provider):
         mcp_config.write_text(json.dumps({"mcpServers": servers}, indent=2))
 
         def hook(event: str) -> list[dict]:
-            command = base.hook_command(agent, event)
-            return [{"hooks": [{"type": "command", "command": command}]}]
+            command: dict = {"type": "command", "command": base.hook_command(agent, event)}
+            if event in ASYNC:
+                command["async"] = True
+            return [{"hooks": [command]}]
 
         settings = config_dir / "settings.json"
-        events = [*EVENTS, "Notification"]
         config = {
-            "hooks": {e: hook(e) for e in events},
+            "hooks": {e: hook(e) for e in EVENTS},
             "permissions": {"deny": BUILT_IN_MESSAGING},
         }
         settings.write_text(json.dumps(config, indent=2))
@@ -121,18 +142,33 @@ class ClaudeProvider(base.Provider):
         return base.Launch(cmd)
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
-        data = json.loads(payload) if payload.strip() else {}
-        if native == "Notification":
-            kind = data.get("notification_type") or data.get("message", "")
-            return base.Event(base.WAITING) if "permission" in kind.lower() else None
         if native not in EVENTS:
             return None
+        data = json.loads(payload) if payload.strip() else {}
         if native == "SessionEnd" and data.get("reason") in SWITCHES:
             return base.Event(base.CONVERSATION_END)
         if native == "SessionStart" and data.get("source") in SWITCHES:
             return base.Event(base.CONVERSATION_START)
-        return base.Event(EVENTS[native], data.get("prompt", ""))
+        neutral = EVENTS[native]
+        if neutral in (base.WAITING, base.RESUMED):
+            return base.Event(neutral, key=_request_key(data))
+        return base.Event(neutral, data.get("prompt", ""))
 
     def continue_output(self, text: str) -> str | None:
         # Blocking the stop makes Claude Code continue with `reason` as its next input.
         return json.dumps({"decision": "block", "reason": text})
+
+
+def _request_key(data: dict) -> str:
+    """The key of the dialog a hook is about: the tool call (its tool and input), or the MCP
+    server whose form it is. PermissionRequest has no tool_use_id (2.1.289), but the input
+    it shows is the one the tool's PostToolUse gets; an AskUserQuestion's answer adds its
+    answers to it, so only the questions count."""
+    if "mcp_server_name" in data and "tool_name" not in data:
+        about = ["elicitation", data["mcp_server_name"]]
+    else:
+        tool_input = data.get("tool_input") or {}
+        if data.get("tool_name") == "AskUserQuestion":
+            tool_input = {"questions": tool_input.get("questions")}
+        about = ["tool", data.get("tool_name", ""), tool_input]
+    return hashlib.sha256(json.dumps(about, sort_keys=True).encode()).hexdigest()[:16]

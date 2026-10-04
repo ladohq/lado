@@ -1,3 +1,4 @@
+import importlib
 import json
 from pathlib import Path
 
@@ -32,14 +33,109 @@ def test_registry():
         ("SessionStart", {"source": "clear"}, Event(providers.CONVERSATION_START)),
         ("SessionStart", {"source": "resume"}, Event(providers.CONVERSATION_START)),
         ("SessionStart", {"source": "compact"}, Event(providers.SESSION_START)),
-        ("Notification", {"notification_type": "permission_prompt"}, Event(providers.WAITING)),
-        ("Notification", {"message": "Claude needs your permission"}, Event(providers.WAITING)),
+        # The keyed hooks below say it, sooner: a notification about a dialog is none.
+        ("Notification", {"notification_type": "permission_prompt"}, None),
+        ("Notification", {"message": "Claude needs your permission"}, None),
+        ("Notification", {"notification_type": "elicitation_dialog"}, None),
         ("Notification", {"notification_type": "idle_prompt"}, None),
-        ("PreToolUse", {}, None),
+        ("PreToolUse", {"tool_name": "AskUserQuestion", "tool_use_id": "t1"}, None),
     ],
 )
 def test_claude_maps_native_events(native, payload, expected):
     assert providers.get("claude").parse_event(native, json.dumps(payload)) == expected
+
+
+# What Claude Code 2.1.289 gives its hooks (checked by hand, trimmed): PermissionRequest comes
+# before a dialog, for a question too, and has no tool_use_id; a question's answer adds to
+# its input; an elicitation and its result name only the MCP server.
+BASH = {"tool_name": "Bash", "tool_input": {"command": "touch b.txt", "description": "Create b"}}
+QUESTIONS = [{"question": "Red or blue?", "header": "Color", "options": [], "multiSelect": False}]
+ASK = {"tool_name": "AskUserQuestion", "tool_input": {"questions": QUESTIONS}}
+ANSWERED = {**ASK, "tool_input": {"questions": QUESTIONS, "answers": {"Red or blue?": "Blue"}}}
+
+
+def _claude_event(native, payload):
+    return providers.get("claude").parse_event(native, json.dumps(payload))
+
+
+def _paired(asked, answered):
+    waiting, resumed = _claude_event(*asked), _claude_event(*answered)
+    assert (waiting.kind, resumed.kind) == (providers.WAITING, providers.RESUMED)
+    assert waiting.key
+    return waiting.key == resumed.key
+
+
+def test_claude_pairs_a_dialog_with_its_answer():
+    used = {**BASH, "tool_use_id": "toolu_1", "tool_response": {"stdout": ""}}
+    assert _paired(("PermissionRequest", BASH), ("PostToolUse", used))
+    assert _paired(("PermissionRequest", BASH), ("PostToolUseFailure", {**used, "error": "x"}))
+    assert _paired(("PermissionRequest", ASK), ("PostToolUse", {**ANSWERED, "tool_use_id": "t"}))
+    elicitation = {"mcp_server_name": "probe", "message": "Which color?", "mode": "form"}
+    result = {"mcp_server_name": "probe", "mode": "form", "action": "accept"}
+    assert _paired(("Elicitation", elicitation), ("ElicitationResult", result))
+
+
+def test_claude_tells_another_tool_call_from_the_one_asked_about():
+    # A subagent's tool, or the next tool after a refusal, while the dialog is open.
+    other = {"tool_name": "Bash", "tool_input": {"command": "echo skipped"}, "agent_id": "a1"}
+    assert not _paired(("PermissionRequest", BASH), ("PostToolUse", other))
+    read = {"tool_name": "Read", "tool_input": BASH["tool_input"]}
+    assert not _paired(("PermissionRequest", BASH), ("PostToolUse", read))
+    assert not _paired(("PermissionRequest", ASK), ("PostToolUse", BASH))
+    elicitation = {"mcp_server_name": "probe"}
+    assert not _paired(
+        ("Elicitation", elicitation), ("ElicitationResult", {"mcp_server_name": "x"})
+    )
+
+
+def test_claude_hooks_leave_the_human_s_answer_to_the_human(repo, fake_tmux):
+    """The hooks that see a dialog print nothing: any output could decide it."""
+    runtime.start_session(str(repo), "s", None)
+    claude = providers.get("claude")
+    for native, payload in [
+        ("PermissionRequest", BASH),
+        ("Elicitation", {"mcp_server_name": "probe"}),
+        ("ElicitationResult", {"mcp_server_name": "probe", "action": "accept"}),
+        ("PostToolUse", BASH),
+    ]:
+        neutral = claude.parse_event(native, json.dumps(payload))
+        assert hooks.handle(claude, neutral, "s", "supervisor") is None
+
+
+def _claude_settings(repo, mode=None):
+    sess = state.Session("s", str(repo), mode)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
+    cmd = providers.get("claude").launch_command(agent, sess, spec).argv
+    return json.loads(open(cmd[cmd.index("--settings") + 1]).read())["hooks"]
+
+
+@pytest.mark.parametrize("mode", [None, *providers.get("claude").permission_modes])
+def test_claude_reports_dialogs_at_once_and_their_answers_without_holding_tools(repo, mode):
+    hooks_ = _claude_settings(repo, mode)
+    # A dialog is reported before it shows, in every mode: Claude Code asks this hook only
+    # when it shows one (also for a question with bypassPermissions, never for a refusal
+    # with dontAsk).
+    for native in ("PermissionRequest", "Elicitation"):
+        [asked] = hooks_[native]
+        assert "matcher" not in asked and "async" not in asked["hooks"][0]
+    # Every tool call ends with one of these: they must not hold up the next.
+    for native in ("PostToolUse", "PostToolUseFailure", "ElicitationResult"):
+        [answered] = hooks_[native]
+        assert "matcher" not in answered
+        assert answered["hooks"][0]["async"] is True
+        assert answered["hooks"][0]["command"].split()[-7] == native
+    assert "Notification" not in hooks_ and "PreToolUse" not in hooks_
+
+
+def test_providers_that_report_a_wait_report_its_end():
+    """A wait no event ends keeps the agent waiting until its turn ends."""
+    for name in providers.names():
+        provider = providers.get(name)
+        # Each provider's module maps its native events in EVENTS.
+        mapped = set(importlib.import_module(type(provider).__module__).EVENTS.values())
+        if providers.WAITING in mapped:
+            assert providers.RESUMED in mapped, name
 
 
 def test_claude_continues_with_queued_messages():
@@ -140,7 +236,10 @@ def test_kilo_permission_modes(repo, mode, flags, edit):
     assert config["permission"].get("edit") == edit
     # --auto announces every permission and approves it at once: not a wait for the human.
     hooks_ = config["plugin"][0][1]["hooks"]
-    assert ("permission.asked" in hooks_) == (mode != "bypassPermissions")
+    for event in ("permission.asked", "permission.replied"):
+        assert (event in hooks_) == (mode != "bypassPermissions")
+    for event in ("question.asked", "question.replied", "question.rejected"):
+        assert event in hooks_  # --auto does not answer questions
 
 
 def test_kilo_plan_agent_may_use_lado_tools(repo):
@@ -197,8 +296,11 @@ def test_kilo_plugin_ships_inside_the_package():
         ("plugin.init", {"directory": "/r"}, Event(providers.SESSION_START)),
         ("chat.message", {"sessionID": "x", "prompt": "hi"}, Event(providers.PROMPT_SUBMIT, "hi")),
         ("session.idle", {"sessionID": "x"}, Event(providers.TURN_END)),
-        ("permission.asked", {"permission": "bash"}, Event(providers.WAITING)),
-        ("question.asked", {}, Event(providers.WAITING)),
+        ("permission.asked", {"id": "per_1"}, Event(providers.WAITING, key="per_1")),
+        ("question.asked", {"id": "que_1"}, Event(providers.WAITING, key="que_1")),
+        ("permission.replied", {"id": "per_1"}, Event(providers.RESUMED, key="per_1")),
+        ("question.replied", {"id": "que_1"}, Event(providers.RESUMED, key="que_1")),
+        ("question.rejected", {"id": "que_1"}, Event(providers.RESUMED, key="que_1")),
         ("dispose", {}, Event(providers.SESSION_END)),
         ("session.created", {}, None),
     ],

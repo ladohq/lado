@@ -9,6 +9,7 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
+import yaml
 
 from lado import agent_env, hooks, kits, loop, providers, runs, runtime, state, tmux
 
@@ -1229,9 +1230,10 @@ def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
     assert started.lead == (
         "lead: LADO's built-in supervisor (kits default and team each have a supervisor)"
     )
-    assert [w.split(":")[0] for w in started.warnings] == [
-        "kit default's supervisor is not used",
-        "kit team's supervisor is not used",
+    assert [w.split(" (")[0].split(":")[0] for w in started.warnings] == [
+        "kit default's supervisor leads as LADO's built-in supervisor",
+        "kit team's supervisor does not lead",
+        "kit team's supervisor lists no skills",
     ]
 
 
@@ -1949,3 +1951,137 @@ def test_only_an_agent_is_told_it_may_write_to_the_human(repo, fake_tmux):
     with pytest.raises(runtime.LadoError) as refused:
         runtime.answer_question("s", question.id, "yes")
     assert str(refused.value) == 'no running agent "w1"; running agents: supervisor'
+
+
+@pytest.fixture
+def boss_kit(repo):
+    """Kit boss with a supervisor that names its skill notes (with a script, and a link to a
+    file outside the kit) and has an MCP server; with the default kit, it does not lead."""
+    kit = repo / ".lado" / "kits" / "boss"
+    _write(kit / "kit.yaml", "name: boss\nsupervisor: chief\n")
+    _write(
+        kit / "agents" / "chief.md",
+        "---\nname: chief\ndescription: 'Chief: leads \"boss\" work'\nskills: [notes]\n"
+        "mcp: {db: {command: [db]}}\n---\nYou lead boss work.\n",
+    )
+    _write(kit / "agents" / "dev.md", "---\nname: dev\ndescription: develops\n---\nDevelop.\n")
+    notes = kit / "skills" / "notes"
+    _write(notes / "SKILL.md", "---\nname: notes\ndescription: d\n---\nTake notes.\n")
+    _write(notes / "scripts" / "run.sh", "echo hi\n")
+    _write(repo.parent / "outside.txt", "outside\n")
+    (notes / "outside.txt").symlink_to(repo.parent / "outside.txt")
+    return kit
+
+
+def _lead_dir(lado_home, session="s"):
+    return lado_home / "agents" / session / "supervisor"
+
+
+def test_the_built_in_lead_gets_a_lead_skill_per_kit_supervisor(
+    repo, fake_tmux, boss_kit, lado_home
+):
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"])
+    config = _lead_dir(lado_home)
+    skill_md = config / "lead-skills" / "lead-boss" / "SKILL.md"
+    front, body = skill_md.read_text().split("---\n")[1:]
+    assert yaml.safe_load(front) == {
+        "name": "lead-boss",
+        "description": "How kit boss wants its work led: read it before you take a task for "
+        'its roles or flows. Chief: leads "boss" work',
+    }
+    files = config / "lead-files"
+    assert body == (
+        "You lead boss work.\n\n"
+        "## Skills this text names\n"
+        "When the text above names one of these skills, read it from here (they are kit "
+        "boss's versions, not your own skills):\n"
+        f"- notes: {files / 'boss' / 'notes' / 'SKILL.md'}\n\n"
+        "MCP servers of this kit's supervisor are not available to you: db.\n"
+    )
+    copy = files / "boss" / "notes"
+    assert (copy / "SKILL.md").read_text().endswith("Take notes.\n")
+    assert (copy / "scripts" / "run.sh").is_file()
+    # A link in the skill is copied as its file: the lead may read the copy only.
+    assert not (copy / "outside.txt").is_symlink()
+    assert (copy / "outside.txt").read_text() == "outside\n"
+    # Only the lead skill itself is a SKILL.md where skills are looked up.
+    assert list((config / "lead-skills").rglob("SKILL.md")) == [skill_md]
+    _, cmd = agent_helpers.launched(fake_tmux[0])
+    added = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--add-dir"]
+    assert added == [str(config / "skills"), str(files)]
+    link = config / "skills" / ".claude" / "skills" / "lead-boss"
+    assert link.resolve() == skill_md.parent
+    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    assert (
+        "Kits whose own supervisor does not lead: boss. Read the skill lead-<kit> before you "
+        "take a task for that kit's roles or flows.\n"
+    ) in prompt
+
+
+def test_lead_skills_are_written_anew_at_each_start(repo, fake_tmux, boss_kit, lado_home):
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"])
+    files = _lead_dir(lado_home) / "lead-files"
+    _write(files / "boss" / "notes" / "stale.md", "old\n")
+    _write(_lead_dir(lado_home) / "lead-skills" / "lead-gone" / "SKILL.md", "old\n")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert not (files / "boss" / "notes" / "stale.md").exists()
+    assert not (_lead_dir(lado_home) / "lead-skills" / "lead-gone").exists()
+    assert (files / "boss" / "notes" / "SKILL.md").is_file()
+    # A kit supervisor that leads gets no lead skills.
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None, kit_names=["boss"])
+    assert not files.exists() and not (_lead_dir(lado_home) / "lead-skills").exists()
+
+
+def test_a_lead_skill_says_when_its_supervisor_lists_no_skills(repo, fake_tmux, lado_home):
+    kit = repo / ".lado" / "kits" / "boss"
+    _write(kit / "kit.yaml", "name: boss\nsupervisor: chief\n")
+    _write(kit / "agents" / "chief.md", "---\nname: chief\ndescription: c\n---\nLead.\n")
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"])
+    skill_md = _lead_dir(lado_home) / "lead-skills" / "lead-boss" / "SKILL.md"
+    assert skill_md.read_text().endswith("Lead.\n\nThis kit's supervisor lists no skills.\n")
+    _write(kit / "agents" / "chief.md", "---\nname: chief\ndescription: c\nskills: []\n---\nL.\n")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert skill_md.read_text().endswith("---\nL.\n")
+
+
+def test_a_lost_start_does_not_touch_the_running_leads_files(
+    repo, fake_tmux, boss_kit, lado_home, monkeypatch
+):
+    config = _lead_dir(lado_home)
+    _write(config / "lead-files" / "boss" / "notes" / "SKILL.md", "the running lead's\n")
+    monkeypatch.setattr(state, "add_session", lambda sess: False)  # another start took it
+    with pytest.raises(runtime.LadoError, match="already running"):
+        runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"])
+    assert (config / "lead-files" / "boss" / "notes" / "SKILL.md").read_text() == (
+        "the running lead's\n"
+    )
+    assert not (config / "lead-skills").exists()
+
+
+@pytest.mark.parametrize("target", ["missing.txt", "loop"])
+def test_a_skill_that_cannot_be_copied_names_the_skill_and_its_kit(
+    repo, fake_tmux, boss_kit, lado_home, target
+):
+    (boss_kit / "skills" / "notes" / "loop").symlink_to(boss_kit / "skills" / "notes" / target)
+    with pytest.raises(runtime.LadoError, match="cannot copy skill notes of kit boss"):
+        runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"])
+    assert state.get_session("s") is None and not _lead_dir(lado_home).exists()
+
+
+def test_a_provider_without_skills_names_the_way_out_of_lead_skills(
+    repo, fake_tmux, boss_kit, monkeypatch
+):
+    monkeypatch.setitem(providers._PROVIDERS, "noskills", _NoSkills())
+    kit_names = ["default", "boss"]
+    with pytest.raises(runtime.LadoError) as e:
+        runtime.start_session(str(repo), "s", None, "noskills", kit_names, ["skill:notes"])
+    assert str(e.value) == (
+        'No Skills CLI cannot load skills, but agent "supervisor" (supervisor) gets the lead '
+        "skill lead-boss; switch its kit's supervisor off with --without agent:chief@boss"
+    )
+    runtime.start_session(
+        str(repo), "s", None, "noskills", kit_names, ["skill:notes", "agent:chief@boss"]
+    )

@@ -11,7 +11,9 @@ from lado import state
 from lado.providers import base
 
 # The plugin API is Kilo-internal and changes between releases: `lado doctor` warns when the
-# installed Kilo is not this version.
+# installed Kilo is not this version. `kilo debug skill` (7.8.3, with a KILO_CONFIG of its
+# own) finds **/SKILL.md at any depth under skills.paths: the lead's lead-files
+# (AgentSpec.read, lado.runtime) are kept out of skills.paths and only readable.
 TESTED_VERSION = "7.8"
 
 PLUGIN = Path(__file__).with_name("kilo_plugin.js")
@@ -64,7 +66,9 @@ class KiloProvider(base.Provider):
             # --auto still announces each permission and approves it at once: not a wait.
             events.remove("permission.asked")
             events.remove("permission.replied")
-        permission: dict = {"external_directory": {f"{state.home()}/**": "allow"}}
+        # spec.read is read without asking too; it is not in skills.paths.
+        readable = [state.home(), *spec.read]
+        permission: dict = {"external_directory": {f"{p}/**": "allow" for p in readable}}
         if mode == "default":
             permission["edit"] = "ask"  # Kilo's default agent edits without asking
 
@@ -74,9 +78,10 @@ class KiloProvider(base.Provider):
                 name: {"type": "local", "command": s.command, "environment": s.env}
                 for name, s in spec.mcp.items()
             },
-            # Kilo finds <name>/SKILL.md under each path (checked with Kilo 7.8.1, symlinks
-            # included). The links live under LADO_HOME, which external_directory allows, so
-            # the agent can also read and run a skill's other files.
+            # Kilo finds every **/SKILL.md under each path, at any depth (checked with
+            # `kilo debug skill`, Kilo 7.8.3; symlinks included, 7.8.1): a skill folder must
+            # hold no other skill. The links live under LADO_HOME, which external_directory
+            # allows, so the agent can also read and run a skill's other files.
             "skills": {"paths": [str(base.link_skills(config_dir / "skills", spec.skills))]},
             "plugin": [[PLUGIN.as_uri(), {"hooks": {e: base.hook_argv(agent, e) for e in events}}]],
             "permission": permission,

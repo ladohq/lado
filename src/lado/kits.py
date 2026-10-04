@@ -27,7 +27,9 @@ as LEAD, so a run's snapshot gives it to the session's lead, whoever that is.
 
 Several kits combine into one Environment for a session (resolve says in which order).
 Exactly one kit with a supervisor: it leads; none or several: LADO's built-in supervisor
-leads (the default kit's), and a kit supervisor that does not lead is not in the session.
+leads (the default kit's), and a kit supervisor that does not lead is no agent of the
+session: its prompt and the skills it names, in its kit's versions, become the built-in
+lead's skill lead-<kit> (Environment.lead_skills).
 `--without kind:name@kit` switches a thing off in one kit before the kits combine, so two
 kits with one name run together; `kind:name` switches it off in the whole session after.
 Their roles, flows and own skills are one namespace: a name twice is an error that names
@@ -198,6 +200,27 @@ class ResolvedAgent:
         return servers
 
 
+@dataclass(frozen=True)
+class LeadSkill:
+    """What a kit's supervisor that does not lead hands to LADO's built-in one: its prompt
+    as the skill lead-<kit>, with the skills its `skills:` names in its kit's versions."""
+
+    kit: str
+    description: str
+    body: str  # the supervisor's prompt
+    skills: dict[str, Skill]  # those it names, as its kit's agents see them
+    listed: bool  # whether it has `skills:` at all (None gives none, with a warning)
+    missing_mcp: list[str]  # its MCP servers: the lead does not get them
+
+    @property
+    def name(self) -> str:
+        return lead_skill_name(self.kit)
+
+
+def lead_skill_name(kit: str) -> str:
+    return f"lead-{kit}"
+
+
 @dataclass
 class Environment:
     kits: list[Kit]  # every kit taken in, in the order given, before --without
@@ -208,10 +231,28 @@ class Environment:
     without: list[str] = field(default_factory=list)
     flows: dict[str, Flow] = field(default_factory=dict)
     private: dict[str, dict[str, Skill]] = field(default_factory=dict)  # kit -> its packs' skills
+    # kit -> its supervisor, when LADO's built-in one leads (not the default kit's, which is
+    # that one); with the --without items applied. The source of lead_skills.
+    kit_supervisors: dict[str, AgentDef] = field(default_factory=dict)
 
     def visible(self, agent: AgentDef) -> dict[str, Skill]:
         """The skills `agent` may have: the shared ones and its own kit's packs'."""
         return {**self.shared, **self.private.get(agent.kit, {})}
+
+    def lead_skills(self) -> list[LeadSkill]:
+        """The skill lead-<kit> of each kit supervisor that does not lead (kit_supervisors):
+        none when a kit's supervisor leads."""
+        found = []
+        for kit, agent in self.kit_supervisors.items():
+            visible = self.visible(agent)
+            named = {s: visible[s] for s in agent.skills or [] if s in visible}
+            description = (
+                f"How kit {kit} wants its work led: read it before you take a task for its "
+                f"roles or flows. {agent.description}"
+            )
+            listed = agent.skills is not None
+            found.append(LeadSkill(kit, description, agent.body, named, listed, list(agent.mcp)))
+        return found
 
     def all_skills(self) -> list[Skill]:
         """Every skill of the session, one per folder: a name may come twice, from two
@@ -251,15 +292,38 @@ class Environment:
 
     @property
     def warnings(self) -> list[str]:
-        """The kits' supervisors that do not lead, each with the way to keep it."""
+        """How the kits' supervisors are used when none of them leads, each with the way to
+        make it the lead, and what their lead skills lack."""
         if len(self.supervisors) < 2:
             return []
-        return [
-            f"kit {kit}'s supervisor is not used: LADO's built-in supervisor leads (several "
-            "kits have a supervisor); to keep one, switch the others off: "
-            + " ".join(f"--without agent:{s}@{k}" for k, s in self.supervisors.items() if k != kit)
-            for kit in self.supervisors
-        ]
+        lead_skills = {s.kit: s for s in self.lead_skills()}
+        found = []
+        for kit in self.supervisors:
+            others = " ".join(
+                f"--without agent:{s}@{k}" for k, s in self.supervisors.items() if k != kit
+            )
+            skill = lead_skills.get(kit)
+            if skill is None:
+                # The default kit's: switching the others off keeps it the lead, so no hint;
+                # each other kit's line says how to make that one the lead.
+                found.append(
+                    f"kit {kit}'s supervisor leads as LADO's built-in supervisor (several kits "
+                    "have a supervisor)"
+                )
+                continue
+            found.append(
+                f"kit {kit}'s supervisor does not lead (several kits have a supervisor): its "
+                f"prompt is the built-in supervisor's skill {skill.name}; to make it the lead, "
+                f"switch the others off: {others}"
+            )
+            if not skill.listed:
+                found.append(f"kit {kit}'s supervisor lists no skills: its lead skill carries none")
+            if skill.missing_mcp:
+                found.append(
+                    f"MCP servers of kit {kit}'s supervisor ({', '.join(skill.missing_mcp)}) "
+                    "are not available to the session's lead"
+                )
+        return found
 
     def roles(self) -> list[AgentDef]:
         """Agents the lead can start as workers."""
@@ -797,6 +861,7 @@ def resolve(
     supervisors = {k.name: k.supervisor for k in trimmed if k.supervisor}
     leading = [k for k in trimmed if k.supervisor]
     roles = [(k, {n: a for n, a in k.agents.items() if n != k.supervisor}) for k in trimmed]
+    kit_supervisors: dict[str, AgentDef] = {}
     if len(leading) == 1:
         lead = leading[0].agents[leading[0].supervisor]
         # No role may take the lead's name.
@@ -806,6 +871,12 @@ def resolve(
         builtin = load(BUILTIN / DEFAULT_KIT, "built-in")
         lead = builtin.agents[builtin.supervisor]
         agents = _merge(roles, "agent")
+        # The built-in default kit's supervisor is the lead itself.
+        kit_supervisors = {
+            k.name: k.agents[k.supervisor]
+            for k in leading
+            if k.agents[k.supervisor].path != lead.path
+        }
     skills = _merge([(k, k.skills) for k in trimmed], "skill")
     # A kit without agents (by what it holds, before --without) shares its packs.
     had_agents = {k.name for k in env_kits if k.agents}
@@ -830,7 +901,7 @@ def resolve(
                 )
     env_flows = _merge([(k, k.flows) for k in trimmed], "flow")
 
-    mcp = {m for a in [*agents.values(), lead] for m in a.mcp}
+    mcp = {m for a in [*agents.values(), lead, *kit_supervisors.values()] for m in a.mcp}
     every_skill = {**{s: v for own in private.values() for s, v in own.items()}, **skills}
     _check_known(plain, every_skill, mcp, set(agents), set(env_flows))
     agents = {n: a for n, a in agents.items() if n not in plain["agent"]}
@@ -842,7 +913,8 @@ def resolve(
     # A skill an agent names that is switched off, in the session or in the kit it came
     # from, is no error.
     off_skills = {name for name, _ in excluded["skill"]}
-    for agent in [*agents.values(), lead]:
+    # A kit supervisor that does not lead is checked as if it led: its lead skill names them.
+    for agent in [*agents.values(), lead, *kit_supervisors.values()]:
         visible = {**skills, **private.get(agent.kit, {})}
         for skill in agent.skills or []:
             if skill not in visible and skill not in off_skills:
@@ -851,10 +923,26 @@ def resolve(
                     f'(kit "{agent.kit}"): not a skill of the session\'s kits or of kit '
                     f'"{agent.kit}"\'s dependencies'
                 )
+    lead_visible = {**skills, **private.get(lead.kit, {})}
+    for kit_name, agent in kit_supervisors.items():
+        name = lead_skill_name(kit_name)
+        if name in lead_visible:
+            other = lead_visible[name]
+            options = [f"skill:{name}", f"agent:{agent.name}@{kit_name}"]
+            raise KitError(
+                f'skill "{name}" of kit {other.kit} ({other.path}) has the name of the lead '
+                f"skill of kit {kit_name}'s supervisor ({agent.path}), which LADO's built-in "
+                f"supervisor gets; switch one off: --without {options[0]} or "
+                f"--without {options[1]}",
+                options,
+            )
     if plain["mcp"]:
         agents = {n: _without_mcp(a, plain["mcp"]) for n, a in agents.items()}
         lead = _without_mcp(lead, plain["mcp"])
-    return Environment(env_kits, agents, skills, lead, supervisors, without, env_flows, private)
+        kit_supervisors = {k: _without_mcp(a, plain["mcp"]) for k, a in kit_supervisors.items()}
+    return Environment(
+        env_kits, agents, skills, lead, supervisors, without, env_flows, private, kit_supervisors
+    )
 
 
 def _supervisors_by_kit(

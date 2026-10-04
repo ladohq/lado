@@ -8,6 +8,7 @@ import contextlib
 import enum
 import os
 import re
+import shutil
 import subprocess
 import time
 import unicodedata
@@ -15,9 +16,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
 from lado import agent_env, kits, loop, providers, state, terminal, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
+# In the lead's config folder: its lead skills (kits.LeadSkill), and the copies of the
+# skills they name, which no CLI looks up as skills.
+LEAD_SKILLS = "lead-skills"
+LEAD_FILES = "lead-files"
 MAX_MESSAGE = 8000
 # Seconds after the 1st, 2nd, ... time a message was typed into an agent's window before
 # sweep deals with it again: types it again, or gives up after the last. LADO_RETRY_DELAYS
@@ -272,6 +279,9 @@ def start_session(
             agent.task = format_messages(taken)
         _add_agent(agent)
         first = _first_input(agent, agent.task, "your first messages")
+        # Written once the session is taken, as the provider's config: a start that lost
+        # does not touch the running lead's files.
+        _write_lead_skills(agent, env.lead_skills())
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
         tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
     except Exception:
@@ -1112,6 +1122,12 @@ def _supervisor_instructions(env: kits.Environment, session: str) -> str:
             f"  - {f.name} (kit {f.kit}): {f.description}" for f in env.flows.values()
         )
         text += FLOW_INSTRUCTIONS.format(flows=listed)
+    lead_kits = [s.kit for s in env.lead_skills()]
+    if lead_kits:
+        text += (
+            f"Kits whose own supervisor does not lead: {', '.join(lead_kits)}. Read the skill "
+            "lead-<kit> before you take a task for that kit's roles or flows.\n"
+        )
     return text
 
 
@@ -1128,16 +1144,73 @@ def _spec(
     and MCP servers, their ${ENV_VAR} from the agent's `base_env`. Fails on anything its
     CLI cannot do."""
     resolved = env.resolve(role, without or [])
+    cannot = f'{agent_cli.title} cannot load skills, but agent "{agent.name}" ({role}) gets'
     if resolved.skills and not agent_cli.capabilities.skills:
         raise LadoError(
-            f'{agent_cli.title} cannot load skills, but agent "{agent.name}" ({role}) gets '
-            f"{', '.join(resolved.skills)}; switch them off with --without skill:<name>"
+            f"{cannot} {', '.join(resolved.skills)}; switch them off with --without skill:<name>"
         )
+    skills = {name: skill.path for name, skill in resolved.skills.items()}
+    read = []
+    # The lead's lead skills: their files are written by _write_lead_skills.
+    lead_skills = env.lead_skills() if role == env.lead.name else []
+    config = providers.base.config_path(agent)
+    for lead_skill in lead_skills:
+        if not agent_cli.capabilities.skills:
+            source = env.kit_supervisors[lead_skill.kit]
+            raise LadoError(
+                f"{cannot} the lead skill {lead_skill.name}; switch its kit's supervisor off "
+                f"with --without agent:{source.name}@{lead_skill.kit}"
+            )
+        skills[lead_skill.name] = config / LEAD_SKILLS / lead_skill.name
+    if lead_skills:
+        read.append(config / LEAD_FILES)
     return providers.AgentSpec(
         prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}",
-        skills={name: skill.path for name, skill in resolved.skills.items()},
+        skills=skills,
         mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers(base_env)},
+        read=read,
     )
+
+
+def _write_lead_skills(agent: state.Agent, lead_skills: list[kits.LeadSkill]) -> None:
+    """Write the lead's lead skills where _spec says, anew: each lead-<kit>/SKILL.md, and
+    copies of the skills it names in lead-files/<kit>/, outside every folder where skills
+    are looked up (a CLI may look for SKILL.md at any depth). Links in a skill are copied as
+    their files: the lead may read only what is under its read folders."""
+    config = providers.base.config_path(agent)
+    for folder in (LEAD_SKILLS, LEAD_FILES):
+        shutil.rmtree(config / folder, ignore_errors=True)
+    for lead_skill in lead_skills:
+        paths = []
+        for name, skill in lead_skill.skills.items():
+            copy = config / LEAD_FILES / lead_skill.kit / name
+            try:
+                shutil.copytree(skill.path, copy)
+            except (OSError, RecursionError) as exc:
+                raise LadoError(
+                    f"cannot copy skill {name} of kit {lead_skill.kit} for the lead skill "
+                    f"{lead_skill.name}: {exc}"
+                ) from None
+            paths.append(f"- {name}: {copy / 'SKILL.md'}")
+        parts = [lead_skill.body]
+        if paths:
+            parts.append(
+                "## Skills this text names\nWhen the text above names one of these skills, "
+                f"read it from here (they are kit {lead_skill.kit}'s versions, not your own "
+                "skills):\n" + "\n".join(paths)
+            )
+        elif not lead_skill.listed:
+            parts.append("This kit's supervisor lists no skills.")
+        if lead_skill.missing_mcp:
+            parts.append(
+                "MCP servers of this kit's supervisor are not available to you: "
+                f"{', '.join(lead_skill.missing_mcp)}."
+            )
+        front = {"name": lead_skill.name, "description": lead_skill.description}
+        dump = yaml.safe_dump(front, sort_keys=False, allow_unicode=True, width=10**6)
+        folder = config / LEAD_SKILLS / lead_skill.name
+        folder.mkdir(parents=True)
+        (folder / "SKILL.md").write_text(f"---\n{dump}---\n" + "\n\n".join(parts) + "\n")
 
 
 def _add_agent(agent: state.Agent) -> None:

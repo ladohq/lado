@@ -50,8 +50,13 @@ lado start . --kit default --kit my-team
 ```
 
 Who leads a session: if exactly one of its kits has a supervisor, that one; otherwise
-LADO's built-in supervisor, and LADO warns about each kit supervisor it does not use.
-`lado start` and `lado kits show` print who leads. The supervisor starts workers with
+LADO's built-in supervisor. Then each kit's supervisor hands its rules to the built-in one
+as a skill `lead-<kit>`: its prompt, and where to read the skills its `skills:` names, in
+that kit's versions (copies the lead reads but does not load as its own skills, so two kits
+may take two versions of one skill). Its MCP servers are not passed on, and a supervisor
+without `skills:` passes none: LADO warns about both. Such a supervisor's `skills:` is
+checked as if it led, so a skill its kit does not have stops the start. `lado start` and
+`lado kits show` print who leads; `lado kits show` lists the lead skills. The supervisor starts workers with
 `spawn_worker(role=...)`; the role may be left out only when the session has one.
 
 `--without kind:name` switches off an agent, flow, skill or MCP server (kinds `agent`,

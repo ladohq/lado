@@ -156,6 +156,15 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
         print(f"    skills{' (all)' if agent.skills is None else ''}: {skills}")
         for mcp in resolved.mcp.values():
             print(f"    mcp {mcp.name}: {' '.join(mcp.command)}")
+    if env.lead_skills():
+        print("Lead skills of LADO's built-in supervisor:")
+    for lead_skill in env.lead_skills():
+        source = env.kit_supervisors[lead_skill.kit]
+        print(f"  {lead_skill.name}  from {lead_skill.kit}: {source.path}")
+        named = ", ".join(f"{s.name} ({origin(s)})" for s in lead_skill.skills.values())
+        print(f"    skills: {named or 'none'}")
+        if lead_skill.missing_mcp:
+            print(f"    mcp not available: {', '.join(lead_skill.missing_mcp)}")
     print("Skills:")
     where = {kit.name: kit.where for kit in env.kits}
     for skill in env.all_skills():

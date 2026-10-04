@@ -645,3 +645,25 @@ feature/chat-paging.
 Wanted: notes in windows with a cursor, as the chat's messages (`live.ts`
 `watchMessages`), loaded per run or by pages.
 Found: 2026-10-05, feature/chat-paging (design).
+## Agents may be asked to read kit files outside their allowed folders
+
+Two ways a Claude agent may meet a permission dialog in the modes default and acceptEdits
+when it only reads a kit's files: `${KIT_DIR}` in an agent's prompt (a role, a kit's leading
+supervisor, a lead skill's text) becomes the kit's absolute folder, which for a linked local
+kit is outside LADO_HOME and outside every `--add-dir`; and the skills LADO links into
+`.claude/skills` (`base.link_skills`) point to their folders in the kit or the git cache, so
+reading a skill's other files (not loading it) goes to a path outside `--add-dir`. Kilo
+allows reads under LADO_HOME only, so a linked local kit is outside there too.
+Wanted: a live check of both in mode default; if a dialog shows, give the agent its kits'
+folders to read (`AgentSpec.read`) or copy what it reads, as the lead's lead-files are.
+Found: 2026-10-04, design and architect's review of feature/lead-skills.
+
+## Flaky: vitest "the runs come in groups" times out under load
+
+`make check` failed twice in a row in `web/src/Flows.test.tsx` > "the runs come in groups,
+the ended ones folded and remembered, the tab counts the open ones" with `Error: Test timed
+out in 5000ms` (5572 ms, 5823 ms) while the machine's load average was 180-220; the file
+alone passed (19 passed) and the next `make check` was green. The test takes about 5 s even
+when it passes, so vitest's default 5 s timeout leaves no margin.
+Wanted: the test made shorter (fewer steps or fake timers) or given its own timeout.
+Found: 2026-10-05, feature/lead-skills (implement, review fixes).

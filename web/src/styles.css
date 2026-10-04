@@ -502,6 +502,11 @@ h3 {
   color: var(--ink);
 }
 
+.group-toggle:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 .session-about {
   color: var(--muted);
   font-size: 13px;

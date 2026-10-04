@@ -144,8 +144,9 @@ export function ListPage({
 
 const slug = (name: string) => name.toLowerCase().replace(/\s+/g, "-");
 
-// One group of the list. A folded one is open while the search has text, while it holds the
-// selected item (neither is remembered) or when the human opened it.
+// One group of the list. A folded one is open while the search has text (its toggle then does
+// nothing) or when the human opened it; it opens, not remembered, each time an item of it is
+// selected, and folds again on its toggle.
 function ListGroup({
   group,
   entries,
@@ -158,7 +159,12 @@ function ListGroup({
   searching: boolean;
 }) {
   const [folded, setFolded] = useState(() => (group.fold ? !group.fold.stored() : false));
+  const [openedFor, setOpenedFor] = useState<string | undefined>(undefined);
   const [all, setAll] = useState(false);
+  if (selected !== undefined && selected !== openedFor && group.entries.some((entry) => entry.key === selected)) {
+    setOpenedFor(selected);
+    setFolded(false);
+  }
   const id = `list-group-${slug(group.name)}`;
   const className = `list-group${group.tone ? ` ${group.tone}` : ""}`;
   if (group.problem || group.loading) {
@@ -211,14 +217,21 @@ function ListGroup({
   );
   if (group.fold) {
     const fold = group.fold;
-    const open = !folded || searching || at >= 0;
+    const open = !folded || searching;
     const toggle = () => {
       setFolded(open);
       fold.store(!open);
     };
     return (
       <>
-        <FoldToggle name={group.name} count={entries.length} open={open} controls={id} onToggle={toggle} />
+        <FoldToggle
+          name={group.name}
+          count={entries.length}
+          open={open}
+          controls={id}
+          onToggle={toggle}
+          disabled={searching}
+        />
         {open && (
           <section id={id} className={className} aria-label={group.name}>
             {items}

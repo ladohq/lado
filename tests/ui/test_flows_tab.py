@@ -110,7 +110,10 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     expect(lines.nth(-2)).to_contain_text("check · human → approved → end")
     expect(run.get_by_role("listitem", name="State end")).to_have_attribute("aria-current", "step")
     expect(page.get_by_role("link", name="Flows · 1")).to_be_visible()
-    runs_list.get_by_role("button", name="Ended (1)").click()
+    # The run shown has ended: its group opens for it, folded as it was remembered or not.
+    expect(runs_list.get_by_role("button", name="Ended (1)")).to_have_attribute(
+        "aria-expanded", "true"
+    )
     expect(runs_list.get_by_role("region", name="Ended").get_by_role("link")).to_contain_text(
         "ended"
     )

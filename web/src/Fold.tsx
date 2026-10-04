@@ -6,15 +6,24 @@ export function FoldToggle({
   open,
   controls,
   onToggle,
+  disabled = false,
 }: {
   name: string;
   count: number;
   open: boolean;
   controls: string;
   onToggle: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <button type="button" className="group-toggle" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
+    <button
+      type="button"
+      className="group-toggle"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+      disabled={disabled}
+    >
       <span aria-hidden="true">{open ? "▾" : "›"} </span>
       {name} ({count})
     </button>

@@ -548,3 +548,32 @@ one.to === name` within the agent's lifetime) or which messages the live `messag
 loads for the session.
 Wanted: an agent's page lists its latest messages from and to it in its lifetime.
 Found: 2026-10-04, feature/flows-list (design).
+
+## Flaky UI test: a gate answered with `lado answer` loses the rail's "Needs you" count
+
+`tests/ui/test_needs_you.py::test_a_gate_answered_with_lado_answer_goes_without_a_reload`
+failed once in `make check` (review of feature/flows-list, commit d80765d): after the gate's
+answer the rail's Needs you link had no count, so the supervisor the test set `waiting`
+with `state.set_status` was no longer waiting; run alone it passed 3 of 3. Likely a hook or
+status change of the fake agent under load overwrites the status the test set.
+Wanted: the test does not rely on nobody else changing the agent's status (or waits for it).
+Found: 2026-10-04, feature/flows-list (review).
+
+## Flows.tsx and Agents.tsx import each other
+
+`Flows.tsx` imports `AgentName` from `Agents.tsx` and `Agents.tsx` imports `isOpen` from
+`Flows.tsx`. It works (both are used only while rendering), but each new tab with a list
+of runs or agents would join the cycle.
+Wanted: the helpers about runs and agents shared by the tabs in a module of their own.
+Found: 2026-10-04, feature/flows-list (review).
+
+## Flaky integration test: the UI's start says at once that its server exited
+
+`tests/integration/test_server_process.py::test_ui_says_at_once_when_the_server_it_started_exits`
+failed once in `make check` on feature/flows-list (`assert 10.22 < 15.0 / 2`, the time
+`lado ui` took to report the exit, against `server_run.READY_TIMEOUT / 2`); run alone it
+passed 3 of 3 (0.7–5.2 s). Under the full parallel run the machine is slow enough to cross
+the bound.
+Wanted: a bound that tells "at once" from "waited for the timeout" under load too (e.g.
+compare with the full READY_TIMEOUT, or measure the wait the code does, not wall time).
+Found: 2026-10-04, feature/flows-list (implement, make check).

@@ -1,7 +1,7 @@
 // A tab's list and the page of the item it picks (Flows, Agents): side by side in a wide
 // column; in a narrow one either the list or the page.
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router";
+import { Link, MemoryRouter, Route, Routes, useLocation, useParams } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { columnWidth, FakeResizeObserver, narrowColumn, wideColumn } from "./fakes";
@@ -43,7 +43,12 @@ function Things({ list = groups(), fallback = "/things/a", notice }: Props) {
       noun="thing"
       groups={list}
       selected={key}
-      page={<p>page of {key}</p>}
+      page={
+        <>
+          <p>page of {key}</p>
+          <Link to="/things/old-2">go to old-2</Link>
+        </>
+      }
       listPath="/things"
       back="All things (3 open)"
       fallback={fallback}
@@ -171,6 +176,39 @@ test("the selected item is always seen: its folded group opens and its row shows
   expect(within(list).getByRole("button", { name: "Show 2 more" })).toBeTruthy();
   expect(localStorage.getItem(FOLD)).toBeNull();
   expect(within(list).getAllByRole("link").filter((one) => one.getAttribute("aria-current"))).toHaveLength(1);
+});
+
+test("a group opened for its selected item folds on its toggle, and opens again when another of its items is picked", () => {
+  wideColumn();
+  open("/things/old-1", { list: groups({ old: 3 }) });
+  const toggle = () => within(nav()!).getByRole("button", { name: /Ended \(3\)/ });
+  fireEvent.click(toggle());
+  expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  expect(within(nav()!).queryByRole("region", { name: "Ended" })).toBeNull();
+  expect(localStorage.getItem(FOLD)).toBe("folded");
+  expect(pageOf("old-1")).toBeTruthy(); // the page stays
+  fireEvent.click(toggle());
+  expect(localStorage.getItem(FOLD)).toBe("open");
+  fireEvent.click(toggle());
+  fireEvent.click(within(nav()!).getByRole("link", { name: "a" }));
+  expect(within(nav()!).queryByRole("region", { name: "Ended" })).toBeNull();
+  // Picked from elsewhere (a link, the address): its group opens for it, not remembered.
+  fireEvent.click(screen.getByRole("link", { name: "go to old-2" }));
+  expect(within(nav()!).getByRole("link", { name: "old-2" }).getAttribute("aria-current")).toBe("page");
+  expect(localStorage.getItem(FOLD)).toBe("folded");
+});
+
+test("while the search has text a folded group is open and its toggle does nothing", () => {
+  wideColumn();
+  open("/things/a", { list: groups({ old: 3 }) });
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find a thing" }), { target: { value: "old" } });
+  const toggle = within(nav()!).getByRole("button", { name: /Ended \(3\)/ }) as HTMLButtonElement;
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(toggle.disabled).toBe(true);
+  fireEvent.click(toggle);
+  expect(localStorage.getItem(FOLD)).toBeNull();
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find a thing" }), { target: { value: "" } });
+  expect(within(nav()!).queryByRole("region", { name: "Ended" })).toBeNull();
 });
 
 test("an item is picked by its key: two rows of one name are told apart", () => {

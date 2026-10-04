@@ -22,10 +22,14 @@ a surface, it takes nothing away.
    (`lado_token_<port>`, so two LADO servers on one machine do not log each other out) or
    `Authorization: Bearer <token>`. A connection that changes something is also checked
    for its Origin (`Guard.check(conn, changes=True)`, for any HTTP connection: the
-   terminal's WebSocket, the composer, answers to questions and gates): only the server's own
-   `http://127.0.0.1:<port>` and `http://localhost:<port>`, and no Origin only with a Bearer
-   token (a client that is not a browser). Later the layer can be replaced by a real login
-   for a remote host without touching the rest.
+   terminal's WebSocket, the composer, answers to questions and gates): only a page of the
+   server itself, whose Origin's authority (host and port, the scheme aside) is the
+   request's own `Host` (a request with an Origin and no Host is refused); no Origin only
+   with a Bearer token (a client that is not a browser). The server does not know the names
+   it is reached by (`--host 0.0.0.0`, an SSH tunnel to another local port, a TLS proxy that
+   keeps the Host), so it compares the two headers instead of a list; a page of another
+   name that resolves to it (DNS rebinding) passes this check but has no cookie. Later the
+   layer can be replaced by a real login for a remote host without touching the rest.
 3. **One change feed: "changes after id N".** The UI learns about changes from one stream,
    never by polling lists. SQLite triggers write every insert, update and delete of the
    tables the UI shows (sessions, agents, messages, runs, gates, notes; of events, the
@@ -79,16 +83,34 @@ later desktop app and a later cloud setup; the UI is its client.
   banner (`role="alert"`) that names both versions and says to run `lado server stop`, then
   `lado ui`. A list a page cannot load (e.g. a 404 from an older server) shows the API's
   error, never an empty page.
-- Host: only 127.0.0.1 or localhost for now; `--host` with anything else is refused until
-  there is a real login.
+- Host (decided 2026-10-04): 127.0.0.1 by default; `--host` takes any IPv4 address or name
+  (`lado server`, and `lado ui` for a server it starts), e.g. `0.0.0.0` to open the UI of a
+  remote host from another machine. An IPv6 address is refused (not supported yet). A
+  non-loopback address prints a warning on stderr (so in `server.log` too) that the server
+  is open to other machines and the token travels unencrypted: plain HTTP, a risk taken
+  knowingly until TLS and a real login come. What the server reports is decided by the
+  address it took (`run.Listening`): a loopback one is reached by itself, `0.0.0.0` locally
+  on `http://127.0.0.1:<port>` and from others by the hostname, another address by itself.
+  Only a busy port (`EADDRINUSE`) moves on to the next one (for `0.0.0.0` also one busy on
+  127.0.0.1: macOS would let both take it, and the local link would reach the other); an
+  address not on this machine,
+  a name that does not resolve or a port it may not take is an error `cannot listen on
+  <host>:<port>: <reason>`. `lado ui --host H` while the server listens on another address
+  (names resolved: `localhost` is 127.0.0.1) is an error naming its address; without
+  `--host` it takes the running server wherever it listens, and for a non-loopback one
+  prints the warning and, after the local link, `From another machine: <link>`. The
+  restart of a server of another version keeps its host and port.
 - Port: 8000, or the next free one up to 8020; `--port N` takes exactly N (busy: an error;
   0: any free port, as the tests use).
 - One per `LADO_HOME`: the server holds an exclusive flock on `LADO_HOME/server.lock` and
-  writes `LADO_HOME/server.json` (url, port, pid, version). The file counts only while the
+  writes `LADO_HOME/server.json` (url, host, port, pid, version; `url` reaches it from this
+  machine, `host` is the address it listens on, 127.0.0.1 in a file of an older LADO
+  without it; the health check, `lado server stop` and `lado ui` use `url`). The file
+  counts only while the
   lock is held; with the lock free it is stale and removed, and `lado server stop` kills
   nobody. A second server refuses and names the first one's address.
 - Token: `LADO_HOME/server-token` (owner only), made on the first start, replaced with
-  `lado server --new-token`. The link `http://127.0.0.1:<port>/?token=<token>` sets the
+  `lado server --new-token`. The link `<url>/?token=<token>` (`url` from server.json) sets the
   cookie (HttpOnly, SameSite=Strict, Path=/) and redirects (303) to `/`, so the token leaves
   the address bar. Every page of the UI takes `?token=` the same way (decided in task 2):
   `/sessions/lado/activity?token=…` sets the cookie and redirects to

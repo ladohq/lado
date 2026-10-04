@@ -10,7 +10,7 @@ from lado.server import app as server_app
 from lado.server import auth
 
 PORT = 8123
-OWN = f"http://127.0.0.1:{PORT}"
+OWN = "http://testserver"  # the test client's Host
 GATES = "/api/sessions/s/gates"
 
 SHIP = """\

@@ -2,14 +2,17 @@
 the background by `lado ui`, stopped by `lado server stop`.
 
 The server holds an exclusive lock on LADO_HOME/server.lock while it runs and writes
-LADO_HOME/server.json (url, port, pid, version) for the commands that look for it. The file
+LADO_HOME/server.json (url, host, port, pid, version) for the commands that look for it: `url`
+reaches it from this machine, `host` is the address it listens on. The file
 counts only while the lock is held: with the lock free it was left by a server that died,
 and it is removed (its pid may belong to another process by now). A server started in the
 background writes its output and request errors to LADO_HOME/server.log.
 """
 
 import contextlib
+import errno
 import fcntl
+import ipaddress
 import json
 import os
 import signal
@@ -24,7 +27,6 @@ from typing import IO
 from lado import __version__, providers, state, terminal
 from lado.runtime import LadoError
 
-HOSTS = ("127.0.0.1", "localhost")  # a remote host waits for a real login
 DEFAULT_PORT = 8000
 LAST_PORT = 8020  # the last port tried when the ones before it are busy
 LOCK_WAIT = 0.1  # seconds a starting server tries to take the lock: `running()` holds it briefly
@@ -79,31 +81,85 @@ def running() -> dict | None:
             info_path().unlink(missing_ok=True)
         return None
     try:
-        return json.loads(info_path().read_text())
+        info = json.loads(info_path().read_text())
     except (OSError, ValueError):
         return None
+    return {"host": "127.0.0.1", **info}  # a LADO before `--host` wrote none
 
 
-def check_host(host: str) -> None:
-    if host not in HOSTS:
-        raise LadoError(
-            f"lado server listens only on 127.0.0.1 or localhost for now, not {host}: "
-            "a remote host needs a login LADO does not have yet"
+@dataclass(frozen=True)
+class Listening:
+    """Where a server listening on an address is reached: `url` from this machine (what
+    server.json keeps), `remote` from others with the `warning` that says so, or None
+    for a loopback address."""
+
+    url: str
+    remote: str | None
+    warning: str | None
+
+    @classmethod
+    def of(cls, host: str, port: int) -> "Listening":
+        """For the address the socket took (`getsockname`), not the name it was given."""
+        ip = ipaddress.ip_address(host)
+        if ip.is_loopback:
+            return cls(f"http://{host}:{port}", None, None)
+        warning = (
+            f"the LADO server listens on {host}:{port}, open to other machines: whoever "
+            "reaches it with the token can run commands as you, and the token travels "
+            "unencrypted (plain HTTP). Use it only on a network you trust."
         )
+        if ip.is_unspecified:
+            return cls(f"http://127.0.0.1:{port}", f"http://{socket.gethostname()}:{port}", warning)
+        return cls(f"http://{host}:{port}", f"http://{host}:{port}", warning)
+
+
+def _ipv4(host: str) -> None:
+    if ":" in host:
+        raise LadoError(f"cannot listen on {host}: IPv6 is not supported yet")
+
+
+def address(host: str) -> str:
+    """The IPv4 address the server listens on for `host` (an address or a name), as
+    server.json keeps it: `localhost` is 127.0.0.1."""
+    _ipv4(host)
+    try:
+        return socket.gethostbyname(host)
+    except OSError as error:
+        raise LadoError(f"cannot listen on {host}: {error.strerror or error}") from error
+
+
+def _bound(host: str, port: int) -> socket.socket | None:
+    """A socket bound to the address; None when the port is busy there. LadoError when
+    the server cannot listen there at all (no such address on this machine, no such name,
+    a port it may not take)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind((host, port))
+    except OSError as error:
+        sock.close()
+        if isinstance(error, socket.gaierror) or error.errno != errno.EADDRINUSE:
+            raise LadoError(f"cannot listen on {host}:{port}: {error.strerror or error}") from error
+        return None
+    return sock
 
 
 def bind(
     host: str, port: int | None, first: int = DEFAULT_PORT, last: int = LAST_PORT
 ) -> socket.socket:
     """A listening socket: on `port` exactly (0: any free one), or with None on the first
-    free port from `first` to `last`."""
+    free port from `first` to `last`. Only a busy port moves on to the next one."""
+    _ipv4(host)
     for candidate in [port] if port is not None else range(first, last + 1):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind((host, candidate))
-        except OSError:
-            sock.close()
+        # Every address is reached locally on 127.0.0.1, and macOS lets 0.0.0.0 take a port
+        # another process holds there: that one would answer the local link.
+        if candidate and host == "0.0.0.0":
+            probe = _bound("127.0.0.1", candidate)
+            if probe is None:
+                continue
+            probe.close()
+        sock = _bound(host, candidate)
+        if sock is None:
             continue
         sock.listen(128)
         return sock
@@ -118,7 +174,6 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
 
     from lado.server import app, auth
 
-    check_host(host)
     lock = take_lock(LOCK_WAIT)
     if lock is None:
         info = running()
@@ -127,8 +182,10 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
     with lock:
         token = auth.token(new=new_token)
         sock = bind(host, port)
-        bound = sock.getsockname()[1]
-        url = f"http://127.0.0.1:{bound}"
+        listens, bound = sock.getsockname()
+        listening = Listening.of(listens, bound)
+        if listening.warning:
+            print(f"lado: warning: {listening.warning}", file=sys.stderr, flush=True)
         if app.bundle_missing(app.STATIC):
             print(
                 f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr
@@ -141,12 +198,23 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
             timeout_graceful_shutdown=SHUTDOWN_GRACE,
         )
         server = uvicorn.Server(config)
-        info = {"url": url, "port": bound, "pid": os.getpid(), "version": __version__}
+        url = listening.url
+        info = {
+            "url": url,
+            "host": listens,
+            "port": bound,
+            "pid": os.getpid(),
+            "version": __version__,
+        }
         written = info_path().with_suffix(".tmp")
         written.write_text(json.dumps(info))
         written.replace(info_path())
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{stamp} LADO server {__version__} at {url}, pid {os.getpid()}", flush=True)
+        print(
+            f"{stamp} LADO server {__version__} at {url}, listening on {listens}:{bound}, "
+            f"pid {os.getpid()}",
+            flush=True,
+        )
         # Terminals a server of this LADO_HOME left open when it died: nobody reads them.
         left = terminal.close_viewers()
         if left:
@@ -176,10 +244,11 @@ class Started:
     log_from: int
 
 
-def start_background(port: int | None) -> Started:
+def start_background(host: str | None, port: int | None) -> Started:
     """Start `lado server` as a process of its own that outlives the command starting it,
     its output going to server.log (the owner's only, like the token)."""
-    args = ["server"] + ([] if port is None else ["--port", str(port)])
+    args = ["server"] + ([] if host is None else ["--host", host])
+    args += [] if port is None else ["--port", str(port)]
     fd = os.open(log_path(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     os.fchmod(fd, 0o600)  # also a log an older LADO made
     with os.fdopen(fd, "a") as log:

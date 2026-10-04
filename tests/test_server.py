@@ -278,11 +278,52 @@ def test_the_redirect_after_the_login_stays_on_this_server(bundle):
 # Finding the one server of LADO_HOME, its port and host (lado.server.run).
 
 
-def test_only_localhost_is_served():
-    for host in ("127.0.0.1", "localhost"):
-        server_run.check_host(host)
-    with pytest.raises(runtime.LadoError, match="only on 127.0.0.1"):
-        server_run.check_host("0.0.0.0")
+@pytest.mark.parametrize("address", ["127.0.0.1", "127.0.1.1"])
+def test_a_loopback_address_is_reached_by_itself_with_no_warning(address):
+    listening = server_run.Listening.of(address, 8001)
+    assert listening.url == f"http://{address}:8001"
+    assert listening.warning is None and listening.remote is None
+
+
+def test_every_address_is_reached_locally_on_127_0_0_1_and_from_others_by_the_hostname(
+    monkeypatch,
+):
+    monkeypatch.setattr(socket, "gethostname", lambda: "box")
+    listening = server_run.Listening.of("0.0.0.0", 8001)
+    assert listening.url == "http://127.0.0.1:8001"
+    assert listening.remote == "http://box:8001"
+    assert "listens on 0.0.0.0:8001, open to other machines" in listening.warning
+
+
+def test_another_address_is_reached_by_itself_with_the_warning():
+    listening = server_run.Listening.of("192.0.2.7", 8001)
+    assert listening.url == listening.remote == "http://192.0.2.7:8001"
+    assert listening.warning == (
+        "the LADO server listens on 192.0.2.7:8001, open to other machines: whoever reaches "
+        "it with the token can run commands as you, and the token travels unencrypted "
+        "(plain HTTP). Use it only on a network you trust."
+    )
+
+
+def test_an_ipv6_address_is_refused():
+    with pytest.raises(runtime.LadoError, match="IPv6 is not supported yet"):
+        server_run.bind("::1", 0)
+    with pytest.raises(runtime.LadoError, match="IPv6 is not supported yet"):
+        server_run.address("::")
+
+
+@pytest.mark.parametrize("host", ["203.0.113.1", "no-such-host.invalid"])
+def test_an_address_the_server_cannot_listen_on_is_an_error_not_a_busy_port(host):
+    with pytest.raises(runtime.LadoError, match=f"^cannot listen on {host}:8000: .+") as error:
+        server_run.bind(host, None, first=8000, last=8002)
+    assert "free port" not in str(error.value)
+
+
+def test_a_name_is_resolved_to_the_address_the_server_listens_on():
+    assert server_run.address("localhost") == "127.0.0.1"
+    assert server_run.address("0.0.0.0") == "0.0.0.0"
+    with pytest.raises(runtime.LadoError, match="^cannot listen on no-such-host.invalid: "):
+        server_run.address("no-such-host.invalid")
 
 
 def test_a_busy_port_is_skipped_for_the_next_free_one():
@@ -293,6 +334,18 @@ def test_a_busy_port_is_skipped_for_the_next_free_one():
         sock = server_run.bind("127.0.0.1", None, first=first, last=first + 10)
         with sock:
             assert first < sock.getsockname()[1] <= first + 10
+
+
+def test_every_address_skips_a_port_busy_on_127_0_0_1():
+    """macOS lets 0.0.0.0 take it with SO_REUSEADDR: the local link would reach the other."""
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        first = busy.getsockname()[1]
+        with server_run.bind("0.0.0.0", None, first=first, last=first + 10) as sock:
+            assert first < sock.getsockname()[1] <= first + 10
+        with pytest.raises(runtime.LadoError, match=f"port {first} is busy"):
+            server_run.bind("0.0.0.0", first)
 
 
 def test_an_exact_port_that_is_busy_is_an_error():
@@ -313,9 +366,21 @@ def test_no_free_port_in_the_range_is_an_error():
             server_run.bind("127.0.0.1", None, first=port, last=port)
 
 
-def write_info(port: int, version: str = __version__, pid: int | None = None) -> None:
-    info = {"url": f"http://127.0.0.1:{port}", "port": port, "pid": pid or os.getpid()}
-    server_run.info_path().write_text(json.dumps({**info, "version": version}))
+def write_info(
+    port: int, version: str = __version__, pid: int | None = None, host: str | None = None
+) -> None:
+    """A server.json; without `host` as a LADO before `--host` wrote it."""
+    url = server_run.Listening.of(host or "127.0.0.1", port).url
+    info = {"url": url, "port": port, "pid": pid or os.getpid(), "version": version}
+    server_run.info_path().write_text(json.dumps(info | ({"host": host} if host else {})))
+
+
+def test_a_server_json_without_a_host_is_of_a_server_on_127_0_0_1():
+    with server_run.take_lock():
+        write_info(8001)
+        assert server_run.running()["host"] == "127.0.0.1"
+        write_info(8001, host="0.0.0.0")
+        assert server_run.running()["host"] == "0.0.0.0"
 
 
 def test_server_json_counts_only_while_its_lock_is_held():
@@ -374,11 +439,88 @@ def test_ui_prints_the_link_of_the_running_server(capsys):
     lock = server_run.take_lock()
     write_info(8001)
     assert cli.main(["ui", "--no-open"]) == 0
-    assert f"http://127.0.0.1:8001/?token={auth.token()}" in capsys.readouterr().out
+    out, err = capsys.readouterr()
+    assert out == f"http://127.0.0.1:8001/?token={auth.token()}\n"
+    assert "open to other machines" not in err
     lock.close()
 
 
-OLD_SERVER = {"url": "http://127.0.0.1:8001", "port": 8001, "pid": 4321, "version": "0.0.1"}
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.0.2.7"])
+def test_ui_with_another_host_than_the_running_servers_is_an_error(capsys, host):
+    with server_run.take_lock():
+        write_info(8001)
+        assert cli.main(["ui", "--no-open", "--host", host]) == 1
+        err = capsys.readouterr().err
+        assert "http://127.0.0.1:8001" in err and f"not on {host}" in err
+        assert "`lado server stop`" in err
+
+
+def test_ui_with_a_name_of_the_running_servers_host_takes_it(capsys):
+    with server_run.take_lock():
+        write_info(8001)
+        assert cli.main(["ui", "--no-open", "--host", "localhost"]) == 0
+        assert capsys.readouterr().out == f"http://127.0.0.1:8001/?token={auth.token()}\n"
+
+
+def test_ui_without_host_takes_a_server_open_to_other_machines_and_warns(capsys, monkeypatch):
+    monkeypatch.setattr(socket, "gethostname", lambda: "box")
+    with server_run.take_lock():
+        write_info(8001, host="0.0.0.0")
+        assert cli.main(["ui", "--no-open"]) == 0
+        out, err = capsys.readouterr()
+    token = auth.token()
+    assert out.splitlines() == [
+        f"http://127.0.0.1:8001/?token={token}",
+        f"From another machine: http://box:8001/?token={token} (or this host's address)",
+    ]
+    assert "open to other machines" in err and "unencrypted" in err
+
+
+def test_ui_opens_the_local_link_and_prints_the_one_for_other_machines(capsys, monkeypatch):
+    opened = []
+    monkeypatch.setattr("webbrowser.open", opened.append)
+    with server_run.take_lock():
+        write_info(8001, host="192.0.2.7")
+        assert cli.main(["ui"]) == 0
+        out, err = capsys.readouterr()
+    token = auth.token()
+    assert opened == [f"http://192.0.2.7:8001/?token={token}"]
+    assert out.splitlines() == [
+        f"Opening http://192.0.2.7:8001/?token={token}",
+        f"From another machine: http://192.0.2.7:8001/?token={token} (or this host's address)",
+    ]
+    assert "listens on 192.0.2.7:8001" in err
+
+
+def test_ui_starts_a_server_on_the_host_and_port_it_is_given(capsys, monkeypatch):
+    started = []
+    monkeypatch.setattr(
+        server_run, "start_background", lambda host, port: started.append((host, port))
+    )
+    monkeypatch.setattr(server_run, "wait_ready", lambda started: NEW_SERVER)
+    assert cli.main(["ui", "--no-open", "--host", "0.0.0.0", "--port", "8001"]) == 0
+    assert cli.main(["ui", "--no-open"]) == 0
+    assert started == [("0.0.0.0", 8001), (None, None)]
+
+
+def test_the_server_is_started_with_its_host_and_port(monkeypatch):
+    argv = []
+    monkeypatch.setattr(
+        server_run.subprocess, "Popen", lambda args, **kwargs: argv.append(args[-5:])
+    )
+    server_run.start_background("0.0.0.0", 8001)
+    server_run.start_background(None, None)
+    assert argv[0] == ["server", "--host", "0.0.0.0", "--port", "8001"]
+    assert argv[1][-1] == "server"
+
+
+OLD_SERVER = {
+    "url": "http://127.0.0.1:8001",
+    "host": "127.0.0.1",  # as `running` reads it from a server.json without one
+    "port": 8001,
+    "pid": 4321,
+    "version": "0.0.1",
+}
 NEW_SERVER = {**OLD_SERVER, "pid": 4322, "version": __version__}
 
 
@@ -393,8 +535,8 @@ def old_server(monkeypatch):
         calls.append("stop")
         return OLD_SERVER
 
-    def start_background(port):
-        calls.append(("start", port))
+    def start_background(host, port):
+        calls.append(("start", host, port))
         return "started"
 
     def wait_ready(started):
@@ -409,11 +551,24 @@ def old_server(monkeypatch):
 
 def test_ui_restarts_a_server_of_another_version_on_its_port(capsys, old_server):
     assert cli.main(["ui", "--no-open"]) == 0
-    assert old_server == ["stop", ("start", 8001), ("wait", "started")]
+    assert old_server == ["stop", ("start", "127.0.0.1", 8001), ("wait", "started")]
     out, err = capsys.readouterr()
     assert out == f"http://127.0.0.1:8001/?token={auth.token()}\n"  # stdout: the link only
     assert err.splitlines()[0] == f"lado: restarted the LADO server: 0.0.1 -> {__version__}"
     assert "warning: the running" not in err
+
+
+def test_ui_restarts_a_server_of_another_version_on_its_host(capsys, monkeypatch, old_server):
+    monkeypatch.setattr(server_run, "running", lambda: {**OLD_SERVER, "host": "0.0.0.0"})
+    assert cli.main(["ui", "--no-open"]) == 0
+    assert old_server == ["stop", ("start", "0.0.0.0", 8001), ("wait", "started")]
+
+
+def test_ui_with_another_host_refuses_a_server_of_another_version_too(capsys, old_server):
+    """Before the restart: an old server's host is 127.0.0.1, and the restart keeps it."""
+    assert cli.main(["ui", "--no-open", "--host", "0.0.0.0"]) == 1
+    assert old_server == []
+    assert "`lado server stop`" in capsys.readouterr().err
 
 
 def test_ui_with_another_port_refuses_a_server_of_another_version_too(capsys, old_server):
@@ -448,12 +603,12 @@ def test_ui_names_lado_server_stop_when_the_old_server_cannot_be_signalled(
 
 
 def test_ui_names_server_log_when_the_server_does_not_come_up(capsys, monkeypatch):
-    monkeypatch.setattr(server_run, "start_background", lambda port: None)
+    monkeypatch.setattr(server_run, "start_background", lambda host, port: None)
     monkeypatch.setattr(server_run, "READY_TIMEOUT", 0.2)
     assert cli.main(["ui", "--no-open"]) == 1
     assert str(state.home() / "server.log") in capsys.readouterr().err
 
 
-def test_server_refuses_another_host(capsys):
-    assert cli.main(["server", "--host", "0.0.0.0"]) == 1
-    assert "only on 127.0.0.1" in capsys.readouterr().err
+def test_server_refuses_an_ipv6_host(capsys):
+    assert cli.main(["server", "--host", "::"]) == 1
+    assert "IPv6 is not supported yet" in capsys.readouterr().err

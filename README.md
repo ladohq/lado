@@ -48,6 +48,31 @@ lado kits add https://github.com/<owner>/<kits>@v1.0.0   # or a local folder
 lado start . --kit default --kit my-team
 ```
 
+## The web UI
+
+```bash
+lado ui                 # starts the UI server of this machine and opens the browser
+lado server stop        # ends it
+```
+
+The server listens on 127.0.0.1 only. To open the UI of LADO on a remote host from
+another machine, the safe way is an SSH tunnel, with the server left on 127.0.0.1:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 remote-host    # then, on the remote host: lado ui --no-open
+```
+
+Open the printed link on your machine. Or let the server listen on every address of the
+remote host:
+
+```bash
+lado ui --no-open --host 0.0.0.0    # prints the link for other machines too
+```
+
+It warns: whoever reaches the server with the token can run commands as you, and the
+token travels unencrypted (plain HTTP). Do this only on a network you trust. A TLS proxy in
+front of it (Caddy, `tailscale serve`, nginx) works if it keeps the `Host` header.
+
 ## License
 
 MIT (placeholder; to be confirmed before the first release).

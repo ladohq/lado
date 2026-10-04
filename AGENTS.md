@@ -178,8 +178,8 @@ schema change.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
     rules in [docs/design/ui.md](docs/design/ui.md), section Server). `auth.py`: the token
-    and, for a connection that changes something, the Origin (`Guard.check`), the only
-    place that checks them; `app.py`: the FastAPI app, the API under `/api` (data only
+    and, for a connection that changes something, the Origin against the request's own
+    Host (`Guard.check`), the only place that checks them; `app.py`: the FastAPI app, the API under `/api` (data only
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
     that is a page of the UI (its router shows it); `feed.py`: the change feed behind
     `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
@@ -210,7 +210,9 @@ schema change.
     `POST …/stop`, `GET …/forget-preview`, `DELETE /api/sessions/{name}?force=`, all
     through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the
     session's kits, provider, permission mode and without;
-    `run.py`: the lock, `server.json`, the port, the background start and stop. `static/`:
+    `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
+    `Listening`: the local link, the remote one and the warning for the address taken),
+    the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`.
 - `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made

@@ -506,13 +506,18 @@ def cmd_ui(args: argparse.Namespace) -> int:
     from lado.server import run as server_run
 
     info = server_run.running()
+    if info and args.host is not None and server_run.address(args.host) != info["host"]:
+        raise runtime.LadoError(
+            f"the LADO server already runs at {info['url']}, listening on {info['host']}, "
+            f"not on {args.host}; stop it with `lado server stop` to start it on another host"
+        )
     if info and args.port and info["port"] != args.port:
         raise runtime.LadoError(
             f"the LADO server already runs at {info['url']}, not on port {args.port}; "
             "stop it with `lado server stop` to start it on another port"
         )
     if info is None:
-        info = server_run.wait_ready(server_run.start_background(args.port))
+        info = server_run.wait_ready(server_run.start_background(args.host, args.port))
     elif info["version"] != __version__:
         # An old server would serve this LADO's bundle from disk against its own, older API.
         try:
@@ -524,16 +529,23 @@ def cmd_ui(args: argparse.Namespace) -> int:
                 "stop it with `lado server stop`, then run `lado ui` again"
             ) from error
         old = info["version"]
-        info = server_run.wait_ready(server_run.start_background(info["port"]))
+        started = server_run.start_background(info["host"], info["port"])
+        info = server_run.wait_ready(started)
         print(f"lado: restarted the LADO server: {old} -> {info['version']}", file=sys.stderr)
     if app.bundle_missing(app.STATIC):
         print(f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr)
-    url = f"{info['url']}/?token={auth.token()}"
+    listening = server_run.Listening.of(info["host"], info["port"])
+    if listening.warning:
+        print(f"lado: warning: {listening.warning}", file=sys.stderr)
+    token = auth.token()
+    url = f"{info['url']}/?token={token}"
     if args.no_open:
         print(url)
     else:
         print(f"Opening {url}")
         webbrowser.open(url)
+    if listening.remote:
+        print(f"From another machine: {listening.remote}/?token={token} (or this host's address)")
     return 0
 
 
@@ -709,7 +721,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     server.add_argument("action", nargs="?", choices=["stop"], help="stop the running server")
     server.add_argument("--port", type=_port, help=port_help)
-    server.add_argument("--host", default="127.0.0.1", help="only 127.0.0.1 or localhost for now")
+    host_help = (
+        "address to listen on (default 127.0.0.1); 0.0.0.0 or another non-loopback address "
+        "opens the UI to other machines, unencrypted"
+    )
+    server.add_argument("--host", default="127.0.0.1", help=host_help)
     server.add_argument(
         "--new-token", action="store_true", help="make a new token; links with the old one stop"
     )
@@ -720,6 +736,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ui.add_argument("--no-open", action="store_true", help="only print the link")
     ui.add_argument("--port", type=_port, help=f"for a server it starts: {port_help}")
+    ui.add_argument("--host", help=f"for a server it starts: {host_help}")
     ui.set_defaults(func=cmd_ui)
 
     # Internal: started by the agent CLIs of LADO agents.

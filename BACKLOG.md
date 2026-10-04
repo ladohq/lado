@@ -573,3 +573,12 @@ loaded machine can exceed.
 Wanted: a bound that holds under parallel load, or a check without absolute time (the
 answer came before `READY_TIMEOUT`, not within half of it).
 Found: 2026-10-04, review of feature/kit-manifest-v2.
+
+## README says there is nothing to run yet
+
+`README.md`, Install, still ends with "There is nothing else to run yet" and the status
+note says "Nothing is ready to use yet", while sessions, kits, flows and the web UI work
+(the README now has a section on the web UI).
+Wanted: a README that says what runs today (start a session, the UI, kits) and links the
+docs.
+Found: 2026-10-04, feature/server-host (implement).

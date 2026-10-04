@@ -6,7 +6,10 @@ the server then sets a cookie and sends the browser on to the same page without 
 so the token leaves the address bar. The cookie's name holds
 the port: a browser sends 127.0.0.1's cookies to every port, and two LADO servers (say, one
 for development) would otherwise overwrite each other's. Other clients send
-`Authorization: Bearer <token>`. A real login for a remote host replaces this module.
+`Authorization: Bearer <token>`. A connection that changes something is also checked for
+its Origin (`Guard`). The server may listen on any address (`lado server --host`); the
+token then travels over plain HTTP, a risk taken knowingly until a real login and TLS
+replace this module.
 """
 
 import os
@@ -52,28 +55,39 @@ class Refused(Exception):
 class Guard:
     """Checks the token of the server listening on `port`, and for a connection that changes
     something its Origin: only the server's own pages may, so another page in the browser
-    cannot use the human's cookie (a terminal's input is the first such connection)."""
+    cannot use the human's cookie (a terminal's input is the first such connection).
+
+    The server does not know the names it is reached by (0.0.0.0, a tunnel to another port,
+    a proxy), so its own page is the one whose Origin names the request's own Host: its
+    authority (host and port), scheme aside, so a TLS proxy that keeps the Host passes. A
+    page of another name that resolves to this server (DNS rebinding) passes this check but
+    has no cookie: the cookie is the host's only."""
 
     def __init__(self, token: str, port: int):
         self.token = token
         self.cookie = cookie_name(port)
-        self.origins = {f"http://{host}:{port}" for host in ("127.0.0.1", "localhost")}
 
     def _valid(self, given: str | None) -> bool:
         return given is not None and secrets.compare_digest(given.encode(), self.token.encode())
 
     def check(self, conn: HTTPConnection, changes: bool = False) -> None:
-        """Refused (401) without the token. With `changes` first Refused (403) for another
-        Origin than the server's own, and for none unless the token is a Bearer one (a
-        client that is not a browser: a browser always sends its Origin)."""
+        """Refused (401) without the token. With `changes` first Refused (403) for an Origin
+        that is not the request's own Host, or with no Host, and for no Origin unless the
+        token is a Bearer one (a client that is not a browser: a browser always sends its
+        Origin)."""
         scheme, _, given = conn.headers.get("authorization", "").partition(" ")
         bearer = scheme.lower() == "bearer" and self._valid(given)
         if changes:
             origin = conn.headers.get("origin")
             if origin is None and not bearer:
                 raise Refused(403, "no Origin: only a client with a Bearer token may")
-            if origin is not None and origin not in self.origins:
-                raise Refused(403, f"the Origin {origin} is not this server's")
+            if origin is not None:
+                host = conn.headers.get("host")
+                if host is None:
+                    raise Refused(403, f"the Origin {origin} came with no Host")
+                _, sep, authority = origin.partition("://")
+                if not sep or authority.lower() != host.lower():
+                    raise Refused(403, f"the Origin {origin} is not this server's ({host})")
         if bearer or self._valid(conn.cookies.get(self.cookie)):
             return
         raise Refused(401, "no valid token: open the link `lado ui` prints")

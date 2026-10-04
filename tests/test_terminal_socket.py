@@ -17,7 +17,7 @@ from lado.server import app as server_app
 from lado.server import auth, terminals
 
 PORT = 8123
-OWN = f"http://127.0.0.1:{PORT}"
+OWN = "http://testserver"  # the test client's Host
 URL = "/api/sessions/s/agents/supervisor/terminal"
 
 
@@ -99,7 +99,7 @@ def closed(ws) -> tuple[int, str]:
     return message["code"], message.get("reason", "")
 
 
-@pytest.mark.parametrize("origin", [OWN, f"http://localhost:{PORT}"])
+@pytest.mark.parametrize("origin", [OWN, "https://testserver"])
 def test_the_servers_own_origin_with_the_cookie_opens_it(client, session, terms, origin):
     with logged_in(client).websocket_connect(URL, headers=headers(origin)) as ws:
         assert ws.receive_json() == {"type": "size", "cols": 80, "rows": 24}
@@ -107,7 +107,7 @@ def test_the_servers_own_origin_with_the_cookie_opens_it(client, session, terms,
 
 
 @pytest.mark.parametrize(
-    "origin", ["http://evil.example", f"http://127.0.0.1:{PORT + 1}", f"https://127.0.0.1:{PORT}"]
+    "origin", ["http://evil.example", "http://testserver:8124", f"http://127.0.0.1:{PORT}"]
 )
 def test_another_origin_is_refused_before_the_upgrade(client, session, terms, origin):
     with pytest.raises(WebSocketDisconnect) as refused:
@@ -133,26 +133,58 @@ def test_without_the_token_it_ends_at_once_saying_why(client, session, terms):
     assert terms == []
 
 
-def test_the_guard_checks_origin_on_any_connection_that_changes_something(monkeypatch):
+class Conn:
+    def __init__(self, headers, cookies=None):
+        self.headers, self.cookies = headers, cookies or {}
+
+
+COOKIE = {auth.cookie_name(PORT): "t"}
+
+
+@pytest.mark.parametrize(
+    "origin, host",
+    [
+        (f"http://127.0.0.1:{PORT}", f"127.0.0.1:{PORT}"),
+        (f"http://localhost:{PORT}", f"localhost:{PORT}"),
+        (f"http://box:{PORT}", f"box:{PORT}"),
+        (f"http://Box:{PORT}", f"box:{PORT}"),
+        ("https://box:8000", "box:8000"),  # a TLS proxy that keeps the Host
+        ("http://localhost:9000", "localhost:9000"),  # an SSH tunnel to another local port
+        ("http://box", "box"),
+    ],
+)
+def test_the_guard_takes_a_change_whose_origin_is_the_requests_own_host(origin, host):
+    auth.Guard("t", PORT).check(Conn({"origin": origin, "host": host}, COOKIE), changes=True)
+
+
+@pytest.mark.parametrize(
+    "headers, cookies, status",
+    [
+        ({}, COOKIE, 403),  # no Origin: only a Bearer token may
+        ({"origin": "http://evil.example", "host": f"box:{PORT}"}, COOKIE, 403),
+        ({"origin": f"http://box:{PORT + 1}", "host": f"box:{PORT}"}, COOKIE, 403),
+        ({"origin": f"http://box:{PORT}"}, COOKIE, 403),  # Origin but no Host
+        ({"origin": "null", "host": f"box:{PORT}"}, COOKIE, 403),
+        ({"origin": f"http://box:{PORT}", "host": f"box:{PORT}"}, {}, 401),  # DNS rebinding
+        (
+            {"origin": f"http://box:{PORT}", "host": f"box:{PORT}", "authorization": "Bearer x"},
+            {},
+            401,
+        ),
+    ],
+)
+def test_the_guard_refuses_a_change_from_another_origin_or_without_the_token(
+    headers, cookies, status
+):
+    with pytest.raises(auth.Refused) as refused:
+        auth.Guard("t", PORT).check(Conn(headers, cookies), changes=True)
+    assert refused.value.status == status
+
+
+def test_the_guard_needs_no_origin_to_read_or_with_a_bearer_token():
     guard = auth.Guard("t", PORT)
-
-    class Conn:
-        def __init__(self, headers, cookies=None):
-            self.headers, self.cookies = headers, cookies or {}
-
-    cookie = {auth.cookie_name(PORT): "t"}
-    guard.check(Conn({"origin": OWN}, cookie), changes=True)
-    guard.check(Conn({}, cookie))  # reading needs no Origin
+    guard.check(Conn({}, COOKIE))
     guard.check(Conn({"authorization": "Bearer t"}), changes=True)
-    for conn, status in [
-        (Conn({}, cookie), 403),
-        (Conn({"origin": "http://evil.example"}, cookie), 403),
-        (Conn({"origin": OWN}), 401),
-        (Conn({"origin": OWN, "authorization": "Bearer x"}), 401),
-    ]:
-        with pytest.raises(auth.Refused) as refused:
-            guard.check(conn, changes=True)
-        assert refused.value.status == status
 
 
 def test_output_comes_as_binary_frames(client, session, terms):

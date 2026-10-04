@@ -70,7 +70,11 @@ def test_ui_starts_one_server_in_the_background_and_stop_ends_it():
     info = server_run.running()
     assert first.stdout.strip() == f"{info['url']}/?token={auth.token()}"
     log = (state.home() / "server.log").read_text()
-    assert f"LADO server {info['version']} at {info['url']}, pid {info['pid']}" in log
+    assert (
+        f"LADO server {info['version']} at {info['url']}, "
+        f"listening on 127.0.0.1:{info['port']}, pid {info['pid']}"
+    ) in log
+    assert "open to other machines" not in log
 
     again = lado_cli("ui", "--no-open")  # finds the running server, starts none
     assert again.returncode == 0, again.stderr
@@ -83,6 +87,30 @@ def test_ui_starts_one_server_in_the_background_and_stop_ends_it():
     assert gone(info["pid"])
     assert not server_run.info_path().exists()
     assert "not running" in lado_cli("server", "stop").stdout
+
+
+def test_a_server_on_every_address_warns_and_gives_a_link_for_other_machines():
+    """On macOS with its firewall on, a dialog may ask to accept incoming connections; the
+    test does not need them."""
+    first = lado_cli("ui", "--no-open", "--host", "0.0.0.0", "--port", "0")
+    assert first.returncode == 0, first.stderr
+    info = server_run.running()
+    assert info["host"] == "0.0.0.0"
+    assert info["url"] == f"http://127.0.0.1:{info['port']}"
+    token = auth.token()
+    assert first.stdout.splitlines() == [
+        f"{info['url']}/?token={token}",
+        f"From another machine: http://{socket.gethostname()}:{info['port']}/?token={token} "
+        "(or this host's address)",
+    ]
+    assert "open to other machines" in first.stderr
+    assert "listens on 0.0.0.0" in (state.home() / "server.log").read_text()
+    with urllib.request.urlopen(f"{info['url']}/api/health", timeout=10) as answer:
+        assert json.load(answer)["ok"] is True
+
+    stopped = lado_cli("server", "stop")
+    assert stopped.returncode == 0, stopped.stderr
+    assert gone(info["pid"])
 
 
 def test_ui_restarts_a_server_of_another_version_on_its_port():

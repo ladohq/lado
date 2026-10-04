@@ -9,7 +9,7 @@ import agent_helpers
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import doctor, providers, runs, runtime, state
+from lado import doctor, gitcache, providers, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -170,6 +170,22 @@ def test_kits_are_the_ones_a_session_of_the_folder_would_take(client, repo, lado
     assert [k["version"] for k in user] == ["9.9.9"]
 
 
+def test_kits_are_listed_without_fetching_their_packs(client, repo, monkeypatch):
+    _kit(
+        repo / ".lado" / "kits",
+        "team",
+        "name: team\nversion: 1.0.0\ndependencies:\n  skills:\n"
+        "    sp: https://example.com/superpowers.git@v1\n",
+    )
+
+    def no_git(*args, **kwargs):
+        raise AssertionError(f"git ran: {args}")
+
+    monkeypatch.setattr(gitcache, "_git", no_git)
+    kits = {k["name"]: k for k in client.get("/api/kits", params={"where": str(repo)}).json()}
+    assert (kits["team"]["valid"], kits["team"]["problem"]) == (True, None)
+
+
 # Providers
 
 
@@ -270,6 +286,19 @@ def test_a_start_the_core_refuses_is_400_with_its_reason(client, tmp_path, repo,
     assert 'permission mode "dontAsk" is not supported by Kilo CLI' in answer.json()["detail"]
 
 
+def test_a_kit_not_found_says_how_to_move_from_sources_yaml(client, repo, fake_tmux, lado_home):
+    lado_home.mkdir(exist_ok=True)
+    (lado_home / "sources.yaml").write_text(
+        "sources:\n- {name: dev, kind: path, location: /nowhere/dev}\n"
+    )
+    answer = launch(client, repo, kits=["mine"])
+    assert answer.status_code == 400
+    detail = answer.json()["detail"]
+    assert detail.startswith('kit "mine" not found; looked in ')
+    assert f"{lado_home / 'sources.yaml'} is no longer read" in detail
+    assert client.get("/api/sessions").json() == []
+
+
 def test_only_a_folder_and_a_full_path_are_taken(client, repo, fake_tmux):
     answer = client.post("/api/sessions", json={"where": {"kind": "project", "path": "x"}})
     assert (answer.status_code, answer.json()["detail"]) == (
@@ -303,7 +332,7 @@ def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
     assert answer.status_code == 200, answer.text
     started = answer.json()
     assert started["resumed"]
-    assert started["changes"] == ["permission mode: none -> plan", "kits: team -> default"]
+    assert started["changes"] == ["permission mode: none -> plan", "kits: default, team -> default"]
     assert [p for p in started["problems"] if "ship/x" in p]
     assert started["session"]["status"] != "stopped"
 

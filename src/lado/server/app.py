@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, runs, runtime, state, terminal
+from lado import __version__, kits, runs, runtime, state, terminal
 from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
@@ -263,7 +263,7 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
             raise HTTPException(409, detail.model_dump(mode="json")) from taken
-        except runtime.LadoError as refused:
+        except (runtime.LadoError, kits.KitError) as refused:
             raise HTTPException(400, str(refused)) from refused
         return models.started(done)
 
@@ -286,7 +286,7 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
             )
         except runtime.NoSuchSession as gone:
             raise HTTPException(404, str(gone)) from gone
-        except runtime.LadoError as refused:
+        except (runtime.LadoError, kits.KitError) as refused:
             raise HTTPException(400, str(refused)) from refused
         return models.started(done)
 

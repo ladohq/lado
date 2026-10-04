@@ -15,13 +15,13 @@ from typing import TextIO
 from lado import (
     __version__,
     doctor,
+    flows,
     kits,
     log,
     loop,
     providers,
     runs,
     runtime,
-    sources,
     state,
     tmux,
 )
@@ -31,6 +31,7 @@ POLL = 1.0  # seconds between two checks that a gate the human is asked about is
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    _sources_warning()
     started = runtime.start_session(
         args.path, args.name, args.permission_mode, args.provider, args.kit, args.without
     )
@@ -52,89 +53,104 @@ def cmd_start(args: argparse.Namespace) -> int:
 
 
 def cmd_kits(args: argparse.Namespace) -> int:
+    _sources_warning()
     repo = _repo_or_none(args.repo)
     found = kits.available(repo)
     for kit, shadowed_by in found:
         note = f"  (shadowed by {shadowed_by})" if shadowed_by else ""
+        link = kit.link()
         try:
             about = _about(kit.load())
-        except kits.KitError:
-            about = "invalid; see: lado kits check " + str(kit.path)
-        print(f"{kit.name:<16} {kit.where:<9} {kit.path}{note}\n  {about}")
+        except kits.KitError as exc:
+            about = (
+                f"invalid: {exc}"
+                if link and not kit.path.exists()
+                else "invalid; see: lado kits check " + str(kit.path)
+            )
+        target = f" → {link}" if link else ""
+        print(f"{kit.name:<16} {kit.where:<9} {kit.path}{target}{note}\n  {about}")
     if not found:
         print("No kits found.")
     return 0
 
 
 def _about(kit: kits.Kit) -> str:
-    return f"{kit.version or '-':<8} {kit.description}"
+    count = len(kit.unfetched())
+    unfetched = f"; {count} pack{'' if count == 1 else 's'} not fetched yet" if count else ""
+    return f"{kit.version or '-':<8} {kit.description}{unfetched}"
 
 
-def cmd_sources_list(args: argparse.Namespace) -> int:
-    found = sources.registered()
-    for source in found:
-        revision = source.revision()
-        at = f"  at {revision}" if revision else ""
-        print(f"{source.name:<16} {source.describe()}{at}")
-    if not found:
-        print("No sources. Add one with: lado sources add <git-url|folder>[@ref]")
+def cmd_kits_add(args: argparse.Namespace) -> int:
+    for kit in kits.add(args.spec, args.kit or []):
+        link = kits.installed() / kit.name
+        print(f'Added kit "{kit.name}" {kit.version or "-"}: {link} → {kit.path}')
     return 0
 
 
-def cmd_sources_add(args: argparse.Namespace) -> int:
-    source = sources.add(args.source, args.name, args.skills)
-    try:
-        found = kits.in_source(source)
-        if not found:
-            raise kits.KitError(f"no kits and no skills found in {source.path()}")
-    except kits.KitError as exc:
-        sources.remove(source.name)
-        raise kits.KitError(f"{exc}\nsource not added") from None
-    revision = source.revision()
-    at = f" at {revision}" if revision else ""
-    print(f'Added source "{source.name}": {source.describe()}{at}, {source.path()}')
-    for item in found:
-        try:
-            kit = item.load()
-            what = f"skill pack with {len(kit.skills)} skills" if kit.pack else _about(kit)
-        except kits.KitError:
-            what = f"invalid; see: lado kits check {item.name}"
-        print(f"  {item.name:<16} {what}")
+def cmd_kits_update(args: argparse.Namespace) -> int:
+    kit = kits.update(args.name, args.ref)
+    link = kits.installed() / kit.name
+    print(f'Updated kit "{kit.name}" to {args.ref} ({kit.version or "-"}): {link} → {kit.path}')
+    print(f"running sessions get {args.ref} for new agents only")
     return 0
 
 
-def cmd_sources_update(args: argparse.Namespace) -> int:
-    for source in [sources.get(args.name)] if args.name else sources.registered():
-        print(f"{source.name}: {source.update()}")
+def cmd_kits_remove(args: argparse.Namespace) -> int:
+    target = kits.remove(args.name)
+    print(f'Removed kit "{args.name}": {kits.installed() / args.name} → {target}; the folder stays')
     return 0
 
 
-def cmd_sources_remove(args: argparse.Namespace) -> int:
-    source, files = sources.remove(args.name)
-    print(f'Removed source "{source.name}"; {files}.')
-    return 0
+def cmd_sources(args: argparse.Namespace) -> int:
+    """`lado sources` is gone: say what to do instead."""
+    print(
+        "lado: "
+        + (
+            kits.migration_hint()
+            or "lado sources is gone: install kits with `lado kits add <git-url>@<tag|commit>` "
+            "or `lado kits add <folder>`; list skill packs under dependencies.skills of a kit"
+        ),
+        file=sys.stderr,
+    )
+    return 1
+
+
+def _sources_warning() -> None:
+    hint = kits.migration_hint()
+    if hint:
+        print(f"lado: {hint}", file=sys.stderr)
 
 
 def cmd_kits_show(args: argparse.Namespace) -> int:
     repo = _repo_or_none(args.repo)
     env = kits.resolve(repo, args.names, args.without)
     print("Kits:")
+    labels = {}  # (kit, pack) -> the pack's name@ref
     for kit in env.kits:
         print(f"  {kit.name} {kit.version}  ({kit.source})")
+        for pack in kit.packs.values():
+            labels[kit.name, pack.name] = pack.label
+            print(f"    pack {pack.name}: {pack.spec}  {pack.path}")
+        if kit.packs and not kit.agents:
+            print("    shares its packs with the session (no agents)")
+
+    def origin(skill: kits.Skill) -> str:
+        return f"{labels[skill.kit, skill.pack]} ({skill.kit})" if skill.pack else skill.kit
+
     print("Agents:")
     for agent in env.agents.values():
         resolved = env.resolve(agent.name)
         flag = "  [supervisor]" if agent.supervisor else ""
         default = "  [default]" if agent.name == env.default_agent else ""
         print(f"  {agent.name}{flag}{default}  from {agent.kit}: {agent.path}")
-        skills = ", ".join(resolved.skills) or "none"
+        skills = ", ".join(f"{s.name} ({origin(s)})" for s in resolved.skills.values()) or "none"
         print(f"    skills{' (all)' if agent.skills is None else ''}: {skills}")
         for mcp in resolved.mcp.values():
             print(f"    mcp {mcp.name}: {' '.join(mcp.command)}")
     print("Skills:")
     where = {kit.name: kit.where for kit in env.kits}
-    for skill in env.skills.values():
-        print(f"  {skill.name}  from {skill.kit} ({where[skill.kit]}): {skill.path}")
+    for skill in env.all_skills().values():
+        print(f"  {skill.name}  from {origin(skill)} ({where[skill.kit]}): {skill.path}")
     if env.flows:
         print("Flows:")
     for flow in env.flows.values():
@@ -151,29 +167,34 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     repo = _repo_or_none(str(target) if target.is_dir() else args.repo)
     try:
         # A folder may be any kit, e.g. a kit at the root of its repository.
-        kit = (
+        kit = kits.fetch(
             kits.load(target, named_folder=False)
             if target.is_dir()
             else kits.find(args.kit, repo).load()
         )
         env = kits.resolve(repo, [kit])
-        for name in kit.flows:
-            env.flow(name)  # its roles exist in the kit with what it includes
-        # What it includes is checked on its own; here its problems are only warnings.
         problems = kits.lint(kit)
-        doubts = [w for k in env.kits for w in kits.warnings(k)]
-        doubts += [p for k in env.kits if k.path != kit.path for p in kits.lint(k)]
+        doubts = kits.warnings(kit)
     except kits.KitError as exc:
         print(exc, file=sys.stderr)
         return 1
+    # A flow may take a role from another kit of the session.
+    for flow in kit.flows.values():
+        for step in flow.states.values():
+            if step.kind == flows.WORK and step.agent not in kit.agents:
+                doubts.append(
+                    f'flow "{flow.name}": state "{step.name}": role "{step.agent}" is not in '
+                    f'kit "{kit.name}"; a session needs a kit that has it'
+                )
     for doubt in doubts:
         print(f"warning: {doubt}", file=sys.stderr)
     for problem in problems:
         print(problem, file=sys.stderr)
     if problems:
         return 1
-    counts = f"{len(env.agents)} agents, {len(env.skills)} skills and {len(env.flows)} flows"
-    print(f"{kit.name}: OK ({counts} with what it includes)")
+    skills = len(env.all_skills())
+    counts = f"{len(env.agents)} agents, {skills} skills, {len(kit.packs)} packs"
+    print(f"{kit.name}: OK ({counts} and {len(env.flows)} flows)")
     return 0
 
 
@@ -581,7 +602,9 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
     start.set_defaults(func=cmd_start)
 
-    kits_cmd = commands.add_parser("kits", help="list, show and check kits")
+    kits_cmd = commands.add_parser(
+        "kits", help="list, show and check kits; add, update and remove installed ones"
+    )
     kits_cmd.add_argument("--repo", default=".", help="repository for project kits")
     kits_cmd.set_defaults(func=cmd_kits)
     kits_sub = kits_cmd.add_subparsers(metavar="<command>")
@@ -589,36 +612,33 @@ def main(argv: list[str] | None = None) -> int:
     show.add_argument("names", nargs="+", metavar="name")
     _without_arg(show, [])
     show.set_defaults(func=cmd_kits_show)
-    check = kits_sub.add_parser("check", help="validate a kit and what it includes")
+    check = kits_sub.add_parser("check", help="validate a kit and fetch its skill packs")
     check.add_argument("kit", help="kit folder or name")
     check.set_defaults(func=cmd_kits_check)
-    sources_cmd = commands.add_parser(
-        "sources", help="kit sources: git repositories and local folders that hold kits"
+    add = kits_sub.add_parser(
+        "add", help=f"install the kits of a git repository or a folder in {kits.installed()}"
     )
-    sources_cmd.set_defaults(func=cmd_sources_list)
-    sources_sub = sources_cmd.add_subparsers(metavar="<command>")
-    sources_sub.add_parser("list", help="list kit sources").set_defaults(func=cmd_sources_list)
-    add = sources_sub.add_parser("add", help="add a git repository or a local folder")
     add.add_argument(
-        "source",
-        metavar="<git-url|folder>[@ref]",
-        help="a git URL (cloned; ref: tag, branch or commit) or a folder (read in place)",
+        "spec",
+        metavar="<git-url@tag|commit|folder>",
+        help="a git URL pinned to a tag or commit (cloned into the cache) or a folder (linked, "
+        "read in place); its kit at the root or its kits in kits/<name>/",
     )
-    add.add_argument("--name", help="source name (default: repository or folder name)")
     add.add_argument(
-        "--skills",
-        action="append",
-        metavar="FOLDER",
-        help="for a skill pack: take skills only from this folder inside it, e.g. "
-        "skills/engineering; repeatable (default: all of skills/)",
+        "--kit", action="append", metavar="NAME", help="only this kit of it; repeatable"
     )
-    add.set_defaults(func=cmd_sources_add)
-    update = sources_sub.add_parser("update", help="fetch sources again (default: all)")
-    update.add_argument("name", nargs="?")
-    update.set_defaults(func=cmd_sources_update)
-    remove = sources_sub.add_parser("remove", help="remove a source (and its clone)")
+    add.set_defaults(func=cmd_kits_add)
+    update = kits_sub.add_parser("update", help="move a kit installed from git to another version")
+    update.add_argument("name")
+    update.add_argument("ref", metavar="<tag|commit>")
+    update.set_defaults(func=cmd_kits_update)
+    remove = kits_sub.add_parser("remove", help="remove an installed kit's link")
     remove.add_argument("name")
-    remove.set_defaults(func=cmd_sources_remove)
+    remove.set_defaults(func=cmd_kits_remove)
+    # Gone: says how to move to `lado kits add`.
+    sources_cmd = commands.add_parser("sources", help="gone: see lado kits add")
+    sources_cmd.add_argument("rest", nargs=argparse.REMAINDER)
+    sources_cmd.set_defaults(func=cmd_sources)
 
     commands.add_parser("ls", help="list sessions and agents").set_defaults(func=cmd_ls)
 
@@ -711,6 +731,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
+        _sources_warning()
         return doctor.main()
     if args.command == "mcp":
         from lado import mcp_server
@@ -731,7 +752,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command != "stop":
             runtime.check_migration()
         return args.func(args)
-    except (runtime.LadoError, tmux.TmuxError, kits.KitError, sources.SourceError) as exc:
+    except (runtime.LadoError, tmux.TmuxError, kits.KitError) as exc:
         print(f"lado: {exc}", file=sys.stderr)
         return 1
 

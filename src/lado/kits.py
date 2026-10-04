@@ -2,7 +2,7 @@
 
 A kit is a directory:
 
-    kit.yaml            name, version, description, include (other kits), default_agent
+    kit.yaml            name, version, description, dependencies, default_agent
     agents/<name>.md    YAML frontmatter + the role prompt
     skills/<name>/      a SKILL.md folder, always handled as a whole
     flows/<name>.yaml   a flow (lado.flows)
@@ -10,13 +10,23 @@ A kit is a directory:
 Agents, skills and flows are found in their folders; kit.yaml does not list them. Anything else in
 the kit travels with it untouched. A kit is identified by the name and version in kit.yaml.
 
+A kit takes from outside only skill packs, never another kit: `dependencies.skills` maps a
+pack's name to `<git address>@<tag or commit>`, or `{from: ..., folders: [...]}`, or a folder
+relative to the kit's. A pack is SKILL.md folders (anywhere under skills/, or under its
+`folders`) and no kit.yaml. A git pack is cloned once per version into the git cache
+(lado.gitcache): load reads what is there and never uses the network, fetch clones the rest.
+`dependencies.lado: ">=X.Y"` names the oldest LADO the kit runs with.
+
 Kits are looked up by name in the project (<repo>/.lado/kits), then in LADO_HOME/kits, then
-in the registered sources (lado.sources) in the order they were added, then among the kits
-built into LADO; the first hit wins. A source holds kits in kits/<name>/, or one kit at its
-root, or is a skill pack: no kit.yaml, only SKILL.md folders anywhere under skills/ (or under
-the folders the source names). A skill pack is a kit named after the source, with skills and
-no agents. Several kits, with what
-they include, combine into one Environment.
+among the kits built into LADO; the first hit wins. LADO_HOME/kits holds what is installed:
+folders, and links that `lado kits add` makes to a kit in the git cache or in a local folder.
+
+Several kits combine into one Environment for a session. Their agents, flows and own skills
+are one namespace: a name twice is an error. The skills of a kit's packs are its agents'
+only, so two kits may take two versions of one pack; a kit without agents (by what it holds,
+before --without) shares its packs with every agent of the session. Adding a first agent to
+such a kit makes its packs private: the agents of other kits lose them, loudly only when
+their `skills:` names one.
 """
 
 import dataclasses
@@ -28,7 +38,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import __version__, flows, gitcache, sources, state
+from lado import __version__, flows, gitcache, state
 from lado.flows import Flow
 from lado.providers.base import McpServer
 
@@ -45,7 +55,7 @@ AGENT_KEYS = {"name", "description", "supervisor", "skills", "mcp"}
 MCP_KEYS = {"command", "env"}
 WITHOUT_KINDS = ("agent", "skill", "mcp", "flow")
 
-NAME = sources.NAME
+NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 SEMVER = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 # A path that only works on one machine: ~/..., or /dir/... at the start of a word.
@@ -115,15 +125,15 @@ class Kit:
     default_agent: str | None
     agents: dict[str, AgentDef]
     skills: dict[str, Skill]  # its own, in skills/
-    origin: sources.Source | None = None  # the source the kit was found in
-    pack: bool = False  # a skill pack: SKILL.md folders without a kit.yaml
     flows: dict[str, Flow] = field(default_factory=dict)
     packs: dict[str, Pack] = field(default_factory=dict)  # dependencies.skills
 
     @property
     def source(self) -> str:
-        revision = self.origin.revision() if self.origin else None
-        return f"{self.where}{f' @ {revision}' if revision else ''}: {self.path}"
+        """Where it is: its place on the search path, its address@ref when it is from the
+        git cache, its folder."""
+        origin = cached_origin(self.path)
+        return f"{self.where}{f' {origin}' if origin else ''}: {self.path}"
 
     def unfetched(self) -> list[str]:
         """The packs not in the cache yet (fetch gets them)."""
@@ -135,16 +145,24 @@ class Found:
     """A kit on the search path, not loaded yet."""
 
     name: str
-    where: str  # project, user, source <name> or built-in
-    path: Path
-    origin: sources.Source | None = None
-    pack: bool = False
-    named_folder: bool = True  # in a kits folder, where the folder name is the kit name
+    where: str  # project, user or built-in
+    path: Path  # the entry in its kits folder; a link in LADO_HOME/kits stays a link
 
     def load(self) -> Kit:
-        if self.pack:
-            return _load_pack(self)
-        return load(self.path, self.where, self.named_folder, self.origin)
+        if self.path.is_symlink() and not self.path.exists():
+            raise KitError(
+                f"{self.name}: broken link → {os.readlink(self.path)}; "
+                f"run `lado kits remove {self.name}`"
+            )
+        return load(self.path, self.where)
+
+    def link(self) -> str | None:
+        """What a link in a kits folder leads to: address@ref of a kit from the git cache,
+        else the folder."""
+        if not self.path.is_symlink():
+            return None
+        target = self.path.resolve()
+        return cached_origin(target) or str(target)
 
 
 @dataclass(frozen=True)
@@ -246,28 +264,29 @@ class Environment:
         return {m for a in self.agents.values() for m in a.mcp}
 
 
-def search_path(repo: str | Path | None) -> list[tuple[str, Path, sources.Source | None]]:
-    """Where kits are looked up, in order: (where, folder, the source if it is one)."""
-    places = [("project", Path(repo) / ".lado" / "kits", None)] if repo else []
-    places.append(("user", state.home() / "kits", None))
-    places += [(f"source {s.name}", s.path(), s) for s in _registered()]
-    return [*places, ("built-in", BUILTIN, None)]
+def search_path(repo: str | Path | None) -> list[tuple[str, Path]]:
+    """Where kits are looked up, in order: (where, folder)."""
+    places = [("project", Path(repo) / ".lado" / "kits")] if repo else []
+    return [*places, ("user", installed()), ("built-in", BUILTIN)]
+
+
+def installed() -> Path:
+    """LADO_HOME/kits: the kits installed for the user, folders or links (lado kits add)."""
+    return state.home() / "kits"
 
 
 def candidates(repo: str | Path | None) -> list[Found]:
     """Every kit on the search path, in lookup order; a name may come more than once."""
-    found = []
-    for where, base, origin in search_path(repo):
-        found += in_source(origin) if origin else _in_folder(base, where)
-    return found
+    return [found for where, base in search_path(repo) for found in _in_folder(base, where)]
 
 
 def find(name: str, repo: str | Path | None) -> Found:
     for found in candidates(repo):
         if found.name == name:
             return found
-    looked = ", ".join(str(base) for _, base, _ in search_path(repo))
-    raise KitError(f'kit "{name}" not found; looked in {looked}')
+    looked = ", ".join(str(base) for _, base in search_path(repo))
+    hint = migration_hint()
+    raise KitError("\n".join(filter(None, [f'kit "{name}" not found; looked in {looked}', hint])))
 
 
 def available(repo: str | Path | None) -> list[tuple[Found, str | None]]:
@@ -280,54 +299,169 @@ def available(repo: str | Path | None) -> list[tuple[Found, str | None]]:
     return listed
 
 
-def in_source(origin: sources.Source) -> list[Found]:
-    """The kits of a source: kits/<name>/, one kit at its root, or a skill pack."""
-    root, where = origin.path(), f"source {origin.name}"
-    if not root.is_dir():
-        raise KitError(
-            f'source "{origin.name}": {root} does not exist; '
-            f"run `lado sources update {origin.name}` or `lado sources remove {origin.name}`"
-        )
-    found = []
-    if (root / KIT_FILE).is_file():
-        found.append(Found(_kit_name(root), where, root, origin, named_folder=False))
-    elif (root / "kits").is_dir() and _skill_dirs(root / "skills"):
-        raise KitError(f"{root / 'skills'}: skills of a source with kits belong in a kit")
-    found += _in_folder(root / "kits", where, origin)
-    if found and origin.skills:
-        raise KitError(
-            f'source "{origin.name}" has kits; skills folders ({", ".join(origin.skills)}) '
-            "only choose the skills of a skill pack"
-        )
-    if not found:
-        stray = _stray_kit_file(root)
-        if stray:
-            raise KitError(f"{stray}: a source keeps kits in kits/<name>/ or one kit at its root")
-        if _pack_skill_dirs(root, origin):
-            found.append(Found(origin.name, where, root, origin, pack=True))
-    seen: dict[str, Found] = {}
-    for kit in found:
-        if kit.name in seen:
+def add(spec: str, only: Iterable[str] = ()) -> list[Kit]:
+    """Install the kits of a git repository (`<address>@<tag or commit>`, cloned into the
+    git cache) or a local folder (read in place): a link LADO_HOME/kits/<name> to each kit,
+    the one at its root or those in kits/<name>/ (`only`: these of them). Each kit is loaded
+    and fetched; when one fails, no link of this call stays."""
+    location, ref = gitcache.split_ref(spec)
+    if gitcache.is_git(location):
+        if not ref:
+            raise KitError(f"pin a version: {location}@<tag or commit>")
+        root = _cache(location, ref)
+    else:
+        root = Path(location).expanduser().resolve()
+        if ref and not root.is_dir():
+            raise KitError(f"{location}: a local folder has no version; drop @{ref}")
+        if not root.is_dir():
+            raise KitError(f"{location} is not a folder")
+    found = _kits_in(root, spec)
+    only = list(only)
+    for name in only:
+        if name not in found:
+            raise KitError(f'no kit "{name}" in {spec}; kits there: {", ".join(found)}')
+    chosen = {n: p for n, p in found.items() if not only or n in only}
+    for name in chosen:
+        link = installed() / name
+        if link.exists() or link.is_symlink():
             raise KitError(
-                f'source "{origin.name}" has two kits named "{kit.name}": '
-                f"{seen[kit.name].path} and {kit.path}"
+                f'kit "{name}" is installed already: {link}; `lado kits remove {name}` first'
             )
-        seen[kit.name] = kit
-    return found
-
-
-def _registered() -> list[sources.Source]:
+    made: list[Path] = []
     try:
-        return sources.registered()
-    except sources.SourceError as exc:
+        loaded = []
+        for name, path in chosen.items():
+            link = installed() / name
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(path, target_is_directory=True)
+            made.append(link)
+            loaded.append(fetch(load(link, "user")))
+    except BaseException:
+        for link in made:
+            link.unlink()
+        raise
+    return loaded
+
+
+def update(name: str, ref: str) -> Kit:
+    """Point the link of kit `name`, installed from git, to the same kit at `ref`; the link
+    is replaced in one step. The clone of the old version stays in the cache."""
+    link = _installed_entry(name)
+    if not link.is_symlink():
+        raise KitError(f"{link}: {name} is a folder LADO did not install; nothing to update")
+    target = link.resolve()
+    clone = gitcache.clone_root(target)
+    if clone is None:
+        raise KitError(
+            f"{name} links to the folder {target}: it is read in place, nothing to update"
+        )
+    address = gitcache.address(clone)
+    new = _cache(address, ref) / target.relative_to(clone)
+    kit = fetch(load(new, "user", named_folder=False))
+    if kit.name != name:
+        raise KitError(f'{new / KIT_FILE}: at {ref} the kit is named "{kit.name}", not "{name}"')
+    temp = link.with_name(f".{name}.new")
+    temp.unlink(missing_ok=True)
+    temp.symlink_to(new, target_is_directory=True)
+    os.replace(temp, link)
+    return kit
+
+
+def remove(name: str) -> Path:
+    """Remove the link of kit `name` from LADO_HOME/kits; returns where it led. The folder
+    it led to stays."""
+    link = _installed_entry(name)
+    if not link.is_symlink():
+        raise KitError(f"{link}: not installed by LADO; delete {link} yourself")
+    target = Path(os.readlink(link))
+    link.unlink()
+    return target
+
+
+def _installed_entry(name: str) -> Path:
+    link = installed() / name
+    if not link.exists() and not link.is_symlink():
+        raise KitError(f'no kit "{name}" in {installed()}')
+    return link
+
+
+def _cache(address: str, ref: str) -> Path:
+    try:
+        return gitcache.fetch_pinned(address, ref)
+    except gitcache.GitError as exc:
         raise KitError(str(exc)) from None
 
 
-def _in_folder(base: Path, where: str, origin: sources.Source | None = None) -> list[Found]:
+def _kits_in(root: Path, spec: str) -> dict[str, Path]:
+    """The kits of a repository or folder: the one at its root, or those in kits/<name>/."""
+    if (root / KIT_FILE).is_file():
+        return {_kit_name(root): root}
+    found = {p.name: p for p in _in_folder_paths(root / "kits")}
+    if found:
+        return found
+    if _skill_dirs(root / "skills") or _skill_dirs(root):
+        raise KitError(
+            f"{spec} is a skill pack, not a kit: list it under dependencies.skills of a kit; "
+            "a kit without agents shares its packs with the whole session"
+        )
+    raise KitError(f"no kit in {spec}: a kit has kit.yaml at the root or in kits/<name>/")
+
+
+def cached_origin(path: Path) -> str | None:
+    """`<address>@<ref>` of the git cache's clone `path` is in, or None when it is not in
+    the cache."""
+    clone = gitcache.clone_root(path)
+    if clone is None or not clone.is_dir():
+        return None
+    try:
+        return f"{gitcache.address(clone)}@{gitcache.ref(clone)}"
+    except gitcache.GitError:
+        return None
+
+
+def migration_hint() -> str | None:
+    """What to do with LADO_HOME/sources.yaml of an older LADO, while it is there."""
+    registry = state.home() / "sources.yaml"
+    if not registry.exists():
+        return None
+    lines = [f"{registry} is no longer read: kits are installed with `lado kits add`."]
+    try:
+        entries = (yaml.safe_load(registry.read_text()) or {}).get("sources") or []
+    except (yaml.YAMLError, AttributeError, OSError):
+        entries = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("location"), str):
+            continue
+        location, ref = entry["location"], entry.get("ref")
+        git = entry.get("kind") == "git"
+        folder = state.home() / "sources" / str(entry.get("name")) if git else Path(location)
+        spec = f"{location}@{ref or '<tag or commit>'}" if git else location
+        if (folder / KIT_FILE).is_file() or (folder / "kits").is_dir():
+            lines.append(f"  lado kits add {spec}")
+            continue
+        folders = entry.get("skills") or []
+        value = f"{{from: {spec}, folders: [{', '.join(folders)}]}}" if folders else spec
+        lines.append(
+            f"  {entry.get('name')} is a skill pack: list it under dependencies.skills of a kit "
+            f"({entry.get('name')}: {value})"
+        )
+    lines.append(f"then delete {registry} and {state.home() / 'sources'}")
+    return "\n".join(lines)
+
+
+def _in_folder(base: Path, where: str) -> list[Found]:
+    """The kits in a kits folder; a link whose folder is gone is there too (load says so)."""
+    broken = (
+        [p for p in base.iterdir() if p.is_symlink() and not p.exists()] if base.is_dir() else []
+    )
+    paths = sorted([*_in_folder_paths(base), *broken])
+    return [Found(p.name, where, p) for p in paths]
+
+
+def _in_folder_paths(base: Path) -> list[Path]:
     if not base.is_dir():
         return []
-    paths = sorted(p for p in base.iterdir() if (p / KIT_FILE).is_file())
-    return [Found(p.name, where, p, origin) for p in paths]
+    return sorted(p for p in base.iterdir() if (p / KIT_FILE).is_file())
 
 
 def _kit_name(path: Path) -> str:
@@ -345,18 +479,6 @@ def _stray_kit_file(root: Path) -> Path | None:
     return None
 
 
-def _pack_skill_dirs(root: Path, origin: sources.Source) -> list[Path]:
-    """The skill folders of a skill pack: under skills/, or under the source's skills folders."""
-    if not origin.skills:
-        return _skill_dirs(root / "skills")
-    found = []
-    for folder in origin.skills:
-        if not (root / folder).is_dir():
-            raise KitError(f'source "{origin.name}": skills folder {root / folder} does not exist')
-        found += _skill_dirs(root / folder)
-    return found
-
-
 def _skill_dirs(base: Path) -> list[Path]:
     """SKILL.md folders anywhere under `base`; a skill folder is not searched further."""
     found = []
@@ -369,14 +491,12 @@ def _skill_dirs(base: Path) -> list[Path]:
     return sorted(found)
 
 
-def load(
-    path: str | Path,
-    where: str = "path",
-    named_folder: bool = True,
-    origin: sources.Source | None = None,
-) -> Kit:
+def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Kit:
     """Read and validate the kit in `path`. Raises KitError listing every problem found.
-    `named_folder`: the folder's name must be the kit's name (it is in a kits folder)."""
+    Packs not in the git cache yet are left unfetched (fetch gets them); load never uses
+    the network. `named_folder`: the kit is in a kits folder, where the name of its entry
+    (a folder, or a link in LADO_HOME/kits) must be the kit's name."""
+    entry = Path(path).absolute().name
     path = Path(path).resolve()
     errors: list[str] = []
     meta = _yaml_file(path / KIT_FILE, errors)
@@ -388,8 +508,8 @@ def load(
     name = meta.get("name")
     if not isinstance(name, str) or not NAME.fullmatch(name):
         errors.append(f"{path / KIT_FILE}: name must be lowercase letters, digits, - or _")
-    elif named_folder and name != path.name:
-        errors.append(f'{path / KIT_FILE}: name "{name}" differs from the folder "{path.name}"')
+    elif named_folder and name != entry:
+        errors.append(f'{path / KIT_FILE}: name "{name}" differs from the folder "{entry}"')
     version = meta.get("version")
     if version is not None and not SEMVER.fullmatch(str(version)):
         errors.append(f"{path / KIT_FILE}: version must be X.Y.Z or X.Y.Z-<prerelease>")
@@ -419,7 +539,6 @@ def load(
         default_agent=default_agent,
         agents=agents,
         skills=skills,
-        origin=origin,
         flows=kit_flows,
         packs=packs,
     )
@@ -587,36 +706,6 @@ def _version(text: str) -> tuple[int, ...]:
     return tuple(int(n) for n in match.groups()) if match else (0, 0, 0)
 
 
-def _load_pack(found: Found) -> Kit:
-    errors: list[str] = []
-    skills: dict[str, Skill] = {}
-    root = found.path.resolve()
-    for path in _pack_skill_dirs(root, found.origin):
-        skill = _load_skill(path, found.name, errors)
-        if skill and skill.name in skills:
-            errors.append(
-                f'{path}: skill "{skill.name}" is also in {skills[skill.name].path}; '
-                "choose the folders to use with `lado sources add --skills <folder>`"
-            )
-        elif skill:
-            skills[skill.name] = skill
-    if errors:
-        raise KitError("\n".join(errors))
-    return Kit(
-        name=found.name,
-        path=root,
-        where=found.where,
-        version="",
-        description=f"skill pack, {len(skills)} skills",
-        include=[],
-        default_agent=None,
-        agents={},
-        skills=skills,
-        origin=found.origin,
-        pack=True,
-    )
-
-
 def resolve(
     repo: str | Path | None, kits: Iterable[str | Kit], without: Iterable[str] = ()
 ) -> Environment:
@@ -710,7 +799,7 @@ def lint(kit: Kit) -> list[str]:
     """Problems a kit can run with but should not have: paths that only work on one
     machine (use ${KIT_DIR} or a relative path instead), a missing version."""
     problems = []
-    if not kit.version and not kit.pack:
+    if not kit.version:
         problems.append(f"{kit.path / KIT_FILE}: version is missing; use X.Y.Z")
     for agent in kit.agents.values():
         raw = _frontmatter(agent.path.read_text(), agent.path, [])[1]
@@ -726,12 +815,14 @@ def lint(kit: Kit) -> list[str]:
 
 
 def warnings(kit: Kit) -> list[str]:
-    """Doubts about a kit that do not stop it: its version differs from the source's."""
-    tags = kit.origin.versions() if kit.origin and kit.version else []
+    """Doubts about a kit that do not stop it: a kit from the git cache whose version
+    differs from the version tags on its clone's commit."""
+    clone = gitcache.clone_root(kit.path)
+    tags = gitcache.versions(clone) if clone and kit.version else []
     if tags and kit.version not in tags:
         return [
-            f"{kit.name}: version {kit.version} in kit.yaml, but {kit.origin.name} is at "
-            f"{', '.join('v' + t for t in tags)} ({kit.origin.describe()})"
+            f"{kit.name}: version {kit.version} in kit.yaml, but {cached_origin(kit.path)} "
+            f"is at {', '.join('v' + t for t in tags)}"
         ]
     return []
 

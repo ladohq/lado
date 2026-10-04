@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -7,7 +8,7 @@ import agent_helpers
 import pytest
 from agent_helpers import init_repo, publish
 
-from lado import __version__, cli, runs, runtime, sources, state
+from lado import __version__, cli, gitcache, runs, runtime, state
 from lado.cli import format_duration, main
 
 
@@ -128,19 +129,18 @@ def test_start_with_a_mode_the_provider_cannot_honour_fails(repo, fake_tmux, cap
 def _kit(repo, name, body="---\nname: rev\ndescription: reviews\n---\nReview.\n"):
     kit = repo / ".lado" / "kits" / name
     (kit / "agents").mkdir(parents=True)
-    (kit / "kit.yaml").write_text(
-        f"name: {name}\nversion: 1.0.0\ndescription: about {name}\ninclude: [default]\n"
-    )
+    (kit / "kit.yaml").write_text(f"name: {name}\nversion: 1.0.0\ndescription: about {name}\n")
     (kit / "agents" / "rev.md").write_text(body)
     return kit
 
 
 def test_start_with_kits_and_without(repo, fake_tmux):
     _kit(repo, "team")
-    args = ["start", str(repo), "--name", "s", "--kit", "team", "--without", "agent:rev"]
-    assert main([*args, "--no-attach"]) == 0
+    args = ["start", str(repo), "--name", "s", "--kit", "default"]
+    args += ["--kit", "team"]
+    assert main([*args, "--without", "agent:rev", "--no-attach"]) == 0
     sess = state.get_session("s")
-    assert (sess.kits, sess.without) == (["team"], ["agent:rev"])
+    assert (sess.kits, sess.without) == (["default", "team"], ["agent:rev"])
 
 
 def test_start_with_bad_kit_fails(repo, fake_tmux, capsys):
@@ -148,19 +148,39 @@ def test_start_with_bad_kit_fails(repo, fake_tmux, capsys):
     assert 'lado: kit "nope" not found' in capsys.readouterr().err
 
 
-def test_kits_lists_with_sources(repo, capsys, monkeypatch):
+def test_kits_lists_where_each_kit_is(repo, capsys, monkeypatch, tmp_path, lado_home):
     kit = _kit(repo, "team")
+    (kit / "kit.yaml").write_text(
+        "name: team\nversion: 1.0.0\ndescription: about team\ndependencies:\n  skills:\n"
+        "    a: https://example.com/a.git@v1\n    b: https://example.com/b.git@v1\n"
+    )
+    local = _kit(tmp_path / "dev", "mine")
+    url = publish(init_repo(tmp_path / "solo"), {"kit.yaml": "name: solo\n"}, tag="v1")
+    assert main(["kits", "add", str(local)]) == 0
+    assert main(["kits", "add", f"{url}@v1"]) == 0
+    _kit(tmp_path / "gone", "gone")
+    assert main(["kits", "add", str(tmp_path / "gone" / ".lado" / "kits" / "gone")]) == 0
+    shutil.rmtree(tmp_path / "gone")
+    capsys.readouterr()
     monkeypatch.chdir(repo)
     assert main(["kits"]) == 0
     out = capsys.readouterr().out
-    assert f"team             project   {kit.resolve()}" in out
-    assert "about team" in out
+    assert (
+        f"team             project   {kit}\n  1.0.0    about team; 2 packs not fetched yet" in out
+    )
+    assert f"mine             user      {lado_home / 'kits' / 'mine'} → {local.resolve()}" in out
+    assert f"solo             user      {lado_home / 'kits' / 'solo'} → {url}@v1" in out
+    assert "gone             user" in out
+    assert "  invalid: gone: broken link → " in out and "run `lado kits remove gone`" in out
     assert "default          built-in" in out
+    # Nothing was fetched for the list.
+    assert not (lado_home / "cache" / "a").exists()
 
 
 def test_kits_show(repo, capsys):
     kit = _kit(repo, "team")
-    assert main(["kits", "--repo", str(repo), "show", "team", "--without", "agent:worker"]) == 0
+    args = ["kits", "--repo", str(repo), "show", "default", "team", "--without", "agent:worker"]
+    assert main(args) == 0
     out = capsys.readouterr().out
     assert f"team 1.0.0  (project: {kit.resolve()})" in out
     assert f"rev  from team: {kit.resolve()}/agents/rev.md" in out
@@ -169,10 +189,44 @@ def test_kits_show(repo, capsys):
     assert "Switched off: agent:worker" in out
 
 
+def test_kits_show_names_packs_and_where_each_skill_comes_from(tmp_path, repo, capsys):
+    url = publish(
+        init_repo(tmp_path / "pack"),
+        {"skills/tdd/SKILL.md": "---\nname: tdd\ndescription: test first\n---\n"},
+        tag="v1",
+    )
+    kit = _kit(repo, "team")
+    (kit / "kit.yaml").write_text(
+        f"name: team\nversion: 1.0.0\ndependencies:\n  skills:\n    sp: {url}@v1\n"
+    )
+    (kit / "skills" / "notes").mkdir(parents=True)
+    (kit / "skills" / "notes" / "SKILL.md").write_text("---\nname: notes\ndescription: n\n---\n")
+    shared = repo / ".lado" / "kits" / "shared"
+    (shared / "skills" / "plan").mkdir(parents=True)
+    (shared / "kit.yaml").write_text(
+        "name: shared\nversion: 1.0.0\ndependencies:\n  skills:\n    lp: ../../lp\n"
+    )
+    (shared / "skills" / "plan" / "SKILL.md").write_text("---\nname: plan\ndescription: p\n---\n")
+    (repo / ".lado" / "lp" / "skills" / "grill").mkdir(parents=True)
+    (repo / ".lado" / "lp" / "skills" / "grill" / "SKILL.md").write_text(
+        "---\nname: grill\ndescription: g\n---\n"
+    )
+    assert main(["kits", "--repo", str(repo), "show", "default", "team", "shared"]) == 0
+    out = capsys.readouterr().out
+    clone = gitcache.clone_dir(url, "v1").resolve()
+    assert f"    pack sp: {url}@v1  {clone}" in out
+    assert f"    pack lp: ../../lp  {(repo / '.lado' / 'lp').resolve()}" in out
+    assert "    shares its packs with the session (no agents)" in out
+    assert (
+        "    skills (all): notes (team), plan (shared), grill (lp (shared)), tdd (sp@v1 (team))"
+    ) in out
+    assert "    skills (all): notes (team), plan (shared), grill (lp (shared))\n" in out
+
+
 def test_kits_check(repo, capsys, monkeypatch):
     kit = _kit(repo, "team")
     assert main(["kits", "check", str(kit)]) == 0
-    assert "team: OK (3 agents, 0 skills" in capsys.readouterr().out
+    assert "team: OK (1 agents, 0 skills, 0 packs and 0 flows)" in capsys.readouterr().out
     monkeypatch.chdir(repo)
     assert main(["kits", "check", "team"]) == 0
     assert main(["kits", "check", "default"]) == 0
@@ -188,112 +242,72 @@ def test_kits_check(repo, capsys, monkeypatch):
     assert main(["kits", "check", "nope"]) == 1
 
 
-def test_kits_sources_add_update_remove(tmp_path, repo, capsys, monkeypatch):
-    monkeypatch.chdir(repo)
-    work = init_repo(tmp_path / "pack")
-    skill = "---\nname: {0}\ndescription: use {0}\n---\n"
-    url = publish(work, {"skills/eng/tdd/SKILL.md": skill.format("tdd")}, tag="v1.0.0")
-    assert main(["sources", "list"]) == 0
-    assert "No sources." in capsys.readouterr().out
-
-    assert main(["sources", "add", f"{url}@v1.0.0"]) == 0
-    clone = sources.get("pack").path()
-    out = capsys.readouterr().out
-    assert f'Added source "pack": git {url} @v1.0.0 at ' in out and str(clone) in out
-    assert "  pack             skill pack with 1 skills" in out
-    dev = _kit(tmp_path, "team")
-    assert main(["sources", "add", str(tmp_path / ".lado"), "--name", "dev"]) == 0
-    assert "  team             1.0.0    about team" in capsys.readouterr().out
-
-    assert main(["sources"]) == 0
-    assert main(["sources", "list"]) == 0
-    listed = capsys.readouterr().out
-    assert listed[: len(listed) // 2] == listed[len(listed) // 2 :]
-    out = listed.splitlines()
-    assert out[0].startswith(f"pack             git {url} @v1.0.0  at ")
-    assert out[1] == f"dev              path {(tmp_path / '.lado').resolve()}"
-
-    _kit(repo, "team")
-    assert main(["kits"]) == 0
-    out = capsys.readouterr().out
-    assert f"team             source dev {dev.resolve()}  (shadowed by project)" in out
-    assert f"pack             source pack {clone}\n  -        skill pack, 1 skills" in out
-
-    publish(work, {"skills/plan/SKILL.md": skill.format("plan")}, tag="v1.1.0")
-    assert main(["sources", "update"]) == 0
-    out = capsys.readouterr().out
-    assert "pack: at " in out and "dev: nothing to update" in out
-    assert not (clone / "skills" / "plan").exists()  # still at v1.0.0
-
-    assert main(["sources", "add", url, "--name", "pack"]) == 1
-    assert 'a source named "pack" already exists' in capsys.readouterr().err
-    assert main(["sources", "remove", "pack"]) == 0
-    assert f'Removed source "pack"; deleted the clone {clone}.' in capsys.readouterr().out
-    assert not clone.exists()
-    assert main(["sources", "update", "pack"]) == 1
-    assert 'no source "pack"; sources: dev' in capsys.readouterr().err
-
-
-def test_kits_add_refuses_a_source_without_kits(tmp_path, capsys):
-    (tmp_path / "empty").mkdir()
-    assert main(["sources", "add", str(tmp_path / "empty")]) == 1
-    err = capsys.readouterr().err
-    assert "no kits and no skills found in" in err and "source not added" in err
-    assert sources.registered() == []
-    assert main(["sources", "add", "file:///nowhere/kits.git"]) == 1
-    assert "lado: cannot get git file:///nowhere/kits.git" in capsys.readouterr().err
-
-
-def test_kits_show_and_check_name_sources(tmp_path, repo, capsys):
+def test_kits_add_update_remove(tmp_path, repo, capsys, lado_home):
     work = init_repo(tmp_path / "team")
-    files = {
-        "kits/team/kit.yaml": "name: team\nversion: 1.0.0\ninclude: [default]\n",
-        "kits/team/skills/notes/SKILL.md": "---\nname: notes\ndescription: notes\n---\n",
-    }
-    url = publish(work, files, tag="v2.0.0")
-    assert main(["sources", "add", url]) == 0
-    source = sources.get("team")
-    kit_dir = source.path().resolve() / "kits" / "team"
-    capsys.readouterr()
-    assert main(["kits", "--repo", str(repo), "show", "team"]) == 0
+    files = {"kits/team/kit.yaml": "name: team\nversion: 1.0.0\n"}
+    url = publish(work, files, tag="v1.0.0")
+    publish(work, {"kits/team/kit.yaml": "name: team\nversion: 1.1.0\n"}, tag="v1.1.0")
+    link = lado_home / "kits" / "team"
+    assert main(["kits", "add", f"{url}@v1.0.0", "--kit", "team"]) == 0
+    old = gitcache.clone_dir(url, "v1.0.0").resolve() / "kits" / "team"
+    assert f'Added kit "team" 1.0.0: {link} → {old}' in capsys.readouterr().out
+
+    assert main(["kits", "update", "team", "v1.1.0"]) == 0
+    new = gitcache.clone_dir(url, "v1.1.0").resolve() / "kits" / "team"
     out = capsys.readouterr().out
-    assert f"team 1.0.0  (source team @ {source.revision()}: {kit_dir})" in out
-    assert f"notes  from team (source team): {kit_dir}/skills/notes" in out
+    assert f'Updated kit "team" to v1.1.0 (1.1.0): {link} → {new}' in out
+    assert "running sessions get v1.1.0 for new agents only" in out
+
+    assert main(["kits", "add", f"{url}@v1.1.0"]) == 1
+    assert 'kit "team" is installed already' in capsys.readouterr().err
+    assert main(["kits", "add", url]) == 1
+    assert f"lado: pin a version: {url}@<tag or commit>" in capsys.readouterr().err
+
+    assert main(["kits", "remove", "team"]) == 0
+    assert f'Removed kit "team": {link} → {new}; the folder stays' in capsys.readouterr().out
+    assert not link.exists() and new.is_dir()
+    assert main(["kits", "remove", "team"]) == 1
+    assert 'no kit "team" in' in capsys.readouterr().err
+
+
+def test_kits_check_fetches_packs_and_warns_about_a_version(tmp_path, repo, capsys):
+    pack = publish(
+        init_repo(tmp_path / "pack"),
+        {"skills/tdd/SKILL.md": "---\nname: tdd\ndescription: test first\n---\n"},
+        tag="v1",
+    )
+    files = {
+        "kit.yaml": f"name: team\nversion: 1.0.0\ndependencies:\n  skills:\n    p: {pack}@v1\n"
+    }
+    url = publish(init_repo(tmp_path / "team"), files, tag="v2.0.0")
+    assert main(["kits", "add", f"{url}@v2.0.0"]) == 0
+    capsys.readouterr()
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
     captured = capsys.readouterr()
-    assert "warning: team: version 1.0.0 in kit.yaml, but team is at v2.0.0" in captured.err
-    assert "team: OK (2 agents, 1 skills" in captured.out
+    assert f"warning: team: version 1.0.0 in kit.yaml, but {url}@v2.0.0 is at v2.0.0" in (
+        captured.err
+    )
+    assert "team: OK (0 agents, 1 skills, 1 packs and 0 flows)" in captured.out
 
 
-def test_kits_add_with_skills_folders(tmp_path, capsys):
-    pack = tmp_path / "pack"
-    for skill in ("engineering/tdd", "productivity/grilling", "deprecated/tdd"):
-        (pack / "skills" / skill).mkdir(parents=True)
-        name = skill.rsplit("/", 1)[-1]
-        (pack / "skills" / skill / "SKILL.md").write_text(
-            f"---\nname: {name}\ndescription: d\n---\n"
-        )
-    assert main(["sources", "add", str(pack), "--name", "all"]) == 0
-    assert "  all              invalid; see: lado kits check all" in capsys.readouterr().out
-    args = ["--skills", "skills/engineering", "--skills", "skills/productivity"]
-    assert main(["sources", "add", str(pack), *args]) == 0
-    out = capsys.readouterr().out
-    assert f"skills: skills/engineering, skills/productivity, {pack.resolve()}" in out
-    assert "  pack             skill pack with 2 skills" in out
-    assert sources.get("pack").skills == ("skills/engineering", "skills/productivity")
-    assert main(["sources", "add", str(pack), "--name", "x", "--skills", "../up"]) == 1
-    assert "skills folders are relative paths inside the source" in capsys.readouterr().err
-
-
-def test_kits_check_warns_about_included_kits(repo, capsys):
-    base = _kit(repo, "base")
-    (base / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\nSee ~/notes.\n")
-    top = repo / ".lado" / "kits" / "top"
-    top.mkdir()
-    (top / "kit.yaml").write_text("name: top\nversion: 1.0.0\ninclude: [base]\n")
-    assert main(["kits", "--repo", str(repo), "check", "top"]) == 0
-    assert "warning: " in capsys.readouterr().err
-    assert main(["kits", "--repo", str(repo), "check", "base"]) == 1
+def test_sources_yaml_gets_a_warning_and_sources_is_gone(repo, capsys, fake_tmux, lado_home):
+    lado_home.mkdir(exist_ok=True)
+    (lado_home / "sources.yaml").write_text(
+        "sources:\n- {name: dev, kind: path, location: /nowhere/dev}\n"
+    )
+    for command in (["kits"], ["doctor"], ["start", str(repo), "--no-attach"]):
+        main(command)
+        err = capsys.readouterr().err
+        assert f"lado: {lado_home / 'sources.yaml'} is no longer read" in err, command
+        assert "dev is a skill pack" in err
+    assert main(["sources", "add", "x"]) == 1
+    assert f"{lado_home / 'sources.yaml'} is no longer read" in capsys.readouterr().err
+    (lado_home / "sources.yaml").unlink()
+    assert main(["sources"]) == 1
+    err = capsys.readouterr().err
+    assert "lado sources is gone: install kits with `lado kits add" in err
+    assert main(["kits"]) == 0
+    assert "no longer read" not in capsys.readouterr().err
 
 
 SHIP = """\
@@ -311,7 +325,7 @@ def _session_with_run(repo):
     kit = _kit(repo, "team")
     (kit / "flows").mkdir()
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    main(["start", str(repo), "--name", "s", "--kit", "team", "--no-attach"])
+    main(["start", str(repo), "--name", "s", "--kit", "default", "--kit", "team", "--no-attach"])
     return runs.start("s", "ship", "Add x", name="x")
 
 
@@ -491,7 +505,7 @@ def _at_gate_with_needs(repo, capsys):
     kit = _kit(repo, "team")
     (kit / "flows").mkdir()
     (kit / "flows" / "plan.yaml").write_text(PLAN)
-    main(["start", str(repo), "--name", "s", "--kit", "team", "--no-attach"])
+    main(["start", str(repo), "--name", "s", "--kit", "default", "--kit", "team", "--no-attach"])
     runs.start("s", "plan", "Add x", name="x")
     runs.advance("s", "supervisor", "plan/x", "ready", "the plan", "step 1\nstep 2")
     runs.spawn_worker("s", "plan/x")
@@ -811,25 +825,30 @@ def test_kits_show_lists_flows_with_their_source(repo, capsys):
     kit = _kit(repo, "team")
     (kit / "flows").mkdir()
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    assert main(["kits", "--repo", str(repo), "show", "team"]) == 0
+    assert main(["kits", "--repo", str(repo), "show", "default", "team"]) == 0
     out = capsys.readouterr().out
     assert f"Flows:\n  ship  from team (project): {kit.resolve()}/flows/ship.yaml" in out
     assert "    build and ship" in out
 
 
-def test_kits_check_refuses_a_flow_with_a_missing_role(repo, capsys):
+def test_kits_check_warns_about_a_flow_role_of_another_kit(repo, capsys):
     kit = _kit(repo, "team")
     (kit / "flows").mkdir()
-    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: tester"))
-    assert main(["kits", "--repo", str(repo), "check", "team"]) == 1
-    assert 'state "build": no role "tester" in this session' in capsys.readouterr().err
+    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: worker"))
+    assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
+    captured = capsys.readouterr()
+    assert (
+        'warning: flow "ship": state "build": role "worker" is not in kit "team"; '
+        "a session needs a kit that has it"
+    ) in captured.err
+    assert "team: OK (1 agents, 0 skills, 0 packs and 1 flows)" in captured.out
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
-    assert "team: OK (3 agents, 0 skills and 1 flows" in capsys.readouterr().out
+    assert "warning" not in capsys.readouterr().err
 
 
 def test_source_commands_are_not_under_kits(capsys):
-    for command in ("add", "update", "remove", "sources"):
+    for command in ("sources", "list"):
         with pytest.raises(SystemExit):
             main(["kits", command, "x"])
     capsys.readouterr()

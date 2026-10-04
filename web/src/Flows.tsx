@@ -328,8 +328,10 @@ function StatePicture({ run }: { run: RunInfo }) {
 
 type Entry = { at: string; rank: number; key: string; note?: NoteInfo; event?: RunEventInfo };
 
-// The run's steps and its start, end or cancel, by time; at the same time the start comes
-// first and the end last, since they are written with the step that led to them.
+// The run's start, its steps by time, then its end or cancel. The start and the end take
+// their place by kind, not by time: a run has no step before its start or after its end,
+// and the core writes a step's events before its note in one transaction, each row with
+// its own millisecond, so the end can be a little older than the step that led to it.
 function entries(run: RunInfo, lists: Lists): Entry[] {
   const notes = lists.notes
     .filter((one) => one.run === run.name)
@@ -337,7 +339,7 @@ function entries(run: RunInfo, lists: Lists): Entry[] {
   const events = lists.events
     .filter((one) => one.run === run.name && one.kind in EVENT_WORDS)
     .map((event) => ({ at: event.created_at, rank: event.kind === "flow_start" ? 0 : 2, key: `event-${event.id}`, event }));
-  return [...notes, ...events].sort((a, b) => a.at.localeCompare(b.at) || a.rank - b.rank);
+  return [...notes, ...events].sort((a, b) => a.rank - b.rank || a.at.localeCompare(b.at));
 }
 
 function Timeline({ run, gate, lists }: { run: RunInfo; gate?: GateInfo; lists: Lists }) {

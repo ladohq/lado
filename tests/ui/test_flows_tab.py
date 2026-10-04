@@ -102,6 +102,10 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     expect(steps).to_contain_text("approved: ship it")
     expect(steps).to_contain_text("ended · at end")
     expect(steps).not_to_contain_text("now ·")
+    # The end closes the timeline, after the step that led to it.
+    lines = steps.locator(".step-line")
+    expect(lines.last).to_contain_text("ended · at end")
+    expect(lines.nth(-2)).to_contain_text("check · human → approved → end")
     expect(run.get_by_role("listitem", name="State end")).to_have_attribute("aria-current", "step")
     expect(page.get_by_role("link", name="Flows · 1")).to_be_visible()
     runs_list.get_by_role("button", name="Ended (1)").click()

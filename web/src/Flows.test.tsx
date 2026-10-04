@@ -407,6 +407,26 @@ test("a step into a loop limit is followed by the loop gate's answer, and a wait
   expect(await within(region).findByRole("article", { name: "Gate #42" })).toBeTruthy();
 });
 
+test("the start comes first and the end last, whatever millisecond each row of the step got", async () => {
+  // The core writes the step's events before its note, in one transaction: the end may
+  // be a millisecond earlier than the step that led to it.
+  serve({
+    runs: [ENDED],
+    notes: [note(1, { run: "fix/old", state: "merge", actor: "supervisor", outcome: "merged", target: "done", summary: "merged", created_at: "2026-10-03T09:00:00.001Z" })],
+    events: [
+      event(7, "flow_start", "at merge", "2026-10-03T09:00:00.002Z", { run: "fix/old" }),
+      event(8, "flow_end", "at done", "2026-10-03T09:00:00.000Z", { run: "fix/old" }),
+    ],
+  });
+  open(runPath("lado", "fix/old"));
+  const steps = await within(await page("fix/old")).findByRole("list", { name: "Steps" });
+  expect(within(steps).getAllByRole("listitem").map((one) => one.querySelector(".step-line")?.textContent)).toEqual([
+    expect.stringMatching(/started · at merge$/),
+    expect.stringMatching(/merge · supervisor → merged → done$/),
+    expect.stringMatching(/ended · at done$/),
+  ]);
+});
+
 test("an ended and a cancelled run end their timeline with the event as the core wrote it", async () => {
   serve({
     runs: [ENDED, CANCELLED],

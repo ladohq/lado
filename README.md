@@ -55,7 +55,7 @@ lado ui                 # starts the UI server of this machine and opens the bro
 lado server stop        # ends it
 ```
 
-The server listens on 127.0.0.1 only. To open the UI of LADO on a remote host from
+By default the server listens on 127.0.0.1 only. To open the UI of LADO on a remote host from
 another machine, the safe way is an SSH tunnel, with the server left on 127.0.0.1:
 
 ```bash

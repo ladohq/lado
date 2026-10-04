@@ -144,6 +144,18 @@ def _bound(host: str, port: int) -> socket.socket | None:
     return sock
 
 
+def _busy_locally(port: int) -> bool:
+    """Whether another process listens on 127.0.0.1:`port`."""
+    try:
+        probe = _bound("127.0.0.1", port)
+    except LadoError:
+        return False  # not busy: the bind on 0.0.0.0 says why it cannot listen
+    if probe is None:
+        return True
+    probe.close()
+    return False
+
+
 def bind(
     host: str, port: int | None, first: int = DEFAULT_PORT, last: int = LAST_PORT
 ) -> socket.socket:
@@ -153,11 +165,8 @@ def bind(
     for candidate in [port] if port is not None else range(first, last + 1):
         # Every address is reached locally on 127.0.0.1, and macOS lets 0.0.0.0 take a port
         # another process holds there: that one would answer the local link.
-        if candidate and host == "0.0.0.0":
-            probe = _bound("127.0.0.1", candidate)
-            if probe is None:
-                continue
-            probe.close()
+        if candidate and host == "0.0.0.0" and _busy_locally(candidate):
+            continue
         sock = _bound(host, candidate)
         if sock is None:
             continue

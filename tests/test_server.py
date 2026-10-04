@@ -2,6 +2,7 @@
 a LADO_HOME. In process, with FastAPI's test client; the server as a process is in
 tests/integration/test_server_process.py."""
 
+import errno
 import json
 import os
 import re
@@ -346,6 +347,18 @@ def test_every_address_skips_a_port_busy_on_127_0_0_1():
             assert first < sock.getsockname()[1] <= first + 10
         with pytest.raises(runtime.LadoError, match=f"port {first} is busy"):
             server_run.bind("0.0.0.0", first)
+
+
+def test_every_address_names_itself_when_it_cannot_listen(monkeypatch):
+    """The look at 127.0.0.1 only skips a busy port; a port the user may not take (EACCES
+    below 1024 on Linux) is the error of 0.0.0.0, not of 127.0.0.1."""
+
+    def bind(sock, address):
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(socket.socket, "bind", bind)
+    with pytest.raises(runtime.LadoError, match="^cannot listen on 0.0.0.0:80: Permission denied"):
+        server_run.bind("0.0.0.0", 80)
 
 
 def test_an_exact_port_that_is_busy_is_an_error():

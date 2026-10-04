@@ -5,6 +5,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate, useOutletContext, useP
 
 import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
+import { Flows, isOpen } from "./Flows";
 import { useLaunch, type StartedState } from "./Launch";
 import { useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
@@ -211,13 +212,14 @@ const TAB_TEXT: Record<Tab, string> = {
 };
 
 export function Session() {
-  const { name = "", tab = "activity" } = useParams();
+  const { name = "", tab = "activity", run } = useParams();
   const loaded = useOutletContext<Loaded>();
-  if (!isTab(tab)) return <NotFound />;
-  return <SessionTab name={name} tab={tab} loaded={loaded} />;
+  // Only the Flows tab has pages of its own: its runs'.
+  if (!isTab(tab) || (run !== undefined && tab !== "flows")) return <NotFound />;
+  return <SessionTab name={name} tab={tab} run={run} loaded={loaded} />;
 }
 
-function SessionTab({ name, tab, loaded }: { name: string; tab: Tab; loaded: Loaded }) {
+function SessionTab({ name, tab, run, loaded }: { name: string; tab: Tab; run?: string; loaded: Loaded }) {
   useTitle("Sessions");
   const started = (useLocation().state as StartedState | null)?.started;
   if (loaded === null || "error" in loaded) return null; // the list says what is wrong
@@ -235,12 +237,18 @@ function SessionTab({ name, tab, loaded }: { name: string; tab: Tab; loaded: Loa
   return (
     // The panel keeps its terminals while the tabs change: keyed by the session only.
     <TerminalPanel key={name} session={name}>
-      <SessionView name={name} tab={tab} session={session} />
+      <SessionView name={name} tab={tab} run={run} session={session} />
     </TerminalPanel>
   );
 }
 
-function SessionView({ name, tab, session }: { name: string; tab: Tab; session: SessionInfo }) {
+function SessionView({ name, tab, run, session }: { name: string; tab: Tab; run?: string; session: SessionInfo }) {
+  const live = useLiveStore();
+  const runs = useLive().runs[name] ?? null;
+  useEffect(() => live.watch("runs", name), [live, name]);
+  const open = runs && "items" in runs ? runs.items.filter(isOpen).length : 0;
+  const tabName = (one: Tab) => (one === "flows" && open > 0 ? `${TAB_NAMES.flows} · ${open}` : TAB_NAMES[one]);
+  const stopped = session.status === "stopped";
   return (
     <section className="session" aria-label={`Session ${name}`}>
       <header className="session-head">
@@ -257,14 +265,16 @@ function SessionView({ name, tab, session }: { name: string; tab: Tab; session: 
             className="tab"
             aria-current={one === tab ? "page" : undefined}
           >
-            {TAB_NAMES[one]}
+            {tabName(one)}
           </Link>
         ))}
       </nav>
       {tab === "agents" ? (
         <Agents session={name} />
       ) : tab === "activity" ? (
-        <Activity session={name} stopped={session.status === "stopped"} />
+        <Activity session={name} stopped={stopped} />
+      ) : tab === "flows" ? (
+        <Flows session={name} run={run} stopped={stopped} />
       ) : (
         <Placeholder title={TAB_NAMES[tab]} plan={PLANS[tab]} level={3}>
           {TAB_TEXT[tab]}

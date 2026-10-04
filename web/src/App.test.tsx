@@ -48,8 +48,10 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (path === "/api/sessions/lado/agents") {
       return new Response(JSON.stringify(AGENTS), { status: 200 });
     }
-    // The feed's messages and run events (Chat.test.tsx).
-    if (path.endsWith("/messages") || path.endsWith("/events")) return new Response("[]");
+    // The feed's messages and run events (Chat.test.tsx), the runs and their steps (Flows.test.tsx).
+    if (["/messages", "/events", "/runs", "/notes", "/gates"].some((end) => path.endsWith(end))) {
+      return new Response("[]");
+    }
     expect(path).toBe("/api/sessions");
     return new Response(JSON.stringify(body), { status });
   });
@@ -302,7 +304,7 @@ test("a session opens on its Activity tab with its status, and no placeholder fo
 test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address", async () => {
   open("/sessions/lado/flows");
   const view = await screen.findByRole("region", { name: "Session lado" });
-  expect(within(view).getByRole("region", { name: "Flows" })).toBeTruthy();
+  expect(await within(view).findByText("No flow runs yet")).toBeTruthy();
   fireEvent.click(within(view).getByRole("link", { name: "Activity" }));
   expect(within(view).getByRole("region", { name: "Chat" })).toBeTruthy();
   expect(within(view).getByRole("link", { name: "Agents" }).getAttribute("href")).toBe(

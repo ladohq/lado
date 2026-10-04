@@ -341,7 +341,7 @@ test("the agents' messages to each other show behind a switch that only changes 
   expect((screen.getByRole("checkbox", { name: "Show agent messages" }) as HTMLInputElement).checked).toBe(true);
 });
 
-test("run events show as lines in time order, linking to Flows; a kind not listed as a line does not", async () => {
+test("run events show as lines in time order, linking to their run in Flows; a kind not listed as a line does not", async () => {
   serve(
     [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
     undefined,
@@ -360,7 +360,7 @@ test("run events show as lines in time order, linking to Flows; a kind not liste
   ]);
   const order = Array.from(log.querySelectorAll("li, article")).map((one) => one.tagName);
   expect(order).toEqual(["LI", "ARTICLE", "LI"]);
-  expect(within(lines[1]).getByRole("link", { name: "Flows" }).getAttribute("href")).toBe("/sessions/lado/flows");
+  expect(within(lines[1]).getByRole("link", { name: "Flows" }).getAttribute("href")).toBe("/sessions/lado/flows/feature%2Fx");
   expect(within(log).queryByText(/not a line/)).toBeNull();
   stream().send(
     "change",
@@ -386,7 +386,18 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     needs: [
       {
         state: "design",
-        note: { id: 3, state: "design", summary: "the plan", body: "step one", created_at: "2026-10-03T11:00:00Z" },
+        note: {
+          id: 3,
+          run: "feature/x",
+          state: "design",
+          kind: "report",
+          actor: "supervisor",
+          outcome: "ready",
+          target: "build",
+          summary: "the plan",
+          body: "step one",
+          created_at: "2026-10-03T11:00:00Z",
+        },
       },
       { state: "polish", note: null },
     ],

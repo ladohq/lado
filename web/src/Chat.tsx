@@ -10,7 +10,7 @@ import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type Ru
 import { Body, clock, Preview } from "./ChatText";
 import { Gate, GateAnswer, scrollToGate } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
-import { sessionPath } from "./paths";
+import { runPath } from "./paths";
 import { Meta, Question } from "./Question";
 
 // The run events the feed shows as lines, and how it names each kind: the one list. A
@@ -158,7 +158,7 @@ function RunEvents({ session, events }: { session: string; events: RunEventInfo[
             {event.run}: {event.detail}
           </span>{" "}
           <time dateTime={event.created_at}>{clock(event.created_at)}</time>{" "}
-          <Link to={sessionPath(session, "flows")}>Flows</Link>
+          <Link to={runPath(session, event.run)}>Flows</Link>
         </li>
       ))}
     </ol>

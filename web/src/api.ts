@@ -95,6 +95,15 @@ export type GateInfo = components["schemas"]["GateInfo"];
 // The session's flow gates, open and closed, oldest first.
 export const getGates = (session: string) => get<GateInfo[]>(`${sessionPath(session)}/gates`);
 
+export type RunInfo = components["schemas"]["RunInfo"];
+export type NoteInfo = components["schemas"]["NoteInfo"];
+
+// The session's flow runs, open and closed, newest first.
+export const getRuns = (session: string) => get<RunInfo[]>(`${sessionPath(session)}/runs`);
+
+// The notes of the session's flow runs, oldest first: each is a step a run took.
+export const getNotes = (session: string) => get<NoteInfo[]>(`${sessionPath(session)}/notes`);
+
 // The human's answer to an open gate: one of its options and a comment for the next step.
 export const answerGate = (session: string, id: number, option: string, comment: string) =>
   post<Sent>(`${sessionPath(session)}/gates/${id}/answer`, { option, comment });

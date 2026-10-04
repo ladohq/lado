@@ -2190,3 +2190,291 @@ h3 {
     padding: 18px 16px;
   }
 }
+
+/* Flows: the runs on the left, in groups as the session list's, the selected run on the
+   right; each scrolls by itself. In a column narrower than 900 px (Flows.tsx) the list is a
+   select over the run. Orange marks only what waits for the human. */
+.flows {
+  display: flex;
+  flex: 1;
+  gap: 20px;
+  min-height: 0;
+}
+
+.flows.narrow {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flows > .empty,
+.flows > .muted,
+.flows > .problem {
+  flex: 1;
+}
+
+.run-list {
+  flex: 0 0 270px;
+  min-width: 240px;
+  max-width: 300px;
+  overflow-y: auto;
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+}
+
+.run-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-group + .run-group,
+.run-group + .group-toggle {
+  margin-top: 12px;
+}
+
+.runs-waiting-for-you .group-name {
+  color: var(--human);
+}
+
+.run-link {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.run-link:hover {
+  background: var(--raised);
+}
+
+.run-link[aria-current="page"] {
+  background: var(--raised);
+  box-shadow: inset 3px 0 0 var(--action);
+}
+
+.run-link.waits {
+  background: var(--human-ground);
+}
+
+.run-link.waits[aria-current="page"] {
+  box-shadow: inset 3px 0 0 var(--human);
+}
+
+.run-name {
+  font: 600 13px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.run-link.dim .run-name {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.run-about {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.run-link.waits .run-about {
+  color: var(--human);
+}
+
+.run-select {
+  flex: none;
+  max-width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.flow-run {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.flow-run > .empty {
+  padding-top: 40px;
+}
+
+.run-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 900px;
+  padding-bottom: 24px;
+}
+
+.run-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.run-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.run-title h3 {
+  margin: 0;
+  font: 600 18px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.run-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.run-task {
+  margin: 0;
+  color: var(--muted);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.run-now {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.run-now code {
+  font-size: 12px;
+}
+
+/* The flow: its states in a row that wraps, the ways back under them as lines. */
+.flow-picture {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.flow-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.flow-state {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+/* An arrow to the next state, in the gap. */
+.flow-state + .flow-state::before {
+  content: "→";
+  position: absolute;
+  top: 50%;
+  left: -17px;
+  color: var(--muted);
+  transform: translateY(-50%);
+}
+
+.flow-state b {
+  font-weight: 600;
+}
+
+.flow-state span {
+  font-size: 11px;
+}
+
+.flow-state.visited {
+  border-style: solid;
+  color: var(--ink);
+}
+
+.flow-state.current {
+  border: 2px solid var(--action);
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.flow-state.waiting {
+  border-color: var(--human);
+  background: var(--human-ground);
+  color: var(--human);
+}
+
+.flow-back {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* The steps on a line down the left, the one now at the end. */
+.run-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0 0 0 6px;
+  padding: 0 0 0 18px;
+  border-left: 2px solid var(--line);
+  list-style: none;
+}
+
+.run-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step-line {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.step-note {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow-wrap: anywhere;
+}
+
+.run-step.override .step-note {
+  border-style: dashed;
+}
+
+.step-note .chat-body {
+  margin-top: 4px;
+}
+
+.run-step.now .step-line {
+  color: var(--action);
+  font-weight: 600;
+}
+
+.run-step.now.waits .step-line {
+  color: var(--human);
+}

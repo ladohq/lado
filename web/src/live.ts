@@ -9,14 +9,18 @@ import {
   getAgents,
   getGates,
   getMessages,
+  getNotes,
   getRunEvents,
+  getRuns,
   getSessions,
   getWaiting,
   probeStream,
   type AgentInfo,
   type GateInfo,
   type MessageInfo,
+  type NoteInfo,
   type RunEventInfo,
+  type RunInfo,
   type SessionInfo,
   type WaitingItem,
 } from "./api";
@@ -32,14 +36,16 @@ export type ListLoaded<T> = { items: T[] } | { error: string } | null;
 // token is wrong, the shell says how to get in and nothing is tried again.
 export type Link = "connecting" | "open" | "down" | "refused";
 
-// agents, messages, events, gates: the lists of each session a page watches (watch), by
-// session name. waiting: what waits for the human in all sessions, while watched.
+// agents, messages, events, gates, runs, notes: the lists of each session a page watches
+// (watch), by session name. waiting: what waits for the human in all sessions, while watched.
 export type LiveState = {
   sessions: Loaded;
   agents: Record<string, ListLoaded<AgentInfo>>;
   messages: Record<string, ListLoaded<MessageInfo>>; // all of them: a page picks what it shows
   events: Record<string, ListLoaded<RunEventInfo>>; // the flow runs' events
   gates: Record<string, ListLoaded<GateInfo>>; // open and closed: a closed gate's item stays
+  runs: Record<string, ListLoaded<RunInfo>>; // open and closed, newest first
+  notes: Record<string, ListLoaded<NoteInfo>>; // the steps of all its runs, oldest first
   waiting: ListLoaded<WaitingItem>;
   link: Link;
   problem: string | null;
@@ -52,7 +58,7 @@ const WAITING_KINDS = new Set(["gates", "agents", "messages"]);
 // A session whose waits count: the server's rule (state.waiting_items), the same here.
 export const isLive = (session: SessionInfo) => session.status !== "stopped";
 
-type ListName = "agents" | "messages" | "events" | "gates";
+type ListName = "agents" | "messages" | "events" | "gates" | "runs" | "notes";
 
 // How a list of a session is loaded and follows the feed: the change kind that is its, an
 // item's key (the change's), which items it keeps and in what order.
@@ -68,6 +74,8 @@ const LISTS: {
   messages: ListKind<MessageInfo>;
   events: ListKind<RunEventInfo>;
   gates: ListKind<GateInfo>;
+  runs: ListKind<RunInfo>;
+  notes: ListKind<NoteInfo>;
 } = {
   agents: { load: getAgents, key: (agent) => agent.name, keeps: () => true },
   messages: {
@@ -78,6 +86,13 @@ const LISTS: {
   },
   events: { load: getRunEvents, key: (event) => String(event.id), keeps: () => true, order: (a, b) => a.id - b.id },
   gates: { load: getGates, key: (gate) => String(gate.id), keeps: () => true, order: (a, b) => a.id - b.id },
+  runs: {
+    load: getRuns,
+    key: (run) => run.name,
+    keeps: () => true,
+    order: (a, b) => b.created_at.localeCompare(a.created_at),
+  },
+  notes: { load: getNotes, key: (note) => String(note.id), keeps: () => true, order: (a, b) => a.id - b.id },
 };
 
 export const RETRY_MS = 3000; // the pause before a new stream when the server closed one
@@ -89,6 +104,8 @@ export class Live {
     messages: {},
     events: {},
     gates: {},
+    runs: {},
+    notes: {},
     waiting: null,
     link: "connecting",
     problem: null,
@@ -109,12 +126,16 @@ export class Live {
     messages: new Map(),
     events: new Map(),
     gates: new Map(),
+    runs: new Map(),
+    notes: new Map(),
   };
   private listLoads: Record<ListName, Map<string, Change[]>> = {
     agents: new Map(),
     messages: new Map(),
     events: new Map(),
     gates: new Map(),
+    runs: new Map(),
+    notes: new Map(),
   };
 
   subscribe = (listener: () => void) => {
@@ -180,7 +201,7 @@ export class Live {
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
-  // A page that shows the session's agents, messages, run events or gates, or what waits
+  // A page that shows the session's agents, messages, run events, gates, runs or notes, or what waits
   // for the human: they load now and follow the feed until the last page that watches them
   // lets go (the returned function).
   watch(list: "waiting"): () => void;

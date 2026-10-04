@@ -17,6 +17,7 @@ export function App() {
           <Route index element={<NoSession />} />
           <Route path=":name" element={<Session />} />
           <Route path=":name/:tab" element={<Session />} />
+          <Route path=":name/:tab/:run" element={<Session />} />
         </Route>
         <Route path="projects" element={<Projects />} />
         <Route path="kits" element={<Kits />} />

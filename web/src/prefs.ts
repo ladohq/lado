@@ -127,6 +127,15 @@ export function storeNotifications(on: boolean): void {
   write(NOTIFICATIONS, on ? "on" : "off");
 }
 
+// Whether the Flows tab's list shows its ended runs (folded by default).
+const FLOWS_ENDED = "lado.flowsEnded";
+
+export const storedFlowsEndedOpen = (): boolean => read(FLOWS_ENDED) === "open";
+
+export function storeFlowsEndedOpen(open: boolean): void {
+  write(FLOWS_ENDED, open ? "open" : "folded");
+}
+
 // Whether the session list shows its stopped sessions (folded by default).
 const STOPPED = "lado.stoppedSessions";
 

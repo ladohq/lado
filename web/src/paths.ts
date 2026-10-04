@@ -1,6 +1,5 @@
 // The UI's addresses (docs/design/ui.md, Structure). Every name in a path is one segment,
 // encoded whole with encodeURIComponent: session names are free text, run names hold "/".
-// A run's future address: /sessions/<name>/flows/<run, encoded whole>.
 
 export const TABS = ["activity", "agents", "flows", "artifacts"] as const;
 export type Tab = (typeof TABS)[number];
@@ -11,6 +10,9 @@ export function sessionPath(name: string, tab?: Tab): string {
   const path = `/sessions/${encodeURIComponent(name)}`;
   return tab ? `${path}/${tab}` : path;
 }
+
+// A flow run's page in the session's Flows tab: /sessions/<name>/flows/<run, encoded whole>.
+export const runPath = (session: string, run: string) => `${sessionPath(session, "flows")}/${encodeURIComponent(run)}`;
 
 // The address's parameter that opens an agent's terminal on its session's page.
 export const TERMINAL_PARAM = "terminal";

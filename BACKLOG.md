@@ -519,3 +519,12 @@ list; `runs.resume` reads every open run's flow, so `lado start` cannot resume t
 Wanted: these show such a run with its problem and go on with the others; a resume reports
 it as it reports a run whose role is missing, so the human can `flow_cancel` or `flow-set` it.
 Found: 2026-10-04, fix/unreadable-snapshot (implement).
+
+## A snapshot's problem of several lines shows as one line in the UI
+
+When the validator refuses a run's flow snapshot, `problem` (`RunInfo`, `GateInfo`) holds
+one error per line (`flows.from_snapshot` joins them with "\n"). The run page
+(`web/src/Flows.tsx`, `.problem`) and the gate card (`web/src/GateCard.tsx`,
+`.gate-problem`) put it in a `<p>`, so the lines run together without a break.
+Wanted: `white-space: pre-wrap` on both (or one line per error).
+Found: 2026-10-04, review of fix/unreadable-snapshot (Minor).

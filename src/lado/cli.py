@@ -31,10 +31,14 @@ POLL = 1.0  # seconds between two checks that a gate the human is asked about is
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    try:
+        started = runtime.start_session(
+            args.path, args.name, args.permission_mode, args.provider, args.kit, args.without
+        )
+    except Exception as exc:
+        _sources_warning(unless_in=str(exc))  # a kit not found says it already
+        raise
     _sources_warning()
-    started = runtime.start_session(
-        args.path, args.name, args.permission_mode, args.provider, args.kit, args.without
-    )
     sess = started.session
     if started.resumed:
         count = len(state.list_runs(sess.name, open_only=True))
@@ -115,9 +119,9 @@ def cmd_sources(args: argparse.Namespace) -> int:
     return 1
 
 
-def _sources_warning() -> None:
+def _sources_warning(unless_in: str = "") -> None:
     hint = kits.migration_hint()
-    if hint:
+    if hint and hint not in unless_in:
         print(f"lado: {hint}", file=sys.stderr)
 
 
@@ -149,7 +153,7 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
             print(f"    mcp {mcp.name}: {' '.join(mcp.command)}")
     print("Skills:")
     where = {kit.name: kit.where for kit in env.kits}
-    for skill in env.all_skills().values():
+    for skill in env.all_skills():
         print(f"  {skill.name}  from {origin(skill)} ({where[skill.kit]}): {skill.path}")
     if env.flows:
         print("Flows:")

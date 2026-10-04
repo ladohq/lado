@@ -189,6 +189,25 @@ def test_kits_show(repo, capsys):
     assert "Switched off: agent:worker" in out
 
 
+def test_kits_show_lists_each_version_of_a_skill(tmp_path, repo, capsys):
+    work = init_repo(tmp_path / "pack")
+    skill = "skills/tdd/SKILL.md"
+    url = publish(work, {skill: "---\nname: tdd\ndescription: t\n---\n"}, tag="v1")
+    publish(work, {skill: "---\nname: tdd\ndescription: t2\n---\n"}, tag="v2")
+    for name, ref in (("one", "v1"), ("two", "v2")):
+        kit = _kit(repo, name)
+        (kit / "kit.yaml").write_text(
+            f"name: {name}\nversion: 1.0.0\ndependencies:\n  skills:\n    sp: {url}@{ref}\n"
+        )
+        (kit / "agents" / "rev.md").write_text(f"---\nname: rev-{name}\ndescription: d\n---\n")
+        (kit / "agents" / "rev.md").rename(kit / "agents" / f"rev-{name}.md")
+    assert main(["kits", "--repo", str(repo), "show", "default", "one", "two"]) == 0
+    skills = capsys.readouterr().out.split("Skills:\n", 1)[1]
+    for name, ref in (("one", "v1"), ("two", "v2")):
+        folder = gitcache.clone_dir(url, ref).resolve() / "skills" / "tdd"
+        assert f"  tdd  from sp@{ref} ({name}) (project): {folder}\n" in skills
+
+
 def test_kits_show_names_packs_and_where_each_skill_comes_from(tmp_path, repo, capsys):
     url = publish(
         init_repo(tmp_path / "pack"),
@@ -295,11 +314,18 @@ def test_sources_yaml_gets_a_warning_and_sources_is_gone(repo, capsys, fake_tmux
     (lado_home / "sources.yaml").write_text(
         "sources:\n- {name: dev, kind: path, location: /nowhere/dev}\n"
     )
-    for command in (["kits"], ["doctor"], ["start", str(repo), "--no-attach"]):
+    hint = f"{lado_home / 'sources.yaml'} is no longer read"
+    for command in (
+        ["kits"],
+        ["doctor"],
+        ["start", str(repo), "--no-attach"],
+        # A kit not found says it in its error: once, not twice.
+        ["start", str(repo), "--name", "t", "--kit", "mine", "--no-attach"],
+    ):
         main(command)
         err = capsys.readouterr().err
-        assert f"lado: {lado_home / 'sources.yaml'} is no longer read" in err, command
-        assert "dev is a skill pack" in err
+        assert err.count(hint) == 1, (command, err)
+        assert "  dev: /nowhere/dev is gone; nothing to move" in err
     assert main(["sources", "add", "x"]) == 1
     assert f"{lado_home / 'sources.yaml'} is no longer read" in capsys.readouterr().err
     (lado_home / "sources.yaml").unlink()

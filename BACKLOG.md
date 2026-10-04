@@ -524,3 +524,13 @@ without its reason. Fixed for `POST /api/sessions` and resume in feature/kit-man
 Wanted: one error type for what the core refuses (or `core()` and the endpoints map each
 known one to 400), so no refusal reaches the UI as a 500.
 Found: 2026-10-04, feature/kit-manifest-v2 (implement).
+
+## Flaky: integration test of the UI server's early exit
+
+`tests/integration/test_server_process.py::test_ui_says_at_once_when_the_server_it_started_exits`
+failed once in `make check` (pytest -n auto) with `assert 9.038402291946113 < (15.0 / 2)`;
+alone it passes in 0.79 s. Its bound is half of `READY_TIMEOUT` in wall time, which a
+loaded machine can exceed.
+Wanted: a bound that holds under parallel load, or a check without absolute time (the
+answer came before `READY_TIMEOUT`, not within half of it).
+Found: 2026-10-04, review of feature/kit-manifest-v2.

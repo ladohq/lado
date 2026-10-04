@@ -792,6 +792,8 @@ sources:
 - {{name: dev, kind: path, location: {dev}}}
 - {{name: team, kind: git, location: {url}, ref: v1}}
 - {{name: pack, kind: git, location: https://example.com/pack.git, skills: [skills/eng]}}
+- {{name: old, kind: path, location: /nowhere/old}}
+- {{name: far, kind: git, location: https://example.com/far.git, ref: v2}}
 """
 
 
@@ -801,6 +803,7 @@ def test_find_says_how_to_move_from_sources_yaml(tmp_path, repo, lado_home):
     clone = lado_home / "sources" / "team"
     clone.mkdir(parents=True)
     (clone / "kit.yaml").write_text(TEAM)
+    make_pack(lado_home / "sources" / "pack", ["eng/tdd"])
     lado_home.mkdir(exist_ok=True)
     (lado_home / "sources.yaml").write_text(
         SOURCES_YAML.format(dev=dev, url="https://example.com/team.git")
@@ -813,6 +816,13 @@ def test_find_says_how_to_move_from_sources_yaml(tmp_path, repo, lado_home):
         "  pack is a skill pack: list it under dependencies.skills of a kit "
         "(pack: {from: https://example.com/pack.git@<tag or commit>, folders: [skills/eng]})"
     ) in hint
+    # What is not on disk is not guessed at.
+    assert "  old: /nowhere/old is gone; nothing to move\n" in hint
+    assert (
+        f"  far: no clone in {lado_home / 'sources' / 'far'}; with kits: lado kits add "
+        "https://example.com/far.git@v2; a skill pack: list it under dependencies.skills "
+        "of a kit (far: https://example.com/far.git@v2)\n"
+    ) in hint
     assert f"then delete {lado_home / 'sources.yaml'} and {lado_home / 'sources'}" in hint
     with pytest.raises(kits.KitError) as exc:
         kits.find("mine", repo)
@@ -823,3 +833,13 @@ def test_find_says_how_to_move_from_sources_yaml(tmp_path, repo, lado_home):
     with pytest.raises(kits.KitError) as exc:
         kits.find("mine", repo)
     assert "sources.yaml" not in str(exc.value)
+
+
+def test_a_damaged_clone_is_a_kit_error_not_a_crash(tmp_path, lado_home):
+    url = publish(init_repo(tmp_path / "team"), {"kit.yaml": TEAM}, tag="v1.1.0")
+    (kit,) = kits.add(f"{url}@v1.1.0")
+    shutil.rmtree(kit.path / ".git")
+    with pytest.raises(kits.KitError, match=f"cannot read the clone {kit.path}: "):
+        kits.update("team", "v1.2.0")
+    (warning,) = kits.warnings(kit)
+    assert warning.startswith(f"team: cannot read the version tags of {kit.path}: ")

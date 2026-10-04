@@ -198,12 +198,14 @@ class Environment:
         """The skills `agent` may have: the shared ones and its own kit's packs'."""
         return {**self.shared, **self.private.get(agent.kit, {})}
 
-    def all_skills(self) -> dict[str, Skill]:
-        found = dict(self.shared)
+    def all_skills(self) -> list[Skill]:
+        """Every skill of the session, one per folder: a name may come twice, from two
+        versions of a pack in two kits."""
+        found = {s.path: s for s in self.shared.values()}
         for skills in self.private.values():
-            for name, skill in skills.items():
-                found.setdefault(name, skill)
-        return found
+            for skill in skills.values():
+                found.setdefault(skill.path, skill)
+        return list(found.values())
 
     def flow(self, name: str) -> Flow:
         """Flow `name`, once every role it names is an agent of this environment."""
@@ -252,7 +254,7 @@ class Environment:
             raise KitError(
                 "an agent or flow cannot be switched off for one agent; use skill: or mcp:"
             )
-        _check_known(excluded, self.all_skills(), self._all_mcp(), set(), set())
+        _check_known(excluded, {s.name for s in self.all_skills()}, self._all_mcp(), set(), set())
         agent = self.agents[name]
         visible = self.visible(agent)
         wanted = list(visible) if agent.skills is None else agent.skills
@@ -355,7 +357,10 @@ def update(name: str, ref: str) -> Kit:
         raise KitError(
             f"{name} links to the folder {target}: it is read in place, nothing to update"
         )
-    address = gitcache.address(clone)
+    try:
+        address = gitcache.address(clone)
+    except gitcache.GitError as exc:
+        raise KitError(f"cannot read the clone {clone}: {exc}") from None
     new = _cache(address, ref) / target.relative_to(clone)
     kit = fetch(load(new, "user", named_folder=False))
     if kit.name != name:
@@ -432,19 +437,25 @@ def migration_hint() -> str | None:
     for entry in entries if isinstance(entries, list) else []:
         if not isinstance(entry, dict) or not isinstance(entry.get("location"), str):
             continue
-        location, ref = entry["location"], entry.get("ref")
+        name, location, ref = entry.get("name"), entry["location"], entry.get("ref")
         git = entry.get("kind") == "git"
-        folder = state.home() / "sources" / str(entry.get("name")) if git else Path(location)
+        folder = state.home() / "sources" / str(name) if git else Path(location)
         spec = f"{location}@{ref or '<tag or commit>'}" if git else location
-        if (folder / KIT_FILE).is_file() or (folder / "kits").is_dir():
-            lines.append(f"  lado kits add {spec}")
-            continue
         folders = entry.get("skills") or []
         value = f"{{from: {spec}, folders: [{', '.join(folders)}]}}" if folders else spec
-        lines.append(
-            f"  {entry.get('name')} is a skill pack: list it under dependencies.skills of a kit "
-            f"({entry.get('name')}: {value})"
-        )
+        pack = f"list it under dependencies.skills of a kit ({name}: {value})"
+        # What is not on disk is not guessed at.
+        if not folder.is_dir() and not git:
+            lines.append(f"  {name}: {location} is gone; nothing to move")
+        elif not folder.is_dir():
+            lines.append(
+                f"  {name}: no clone in {folder}; with kits: lado kits add {spec}; "
+                f"a skill pack: {pack}"
+            )
+        elif (folder / KIT_FILE).is_file() or (folder / "kits").is_dir():
+            lines.append(f"  lado kits add {spec}")
+        else:
+            lines.append(f"  {name} is a skill pack: {pack}")
     lines.append(f"then delete {registry} and {state.home() / 'sources'}")
     return "\n".join(lines)
 
@@ -818,7 +829,10 @@ def warnings(kit: Kit) -> list[str]:
     """Doubts about a kit that do not stop it: a kit from the git cache whose version
     differs from the version tags on its clone's commit."""
     clone = gitcache.clone_root(kit.path)
-    tags = gitcache.versions(clone) if clone and kit.version else []
+    try:
+        tags = gitcache.versions(clone) if clone and kit.version else []
+    except gitcache.GitError as exc:
+        return [f"{kit.name}: cannot read the version tags of {clone}: {exc}"]
     if tags and kit.version not in tags:
         return [
             f"{kit.name}: version {kit.version} in kit.yaml, but {cached_origin(kit.path)} "
@@ -850,7 +864,7 @@ def _merge(kits: list[Kit], attr: str, what: str) -> dict:
 
 def _check_known(
     excluded: dict[str, set[str]],
-    skills: Mapping,
+    skills: Iterable[str],
     mcp: set[str],
     agents: set[str],
     flow_names: set[str],

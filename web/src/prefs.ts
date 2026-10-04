@@ -136,6 +136,15 @@ export function storeFlowsEndedOpen(open: boolean): void {
   write(FLOWS_ENDED, open ? "open" : "folded");
 }
 
+// Whether the Agents tab's list shows its finished agents (folded by default).
+const AGENTS_FINISHED = "lado.agentsFinished";
+
+export const storedAgentsFinishedOpen = (): boolean => read(AGENTS_FINISHED) === "open";
+
+export function storeAgentsFinishedOpen(open: boolean): void {
+  write(AGENTS_FINISHED, open ? "open" : "folded");
+}
+
 // Whether the session list shows its stopped sessions (folded by default).
 const STOPPED = "lado.stoppedSessions";
 

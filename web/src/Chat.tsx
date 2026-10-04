@@ -3,7 +3,7 @@
 // and their other events as lines, and behind a switch the agents' messages to each other,
 // live from the feed (live.ts); and the composer. What the human sends shows only once the
 // feed brings it: nothing ahead of the server.
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
 import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
@@ -196,7 +196,18 @@ function Message({ message }: { message: MessageInfo }) {
   );
 }
 
-function Composer({ session, stopped }: { session: string; stopped: boolean }) {
+// The human's text to the supervisor, or to agent `to` (an agent's page).
+export function Composer({
+  session,
+  stopped,
+  to,
+  inputRef,
+}: {
+  session: string;
+  stopped: boolean;
+  to?: string;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
+}) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -206,7 +217,7 @@ function Composer({ session, stopped }: { session: string; stopped: boolean }) {
     setBusy(true);
     setProblem(null);
     try {
-      await writeMessage(session, text);
+      await writeMessage(session, text, to);
       setText("");
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : String(error));
@@ -231,8 +242,9 @@ function Composer({ session, stopped }: { session: string; stopped: boolean }) {
       }}
     >
       <textarea
-        aria-label="Write to the supervisor…"
-        placeholder={stopped ? "The session is stopped: resume it to write" : "Write to the supervisor…"}
+        ref={inputRef}
+        aria-label={`Write to ${to ?? "the supervisor"}…`}
+        placeholder={stopped ? "The session is stopped: resume it to write" : `Write to ${to ?? "the supervisor"}…`}
         rows={2}
         value={text}
         disabled={stopped}

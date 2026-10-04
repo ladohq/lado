@@ -528,3 +528,12 @@ and the other open gates are not asked about.
 Wanted: such a gate is shown with its problem (it can only be left open; the run is
 cancelled with `flow_cancel`) and `lado answer` goes on with the other gates.
 Found: 2026-10-04, fix/snapshot-core (implement).
+
+## Finishing a worker in a stopped session says "no worker"
+
+`lado finish <stopped session> w1` (and the UI's `POST …/agents/w1/finish`) answers
+`no worker "w1"; workers: none`: `runtime.finish_worker` does not ask
+`runtime.running_session`, and `lado stop` has forgotten the agents already.
+Wanted: the same refusal as the other commands in a stopped session (`session "s" is
+stopped; …`), which says what to do.
+Found: 2026-10-04, feature/agents-tab (implement).

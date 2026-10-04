@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeResizeObserver, FakeSocket, FakeXterm, stream, stubDialogs } from "./fakes";
+import { AGENT_REST, FakeEventSource, FakeResizeObserver, FakeSocket, FakeXterm, stream, stubDialogs } from "./fakes";
 import { RETRY_MS } from "./terminalLink";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -23,8 +23,8 @@ const SESSION: SessionInfo = {
   without: [],
 };
 const AGENTS: AgentInfo[] = [
-  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, waiting_reason: null },
-  { name: "w1", role: "developer", provider: "kilo", status: "busy", run: null, task: "Build it", waiting_reason: null },
+  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, waiting_reason: null, ...AGENT_REST },
+  { name: "w1", role: "developer", provider: "kilo", status: "busy", run: null, task: "Build it", waiting_reason: null, ...AGENT_REST },
 ];
 const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 
@@ -163,9 +163,9 @@ test("× closes a tab and its socket; with the last other tab closed the supervi
 });
 
 test("the Agents tab opens an agent's terminal in the same panel", async () => {
-  await open("/sessions/lado/agents");
-  const list = await screen.findByRole("table", { name: "Agents of lado" });
-  fireEvent.click(await within(list).findByRole("button", { name: "Open w1's terminal" }));
+  await open("/sessions/lado/agents/w1");
+  const agent = await screen.findByRole("region", { name: "Agent w1" });
+  fireEvent.click(within(agent).getByRole("button", { name: "Open terminal" }));
   expect(tab("w1").getAttribute("aria-selected")).toBe("true");
   expect(socketOf("w1", "view")).toHaveLength(1);
 });

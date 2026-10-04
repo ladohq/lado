@@ -1,0 +1,664 @@
+// The session's Agents tab (docs/design/ui.md, Agents): its agents on the left, the
+// supervisor first, the finished ones folded at the bottom; the selected agent's page on the
+// right: what it does (status, run and step, task), its branch, worktree and the state of
+// its work in git, its latest messages, and the actions on it (its terminal, a message to
+// it, Finish). A finished agent's page is read only. The agents follow the feed (live.ts);
+// the state of the work and the finished agents are asked of the server: git and the
+// "finished" events have no item in the feed. In a narrow column the list is a select.
+import { useEffect, useRef, useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router";
+
+import {
+  ApiError,
+  finishAgent,
+  getAgentDetails,
+  getFinishedAgents,
+  getFinishPreview,
+  type AgentDetails,
+  type AgentInfo,
+  type FinishedAgentInfo,
+  type FinishPreviewInfo,
+  type MessageInfo,
+  type RunInfo,
+} from "./api";
+import { Composer } from "./Chat";
+import { clock, Preview, since } from "./ChatText";
+import { FoldToggle } from "./Fold";
+import { useLive, useLiveStore } from "./live";
+import { agentPath, runPath, sessionPath } from "./paths";
+import { storeAgentMessages, storedAgentsFinishedOpen, storeAgentsFinishedOpen } from "./prefs";
+import { useNarrow } from "./Splitter";
+import { StatusDot, SUPERVISOR } from "./Team";
+import { useOpenTerminal } from "./Terminals";
+
+const MESSAGES = 10; // the latest messages of an agent its page shows
+const TASK_LINES = 3; // the lines of a task shown before Show all
+
+const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
+
+const firstLine = (text: string | null) => (text ?? "").split("\n")[0];
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// The supervisor first, then the others by when they were spawned.
+export function agentOrder(agents: AgentInfo[]): AgentInfo[] {
+  const others = agents.filter((one) => one.name !== SUPERVISOR);
+  others.sort((a, b) => a.spawned_at.localeCompare(b.spawned_at));
+  return [...agents.filter((one) => one.name === SUPERVISOR), ...others];
+}
+
+// An agent's name as another page shows it (Flows): a link to its page while it lives, else
+// the name only. The page that shows it watches the session's agents.
+export function AgentName({ session, name }: { session: string; name: string }) {
+  const loaded = useLive().agents[session];
+  const alive = loaded && "items" in loaded && loaded.items.some((one) => one.name === name);
+  return alive ? <Link to={agentPath(session, name)}>{name}</Link> : <>{name}</>;
+}
+
+type Finished = { items: FinishedAgentInfo[] } | { error: string } | null;
+
+// The session's finished agents, loaded again whenever its live agents change: a finish
+// deletes the agent, and its "finished" event has no item in the feed.
+function useFinished(session: string, agents: AgentInfo[] | null): Finished {
+  const [finished, setFinished] = useState<Finished>(null);
+  const names = agents?.map((one) => one.name).join("\n") ?? null;
+  useEffect(() => {
+    if (names === null) return;
+    let current = true;
+    getFinishedAgents(session).then(
+      (items) => current && setFinished({ items }),
+      (error: unknown) => current && setFinished({ error: messageOf(error) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [session, names]);
+  return finished;
+}
+
+export function Agents({
+  session,
+  agent,
+  finished: finishedId,
+  stopped,
+}: {
+  session: string;
+  agent?: string;
+  finished?: string;
+  stopped: boolean;
+}) {
+  const live = useLiveStore();
+  const state = useLive();
+  useEffect(() => live.watch("agents", session), [live, session]);
+  useEffect(() => live.watch("messages", session), [live, session]);
+  useEffect(() => live.watch("runs", session), [live, session]);
+  const root = useRef<HTMLDivElement>(null);
+  const narrow = useNarrow(root);
+
+  const loaded = state.agents[session] ?? null;
+  const agents = loaded && "items" in loaded ? agentOrder(loaded.items) : null;
+  const finished = useFinished(session, agents);
+  const messages = state.messages[session];
+  const runs = state.runs[session];
+  const lists = {
+    messages: messages && "items" in messages ? messages.items : [],
+    runs: runs && "items" in runs ? runs.items : [],
+  };
+
+  if (agent === undefined && !stopped) return <Navigate replace to={agentPath(session, SUPERVISOR)} />;
+  let body;
+  if (loaded === null) {
+    body = <p className="muted">Loading…</p>;
+  } else if ("error" in loaded) {
+    body = (
+      <p className="problem" role="alert">
+        {loaded.error}
+      </p>
+    );
+  } else {
+    const done = finished && "items" in finished ? finished.items : [];
+    const record = finishedId === undefined ? undefined : done.find((one) => String(one.id) === finishedId);
+    const alive = finishedId === undefined ? agents?.find((one) => one.name === agent) : undefined;
+    let page;
+    if (agent === undefined) {
+      page = <p className="empty">Session stopped: no agents</p>;
+    } else if (alive) {
+      page = <AgentPage key={alive.name} session={session} agent={alive} stopped={stopped} lists={lists} />;
+    } else if (record && record.name === agent) {
+      page = <FinishedPage session={session} record={record} messages={lists.messages} />;
+    } else if (finishedId !== undefined && finished === null) {
+      page = <p className="muted">Loading…</p>;
+    } else {
+      page = <p className="empty">Agent {agent} not found</p>;
+    }
+    const picked = { agent, finished: finishedId };
+    body = (
+      <>
+        {narrow ? (
+          <AgentSelect session={session} agents={agents ?? []} finished={finished} picked={picked} />
+        ) : (
+          <AgentList session={session} agents={agents ?? []} finished={finished} runs={lists.runs} picked={picked} />
+        )}
+        <div className="agent-detail">{page}</div>
+      </>
+    );
+  }
+  return (
+    <div ref={root} className={`agents-tab${narrow ? " narrow" : ""}`}>
+      {body}
+    </div>
+  );
+}
+
+// What an agent works for now: its run and the run's state, else the first line of its task.
+function workingOn(agent: AgentInfo, runs: RunInfo[]): string {
+  if (agent.run) {
+    const run = runs.find((one) => one.name === agent.run);
+    return run ? `${agent.run} · ${run.state}` : agent.run;
+  }
+  return firstLine(agent.task);
+}
+
+type Picked = { agent?: string; finished?: string };
+
+// The row's page is the one shown: a live agent's and a finished one's of the same name differ
+// by ?finished=, which the router's own marking does not look at.
+const current = (yes: boolean) => (yes ? ("page" as const) : undefined);
+
+function AgentList({
+  session,
+  agents,
+  finished,
+  runs,
+  picked,
+}: {
+  session: string;
+  agents: AgentInfo[];
+  finished: Finished;
+  runs: RunInfo[];
+  picked: Picked;
+}) {
+  // Open from the start when the page shown is a finished agent's, so its row is seen.
+  const [open, setOpen] = useState(() => storedAgentsFinishedOpen() || picked.finished !== undefined);
+  const toggle = () => {
+    setOpen(!open);
+    storeAgentsFinishedOpen(!open);
+  };
+  const done = finished && "items" in finished ? finished.items : [];
+  return (
+    <nav className="agent-list" aria-label="Agents">
+      <ul>
+        {agents.map((agent) => {
+          const waits = agent.status === "waiting";
+          const detail = waits && agent.waiting_reason ? firstLine(agent.waiting_reason) : workingOn(agent, runs);
+          return (
+            <li key={agent.name}>
+              <Link
+                to={agentPath(session, agent.name)}
+                className={`agent-row${waits ? " waits" : ""}`}
+                aria-current={current(picked.finished === undefined && picked.agent === agent.name)}
+              >
+                <span className="agent-row-head">
+                  <StatusDot status={agent.status} />
+                  <span className="agent-row-name">{agent.name}</span>
+                </span>
+                <span className="agent-row-about">
+                  {agent.status} · {since(agent.since)}
+                </span>
+                {detail && <span className="agent-row-about">{detail}</span>}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {finished && "error" in finished && (
+        <p className="problem" role="alert">
+          {finished.error}
+        </p>
+      )}
+      {done.length > 0 && (
+        <FoldToggle name="Finished" count={done.length} open={open} controls="finished-agents" onToggle={toggle} />
+      )}
+      {open && done.length > 0 && (
+        <section id="finished-agents" aria-label="Finished">
+          <ul>
+            {done.map((one) => (
+              <li key={one.id}>
+                <Link
+                  to={agentPath(session, one.name, one.id)}
+                  className="agent-row dim"
+                  aria-current={current(picked.finished === String(one.id))}
+                >
+                  <span className="agent-row-name">{one.name}</span>
+                  <span className="agent-row-about">
+                    finished {clock(one.finished_at)} · {one.detail}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </nav>
+  );
+}
+
+function AgentSelect({
+  session,
+  agents,
+  finished,
+  picked,
+}: {
+  session: string;
+  agents: AgentInfo[];
+  finished: Finished;
+  picked: Picked;
+}) {
+  const navigate = useNavigate();
+  const done = finished && "items" in finished ? finished.items : [];
+  const value =
+    picked.agent === undefined
+      ? ""
+      : agentPath(session, picked.agent, picked.finished === undefined ? undefined : Number(picked.finished));
+  return (
+    <select
+      className="tab-select"
+      aria-label="Agent"
+      value={value}
+      onChange={(event) => navigate(event.target.value)}
+    >
+      {value === "" && <option value="">Select an agent</option>}
+      {agents.length > 0 && (
+        <optgroup label="Agents">
+          {agents.map((agent) => (
+            <option key={agent.name} value={agentPath(session, agent.name)}>
+              {agent.name} · {agent.status}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {done.length > 0 && (
+        <optgroup label={`Finished (${done.length})`}>
+          {done.map((one) => (
+            <option key={one.id} value={agentPath(session, one.name, one.id)}>
+              {one.name} · finished {clock(one.finished_at)}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </select>
+  );
+}
+
+type Lists = { messages: MessageInfo[]; runs: RunInfo[] };
+
+const isOpen = (run: RunInfo) => run.status === "active" || run.status === "waiting";
+
+// Where the work stands in git: asked when the page opens, again when the agent becomes idle
+// (it may have committed) and on Refresh; no polling. The last answer stays while a new one
+// is asked.
+function useWork(session: string, agent: AgentInfo) {
+  const [details, setDetails] = useState<AgentDetails | null>(null);
+  const [at, setAt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const asked = useRef(0);
+  const load = () => {
+    const ask = ++asked.current;
+    setLoading(true);
+    getAgentDetails(session, agent.name).then(
+      (answer) => {
+        if (ask !== asked.current) return;
+        setDetails(answer);
+        setAt(new Date().toISOString());
+        setProblem(null);
+        setLoading(false);
+      },
+      (error: unknown) => {
+        if (ask !== asked.current) return;
+        setProblem(messageOf(error));
+        setLoading(false);
+      },
+    );
+  };
+  const before = useRef(agent.status);
+  useEffect(() => {
+    if (before.current !== agent.status && agent.status === "idle") load();
+    before.current = agent.status;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.status]);
+  useEffect(() => {
+    load();
+    // Loaded once per agent: the page is keyed by its name.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return { details, at, loading, problem, refresh: load };
+}
+
+function AgentPage({
+  session,
+  agent,
+  stopped,
+  lists,
+}: {
+  session: string;
+  agent: AgentInfo;
+  stopped: boolean;
+  lists: Lists;
+}) {
+  const openTerminal = useOpenTerminal();
+  const work = useWork(session, agent);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const [finishing, setFinishing] = useState(false);
+  const worker = agent.name !== SUPERVISOR;
+  const run = agent.run ? lists.runs.find((one) => one.name === agent.run) : undefined;
+  const task = work.details?.task ?? agent.task;
+  return (
+    <section className="agent-page" aria-label={`Agent ${agent.name}`}>
+      <header className="agent-head">
+        <div className="agent-title">
+          <h3>{agent.name}</h3>
+          <span className="muted">
+            {agent.role} · {agent.provider}
+          </span>
+        </div>
+        <p className="agent-now">
+          <StatusDot status={agent.status} /> {agent.status} for {since(agent.since)} · spawned{" "}
+          <time dateTime={agent.spawned_at}>{clock(agent.spawned_at)}</time>
+          {agent.run && (
+            <>
+              {" "}
+              for run <Link to={runPath(session, agent.run)}>{agent.run}</Link>
+              {run && isOpen(run) && (
+                <>
+                  , step <strong>{run.state}</strong> (visit {run.visits[run.state] ?? 0})
+                </>
+              )}
+            </>
+          )}
+        </p>
+        <div className="agent-actions">
+          <button type="button" className="quiet" onClick={() => openTerminal(agent.name)}>
+            Open terminal
+          </button>
+          {!stopped && (
+            <button type="button" className="quiet" onClick={() => composer.current?.focus()}>
+              Write to {agent.name}
+            </button>
+          )}
+          {worker && !stopped && (
+            <button type="button" className="quiet finish-button" onClick={() => setFinishing(true)}>
+              Finish…
+            </button>
+          )}
+        </div>
+      </header>
+      {agent.status === "waiting" && (
+        <p className="agent-waits" role="note">
+          {agent.waiting_reason ?? "Waits for you in its terminal."}
+        </p>
+      )}
+      <dl className="agent-facts">
+        {agent.branch && (
+          <>
+            <dt>Branch</dt>
+            <dd>
+              <code>{agent.branch}</code>
+            </dd>
+            <dt>Work</dt>
+            <dd>
+              <Work work={work} />
+            </dd>
+            <dt>Worktree</dt>
+            <dd>
+              <code>{agent.worktree}</code>
+            </dd>
+          </>
+        )}
+        {task && (
+          <>
+            <dt>Task</dt>
+            <dd className="agent-task">
+              <Preview text={task} lines={TASK_LINES} />
+            </dd>
+          </>
+        )}
+      </dl>
+      <AgentMessages session={session} name={agent.name} from={agent.spawned_at} messages={lists.messages} />
+      {!stopped && (
+        <div className="agent-composer">
+          <Composer session={session} stopped={stopped} to={agent.name} inputRef={composer} />
+          {worker && <p className="muted hint">The supervisor gets a one-line copy.</p>}
+        </div>
+      )}
+      {finishing && <FinishDialog session={session} agent={agent.name} onClose={() => setFinishing(false)} />}
+    </section>
+  );
+}
+
+function Work({ work }: { work: ReturnType<typeof useWork> }) {
+  const { details, at, loading, problem, refresh } = work;
+  const found = details?.work;
+  let text;
+  if (details === null) {
+    text = problem ?? "Loading…";
+  } else if (found) {
+    const last = found.last_commit;
+    text = (
+      <>
+        {plural(found.ahead, "commit")} ahead of {found.base} · {found.behind} behind ·{" "}
+        {plural(found.uncommitted, "file")} not committed · last commit{" "}
+        <time dateTime={last.at}>{clock(last.at)}</time> “{last.subject}”
+      </>
+    );
+  } else {
+    text = details.work_problem ?? "";
+  }
+  return (
+    <span className={`agent-work${loading && details !== null ? " stale" : ""}`}>
+      {text}
+      {at && <span className="muted"> · as of {clock(at)}</span>}
+      {loading && details !== null && <span className="muted"> · refreshing…</span>}{" "}
+      <button type="button" className="link-button" onClick={refresh} disabled={loading}>
+        Refresh
+      </button>
+    </span>
+  );
+}
+
+// The agent's latest messages, from and to it, in its lifetime only: a name is used again.
+function AgentMessages({
+  session,
+  name,
+  from,
+  to,
+  messages,
+}: {
+  session: string;
+  name: string;
+  from: string | null;
+  to?: string;
+  messages: MessageInfo[];
+}) {
+  const navigate = useNavigate();
+  const start = from === null ? -Infinity : Date.parse(from);
+  const end = to === undefined ? Infinity : Date.parse(to);
+  const mine = messages.filter((one) => {
+    const at = Date.parse(one.created_at);
+    return (one.from === name || one.to === name) && at >= start && at <= end;
+  });
+  const latest = mine.slice(-MESSAGES);
+  const all = () => {
+    storeAgentMessages(true);
+    navigate(sessionPath(session, "activity"));
+  };
+  return (
+    <section className="agent-messages" aria-label="Messages">
+      <h4>Messages</h4>
+      {latest.length === 0 ? (
+        <p className="muted">No messages yet</p>
+      ) : (
+        <ol>
+          {latest.map((one) => (
+            <li key={one.id}>
+              <span className="muted">
+                <time dateTime={one.created_at}>{clock(one.created_at)}</time> {one.from} → {one.to}
+              </span>{" "}
+              · {one.summary} · <span className="muted">{one.state}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <button type="button" className="link-button" onClick={all}>
+        All in Activity
+      </button>
+    </section>
+  );
+}
+
+function FinishedPage({
+  session,
+  record,
+  messages,
+}: {
+  session: string;
+  record: FinishedAgentInfo;
+  messages: MessageInfo[];
+}) {
+  return (
+    <section className="agent-page" aria-label={`Agent ${record.name}`}>
+      <header className="agent-head">
+        <div className="agent-title">
+          <h3>{record.name}</h3>
+          <span className="muted">finished</span>
+        </div>
+        <p className="agent-now">
+          {record.spawned_at && (
+            <>
+              spawned <time dateTime={record.spawned_at}>{clock(record.spawned_at)}</time> ·{" "}
+            </>
+          )}
+          finished <time dateTime={record.finished_at}>{clock(record.finished_at)}</time> · {record.detail}
+        </p>
+      </header>
+      <AgentMessages
+        session={session}
+        name={record.name}
+        from={record.spawned_at}
+        to={record.finished_at}
+        messages={messages}
+      />
+    </section>
+  );
+}
+
+// Finish asks first and says only what the core's preview says: what goes, or why it is
+// refused, and then Discard work… with what would be thrown away.
+function FinishDialog({ session, agent, onClose }: { session: string; agent: string; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const navigate = useNavigate();
+  const [preview, setPreview] = useState<{ value: FinishPreviewInfo } | { error: string } | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+  useEffect(() => {
+    dialog.current?.showModal();
+    let current = true;
+    getFinishPreview(session, agent).then(
+      (value) => current && setPreview({ value }),
+      (error: unknown) => current && setPreview({ error: messageOf(error) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [session, agent]);
+  const finish = async (discard: boolean) => {
+    setBusy(true);
+    setRefused(null);
+    try {
+      await finishAgent(session, agent, discard);
+      onClose();
+      navigate(sessionPath(session, "agents"));
+    } catch (error) {
+      setRefused(messageOf(error));
+      setBusy(false);
+    }
+  };
+  const found = preview !== null && "value" in preview ? preview.value : null;
+  const title = `Finish ${agent}?`;
+  const work = found?.work;
+  return (
+    <dialog
+      ref={dialog}
+      className="question-dialog"
+      aria-label={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h3>{title}</h3>
+      {preview === null && <p className="muted">Loading…</p>}
+      {preview !== null && "error" in preview && (
+        <p className="problem" role="alert">
+          {preview.error}
+        </p>
+      )}
+      {found && !discarding && (
+        <p>
+          {found.removes_worktree
+            ? `Finish ${agent}: its branch and worktree are removed.`
+            : `Finish ${agent}: closes its window; the run keeps its worktree and branch, and its step will need a new worker.`}
+        </p>
+      )}
+      {found?.refused && !discarding && (
+        <p className="problem" role="alert">
+          {found.refused}
+        </p>
+      )}
+      {discarding && (
+        <div role="alert">
+          <p>Discard the work of {agent}? This cannot be undone.</p>
+          {work && (
+            <ul className="consequences">
+              <li>
+                branch <code>{work.branch}</code> is deleted
+              </li>
+              <li>
+                {plural(work.ahead, "commit")} not in {work.base} {work.ahead === 1 ? "is" : "are"} lost
+              </li>
+              <li>
+                {plural(work.uncommitted, "uncommitted file")} {work.uncommitted === 1 ? "is" : "are"} lost
+              </li>
+            </ul>
+          )}
+        </div>
+      )}
+      {refused && (
+        <p className="problem" role="alert">
+          {refused}
+        </p>
+      )}
+      <div className="question-buttons">
+        <button type="button" className="quiet" onClick={onClose} disabled={busy} autoFocus>
+          Cancel
+        </button>
+        {found && !found.refused && (
+          <button type="button" className="primary" disabled={busy} onClick={() => void finish(false)}>
+            {busy ? "Finishing…" : `Finish ${agent}`}
+          </button>
+        )}
+        {found?.refused && found.removes_worktree && !discarding && (
+          <button type="button" className="quiet" disabled={busy} onClick={() => setDiscarding(true)}>
+            Discard work…
+          </button>
+        )}
+        {discarding && (
+          <button type="button" className="danger" disabled={busy} onClick={() => void finish(true)}>
+            {busy ? "Discarding…" : "Discard and finish"}
+          </button>
+        )}
+      </div>
+    </dialog>
+  );
+}

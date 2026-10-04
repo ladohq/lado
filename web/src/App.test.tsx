@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeSocket, stream, stubDialogs } from "./fakes";
+import { AGENT_REST, FakeEventSource, FakeSocket, stream, stubDialogs } from "./fakes";
 import { BUNDLE_VERSION } from "./version";
 
 // A session's page has the terminal panel (Terminals.test.tsx): no canvas, no server here.
@@ -29,6 +29,7 @@ const AGENTS: AgentInfo[] = [
     run: null,
     task: null,
     waiting_reason: null,
+    ...AGENT_REST,
   },
 ];
 
@@ -287,7 +288,7 @@ test("a session opens on its Activity tab with its status, and no placeholder fo
   const tabs = within(view).getByRole("navigation", { name: "Session sections" });
   expect(within(tabs).getAllByRole("link").map((l) => l.textContent)).toEqual([
     "Activity",
-    "Agents",
+    "Agents · 1",
     "Flows",
     "Artifacts",
   ]);
@@ -307,7 +308,7 @@ test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address"
   expect(await within(view).findByText("No flow runs yet")).toBeTruthy();
   fireEvent.click(within(view).getByRole("link", { name: "Activity" }));
   expect(within(view).getByRole("region", { name: "Chat" })).toBeTruthy();
-  expect(within(view).getByRole("link", { name: "Agents" }).getAttribute("href")).toBe(
+  expect(within(view).getByRole("link", { name: "Agents · 1" }).getAttribute("href")).toBe(
     "/sessions/lado/agents",
   );
 });
@@ -408,16 +409,17 @@ test("a change of another kind leaves the sessions alone", async () => {
 test("the Agents tab follows the agents' changes; a reset loads them again", async () => {
   const fetch = serve();
   open("/sessions/lado/agents");
-  const table = await screen.findByRole("table", { name: "Agents of lado" });
-  await within(table).findByRole("button", { name: "Open supervisor's terminal" });
-  const agent = (name: string, status: string) => ({ name, role: "developer", provider: "kilo", status });
+  const list = await screen.findByRole("navigation", { name: "Agents" });
+  await within(list).findByRole("link", { name: /supervisor/ });
+  const agent = (name: string, status: string) => ({ ...AGENTS[0], name, role: "developer", provider: "kilo", status });
+  const row = () => within(list).getByRole("link", { name: /^w1/ });
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "insert", item: agent("w1", "starting") }, "11");
-  expect(within(table).getByText("starting")).toBeTruthy();
+  expect(row().textContent).toContain("starting");
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "update", item: agent("w1", "busy") }, "12");
-  expect(within(table).getByText("busy")).toBeTruthy();
+  expect(row().textContent).toContain("busy");
   stream().send("change", { kind: "agents", session: "other", key: "w1", op: "insert", item: agent("w1", "idle") }, "13");
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "delete", item: null }, "14");
-  expect(within(table).queryByText("w1")).toBeNull();
+  expect(within(list).queryByRole("link", { name: /^w1/ })).toBeNull();
   const loads = () => fetch.mock.calls.filter(([path]) => path === "/api/sessions/lado/agents").length;
   const before = loads();
   stream().send("reset", {}, "20");

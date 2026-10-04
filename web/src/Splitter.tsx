@@ -28,6 +28,15 @@ export function useWidth(element: RefObject<HTMLElement | null>): number | null 
   return width;
 }
 
+// Narrower than this, a tab's list (Flows, Agents) is a select above its page.
+export const NARROW = 900;
+
+// Whether the element is laid out narrower than NARROW (false before the first layout).
+export function useNarrow(element: RefObject<HTMLElement | null>): boolean {
+  const width = useWidth(element);
+  return width !== null && width < NARROW;
+}
+
 // `edge`: the side of its column the splitter is on; moving it outward widens the column.
 export function Splitter({
   label,

@@ -103,10 +103,23 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
   };
 }
 
-type Data = { runs?: RunInfo[]; notes?: NoteInfo[]; events?: RunEventInfo[]; gates?: GateInfo[] };
+type Data = { runs?: RunInfo[]; notes?: NoteInfo[]; events?: RunEventInfo[]; gates?: GateInfo[]; agents?: string[] };
 type Posted = { path: string; body: unknown };
 
-function serve({ runs = [], notes = [], events = [], gates = [] }: Data) {
+const AGENT = {
+  role: "developer",
+  provider: "claude",
+  status: "busy",
+  run: null,
+  task: null,
+  waiting_reason: null,
+  branch: "b",
+  worktree: "/w",
+  spawned_at: "2026-10-04T10:00:00.000Z",
+  since: "2026-10-04T10:00:00.000Z",
+};
+
+function serve({ runs = [], notes = [], events = [], gates = [], agents = [] }: Data) {
   const posted: Posted[] = [];
   vi.stubGlobal(
     "fetch",
@@ -121,7 +134,8 @@ function serve({ runs = [], notes = [], events = [], gates = [] }: Data) {
       if (path.endsWith("/notes")) return of(notes);
       if (path.endsWith("/events")) return of(events);
       if (path.endsWith("/gates")) return of(gates);
-      if (path.endsWith("/agents") || path.endsWith("/messages")) return of([]);
+      if (path.endsWith("/agents")) return of(agents.map((name) => ({ ...AGENT, name })));
+      if (path.endsWith("/messages")) return of([]);
       return new Response("{}", { status: 404 });
     }),
   );
@@ -372,6 +386,25 @@ test("the timeline has the run's start, every step in time and the step now, wit
   // A new step comes from the feed.
   stream().send("change", { kind: "notes", session: "lado", key: "5", op: "insert", item: note(5, { state: "review", actor: "reviewer", outcome: "approved", target: "merge_ok", summary: "looks good" }) }, "11");
   expect(within(steps).getByText("looks good")).toBeTruthy();
+});
+
+test("who acts and who reported a step link to the agent's page while it lives", async () => {
+  serve({
+    runs: [ACTIVE],
+    agents: ["supervisor", "reviewer"],
+    notes: [note(1), note(2, { state: "review", actor: "reviewer", outcome: "changes", target: "implement" })],
+  });
+  open(runPath("lado", ACTIVE.name));
+  const region = await page("fix/gate-bubble");
+  const head = within(region).getByRole("banner");
+  const acting = await within(head).findByRole("link", { name: "reviewer" });
+  expect(acting.getAttribute("href")).toBe("/sessions/lado/agents/reviewer");
+  const steps = within(region).getByRole("list", { name: "Steps" });
+  const [first, second] = within(steps).getAllByRole("listitem");
+  expect(within(first).queryByRole("link", { name: "developer" })).toBeNull(); // finished: no page
+  expect(within(second).getByRole("link", { name: "reviewer" }).getAttribute("href")).toBe(
+    "/sessions/lado/agents/reviewer",
+  );
 });
 
 test("a long note is cut with Show all", async () => {

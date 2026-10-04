@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { AgentInfo, GateInfo, MessageInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeNotification, FakeSocket, setVisible, stream } from "./fakes";
+import { AGENT_REST, FakeEventSource, FakeNotification, FakeSocket, setVisible, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -60,7 +60,16 @@ function question(id: number, more: Partial<MessageInfo> = {}): MessageInfo {
 }
 
 function agent(name: string, reason: string | null = null): AgentInfo {
-  return { name, role: "developer", provider: "claude", status: "waiting", run: null, task: null, waiting_reason: reason };
+  return {
+    name,
+    role: "developer",
+    provider: "claude",
+    status: "waiting",
+    run: null,
+    task: null,
+    waiting_reason: reason,
+    ...AGENT_REST,
+  };
 }
 
 const waits = {

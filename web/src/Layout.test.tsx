@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeResizeObserver, FakeSocket, stream } from "./fakes";
+import { AGENT_REST, FakeEventSource, FakeResizeObserver, FakeSocket, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -19,7 +19,7 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
 }
 
 function agent(name: string, role: string, status: AgentInfo["status"], more: Partial<AgentInfo> = {}): AgentInfo {
-  return { name, role, provider: "claude", status, run: null, task: null, waiting_reason: null, ...more };
+  return { name, role, provider: "claude", status, run: null, task: null, waiting_reason: null, ...AGENT_REST, ...more };
 }
 
 let sessions: SessionInfo[] = [];

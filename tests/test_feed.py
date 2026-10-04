@@ -319,9 +319,11 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         "branch": None,
         "worktree": None,
     }
-    assert spawned < since == state.status_since("s")["supervisor"].strftime(
-        "%Y-%m-%dT%H:%M:%S.%f"
-    )[:-3] + "Z"
+    assert (
+        spawned
+        < since
+        == state.status_since("s")["supervisor"].strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    )
 
 
 def test_a_position_replays_what_came_after_it_once_per_row(streams):

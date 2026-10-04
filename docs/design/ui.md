@@ -318,9 +318,9 @@ Sessions for now. The UI's texts are in English.
   all its actions (Launch and session control, below). The **session**
   in the middle: its name, status and actions, then the tabs **Activity | Agents | Flows |
   Artifacts** (its gates come as cards in the feed): Activity is the
-  feed (The human in the session, below), Agents lists the agents live (name, role,
-  provider, status) with **Open terminal** until the Agents task builds the whole section,
-  the others placeholders naming the task that fills them. The **terminal panel** on the
+  feed (The human in the session, below), Agents the agents and what each does (Agents
+  below), Flows the runs (Flows below), Artifacts a placeholder naming the task that fills
+  it. The **terminal panel** on the
   right, on every tab (Terminal above), is always there, so the page never jumps (the UI
   polish, 2026-10-03): its first tab is the supervisor's, pinned (no ×), shown when the
   page opens; a team chip or Open terminal adds an agent's tab or selects it, and the
@@ -382,13 +382,17 @@ Sessions for now. The UI's texts are in English.
   ROADMAP's "Later (after stage 7)", the others are Tasks here.
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
   activity, agents, flows, artifacts; without one, activity), a flow run's page
-  `/sessions/<name>/flows/<run>` (Flows below; another tab has no pages), `/projects`,
+  `/sessions/<name>/flows/<run>` (Flows below), an agent's page
+  `/sessions/<name>/agents/<agent>` and a finished agent's
+  `/sessions/<name>/agents/<agent>?finished=<id>` (Agents below; another tab has no
+  pages), `/projects`,
   `/kits`, `/marketplace`, `/settings`. Anything else is Not found with a link to Home.
   Opened directly or reloaded, each works (the server's page fallback, Server above).
   Routing: react-router in declarative mode.
 - **Encoding rule**: every name in an address is one segment, encoded whole with
   `encodeURIComponent` (session names are free text, run names hold `/`); a run's address
-  is `/sessions/<name>/flows/<run, encoded whole>` (`runPath`). `web/src/paths.ts` makes
+  is `/sessions/<name>/flows/<run, encoded whole>` (`runPath`), an agent's `agentPath`.
+  `web/src/paths.ts` makes
   them.
 - **Without the token** the shell, one place, shows the server's own `detail` (open the
   link `lado ui` prints) instead of the page; no section knows about 401.
@@ -667,7 +671,8 @@ time. Each task is one `feature` run, useful on its own.
       Origin). Done: Launch and session control above (a typed path checked by the
       server, with subfolders and recent folders).
    7. **Flows** (decided with the human 2026-10-04, task feature/flows-tab). Done: Flows
-      below. Then Agents; Providers and environment; a pass over the look with a designer role
+      below. Then **Agents** (decided with the human 2026-10-04, task feature/agents-tab).
+      Done: Agents below. Then Providers and environment; a pass over the look with a designer role
       (BACKLOG), with it the rework of the rail (later, with the look pass: names under the
       icons when collapsed; Launch moved onto it with Launch and session control); then the
       rest; later the desktop app.
@@ -686,7 +691,53 @@ are in Flows.
 
 ### Agents
 
-A session's tab: its agents, their roles, status and branches.
+A session's tab: its agents and what each does (decided with the human 2026-10-04, task
+feature/agents-tab; built in `web/src/Agents.tsx`). The human sees each agent and acts on
+it here instead of `lado ls`, `list_agents` and `lado finish`.
+
+- **API**: `AgentInfo` (REST and the feed) carries `branch` and `worktree` (a worker's;
+  none for the supervisor), `spawned_at` (its latest `spawned` event) and `since` (when it
+  got its status: `state.agent_times`, the same rule, `STATUS_EVENTS`, as `lado ls`).
+  `GET …/agents/{agent}/details` (`AgentDetails`): the whole task and `work`, where its
+  work stands in git now (`runtime.work_state`: branch, base, ahead, behind, uncommitted
+  paths, last commit), or `work_problem` when git cannot tell; both none for an agent
+  without a branch (the supervisor). Not in the feed: git is asked on each request.
+  `GET …/agents/finished` (`FinishedAgentInfo`, newest first): the `finished` events, each
+  with its id (a name is used again), detail as the core wrote it, and the agent's spawn
+  before it. `GET …/agents/{agent}/finish-preview` (`runtime.finish_preview`: whether the
+  worktree goes, why the finish is refused, the work) and `POST …/agents/{agent}/finish
+  {discard}` (`runtime.finish_worker`, under `Guard.changes`; a refusal is 400 with the
+  core's reason). Finish and the UI's dialog go by the same preview: the UI has no rules
+  of its own about runs.
+- **The list** (left, as Flows'): the supervisor first, then the live agents by spawn; a
+  row: status dot, name, `status · since`, and the run with its state, or the first line
+  of the task; an agent in `waiting` is orange with the first line of why. **Finished
+  (n)** at the bottom, folded (remembered, `lado.agentsFinished`), newest first: name,
+  when, how. It is asked again whenever the live agents change (a finish deletes one).
+  The tab is **Agents · N**, N the live agents. Narrower than 900 px, a select.
+- **An agent's page**: the head (name, role, provider, status and for how long, when it
+  was spawned, for which run and step with the visit, from the run in the store), Open
+  terminal, **Write to <agent>** (the Activity composer with `to` fixed; the supervisor
+  gets a one-line copy from LADO of what the human writes to another agent, How agents
+  talk in AGENTS.md) and **Finish…** (not for the supervisor); why it waits; Branch,
+  Work (asked when the page opens, when the agent becomes idle and with Refresh; "as of"
+  its time; no polling), Worktree, Task (first lines, Show all); its latest 10 messages
+  from and to it, only in its lifetime (a name is used again), and **All in Activity**,
+  which turns Show agent messages on.
+- **Finish…** asks in a dialog with what the preview says: the branch and worktree go,
+  or, for a worker of a run that keeps its worktree, only its window closes. A refusal
+  shows its reason and **Discard work…**, which asks again with what is lost (commits not
+  in the base, uncommitted files) and a red **Discard and finish**.
+- **A finished agent's page** (`?finished=<id>`): read only, when it was spawned and
+  finished and how, its messages between the two. An unknown agent or id: "Agent <name>
+  not found".
+- `/sessions/<name>/agents` opens the supervisor. A stopped session has no live agents
+  (`lado stop` forgets them): "Session stopped: no agents", its finished ones, no Write
+  or Finish.
+- In Flows, who acts in a run's head and who reported a step link to the agent's page
+  while the agent lives.
+- Not in it (later): spawning a worker from the UI, changing an agent's model or mode,
+  polling git.
 
 ### Flows
 

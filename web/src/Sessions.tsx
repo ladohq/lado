@@ -1,15 +1,26 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
 // session on the right with its tabs. The list's width is dragged on its edge and remembered.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router";
+import {
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+  useParams,
+  useSearchParams,
+} from "react-router";
 
+import { Agents } from "./Agents";
 import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
+import { FoldToggle } from "./Fold";
 import { Flows, isOpen } from "./Flows";
 import { useLaunch, type StartedState } from "./Launch";
 import { useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
-import { MAIN_MIN, TerminalPanel, useOpenTerminal } from "./Terminals";
+import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
 import { Placeholder } from "./Placeholder";
@@ -89,16 +100,13 @@ export function Sessions() {
               <Group name="Needs you" sessions={groups.needsYou} />
               <Group name="Running" sessions={groups.running} />
               {groups.stopped.length > 0 && (
-                <button
-                  type="button"
-                  className="group-toggle"
-                  aria-expanded={stoppedOpen}
-                  aria-controls="stopped-sessions"
-                  onClick={toggleStopped}
-                >
-                  <span aria-hidden="true">{stoppedOpen ? "▾" : "›"} </span>
-                  Stopped ({groups.stopped.length})
-                </button>
+                <FoldToggle
+                  name="Stopped"
+                  count={groups.stopped.length}
+                  open={stoppedOpen}
+                  controls="stopped-sessions"
+                  onToggle={toggleStopped}
+                />
               )}
               {stoppedOpen && <Group name="Stopped" id="stopped-sessions" sessions={groups.stopped} hideName />}
             </>
@@ -212,14 +220,14 @@ const TAB_TEXT: Record<Tab, string> = {
 };
 
 export function Session() {
-  const { name = "", tab = "activity", run } = useParams();
+  const { name = "", tab = "activity", item } = useParams();
   const loaded = useOutletContext<Loaded>();
-  // Only the Flows tab has pages of its own: its runs'.
-  if (!isTab(tab) || (run !== undefined && tab !== "flows")) return <NotFound />;
-  return <SessionTab name={name} tab={tab} run={run} loaded={loaded} />;
+  // Only the Flows and Agents tabs have pages of their own: their runs' and agents'.
+  if (!isTab(tab) || (item !== undefined && tab !== "flows" && tab !== "agents")) return <NotFound />;
+  return <SessionTab name={name} tab={tab} item={item} loaded={loaded} />;
 }
 
-function SessionTab({ name, tab, run, loaded }: { name: string; tab: Tab; run?: string; loaded: Loaded }) {
+function SessionTab({ name, tab, item, loaded }: { name: string; tab: Tab; item?: string; loaded: Loaded }) {
   useTitle("Sessions");
   const started = (useLocation().state as StartedState | null)?.started;
   if (loaded === null || "error" in loaded) return null; // the list says what is wrong
@@ -237,17 +245,23 @@ function SessionTab({ name, tab, run, loaded }: { name: string; tab: Tab; run?: 
   return (
     // The panel keeps its terminals while the tabs change: keyed by the session only.
     <TerminalPanel key={name} session={name}>
-      <SessionView name={name} tab={tab} run={run} session={session} />
+      <SessionView name={name} tab={tab} item={item} session={session} />
     </TerminalPanel>
   );
 }
 
-function SessionView({ name, tab, run, session }: { name: string; tab: Tab; run?: string; session: SessionInfo }) {
+function SessionView({ name, tab, item, session }: { name: string; tab: Tab; item?: string; session: SessionInfo }) {
   const live = useLiveStore();
   const runs = useLive().runs[name] ?? null;
+  const agents = useLive().agents[name] ?? null;
+  const [search] = useSearchParams();
   useEffect(() => live.watch("runs", name), [live, name]);
-  const open = runs && "items" in runs ? runs.items.filter(isOpen).length : 0;
-  const tabName = (one: Tab) => (one === "flows" && open > 0 ? `${TAB_NAMES.flows} · ${open}` : TAB_NAMES[one]);
+  useEffect(() => live.watch("agents", name), [live, name]);
+  const counts: Partial<Record<Tab, number>> = {
+    flows: runs && "items" in runs ? runs.items.filter(isOpen).length : 0,
+    agents: agents && "items" in agents ? agents.items.length : 0,
+  };
+  const tabName = (one: Tab) => (counts[one] ? `${TAB_NAMES[one]} · ${counts[one]}` : TAB_NAMES[one]);
   const stopped = session.status === "stopped";
   return (
     <section className="session" aria-label={`Session ${name}`}>
@@ -270,11 +284,11 @@ function SessionView({ name, tab, run, session }: { name: string; tab: Tab; run?
         ))}
       </nav>
       {tab === "agents" ? (
-        <Agents session={name} />
+        <Agents session={name} agent={item} finished={search.get("finished") ?? undefined} stopped={stopped} />
       ) : tab === "activity" ? (
         <Activity session={name} stopped={stopped} />
       ) : tab === "flows" ? (
-        <Flows session={name} run={run} stopped={stopped} />
+        <Flows session={name} run={item} stopped={stopped} />
       ) : (
         <Placeholder title={TAB_NAMES[tab]} plan={PLANS[tab]} level={3}>
           {TAB_TEXT[tab]}
@@ -345,58 +359,5 @@ function Activity({ session, stopped }: { session: string; stopped: boolean }) {
       </div>
       <Chat session={session} stopped={stopped} agentMessages={agentMessages} />
     </div>
-  );
-}
-
-// The session's agents, live: their roles, providers and status, and their terminals.
-// The full section (branches, worktrees, what each works on) is the Agents task's.
-function Agents({ session }: { session: string }) {
-  const live = useLiveStore();
-  const loaded = useLive().agents[session] ?? null;
-  const openTerminal = useOpenTerminal();
-  useEffect(() => live.watch("agents", session), [live, session]);
-
-  if (loaded === null) return <p className="muted">Loading…</p>;
-  if ("error" in loaded) {
-    return (
-      <p className="problem" role="alert">
-        {loaded.error}
-      </p>
-    );
-  }
-  return (
-    <table className="agents" aria-label={`Agents of ${session}`}>
-      <thead>
-        <tr>
-          <th scope="col">Agent</th>
-          <th scope="col">Role</th>
-          <th scope="col">Provider</th>
-          <th scope="col">Status</th>
-          <th scope="col">Terminal</th>
-        </tr>
-      </thead>
-      <tbody>
-        {loaded.items.map((agent) => (
-          <tr key={agent.name}>
-            <td className="agent-name">{agent.name}</td>
-            <td>{agent.role}</td>
-            <td>{agent.provider}</td>
-            <td>
-              <span className={`status agent-${agent.status}`}>{agent.status}</span>
-            </td>
-            <td>
-              <button
-                type="button"
-                className="quiet"
-                aria-label={`Open ${agent.name}'s terminal`}
-                onClick={() => openTerminal(agent.name)}
-              >
-                Open terminal
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }

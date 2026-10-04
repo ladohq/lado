@@ -46,9 +46,9 @@ def test_an_agents_terminal_opens_to_view_with_its_history(page: Page, server, r
     )
     tmux.send_text(session, "w1", "lines 120")
     log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}/agents")
-    agents = page.get_by_role("table", name=f"Agents of {session}")
-    agents.get_by_role("button", name="Open w1's terminal").click()
+    page.goto(f"{server['url']}/sessions/{session}/agents/w1")
+    agent = page.get_by_role("region", name="Agent w1")
+    agent.get_by_role("button", name="Open terminal").click()
 
     panel = page.get_by_role("complementary", name="Terminals")
     view = panel.get_by_role("tabpanel", name="w1")

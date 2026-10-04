@@ -11,6 +11,20 @@ export function clock(iso: string): string {
   return Number.isNaN(when.getTime()) ? "" : when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+export function day(iso: string): string {
+  const when = new Date(iso);
+  return Number.isNaN(when.getTime()) ? "" : when.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+// How long ago, roughly: "<1 min", "12 min", "3 h", "2 d".
+export function since(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!(minutes >= 1)) return "<1 min";
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} h`;
+  return `${Math.floor(minutes / (60 * 24))} d`;
+}
+
 // The body is the agent's text: Markdown, with any HTML in it left out.
 export function Body({ text }: { text: string }) {
   return (

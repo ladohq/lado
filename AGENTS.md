@@ -79,7 +79,9 @@ schema change.
     and folder, when the name is taken), `True` a resume (`NoSuchSession` for an unknown
     name), `None` either, as `lado start`. `stop_preview` and `forget_preview` say what a
     stop or forget would do now, refused alike; `stop_session` and `forget_session` use
-    them.
+    them. So does `finish_worker` with `finish_preview`, which goes by `work_state`: where
+    a worker's branch stands against the repo's current branch and what its worktree has
+    not committed (the UI's Agents tab shows both).
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events; `claude.py`: Claude Code; `kilo.py`: Kilo CLI, with
     `kilo_plugin.js`, the Kilo plugin that runs LADO's hooks). A provider writes the agent's

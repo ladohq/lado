@@ -7,14 +7,15 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, useNavigate } from "react-router";
 
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
-import { clock, Preview } from "./ChatText";
+import { AgentName } from "./Agents";
+import { clock, day, Preview, since } from "./ChatText";
+import { FoldToggle } from "./Fold";
 import { Gate } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { runPath } from "./paths";
 import { storedFlowsEndedOpen, storeFlowsEndedOpen } from "./prefs";
-import { useWidth } from "./Splitter";
+import { useNarrow } from "./Splitter";
 
-const NARROW = 900; // a column narrower than this shows the list as a select
 const NOTE_LINES = 6; // the lines of a step's note shown before Show all
 
 // The run's events the timeline shows; a transition (`flow`) is its step's note.
@@ -31,9 +32,9 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
   useEffect(() => live.watch("notes", session), [live, session]);
   useEffect(() => live.watch("events", session), [live, session]);
   useEffect(() => live.watch("gates", session), [live, session]);
+  useEffect(() => live.watch("agents", session), [live, session]); // who links to its page
   const root = useRef<HTMLDivElement>(null);
-  const width = useWidth(root);
-  const narrow = width !== null && width < NARROW;
+  const narrow = useNarrow(root);
 
   const loaded = [state.runs[session], state.notes[session], state.events[session], state.gates[session]] as (
     | ListLoaded<unknown>
@@ -132,16 +133,7 @@ function RunList({ session, groups }: { session: string; groups: Groups }) {
       <RunGroup session={session} name="Waiting for you" runs={groups.waiting} />
       <RunGroup session={session} name="Active" runs={groups.active} />
       {groups.ended.length > 0 && (
-        <button
-          type="button"
-          className="group-toggle"
-          aria-expanded={endedOpen}
-          aria-controls="ended-runs"
-          onClick={toggle}
-        >
-          <span aria-hidden="true">{endedOpen ? "▾" : "›"} </span>
-          Ended ({groups.ended.length})
-        </button>
+        <FoldToggle name="Ended" count={groups.ended.length} open={endedOpen} controls="ended-runs" onToggle={toggle} />
       )}
       {endedOpen && <RunGroup session={session} name="Ended" id="ended-runs" runs={groups.ended} hideName />}
     </nav>
@@ -205,19 +197,6 @@ function waitsFor(run: RunInfo): string {
   return `→ ${run.acting}`;
 }
 
-// How long ago, roughly: "<1 min", "12 min", "3 h", "2 d".
-function since(iso: string): string {
-  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (!(minutes >= 1)) return "<1 min";
-  if (minutes < 60) return `${minutes} min`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} h`;
-  return `${Math.floor(minutes / (60 * 24))} d`;
-}
-
-function day(iso: string): string {
-  const when = new Date(iso);
-  return Number.isNaN(when.getTime()) ? "" : when.toLocaleDateString([], { month: "short", day: "numeric" });
-}
 
 function RunSelect({ session, run, groups }: { session: string; run?: string; groups: Groups }) {
   const navigate = useNavigate();
@@ -246,15 +225,15 @@ function RunPage({ session, run, stopped, lists }: { session: string; run: RunIn
   const gate = run.gate === null ? undefined : lists.gates.find((one) => one.id === run.gate);
   return (
     <section className="run-page" aria-label={`Run ${run.name}`}>
-      <RunHead run={run} />
+      <RunHead session={session} run={run} />
       <StatePicture run={run} />
       {gate && gate.answer === null && <Gate session={session} gate={gate} stopped={stopped} />}
-      <Timeline run={run} gate={gate} lists={lists} />
+      <Timeline session={session} run={run} gate={gate} lists={lists} />
     </section>
   );
 }
 
-function RunHead({ run }: { run: RunInfo }) {
+function RunHead({ session, run }: { session: string; run: RunInfo }) {
   const kit = [run.kit.name, run.kit.version].filter(Boolean).join(" ");
   return (
     <header className="run-head">
@@ -268,7 +247,12 @@ function RunHead({ run }: { run: RunInfo }) {
       <p className="run-task">{run.task}</p>
       <p className="run-now">
         <strong>{run.state}</strong> · {run.status}
-        {run.acting && ` · ${run.acting}`}
+        {run.acting && (
+          <>
+            {" · "}
+            <AgentName session={session} name={run.acting} />
+          </>
+        )}
         {run.reason && ` · ${run.reason}`} · branch <code>{run.branch}</code>
       </p>
     </header>
@@ -350,11 +334,15 @@ function entries(run: RunInfo, lists: Lists): Entry[] {
   return [...notes, ...events].sort((a, b) => a.rank - b.rank || a.at.localeCompare(b.at));
 }
 
-function Timeline({ run, gate, lists }: { run: RunInfo; gate?: GateInfo; lists: Lists }) {
+function Timeline({ session, run, gate, lists }: { session: string; run: RunInfo; gate?: GateInfo; lists: Lists }) {
   return (
     <ol className="run-steps" aria-label="Steps">
       {entries(run, lists).map((entry) =>
-        entry.note ? <Step key={entry.key} note={entry.note} /> : <RunEvent key={entry.key} event={entry.event!} />,
+        entry.note ? (
+          <Step key={entry.key} session={session} note={entry.note} />
+        ) : (
+          <RunEvent key={entry.key} event={entry.event!} />
+        ),
       )}
       <Now run={run} gate={gate} />
     </ol>
@@ -364,14 +352,20 @@ function Timeline({ run, gate, lists }: { run: RunInfo; gate?: GateInfo; lists: 
 // A step: when, from which state, who reported it, the outcome and where it leads; then
 // its note. A note kept before LADO 0.18 has none of these but its state; the human's
 // flow-set has no outcome; a loop limit's answer is the human's override with one.
-function Step({ note }: { note: NoteInfo }) {
+function Step({ session, note }: { session: string; note: NoteInfo }) {
   const loop = note.kind === "override" && note.outcome !== "";
-  const parts = [note.state, loop && "loop limit", note.actor].filter(Boolean).join(" · ");
+  const parts = [note.state, loop && "loop limit"].filter(Boolean).join(" · ");
   const moves = [note.outcome, note.target].filter(Boolean).map((one) => ` → ${one}`);
   return (
     <li className={`run-step${note.kind === "override" ? " override" : ""}`}>
       <span className="step-line">
         <time dateTime={note.created_at}>{clock(note.created_at)}</time> · {parts}
+        {note.actor && (
+          <>
+            {" · "}
+            <AgentName session={session} name={note.actor} />
+          </>
+        )}
         {moves.join("")}
       </span>
       <div className="step-note">

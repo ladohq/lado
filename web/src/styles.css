@@ -790,42 +790,6 @@ h3 {
   outline-offset: 1px;
 }
 
-/* A session's agents (the Agents tab, for now its terminals). */
-.agents {
-  width: 100%;
-  max-width: 820px;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.agents th {
-  padding: 6px 12px 6px 0;
-  color: var(--muted);
-  font-weight: 400;
-  font-size: 13px;
-  text-align: left;
-  border-bottom: 1px solid var(--line);
-}
-
-.agents td {
-  padding: 8px 12px 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.agent-name {
-  font-family: var(--mono);
-  font-size: 13px;
-}
-
-.agent-stopped,
-.agent-starting {
-  color: var(--muted);
-}
-
-.agent-waiting {
-  color: var(--human);
-}
-
 .quiet {
   height: 28px;
   padding: 0 10px;
@@ -2196,28 +2160,34 @@ h3 {
   }
 }
 
-/* Flows: the runs on the left, in groups as the session list's, the selected run on the
-   right; each scrolls by itself. In a column narrower than 900 px (Flows.tsx) the list is a
-   select over the run. Orange marks only what waits for the human. */
-.flows {
+/* Flows and Agents: the runs or agents on the left, in groups as the session list's, the
+   selected one on the right; each scrolls by itself. In a column narrower than 900 px
+   (Splitter.tsx, useNarrow) the list is a select over the page. Orange marks only what waits
+   for the human. */
+.flows,
+.agents-tab {
   display: flex;
   flex: 1;
   gap: 20px;
   min-height: 0;
 }
 
-.flows.narrow {
+.flows.narrow,
+.agents-tab.narrow {
   flex-direction: column;
   gap: 12px;
 }
 
 .flows > .empty,
 .flows > .muted,
-.flows > .problem {
+.flows > .problem,
+.agents-tab > .muted,
+.agents-tab > .problem {
   flex: 1;
 }
 
-.run-list {
+.run-list,
+.agent-list {
   flex: 0 0 270px;
   min-width: 240px;
   max-width: 300px;
@@ -2226,10 +2196,15 @@ h3 {
   border-right: 1px solid var(--line);
 }
 
-.run-list ul {
+.run-list ul,
+.agent-list ul {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.agent-list li + li {
+  margin-top: 2px;
 }
 
 .run-group + .run-group,
@@ -2241,7 +2216,8 @@ h3 {
   color: var(--human);
 }
 
-.run-link {
+.run-link,
+.agent-row {
   display: flex;
   flex-direction: column;
   padding: 7px 10px;
@@ -2250,43 +2226,59 @@ h3 {
   text-decoration: none;
 }
 
-.run-link:hover {
+.run-link:hover,
+.agent-row:hover {
   background: var(--raised);
 }
 
-.run-link[aria-current="page"] {
+.run-link[aria-current="page"],
+.agent-row[aria-current="page"] {
   background: var(--raised);
   box-shadow: inset 3px 0 0 var(--action);
 }
 
-.run-link.waits {
+.run-link.waits,
+.agent-row.waits {
   background: var(--human-ground);
 }
 
-.run-link.waits[aria-current="page"] {
+.run-link.waits[aria-current="page"],
+.agent-row.waits[aria-current="page"] {
   box-shadow: inset 3px 0 0 var(--human);
 }
 
-.run-name {
+.run-name,
+.agent-row-name {
   font: 600 13px var(--mono);
   overflow-wrap: anywhere;
 }
 
-.run-link.dim .run-name {
+.run-link.dim .run-name,
+.agent-row.dim .agent-row-name {
   color: var(--muted);
   font-weight: 400;
 }
 
-.run-about {
+.run-about,
+.agent-row-about {
   color: var(--muted);
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
-.run-link.waits .run-about {
+.run-link.waits .run-about,
+.agent-row.waits .agent-row-about {
   color: var(--human);
 }
 
-.run-select {
+.agent-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.run-select,
+.tab-select {
   flex: none;
   max-width: 100%;
   height: 34px;
@@ -2298,15 +2290,126 @@ h3 {
   font: inherit;
 }
 
-.flow-run {
+.flow-run,
+.agent-detail {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
 }
 
-.flow-run > .empty {
+.flow-run > .empty,
+.agent-detail > .empty {
   padding-top: 40px;
+}
+
+/* An agent's page: its head with the actions, the facts as a two-column grid, its latest
+   messages and the composer to it. */
+.agent-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 900px;
+  padding-bottom: 24px;
+}
+
+.agent-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.agent-title h3 {
+  margin: 0;
+  font: 600 18px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.agent-now {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.agent-now .dot {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.finish-button {
+  color: var(--human);
+}
+
+.agent-waits {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--human-ground);
+  color: var(--human);
+  white-space: pre-line;
+}
+
+.agent-facts {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.agent-facts dt {
+  color: var(--muted);
+}
+
+.agent-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-facts code {
+  font-size: 12px;
+}
+
+.agent-task .chat-body > :first-child {
+  margin-top: 0;
+}
+
+.agent-work.stale {
+  opacity: 0.7;
+}
+
+.agent-messages h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.agent-messages ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.agent-composer .hint {
+  margin: 4px 0 0;
+  font-size: 12px;
 }
 
 .run-page {

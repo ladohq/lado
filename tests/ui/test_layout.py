@@ -242,9 +242,12 @@ def test_many_tabs_stay_on_one_line_and_scroll_with_the_supervisors_tab_kept(
     narrow = json.dumps({"width": 300, "collapsed": False})
     page.evaluate(f"() => localStorage.setItem('lado.terminals', '{narrow}')")
     page.reload()
-    agents = page.get_by_role("table", name=f"Agents of {session}")
+    agents = page.get_by_role("navigation", name="Agents")
     for name in LONG_NAMES:
-        agents.get_by_role("button", name=f"Open {name}'s terminal").click()
+        agents.locator(".agent-row-name", has_text=re.compile(f"^{name}$")).click()
+        page.get_by_role("region", name=f"Agent {name}").get_by_role(
+            "button", name="Open terminal"
+        ).click()
 
     panel = page.get_by_role("complementary", name="Terminals")
     tabs = panel.get_by_role("tab")

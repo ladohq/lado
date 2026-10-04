@@ -43,15 +43,6 @@ should detect an untrusted repo and tell the user, and the agent's status could 
 waits for the human.
 Found: 2026-10-01, live e2e tests.
 
-## A broken kit source blocks every kit lookup
-
-If any registered source is broken (folder or clone missing, two kits with one name, bad
-layout), every kit lookup fails, even `lado start` with the built-in `default` kit. The error
-says to run `lado sources update` or `lado sources remove`.
-Wanted (decided 2026-10-02): fail only when the wanted kit (or a kit it includes) depends on
-the broken source; otherwise warn and go on.
-Found: 2026-10-01, kit sources review.
-
 ## No way to reach a busy agent urgently
 
 A message to a busy agent waits until its turn ends. A hint from the supervisor that would
@@ -187,17 +178,6 @@ After upgrading LADO without a schema change, a running loop goes on with the ol
 `lado stop`; `lado doctor` and `lado ls` do not show it. Low priority.
 Found: 2026-10-02, review of run fix/session-loop.
 
-## A kit cannot say which LADO it needs
-
-A kit that uses a newer flow or kit field (e.g. a flow state's `needs`) fails in an older
-LADO with a validator error about an unknown field, which does not say that LADO is too old.
-So a kit change must wait until every user has upgraded, and the order (release LADO first,
-then the kit) lives only in people's heads.
-Wanted: `kit.yaml` may say `requires: lado>=0.11`; an older LADO refuses the kit with
-"kit <name> needs LADO >= 0.11, this is 0.10.0: upgrade LADO" (`lado start`, `lado kits
-check`), and the kit's own validator errors stay for real mistakes.
-Found: 2026-10-02, planning the lado-dev update for named notes.
-
 ## A gate shows a needed note twice when it is the note before the gate
 
 A gate with `needs: [design]` reached right from `design` shows design's report twice in
@@ -252,7 +232,7 @@ Found: 2026-10-02, run fix/kilo-no-snapshots.
 
 A Claude Code agent started by LADO still loads the plugins enabled in the user's own
 `~/.claude` (seen: the global superpowers plugin's SessionStart hook runs in the supervisor,
-next to the kit's superpowers skills from `lado sources`). So what an agent can do depends on
+next to the kit's superpowers skills from its skill packs). So what an agent can do depends on
 the human's machine, Claude agents get skills and hooks Kilo agents do not, and a kit cannot
 switch them off (`--without` does not see them).
 Wanted: an agent runs only what its kit gives it: find Claude Code's switch for user plugins
@@ -439,18 +419,6 @@ the count.
 Wanted: `grouped` (and `about`, `waits`) take the rule from `isLive`.
 Found: 2026-10-03, review of feature/needs-you.
 
-## Kits do not declare the sources they need
-
-A kit's skills and roles come from kit sources registered apart, in
-`LADO_HOME/sources.yaml` (`lado sources`). A kit cannot say which sources, at which
-versions, it needs, so it is not self-contained: the same kit can behave differently on
-another machine.
-Wanted (the human's idea, 2026-10-04): a kit declares its sources and their versions in
-its own definition, and LADO resolves them. To design on its own, with "A kit cannot say
-which LADO it needs". The UI's Launch lists kits by name, version and description only, so
-it does not wait for this.
-Found: 2026-10-04, design of feature/launch.
-
 ## `lado stop` kills agents without a graceful exit
 
 `lado stop` (and Stop in the UI) kills the session's tmux windows at once. An agent CLI
@@ -537,3 +505,22 @@ Found: 2026-10-04, fix/snapshot-core (implement).
 Wanted: the same refusal as the other commands in a stopped session (`session "s" is
 stopped; …`), which says what to do.
 Found: 2026-10-04, feature/agents-tab (implement).
+
+## The git cache is never cleaned
+
+`LADO_HOME/cache` keeps a clone of every (address, tag or commit) a pack or `lado kits add`
+ever fetched; `lado kits update` and `remove` leave the old clones there, since running
+agents may still read them. The folder only grows.
+Wanted: a `lado kits clean` (or a step of `update`/`remove`) that removes the clones no
+installed kit, project kit and running session uses, and says what it removed.
+Found: 2026-10-04, design of feature/kit-manifest-v2.
+
+## The API's `core` helper turns only LadoError into a 400
+
+`server/app.py` `core()` and the session endpoints caught `runtime.LadoError` only, so a
+`kits.KitError` from the core (a kit not found or invalid at `POST /api/sessions`) was a 500
+without its reason. Fixed for `POST /api/sessions` and resume in feature/kit-manifest-v2;
+`core()` still lets any other core error type through as a 500.
+Wanted: one error type for what the core refuses (or `core()` and the endpoints map each
+known one to 400), so no refusal reaches the UI as a 500.
+Found: 2026-10-04, feature/kit-manifest-v2 (implement).

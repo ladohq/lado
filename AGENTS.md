@@ -100,13 +100,23 @@ schema change.
     and `close_viewers`, which `lado stop` and the UI server's start use; viewers are found
     by their tmux labels (`@lado-viewer`, `@lado-home`, `@lado-session`) only. Never a
     read-only tmux client: tmux would refuse LADO's own `send-keys` while one is attached.
-  - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup, `include`, `--without`,
-    validation. A provider gets an `AgentSpec` (prompt, skill folders, MCP servers), never
-    the kit itself. `builtin_kits/`: kits shipped with LADO (`default`: supervisor + worker).
-    LADO's own instructions to agents stay in `runtime.py` and are appended to the role.
-  - `sources.py`: kit sources (`lado sources`): a local folder read in place, or a git
-    repository cloned into `LADO_HOME/sources/<name>`; registered in `LADO_HOME/sources.yaml`.
-    Only the `Source` classes know a kind; `kits.py` asks a source for its directory.
+  - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup (project
+    `<repo>/.lado/kits`, then `LADO_HOME/kits`, then built-in), `dependencies` (`lado`: the
+    oldest LADO the kit runs with; `skills`: skill packs by `<git-url>@<tag|commit>` or a
+    folder relative to the kit), `--without`, validation, and the installed kits:
+    `lado kits add/update/remove` keep links in `LADO_HOME/kits` (what is there is
+    installed; no second list). `load` never uses the network (a git pack not in the cache
+    yet is `Pack.skills is None`); `fetch` clones it; `resolve` builds an `Environment` only
+    from fetched kits. An agent sees the session kits' own skills, its own kit's packs and
+    the packs of kits without agents (`Environment.shared`, `.private`). A provider gets an
+    `AgentSpec` (prompt, skill folders, MCP servers), never the kit itself. `builtin_kits/`:
+    kits shipped with LADO (`default`: supervisor + worker). LADO's own instructions to
+    agents stay in `runtime.py` and are appended to the role. `LADO_HOME/sources.yaml` of
+    older LADOs is not read; while it exists, `migration_hint` says how to move.
+  - `gitcache.py`: the git cache: one clone per (address, tag or commit) in
+    `LADO_HOME/cache/<repo>-<hash>/<quote(ref)>`, made in a temporary folder and renamed;
+    a clone that is there is never fetched again; a branch is refused. Packs and
+    `lado kits add/update` use `fetch_pinned`. Nothing cleans it yet.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
     a work or gate state's optional `needs` lists the states whose latest notes its step
     gets or the human sees at the gate)
@@ -325,6 +335,14 @@ schema change.
 make a first commit). The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
+`lado kits add <git-url>@<tag|commit>` (or a folder, linked and read in place, the way to
+develop a kit) installs kits into `LADO_HOME/kits`; `--kit NAME` picks some of a repository
+with `kits/<name>/`. `lado kits update <name> <tag|commit>` moves a kit installed from git
+to another version: running sessions build their kits again at each spawn and run start, so
+only their new agents get it (the output says so); the old clone stays in the cache.
+`lado kits remove <name>` drops the link. `lado kits` lists every kit with where it comes
+from; `lado kits show` names each kit's packs and where each agent's skills come from.
+
 `lado log <session>` shows what happened in a session: messages between agents (one line
 with their delivery state and summary, the body indented below) and agent events (spawned,
 status changes). `--agent NAME` keeps one agent's
@@ -477,14 +495,20 @@ LADO borrows ideas from other orchestrators but must not repeat their mistakes:
   fail or warn loudly. Never ignore it quietly.
 - **One source of truth.** Derive what exists from the files themselves; do not keep a
   second list of the same things that can drift.
-- **Share, don't copy.** Reuse a skill or role through `include`, never by copying it.
+- **Share, don't copy.** Share skills through a kit's `dependencies.skills` (a pack pinned
+  to a version), never by copying them; a kit without agents shares its packs with the
+  whole session. Roles are not shared through dependencies: kits are combined in a session
+  (`--kit a --kit b`). Adding a first agent to a kit without agents makes its packs
+  private to it, and the other kits' agents lose them (loudly only when their `skills:`
+  names one).
 - **No hardcoded paths.** Resources refer to each other by relative paths or `${KIT_DIR}` /
   `${SKILL_DIR}`, never by absolute or home-directory paths.
 - **Never touch the user's global agent config.** Configure each agent process on its own.
 - **Native over injected.** Use each CLI's own way of loading skills, MCP servers and hooks
   instead of pasting their text into the prompt.
 - **Explicit lookup.** No hidden fallbacks to global locations; show where each resolved
-  piece came from.
+  piece came from. Kits are looked up in the project, then `LADO_HOME/kits`, then
+  built-in; a kit's packs come only from the addresses in its own `kit.yaml`.
 - **Only what is used.** Add a field, option or engine feature when a real kit needs it.
 - **Tested end to end.** Behaviour that crosses processes (tmux, hooks, MCP) gets an
   integration test with the fake agent.

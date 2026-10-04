@@ -811,7 +811,7 @@ Later: an overview of all sessions, what runs, what is stuck and what waits for 
 
 ### Kits
 
-Later: the kits LADO knows and where they come from (`lado sources`), with their roles,
+Later: the kits LADO knows and where they come from (`lado kits`), with their roles,
 skills, MCP servers and flows.
 
 ## Look

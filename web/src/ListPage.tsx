@@ -159,11 +159,14 @@ function ListGroup({
   searching: boolean;
 }) {
   const [folded, setFolded] = useState(() => (group.fold ? !group.fold.stored() : false));
-  const [openedFor, setOpenedFor] = useState<string | undefined>(undefined);
   const [all, setAll] = useState(false);
-  if (selected !== undefined && selected !== openedFor && group.entries.some((entry) => entry.key === selected)) {
-    setOpenedFor(selected);
-    setFolded(false);
+  // The selected item the group holds, as last seen: the group opens when it comes to hold one
+  // (picked, or loaded after it was picked), also the one it held before another was picked.
+  const [held, setHeld] = useState<string | undefined>(undefined);
+  const holds = group.entries.some((entry) => entry.key === selected) ? selected : undefined;
+  if (holds !== held) {
+    setHeld(holds);
+    if (holds !== undefined) setFolded(false);
   }
   const id = `list-group-${slug(group.name)}`;
   const className = `list-group${group.tone ? ` ${group.tone}` : ""}`;

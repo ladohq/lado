@@ -46,6 +46,7 @@ function Things({ list = groups(), fallback = "/things/a", notice }: Props) {
       page={
         <>
           <p>page of {key}</p>
+          <Link to="/things/old-1">go to old-1</Link>
           <Link to="/things/old-2">go to old-2</Link>
         </>
       }
@@ -178,7 +179,7 @@ test("the selected item is always seen: its folded group opens and its row shows
   expect(within(list).getAllByRole("link").filter((one) => one.getAttribute("aria-current"))).toHaveLength(1);
 });
 
-test("a group opened for its selected item folds on its toggle, and opens again when another of its items is picked", () => {
+test("a group opened for its selected item folds on its toggle, and opens again whenever an item of it is picked", () => {
   wideColumn();
   open("/things/old-1", { list: groups({ old: 3 }) });
   const toggle = () => within(nav()!).getByRole("button", { name: /Ended \(3\)/ });
@@ -193,6 +194,13 @@ test("a group opened for its selected item folds on its toggle, and opens again 
   fireEvent.click(within(nav()!).getByRole("link", { name: "a" }));
   expect(within(nav()!).queryByRole("region", { name: "Ended" })).toBeNull();
   // Picked from elsewhere (a link, the address): its group opens for it, not remembered.
+  fireEvent.click(screen.getByRole("link", { name: "go to old-1" }));
+  expect(within(nav()!).getByRole("link", { name: "old-1" }).getAttribute("aria-current")).toBe("page");
+  // Folded again, another item picked, then the same one again: it opens again.
+  fireEvent.click(toggle());
+  fireEvent.click(within(nav()!).getByRole("link", { name: "a" }));
+  fireEvent.click(screen.getByRole("link", { name: "go to old-1" }));
+  expect(within(nav()!).getByRole("link", { name: "old-1" }).getAttribute("aria-current")).toBe("page");
   fireEvent.click(screen.getByRole("link", { name: "go to old-2" }));
   expect(within(nav()!).getByRole("link", { name: "old-2" }).getAttribute("aria-current")).toBe("page");
   expect(localStorage.getItem(FOLD)).toBe("folded");

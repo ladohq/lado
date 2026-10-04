@@ -378,13 +378,15 @@ Sessions for now. The UI's texts are in English.
   section has an item in ROADMAP.md or in Tasks below: Projects and Marketplace are
   ROADMAP's "Later (after stage 7)", the others are Tasks here.
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
-  activity, agents, flows, artifacts; without one, activity), `/projects`,
+  activity, agents, flows, artifacts; without one, activity), a flow run's page
+  `/sessions/<name>/flows/<run>` (Flows below; another tab has no pages), `/projects`,
   `/kits`, `/marketplace`, `/settings`. Anything else is Not found with a link to Home.
   Opened directly or reloaded, each works (the server's page fallback, Server above).
   Routing: react-router in declarative mode.
 - **Encoding rule**: every name in an address is one segment, encoded whole with
   `encodeURIComponent` (session names are free text, run names hold `/`); a run's address
-  will be `/sessions/<name>/flows/<run, encoded whole>`. `web/src/paths.ts` makes them.
+  is `/sessions/<name>/flows/<run, encoded whole>` (`runPath`). `web/src/paths.ts` makes
+  them.
 - **Without the token** the shell, one place, shows the server's own `detail` (open the
   link `lado ui` prints) instead of the page; no section knows about 401.
 - **Theme**: system (follows `prefers-color-scheme`), light or dark, chosen in Settings,
@@ -517,7 +519,7 @@ Built in the layout task (2026-10-03, schema 14):
   events, kept inside the window. A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
   gates as cards or lines and the human's answers to them (Flow gates above); their other events as quiet lines
-  (`<kind> <run>: <detail>`, a link to Flows), the kinds shown as lines named in one list
+  (`<kind> <run>: <detail>`, a link to the run's page in Flows), the kinds shown as lines named in one list
   in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_open` and `gate_answer` are not in it,
   the gate stands for them); and behind the switch **Show agent
   messages** (off by default, remembered in the browser) the agents' messages to each
@@ -661,7 +663,8 @@ time. Each task is one `feature` run, useful on its own.
       permission mode), stop, resume and forget one; guarded like the composer (token and
       Origin). Done: Launch and session control above (a typed path checked by the
       server, with subfolders and recent folders).
-   7. Flows; Agents; Providers and environment; a pass over the look with a designer role
+   7. **Flows** (decided with the human 2026-10-04, task feature/flows-tab). Done: Flows
+      below. Then Agents; Providers and environment; a pass over the look with a designer role
       (BACKLOG), with it the rework of the rail (later, with the look pass: names under the
       icons when collapsed; Launch moved onto it with Launch and session control); then the
       rest; later the desktop app.
@@ -676,7 +679,7 @@ checks.
 A session's tab: the chat with the human (The human in the session, above), flow
 transitions as they happen, agent-to-agent messages behind a switch; the team as chips;
 the selected agent's terminal on the right. Built (Layout task); the notes of each step
-come with Flows.
+are in Flows.
 
 ### Agents
 
@@ -684,7 +687,55 @@ A session's tab: its agents, their roles, status and branches.
 
 ### Flows
 
-A session's tab: its flow runs, their state, who acts and the notes of each step.
+A session's tab: its flow runs, their state, who acts and the notes of each step (decided
+with the human 2026-10-04, task feature/flows-tab; built in `web/src/Flows.tsx`). The human
+follows a run and answers its gate here instead of `lado ls`, `lado log` and `flow_status`.
+
+- **A step is a note.** Each transition (`flow_advance`, a gate's answer, `lado
+  flow-set`) writes exactly one note in its own transaction (`state.update_run`); from
+  schema 15 the note also keeps who reported it (`actor`), the `outcome` and the state it
+  leads to (`target`): the record of the step, one source of truth, to which artifacts
+  can later be attached. A flow-set has no outcome (actor `human`); a loop limit's answer
+  is an `override` with the outcome `continue`. When a loop limit kept the run out of
+  `target`, the run waits before it at a loop gate, and the next note is that gate's
+  answer. Notes from before schema 15 have these fields empty and show their state and
+  summary only. A run's start, end and cancel are its events (`flow_start`, `flow_end`,
+  `flow_cancel`), shown with their `detail` as the core wrote it.
+- **API**: `GET /api/sessions/{name}/runs` (`RunInfo`, newest first: state, status,
+  reason, `acting` from `runs.acting`, visits, the open gate's id, worktree, branch,
+  language, `since` and, for a closed run, `ended_at`, both its latest event, and `states`,
+  the flow's states in the order of the run's snapshot, `FlowStateInfo`) and
+  `GET /api/sessions/{name}/notes` (`NoteInfo`, every note of the session, oldest first,
+  with run, kind, actor, outcome, target). The feed's `runs` and `notes` changes carry
+  these items. Who acts in an open run depends on the session's agents, and the agent
+  that was a run's worker may be deleted already: so any change of a session's agents
+  also updates every open run of it (`feed.ALSO`).
+- **The list** (left, 240–300 px): **Waiting for you** (status `waiting`), **Active**,
+  and **Ended (n)** at the bottom, ended and cancelled runs by when they ended, the latest
+  first, folded (remembered in the browser, `lado.flowsEnded`). A row: the run's name
+  (mono), its state and who acts or the gate it waits at, how long it has been so; an
+  ended one its status and day. The tab is **Flows · N**, N the open runs (none: Flows).
+  When the session's column is narrower than 900 px (the terminals open), the list is a
+  select above the run, with the same groups (`optgroup`).
+- **A run's page** (`/sessions/<name>/flows/<run>`): the head (name, flow, kit, started,
+  task, state, status, who acts, why it waits, branch); the flow: every state in the order
+  the flow declares them, with who acts ("you" at a gate, marked ◇) and visits (`2/3`
+  with `max_visits`, else `×2`), the current state marked blue, orange while the run waits
+  for the human, entered states solid, the others dashed; under them the ways back
+  (outcomes that lead to an earlier state or the same one, `↶ review –changes→
+  implement`), no graph with arrows. Then the run's open gate, the chat's `Gate`
+  component, answered in place (disabled while the session is stopped); closed gates are
+  steps of the timeline (their answer is the step's note). Then the timeline: the start,
+  each step (time, state, who, outcome → target, the summary in bold and the body as
+  Markdown, the first lines and Show all), the end or cancel, and the line **now**: `now ·
+  <state> · <acting> · visit 2 of 3`, `acting` as the core says it (the UI does not parse
+  it), or `now · <state> · waits for you (gate #41)`. All of it follows the feed: an
+  answer anywhere moves the page on without a reload.
+- `/sessions/<name>/flows` without a run opens the first run that waits for the human,
+  else the first active one (the address replaced); with none, "No flow runs yet" or
+  "Select a run". An unknown run says "Run <name> not found" and the address stays.
+- Not in it (later tasks): cancel and flow-set from the UI (they stay in the CLI),
+  starting a flow from the UI, editing flows.
 
 ### Gates
 

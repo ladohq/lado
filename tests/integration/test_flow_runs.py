@@ -149,6 +149,9 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
         f"flow {name}: step merge"
     ]
     assert run_state(name).status == state.ENDED
+    # Each flow_advance through MCP kept its step: who reported it, the outcome, where to.
+    steps = [(n.state, n.actor, n.outcome, n.target) for n in state.run_notes(SESSION, name)]
+    assert steps == [("build", "worker", "done", "merge"), ("merge", "supervisor", "merged", "end")]
     assert state.get_agent(SESSION, "worker") is None
     wait_for(
         lambda: "worker" not in tmux.run("list-windows", "-t", f"={SESSION}"), "the worker closed"

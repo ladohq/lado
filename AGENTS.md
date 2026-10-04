@@ -142,7 +142,9 @@ schema change.
     `report` is a work state's own or the answer at an approval or choice gate; an
     `override` (a flow-set reason, from the state the run was in; an answer at a loop
     limit, from the state it kept the run out of) is kept but never taken for a state's
-    report. Events, messages,
+    report. From schema 15 a note is the record of its step: `actor`, `outcome` (none for
+    a flow-set) and `target`, written by `update_run` from the transition (`state.Noted`);
+    `state.run_notes` lists them (the UI's Flows tab). Events, messages,
     runs, notes and gates go with their session, which `lado stop` only marks stopped
     (`sessions.stopped_at`) and `lado forget` deletes. How long an
     agent has had its status (`lado ls`, `list_agents`) comes from its latest `status` or
@@ -174,8 +176,9 @@ schema change.
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes; the agents, history, messages, run events
-    (`/api/sessions/{name}/events`) and gates (with the human's answer) endpoints are in
-    `app.py`; a gate's model is built by `models.gate_info` for REST and the feed; what
+    (`/api/sessions/{name}/events`), gates (with the human's answer), runs and notes
+    endpoints are in `app.py`; a gate's model is built by `models.gate_info`, a run's by
+    `models.run_info` (its flow from the run's snapshot), for REST and the feed; what
     waits for the human (open gates, open questions, agents in `waiting`: the one "needs
     you") is `state.waiting_items`, only of sessions not stopped (`stopped_at IS NULL`, in
     its SQL), served as `GET /api/waiting` (`models.WaitingItem`) and counted from that same

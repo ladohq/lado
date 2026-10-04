@@ -610,6 +610,7 @@ h3 {
 
 .tab {
   padding: 8px 12px;
+  white-space: nowrap;
   color: var(--muted);
   text-decoration: none;
   border-bottom: 2px solid transparent;
@@ -2385,9 +2386,9 @@ h3 {
   color: var(--muted);
 }
 
-/* An arrow to the next state, in the gap. */
+/* An arrow to the next state, in the gap; not read out (the list's order says it). */
 .flow-state + .flow-state::before {
-  content: "→";
+  content: "→" / "";
   position: absolute;
   top: 50%;
   left: -17px;

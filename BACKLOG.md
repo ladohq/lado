@@ -427,7 +427,9 @@ A gate's feed item (`feed._gate_item` → `models.gate_info` → `runs.gate_note
 run's flow snapshot. If a snapshot cannot be read (e.g. a flow format a newer LADO no longer
 takes), building the item raises in every pass of the hub; after `FAILED_PASSES` the
 streams end and every new one ends the same way, so the whole UI stops updating for one
-broken run. `GET …/gates` would answer 500 too.
+broken run. `GET …/gates` would answer 500 too. From feature/flows-tab a run's item
+(`feed._run_item` → `models.run_info` → `runs.flow_of`) reads it too, on every change of
+the run and of its session's agents (`feed.ALSO`), and `GET …/runs` answers 500.
 Wanted: an item that cannot be built is sent without what failed (here: `needs` null and a
 problem named) and the error logged once, so one bad row never stops the feed.
 Found: 2026-10-03, feature/gates (implement).

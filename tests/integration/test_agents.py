@@ -35,6 +35,11 @@ def inputs(agent: str) -> list[str]:
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
+def got_line(agent: str, line: str, since: int = 0) -> bool:
+    """Whether `line` is a whole line of an input the agent got after its first `since`."""
+    return any(line in text.splitlines() for text in inputs(agent)[since:])
+
+
 def seen(agent: str) -> dict:
     """What the fake agent wrote to its "seen" file."""
     path = state.home() / "agents" / SESSION / agent / "seen.json"
@@ -143,6 +148,17 @@ def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     assert log[at + 1 : at + 4] == ["    Status: DONE", "    Files: work.txt", "    Checks: ok"]
 
 
+def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):
+    """The helper's own race: messages queued while the agent is busy are typed together,
+    one line each, so the command is a line of the input, not all of it."""
+    start(repo)
+    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    wait_status("supervisor", state.BUSY)
+    runtime.send_message(SESSION, "human", "supervisor", "sleep 0")  # queued
+    supervisor_runs("sleep 0.1")  # queued too, typed with the one before
+    assert inputs("supervisor")[-1] == "[from human] sleep 0\n[from human] sleep 0.1"
+
+
 def test_agent_that_switches_conversation_keeps_running(repo):
     """Like Claude Code's /resume: the conversation ends, the process goes on with another."""
     start(repo)
@@ -151,7 +167,7 @@ def test_agent_that_switches_conversation_keeps_running(repo):
     assert runtime.send_message(SESSION, "human", "supervisor", "hello").startswith("queued")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor")[-1] == "[from human] hello"
+    assert "[from human] hello" in inputs("supervisor")[-1].splitlines()
     statuses = [e.detail for e in state.list_events(SESSION) if e.kind == "status"]
     assert state.STOPPED not in statuses
 
@@ -256,9 +272,11 @@ def test_cli_refuses_to_migrate_the_database_under_a_running_session(repo):
 
 
 def supervisor_runs(command: str) -> None:
-    """Have the supervisor run `command` and wait until its turn is over."""
+    """Have the supervisor run `command` and wait until its turn is over. LADO may type it
+    together with messages queued before (one line each): it is one line of an input."""
+    before = len(inputs("supervisor"))
     runtime.send_message(SESSION, "human", "supervisor", command)
-    wait_for(lambda: inputs("supervisor")[-1:] == [f"[from human] {command}"], command)
+    wait_for(lambda: got_line("supervisor", f"[from human] {command}", before), command)
     wait_status("supervisor", state.IDLE)
 
 

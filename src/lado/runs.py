@@ -16,6 +16,7 @@ worker.
 """
 
 import dataclasses
+import json
 from pathlib import Path
 
 from lado import flows, kits, providers, runtime, state, tmux
@@ -73,7 +74,7 @@ def start(
         session=session,
         name=run_name,
         flow=flow.name,
-        snapshot=flow.snapshot,
+        snapshot=json.dumps(flow.snapshot),
         kit={"name": kit.name, "version": kit.version, "source": kit.source},
         task=task,
         state=flow.start,
@@ -398,9 +399,22 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     return problems
 
 
+class SnapshotError(LadoError):
+    """A run's flow snapshot cannot be read: not JSON, or a flow this LADO refuses."""
+
+
 def flow_of(run: state.Run) -> flows.Flow:
-    """The flow as it was when the run started."""
-    return flows.from_snapshot(run.snapshot, run.kit.get("name", ""))
+    """The flow as it was when the run started; SnapshotError when it cannot be read."""
+    try:
+        data = json.loads(run.snapshot)
+    except ValueError as error:
+        raise SnapshotError(f'run "{run.name}": its flow snapshot is not JSON: {error}') from None
+    if not isinstance(data, dict):
+        raise SnapshotError(f'run "{run.name}": its flow snapshot is not a mapping')
+    try:
+        return flows.from_snapshot(data, run.kit.get("name", ""))
+    except ValueError as error:
+        raise SnapshotError(f'run "{run.name}": its flow cannot be read: {error}') from None
 
 
 def acting(run: state.Run) -> str:

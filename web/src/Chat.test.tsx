@@ -406,6 +406,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     answered_by: null,
     created_at: "2026-10-03T12:00:00.250Z",
     answered_at: null,
+    problem: null,
     ...more,
   };
 }
@@ -434,6 +435,19 @@ test("an open gate is a card: its question, the note that led to it and the note
   expect(within(card).getByText("step one")).toBeTruthy();
   expect(within(card).getByText("Note from polish: no note yet")).toBeTruthy();
   expect(within(card).getByRole("textbox", { name: "Comment for the next step (optional)" })).toBeTruthy();
+});
+
+test("a gate whose run's flow cannot be read shows the problem instead of the notes it needs", async () => {
+  const problem = 'run "feature/x": its flow snapshot is not JSON: line 1';
+  serve([], undefined, [], [gate(1, { needs: null, problem })]);
+  open();
+  const card = await gateCard();
+  expect(within(card).getByText(`Notes it needs cannot be shown: ${problem}`)).toBeTruthy();
+  expect(within(card).queryByRole("list", { name: "Notes it needs" })).toBeNull();
+  expect(within(card).getByText("Ship it?")).toBeTruthy();
+  // Whether it can be answered is the core's to say.
+  const approve = within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement;
+  expect(approve.disabled).toBe(false);
 });
 
 test("a long note before the gate is behind Show all", async () => {

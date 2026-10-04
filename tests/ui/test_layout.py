@@ -191,7 +191,9 @@ def test_a_runs_events_show_in_the_feed_and_its_gate_puts_the_session_under_need
     sessions = page.get_by_role("navigation", name="Sessions")
     expect(sessions.get_by_role("region", name="Running")).to_contain_text(session)
 
-    run = state.Run(session, "feature/demo", "feature", DEMO, {}, "demo", "design", "/w", "b")
+    run = state.Run(
+        session, "feature/demo", "feature", json.dumps(DEMO), {}, "demo", "design", "/w", "b"
+    )
     # A loop limit: its card needs no notes.
     gate = state.Gate(session, "feature/demo", "design", "loop", "Again?", ["continue", "cancel"])
     state.add_run(run, [("supervisor", state.FLOW_START, "at design")], gate)

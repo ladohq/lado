@@ -165,7 +165,10 @@ Decided in the live updates task (2026-10-03).
   session's (it counts its agents and what waits for the human in it, `waiting`). Each
   session item asks tmux for its status (`runtime.session_status`); a batch is collapsed
   first, so that is once per session in a batch. A comment line every 15 s keeps a quiet
-  stream open.
+  stream open. An item that cannot be built in full is sent without what failed, with the
+  problem named (`problem` of a run whose flow snapshot cannot be read, `runs.SnapshotError`:
+  no `states`; of its open gate: no `needs`), and the error is logged once per message, so
+  one bad row never stops the feed or a list endpoint.
 - **The start of a stream**: the position is the `Last-Event-ID` header (the browser's own
   reconnect) or else `?after=N`. Without a position, or with one the journal no longer has
   (dropped, or ahead of it), the stream starts with `event: reset` whose `id` is the latest
@@ -723,7 +726,9 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   with `max_visits`, else `×2`), the current state marked blue, orange while the run waits
   for the human, entered states solid, the others dashed; under them the ways back
   (outcomes that lead to an earlier state or the same one, `↶ review –changes→
-  implement`), no graph with arrows. Then the run's open gate, the chat's `Gate`
+  implement`), no graph with arrows; a run whose flow cannot be read (its `problem`) shows
+  "Flow cannot be read: <problem>" there instead, and its gate's card the problem instead
+  of the notes it needs, its buttons as ever. Then the run's open gate, the chat's `Gate`
   component, answered in place (disabled while the session is stopped); closed gates are
   steps of the timeline (their answer is the step's note). Then the timeline: the start,
   each step (time, state, who, outcome → target, the summary in bold and the body as

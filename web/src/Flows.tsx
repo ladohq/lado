@@ -278,8 +278,16 @@ function RunHead({ run }: { run: RunInfo }) {
 // Every state of the flow, in the order it declares them: name, who acts (you at a gate),
 // visits; the current one marked (orange while it waits for the human), the ones entered
 // solid, the others dashed. Under them the ways back: outcomes that lead to an earlier
-// state or to the same one.
+// state or to the same one. A run whose flow the server cannot read has none: the problem
+// stands in their place.
 function StatePicture({ run }: { run: RunInfo }) {
+  if (run.problem) {
+    return (
+      <p className="problem" role="alert">
+        Flow cannot be read: {run.problem}
+      </p>
+    );
+  }
   const order = run.states.map((one) => one.name);
   const back = run.states.flatMap((from, at) =>
     Object.entries(from.outcomes)

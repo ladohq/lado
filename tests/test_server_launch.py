@@ -356,7 +356,7 @@ def test_stop_shows_what_it_does_then_does_it(client, repo, fake_tmux):
 
 def test_forget_shows_what_it_drops_and_needs_force_for_open_runs(client, repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
-    run = state.Run("s", "feature/x", "feature", {}, {}, "do x", "design", "/w", "b")
+    run = state.Run("s", "feature/x", "feature", "{}", {}, "do x", "design", "/w", "b")
     state.add_run(run, [("lado", state.FLOW_START, "at design")], None)
     answer = client.delete("/api/sessions/s")
     assert answer.status_code == 400 and "is not stopped" in answer.json()["detail"]

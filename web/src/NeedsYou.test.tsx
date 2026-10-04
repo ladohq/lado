@@ -33,6 +33,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     answered_by: null,
     created_at: SINCE,
     answered_at: null,
+    problem: null,
     ...more,
   };
 }

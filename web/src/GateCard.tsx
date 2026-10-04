@@ -82,6 +82,7 @@ function GateCard({ session, gate, stopped }: { session: string; gate: GateInfo;
       </header>
       <p className="gate-question">{gate.question}</p>
       <Note gate={gate} />
+      {gate.problem && <p className="problem gate-problem">Notes it needs cannot be shown: {gate.problem}</p>}
       {gate.needs && gate.needs.length > 0 && (
         <ul className="gate-needs" aria-label="Notes it needs">
           {gate.needs.map((need) => (

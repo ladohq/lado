@@ -1448,6 +1448,10 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.gate-problem {
+  margin-top: 8px;
+}
+
 .gate-needs {
   display: flex;
   flex-direction: column;

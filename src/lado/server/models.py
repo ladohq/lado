@@ -1,11 +1,14 @@
 """The API's models, and each one built from the state: one form of an entity for the REST
 API and for the event stream's items (lado.server.feed)."""
 
+import logging
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from lado import flows, runs, runtime, state
+
+log = logging.getLogger("lado.server")
 
 
 class Waiting(BaseModel):
@@ -225,7 +228,8 @@ class RunInfo(BaseModel):
     created_at: str  # UTC, ISO 8601
     since: str  # UTC, ISO 8601: its latest event, since when it is where it is
     ended_at: str | None  # an ended or cancelled run's: its latest event
-    states: list[FlowStateInfo]  # in the order the flow declares them
+    states: list[FlowStateInfo]  # in the order the flow declares them; [] with a problem
+    problem: str | None  # why its flow snapshot cannot be read; None when it can
 
 
 class NeededNote(BaseModel):
@@ -246,12 +250,14 @@ class GateInfo(BaseModel):
     note_body: str
     # The notes the gate state needs, as they are now: only while it is open, since what
     # the human saw when answering is not kept. A loop limit needs none.
+    # None too when its run's flow cannot be read (problem).
     needs: list[NeededNote] | None
     answer: str | None  # an option, or how it was closed otherwise (overridden, cancelled)
     comment: str
     answered_by: str | None
     created_at: str  # UTC, ISO 8601
     answered_at: str | None
+    problem: str | None  # why its run's flow snapshot cannot be read; None when it can
 
 
 class GateAnswer(BaseModel):
@@ -424,10 +430,33 @@ def flow_state_info(found: flows.State) -> FlowStateInfo:
     )
 
 
+_logged: set[tuple[str, str]] = set()  # (session, message) of the problems logged already
+
+
+def _unreadable(session: str, error: runs.SnapshotError) -> str:
+    """The problem of an item built without its run's flow, logged once: the feed builds
+    the item again on every change of the run or of its session's agents."""
+    problem = str(error)
+    if (session, problem) not in _logged:
+        _logged.add((session, problem))
+        log.warning("session %s: %s", session, problem)
+    return problem
+
+
 def run_info(run: state.Run) -> RunInfo:
     last = state.last_run_event(run.session, run.name)
     since = _utc(last.created_at if last else run.created_at)
     gate = state.open_gate(run.session, run.name) if run.status == state.WAITING else None
+    problem = None
+    try:
+        states = [flow_state_info(s) for s in runs.flow_of(run).states.values()]
+        acting = runs.acting(run)
+    except runs.SnapshotError as error:
+        problem = _unreadable(run.session, error)
+        states = []
+        # Without the flow: "human" for a waiting run and '' for a closed one, as ever;
+        # '' for an active one, whose actor is its state's agent, named only in the flow.
+        acting = "" if run.status == state.ACTIVE else runs.acting(run)
     return RunInfo(
         name=run.name,
         flow=run.flow,
@@ -436,7 +465,7 @@ def run_info(run: state.Run) -> RunInfo:
         state=run.state,
         status=run.status,
         reason=run.reason,
-        acting=runs.acting(run),
+        acting=acting,
         visits=run.visits,
         gate=gate.id if gate else None,
         worktree=run.worktree,
@@ -445,17 +474,21 @@ def run_info(run: state.Run) -> RunInfo:
         created_at=_utc(run.created_at),
         since=since,
         ended_at=since if run.status not in state.OPEN else None,
-        states=[flow_state_info(s) for s in runs.flow_of(run).states.values()],
+        states=states,
+        problem=problem,
     )
 
 
 def gate_info(gate: state.Gate) -> GateInfo:
-    needs = None
+    needs = problem = None
     if gate.answer is None:
-        needs = [
-            NeededNote(state=name, note=note_info(note) if note else None)
-            for name, note in runs.gate_notes(gate)
-        ]
+        try:
+            needs = [
+                NeededNote(state=name, note=note_info(note) if note else None)
+                for name, note in runs.gate_notes(gate)
+            ]
+        except runs.SnapshotError as error:
+            problem = _unreadable(gate.session, error)
     return GateInfo(
         id=gate.id,
         run=gate.run,
@@ -471,6 +504,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
         answered_by=gate.answered_by or None,
         created_at=_utc(gate.created_at),
         answered_at=_utc(gate.answered_at) if gate.answered_at else None,
+        problem=problem,
     )
 
 

@@ -421,19 +421,6 @@ Wanted: an addendum to an open run (from the supervisor, approved by the human),
 `notes` and shown to every later step and gate after the design note.
 Found: 2026-10-03, feature/ui-polish.
 
-## One run whose flow snapshot cannot be read stops the UI's change feed
-
-A gate's feed item (`feed._gate_item` → `models.gate_info` → `runs.gate_notes`) reads the
-run's flow snapshot. If a snapshot cannot be read (e.g. a flow format a newer LADO no longer
-takes), building the item raises in every pass of the hub; after `FAILED_PASSES` the
-streams end and every new one ends the same way, so the whole UI stops updating for one
-broken run. `GET …/gates` would answer 500 too. From feature/flows-tab a run's item
-(`feed._run_item` → `models.run_info` → `runs.flow_of`) reads it too, on every change of
-the run and of its session's agents (`feed.ALSO`), and `GET …/runs` answers 500.
-Wanted: an item that cannot be built is sent without what failed (here: `needs` null and a
-problem named) and the error logged once, so one bad row never stops the feed.
-Found: 2026-10-03, feature/gates (implement).
-
 ## The version banner gives a stale tab the wrong advice
 
 A tab opened before an upgrade keeps its old bundle. Once `lado ui` restarts the server,
@@ -451,18 +438,6 @@ say the same now, but a change to one rule leaves the session list's groups apar
 the count.
 Wanted: `grouped` (and `about`, `waits`) take the rule from `isLive`.
 Found: 2026-10-03, review of feature/needs-you.
-
-## Flaky: integration test of the note a step needs after a gate
-
-`tests/integration/test_flow_runs.py::test_a_step_gets_the_note_it_needs_after_a_gate_and_after_flow_set`
-failed once in a full `make check` (it passes alone). The test waits until the
-supervisor's latest input is exactly the human's command, but LADO typed the step line
-from `lado` and that command together as one prompt (`[from lado] flow …: step design …
-\n[from human] advance …`), so the latest input never equals the command, although the
-advance happened. A test race, not a LADO bug: queued messages go together by design.
-Wanted: the test waits for the command among the lines of the latest input, or for the
-run's state.
-Found: 2026-10-03, `make check` of feature/needs-you (visit 2).
 
 ## Kits do not declare the sources they need
 
@@ -534,3 +509,13 @@ oh-my-zsh's tmux plugin with autostart) make `$SHELL -ilc` fail without a termin
 Wanted: the docs and `lado doctor`'s hint name this case and how to guard it in the rc file
 (for example, skip the autostart when the shell is not interactive on a terminal).
 Found: 2026-10-04, review of fix/agent-env.
+
+## A run whose flow snapshot cannot be read breaks `lado ls`, `flow_status` and a resume
+
+The UI copes with such a run (`problem`), the core does not: `runs.now` → `runs.acting` →
+`flow_of` raises `runs.SnapshotError` for an active run, so `lado ls` stops at that run
+with an error; `flow_status` (`runs.status`) fails for the supervisor's every-open-run
+list; `runs.resume` reads every open run's flow, so `lado start` cannot resume the session.
+Wanted: these show such a run with its problem and go on with the others; a resume reports
+it as it reports a run whose role is missing, so the human can `flow_cancel` or `flow-set` it.
+Found: 2026-10-04, fix/unreadable-snapshot (implement).

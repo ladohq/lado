@@ -2,6 +2,7 @@
 human's answer. In process, with FastAPI's test client."""
 
 import pytest
+from agent_helpers import spoil_snapshot
 from fastapi.testclient import TestClient
 
 from lado import runs, runtime, state
@@ -103,7 +104,24 @@ def test_an_open_gate_comes_with_its_note_and_the_notes_it_needs(client, session
         "comment": "",
         "answered_by": None,
         "answered_at": None,
+        "problem": None,
     }
+
+
+def test_a_gate_whose_runs_flow_cannot_be_read_comes_without_its_needs(client, session):
+    gate = at_gate()
+    spoil_snapshot("s", "ship/x")
+    answer = client.get(GATES)
+    assert answer.status_code == 200
+    [listed] = answer.json()
+    assert listed["needs"] is None
+    assert listed["problem"].startswith('run "ship/x": its flow snapshot is not JSON')
+    assert (listed["id"], listed["question"], listed["options"], listed["note"]) == (
+        gate.id,
+        "Ship it?",
+        ["approve", "reject"],
+        "built it",
+    )
 
 
 def test_a_closed_gate_has_no_needs_even_after_newer_notes(client, session):

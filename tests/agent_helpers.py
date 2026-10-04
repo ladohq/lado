@@ -82,6 +82,15 @@ def publish(work: Path, files: dict[str, str], tag: str | None = None) -> str:
     return remote.as_uri()
 
 
+def spoil_snapshot(session: str, run: str, text: str = "{not json") -> None:
+    """Give a run a flow snapshot this LADO cannot read, as a bad row or an older LADO's
+    flow format would."""
+    with state.connect() as db:
+        db.execute(
+            "UPDATE runs SET snapshot = ? WHERE session = ? AND name = ?", (text, session, run)
+        )
+
+
 def previous_schema() -> None:
     """Turn the LADO_HOME database back to SCHEMA_VERSION - 1, as an older LADO left it.
     Undoes the last step of state.MIGRATIONS: change it with each new migration."""

@@ -1540,6 +1540,17 @@
               }
             ],
             "title": "Answered At"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
           }
         },
         "type": "object",
@@ -1557,7 +1568,8 @@
           "comment",
           "answered_by",
           "created_at",
-          "answered_at"
+          "answered_at",
+          "problem"
         ],
         "title": "GateInfo",
         "description": "A flow run's question to the human: open while `answer` is None."
@@ -2256,6 +2268,17 @@
             },
             "type": "array",
             "title": "States"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
           }
         },
         "type": "object",
@@ -2276,7 +2299,8 @@
           "created_at",
           "since",
           "ended_at",
-          "states"
+          "states",
+          "problem"
         ],
         "title": "RunInfo",
         "description": "A flow run: where it is, who acts and its flow."

@@ -4,6 +4,8 @@ and lado.runtime in the same process. Writers in other processes are in
 tests/integration/test_server_process.py."""
 
 import dataclasses
+import json
+import logging
 import socket
 import sqlite3
 import threading
@@ -11,12 +13,12 @@ import time
 
 import pytest
 import uvicorn
-from agent_helpers import previous_schema
+from agent_helpers import previous_schema, spoil_snapshot
 from event_stream import EventStream
 
 from lado import loop, runs, runtime, state
 from lado.server import app as server_app
-from lado.server import auth, feed
+from lado.server import auth, feed, models
 
 
 @pytest.fixture
@@ -130,7 +132,9 @@ SNAPSHOT = {
 
 
 def bare_run() -> state.Run:
-    return state.Run("s", "feature/x", "feature", SNAPSHOT, {}, "x", "design", "/w", "b")
+    return state.Run(
+        "s", "feature/x", "feature", json.dumps(SNAPSHOT), {}, "x", "design", "/w", "b"
+    )
 
 
 def test_a_runs_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
@@ -528,3 +532,48 @@ def test_any_change_of_the_sessions_agents_updates_who_acts_in_its_open_runs(
     seen = run_item(stream, "developer (not spawned)")
     # Only open runs are updated; a closed one's acting cannot change.
     assert not any(is_change("runs", "s")(e) and e.data["key"] == "feature/closed" for e in seen)
+
+
+def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
+    streams, repo, fake_tmux, monkeypatch, caplog
+):
+    monkeypatch.setattr(models, "_logged", set())  # what other tests logged is not counted
+    caplog.set_level(logging.WARNING, logger="lado.server")
+    kit = repo / ".lado" / "kits" / "team"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "flows" / "ship.yaml").write_text(
+        "name: ship\ndescription: d\nstart: plan\nstates:\n"
+        "  plan: {agent: supervisor, do: Plan it., outcomes: {ready: check}}\n"
+        "  check: {gate: approval, ask: 'Ship it?', needs: [plan], outcomes:"
+        " {approved: end, rejected: plan}}\n"
+        "  end: {end: true}\n"
+    )
+    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runs.start("s", "ship", "Add x", name="x")
+    runs.start("s", "ship", "Add y", name="y")  # open and active: its acting needs the flow
+    runs.advance("s", "supervisor", "ship/x", "ready", "the plan")
+    spoil_snapshot("s", "ship/x")
+    spoil_snapshot("s", "ship/y")
+    stream = streams()
+    stream.next()
+    # Each change of an agent builds the open runs' items again, in a pass of its own.
+    for status in ["busy", "idle"] * feed.FAILED_PASSES:
+        state.set_status("s", "supervisor", status)
+        seen = stream.until(lambda e: is_change("runs", "s")(e) and e.data["key"] == "ship/y")
+        seen += stream.quiet(0.2)  # ship/x of the same batch, if it came after
+        items = {e.data["key"]: e.data["item"] for e in seen if is_change("runs", "s")(e)}
+        x, y = items["ship/x"], items["ship/y"]
+        assert (y["states"], y["acting"], y["status"]) == ([], "", "active")
+        assert y["problem"].startswith('run "ship/y": its flow snapshot is not JSON')
+        assert (x["states"], x["acting"], x["status"]) == ([], "human", "waiting")
+        assert x["problem"].startswith('run "ship/x"')
+    with state.connect() as db:  # a change of the gate itself
+        db.execute("UPDATE gates SET comment = 'later' WHERE run = 'ship/x'")
+    [*_, gate] = stream.until(is_change("gates", "s"))
+    assert (gate.data["item"]["needs"], gate.data["item"]["question"]) == (None, "Ship it?")
+    assert gate.data["item"]["problem"].startswith('run "ship/x"')
+    assert not stream.closed.is_set()
+    logged = [r.getMessage() for r in caplog.records if r.name == "lado.server"]
+    assert len([m for m in logged if 'run "ship/x"' in m]) == 1, logged
+    assert len([m for m in logged if 'run "ship/y"' in m]) == 1, logged

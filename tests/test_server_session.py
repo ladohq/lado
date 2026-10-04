@@ -25,7 +25,7 @@ def session(repo, fake_tmux):
 
 
 def add_run(name: str = "feature/x", gate: bool = False) -> None:
-    run = state.Run("s", name, "feature", {}, {}, "do x", "design", "/w", "b")
+    run = state.Run("s", name, "feature", "{}", {}, "do x", "design", "/w", "b")
     opens = state.Gate("s", name, "approve", "approval", "OK?", ["approved", "rejected"])
     state.add_run(run, [("lado", state.FLOW_START, "at design")], opens if gate else None)
 

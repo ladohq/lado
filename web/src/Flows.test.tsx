@@ -57,6 +57,7 @@ function run(name: string, more: Partial<RunInfo> = {}): RunInfo {
     since: "2026-10-04T11:20:00.000Z",
     ended_at: null,
     states: STATES,
+    problem: null,
     ...more,
   };
 }
@@ -97,6 +98,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     answered_by: null,
     created_at: "2026-10-04T11:00:00.000Z",
     answered_at: null,
+    problem: null,
     ...more,
   };
 }
@@ -318,6 +320,18 @@ test("a run that waits for the human marks its state as waiting, and its open ga
   );
   expect(within(region).queryByRole("article", { name: "Gate #41" })).toBeNull();
   expect(within(region).getByRole("listitem", { name: "State done" }).getAttribute("aria-current")).toBe("step");
+});
+
+test("a run whose flow cannot be read says so where its states would be; its head and timeline stay", async () => {
+  const problem = 'run "fix/gate-bubble": its flow snapshot is not JSON: line 1';
+  serve({ runs: [run("fix/gate-bubble", { states: [], acting: "", problem })], notes: [note(1)] });
+  open(runPath("lado", "fix/gate-bubble"));
+  const region = await page("fix/gate-bubble");
+  expect(within(region).getByRole("banner").textContent).toContain("review · active");
+  expect(within(region).queryByRole("list", { name: "States" })).toBeNull();
+  expect(within(region).getByRole("alert").textContent).toBe(`Flow cannot be read: ${problem}`);
+  const steps = within(region).getByRole("list", { name: "Steps" });
+  expect(steps.textContent).toContain("note 1");
 });
 
 test("in a stopped session the gate on the run's page cannot be answered", async () => {

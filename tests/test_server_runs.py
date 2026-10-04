@@ -2,7 +2,7 @@
 with FastAPI's test client."""
 
 import pytest
-from agent_helpers import previous_schema
+from agent_helpers import previous_schema, spoil_snapshot
 from fastapi.testclient import TestClient
 
 from lado import runs, runtime, state
@@ -82,6 +82,7 @@ def test_a_run_comes_with_its_flow_in_the_order_of_the_snapshot(client, session)
         "branch": run.branch,
         "language": "",
         "ended_at": None,
+        "problem": None,
         "states": [
             {
                 "name": "plan",
@@ -149,6 +150,33 @@ def test_a_waiting_run_names_its_open_gate_and_its_time_in_the_state(client, ses
     last = state.run_events("s")[-1]
     assert item["since"] == last.created_at.replace(" ", "T") + "Z"
     assert item["ended_at"] is None
+
+
+def test_a_run_whose_flow_cannot_be_read_is_listed_without_it(client, session):
+    at_build("bad")
+    at_build("good")
+    spoil_snapshot("s", "ship/bad")
+    answer = client.get(RUNS)
+    assert answer.status_code == 200
+    listed = {r["name"]: r for r in answer.json()}
+    bad = listed["ship/bad"]
+    assert bad["states"] == []
+    assert bad["problem"].startswith('run "ship/bad": its flow snapshot is not JSON')
+    # An active run's actor is its state's agent, which only the flow names.
+    assert bad["acting"] == ""
+    assert (bad["state"], bad["status"], bad["task"]) == ("build", "active", "Add bad")
+    assert listed["ship/good"]["problem"] is None
+    assert len(listed["ship/good"]["states"]) == 4
+
+
+def test_a_waiting_run_whose_flow_cannot_be_read_still_waits_for_the_human(client, session):
+    at_build()
+    runs.spawn_worker("s", "ship/x")
+    runs.advance("s", "developer", "ship/x", "done", "built")
+    spoil_snapshot("s", "ship/x")
+    [item] = client.get(RUNS).json()
+    assert (item["status"], item["acting"], item["states"]) == ("waiting", "human", [])
+    assert item["problem"]
 
 
 def test_ended_and_cancelled_runs_say_when_they_closed_newest_first(client, session):

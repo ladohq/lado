@@ -178,7 +178,10 @@ schema change.
     backpressure, close codes; the agents, history, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), runs and notes
     endpoints are in `app.py`; a gate's model is built by `models.gate_info`, a run's by
-    `models.run_info` (its flow from the run's snapshot), for REST and the feed; what
+    `models.run_info` (its flow from the run's snapshot), for REST and the feed; when
+    `runs.flow_of` cannot read the snapshot (`runs.SnapshotError`, the only error they
+    catch), both build the item without the flow (no `states`, no `needs`) and name it in
+    `problem`, logged once; what
     waits for the human (open gates, open questions, agents in `waiting`: the one "needs
     you") is `state.waiting_items`, only of sessions not stopped (`stopped_at IS NULL`, in
     its SQL), served as `GET /api/waiting` (`models.WaitingItem`) and counted from that same

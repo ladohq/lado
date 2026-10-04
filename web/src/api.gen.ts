@@ -616,6 +616,8 @@ export interface components {
             created_at: string;
             /** Answered At */
             answered_at: string | null;
+            /** Problem */
+            problem: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -870,6 +872,8 @@ export interface components {
             ended_at: string | null;
             /** States */
             states: components["schemas"]["FlowStateInfo"][];
+            /** Problem */
+            problem: string | null;
         };
         /** Sent */
         Sent: {

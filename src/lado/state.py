@@ -427,7 +427,9 @@ class Run:
     session: str
     name: str  # <flow>/<slug>
     flow: str
-    snapshot: dict  # the flow as it was at the start
+    # The flow as it was at the start, JSON as stored: read by runs.flow_of, so a run whose
+    # snapshot cannot be read still reads.
+    snapshot: str
     kit: dict  # name, version, source of the flow's kit
     task: str
     state: str
@@ -918,7 +920,7 @@ def add_run(run: Run, events: list[tuple[str, str, str]], opens: Gate | None = N
                 run.session,
                 run.name,
                 run.flow,
-                json.dumps(run.snapshot),
+                run.snapshot,
                 json.dumps(run.kit),
                 run.task,
                 run.state,
@@ -1540,7 +1542,7 @@ def _run(row: sqlite3.Row) -> Run:
         session=row["session"],
         name=row["name"],
         flow=row["flow"],
-        snapshot=json.loads(row["snapshot"]),
+        snapshot=row["snapshot"],
         kit=json.loads(row["kit"]),
         task=row["task"],
         state=row["state"],

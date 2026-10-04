@@ -1,8 +1,10 @@
+import dataclasses
 import re
 import shutil
 from pathlib import Path
 
 import pytest
+from agent_helpers import spoil_snapshot
 
 from lado import kits, runs, runtime, state, tmux
 
@@ -91,6 +93,33 @@ def test_start_creates_the_run_with_its_own_worktree_and_snapshot(session, repo,
     start, *_ = [e for e in state.list_events(session) if e.run == run.name]
     assert (start.agent, start.kind) == ("supervisor", state.FLOW_START)
     assert "team 1.2.0" in start.detail
+
+
+@pytest.mark.parametrize(
+    ("text", "why"),
+    [
+        ("{not json", "not JSON"),
+        ("[]", "not a mapping"),
+        ('{"name": "feature", "start": "design"}', "states must map state names"),
+    ],
+)
+def test_a_snapshot_that_cannot_be_read_is_one_named_error(session, text, why):
+    run = runs.start(session, "feature", "Add x", name="x")
+    spoil_snapshot(session, run.name, text)
+    spoilt = state.get_run(session, run.name)  # the run itself still reads
+    with pytest.raises(runs.SnapshotError, match=why) as error:
+        runs.flow_of(spoilt)
+    assert isinstance(error.value, runtime.LadoError)
+    assert 'run "feature/x"' in str(error.value)
+
+
+def test_who_acts_in_a_run_whose_flow_cannot_be_read(session):
+    run = runs.start(session, "feature", "Add x", name="x")
+    spoil_snapshot(session, run.name, "{not json")
+    with pytest.raises(runs.SnapshotError):  # an active run's actor is in its flow
+        runs.acting(state.get_run(session, run.name))
+    waiting = dataclasses.replace(state.get_run(session, run.name), status=state.WAITING)
+    assert runs.acting(waiting) == runs.HUMAN
 
 
 def test_a_supervisor_step_is_sent_to_the_supervisor(session):

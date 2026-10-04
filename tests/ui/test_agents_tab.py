@@ -2,6 +2,7 @@
 work in git, and Finish, refused for unmerged work and done with Discard work…, the worker
 then among the finished ones without a reload."""
 
+import re
 import uuid
 from pathlib import Path
 
@@ -35,13 +36,16 @@ def test_a_workers_page_shows_its_work_and_finish_discards_it(page: Page, server
     page.set_viewport_size({"width": 1600, "height": 1000})
     session, worktree = session_with_worker(repo)
     log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}/agents")
+    page.goto(f"{server['url']}/sessions/{session}/activity")
     page.get_by_role("button", name="Collapse terminals").click()
-    # Without an agent the tab opens the supervisor.
+    page.get_by_role("link", name="Agents · 2").click()
+    # Without an agent the tab opens the supervisor, beside the list.
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents/supervisor")
     expect(page.get_by_role("link", name="Agents · 2")).to_be_visible()
     agents = page.get_by_role("navigation", name="Agents")
     expect(agents.get_by_role("link").first).to_contain_text("supervisor")
+    expect(page.get_by_role("region", name="Agent supervisor")).to_be_visible()
+    shot(page, "supervisor")
     agents.get_by_role("link", name="w1").click()
     worker = page.get_by_role("region", name="Agent w1")
     expect(worker).to_contain_text(f"lado/{session}/w1")
@@ -73,3 +77,41 @@ def test_a_workers_page_shows_its_work_and_finish_discards_it(page: Page, server
     finished.click()
     expect(page.get_by_role("region", name="Agent w1")).to_contain_text("discarded")
     shot(page, "finished")
+
+
+def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session, worktree = session_with_worker(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/activity")
+    # The terminals are open: the session's column is narrower than 900 px.
+    expect(page.get_by_role("button", name="Collapse terminals")).to_be_visible()
+    page.get_by_role("link", name="Agents · 2").click()
+    agents = page.get_by_role("navigation", name="Agents")
+    expect(agents).to_be_visible()
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents")
+    expect(page.get_by_role("combobox")).to_have_count(0)
+    expect(page.get_by_role("region", name=re.compile("^Agent "))).to_have_count(0)
+    shot(page, "list")
+
+    agents.get_by_role("link", name="w1").click()
+    worker = page.get_by_role("region", name="Agent w1")
+    expect(worker).to_contain_text(worktree)
+    expect(agents).to_have_count(0)
+    # Each fact's name stands above its value, and the values have the page's width.
+    facts = worker.locator(".agent-facts")
+    page_box = worker.bounding_box()
+    for name in ("Branch", "Work", "Worktree", "Task"):
+        term = facts.locator("dt").filter(has_text=re.compile(f"^{name}$"))
+        label = term.bounding_box()
+        value = term.locator("xpath=following-sibling::dd[1]").bounding_box()
+        assert value["y"] >= label["y"] + label["height"] - 1, name
+        assert value["width"] > page_box["width"] * 0.9, name
+    write = worker.get_by_role("textbox", name="Write to w1…")
+    assert write.bounding_box()["width"] > page_box["width"] * 0.9
+    shot(page, "worker")
+    page.get_by_role("link", name="‹ All agents").click()
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents")
+    expect(agents).to_be_visible()

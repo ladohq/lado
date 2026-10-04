@@ -2160,64 +2160,86 @@ h3 {
   }
 }
 
-/* Flows and Agents: the runs or agents on the left, in groups as the session list's, the
-   selected one on the right; each scrolls by itself. In a column narrower than 900 px
-   (Splitter.tsx, useNarrow) the list is a select over the page. Orange marks only what waits
-   for the human. */
-.flows,
-.agents-tab {
+/* A tab's list and page (ListPage.tsx: Flows, Agents): the list on the left, in groups as
+   the session list's, the page on the right; each scrolls by itself. In a column narrower
+   than NARROW (900 px) one of them takes the column. Orange marks only what waits for the
+   human. The page is a size container: its own layout goes by its width (@container). */
+.list-page {
   display: flex;
   flex: 1;
   gap: 20px;
   min-height: 0;
 }
 
-.flows.narrow,
-.agents-tab.narrow {
-  flex-direction: column;
-  gap: 12px;
-}
-
-.flows > .empty,
-.flows > .muted,
-.flows > .problem,
-.agents-tab > .muted,
-.agents-tab > .problem {
+.list-page > .empty,
+.list-page > .muted,
+.list-page > .problem {
   flex: 1;
 }
 
-.run-list,
-.agent-list {
+.list-side {
+  display: flex;
   flex: 0 0 270px;
+  flex-direction: column;
   min-width: 240px;
   max-width: 300px;
-  overflow-y: auto;
+  min-height: 0;
   padding-right: 12px;
   border-right: 1px solid var(--line);
 }
 
-.run-list ul,
-.agent-list ul {
+.list-page.narrow .list-side {
+  flex: 1;
+  max-width: none;
+  padding-right: 0;
+  border-right: 0;
+}
+
+.list-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.list-items ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.agent-list li + li {
+.list-items li + li {
   margin-top: 2px;
 }
 
-.run-group + .run-group,
-.run-group + .group-toggle {
+.list-group + .list-group,
+.list-group + .group-toggle {
   margin-top: 12px;
 }
 
-.runs-waiting-for-you .group-name {
+.list-group.waits .group-name {
   color: var(--human);
 }
 
-.run-link,
-.agent-row {
+.list-group > .problem,
+.list-group > .muted {
+  margin: 4px 10px;
+  font-size: 13px;
+}
+
+.day-name {
+  margin: 10px 10px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.show-more {
+  margin: 6px 10px;
+  font-size: 13px;
+}
+
+.list-row {
   display: flex;
   flex-direction: column;
   padding: 7px 10px;
@@ -2226,24 +2248,20 @@ h3 {
   text-decoration: none;
 }
 
-.run-link:hover,
-.agent-row:hover {
+.list-row:hover {
   background: var(--raised);
 }
 
-.run-link[aria-current="page"],
-.agent-row[aria-current="page"] {
+.list-row[aria-current="page"] {
   background: var(--raised);
   box-shadow: inset 3px 0 0 var(--action);
 }
 
-.run-link.waits,
-.agent-row.waits {
+.list-row.waits {
   background: var(--human-ground);
 }
 
-.run-link.waits[aria-current="page"],
-.agent-row.waits[aria-current="page"] {
+.list-row.waits[aria-current="page"] {
   box-shadow: inset 3px 0 0 var(--human);
 }
 
@@ -2253,8 +2271,8 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-.run-link.dim .run-name,
-.agent-row.dim .agent-row-name {
+.list-row.dim .run-name,
+.list-row.dim .agent-row-name {
   color: var(--muted);
   font-weight: 400;
 }
@@ -2266,8 +2284,8 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-.run-link.waits .run-about,
-.agent-row.waits .agent-row-about {
+.list-row.waits .run-about,
+.list-row.waits .agent-row-about {
   color: var(--human);
 }
 
@@ -2277,30 +2295,22 @@ h3 {
   gap: 6px;
 }
 
-.run-select,
-.tab-select {
-  flex: none;
-  max-width: 100%;
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--ink);
-  font: inherit;
-}
-
-.flow-run,
-.agent-detail {
+.list-main {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  container-type: inline-size;
 }
 
-.flow-run > .empty,
-.agent-detail > .empty {
+.list-main > .empty {
   padding-top: 40px;
+}
+
+.list-back {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 13px;
 }
 
 /* An agent's page: its head with the actions, the facts as a two-column grid, its latest
@@ -2381,6 +2391,23 @@ h3 {
 
 .agent-facts code {
   font-size: 12px;
+}
+
+/* A narrow page (the terminals open): each fact's name above its value. */
+@container (max-width: 560px) {
+  .agent-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .agent-facts dd + dt {
+    margin-top: 8px;
+  }
+
+  .agent-composer .composer {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: end;
+  }
 }
 
 .agent-task .chat-body > :first-child {

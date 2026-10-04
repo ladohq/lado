@@ -15,7 +15,7 @@ import type {
   SessionInfo,
 } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeResizeObserver, FakeSocket, stream, stubDialogs } from "./fakes";
+import { FakeEventSource, FakeSocket, narrowColumn, stream, stubDialogs, wideColumn } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -214,6 +214,7 @@ beforeEach(() => {
   FakeEventSource.autoStart = true;
   vi.stubGlobal("EventSource", FakeEventSource);
   vi.stubGlobal("WebSocket", FakeSocket);
+  wideColumn();
 });
 
 afterEach(() => {
@@ -274,23 +275,68 @@ test("the tab without an agent opens the supervisor, and an unknown one is not f
   expect(address()).toBe("/sessions/lado/agents/ghost");
 });
 
-test("in a column narrower than 900 px the list is a select, the finished ones in their group", async () => {
-  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
-  FakeResizeObserver.all = [];
+test("in a column narrower than 900 px the list takes it without an agent, an agent's page has the way back", async () => {
+  narrowColumn();
   serve();
-  open("/sessions/lado/agents/developer");
-  await page("developer");
-  await within(await list()).findByRole("button", { name: /Finished/ });
-  FakeResizeObserver.resize(() => 1000);
-  expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
-  FakeResizeObserver.resize(() => 700);
-  const select = screen.getByRole("combobox", { name: "Agent" }) as HTMLSelectElement;
-  expect(screen.queryByRole("navigation", { name: "Agents" })).toBeNull();
-  const groups = Array.from(select.querySelectorAll("optgroup")).map((one) => one.label);
-  expect(groups).toEqual(["Agents", "Finished (2)"]);
-  fireEvent.change(select, { target: { value: "/sessions/lado/agents/reviewer?finished=90" } });
+  open("/sessions/lado/agents");
+  const nav = await list();
+  expect(address()).toBe("/sessions/lado/agents");
+  expect(screen.queryByRole("combobox")).toBeNull();
+  expect(screen.queryByRole("region", { name: /^Agent / })).toBeNull();
+  fireEvent.click(await within(nav).findByRole("button", { name: /Finished \(2\)/ }));
+  fireEvent.click(within(nav).getByRole("link", { name: /reviewer/ }));
   expect(await page("reviewer")).toBeTruthy();
   expect(address()).toBe("/sessions/lado/agents/reviewer?finished=90");
+  expect(screen.queryByRole("navigation", { name: "Agents" })).toBeNull();
+  fireEvent.click(screen.getByRole("link", { name: "‹ All agents" }));
+  expect(address()).toBe("/sessions/lado/agents");
+  expect(await list()).toBeTruthy();
+});
+
+test("a finished agent's row is marked, not the live one of the same name; its folded group opens for it", async () => {
+  serve();
+  open("/sessions/lado/agents/developer?finished=70");
+  expect(await page("developer")).toBeTruthy();
+  const nav = await list();
+  const rows = within(nav)
+    .getAllByRole("link")
+    .filter((one) => one.querySelector(".agent-row-name")?.textContent === "developer");
+  expect(rows.map((one) => one.getAttribute("aria-current"))).toEqual([null, "page"]);
+  expect(within(nav).getByRole("region", { name: "Finished" })).toBeTruthy();
+  expect(localStorage.getItem("lado.agentsFinished")).toBeNull();
+});
+
+test("the search finds an agent by its name, role, task or run, a finished one by its name or how it ended", async () => {
+  serve();
+  open("/sessions/lado/agents/supervisor");
+  const nav = await list();
+  await within(nav).findByRole("button", { name: /Finished/ });
+  const search = screen.getByRole("searchbox", { name: "Find an agent" });
+  const found = () => within(nav).getAllByRole("link").map((one) => one.querySelector(".agent-row-name")?.textContent);
+  fireEvent.change(search, { target: { value: "AGENTS-TAB" } });
+  expect(found()).toEqual(["developer"]);
+  fireEvent.change(search, { target: { value: "discarded" } });
+  expect(found()).toEqual(["developer"]);
+  expect(within(nav).getByRole("region", { name: "Finished" })).toBeTruthy();
+  fireEvent.change(search, { target: { value: "nobody" } });
+  expect(within(nav).getByText("No agent matches “nobody”")).toBeTruthy();
+});
+
+test("the finished agents that cannot be read say why in their group, also while searching", async () => {
+  serve();
+  const fetch = vi.mocked(globalThis.fetch);
+  const answer = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path, init) =>
+    String(path).endsWith("/agents/finished")
+      ? new Response(JSON.stringify({ detail: "no events table" }), { status: 500 })
+      : answer(path as string, init),
+  );
+  open("/sessions/lado/agents/supervisor");
+  const nav = await list();
+  const finished = await within(nav).findByRole("region", { name: "Finished" });
+  expect(within(finished).getByRole("alert").textContent).toContain("no events table");
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find an agent" }), { target: { value: "zzz" } });
+  expect(within(nav).getByRole("alert").textContent).toContain("no events table");
 });
 
 test("a stopped session has no agents, only its finished ones, and nothing to write or finish", async () => {

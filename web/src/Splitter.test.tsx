@@ -1,12 +1,16 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
-import { fitWidth, Splitter } from "./Splitter";
+import { columnWidth, FakeResizeObserver } from "./fakes";
+import { fitWidth, Splitter, useWidth } from "./Splitter";
 
 const BOUNDS = { initial: 300, min: 200, max: 500 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 // A column with the splitter on its `edge`; what it changes is kept as `changed`.
 function Column({ edge, start = 300 }: { edge: "left" | "right"; start?: number }) {
@@ -71,6 +75,30 @@ test("a double click puts the width back to its default", () => {
   render(<Column edge="right" start={450} />);
   fireEvent.doubleClick(splitter());
   expect(width()).toBe(300);
+});
+
+// A box measured by useWidth that is drawn only once `shown`: first something else is.
+function Measured({ shown }: { shown: boolean }) {
+  const [ref, width] = useWidth<HTMLDivElement>();
+  if (!shown) return <p>Loading…</p>;
+  return (
+    <div ref={ref} data-testid="box">
+      {width === null ? "not measured" : `width ${width}`}
+    </div>
+  );
+}
+
+test("useWidth measures an element drawn after the first render, and the one that replaces it", () => {
+  columnWidth(null);
+  const { rerender } = render(<Measured shown={false} />);
+  rerender(<Measured shown />);
+  expect(screen.getByTestId("box").textContent).toBe("not measured");
+  FakeResizeObserver.resize(() => 700);
+  expect(screen.getByTestId("box").textContent).toBe("width 700");
+  cleanup();
+  columnWidth(1000); // laid out at once, as it is observed
+  render(<Measured shown />);
+  expect(screen.getByTestId("box").textContent).toBe("width 1000");
 });
 
 test("a column is narrowed to the room there is, but never under its least width", () => {

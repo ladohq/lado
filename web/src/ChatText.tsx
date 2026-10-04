@@ -16,6 +16,18 @@ export function day(iso: string): string {
   return Number.isNaN(when.getTime()) ? "" : when.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+// The local day a time falls on, as a heading of a list by days: "Today", "Yesterday", else
+// its date ("Oct 2").
+export function dayName(iso: string, now = new Date()): string {
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return "";
+  const midnight = (at: Date) => new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+  if (midnight(when) === midnight(now)) return "Today";
+  if (midnight(when) === yesterday) return "Yesterday";
+  return day(iso);
+}
+
 // How long ago, roughly: "<1 min", "12 min", "3 h", "2 d".
 export function since(iso: string): string {
   const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);

@@ -85,8 +85,7 @@ export function TerminalPanel({ session, children }: { session: string; children
   const [panel, setPanel] = useState(storedPanel);
   const [expanded, setExpanded] = useState(false);
   const [shown, setShown] = useState<string[]>([]); // the tabs whose terminal is made
-  const page = useRef<HTMLDivElement>(null);
-  const room = useWidth(page);
+  const [page, room] = useWidth<HTMLDivElement>();
   const tabList = useRef<HTMLDivElement>(null);
 
   // The selected tab, chosen here or by a chip, scrolls into the tabs' view.

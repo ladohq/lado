@@ -65,9 +65,11 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     page.set_viewport_size({"width": 1600, "height": 1000})
     session = flows_session(repo)
     log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}/flows")
-    # With the terminals collapsed the session's column is wide enough for the list.
+    page.goto(f"{server['url']}/sessions/{session}/activity")
+    # With the terminals collapsed the session's column is wide enough for the list and the
+    # page side by side.
     page.get_by_role("button", name="Collapse terminals").click()
+    page.get_by_role("link", name="Flows · 2").click()
     # The first run that waits for the human opens.
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
     expect(page.get_by_role("link", name="Flows · 2")).to_be_visible()
@@ -116,18 +118,33 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     shot(page, "ended")
 
 
-def test_in_a_narrow_column_the_runs_are_a_select(page: Page, server, repo, shot):
-    page.set_viewport_size({"width": 1280, "height": 900})
+def test_in_a_narrow_column_the_runs_take_it_and_a_run_has_the_way_back(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
     session = flows_session(repo)
     log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
-    select = page.get_by_role("combobox", name="Flow run")
-    expect(select).to_have_value("ship/x")
-    expect(page.get_by_role("navigation", name="Flow runs")).to_have_count(0)
-    shot(page, "narrow")
-    select.select_option("ship/y")
+    page.goto(f"{server['url']}/sessions/{session}/activity")
+    # The terminals are open: the session's column is narrower than 900 px.
+    expect(page.get_by_role("button", name="Collapse terminals")).to_be_visible()
+    page.get_by_role("link", name="Flows · 2").click()
+    runs_list = page.get_by_role("navigation", name="Flow runs")
+    expect(runs_list).to_be_visible()
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows")
+    expect(page.get_by_role("combobox")).to_have_count(0)
+    expect(page.get_by_role("region", name=re.compile("^Run "))).to_have_count(0)
+    shot(page, "list")
+    page.get_by_role("searchbox", name="Find a run").fill("logout")
+    expect(runs_list.get_by_role("link")).to_have_count(1)
+    runs_list.get_by_role("link", name="ship/y").click()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows/ship%2Fy")
     run = page.get_by_role("region", name="Run ship/y")
     expect(run.get_by_role("list", name="Steps")).to_contain_text(
         "now · plan · supervisor · visit 1"
     )
+    expect(runs_list).to_have_count(0)
+    shot(page, "run")
+    page.get_by_role("link", name="‹ All runs (2 open, 0 ended)").click()
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows")
+    expect(page.get_by_role("searchbox", name="Find a run")).to_have_value("logout")
+    expect(runs_list.get_by_role("link")).to_have_count(1)

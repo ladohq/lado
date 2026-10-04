@@ -6,7 +6,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeResizeObserver, FakeSocket, stream } from "./fakes";
+import { clock, dayName } from "./ChatText";
+import { FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -193,6 +194,7 @@ beforeEach(() => {
   FakeEventSource.autoStart = true;
   vi.stubGlobal("EventSource", FakeEventSource);
   vi.stubGlobal("WebSocket", FakeSocket);
+  wideColumn();
 });
 
 afterEach(() => {
@@ -246,14 +248,17 @@ test("the flows tab without a run opens the first waiting run, else the first ac
   expect(await page("fix/gate-bubble")).toBeTruthy();
 });
 
-test("with no runs the tab says so; with only ended ones it asks to select one", async () => {
+test("with no runs the tab says so; with only ended ones it opens the latest to end, its row seen", async () => {
   serve({ runs: [] });
   open("/sessions/lado/flows");
   expect(await screen.findByText("No flow runs yet")).toBeTruthy();
   cleanup();
-  serve({ runs: [ENDED] });
+  serve({ runs: [ENDED, CANCELLED] });
   open("/sessions/lado/flows");
-  expect(await screen.findByText("Select a run")).toBeTruthy();
+  expect(await page("fix/older")).toBeTruthy();
+  const row = within(await runs()).getByRole("link", { name: /fix\/older/ });
+  expect(row.getAttribute("aria-current")).toBe("page");
+  expect(localStorage.getItem("lado.flowsEnded")).toBeNull();
 });
 
 test("an unknown run is not found, and the address stays", async () => {
@@ -263,22 +268,42 @@ test("an unknown run is not found, and the address stays", async () => {
   expect(within(await runs()).getByRole("link").textContent).toContain("fix/gate-bubble");
 });
 
-test("in a column narrower than 900 px the list is a select with the same groups", async () => {
-  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
-  FakeResizeObserver.all = [];
-  serve({ runs: [ACTIVE, WAITING, ENDED] });
-  open(runPath("lado", ACTIVE.name));
-  await page("fix/gate-bubble");
-  FakeResizeObserver.resize(() => 1000);
-  expect(screen.queryByRole("combobox", { name: "Flow run" })).toBeNull();
-  FakeResizeObserver.resize(() => 700);
-  const select = screen.getByRole("combobox", { name: "Flow run" }) as HTMLSelectElement;
+test("in a column narrower than 900 px the list takes it, a run's page has the way back, and no select", async () => {
+  narrowColumn();
+  serve({ runs: [ACTIVE, WAITING, ENDED, CANCELLED] });
+  open("/sessions/lado/flows");
+  const list = await runs();
+  expect(screen.queryByRole("combobox")).toBeNull();
+  expect(screen.queryByRole("region", { name: /^Run / })).toBeNull();
+  fireEvent.click(within(list).getByRole("link", { name: /fix\/gate-bubble/ }));
+  expect(await page("fix/gate-bubble")).toBeTruthy();
   expect(screen.queryByRole("navigation", { name: "Flow runs" })).toBeNull();
-  expect(select.value).toBe("fix/gate-bubble");
-  const groups = Array.from(select.querySelectorAll("optgroup")).map((one) => one.label);
-  expect(groups).toEqual(["Waiting for you", "Active", "Ended (1)"]);
-  fireEvent.change(select, { target: { value: "feature/flows-tab" } });
-  expect(await page("feature/flows-tab")).toBeTruthy();
+  fireEvent.click(screen.getByRole("link", { name: "‹ All runs (2 open, 2 ended)" }));
+  expect(await runs()).toBeTruthy();
+});
+
+test("the search finds a run by its task, flow or state, the ended ones too", async () => {
+  serve({ runs: [ACTIVE, WAITING, run("fix/login", { status: "ended", task: "Add a LOGIN page", ended_at: "2026-10-03T11:00:00.000Z" })] });
+  open(runPath("lado", ACTIVE.name));
+  const list = await runs();
+  const search = screen.getByRole("searchbox", { name: "Find a run" });
+  fireEvent.change(search, { target: { value: "login" } });
+  expect(within(list).getAllByRole("link").map((one) => one.querySelector(".run-name")?.textContent)).toEqual(["fix/login"]);
+  fireEvent.change(search, { target: { value: "merge_ok" } });
+  expect(within(list).getAllByRole("link").map((one) => one.querySelector(".run-name")?.textContent)).toEqual([
+    "feature/flows-tab",
+  ]);
+  fireEvent.change(search, { target: { value: "nothing like it" } });
+  expect(within(list).getByText("No run matches “nothing like it”")).toBeTruthy();
+});
+
+test("an ended run's row has its status and time; its day heads its rows", async () => {
+  serve({ runs: [ACTIVE, ENDED] });
+  open(runPath("lado", ENDED.name));
+  const ended = within(await runs()).getByRole("region", { name: "Ended" });
+  const row = within(ended).getByRole("link");
+  expect(row.textContent).toContain(`ended · ${clock(ENDED.ended_at!)}`);
+  expect(within(ended).getByRole("heading").textContent).toBe(dayName(ENDED.ended_at!));
 });
 
 // A run's page

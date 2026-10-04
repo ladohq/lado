@@ -1,6 +1,6 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
 // session on the right with its tabs. The list's width is dragged on its edge and remembered.
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   Link,
   NavLink,
@@ -62,8 +62,7 @@ export function Sessions() {
     storeStoppedOpen(!stoppedOpen);
   };
   const [list, setList] = useState(storedSessionsList);
-  const page = useRef<HTMLDivElement>(null);
-  const room = useWidth(page);
+  const [page, room] = useWidth<HTMLDivElement>();
   // The list leaves the session and the terminals their least widths.
   const width = fitWidth(list.width, SESSIONS_WIDTH, room === null ? null : room - MAIN_MIN - PANEL_WIDTH.min);
   const resize = (next: number) => {

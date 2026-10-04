@@ -49,7 +49,9 @@ def test_the_link_opens_the_page_it_names_and_the_session_shows_there(
     shot(page)
 
     view.get_by_role("link", name="Agents").click()
-    # The tab opens its supervisor's page.
+    # The terminals are open, so the session's column is narrow: the tab is its list.
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents")
+    view.get_by_role("navigation", name="Agents").get_by_role("link", name="supervisor").click()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents/supervisor")
     page.reload()  # an address of the UI holds on a reload
     expect(view.get_by_role("region", name="Agent supervisor")).to_be_visible()

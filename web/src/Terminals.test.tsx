@@ -4,7 +4,17 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { AGENT_REST, FakeEventSource, FakeResizeObserver, FakeSocket, FakeXterm, stream, stubDialogs } from "./fakes";
+import {
+  AGENT_REST,
+  columnWidth,
+  FakeEventSource,
+  FakeResizeObserver,
+  FakeSocket,
+  FakeXterm,
+  stream,
+  stubDialogs,
+  wideColumn,
+} from "./fakes";
 import { RETRY_MS } from "./terminalLink";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -163,6 +173,7 @@ test("× closes a tab and its socket; with the last other tab closed the supervi
 });
 
 test("the Agents tab opens an agent's terminal in the same panel", async () => {
+  wideColumn();
   await open("/sessions/lado/agents/w1");
   const agent = await screen.findByRole("region", { name: "Agent w1" });
   fireEvent.click(within(agent).getByRole("button", { name: "Open terminal" }));
@@ -252,8 +263,7 @@ test("a chip opens a collapsed panel on its agent's terminal", async () => {
 });
 
 test("collapsing the panel keeps its sockets, and in control tells the server no new size", async () => {
-  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
-  FakeResizeObserver.all = [];
+  columnWidth(null);
   localStorage.setItem("lado.askControl", "never");
   await open();
   const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
@@ -482,8 +492,7 @@ test("a collapsed panel has no edge", async () => {
 });
 
 test("in a narrow window the panel is narrowed to leave the session its room, and its width stays remembered", async () => {
-  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
-  FakeResizeObserver.all = [];
+  columnWidth(null);
   localStorage.setItem("lado.terminals", JSON.stringify({ width: 600, collapsed: false }));
   await open();
   FakeResizeObserver.resize((target) => (target.classList.contains("session-page") ? 800 : 1000));

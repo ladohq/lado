@@ -4,9 +4,9 @@
 // its work in git, its latest messages, and the actions on it (its terminal, a message to
 // it, Finish). A finished agent's page is read only. The agents follow the feed (live.ts);
 // the state of the work and the finished agents are asked of the server: git and the
-// "finished" events have no item in the feed. In a narrow column the list is a select.
+// "finished" events have no item in the feed. The list and the page are a ListPage.
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import {
   ApiError,
@@ -23,11 +23,11 @@ import {
 } from "./api";
 import { Composer } from "./Chat";
 import { clock, Preview, since } from "./ChatText";
-import { FoldToggle } from "./Fold";
+import { isOpen } from "./Flows";
 import { useLive, useLiveStore } from "./live";
+import { ListPage, type Entry } from "./ListPage";
 import { agentPath, runPath, sessionPath } from "./paths";
 import { storeAgentMessages, storedAgentsFinishedOpen, storeAgentsFinishedOpen } from "./prefs";
-import { useNarrow } from "./Splitter";
 import { StatusDot, SUPERVISOR } from "./Team";
 import { useOpenTerminal } from "./Terminals";
 
@@ -92,8 +92,6 @@ export function Agents({
   useEffect(() => live.watch("agents", session), [live, session]);
   useEffect(() => live.watch("messages", session), [live, session]);
   useEffect(() => live.watch("runs", session), [live, session]);
-  const root = useRef<HTMLDivElement>(null);
-  const narrow = useNarrow(root);
 
   const loaded = state.agents[session] ?? null;
   const agents = loaded && "items" in loaded ? agentOrder(loaded.items) : null;
@@ -105,48 +103,58 @@ export function Agents({
     runs: runs && "items" in runs ? runs.items : [],
   };
 
-  if (agent === undefined && !stopped) return <Navigate replace to={agentPath(session, SUPERVISOR)} />;
-  let body;
+  let notice;
   if (loaded === null) {
-    body = <p className="muted">Loading…</p>;
+    notice = <p className="muted">Loading…</p>;
   } else if ("error" in loaded) {
-    body = (
+    notice = (
       <p className="problem" role="alert">
         {loaded.error}
       </p>
     );
-  } else {
-    const done = finished && "items" in finished ? finished.items : [];
-    const record = finishedId === undefined ? undefined : done.find((one) => String(one.id) === finishedId);
-    const alive = finishedId === undefined ? agents?.find((one) => one.name === agent) : undefined;
-    let page;
-    if (agent === undefined) {
-      page = <p className="empty">Session stopped: no agents</p>;
-    } else if (alive) {
-      page = <AgentPage key={alive.name} session={session} agent={alive} stopped={stopped} lists={lists} />;
-    } else if (record && record.name === agent) {
-      page = <FinishedPage session={session} record={record} messages={lists.messages} />;
-    } else if (finishedId !== undefined && finished === null) {
-      page = <p className="muted">Loading…</p>;
-    } else {
-      page = <p className="empty">Agent {agent} not found</p>;
-    }
-    const picked = { agent, finished: finishedId };
-    body = (
-      <>
-        {narrow ? (
-          <AgentSelect session={session} agents={agents ?? []} finished={finished} picked={picked} />
-        ) : (
-          <AgentList session={session} agents={agents ?? []} finished={finished} runs={lists.runs} picked={picked} />
-        )}
-        <div className="agent-detail">{page}</div>
-      </>
-    );
   }
+  const done = finished && "items" in finished ? finished.items : [];
+  const record = finishedId === undefined ? undefined : done.find((one) => String(one.id) === finishedId);
+  const alive = finishedId === undefined ? agents?.find((one) => one.name === agent) : undefined;
+  let page;
+  if (alive) {
+    page = <AgentPage key={alive.name} session={session} agent={alive} stopped={stopped} lists={lists} />;
+  } else if (record && record.name === agent) {
+    page = <FinishedPage session={session} record={record} messages={lists.messages} />;
+  } else if (finishedId !== undefined && finished === null) {
+    page = <p className="muted">Loading…</p>;
+  } else {
+    page = <p className="empty">Agent {agent} not found</p>;
+  }
+  let selected;
+  if (agent !== undefined) selected = finishedId === undefined ? `agent:${agent}` : `finished:${finishedId}`;
   return (
-    <div ref={root} className={`agents-tab${narrow ? " narrow" : ""}`}>
-      {body}
-    </div>
+    <ListPage
+      label="Agents"
+      noun="agent"
+      groups={[
+        {
+          name: "Agents",
+          heading: false,
+          entries: (agents ?? []).map((one) => liveEntry(session, one, lists.runs)),
+        },
+        {
+          name: "Finished",
+          entries: done.map((one) => finishedEntry(session, one)),
+          days: true,
+          fold: { stored: storedAgentsFinishedOpen, store: storeAgentsFinishedOpen },
+          problem: finished && "error" in finished ? finished.error : null,
+          loading: finished === null,
+        },
+      ]}
+      selected={selected}
+      page={page}
+      listPath={sessionPath(session, "agents")}
+      back="All agents"
+      fallback={stopped ? undefined : agentPath(session, SUPERVISOR)}
+      empty={<p className="empty">Session stopped: no agents</p>}
+      notice={notice}
+    />
   );
 }
 
@@ -159,140 +167,51 @@ function workingOn(agent: AgentInfo, runs: RunInfo[]): string {
   return firstLine(agent.task);
 }
 
-type Picked = { agent?: string; finished?: string };
-
-// The row's page is the one shown: a live agent's and a finished one's of the same name differ
-// by ?finished=, which the router's own marking does not look at.
-const current = (yes: boolean) => (yes ? ("page" as const) : undefined);
-
-function AgentList({
-  session,
-  agents,
-  finished,
-  runs,
-  picked,
-}: {
-  session: string;
-  agents: AgentInfo[];
-  finished: Finished;
-  runs: RunInfo[];
-  picked: Picked;
-}) {
-  // Open from the start when the page shown is a finished agent's, so its row is seen.
-  const [open, setOpen] = useState(() => storedAgentsFinishedOpen() || picked.finished !== undefined);
-  const toggle = () => {
-    setOpen(!open);
-    storeAgentsFinishedOpen(!open);
+// A live agent's row: its status, and why it waits or what it works for. The keys tell a live
+// agent from a finished one of the same name.
+function liveEntry(session: string, agent: AgentInfo, runs: RunInfo[]): Entry {
+  const waits = agent.status === "waiting";
+  const detail = waits && agent.waiting_reason ? firstLine(agent.waiting_reason) : workingOn(agent, runs);
+  return {
+    key: `agent:${agent.name}`,
+    to: agentPath(session, agent.name),
+    row: (
+      <>
+        <span className="agent-row-head">
+          <StatusDot status={agent.status} />
+          <span className="agent-row-name">{agent.name}</span>
+        </span>
+        <span className="agent-row-about">
+          {agent.status} · {since(agent.since)}
+        </span>
+        {detail && <span className="agent-row-about">{detail}</span>}
+      </>
+    ),
+    search: [agent.name, agent.role, agent.task ?? "", agent.run ?? ""],
+    tone: waits ? "waits" : undefined,
   };
-  const done = finished && "items" in finished ? finished.items : [];
-  return (
-    <nav className="agent-list" aria-label="Agents">
-      <ul>
-        {agents.map((agent) => {
-          const waits = agent.status === "waiting";
-          const detail = waits && agent.waiting_reason ? firstLine(agent.waiting_reason) : workingOn(agent, runs);
-          return (
-            <li key={agent.name}>
-              <Link
-                to={agentPath(session, agent.name)}
-                className={`agent-row${waits ? " waits" : ""}`}
-                aria-current={current(picked.finished === undefined && picked.agent === agent.name)}
-              >
-                <span className="agent-row-head">
-                  <StatusDot status={agent.status} />
-                  <span className="agent-row-name">{agent.name}</span>
-                </span>
-                <span className="agent-row-about">
-                  {agent.status} · {since(agent.since)}
-                </span>
-                {detail && <span className="agent-row-about">{detail}</span>}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-      {finished && "error" in finished && (
-        <p className="problem" role="alert">
-          {finished.error}
-        </p>
-      )}
-      {done.length > 0 && (
-        <FoldToggle name="Finished" count={done.length} open={open} controls="finished-agents" onToggle={toggle} />
-      )}
-      {open && done.length > 0 && (
-        <section id="finished-agents" aria-label="Finished">
-          <ul>
-            {done.map((one) => (
-              <li key={one.id}>
-                <Link
-                  to={agentPath(session, one.name, one.id)}
-                  className="agent-row dim"
-                  aria-current={current(picked.finished === String(one.id))}
-                >
-                  <span className="agent-row-name">{one.name}</span>
-                  <span className="agent-row-about">
-                    finished {clock(one.finished_at)} · {one.detail}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </nav>
-  );
 }
 
-function AgentSelect({
-  session,
-  agents,
-  finished,
-  picked,
-}: {
-  session: string;
-  agents: AgentInfo[];
-  finished: Finished;
-  picked: Picked;
-}) {
-  const navigate = useNavigate();
-  const done = finished && "items" in finished ? finished.items : [];
-  const value =
-    picked.agent === undefined
-      ? ""
-      : agentPath(session, picked.agent, picked.finished === undefined ? undefined : Number(picked.finished));
-  return (
-    <select
-      className="tab-select"
-      aria-label="Agent"
-      value={value}
-      onChange={(event) => navigate(event.target.value)}
-    >
-      {value === "" && <option value="">Select an agent</option>}
-      {agents.length > 0 && (
-        <optgroup label="Agents">
-          {agents.map((agent) => (
-            <option key={agent.name} value={agentPath(session, agent.name)}>
-              {agent.name} · {agent.status}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {done.length > 0 && (
-        <optgroup label={`Finished (${done.length})`}>
-          {done.map((one) => (
-            <option key={one.id} value={agentPath(session, one.name, one.id)}>
-              {one.name} · finished {clock(one.finished_at)}
-            </option>
-          ))}
-        </optgroup>
-      )}
-    </select>
-  );
+// A finished agent's row: when (its day heads the rows) and how it ended.
+function finishedEntry(session: string, one: FinishedAgentInfo): Entry {
+  return {
+    key: `finished:${one.id}`,
+    to: agentPath(session, one.name, one.id),
+    row: (
+      <>
+        <span className="agent-row-name">{one.name}</span>
+        <span className="agent-row-about">
+          finished {clock(one.finished_at)} · {one.detail}
+        </span>
+      </>
+    ),
+    search: [one.name, one.detail],
+    tone: "dim",
+    at: one.finished_at,
+  };
 }
 
 type Lists = { messages: MessageInfo[]; runs: RunInfo[] };
-
-const isOpen = (run: RunInfo) => run.status === "active" || run.status === "waiting";
 
 // Where the work stands in git: asked when the page opens, again when the agent becomes idle
 // (it may have committed) and on Refresh; no polling. The last answer stays while a new one

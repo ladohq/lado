@@ -2,19 +2,17 @@
 // the selected run's page on the right: its head, every state of its flow, its open gate,
 // answered in place, and the timeline of its steps. A step is a note (NoteInfo: who
 // reported it, the outcome and where it leads); the run's start, end and cancel are its
-// events. All of it live from the feed (live.ts); in a narrow column the list is a select.
-import { useEffect, useRef, useState } from "react";
-import { Navigate, NavLink, useNavigate } from "react-router";
+// events. All of it live from the feed (live.ts); the list and the page are a ListPage.
+import { useEffect } from "react";
 
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
 import { AgentName } from "./Agents";
-import { clock, day, Preview, since } from "./ChatText";
-import { FoldToggle } from "./Fold";
+import { clock, Preview, since } from "./ChatText";
 import { Gate } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
-import { runPath } from "./paths";
+import { ListPage, type Entry as ListEntry } from "./ListPage";
+import { runPath, sessionPath } from "./paths";
 import { storedFlowsEndedOpen, storeFlowsEndedOpen } from "./prefs";
-import { useNarrow } from "./Splitter";
 
 const NOTE_LINES = 6; // the lines of a step's note shown before Show all
 
@@ -33,8 +31,6 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
   useEffect(() => live.watch("events", session), [live, session]);
   useEffect(() => live.watch("gates", session), [live, session]);
   useEffect(() => live.watch("agents", session), [live, session]); // who links to its page
-  const root = useRef<HTMLDivElement>(null);
-  const narrow = useNarrow(root);
 
   const loaded = [state.runs[session], state.notes[session], state.events[session], state.gates[session]] as (
     | ListLoaded<unknown>
@@ -42,29 +38,56 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
   )[];
   const failed = loaded.find((one) => one && "error" in one) as { error: string } | undefined;
   const ready = loaded.every((one) => one && "items" in one);
-  let body;
+  const items = (one: unknown) => (one && "items" in (one as object) ? (one as { items: never[] }).items : []);
+  const lists: Lists = {
+    runs: items(loaded[0]),
+    notes: items(loaded[1]),
+    events: items(loaded[2]),
+    gates: items(loaded[3]),
+  };
+  let notice;
   if (failed) {
-    body = (
+    notice = (
       <p className="problem" role="alert">
         {failed.error}
       </p>
     );
   } else if (!ready) {
-    body = <p className="muted">Loading…</p>;
-  } else {
-    const items = (one: unknown) => (one as { items: never[] }).items;
-    const lists: Lists = {
-      runs: items(loaded[0]),
-      notes: items(loaded[1]),
-      events: items(loaded[2]),
-      gates: items(loaded[3]),
-    };
-    body = <FlowsBody session={session} run={run} stopped={stopped} lists={lists} narrow={narrow} />;
+    notice = <p className="muted">Loading…</p>;
+  } else if (lists.runs.length === 0) {
+    notice = <p className="empty">No flow runs yet</p>;
   }
+  const groups = grouped(lists.runs);
+  const selected = lists.runs.find((one) => one.name === run);
+  const first = groups.waiting[0] ?? groups.active[0] ?? groups.ended[0];
+  const open = groups.waiting.length + groups.active.length;
   return (
-    <div ref={root} className={`flows${narrow ? " narrow" : ""}`}>
-      {body}
-    </div>
+    <ListPage
+      label="Flow runs"
+      noun="run"
+      groups={[
+        { name: "Waiting for you", tone: "waits", entries: groups.waiting.map((one) => entry(session, one)) },
+        { name: "Active", entries: groups.active.map((one) => entry(session, one)) },
+        {
+          name: "Ended",
+          entries: groups.ended.map((one) => entry(session, one)),
+          days: true,
+          fold: { stored: storedFlowsEndedOpen, store: storeFlowsEndedOpen },
+        },
+      ]}
+      selected={run}
+      page={
+        selected === undefined ? (
+          <p className="empty">Run {run} not found</p>
+        ) : (
+          <RunPage session={session} run={selected} stopped={stopped} lists={lists} />
+        )
+      }
+      listPath={sessionPath(session, "flows")}
+      back={`All runs (${open} open, ${groups.ended.length} ended)`}
+      fallback={first && runPath(session, first.name)}
+      notice={notice}
+    />
   );
 }
 
@@ -80,145 +103,33 @@ function grouped(runs: RunInfo[]) {
   };
 }
 
-function FlowsBody({
-  session,
-  run,
-  stopped,
-  lists,
-  narrow,
-}: {
-  session: string;
-  run?: string;
-  stopped: boolean;
-  lists: Lists;
-  narrow: boolean;
-}) {
-  const groups = grouped(lists.runs);
-  if (run === undefined) {
-    const first = groups.waiting[0] ?? groups.active[0];
-    if (first) return <Navigate replace to={runPath(session, first.name)} />;
-  }
-  const selected = lists.runs.find((one) => one.name === run);
-  let page;
-  if (run === undefined) {
-    page = <p className="empty">{lists.runs.length === 0 ? "No flow runs yet" : "Select a run"}</p>;
-  } else if (selected === undefined) {
-    page = <p className="empty">Run {run} not found</p>;
-  } else {
-    page = <RunPage session={session} run={selected} stopped={stopped} lists={lists} />;
-  }
-  if (lists.runs.length === 0) return page;
-  return (
-    <>
-      {narrow ? (
-        <RunSelect session={session} run={run} groups={groups} />
-      ) : (
-        <RunList session={session} groups={groups} />
-      )}
-      <div className="flow-run">{page}</div>
-    </>
-  );
-}
-
-type Groups = ReturnType<typeof grouped>;
-
-function RunList({ session, groups }: { session: string; groups: Groups }) {
-  const [endedOpen, setEndedOpen] = useState(storedFlowsEndedOpen);
-  const toggle = () => {
-    setEndedOpen(!endedOpen);
-    storeFlowsEndedOpen(!endedOpen);
+// A run's row: its name and one line under it; found by its name, task, flow and state.
+function entry(session: string, run: RunInfo): ListEntry {
+  return {
+    key: run.name,
+    to: runPath(session, run.name),
+    row: (
+      <>
+        <span className="run-name">{run.name}</span>
+        <span className="run-about">{about(run)}</span>
+      </>
+    ),
+    search: [run.name, run.task, run.flow, run.state],
+    tone: run.status === "waiting" ? "waits" : isOpen(run) ? undefined : "dim",
+    at: run.ended_at ?? undefined,
   };
-  return (
-    <nav className="run-list" aria-label="Flow runs">
-      <RunGroup session={session} name="Waiting for you" runs={groups.waiting} />
-      <RunGroup session={session} name="Active" runs={groups.active} />
-      {groups.ended.length > 0 && (
-        <FoldToggle name="Ended" count={groups.ended.length} open={endedOpen} controls="ended-runs" onToggle={toggle} />
-      )}
-      {endedOpen && <RunGroup session={session} name="Ended" id="ended-runs" runs={groups.ended} hideName />}
-    </nav>
-  );
-}
-
-function RunGroup({
-  session,
-  name,
-  runs,
-  id,
-  hideName = false,
-}: {
-  session: string;
-  name: string;
-  runs: RunInfo[];
-  id?: string;
-  hideName?: boolean;
-}) {
-  if (runs.length === 0) return null;
-  const slug = name.toLowerCase().replace(/\s+/g, "-");
-  const headId = `runs-${slug}`;
-  return (
-    <section
-      className={`run-group runs-${slug}`}
-      id={id}
-      aria-label={hideName ? name : undefined}
-      aria-labelledby={hideName ? undefined : headId}
-    >
-      {!hideName && (
-        <h3 id={headId} className="group-name">
-          {name}
-        </h3>
-      )}
-      <ul>
-        {runs.map((run) => (
-          <li key={run.name}>
-            <NavLink
-              to={runPath(session, run.name)}
-              className={`run-link${run.status === "waiting" ? " waits" : ""}${isOpen(run) ? "" : " dim"}`}
-            >
-              <span className="run-name">{run.name}</span>
-              <span className="run-about">{about(run)}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
 }
 
 // One line under a run's name: its state and who acts or what it waits for, and how long
-// it has been so; an ended run's status and when it ended.
+// it has been so; an ended run's status and when it ended (its day heads the rows).
 function about(run: RunInfo): string {
-  if (!isOpen(run)) return [run.status, run.ended_at && day(run.ended_at)].filter(Boolean).join(" · ");
+  if (!isOpen(run)) return [run.status, run.ended_at && clock(run.ended_at)].filter(Boolean).join(" · ");
   return `${run.state} · ${waitsFor(run)} · ${since(run.since)}`;
 }
 
 function waitsFor(run: RunInfo): string {
   if (run.status === "waiting") return run.gate !== null ? `gate #${run.gate}` : run.reason;
   return `→ ${run.acting}`;
-}
-
-
-function RunSelect({ session, run, groups }: { session: string; run?: string; groups: Groups }) {
-  const navigate = useNavigate();
-  const options = (runs: RunInfo[]) =>
-    runs.map((one) => (
-      <option key={one.name} value={one.name}>
-        {one.name} · {about(one)}
-      </option>
-    ));
-  return (
-    <select
-      className="run-select"
-      aria-label="Flow run"
-      value={run ?? ""}
-      onChange={(event) => navigate(runPath(session, event.target.value))}
-    >
-      {run === undefined && <option value="">Select a run</option>}
-      {groups.waiting.length > 0 && <optgroup label="Waiting for you">{options(groups.waiting)}</optgroup>}
-      {groups.active.length > 0 && <optgroup label="Active">{options(groups.active)}</optgroup>}
-      {groups.ended.length > 0 && <optgroup label={`Ended (${groups.ended.length})`}>{options(groups.ended)}</optgroup>}
-    </select>
-  );
 }
 
 function RunPage({ session, run, stopped, lists }: { session: string; run: RunInfo; stopped: boolean; lists: Lists }) {

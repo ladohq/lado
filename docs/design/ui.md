@@ -332,6 +332,24 @@ Sessions for now. The UI's texts are in English.
   but are hidden, so nothing is resized (in control too), and a panel collapsed when the
   page opens opens no socket until it is opened. A chip opens a collapsed panel. Collapsed
   is remembered in the browser (`lado.terminals`) and is the default below 900 px.
+- **List and page** (task feature/flows-list, 2026-10-04, boards 14–15 of the canvas; one
+  component, `ListPage.tsx`, for every tab with a list: Flows, Agents, later Artifacts):
+  the tab's list of items and the page of the one its address names. In a column of 900 px
+  or wider the list is on the left (240–300 px) and the page on the right, each scrolling
+  by itself; an address without an item goes (replaced) to the tab's default item. In a
+  narrower column (the terminals open) the address without an item shows the list over
+  the whole column, with no redirect, and an item's address shows its page alone, under a link back to the list (`‹ All runs (2 open, 39 ended)`, `‹ All
+  agents`), which comes back with its search and its scroll as they were. Until the
+  column is measured neither is drawn. Above the list a search (`Find a run`), any case,
+  by the texts each tab names; while it has text, folded groups are open and show every
+  match, and with none it says `No run matches “…”`. A folded group (ended runs, finished
+  agents) is remembered as before, its rows under their local day (Today, Yesterday, a
+  date; a row has the time), the latest 10 first and then **Show N more**. The selected
+  item is always seen and marked (`aria-current`): its group opens for it and it shows
+  past the first 10, neither remembered; items are picked by key, so a live and a
+  finished agent of one name differ. A group says why it has no items in their place:
+  its problem (an alert) or Loading…, also while searching. The page is a size container:
+  its own layout goes by its own width (`@container`), not by the column's.
 - **Columns**: the list and the panel are resized on their edges with one component
   (`Splitter.tsx`: a `separator`, dragged, the arrow keys, a double click for the default
   width; a wide grip with a `col-resize` cursor and a line on hover and focus), within
@@ -714,7 +732,10 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   of the task; an agent in `waiting` is orange with the first line of why. **Finished
   (n)** at the bottom, folded (remembered, `lado.agentsFinished`), newest first: name,
   when, how. It is asked again whenever the live agents change (a finish deletes one).
-  The tab is **Agents · N**, N the live agents. Narrower than 900 px, a select.
+  The tab is **Agents · N**, N the live agents. A List and page (Structure): the search
+  finds a live agent by name, role, task and run, a finished one by name and how it
+  ended; Finished says in its place why it cannot be read, or Loading…. On a narrow page
+  the facts' names stand above their values and Write takes the page's width.
 - **An agent's page**: the head (name, role, provider, status and for how long, when it
   was spawned, for which run and step with the visit, from the run in the store), Open
   terminal, **Write to <agent>** (the Activity composer with `to` fixed; the supervisor
@@ -731,7 +752,8 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
 - **A finished agent's page** (`?finished=<id>`): read only, when it was spawned and
   finished and how, its messages between the two. An unknown agent or id: "Agent <name>
   not found".
-- `/sessions/<name>/agents` opens the supervisor. A stopped session has no live agents
+- `/sessions/<name>/agents` opens the supervisor in a wide column, the list in a narrow
+  one. A stopped session has no live agents
   (`lado stop` forgets them): "Session stopped: no agents", its finished ones, no Write
   or Finish.
 - In Flows, who acts in a run's head and who reported a step link to the agent's page
@@ -768,9 +790,9 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   and **Ended (n)** at the bottom, ended and cancelled runs by when they ended, the latest
   first, folded (remembered in the browser, `lado.flowsEnded`). A row: the run's name
   (mono), its state and who acts or the gate it waits at, how long it has been so; an
-  ended one its status and day. The tab is **Flows · N**, N the open runs (none: Flows).
-  When the session's column is narrower than 900 px (the terminals open), the list is a
-  select above the run, with the same groups (`optgroup`).
+  ended one its status and time, under its day. The tab is **Flows · N**, N the open runs
+  (none: Flows). A List and page (Structure): the search finds a run by name, task, flow
+  and state.
 - **A run's page** (`/sessions/<name>/flows/<run>`): the head (name, flow, kit, started,
   task, state, status, who acts, why it waits, branch); the flow: every state in the order
   the flow declares them, with who acts ("you" at a gate, marked ◇) and visits (`2/3`
@@ -787,9 +809,10 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   <state> · <acting> · visit 2 of 3`, `acting` as the core says it (the UI does not parse
   it), or `now · <state> · waits for you (gate #41)`. All of it follows the feed: an
   answer anywhere moves the page on without a reload.
-- `/sessions/<name>/flows` without a run opens the first run that waits for the human,
-  else the first active one (the address replaced); with none, "No flow runs yet" or
-  "Select a run". An unknown run says "Run <name> not found" and the address stays.
+- `/sessions/<name>/flows` without a run, in a wide column, opens the first run that waits
+  for the human, else the first active one, else the latest to end (the address
+  replaced); in a narrow one it is the list. With no runs, "No flow runs yet". An unknown
+  run says "Run <name> not found" and the address stays.
 - Not in it (later tasks): cancel and flow-set from the UI (they stay in the CLI),
   starting a flow from the UI, editing flows.
 

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { AGENT_REST, FakeEventSource, FakeSocket, stream, stubDialogs } from "./fakes";
+import { AGENT_REST, FakeEventSource, FakeSocket, stream, stubDialogs, wideColumn } from "./fakes";
 import { BUNDLE_VERSION } from "./version";
 
 // A session's page has the terminal panel (Terminals.test.tsx): no canvas, no server here.
@@ -407,6 +407,7 @@ test("a change of another kind leaves the sessions alone", async () => {
 });
 
 test("the Agents tab follows the agents' changes; a reset loads them again", async () => {
+  wideColumn();
   const fetch = serve();
   open("/sessions/lado/agents");
   const list = await screen.findByRole("navigation", { name: "Agents" });

@@ -1,6 +1,7 @@
 // Fakes for the UI's unit tests (not part of the bundle: only tests import this file). jsdom
 // has no canvas for xterm.js, no server for WebSockets and no EventSource.
 import { act } from "@testing-library/react";
+import { vi } from "vitest";
 
 // A WebSocket the test drives: it opens, sends frames and closes as the server would.
 export class FakeSocket {
@@ -104,9 +105,11 @@ export class FakeFit {
   dispose() {}
 }
 
-// The browser's ResizeObserver: `resize` lays every observed element out at a width.
+// The browser's ResizeObserver: `resize` lays every observed element out at a width; with
+// `width` set, an element is laid out at it as soon as it is observed.
 export class FakeResizeObserver {
   static all: FakeResizeObserver[] = [];
+  static width: number | null = null;
   private targets: Element[] = [];
 
   constructor(private readonly callback: (entries: { target: Element; contentRect: { width: number } }[]) => void) {
@@ -114,6 +117,8 @@ export class FakeResizeObserver {
   }
   observe(target: Element) {
     this.targets.push(target);
+    const width = FakeResizeObserver.width;
+    if (width !== null) this.callback([{ target, contentRect: { width } }]);
   }
   disconnect() {
     this.targets = [];
@@ -126,6 +131,18 @@ export class FakeResizeObserver {
     );
   }
 }
+
+// The page's columns as the browser lays them out: every element measured with useWidth is
+// `width` wide as soon as it is drawn (null: not laid out until FakeResizeObserver.resize).
+// A tab's list and page (ListPage) are side by side from NARROW (900) on.
+export function columnWidth(width: number | null) {
+  FakeResizeObserver.all = [];
+  FakeResizeObserver.width = width;
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+}
+
+export const wideColumn = () => columnWidth(1000);
+export const narrowColumn = () => columnWidth(700);
 
 // jsdom has <dialog> but not showModal and close: the UI's modal dialogs need them.
 export function stubDialogs() {

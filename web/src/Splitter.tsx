@@ -1,7 +1,7 @@
 // The edge between two columns of a page (docs/design/ui.md, Structure): drag it, or use the
 // arrow keys on it, to change its column's width within the column's bounds; a double click
 // puts the default width back. One component for every resizable column.
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useState } from "react";
 
 import type { Bounds } from "./prefs";
 
@@ -15,26 +15,20 @@ const clamp = (value: number, { min, max }: Bounds) => Math.round(Math.min(max, 
 export const fitWidth = (width: number, bounds: Bounds, room: number | null) =>
   room === null ? width : Math.max(bounds.min, Math.min(width, Math.floor(room)));
 
-// The width of an element as it is laid out, or null before the first layout (and in jsdom,
-// which lays out nothing).
-export function useWidth(element: RefObject<HTMLElement | null>): number | null {
+// The width of an element as it is laid out, or null before its first layout (and in jsdom,
+// which has no ResizeObserver and lays out nothing). The element is the one the returned ref
+// is set on: it is observed as soon as it is drawn, however late, and again when another
+// element takes its place.
+export function useWidth<T extends HTMLElement>(): [(element: T | null) => void, number | null] {
+  const [element, setElement] = useState<T | null>(null);
   const [width, setWidth] = useState<number | null>(null);
   useEffect(() => {
-    if (typeof ResizeObserver === "undefined" || !element.current) return;
+    if (element === null || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
-    observer.observe(element.current);
+    observer.observe(element);
     return () => observer.disconnect();
   }, [element]);
-  return width;
-}
-
-// Narrower than this, a tab's list (Flows, Agents) is a select above its page.
-export const NARROW = 900;
-
-// Whether the element is laid out narrower than NARROW (false before the first layout).
-export function useNarrow(element: RefObject<HTMLElement | null>): boolean {
-  const width = useWidth(element);
-  return width !== null && width < NARROW;
+  return [setElement, width];
 }
 
 // `edge`: the side of its column the splitter is on; moving it outward widens the column.

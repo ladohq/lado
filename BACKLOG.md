@@ -537,3 +537,14 @@ Found: 2026-10-04, fix/snapshot-core (implement).
 Wanted: the same refusal as the other commands in a stopped session (`session "s" is
 stopped; …`), which says what to do.
 Found: 2026-10-04, feature/agents-tab (implement).
+
+## An agent's page says "No messages yet" though it has messages
+
+On 0.18.0 the supervisor's page in the Agents tab of session `lado` showed "No messages
+yet", though after its spawn (2026-10-04T15:04:49Z) there were messages to and from it:
+from `lado` (#751), its questions to the human (#756, #757) and the human's answers.
+Not traced yet: the filter in `Agents.tsx` (`AgentMessages`: `one.from === name ||
+one.to === name` within the agent's lifetime) or which messages the live `messages` store
+loads for the session.
+Wanted: an agent's page lists its latest messages from and to it in its lifetime.
+Found: 2026-10-04, feature/flows-list (design).

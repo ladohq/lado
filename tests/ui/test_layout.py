@@ -248,6 +248,8 @@ def test_many_tabs_stay_on_one_line_and_scroll_with_the_supervisors_tab_kept(
         page.get_by_role("region", name=f"Agent {name}").get_by_role(
             "button", name="Open terminal"
         ).click()
+        # The session's column is narrow: the page took it; back to the list.
+        page.get_by_role("link", name="‹ All agents").click()
 
     panel = page.get_by_role("complementary", name="Terminals")
     tabs = panel.get_by_role("tab")

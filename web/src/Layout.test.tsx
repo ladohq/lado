@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { AGENT_REST, FakeEventSource, FakeResizeObserver, FakeSocket, stream } from "./fakes";
+import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeSocket, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -184,8 +184,7 @@ test("the list's width changes with its edge and is remembered", async () => {
 });
 
 test("in a narrow window the list is narrowed to leave the session and its terminals room, and its width stays remembered", async () => {
-  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
-  FakeResizeObserver.all = [];
+  columnWidth(null);
   localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 400 }));
   open("/sessions");
   const edge = screen.getByRole("separator", { name: "Resize the session list" });

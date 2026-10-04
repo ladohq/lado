@@ -88,14 +88,14 @@ states:
 def flow_kit(repo):
     kit = repo / ".lado" / "kits" / "itflow"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: itflow\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: itflow\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     (kit / "flows" / "gated.yaml").write_text(GATED)
     (kit / "flows" / "reviewed.yaml").write_text(REVIEWED)
     (kit / "flows" / "planned.yaml").write_text(PLANNED)
     (kit / "flows" / "tiny.yaml").write_text(TINY)
     (kit / "flows" / "designed.yaml").write_text(DESIGNED)
-    runtime.start_session(str(repo), SESSION, None, "fake", ["itflow"])
+    runtime.start_session(str(repo), SESSION, None, "fake", ["default", "itflow"])
     wait_status("supervisor", state.IDLE)
     return kit
 

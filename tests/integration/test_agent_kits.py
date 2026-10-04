@@ -7,7 +7,7 @@ import pytest
 from agent_helpers import init_repo, publish
 from test_agents import SESSION, wait_for, wait_status
 
-from lado import runtime, sources, state
+from lado import gitcache, runtime, state
 
 pytestmark = pytest.mark.integration
 
@@ -21,7 +21,7 @@ def write(path: Path, text: str) -> None:
 def kit(repo):
     """A project kit: the default kit plus a reviewer with a skill and an MCP server."""
     kit = repo / ".lado" / "kits" / "itkit"
-    write(kit / "kit.yaml", "name: itkit\ninclude: [default]\n")
+    write(kit / "kit.yaml", "name: itkit\n")
     write(
         kit / "agents" / "reviewer.md",
         "---\nname: reviewer\ndescription: reviews a branch\nskills: [notes]\n"
@@ -43,7 +43,7 @@ def seen(agent: str) -> dict:
 
 
 def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
-    runtime.start_session(str(repo), SESSION, None, "fake", ["itkit"])
+    runtime.start_session(str(repo), SESSION, None, "fake", ["default", "itkit"])
     wait_status("supervisor", state.IDLE)
     supervisor = seen("supervisor")
     assert supervisor["prompt"].startswith("You are the supervisor.")
@@ -79,25 +79,31 @@ def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
     }
 
 
-def test_kit_from_a_path_source_includes_a_skill_pack_from_git(tmp_path, repo):
+def test_two_kits_get_two_versions_of_one_skill_pack(tmp_path, repo):
     pack = init_repo(tmp_path / "pack")
-    url = publish(
-        pack, {"skills/eng/tdd/SKILL.md": "---\nname: tdd\ndescription: test first\n---\n"}
-    )
-    sources.add(url)
-    dev = tmp_path / "dev"
-    write(
-        dev / "kits" / "team" / "kit.yaml", "name: team\nversion: 0.1.0\ninclude: [default, pack]\n"
-    )
-    sources.add(str(dev))
+    skill = "skills/tdd/SKILL.md"
+    url = publish(pack, {skill: "---\nname: tdd\ndescription: test first\n---\n"}, tag="v1")
+    publish(pack, {skill: "---\nname: tdd\ndescription: test first, v2\n---\n"}, tag="v2")
+    for kit, role, ref in (("one", "dev1", "v1"), ("two", "dev2", "v2")):
+        folder = repo / ".lado" / "kits" / kit
+        write(
+            folder / "kit.yaml",
+            f"name: {kit}\nversion: 0.1.0\ndependencies:\n  skills:\n    pack: {url}@{ref}\n",
+        )
+        write(folder / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nWork.\n")
 
-    runtime.start_session(str(repo), SESSION, None, "fake", ["team"])
+    runtime.start_session(str(repo), SESSION, None, "fake", ["default", "one", "two"])
     wait_status("supervisor", state.IDLE)
-    assert seen("supervisor")["skills"] == {"tdd": "test first"}
-    runtime.spawn_worker(SESSION, "sleep 0")
-    wait_status("worker", state.IDLE)
-    assert seen("worker")["skills"] == {"tdd": "test first"}
-    # Nothing was copied: the agent's skill links into the source's clone.
-    link = state.home() / "agents" / SESSION / "worker" / "skills" / "tdd"
-    clone = sources.get("pack").path()
-    assert link.is_symlink() and link.resolve() == (clone / "skills" / "eng" / "tdd").resolve()
+    # The packs are private to their kits' agents.
+    assert seen("supervisor")["skills"] == {}
+    runtime.spawn_worker(SESSION, "sleep 0", role="dev1")
+    runtime.spawn_worker(SESSION, "sleep 0", role="dev2")
+    wait_status("dev1", state.IDLE)
+    wait_status("dev2", state.IDLE)
+    assert seen("dev1")["skills"] == {"tdd": "test first"}
+    assert seen("dev2")["skills"] == {"tdd": "test first, v2"}
+    # Nothing was copied: each agent's skill links into its version's clone.
+    for agent, ref in (("dev1", "v1"), ("dev2", "v2")):
+        link = state.home() / "agents" / SESSION / agent / "skills" / "tdd"
+        clone = gitcache.clone_dir(url, ref)
+        assert link.is_symlink() and link.resolve() == (clone / "skills" / "tdd").resolve()

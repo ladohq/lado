@@ -44,10 +44,10 @@ def flows_session(repo) -> str:
     at gate "check", ship/y is at its first step."""
     kit = repo / ".lado" / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
-    (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     session = f"ui-{uuid.uuid4().hex[:6]}"
-    runtime.start_session(str(repo), session, None, "fake", ["uiflow"])
+    runtime.start_session(str(repo), session, None, "fake", ["default", "uiflow"])
     agent_helpers.wait_for(
         lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
     )

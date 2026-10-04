@@ -206,7 +206,7 @@ def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
 def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(
         "name: ship\ndescription: d\nstart: plan\nstates:\n"
         "  plan: {agent: supervisor, do: Plan it., outcomes: {ready: check}}\n"
@@ -214,7 +214,7 @@ def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams,
         " {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     stream = streams()
     stream.next()
     runs.start("s", "ship", "Add x", name="x")
@@ -519,7 +519,7 @@ def test_any_change_of_the_sessions_agents_updates_who_acts_in_its_open_runs(
     kit = repo / ".lado" / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "agents").mkdir()
-    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "agents" / "developer.md").write_text(
         "---\nname: developer\ndescription: d\n---\nYou build.\n"
     )
@@ -528,7 +528,7 @@ def test_any_change_of_the_sessions_agents_updates_who_acts_in_its_open_runs(
         "  build: {agent: developer, do: Build it., outcomes: {done: end}}\n"
         "  end: {end: true}\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     runs.start("s", "ship", "Add x", name="x")
     state.add_run(dataclasses.replace(bare_run(), session="s", name="feature/closed"), [])
     runs.cancel("s", "feature/closed", "not needed")
@@ -550,7 +550,7 @@ def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
     caplog.set_level(logging.WARNING, logger="lado.server")
     kit = repo / ".lado" / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
-    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(
         "name: ship\ndescription: d\nstart: plan\nstates:\n"
         "  plan: {agent: supervisor, do: Plan it., outcomes: {ready: check}}\n"
@@ -558,7 +558,7 @@ def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
         " {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     runs.start("s", "ship", "Add x", name="x")
     runs.start("s", "ship", "Add y", name="y")  # open and active: its acting needs the flow
     runs.advance("s", "supervisor", "ship/x", "ready", "the plan")

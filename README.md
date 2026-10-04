@@ -29,6 +29,25 @@ lado doctor             # checks tmux and the agent CLIs (Claude Code, Kilo CLI)
 
 There is nothing else to run yet; see [ROADMAP.md](ROADMAP.md).
 
+## Kits
+
+A kit is a team: agent roles, flows and skills, in a folder with a `kit.yaml`. It takes
+skill packs from outside, pinned to a version, and may name the LADO it needs:
+
+```yaml
+name: my-team
+version: 1.0.0
+dependencies:
+  lado: ">=0.19"
+  skills:
+    superpowers: https://github.com/obra/superpowers@v6.4.1
+```
+
+```bash
+lado kits add https://github.com/<owner>/<kits>@v1.0.0   # or a local folder
+lado start . --kit default --kit my-team
+```
+
 ## License
 
 MIT (placeholder; to be confirmed before the first release).

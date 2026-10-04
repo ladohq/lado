@@ -46,12 +46,12 @@ def session(repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "agents").mkdir()
-    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "agents" / "developer.md").write_text(
         "---\nname: developer\ndescription: d\n---\nYou build.\n"
     )
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     return "s"
 
 

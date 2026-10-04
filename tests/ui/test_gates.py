@@ -46,10 +46,10 @@ def gated_session(repo) -> str:
     """A running session of the fake agent whose run ship/x waits at gate "check"."""
     kit = repo / ".lado" / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
-    (kit / "kit.yaml").write_text("name: uiflow\ninclude: [default]\n")
+    (kit / "kit.yaml").write_text("name: uiflow\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     session = f"ui-{uuid.uuid4().hex[:6]}"
-    runtime.start_session(str(repo), session, None, "fake", ["uiflow"])
+    runtime.start_session(str(repo), session, None, "fake", ["default", "uiflow"])
     agent_helpers.wait_for(
         lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
     )

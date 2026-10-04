@@ -50,7 +50,7 @@ def write(path: Path, text: str) -> None:
 def team(repo):
     """A project kit with a developer, a reviewer and the feature flow."""
     kit = repo / ".lado" / "kits" / "team"
-    write(kit / "kit.yaml", "name: team\nversion: 1.2.0\ninclude: [default]\n")
+    write(kit / "kit.yaml", "name: team\nversion: 1.2.0\n")
     for role in ("developer", "reviewer"):
         write(
             kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nYou {role}.\n"
@@ -65,7 +65,7 @@ def team(repo):
 
 @pytest.fixture
 def session(repo, team, fake_tmux):
-    runtime.start_session(str(repo), "s", None, kit_names=["team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
     return "s"
 
 

@@ -647,3 +647,16 @@ about 2.1.287.
 Wanted: before the release, `make test-live PROVIDER=claude` on 2.1.289 (with the human's
 OK) and TESTED_VERSION raised to it.
 Found: 2026-10-04, review of feature/waiting-ends.
+
+## Agents may be asked to read kit files outside their allowed folders
+
+Two ways a Claude agent may meet a permission dialog in the modes default and acceptEdits
+when it only reads a kit's files: `${KIT_DIR}` in an agent's prompt (a role, a kit's leading
+supervisor, a lead skill's text) becomes the kit's absolute folder, which for a linked local
+kit is outside LADO_HOME and outside every `--add-dir`; and the skills LADO links into
+`.claude/skills` (`base.link_skills`) point to their folders in the kit or the git cache, so
+reading a skill's other files (not loading it) goes to a path outside `--add-dir`. Kilo
+allows reads under LADO_HOME only, so a linked local kit is outside there too.
+Wanted: a live check of both in mode default; if a dialog shows, give the agent its kits'
+folders to read (`AgentSpec.read`) or copy what it reads, as the lead's lead-files are.
+Found: 2026-10-04, design and architect's review of feature/lead-skills.

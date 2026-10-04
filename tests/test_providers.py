@@ -454,3 +454,30 @@ def test_kilo_gets_skills_and_kit_mcp(repo, skill_dir):
     assert Path(skills, "notes").resolve() == skill_dir.resolve()
     # The links are under LADO_HOME, which the agent may read.
     assert Path(skills).is_relative_to(state.home())
+
+
+def test_claude_may_read_the_folders_of_spec_read(repo, skill_dir, tmp_path):
+    sess = state.Session("s", str(repo), None)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    read = [tmp_path / "files", tmp_path / "more"]
+    spec = providers.AgentSpec("the role", skills={"notes": skill_dir}, read=read)
+    cmd = providers.get("claude").launch_command(agent, sess, spec).argv
+    added = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--add-dir"]
+    assert added[1:] == [str(p) for p in read]
+    assert added[0] == str(base.config_dir(agent) / "skills")
+
+
+def test_kilo_may_read_the_folders_of_spec_read_and_takes_no_skills_from_them(
+    repo, skill_dir, tmp_path, lado_home
+):
+    sess = state.Session("s", str(repo), None, "kilo")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
+    read = [tmp_path / "files"]
+    spec = providers.AgentSpec("the role", skills={"notes": skill_dir}, read=read)
+    launch = providers.get("kilo").launch_command(agent, sess, spec)
+    config = json.loads(open(launch.env["KILO_CONFIG"]).read())
+    assert config["permission"]["external_directory"] == {
+        f"{lado_home}/**": "allow",
+        f"{tmp_path / 'files'}/**": "allow",
+    }
+    assert config["skills"]["paths"] == [str(base.config_dir(agent) / "skills")]

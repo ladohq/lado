@@ -259,13 +259,124 @@ def test_several_kit_supervisors_the_builtin_one_leads(repo, project):
         "lead: LADO's built-in supervisor (kits a and b each have a supervisor)"
     )
     assert env.warnings == [
-        "kit a's supervisor is not used: LADO's built-in supervisor leads (several kits have "
-        "a supervisor); to keep one, switch the others off: --without agent:supervisor@b",
-        "kit b's supervisor is not used: LADO's built-in supervisor leads (several kits have "
-        "a supervisor); to keep one, switch the others off: --without agent:supervisor@a",
+        "kit a's supervisor does not lead (several kits have a supervisor): its prompt is the "
+        "built-in supervisor's skill lead-a; to make it the lead, switch the others off: "
+        "--without agent:supervisor@b",
+        "kit a's supervisor lists no skills: its lead skill carries none",
+        "kit b's supervisor does not lead (several kits have a supervisor): its prompt is the "
+        "built-in supervisor's skill lead-b; to make it the lead, switch the others off: "
+        "--without agent:supervisor@a",
+        "kit b's supervisor lists no skills: its lead skill carries none",
     ]
     env = kits.resolve(repo, ["a", "b"], ["agent:supervisor@b"])
     assert (env.lead.kit, env.lead.body, env.warnings) == ("a", "a boss", [])
+
+
+def lead_kit(project, name, sup=None, pack=None, skills=(), body=None):
+    """Kit `name` with a supervisor (frontmatter `sup`), a role and, with `pack`, a local
+    pack of those skills whose SKILL.md says which kit it is."""
+    packs = {}
+    if pack:
+        folder = make_pack(project.parent / f"pack-{name}", pack)
+        for skill in pack:
+            md = folder / "skills" / skill / "SKILL.md"
+            md.write_text(md.read_text() + f"Version of {name}.\n")
+        packs = {"p": f"../../pack-{name}"}
+    agents = {"supervisor": (sup or {}, body or f"{name} boss"), f"w{name}": ({}, "")}
+    return pack_kit(project, name, packs=packs, agents=agents, skills=skills, supervisor=kits.LEAD)
+
+
+def test_no_lead_skills_when_a_kit_supervisor_leads(repo, project):
+    lead_kit(project, "a", {"skills": ["tdd"]}, pack=["tdd"])
+    env = kits.resolve(repo, ["a"])
+    assert env.kit_supervisors == {} and env.lead_skills() == []
+
+
+def test_each_kit_supervisor_that_does_not_lead_gives_a_lead_skill(repo, project):
+    lead_kit(
+        project, "a", {"skills": ["tdd", "own-a"], "description": "Leads a."}, ["tdd"], ["own-a"]
+    )
+    lead_kit(project, "b", {"skills": ["tdd"]}, pack=["tdd"])
+    env = kits.resolve(repo, ["a", "b", "default"])
+    assert list(env.kit_supervisors) == ["a", "b"]  # not the built-in default's
+    a, b = env.lead_skills()
+    assert (a.name, a.kit, a.body) == ("lead-a", "a", "a boss")
+    assert a.description == (
+        "How kit a wants its work led: read it before you take a task for its roles or "
+        "flows. Leads a."
+    )
+    assert list(a.skills) == ["tdd", "own-a"] and list(b.skills) == ["tdd"]
+    # Each kit's own version of one skill.
+    assert "Version of a." in (a.skills["tdd"].path / "SKILL.md").read_text()
+    assert "Version of b." in (b.skills["tdd"].path / "SKILL.md").read_text()
+    assert a.skills["tdd"].path != b.skills["tdd"].path
+    # Kit packs stay private: the lead does not get them.
+    assert "tdd" not in env.resolve("supervisor").skills
+
+
+def test_a_kit_supervisor_switched_off_gives_no_lead_skill(repo, project):
+    lead_kit(project, "a")
+    lead_kit(project, "b")
+    lead_kit(project, "c")
+    env = kits.resolve(repo, ["a", "b", "c"], ["agent:supervisor@b"])
+    assert [s.name for s in env.lead_skills()] == ["lead-a", "lead-c"]
+
+
+def test_a_lead_skill_without_the_skills_switched_off(repo, project):
+    lead_kit(project, "a", {"skills": ["tdd", "plan"]}, pack=["tdd", "plan"])
+    lead_kit(project, "b", {"skills": ["own-b"]}, skills=["own-b"])
+    env = kits.resolve(repo, ["a", "b"], ["skill:tdd@a", "skill:own-b"])
+    a, b = env.lead_skills()
+    assert list(a.skills) == ["plan"] and b.skills == {}
+
+
+def test_a_skill_a_kit_supervisor_cannot_see_is_an_error(repo, project):
+    """As if it led: its skills are checked when it does not lead too."""
+    lead_kit(project, "a", {"skills": ["nope"]})
+    lead_kit(project, "b")
+    with pytest.raises(kits.KitError, match='skill "nope" is not visible to agent "supervisor"'):
+        kits.resolve(repo, ["a", "b"])
+
+
+def test_the_mcp_servers_of_a_kit_supervisor_are_named(repo, project):
+    mcp = {"db": {"command": ["db"]}, "web": {"command": ["web"]}}
+    lead_kit(project, "a", {"mcp": mcp})
+    lead_kit(project, "b")
+    assert kits.resolve(repo, ["a", "b"]).lead_skills()[0].missing_mcp == ["db", "web"]
+    for item in ("mcp:db@a", "mcp:db"):
+        assert kits.resolve(repo, ["a", "b"], [item]).lead_skills()[0].missing_mcp == ["web"]
+
+
+def test_warnings_say_how_kit_supervisors_are_used(repo, project):
+    mcp = {"db": {"command": ["db"]}, "web": {"command": ["web"]}}
+    lead_kit(project, "a", {"skills": [], "mcp": mcp})
+    env = kits.resolve(repo, ["a", "default"])
+    assert env.warnings == [
+        "kit a's supervisor does not lead (several kits have a supervisor): its prompt is the "
+        "built-in supervisor's skill lead-a; to make it the lead, switch the others off: "
+        "--without agent:supervisor@default",
+        "MCP servers of kit a's supervisor (db, web) are not available to the session's lead",
+        "kit default's supervisor leads as LADO's built-in supervisor (several kits have a "
+        "supervisor); to make another the lead, switch the others off: --without "
+        "agent:supervisor@a",
+    ]
+    assert kits.resolve(repo, ["a", "default"], ["mcp:db", "mcp:web@a"]).warnings[1:] == [
+        env.warnings[2]
+    ]
+
+
+def test_a_skill_named_like_a_lead_skill_is_an_error(repo, project):
+    lead_kit(project, "x")
+    lead_kit(project, "y", skills=["lead-x"])
+    with pytest.raises(kits.KitError) as e:
+        kits.resolve(repo, ["x", "y"])
+    message = str(e.value)
+    assert 'skill "lead-x" of kit y' in message
+    assert str((project / "y" / "skills" / "lead-x").resolve()) in message
+    assert "the lead skill of kit x's supervisor" in message
+    assert e.value.switch_off == ["skill:lead-x", "agent:supervisor@x"]
+    for way_out in e.value.switch_off:
+        kits.resolve(repo, ["x", "y"], [way_out])
 
 
 def test_a_kit_supervisor_is_switched_off_with_its_kit(repo, project):

@@ -110,7 +110,12 @@ schema change.
     `resolve`'s docstring; `agent:<name>` of a kit's supervisor is read as `@` its kit,
     `_supervisors_by_kit`, as older LADOs stored it), the session's lead (`Environment.lead`, kept apart from the
     worker roles: the one kit supervisor, else the built-in default kit's supervisor, with
-    `Environment.warnings` for the kit supervisors not used; `lead_line` says who leads),
+    `Environment.warnings` for how the kit supervisors that do not lead are used; `lead_line`
+    says who leads), the lead skills of the built-in lead (`Environment.lead_skills`, built
+    only from `Environment.kit_supervisors`: each kit supervisor that does not lead, but
+    the default kit's, with the `--without` items applied; its `skills:` is checked as if
+    it led, so a skill its kit does not have is an error; a skill `lead-<kit>` the lead
+    would get besides is refused with both ways out),
     a name in two kits refused with both ways out (`KitError.switch_off`), a flow state of
     a kit's supervisor read as the lead's (`kits.LEAD`), validation, and the installed kits:
     `lado kits add/update/remove` keep links in `LADO_HOME/kits` (what is there is
@@ -118,7 +123,9 @@ schema change.
     yet is `Pack.skills is None`); `fetch` clones it; `resolve` builds an `Environment` only
     from fetched kits. An agent sees the session kits' own skills, its own kit's packs and
     the packs of kits without agents (`Environment.shared`, `.private`). A provider gets an
-    `AgentSpec` (prompt, skill folders, MCP servers), never the kit itself. `builtin_kits/`:
+    `AgentSpec` (prompt, skill folders, MCP servers, and `read`: folders the agent reads
+    without asking that are no skills: Claude Code `--add-dir`, Kilo `external_directory`),
+    never the kit itself. `builtin_kits/`:
     kits shipped with LADO (`default`: supervisor + worker). LADO's own instructions to
     agents stay in `runtime.py` and are appended to the role. `LADO_HOME/sources.yaml` of
     older LADOs is not read; while it exists, `migration_hint` says how to move.
@@ -418,8 +425,17 @@ the resumed session lacks is reported on stderr and in that body; `flow_cancel` 
 are refused (`runtime.running_session`); `lado answer` with no session skips its gates.
 `spawn_worker` needs `role` unless the session has one worker role (`Environment.role`);
 the lead's instructions say which, and list each role and flow with its kit.
-`lado start` (also a resume) prints who leads (`lead: ...`) and, on stderr, each kit
-supervisor not used.
+`lado start` (also a resume) prints who leads (`lead: ...`) and, on stderr, how each kit
+supervisor that does not lead is used (its lead skill, the MCP servers the lead does not
+get, a supervisor that lists no skills).
+When LADO's built-in supervisor leads, each kit supervisor that does not lead (but the
+default kit's) gives it a skill `lead-<kit>` (`runtime._write_lead_skills`, at each start
+and resume, once the session is taken): in the lead's config folder,
+`lead-skills/lead-<kit>/SKILL.md` holds that supervisor's prompt and the paths of the
+skills its `skills:` names, copied (links followed) into `lead-files/<kit>/<skill>/` in
+that kit's versions. `lead-files` is no skills folder of any CLI (Kilo finds SKILL.md at
+any depth under its skill paths) but `AgentSpec.read`; the lead's instructions name the
+kits with a lead skill.
 A worker started without a name (`spawn_worker`, also for a run) is named after its role,
 made valid like a given name (`slug`: `Code Reviewer` gives `code-reviewer`): `developer`,
 or `developer-2`, `developer-3`… when that is taken. A name is taken by a running agent of
@@ -545,9 +561,9 @@ LADO borrows ideas from other orchestrators but must not repeat their mistakes:
   private to it, and the other kits' agents lose them (loudly only when their `skills:`
   names one).
 - **One lead, one rule.** If exactly one kit of a session has a supervisor (`supervisor:`
-  in its kit.yaml), it leads; otherwise LADO's built-in supervisor leads, and each kit
-  supervisor not used is named loudly with the `--without agent:<name>@<kit>` that keeps
-  another. A kit with skills or roles only never changes who leads; the order of the kits
+  in its kit.yaml), it leads; otherwise LADO's built-in supervisor leads with each kit
+  supervisor's rules as a skill `lead-<kit>`, named loudly with the
+  `--without agent:<name>@<kit>` that makes another the lead. A kit with skills or roles only never changes who leads; the order of the kits
   never matters.
 - **No hardcoded paths.** Resources refer to each other by relative paths or `${KIT_DIR}` /
   `${SKILL_DIR}`, never by absolute or home-directory paths.

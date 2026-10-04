@@ -15,6 +15,9 @@ from lado.providers import base
 # CLAUDE_CODE_MCP_PREWAIT_SERVERS change nothing there), but it does wait for the
 # SessionStart hooks. So LADO's SessionStart hook waits for LADO's MCP server
 # (hold_first_turn, lado.hooks). The live test checks this in w1's transcript.
+# AgentSpec.read (the lead's lead-files, lado.runtime) checked by hand with 2.1.289 in mode
+# default (`claude -p`): a SKILL.md folder in an --add-dir directory without .claude/skills
+# is not listed as a skill, and the Read tool reads it with no permission denial.
 TESTED_VERSION = "2.1.287"
 
 # Claude Code hook events and the neutral events they stand for.
@@ -135,6 +138,10 @@ class ClaudeProvider(base.Provider):
             cmd += ["--add-dir", str(skills_root)]
         elif skills_root.exists():
             shutil.rmtree(skills_root)
+        # Files in an --add-dir directory are read without asking; with no .claude/skills
+        # in it, nothing there is loaded as a skill.
+        for folder in spec.read:
+            cmd += ["--add-dir", str(folder)]
         if session.permission_mode:
             cmd += ["--permission-mode", session.permission_mode]
         if first_message:

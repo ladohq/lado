@@ -160,10 +160,14 @@ def test_start_says_who_leads_and_which_supervisor_is_not_used(repo, fake_tmux, 
         in captured.out
     )
     assert (
-        "lado: kit team's supervisor is not used: LADO's built-in supervisor leads (several "
-        "kits have a supervisor); to keep one, switch the others off: "
-        "--without agent:supervisor@default\n"
+        "lado: kit team's supervisor does not lead (several kits have a supervisor): its "
+        "prompt is the built-in supervisor's skill lead-team; to make it the lead, switch the "
+        "others off: --without agent:supervisor@default\n"
     ) in captured.err
+    assert "lado: kit team's supervisor lists no skills: its lead skill carries none\n" in (
+        captured.err
+    )
+    assert "lado: kit default's supervisor leads as LADO's built-in supervisor" in captured.err
 
 
 def test_start_with_bad_kit_fails(repo, fake_tmux, capsys):
@@ -213,16 +217,29 @@ def test_kits_show(repo, capsys):
     assert "Switched off: agent:worker" in out
 
 
-def test_kits_show_warns_about_a_supervisor_not_used(repo, capsys):
-    kit = _kit(repo, "team")
+def test_kits_show_lists_the_lead_skills_of_supervisors_that_do_not_lead(repo, capsys):
+    body = (
+        "---\nname: rev\ndescription: reviews\nskills: [notes]\n"
+        "mcp: {db: {command: [db]}}\n---\nReview.\n"
+    )
+    kit = _kit(repo, "team", body)
     (kit / "kit.yaml").write_text("name: team\nsupervisor: rev\n")
+    (kit / "skills" / "notes").mkdir(parents=True)
+    (kit / "skills" / "notes" / "SKILL.md").write_text("---\nname: notes\ndescription: n\n---\n")
     assert main(["kits", "--repo", str(repo), "show", "default", "team"]) == 0
     captured = capsys.readouterr()
     assert captured.out.startswith(
         "lead: LADO's built-in supervisor (kits default and team each have a supervisor)\n"
     )
-    assert "warning: kit default's supervisor is not used: " in captured.err
-    assert "warning: kit team's supervisor is not used: " in captured.err
+    assert "warning: kit default's supervisor leads as LADO's built-in supervisor" in captured.err
+    assert "warning: kit team's supervisor does not lead" in captured.err
+    assert "warning: MCP servers of kit team's supervisor (db) are not available" in captured.err
+    assert (
+        "Lead skills of LADO's built-in supervisor:\n"
+        f"  lead-team  from team: {kit.resolve()}/agents/rev.md\n"
+        "    skills: notes (team)\n"
+        "    mcp not available: db\n"
+    ) in captured.out
 
 
 def test_kits_show_lists_each_version_of_a_skill(tmp_path, repo, capsys):

@@ -60,6 +60,9 @@ class AgentSpec:
     prompt: str  # the role, added to the system prompt
     skills: dict[str, Path] = field(default_factory=dict)  # name -> SKILL.md folder
     mcp: dict[str, McpServer] = field(default_factory=dict)  # name -> server, incl. "lado"
+    # Folders the agent reads without asking, never loaded as skills (e.g. the skills a
+    # lead skill names, lado.runtime).
+    read: list[Path] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -133,19 +136,20 @@ def agent_env(agent: state.Agent) -> dict[str, str]:
     }
 
 
-def _config_path(agent: state.Agent) -> Path:
+def config_path(agent: state.Agent) -> Path:
+    """The agent's config folder, not made."""
     return state.home() / "agents" / agent.session / agent.name
 
 
 def config_dir(agent: state.Agent) -> Path:
-    path = _config_path(agent)
+    path = config_path(agent)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def remove_config_dir(agent: state.Agent) -> None:
     """Remove what launch_command wrote for an agent that never started."""
-    shutil.rmtree(_config_path(agent), ignore_errors=True)
+    shutil.rmtree(config_path(agent), ignore_errors=True)
 
 
 def hook_argv(agent: state.Agent, event: str) -> list[str]:

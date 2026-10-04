@@ -184,6 +184,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/agents/finished": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finished Agents
+         * @description The session's finished workers, from their "finished" events, newest first.
+         */
+        get: operations["finished_agents_api_sessions__name__agents_finished_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/agents/{agent}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Details
+         * @description The agent's whole task and where its work stands in git now (not in the feed:
+         *     git is asked on each request).
+         */
+        get: operations["agent_details_api_sessions__name__agents__agent__details_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/agents/{agent}/finish-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finish Preview
+         * @description What finishing the worker would do now, refused as the finish would be.
+         */
+        get: operations["finish_preview_api_sessions__name__agents__agent__finish_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/agents/{agent}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish
+         * @description Finish the worker, as `lado finish` does.
+         */
+        post: operations["finish_api_sessions__name__agents__agent__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/messages": {
         parameters: {
             query?: never;
@@ -478,6 +559,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgentDetails */
+        AgentDetails: {
+            /** Task */
+            task: string | null;
+            work: components["schemas"]["WorkInfo"] | null;
+            /** Work Problem */
+            work_problem: string | null;
+        };
         /** AgentInfo */
         AgentInfo: {
             /** Name */
@@ -497,6 +586,14 @@ export interface components {
             task: string | null;
             /** Waiting Reason */
             waiting_reason: string | null;
+            /** Branch */
+            branch: string | null;
+            /** Worktree */
+            worktree: string | null;
+            /** Spawned At */
+            spawned_at: string;
+            /** Since */
+            since: string;
         };
         /** Answer */
         Answer: {
@@ -504,6 +601,50 @@ export interface components {
             choice?: string | null;
             /** Text */
             text?: string | null;
+        };
+        /** CommitInfo */
+        CommitInfo: {
+            /** Sha */
+            sha: string;
+            /** Subject */
+            subject: string;
+            /** At */
+            at: string;
+        };
+        /** Finish */
+        Finish: {
+            /**
+             * Discard
+             * @default false
+             */
+            discard: boolean;
+        };
+        /**
+         * FinishPreviewInfo
+         * @description What finishing the worker would do now (runtime.finish_preview).
+         */
+        FinishPreviewInfo: {
+            /** Removes Worktree */
+            removes_worktree: boolean;
+            /** Refused */
+            refused: string | null;
+            work: components["schemas"]["WorkInfo"] | null;
+        };
+        /**
+         * FinishedAgentInfo
+         * @description A worker that was finished, from its "finished" event.
+         */
+        FinishedAgentInfo: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Detail */
+            detail: string;
+            /** Spawned At */
+            spawned_at: string | null;
+            /** Finished At */
+            finished_at: string;
         };
         /**
          * FlowStateInfo
@@ -1000,6 +1141,24 @@ export interface components {
             /** Path */
             path: string;
         };
+        /**
+         * WorkInfo
+         * @description Where a worker's work stands in git when asked (runtime.work_state): what finishing
+         *     it goes by.
+         */
+        WorkInfo: {
+            /** Branch */
+            branch: string;
+            /** Base */
+            base: string;
+            /** Ahead */
+            ahead: number;
+            /** Behind */
+            behind: number;
+            /** Uncommitted */
+            uncommitted: number;
+            last_commit: components["schemas"]["CommitInfo"];
+        };
         /** Worktree */
         Worktree: {
             /** Path */
@@ -1271,6 +1430,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finished_agents_api_sessions__name__agents_finished_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinishedAgentInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_details_api_sessions__name__agents__agent__details_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                agent: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_preview_api_sessions__name__agents__agent__finish_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                agent: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinishPreviewInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_api_sessions__name__agents__agent__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                agent: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Finish"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sent"];
                 };
             };
             /** @description Validation Error */

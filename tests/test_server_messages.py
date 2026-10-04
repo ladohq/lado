@@ -79,7 +79,9 @@ def test_the_human_writes_to_the_supervisor_by_default(client, session):
         "merge w1, please",
     )
     client.post(MESSAGES, json={"to": "w1", "text": "and you?"})
-    assert state.list_messages("s")[-1].recipient == "w1"
+    mine, copy = state.list_messages("s")[-2:]
+    assert (mine.sender, mine.recipient) == ("human", "w1")
+    assert (copy.sender, copy.recipient) == ("lado", "supervisor")
 
 
 @pytest.mark.parametrize(

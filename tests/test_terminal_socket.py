@@ -316,17 +316,19 @@ def test_history_gives_the_lines_and_whether_the_agent_is_full_screen(client, se
 
 def test_the_agents_of_a_session(client, session):
     answer = logged_in(client).get("/api/sessions/s/agents")
-    assert answer.json() == [
-        {
-            "name": "supervisor",
-            "role": "supervisor",
-            "provider": "claude",
-            "status": "starting",
-            "run": None,
-            "task": None,
-            "waiting_reason": None,
-        }
-    ]
+    [supervisor] = answer.json()
+    assert supervisor.pop("since") == supervisor.pop("spawned_at")
+    assert supervisor == {
+        "name": "supervisor",
+        "role": "supervisor",
+        "provider": "claude",
+        "status": "starting",
+        "run": None,
+        "task": None,
+        "waiting_reason": None,
+        "branch": None,
+        "worktree": None,
+    }
     assert logged_in(client).get("/api/sessions/x/agents").status_code == 404
     state.set_status("s", "supervisor", state.IDLE)
     assert logged_in(client).get("/api/sessions/s/agents").json()[0]["status"] == "idle"

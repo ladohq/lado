@@ -306,7 +306,9 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         lambda e: is_change("agents", "s")(e) and e.data["item"]["status"] == "idle"
     )
     assert added[-1].data["key"] == "supervisor"
-    assert added[-1].data["item"] == {
+    item = added[-1].data["item"]
+    since, spawned = item.pop("since"), item.pop("spawned_at")
+    assert item == {
         "name": "supervisor",
         "role": "supervisor",
         "provider": "claude",
@@ -314,7 +316,12 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         "run": None,
         "task": None,
         "waiting_reason": None,
+        "branch": None,
+        "worktree": None,
     }
+    assert spawned < since == state.status_since("s")["supervisor"].strftime(
+        "%Y-%m-%dT%H:%M:%S.%f"
+    )[:-3] + "Z"
 
 
 def test_a_position_replays_what_came_after_it_once_per_row(streams):

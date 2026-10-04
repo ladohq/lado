@@ -1,6 +1,7 @@
 """The API's models, and each one built from the state: one form of an entity for the REST
 API and for the event stream's items (lado.server.feed)."""
 
+import datetime
 import logging
 from typing import Literal
 
@@ -163,6 +164,58 @@ class AgentInfo(BaseModel):
     # Only for an agent in `waiting`: why it waits after failed messages and what the human
     # can do; None when it waits for the human in its terminal (a prompt).
     waiting_reason: str | None
+    branch: str | None  # a worker's; None for the supervisor, which works in the repo
+    worktree: str | None  # a worker's folder; None for the supervisor
+    spawned_at: str  # UTC, ISO 8601: its latest spawn
+    since: str  # UTC, ISO 8601: when it got its status, as `lado ls` says
+
+
+class CommitInfo(BaseModel):
+    sha: str
+    subject: str
+    at: str  # UTC, ISO 8601
+
+
+class WorkInfo(BaseModel):
+    """Where a worker's work stands in git when asked (runtime.work_state): what finishing
+    it goes by."""
+
+    branch: str
+    base: str  # the repo's current branch
+    ahead: int  # commits not in base: 0 means merged
+    behind: int
+    uncommitted: int  # paths with changes in its worktree
+    last_commit: CommitInfo
+
+
+class AgentDetails(BaseModel):
+    task: str | None  # the whole task
+    # The state of its work now; None for an agent without a branch of its own (the
+    # supervisor), or when git cannot tell, and then work_problem says why.
+    work: WorkInfo | None
+    work_problem: str | None
+
+
+class FinishPreviewInfo(BaseModel):
+    """What finishing the worker would do now (runtime.finish_preview)."""
+
+    removes_worktree: bool  # else only its window closes: its run keeps the worktree
+    refused: str | None  # why it cannot finish without discarding its work
+    work: WorkInfo | None
+
+
+class FinishedAgentInfo(BaseModel):
+    """A worker that was finished, from its "finished" event."""
+
+    id: int  # the event's: a name is used again
+    name: str
+    detail: str  # how: merged, closed, discarded; n messages dropped
+    spawned_at: str | None  # UTC, ISO 8601
+    finished_at: str  # UTC, ISO 8601
+
+
+class Finish(BaseModel):
+    discard: bool = False
 
 
 class RunEventInfo(BaseModel):
@@ -354,7 +407,15 @@ def _first_line(text: str | None) -> str | None:
     return lines[0].strip() if lines else None
 
 
+def _iso(when: datetime.datetime) -> str:
+    """A UTC time in ISO 8601, as _utc gives lado.db's."""
+    return when.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
 def agent_info(agent: state.Agent) -> AgentInfo:
+    spawned, since = state.agent_times(agent.session, agent.name)
+    added = _utc(agent.created_at)  # an agent written without LADO's runtime has no events
+    worker = agent.branch is not None
     return AgentInfo(
         name=agent.name,
         role=agent.role,
@@ -367,6 +428,53 @@ def agent_info(agent: state.Agent) -> AgentInfo:
             if agent.status == state.WAITING
             else None
         ),
+        branch=agent.branch,
+        worktree=agent.cwd if worker else None,
+        spawned_at=_iso(spawned) if spawned else added,
+        since=_iso(since) if since else added,
+    )
+
+
+def work_info(work: runtime.WorkState) -> WorkInfo:
+    return WorkInfo(
+        branch=work.branch,
+        base=work.base,
+        ahead=work.ahead,
+        behind=work.behind,
+        uncommitted=work.uncommitted,
+        last_commit=CommitInfo(
+            sha=work.last_commit.sha,
+            subject=work.last_commit.subject,
+            at=_iso(work.last_commit.at),
+        ),
+    )
+
+
+def agent_details(agent: state.Agent) -> AgentDetails:
+    if agent.branch is None:
+        return AgentDetails(task=agent.task, work=None, work_problem=None)
+    try:
+        work = runtime.work_state(agent.session, agent.name)
+    except runtime.LadoError as error:
+        return AgentDetails(task=agent.task, work=None, work_problem=str(error))
+    return AgentDetails(task=agent.task, work=work_info(work), work_problem=None)
+
+
+def finish_preview_info(preview: runtime.FinishPreview) -> FinishPreviewInfo:
+    return FinishPreviewInfo(
+        removes_worktree=preview.removes_worktree,
+        refused=preview.refused,
+        work=work_info(preview.work) if preview.work else None,
+    )
+
+
+def finished_agent_info(finished: state.FinishedAgent) -> FinishedAgentInfo:
+    return FinishedAgentInfo(
+        id=finished.id,
+        name=finished.name,
+        detail=finished.detail,
+        spawned_at=_utc(finished.spawned_at) if finished.spawned_at else None,
+        finished_at=_utc(finished.finished_at),
     )
 
 

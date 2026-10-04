@@ -366,6 +366,7 @@ class Agent:
     instance: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     run: str | None = None  # the flow run it works for
     seen_at: float = 0  # when its latest hook ran (time.time()); 0 for none yet
+    created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
 
 
 @dataclass
@@ -1194,17 +1195,18 @@ def _utc(created_at: str) -> datetime.datetime:
     return datetime.datetime.fromisoformat(created_at).replace(tzinfo=datetime.timezone.utc)
 
 
-# When each agent of `session` (NULL: of every session) got its current status: its latest
-# "status" or "spawned" event. The one rule for status_since and waiting_items; its
-# arguments: status_events_args(session).
+# When each agent of `session` (NULL: of every session; `agent` NULL: every agent) got its
+# current status: its latest "status" or "spawned" event. The one rule for status_since,
+# agent_times and waiting_items; its arguments: status_events_args(session, agent).
 STATUS_EVENTS = (
     "SELECT session, agent, created_at FROM events WHERE id IN (SELECT MAX(id) FROM events"
-    " WHERE kind IN (?, ?) AND (? IS NULL OR session = ?) GROUP BY session, agent)"
+    " WHERE kind IN (?, ?) AND (? IS NULL OR session = ?) AND (? IS NULL OR agent = ?)"
+    " GROUP BY session, agent)"
 )
 
 
-def status_events_args(session: str | None) -> tuple:
-    return (STATUS, SPAWNED, session, session)
+def status_events_args(session: str | None, agent: str | None = None) -> tuple:
+    return (STATUS, SPAWNED, session, session, agent, agent)
 
 
 def status_since(session: str) -> dict[str, datetime.datetime]:
@@ -1212,6 +1214,48 @@ def status_since(session: str) -> dict[str, datetime.datetime]:
     with connect() as db:
         rows = db.execute(STATUS_EVENTS, status_events_args(session)).fetchall()
     return {r["agent"]: _utc(r["created_at"]) for r in rows}
+
+
+def agent_times(
+    session: str, agent: str
+) -> tuple[datetime.datetime | None, datetime.datetime | None]:
+    """When the agent of that name was last spawned and when it got its current status, as
+    status_since says (UTC); None for what has no event."""
+    with connect() as db:
+        spawned = db.execute(
+            "SELECT MAX(created_at) FROM events WHERE session = ? AND agent = ? AND kind = ?",
+            (session, agent, SPAWNED),
+        ).fetchone()[0]
+        since = db.execute(STATUS_EVENTS, status_events_args(session, agent)).fetchone()
+    return (
+        _utc(spawned) if spawned else None,
+        _utc(since["created_at"]) if since else None,
+    )
+
+
+@dataclass
+class FinishedAgent:
+    id: int  # of its "finished" event: names are used again
+    name: str
+    detail: str  # how it was finished, as the event says
+    spawned_at: str | None  # UTC, its latest "spawned" event before that; None for none
+    finished_at: str  # UTC
+
+
+def finished_agents(session: str) -> list[FinishedAgent]:
+    """The session's finished workers, from their "finished" events, newest first."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT f.id, f.agent, f.detail, f.created_at, (SELECT s.created_at FROM events s"
+            " WHERE s.session = f.session AND s.agent = f.agent AND s.kind = ? AND s.id < f.id"
+            " ORDER BY s.id DESC LIMIT 1) AS spawned_at FROM events f"
+            " WHERE f.session = ? AND f.kind = ? ORDER BY f.id DESC",
+            (SPAWNED, session, FINISHED),
+        ).fetchall()
+    return [
+        FinishedAgent(r["id"], r["agent"], r["detail"], r["spawned_at"], r["created_at"])
+        for r in rows
+    ]
 
 
 MESSAGE_COLUMNS = (
@@ -1251,6 +1295,29 @@ def queue_message(
             (session, sender, recipient, summary, body, mark, sent_at),
         )
         return cur.lastrowid or 0
+
+
+def queue_with_copy(
+    session: str,
+    sender: str,
+    recipient: str,
+    summary: str,
+    body: str,
+    copy_to: str,
+    copy_summary: Callable[[int], str],
+) -> int:
+    """Queue a message and, in the same transaction, a copy from LADO to `copy_to` whose
+    summary is `copy_summary(id of the message)`, without a body. Returns the message's id."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        insert = (
+            "INSERT INTO messages (session, sender, recipient, summary, body, created_at)"
+            " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))"
+        )
+        message = db.execute(insert, (session, sender, recipient, summary, body)).lastrowid
+        db.execute(insert, (session, LADO, copy_to, copy_summary(message), ""))
+        db.execute("COMMIT")
+    return message
 
 
 def add_question(
@@ -1534,6 +1601,7 @@ def _agent(row: sqlite3.Row) -> Agent:
         instance=row["instance"],
         run=row["run"],
         seen_at=row["seen_at"],
+        created_at=row["created_at"],
     )
 
 

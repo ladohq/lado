@@ -330,6 +330,16 @@ def test_the_supervisor_is_told_to_answer_the_human_where_they_asked(repo, fake_
     assert "answer text typed straight into your window in this window" in supervisor
 
 
+def test_the_supervisor_is_told_the_copy_of_the_humans_message_is_for_its_information(
+    repo, fake_tmux
+):
+    runtime.start_session(str(repo), "s", None)
+    supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
+    assert '"[from lado] human wrote to <agent>: ..." that is for your information' in supervisor
+    assert "do not pass it on and do not answer it" in supervisor
+    assert "if it changes the plan, take it into account" in supervisor
+
+
 def _mcp_ready(agent, instance=None):
     """What the agent's LADO MCP server records when Claude Code has listed its tools."""
     instance = instance or state.get_agent("s", agent).instance
@@ -1223,6 +1233,55 @@ def _branches(repo):
     return runtime.git(str(repo), "branch", "--format=%(refname:short)").split()
 
 
+def test_work_state_tells_how_a_workers_branch_stands_against_the_repo(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    work = runtime.work_state("s", "w1")
+    assert (work.branch, work.base, work.ahead, work.behind, work.uncommitted) == (
+        "lado/s/w1",
+        "main",
+        0,
+        0,
+        0,
+    )
+    _commit(worker.cwd, "one.txt")
+    _commit(worker.cwd, "two.txt")
+    _commit(str(repo), "on-main.txt")
+    Path(worker.cwd, "untracked.txt").write_text("x")
+    Path(worker.cwd, "one.txt").write_text("changed")
+    work = runtime.work_state("s", "w1")
+    assert (work.ahead, work.behind, work.uncommitted) == (2, 1, 2)
+    head = runtime.git(worker.cwd, "rev-parse", "HEAD")
+    assert (work.last_commit.sha, work.last_commit.subject) == (head, "add two.txt")
+    assert work.last_commit.at.tzinfo is not None
+
+
+def test_work_state_refuses_an_agent_without_a_branch(repo, fake_tmux):
+    _session_with_worker(repo)
+    with pytest.raises(runtime.LadoError, match="works in the repo, not on a branch of its own"):
+        runtime.work_state("s", "supervisor")
+    with pytest.raises(runtime.LadoError, match='no agent "w9"'):
+        runtime.work_state("s", "w9")
+
+
+def test_finish_preview_says_what_finishing_a_worker_would_do_and_changes_nothing(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    preview = runtime.finish_preview("s", "w1")
+    assert (preview.removes_worktree, preview.refused, preview.work.ahead) == (True, None, 0)
+    _commit(worker.cwd)
+    preview = runtime.finish_preview("s", "w1")
+    assert preview.refused == (
+        f"branch lado/s/w1 is not merged into main (the current branch of {repo}); "
+        "merge it first, or finish with discard to throw its work away"
+    )
+    assert preview.work.ahead == 1
+    assert state.get_agent("s", "w1") is not None and Path(worker.cwd).exists()
+    for name, error in [("supervisor", "lado stop s"), ("w9", 'no worker "w9"')]:
+        with pytest.raises(runtime.LadoError, match=re.escape(error)):
+            runtime.finish_preview("s", name)
+
+
 def test_finish_worker_removes_a_merged_worker(repo, fake_tmux):
     _session_with_worker(repo)
     worker = state.get_agent("s", "w1")
@@ -1450,8 +1509,42 @@ def test_the_humans_text_reaches_the_supervisor_as_a_message(repo, fake_tmux):
 def test_the_humans_text_is_split_into_a_summary_and_a_body(repo, fake_tmux, text, summary, body):
     _session_with_worker(repo)
     runtime.write_as_human("s", text, to="w1")
-    [message] = state.list_messages("s")
+    message = state.list_messages("s")[0]
     assert (message.recipient, message.summary, message.body) == ("w1", summary, body)
+
+
+def test_the_supervisor_gets_a_one_line_copy_of_the_humans_text_to_a_worker(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    assert runtime.write_as_human("s", "use the other port\nit is 8080", to="w1").startswith(
+        "queued; w1 is starting"
+    )
+    mine, copy = state.list_messages("s")
+    assert (mine.sender, mine.recipient) == ("human", "w1")
+    assert (copy.sender, copy.recipient, copy.body) == ("lado", "supervisor", "")
+    assert copy.summary == f"human wrote to w1: use the other port (#{mine.id})"
+    assert fake_tmux[-1] == ("send_text", "s", "supervisor", f"[from lado] {copy.summary}")
+
+
+def test_the_copy_of_a_long_text_stays_one_short_line(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.write_as_human("s", "x" * 250, to="w1")
+    mine, copy = state.list_messages("s")
+    assert len(copy.summary) == state.SUMMARY_LIMIT
+    assert copy.summary.startswith("human wrote to w1: xxx")
+    assert copy.summary.endswith(f"… (#{mine.id})")
+
+
+def test_no_copy_of_the_humans_text_to_the_supervisor_or_of_answers(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.write_as_human("s", "hello")
+    first = runtime.ask_human("s", "w1", "Merge now?", choices=["yes", "no"])
+    second = runtime.ask_human("s", "w1", "Which port?")
+    asked = [m.id for m in state.list_messages("s") if m.kind == state.QUESTION]
+    assert first and second
+    runtime.answer_question("s", asked[0], choice="yes")
+    runtime.dismiss_question("s", asked[1])
+    assert [m.sender for m in state.list_messages("s") if m.recipient == "supervisor"] == ["human"]
 
 
 @pytest.mark.parametrize(

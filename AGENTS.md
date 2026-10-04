@@ -250,7 +250,9 @@ schema change.
   answer by default); such a message is `delivered` at once into no window, and the UI's
   Activity chat shows it. The human writes from the UI's composer (`runtime.write_as_human`,
   only through the server's API; to the supervisor by default) through the same queue,
-  confirmation and retries, and the agent gets `[from human] ...`. An answer
+  confirmation and retries, and the agent gets `[from human] ...`; when the human writes to
+  another agent, the supervisor gets a one-line copy from `lado`, `human wrote to <agent>:
+  <summary> (#<id>)`, queued in the same transaction (answers and dismissals get none). An answer
   (`Answer to #<id>: ...`) or dismissal (`Dismissed #<id>`) comes to the agent the same way.
   No agent may be named `human` or `lado` (`state.RESERVED`). Messages to `human` are never
   dropped (stop, finish), and a forgotten agent's open questions are `closed`. LADO's

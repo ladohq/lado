@@ -12,6 +12,7 @@ import subprocess
 import time
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from lado import agent_env, kits, loop, providers, state, terminal, tmux
@@ -33,6 +34,9 @@ You are agent "supervisor" in LADO session "{session}".
 The human follows the session in LADO's UI. Answer where the human asked: answer a message \
 "[from human] ..." with send_message(to="human"), and ask with ask_human (with choices when \
 there are some); answer text typed straight into your window in this window.
+When the human writes to another agent, you get one line "[from lado] human wrote to \
+<agent>: ..." that is for your information: that agent has the message already, so do not \
+pass it on and do not answer it; if it changes the plan, take it into account.
 Use the `lado` MCP tools:
 - spawn_worker: start a worker agent on a task, in its own git worktree and a branch created \
 from your current HEAD. Give it the goal, the relevant files and how to check the result. \
@@ -456,6 +460,15 @@ class Finished:
             return self.how
         return f"{self.how}; {self.dropped} message{'s' if self.dropped > 1 else ''} dropped"
 
+    def text(self) -> str:
+        """What finishing did, in one line (`lado finish`, the UI)."""
+        worker = self.worker
+        if self.removed_worktree:
+            removed = f"removed window, worktree {worker.cwd} and branch {worker.branch}"
+        else:
+            removed = f"closed its window; run {worker.run} keeps {worker.cwd}"
+        return f'Finished worker "{worker.name}" ({self.detail()}): {removed}'
+
 
 def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
     """End a worker whose branch is merged: close its window, remove its worktree and branch
@@ -468,6 +481,31 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
     workers of it remain, only its window is closed. The last worker of an ended run takes
     the worktree and branch with it, as above.
     """
+    preview = finish_preview(session, name)
+    worker = state.get_agent(session, name)
+    if not preview.removes_worktree:
+        if discard:
+            return close_worker(session, worker, f"{CLOSED}; {DISCARD_NOT_APPLIED}")
+        return close_worker(session, worker, CLOSED)
+    if preview.refused and not discard:
+        raise LadoError(preview.refused)
+    repo = state.get_session(session).repo
+    # Git first: if it fails, the worker keeps running and nothing is half done.
+    git(repo, "worktree", "remove", *(["--force"] if discard else []), worker.cwd)
+    git(repo, "branch", "-D" if discard else "-d", worker.branch)
+    return close_worker(session, worker, "discarded" if discard else "merged")
+
+
+@dataclass
+class FinishPreview:
+    removes_worktree: bool  # else only its window closes: its run keeps the worktree
+    refused: str | None  # why it cannot finish without discard; only when removes_worktree
+    work: "WorkState | None"  # None when git cannot tell, and then `refused` says why
+
+
+def finish_preview(session: str, name: str) -> FinishPreview:
+    """What finishing the worker would do now, refused as the finish would be; changes
+    nothing."""
     sess = state.get_session(session)
     if sess is None:
         raise LadoError(f'unknown session "{session}"')
@@ -480,16 +518,13 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
     if worker is None or worker.branch is None:
         workers = ", ".join(a.name for a in state.list_agents(session) if a.branch) or "none"
         raise LadoError(f'no worker "{name}"; workers: {workers}')
-    if worker.run and _run_keeps_worktree(session, worker):
-        if discard:
-            return close_worker(session, worker, f"{CLOSED}; {DISCARD_NOT_APPLIED}")
-        return close_worker(session, worker, CLOSED)
-    if not discard:
-        _check_finished(sess.repo, worker)
-    # Git first: if it fails, the worker keeps running and nothing is half done.
-    git(sess.repo, "worktree", "remove", *(["--force"] if discard else []), worker.cwd)
-    git(sess.repo, "branch", "-D" if discard else "-d", worker.branch)
-    return close_worker(session, worker, "discarded" if discard else "merged")
+    removes = not (worker.run and _run_keeps_worktree(session, worker))
+    try:
+        work = _work_state(sess.repo, worker)
+    except LadoError as error:
+        # Only a removal needs git; a discard still goes ahead.
+        return FinishPreview(removes, f"cannot read its work: {error}" if removes else None, None)
+    return FinishPreview(removes, _refusal(worker, work, sess.repo) if removes else None, work)
 
 
 CLOSED = "closed"  # a run's worker: its window is closed, the run keeps the worktree
@@ -517,22 +552,72 @@ def _run_keeps_worktree(session: str, worker: state.Agent) -> bool:
     return bool(others) or (run is not None and run.status in state.OPEN)
 
 
-def _check_finished(repo: str, worker: state.Agent) -> None:
-    """Refuse to end a worker whose work would be lost."""
-    try:
-        git(repo, "merge-base", "--is-ancestor", worker.branch, "HEAD")
-    except LadoError:
-        head = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
-        raise LadoError(
-            f"branch {worker.branch} is not merged into {head} (the current branch of {repo}); "
-            "merge it first, or finish with discard to throw its work away"
-        ) from None
-    changes = git(worker.cwd, "status", "--porcelain")
-    if changes:
-        raise LadoError(
+@dataclass
+class Commit:
+    sha: str
+    subject: str
+    at: datetime
+
+
+@dataclass
+class WorkState:
+    """Where a worker's work stands now: its branch against the repo's current branch
+    (`base`) and its worktree."""
+
+    branch: str
+    base: str
+    ahead: int  # commits on the branch that are not in base: 0 means merged
+    behind: int  # commits in base that are not on the branch
+    changes: list[str]  # `git status --porcelain` lines of its worktree
+    last_commit: Commit
+
+    @property
+    def uncommitted(self) -> int:
+        return len(self.changes)
+
+
+def work_state(session: str, name: str) -> WorkState:
+    """The state of an agent's work in git, the same that decides whether it can finish."""
+    sess = state.get_session(session)
+    if sess is None:
+        raise LadoError(f'unknown session "{session}"')
+    agent = state.get_agent(session, name)
+    if agent is None:
+        raise LadoError(f'no agent "{name}" in session {session}')
+    if agent.branch is None:
+        raise LadoError(f'agent "{name}" works in the repo, not on a branch of its own')
+    return _work_state(sess.repo, agent)
+
+
+def _work_state(repo: str, worker: state.Agent) -> WorkState:
+    branch = worker.branch
+    behind, ahead = git(repo, "rev-list", "--left-right", "--count", f"HEAD...{branch}").split()
+    sha, at, subject = git(repo, "log", "-1", "--format=%H%x00%cI%x00%s", branch).split("\0", 2)
+    changes = git(worker.cwd, "status", "--porcelain").splitlines()
+    return WorkState(
+        branch,
+        git(repo, "rev-parse", "--abbrev-ref", "HEAD"),
+        int(ahead),
+        int(behind),
+        changes,
+        Commit(sha, subject, datetime.fromisoformat(at)),
+    )
+
+
+def _refusal(worker: state.Agent, work: WorkState, repo: str) -> str | None:
+    """Why the worker cannot finish without discarding its work, or None."""
+    if work.ahead:
+        return (
+            f"branch {work.branch} is not merged into {work.base} (the current branch of "
+            f"{repo}); merge it first, or finish with discard to throw its work away"
+        )
+    if work.changes:
+        changes = "\n".join(work.changes)
+        return (
             f'worker "{worker.name}" has uncommitted changes in {worker.cwd}:\n{changes}\n'
             "have it commit them and merge again, or finish with discard to throw them away"
         )
+    return None
 
 
 def send_message(
@@ -558,14 +643,37 @@ def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
     """Send the human's text (the UI's composer) to agent `to` as a message from `human`,
     through the same queue, confirmation and retries as an agent's. Its first line, without
     tabs and control characters, is the summary, cut to the limit; the whole text is the
-    body when it has more lines or the line was cut."""
+    body when it has more lines or the line was cut.
+
+    The supervisor gets a one-line copy from LADO of what the human writes to another agent,
+    queued in the same transaction, so it knows what its team was told."""
     running_session(session)
     text = text.strip()
     if not text:
         raise LadoError("the message is empty")
     if to == state.HUMAN:
         raise LadoError(f'no running agent "{to}": the human cannot write to themselves')
-    return post(session, state.HUMAN, to, *_human_text(text))
+    summary, body = _human_text(text)
+    if to == SUPERVISOR:
+        return post(session, state.HUMAN, to, summary, body)
+    _running_agent(session, to)
+    state.queue_with_copy(
+        session, state.HUMAN, to, summary, body, SUPERVISOR, lambda id: _copy(to, summary, id)
+    )
+    result = _deliver(session, to)
+    supervisor = state.get_agent(session, SUPERVISOR)
+    if supervisor is not None and supervisor.status != state.STOPPED:
+        _deliver(session, SUPERVISOR)
+    return result
+
+
+def _copy(to: str, summary: str, message_id: int) -> str:
+    """The supervisor's one line about the human's message to agent `to`."""
+    prefix, suffix = f"human wrote to {to}: ", f" (#{message_id})"
+    room = state.SUMMARY_LIMIT - len(prefix) - len(suffix)
+    if len(summary) > room:
+        summary = summary[: room - 1] + "…"
+    return prefix + summary + suffix
 
 
 def _human_text(text: str, prefix: str = "") -> tuple[str, str]:

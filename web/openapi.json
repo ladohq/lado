@@ -353,6 +353,207 @@
         }
       }
     },
+    "/api/sessions/{name}/agents/finished": {
+      "get": {
+        "summary": "Finished Agents",
+        "description": "The session's finished workers, from their \"finished\" events, newest first.",
+        "operationId": "finished_agents_api_sessions__name__agents_finished_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FinishedAgentInfo"
+                  },
+                  "title": "Response Finished Agents Api Sessions  Name  Agents Finished Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/agents/{agent}/details": {
+      "get": {
+        "summary": "Agent Details",
+        "description": "The agent's whole task and where its work stands in git now (not in the feed:\ngit is asked on each request).",
+        "operationId": "agent_details_api_sessions__name__agents__agent__details_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/agents/{agent}/finish-preview": {
+      "get": {
+        "summary": "Finish Preview",
+        "description": "What finishing the worker would do now, refused as the finish would be.",
+        "operationId": "finish_preview_api_sessions__name__agents__agent__finish_preview_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinishPreviewInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/agents/{agent}/finish": {
+      "post": {
+        "summary": "Finish",
+        "description": "Finish the worker, as `lado finish` does.",
+        "operationId": "finish_api_sessions__name__agents__agent__finish_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Finish"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{name}/messages": {
       "get": {
         "summary": "Messages",
@@ -1089,6 +1290,49 @@
   },
   "components": {
     "schemas": {
+      "AgentDetails": {
+        "properties": {
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "work": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "work_problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task",
+          "work",
+          "work_problem"
+        ],
+        "title": "AgentDetails"
+      },
       "AgentInfo": {
         "properties": {
           "name": {
@@ -1146,6 +1390,36 @@
               }
             ],
             "title": "Waiting Reason"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "worktree": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worktree"
+          },
+          "spawned_at": {
+            "type": "string",
+            "title": "Spawned At"
+          },
+          "since": {
+            "type": "string",
+            "title": "Since"
           }
         },
         "type": "object",
@@ -1156,7 +1430,11 @@
           "status",
           "run",
           "task",
-          "waiting_reason"
+          "waiting_reason",
+          "branch",
+          "worktree",
+          "spawned_at",
+          "since"
         ],
         "title": "AgentInfo"
       },
@@ -1187,6 +1465,118 @@
         },
         "type": "object",
         "title": "Answer"
+      },
+      "CommitInfo": {
+        "properties": {
+          "sha": {
+            "type": "string",
+            "title": "Sha"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sha",
+          "subject",
+          "at"
+        ],
+        "title": "CommitInfo"
+      },
+      "Finish": {
+        "properties": {
+          "discard": {
+            "type": "boolean",
+            "title": "Discard",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "Finish"
+      },
+      "FinishPreviewInfo": {
+        "properties": {
+          "removes_worktree": {
+            "type": "boolean",
+            "title": "Removes Worktree"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused"
+          },
+          "work": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "removes_worktree",
+          "refused",
+          "work"
+        ],
+        "title": "FinishPreviewInfo",
+        "description": "What finishing the worker would do now (runtime.finish_preview)."
+      },
+      "FinishedAgentInfo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "spawned_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spawned At"
+          },
+          "finished_at": {
+            "type": "string",
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "detail",
+          "spawned_at",
+          "finished_at"
+        ],
+        "title": "FinishedAgentInfo",
+        "description": "A worker that was finished, from its \"finished\" event."
       },
       "FlowStateInfo": {
         "properties": {
@@ -2645,6 +3035,44 @@
         ],
         "title": "Where",
         "description": "Where a session runs: now only a folder (a full path, `~` allowed)."
+      },
+      "WorkInfo": {
+        "properties": {
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          },
+          "base": {
+            "type": "string",
+            "title": "Base"
+          },
+          "ahead": {
+            "type": "integer",
+            "title": "Ahead"
+          },
+          "behind": {
+            "type": "integer",
+            "title": "Behind"
+          },
+          "uncommitted": {
+            "type": "integer",
+            "title": "Uncommitted"
+          },
+          "last_commit": {
+            "$ref": "#/components/schemas/CommitInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch",
+          "base",
+          "ahead",
+          "behind",
+          "uncommitted",
+          "last_commit"
+        ],
+        "title": "WorkInfo",
+        "description": "Where a worker's work stands in git when asked (runtime.work_state): what finishing\nit goes by."
       },
       "Worktree": {
         "properties": {

@@ -192,6 +192,57 @@ def test_status_since_of_a_reused_name_starts_at_its_new_spawn(lado_home):
     assert state.status_since("s")["w1"].hour == 12
 
 
+def test_agent_times_are_its_latest_spawn_and_the_status_since_of_lado_ls(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
+    _event_at("w1", state.STATUS, "2026-10-01 10:05:00.000", state.IDLE)
+    _event_at("w1", state.FINISHED, "2026-10-01 11:00:00.000", "merged")
+    _event_at("w1", state.SPAWNED, "2026-10-01 12:00:00.500")
+    _event_at("w1", state.STATUS, "2026-10-01 12:03:00.000", state.BUSY)
+    _event_at("w2", state.SPAWNED, "2026-10-01 10:30:00.000")
+    utc = datetime.timezone.utc
+    w1 = state.agent_times("s", "w1")
+    assert w1 == (
+        datetime.datetime(2026, 10, 1, 12, 0, 0, 500000, tzinfo=utc),
+        datetime.datetime(2026, 10, 1, 12, 3, tzinfo=utc),
+    )
+    assert w1[1] == state.status_since("s")["w1"]
+    assert state.agent_times("s", "w2") == (state.status_since("s")["w2"],) * 2
+    assert state.agent_times("s", "w9") == (None, None)
+
+
+def test_an_agent_has_the_time_it_was_added(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, state.IDLE))
+    created = state.get_agent("s", "w1").created_at
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", created)
+
+
+def test_finished_agents_come_from_finished_events_newest_first(lado_home):
+    state.add_session(state.Session("s", "/r", None))
+    _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
+    _event_at("w1", state.FINISHED, "2026-10-01 11:00:00.000", "merged")
+    _event_at("w1", state.SPAWNED, "2026-10-01 12:00:00.000")
+    _event_at("w1", state.FINISHED, "2026-10-01 13:00:00.000", "discarded; 2 messages dropped")
+    _event_at("w2", state.FINISHED, "2026-10-01 14:00:00.000", "closed")  # no spawn recorded
+    state.add_session(state.Session("other", "/r", None))
+    state.add_event("other", "w1", state.FINISHED, "merged")
+    ids = [e.id for e in state.list_events("s") if e.kind == state.FINISHED]
+    assert [
+        (f.id, f.name, f.detail, f.spawned_at, f.finished_at) for f in state.finished_agents("s")
+    ] == [
+        (ids[2], "w2", "closed", None, "2026-10-01 14:00:00.000"),
+        (
+            ids[1],
+            "w1",
+            "discarded; 2 messages dropped",
+            "2026-10-01 12:00:00.000",
+            "2026-10-01 13:00:00.000",
+        ),
+        (ids[0], "w1", "merged", "2026-10-01 10:00:00.000", "2026-10-01 11:00:00.000"),
+    ]
+
+
 def test_events_have_sub_second_times_and_go_with_the_session(lado_home):
     state.add_session(state.Session("s", "/r", None))
     state.add_event("s", "w1", "finished", "")

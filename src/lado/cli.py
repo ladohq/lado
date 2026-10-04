@@ -456,13 +456,7 @@ def _kept(worktrees: dict[str, str], what: str) -> None:
 
 
 def cmd_finish(args: argparse.Namespace) -> int:
-    finished = runtime.finish_worker(args.session, args.agent, args.discard)
-    worker = finished.worker
-    if finished.removed_worktree:
-        removed = f"removed window, worktree {worker.cwd} and branch {worker.branch}"
-    else:
-        removed = f"closed its window; run {worker.run} keeps {worker.cwd}"
-    print(f'Finished worker "{worker.name}" ({finished.detail()}): {removed}')
+    print(runtime.finish_worker(args.session, args.agent, args.discard).text())
     return 0
 
 

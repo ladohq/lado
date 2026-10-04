@@ -839,6 +839,28 @@ def test_end_keeps_an_unmerged_worktree_and_says_why(session, repo):
     assert not Path(run.worktree).exists()
 
 
+def test_finish_preview_of_a_run_worker_says_what_finishing_it_would_do(session, repo):
+    run = advance_to_review(session)
+    commit(run)
+    # An open run keeps its worktree: finishing a worker only closes its window.
+    preview = runtime.finish_preview(session, "developer")
+    assert (preview.removes_worktree, preview.refused) == (False, None)
+    assert (preview.work.branch, preview.work.ahead) == (run.branch, 1)
+    run = runs.advance(session, "reviewer", "feature/login", "approved")
+    run = runs.advance(session, "supervisor", "feature/login", "merged")
+    assert run.status == state.ENDED
+    # Ended, the other worker still there: still only the window.
+    assert runtime.finish_preview(session, "developer").removes_worktree is False
+    runtime.finish_worker(session, "developer")
+    # The last worker of an ended run takes the worktree, and is refused while unmerged.
+    preview = runtime.finish_preview(session, "reviewer")
+    assert preview.removes_worktree is True
+    assert preview.refused.startswith(f"branch {run.branch} is not merged into main")
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    preview = runtime.finish_preview(session, "reviewer")
+    assert (preview.removes_worktree, preview.refused, preview.work.ahead) == (True, None, 0)
+
+
 def test_end_keeps_a_worktree_with_uncommitted_changes(session, repo):
     run = to_merge(session)
     Path(run.worktree, "draft.txt").write_text("x")

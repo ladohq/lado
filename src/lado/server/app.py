@@ -18,8 +18,12 @@ from lado import __version__, runs, runtime, state, terminal
 from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
+    AgentDetails,
     AgentInfo,
     Answer,
+    Finish,
+    FinishedAgentInfo,
+    FinishPreviewInfo,
     FolderInfo,
     ForgetPreview,
     Forgotten,
@@ -161,6 +165,40 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         if not has_db or state.get_session(name) is None:
             raise HTTPException(404, f'unknown session "{name}"')
         return [models.agent_info(agent) for agent in state.list_agents(name)]
+
+    def known_agent(name: str, agent: str, has_db: bool) -> state.Agent:
+        """The session's agent; 404 for an unknown session or agent."""
+        known(name, has_db)
+        found = state.get_agent(name, agent)
+        if found is None:
+            raise HTTPException(404, f'no agent "{agent}" in session "{name}"')
+        return found
+
+    @app.get("/api/sessions/{name}/agents/finished", dependencies=[Depends(guard)])
+    def finished_agents(name: str, has_db: bool = Depends(database)) -> list[FinishedAgentInfo]:
+        """The session's finished workers, from their "finished" events, newest first."""
+        known(name, has_db)
+        return [models.finished_agent_info(f) for f in state.finished_agents(name)]
+
+    @app.get("/api/sessions/{name}/agents/{agent}/details", dependencies=[Depends(guard)])
+    def agent_details(name: str, agent: str, has_db: bool = Depends(database)) -> AgentDetails:
+        """The agent's whole task and where its work stands in git now (not in the feed:
+        git is asked on each request)."""
+        return models.agent_details(known_agent(name, agent, has_db))
+
+    @app.get("/api/sessions/{name}/agents/{agent}/finish-preview", dependencies=[Depends(guard)])
+    def finish_preview(
+        name: str, agent: str, has_db: bool = Depends(database)
+    ) -> FinishPreviewInfo:
+        """What finishing the worker would do now, refused as the finish would be."""
+        known_agent(name, agent, has_db)
+        return models.finish_preview_info(core(runtime.finish_preview, name, agent))
+
+    @app.post("/api/sessions/{name}/agents/{agent}/finish", dependencies=[Depends(guard.changes)])
+    def finish(name: str, agent: str, given: Finish, has_db: bool = Depends(database)) -> Sent:
+        """Finish the worker, as `lado finish` does."""
+        known(name, has_db)
+        return Sent(result=core(runtime.finish_worker, name, agent, given.discard).text())
 
     @app.get("/api/sessions/{name}/messages", dependencies=[Depends(guard)])
     def messages(

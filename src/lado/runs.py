@@ -191,13 +191,18 @@ def answer_text(session: str, gate: str, option: str, comment: str | None = None
 
 
 def now(run: state.Run) -> str:
-    """Where the run is now: who acts, the gate it waits at, or how it closed."""
+    """Where the run is now: who acts, the gate it waits at, or how it closed; for an open
+    run whose flow cannot be read, why: neither its step nor its gate can go on."""
+    if run.status in state.OPEN:
+        try:
+            flow_of(run)
+        except SnapshotError as error:
+            return error.line()
     if run.status == state.WAITING:
         gate = state.open_gate(run.session, run.name)
         return f"waiting for human: {f'gate #{gate.id}' if gate else run.reason}"
     if run.status == state.ACTIVE:
-        who, problem = acting_or_problem(run)
-        return problem.line() if problem else f"→ {who}"
+        return f"→ {acting(run)}"
     return f"{run.status}: {run.reason}" if run.reason else run.status
 
 

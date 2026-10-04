@@ -340,6 +340,13 @@ def test_ls_shows_a_run_whose_flow_cannot_be_read_and_goes_on(repo, fake_tmux, c
     x, y = capsys.readouterr().out.splitlines()[-2:]
     assert x.startswith("  run ship/x  build  its flow snapshot is not JSON: Expecting")
     assert y.split()[:5] == ["run", "ship/y", "build", "→", "rev"]
+    runs.force("s", "ship/y", "check", "built by hand")  # waits at gate #1
+    agent_helpers.spoil_snapshot("s", "ship/y", "[]")
+    assert main(["ls"]) == 0
+    y, gate = capsys.readouterr().out.splitlines()[-2:]
+    # Its gate cannot be answered without the flow: the problem shows here too.
+    assert y.startswith("  run ship/y  check  its flow snapshot is not a mapping  ")
+    assert gate == "    gate #1 waiting: Ship it?"
 
 
 def test_the_human_cannot_move_a_run_whose_flow_cannot_be_read(repo, fake_tmux, capsys):

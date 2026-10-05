@@ -1099,3 +1099,14 @@ installed-kit worker and two kits' skill packs tests.
 Wanted: integration tests that wait for a worker's start share one wait helper with a margin
 for parallel runs under load, not 30 s in each test.
 Found: 2026-10-06, review of fix/finish-race.
+## A message ending in a backslash is not submitted
+
+When the human's message (or any message) ends in `\`, e.g. `что требуется от меня?\`,
+the line LADO pastes into an idle agent (`[from human] <summary>`) ends in a backslash.
+`tmux.send_text` pastes it and presses Enter; Claude Code reads `\` + Enter as "continue on
+the next line", so the prompt is not submitted and the agent sits with the text in its input
+until someone presses Enter. The message stays `sent` and the sweep pastes it again later.
+Wanted: the pasted line never ends in a backslash (e.g. a trailing space or the `(#id)`
+suffix after it, or escaping per provider), checked for each provider (Kilo and OpenCode may
+treat it the same way), with a test.
+Found: 2026-10-06, by the human in session kit-creator.

@@ -15,13 +15,15 @@ import {
 import { Agents } from "./Agents";
 import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
+import { duration, since as ago } from "./ChatText";
+import { CopyButton } from "./Copy";
 import { FoldToggle } from "./Fold";
 import { Flows, isOpen } from "./Flows";
-import { CollapsePanelIcon, ProblemIcon } from "./icons";
+import { AgentCliIcon, CollapsePanelIcon, FolderIcon, KitsIcon, LinkIcon, ProblemIcon } from "./icons";
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
-import { SessionRowMenu } from "./SessionRowMenu";
+import { sessionLink, SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
@@ -393,11 +395,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
   const stopped = session.status === "stopped";
   return (
     <section className="session" aria-label={`Session ${name}`}>
-      <header className="session-head">
-        <h2 title={name}>{name}</h2>
-        <Status status={session.status} />
-        <SessionActions session={session} />
-      </header>
+      <SessionHead session={session} />
       <StartedNotice name={name} />
       <nav className="tabs" aria-label="Session sections">
         {TABS.map((one) => (
@@ -424,6 +422,74 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       )}
     </section>
   );
+}
+
+// The session's head (docs/design/ui.md, Structure): its name, status and how long it ran,
+// Copy link and its actions; below, small, its folder (Copy path on the folder's icon), its
+// kits and its agents' CLI with the permission mode.
+function SessionHead({ session }: { session: SessionInfo }) {
+  const { name, repo, kits, provider, permission_mode: mode } = session;
+  return (
+    <header className="session-head">
+      <div className="session-title">
+        <h2 title={name}>{name}</h2>
+        <Status status={session.status} />
+        <Ran session={session} />
+        <div className="session-head-actions">
+          <CopyButton
+            label="Copy link"
+            copied="Link copied"
+            text={sessionLink(name)}
+            field={{ title: `Link to ${name}`, label: "Link" }}
+            icon={<LinkIcon />}
+          />
+          <SessionActions session={session} />
+        </div>
+      </div>
+      <div className="session-meta">
+        <span className="session-folder">
+          <CopyButton
+            label="Copy path"
+            copied="Path copied"
+            text={repo}
+            field={{ title: `Path of ${name}`, label: "Path" }}
+            icon={<FolderIcon />}
+          />
+          {/* Cut at its start, so the end of the path stays in view. */}
+          <span className="session-path" title={repo}>
+            <bdi>{repo}</bdi>
+          </span>
+        </span>
+        <span className="session-fact">
+          <KitsIcon />
+          <span className="session-kits">{kits.join(", ")}</span>
+        </span>
+        <span className="session-fact">
+          <AgentCliIcon />
+          <span className="session-agent-cli">{mode ? `${provider} · ${mode}` : provider}</span>
+        </span>
+      </div>
+    </header>
+  );
+}
+
+const TICK_MS = 60_000; // how often a running session's time is counted on
+
+// How long the session ran: while it runs, its closed spans and the time since its last
+// start, counted on each minute; stopped, how long ago too.
+function Ran({ session }: { session: SessionInfo }) {
+  const { running_since: since, stopped_at: stopped } = session;
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!since) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(timer);
+  }, [since]);
+  const open = since ? Math.max(0, (now - new Date(since).getTime()) / 1000) : 0;
+  const ran = duration(session.ran_seconds + open, true);
+  const text = since ? ran : stopped ? `stopped ${ago(stopped)} ago · ran ${ran}` : `ran ${ran}`;
+  return <span className="session-ran">{text}</span>;
 }
 
 // What a start or resume from the New session window said: the settings a resume changed,

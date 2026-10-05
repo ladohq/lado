@@ -203,7 +203,11 @@ schema change.
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
-    names the run) and the session's `session_stop` and `session_resume`. The `notes`
+    names the run) and the session's `session_stop`, `session_resume` and `session_gone`
+    (a stop or resume found its tmux gone: written by `state.stop_session(gone=True)` in
+    the stop's transaction, before the agents go, only for a session not stopped yet, at
+    its last sign of life, `state.last_alive`: its agents' latest `seen_at`, else its
+    latest event; the `session_stop` follows). The `notes`
     table keeps every note a run's step reported (`flow_advance`, a gate's answer,
     `lado flow-set`'s reason) with the state it was reported from and its kind: a
     `report` is a work state's own or the answer at an approval or choice gate; an
@@ -278,7 +282,9 @@ schema change.
     session, 409 `Taken` for a taken name), `POST …/{name}/resume`, `GET …/stop-preview`,
     `POST …/stop`, `GET …/forget-preview`, `DELETE /api/sessions/{name}?force=`, all
     through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the
-    session's kits, provider, permission mode and without;
+    session's kits, provider, permission mode and without, and how long it ran
+    (`ran_seconds`, its closed spans; `running_since`, the start of the open one while it
+    runs; `stopped_at`);
     the Kits page's endpoints are in `app.py` too (docs/design/ui.md, Kits):
     `GET /api/kits/installed` (`InstalledKitInfo`, the installed then the built-in kits;
     with `KitInfo` it shares `KitSummary`), `GET /api/kits/available` (`OfferInfo`),
@@ -299,7 +305,12 @@ schema change.
     `Listening`: the local link, the remote one and the warning for the address taken),
     the background start and stop. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
-    `runtime.session_status`.
+    `runtime.session_status`, how long it ran from `runtime.session_time`: spans from its
+    `created_at` or a `session_resume` to the next `session_gone` or `session_stop` (an end
+    before its start makes nothing), by the events' ids, read with one query by kind
+    (`state.span_events`); the open span of a running session (or `loop_down`) is
+    `running_since`, and one whose tmux is gone ends at `state.last_alive`, as the
+    `session_gone` a stop or resume then writes, so its time stays the same.
 - `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made
   by `make web-types` and committed.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;

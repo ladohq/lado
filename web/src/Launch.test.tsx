@@ -26,6 +26,9 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
     provider: "claude",
     permission_mode: null,
     without: [],
+    ran_seconds: 0,
+    running_since: null,
+    stopped_at: null,
     ...more,
   };
 }
@@ -454,12 +457,12 @@ test.each([
   ["loop_down", ["Stop session…"]],
   ["stopped", ["Resume…", "Forget…"]],
   ["tmux_gone", ["Resume…", "Stop session…"]],
-] as const)("a %s session's head has the icons %j, each with its tooltip, and no menu", async (status, labels) => {
+] as const)("a %s session's head has Copy link, the icons %j and Copy path, each with its tooltip, and no menu", async (status, labels) => {
   sessions = [session("lado", { status })];
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
   const buttons = within(head()).getAllByRole("button");
-  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(labels);
+  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Copy link", ...labels, "Copy path"]);
   for (const button of buttons) {
     expect(button.querySelector("svg")).toBeTruthy();
     expect(button.getAttribute("title")).toBeNull(); // the UI's tooltip, not the browser's
@@ -477,6 +480,95 @@ test("Forget is drawn in the colour of a dangerous action", async () => {
   await screen.findByRole("region", { name: "Session lado" });
   expect(within(head()).getByRole("button", { name: "Forget…" }).classList).toContain("danger-icon");
   expect(within(head()).getByRole("button", { name: "Resume…" }).classList).not.toContain("danger-icon");
+});
+
+const MINUTE = 60_000;
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+const ranText = () => head().querySelector(".session-ran")?.textContent;
+
+test("a running session's head says how long it ran, and counts on each minute", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    sessions = [session("lado", { ran_seconds: 10 * 60, running_since: ago((2 * 60 + 4) * MINUTE + 30_000) })];
+    open("/sessions/lado");
+    await screen.findByRole("region", { name: "Session lado" });
+    expect(ranText()).toBe("2 h 14 min");
+    act(() => vi.advanceTimersByTime(MINUTE));
+    expect(ranText()).toBe("2 h 15 min");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each([
+  ["stopped", { stopped_at: ago(5 * 60 * MINUTE + 20 * MINUTE) }, "stopped 5 h ago · ran 3 h 2 min"],
+  ["tmux_gone", {}, "ran 3 h 2 min"],
+] as const)("a %s session's head says how long it ran", async (status, more, text) => {
+  sessions = [session("lado", { status, ran_seconds: (3 * 60 + 2) * 60, ...more })];
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(ranText()).toBe(text);
+});
+
+test("the head's second line has the folder, whole in its title, the kits, the provider and the mode", async () => {
+  sessions = [
+    session("lado", { repo: "/Users/me/src/lado", kits: ["team", "default"], provider: "kilo", permission_mode: "plan" }),
+    session("app"),
+  ];
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  const meta = head().querySelector(".session-meta") as HTMLElement;
+  const path = meta.querySelector(".session-path") as HTMLElement;
+  expect(path.textContent).toBe("/Users/me/src/lado");
+  expect(path.getAttribute("title")).toBe("/Users/me/src/lado");
+  expect(meta.querySelector(".session-kits")?.textContent).toBe("team, default");
+  expect(meta.querySelector(".session-agent-cli")?.textContent).toBe("kilo · plan");
+  expect(within(meta).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Copy path"]);
+  cleanup();
+  open("/sessions/app");
+  await screen.findByRole("region", { name: "Session app" });
+  expect(head().querySelector(".session-agent-cli")?.textContent).toBe("claude");
+});
+
+test.each([
+  ["Copy link", "Link copied", (): string => `${window.location.origin}/sessions/my%20app`],
+  ["Copy path", "Path copied", (): string => "/src/my app"],
+] as const)("%s in the head copies and says %s for a while", async (label, said, text) => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const writeText = vi.fn(async () => {});
+    clipboard(writeText);
+    sessions = [session("my app")];
+    open("/sessions/my%20app?token=secret");
+    await screen.findByRole("region", { name: "Session my app" });
+    fireEvent.click(within(head()).getByRole("button", { name: label }));
+    await waitFor(() => expect(within(head()).getByText(said).getAttribute("role")).toBe("status"));
+    expect(writeText).toHaveBeenCalledWith(text());
+    await act(() => vi.advanceTimersByTimeAsync(1900));
+    expect(within(head()).getByText(said)).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    expect(within(head()).queryByText(said)).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each([
+  ["Copy link", "Link to lado", "Link", (): string => `${window.location.origin}/sessions/lado`],
+  ["Copy path", "Path of lado", "Path", (): string => "/src/lado"],
+] as const)("without the Clipboard API %s in the head shows the text selected", async (label, dialog, name, text) => {
+  clipboard(async () => Promise.reject(new Error("not allowed")));
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: label }));
+  const asked = await screen.findByRole("dialog", { name: dialog });
+  const field = within(asked).getByRole("textbox", { name }) as HTMLInputElement;
+  expect(field.value).toBe(text());
+  await waitFor(() => expect(document.activeElement).toBe(field)); // focused once it is drawn
+  expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
+  fireEvent.keyDown(asked, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: dialog })).toBeNull();
+  expect(document.activeElement).toBe(within(head()).getByRole("button", { name: label }));
 });
 
 const row = async (name: string) => (await screen.findByRole("link", { name: new RegExp(name) })).closest("li") as HTMLElement;
@@ -567,7 +659,7 @@ test.each([
   expect(screen.queryByRole("menu")).toBeNull();
   const field = within(asked).getByRole("textbox", { name: "Link" }) as HTMLInputElement;
   expect(field.value).toBe(`${window.location.origin}/sessions/lado`);
-  expect(document.activeElement).toBe(field);
+  await waitFor(() => expect(document.activeElement).toBe(field)); // focused once it is drawn
   expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
   expect(within(asked).getByText("Press ⌘C / Ctrl+C to copy")).toBeTruthy();
   expect(within(await row("lado")).getByRole("status").textContent).toBe("");

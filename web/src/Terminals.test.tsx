@@ -31,6 +31,9 @@ const SESSION: SessionInfo = {
   provider: "claude",
   permission_mode: null,
   without: [],
+  ran_seconds: 0,
+  running_since: null,
+  stopped_at: null,
 };
 const AGENTS: AgentInfo[] = [
   { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, waiting_reason: null, ...AGENT_REST },

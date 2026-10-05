@@ -779,3 +779,32 @@ Wanted: the provider reports a turn that ends on an error as a turn end (Claude 
 hook for a failed stop, check which; Kilo's plugin likewise), so the agent is `idle` and gets
 its queue; until then `lado ls` could flag an agent busy far longer than usual.
 Found: 2026-10-05, run feature/self-update (supervisor).
+
+## The end of a session whose tmux died is recorded only at its next stop or resume
+
+`session_gone` (the run time's end for a session whose tmux died) is written only when
+`lado stop` or a resume finds the tmux session gone, at the last sign of life it can find
+then (its agents' latest hook, else its latest event). The session loop (`loop.py`) sees
+the tmux session go at once, but only exits.
+Wanted: the loop records `session_gone` when it sees the tmux session gone, at a closer
+time, through the same `state` function (once per session, not after a stop).
+Found: 2026-10-05, run feature/session-head (design).
+
+## Events have no index by session
+
+`SessionInfo` reads each session's span events (`state.span_events`: `events` by session and
+kind) at every build, in REST and in the change feed; `events` has no index on `session`,
+so each read walks the whole table.
+Wanted: when that becomes noticeable, an index `events(session, kind)` (a schema change, its
+own task).
+Found: 2026-10-05, run feature/session-head (design).
+
+## A vitest test failed once under load and was not named
+
+In run feature/session-head `make web` ended once with `Tests 1 failed | 347 passed`; the
+output kept only the summary (the run piped it through grep), and ten later runs passed.
+Another time `with a refused copy Copy link shows the address selected` failed on the
+field's focus (`expected <body> to be <input>`): checked right after the dialog showed,
+before the effect that focuses it; that check now waits.
+Wanted: if a vitest test fails again in `make check`, name it here with its first error.
+Found: 2026-10-05, run feature/session-head (developer).

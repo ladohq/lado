@@ -14,7 +14,7 @@ vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).F
 const NONE = { gates: 0, questions: 0, agents: 0 };
 
 function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
-  const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [] };
+  const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null };
   return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, ...settings, ...more };
 }
 

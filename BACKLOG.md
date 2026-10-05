@@ -405,16 +405,6 @@ is left, and say which agents had to be killed. Seen in another orchestrator, wh
 agents were killed too early until a delay was added.
 Found: 2026-10-04, design of feature/launch.
 
-## A message to a new agent that is still starting waits until its first turn ends
-
-A message sent to a supervisor (or a worker without a task) while it is `starting` stays
-`pending`: its session-start hook sets it `idle`, but nothing hands over the queue then
-(only turn-end and conversation-start do, and `sweep` only deals with typed messages). In
-the fake-agent test it stayed pending for 30 s, until something else made the agent work.
-Wanted: the session-start hook delivers the queue when it sets the agent `idle`, as
-CONVERSATION_START does.
-Found: 2026-10-04, fix/agent-env (integration test of the login-shell environment).
-
 ## `lado doctor` looks for the agent CLIs on its own PATH, not the agents'
 
 `lado doctor` checks `claude`, `kilo` and `tmux` with `shutil.which` in its caller's

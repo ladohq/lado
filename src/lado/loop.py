@@ -1,7 +1,8 @@
 """The session loop: one hidden process per running session, `lado loop <session>`.
 
 It sweeps the session's unconfirmed messages (lado.runtime.sweep) every few seconds, so a
-message is typed again on time even when no send and no hook of its agent runs. It holds
+message is typed again on time, and the queue of an idle agent typed in, even when no send
+and no hook of its agent runs. It holds
 an exclusive lock on LADO_HOME/loop/<session>.lock while it runs, so a second loop of the
 session exits (after LOCK_WAIT) and `lado ls` sees a session without one; the lock goes
 with the process, and `lado start` or `lado attach` start a loop whose lock is free. A

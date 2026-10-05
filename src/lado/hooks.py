@@ -51,7 +51,10 @@ def handle(
         if current and provider.capabilities.hold_first_turn:
             _wait_for_mcp(session, current)
         if current and current.status == state.STARTING:
-            state.set_status(session, agent, state.BUSY if current.task else state.IDLE)
+            if current.task:
+                state.set_status(session, agent, state.BUSY)  # its first turn: the task
+            else:
+                _idle(provider, session, agent)
     elif event.kind == providers.PROMPT_SUBMIT:
         state.set_status(session, agent, state.BUSY)
         state.confirm_sent(session, agent, event.prompt, format_message)
@@ -64,26 +67,33 @@ def handle(
         # The human's messages this turn got: did it write to the human? Before the inbox is
         # handed over, so what the next turn gets is checked when that one ends.
         state.check_replies(session, agent)
-        # Mark idle first, then collect the inbox: lado.runtime.send_message does it the
-        # other way round, so a message sent in between is always picked up by one of us.
-        state.set_status(session, agent, state.IDLE)
-        if not provider.capabilities.deliver_on_turn_end:
-            runtime.deliver_pending(session, agent)
-        elif pending := state.take_pending(session, agent, state.DELIVERED, state.BUSY):
-            return provider.continue_output(format_messages(pending))
-        # Then what was typed and never confirmed.
-        runtime.sweep(session, agent)
+        return _idle(provider, session, agent, turn_end=True)
     elif event.kind == providers.CONVERSATION_END:
         # Not ready while the next conversation loads: messages wait in the queue.
         state.set_status(session, agent, state.STARTING)
     elif event.kind == providers.CONVERSATION_START:
-        # Ready again: no turn ends to hand over the queue, so its messages are typed in.
-        # Idle first, then the inbox, as for TURN_END.
-        state.set_status(session, agent, state.IDLE)
-        runtime.deliver_pending(session, agent)
-        runtime.sweep(session, agent)
+        # Ready again, as after the session's start.
+        _idle(provider, session, agent)
     elif event.kind == providers.SESSION_END:
         state.set_status(session, agent, state.STOPPED)
+    return None
+
+
+def _idle(
+    provider: providers.Provider, session: str, agent: str, turn_end: bool = False
+) -> str | None:
+    """The agent is idle: hand over its queue. Every switch to idle goes through here.
+
+    Mark idle first, then take the queue: lado.runtime.send_message does it the other way
+    round, so a message sent in between is always handed over by exactly one of us. At a
+    turn's end a provider that can carries the queue on in the hook's output (returned);
+    otherwise the messages are typed in. Then what was typed and never confirmed."""
+    state.set_status(session, agent, state.IDLE)
+    if not (turn_end and provider.capabilities.deliver_on_turn_end):
+        runtime.deliver_pending(session, agent)
+    elif pending := state.take_pending(session, agent, state.DELIVERED, state.BUSY):
+        return provider.continue_output(format_messages(pending))
+    runtime.sweep(session, agent)
     return None
 
 

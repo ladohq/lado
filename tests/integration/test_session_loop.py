@@ -87,3 +87,14 @@ def test_the_loop_types_a_swallowed_message_again(repo, session, monkeypatch):
     )
     [message] = state.list_messages(session)
     assert message.attempts == 2
+
+
+def test_the_loop_types_in_a_message_every_hook_missed(repo, session):
+    start(repo, session)
+    # Queued for the idle supervisor without a send: no sender and no hook hands it over.
+    state.queue_message(session, "w1", "supervisor", "report")
+    wait_for(
+        lambda: [m.state for m in state.list_messages(session)] == [state.DELIVERED],
+        "delivery",
+        session,
+    )

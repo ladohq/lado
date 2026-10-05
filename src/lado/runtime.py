@@ -936,9 +936,9 @@ def _running_agent(session: str, name: str, or_human: bool = False) -> None:
 def _deliver(session: str, recipient: str) -> str:
     """Deliver the recipient's queued messages now if it is idle."""
     # What was typed before and never confirmed goes first, with this one if typed again.
-    sweep(session, recipient)
-    # Queue first, read the status second: the turn-end hook does the reverse, so a message is
-    # never left behind by an agent that went idle in between.
+    _sweep_sent(session, recipient, time.time(), RETRY_DELAYS)
+    # Queue first, read the status second: a hook that makes the agent idle does the
+    # reverse, so a message is never left behind by an agent that went idle in between.
     status = state.get_agent(session, recipient).status
     if status != state.IDLE:
         return f"queued; {recipient} is {status} and will get it when its turn ends"
@@ -947,10 +947,11 @@ def _deliver(session: str, recipient: str) -> str:
     return "sent" if deliver_pending(session, recipient) else "queued"
 
 
-def deliver_pending(session: str, recipient: str) -> bool:
+def deliver_pending(session: str, recipient: str, idle_only: bool = False) -> bool:
     """Type the recipient's pending messages into its window. They stay "sent" until its
-    prompt-submit hook confirms them."""
-    pending = state.take_pending(session, recipient, state.SENT, state.BUSY)
+    prompt-submit hook confirms them. `idle_only`: only into an idle recipient with no
+    message typed and unconfirmed, checked as they are taken."""
+    pending = state.take_pending(session, recipient, state.SENT, state.BUSY, idle_only)
     if not pending:
         return False
     tmux.send_text(session, recipient, format_messages(pending))
@@ -964,18 +965,24 @@ def sweep(
     delays: tuple[float, ...] | None = None,
 ) -> None:
     """Deal with the messages typed into the agent's window (default: each agent's) that
-    its prompt-submit hook has not confirmed. The one rule for them; see _plan."""
+    its prompt-submit hook has not confirmed (the one rule for them; see _plan), then type
+    in the queue of an idle agent, which every hook may have missed."""
     now = time.time() if now is None else now
     delays = delays or RETRY_DELAYS
     names = [agent] if agent else [a.name for a in state.list_agents(session)]
     for name in names:
-        swept = state.sweep(session, name, now, lambda a, sent: _plan(a, sent, now, delays))
-        if swept.typed:
-            tmux.send_text(session, name, format_messages(swept.typed))
-        if swept.requeued and not swept.failed:
-            deliver_pending(session, name)
-        for message in swept.failed:
-            _report_failure(session, message)
+        _sweep_sent(session, name, now, delays)
+        deliver_pending(session, name, idle_only=True)
+
+
+def _sweep_sent(session: str, name: str, now: float, delays: tuple[float, ...]) -> None:
+    swept = state.sweep(session, name, now, lambda a, sent: _plan(a, sent, now, delays))
+    if swept.typed:
+        tmux.send_text(session, name, format_messages(swept.typed))
+    if swept.requeued and not swept.failed:
+        deliver_pending(session, name)
+    for message in swept.failed:
+        _report_failure(session, message)
 
 
 def _plan(

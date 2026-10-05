@@ -67,6 +67,15 @@ def test_supervisor_starts_and_becomes_idle(repo):
     assert tmux.has_session(SESSION)
 
 
+def test_a_message_sent_while_the_supervisor_starts_is_delivered(repo):
+    """Its session-start hook types it in: no turn ends before it, and nothing else runs."""
+    runtime.start_session(str(repo), SESSION, None, "fake")
+    reply = runtime.send_message(SESSION, "human", "supervisor", "hello")
+    assert reply.startswith("queued; supervisor is starting")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
+    assert inputs("supervisor") == ["[from human] hello"]
+
+
 def test_first_turn_waits_until_the_lado_mcp_server_listed_its_tools(repo):
     """The fake agent lists its LADO MCP server's tools while its session-start hook runs,
     like Claude Code; the hook returns only after the server has recorded it."""

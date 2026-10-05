@@ -174,7 +174,10 @@ class _NoTurnEndDelivery(providers.Provider):
 
 def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
+    # Busy, so the message waits for the turn's end. Not starting: its session start would
+    # type the queue in itself, as any switch to idle does.
+    state.set_status("s", "supervisor", state.BUSY)
+    assert runtime.send_message("s", "w1", "supervisor", "done").startswith("queued")
     out = hooks.handle(_NoTurnEndDelivery(), Event(providers.TURN_END), "s", "supervisor")
     assert out is None
     assert fake_tmux[-1] == ("send_text", "s", "supervisor", "[from w1] done")

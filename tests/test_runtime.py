@@ -544,6 +544,41 @@ def test_nothing_is_typed_again_into_an_agent_not_busy(repo, fake_tmux, status):
     assert _typed(fake_tmux) == ["[from w1] report"]
 
 
+def _missed_report(repo):
+    """w1's report queued for the idle supervisor and handed over by no one: as if every
+    hook had missed it."""
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    state.queue_message("s", "w1", "supervisor", "report", "")
+
+
+def test_a_sweep_types_in_what_no_hook_handed_over(repo, fake_tmux):
+    _missed_report(repo)
+    runtime.sweep("s")
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    assert [m.state for m in state.list_messages("s")] == [state.SENT]
+    assert state.get_agent("s", "supervisor").status == state.BUSY
+    runtime.sweep("s")
+    assert _typed(fake_tmux) == ["[from w1] report"]
+
+
+@pytest.mark.parametrize("status", [state.BUSY, state.WAITING, state.STARTING, state.STOPPED])
+def test_a_sweep_types_nothing_into_an_agent_not_idle(repo, fake_tmux, status):
+    _missed_report(repo)
+    state.set_status("s", "supervisor", status)
+    runtime.sweep("s")
+    assert _typed(fake_tmux) == []
+    assert [m.state for m in state.list_messages("s")] == [state.PENDING]
+
+
+def test_a_sweep_types_nothing_new_while_a_typed_message_is_unconfirmed(repo, fake_tmux):
+    sent = _mismatched_report(repo, fake_tmux)  # the supervisor is idle
+    state.queue_message("s", "w1", "supervisor", "ping", "")
+    runtime.sweep("s", now=sent + 1, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    assert [m.state for m in state.list_messages("s")] == [state.SENT, state.PENDING]
+
+
 def test_sweeps_at_once_type_a_message_again_only_once(repo, fake_tmux):
     sent = _swallowed_report(repo, fake_tmux)
     errors = []
@@ -955,6 +990,61 @@ def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
     # Far below the wait, but not tight: the tests run in parallel on a busy machine.
     assert time.monotonic() - started < hooks.MCP_READY_TIMEOUT / 4
     assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_session_start_types_in_what_was_queued_while_the_agent_started(repo, fake_tmux):
+    _session_with_worker(repo)
+    assert runtime.send_message("s", "w1", "supervisor", "report").startswith("queued")
+    _hook("SessionStart", "supervisor", {"source": "startup"})
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    assert [m.state for m in state.list_messages("s")] == [state.SENT]
+    assert state.get_agent("s", "supervisor").status == state.BUSY
+
+
+def test_session_start_of_an_agent_busy_with_its_task_types_in_nothing(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.send_message("s", "supervisor", "w1", "hi")
+    _hook("SessionStart", "w1", {"source": "startup"})
+    assert _typed(fake_tmux, "w1") == []  # it gets the queue when its first turn ends
+    assert _hook("Stop", "w1") == {"decision": "block", "reason": "[from supervisor] hi"}
+
+
+@pytest.mark.parametrize("hook_runs", ["before the queue", "after the queue", "after the read"])
+def test_a_message_sent_while_the_agent_becomes_idle_is_handed_over_once(
+    repo, fake_tmux, monkeypatch, hook_runs
+):
+    """The sender queues, then reads the status; the hook sets idle, then takes the queue.
+    Wherever the hook runs in between, exactly one of them types the message in."""
+    _session_with_worker(repo)
+    queue_message, get_agent = state.queue_message, state.get_agent
+    status_read_next = []
+
+    def session_start():
+        _hook("SessionStart", "supervisor", {"source": "startup"})
+
+    def queue(*args, **kwargs):
+        if hook_runs == "before the queue":
+            session_start()
+        queued = queue_message(*args, **kwargs)
+        if hook_runs == "after the queue":
+            session_start()
+        status_read_next.append(True)
+        return queued
+
+    def read_status(*args, **kwargs):
+        agent = get_agent(*args, **kwargs)
+        if status_read_next and status_read_next.pop() and hook_runs == "after the read":
+            session_start()  # the sender has seen the supervisor starting
+        return agent
+
+    monkeypatch.setattr(state, "queue_message", queue)
+    monkeypatch.setattr(state, "get_agent", read_status)
+    runtime.send_message("s", "w1", "supervisor", "report")
+    monkeypatch.setattr(state, "queue_message", queue_message)
+    monkeypatch.setattr(state, "get_agent", get_agent)
+    runtime.sweep("s")  # the session loop finds nothing more to do
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    assert [m.state for m in state.list_messages("s")] == [state.SENT]
 
 
 @pytest.mark.parametrize("command", ["clear", "resume"])

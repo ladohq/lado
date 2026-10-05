@@ -1641,16 +1641,28 @@ def read_messages(session: str, recipient: str) -> list[Message]:
 
 
 def take_pending(
-    session: str, recipient: str, mark: str, status: str | None = None
+    session: str, recipient: str, mark: str, status: str | None = None, idle_only: bool = False
 ) -> list[Message]:
     """Move all pending messages for `recipient` to `mark` and return them, oldest first;
-    when there are any and `status` is given, set the recipient's status too.
+    when there are any and `status` is given, set the recipient's status too. `idle_only`:
+    take none unless the recipient is idle and no message typed into it is unconfirmed.
 
     Runs in one write transaction, so two concurrent callers never get the same message,
     and no one sees the messages moved without the status that goes with them.
     """
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        if (
+            idle_only
+            and not db.execute(
+                "SELECT 1 FROM agents WHERE session = ? AND name = ? AND status = ?"
+                " AND NOT EXISTS (SELECT 1 FROM messages WHERE session = agents.session"
+                " AND recipient = agents.name AND state = ?)",
+                (session, recipient, IDLE, SENT),
+            ).fetchone()
+        ):
+            db.execute("ROLLBACK")
+            return []
         rows = db.execute(
             f"SELECT {MESSAGE_COLUMNS} FROM messages"
             " WHERE session = ? AND recipient = ? AND state = ? ORDER BY id",

@@ -456,12 +456,17 @@ fixes and docs only: no new feature, no API or schema change.
   16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its
   one line and reads the text with `read_messages`. The worker's task is still the full text.
 - A message to an idle agent is pasted into its window and stays `sent` until the agent's
-  prompt-submit hook sees its line (then `delivered`). A busy agent gets its queued messages
-  from its turn-end hook when the turn ends. LADO types only into an idle agent, never into
-  one that is waiting, starting or stopped, and a new message waits while one typed before
-  is unconfirmed.
+  prompt-submit hook sees its line (then `delivered`). A busy, waiting or starting agent's
+  queue is handed over on every switch to idle (`hooks._idle`: its session start without a
+  task, a conversation start, a turn's end; at a turn's end in the hook's output where the
+  provider can, else typed in), and by `runtime.sweep` when the agent is idle with nothing
+  typed and unconfirmed (checked as the queue is taken), so the session loop types in
+  within one pass what every hook missed. A sender queues first and reads the status
+  second, a hook sets idle first and takes the queue second: exactly one of them hands a
+  message over. LADO types only into an idle agent, never into one that is waiting,
+  starting or stopped, and a new message waits while one typed before is unconfirmed.
 - What happens to an unconfirmed message is one rule, `runtime.sweep`, run by `send_message`
-  to the agent, by its turn-end and conversation-start hooks, and every `loop.INTERVAL`
+  to the agent, by each of its hooks that makes it idle, and every `loop.INTERVAL`
   seconds by the session loop (below). Each paste is an attempt; after the n-th, the message is left alone for
   `RETRY_DELAYS[n-1]` seconds (15, 30, 60). Then: if no hook of the agent ran since the paste
   (`agents.seen_at`; a dialog took the text) and the agent is busy, it is pasted again with

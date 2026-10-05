@@ -20,6 +20,7 @@ import { Flows, isOpen } from "./Flows";
 import { useLaunch, type StartedState } from "./Launch";
 import { useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
+import { SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
 import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
@@ -183,7 +184,7 @@ function Group({
               <span className="session-about">{about(session)}</span>
               {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
             </NavLink>
-            <SessionActions session={session} place="row" />
+            <SessionRowMenu name={session.name} />
           </li>
         ))}
       </ul>
@@ -267,7 +268,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       <header className="session-head">
         <h2 title={name}>{name}</h2>
         <Status status={session.status} />
-        <SessionActions session={session} place="head" />
+        <SessionActions session={session} />
       </header>
       <StartedNotice name={name} />
       <nav className="tabs" aria-label="Session sections">

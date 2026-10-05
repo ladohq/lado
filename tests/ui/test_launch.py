@@ -1,6 +1,7 @@
 """Launch and session control in a browser: a session started from the New session window,
-a refused folder, Stop from the session list, Resume and Forget. The server is `lado` with
-the fake providers, so what it starts runs the fake agent."""
+a refused folder, the session list row's menu, Stop from the session's head, Resume and
+Forget. The server is `lado` with the fake providers, so what it starts runs the fake
+agent."""
 
 import re
 import uuid
@@ -106,20 +107,65 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
     shot(page)
 
 
-def test_stop_from_the_session_list(page: Page, server, repo, shot):
+def test_the_session_list_row_has_only_the_entrys_menu(page: Page, server, repo, shot):
     session = running_session(repo)
     log_in(page, server, f"/sessions/{session}")
     row = page.get_by_role("navigation", name="Sessions").get_by_role("listitem")
     row.hover()
-    row.get_by_role("button", name=f"Stop {session}").click()
+    expect(row.get_by_role("button")).to_have_count(1)
+    row.get_by_role("button", name=f"Actions for {session}").click()
+    menu = page.get_by_role("menu", name=session)
+    expect(menu.get_by_role("menuitem")).to_have_text(["Copy link", "Open in new tab"])
+    expect(menu.get_by_role("menuitem", name="Open in new tab")).to_have_attribute(
+        "href", f"/sessions/{session}"
+    )
+    shot(page, "menu")
+
+    link = f"{server['url']}/sessions/{session}"
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=server["url"])
+    menu.get_by_role("menuitem", name="Copy link").click()
+    expect(row.get_by_role("status")).to_have_text("Link copied")
+    expect(menu).to_have_count(0)
+    assert page.evaluate("navigator.clipboard.readText()") == link
+    shot(page, "copied")
+
+    # Without the Clipboard API (http from another machine) the address is shown to copy by hand.
+    page.evaluate("Object.defineProperty(navigator, 'clipboard', {value: undefined})")
+    row.get_by_role("button", name=f"Actions for {session}").click()
+    menu.get_by_role("menuitem", name="Copy link").click()
+    by_hand = page.get_by_role("dialog", name=f"Link to {session}")
+    expect(by_hand.get_by_role("textbox", name="Link")).to_have_value(link)
+    expect(by_hand).to_contain_text("Press ⌘C / Ctrl+C to copy")
+    shot(page)
+    page.keyboard.press("Escape")
+    expect(by_hand).to_have_count(0)
+
+
+def test_stop_from_the_session_head(page: Page, server, repo, shot):
+    session = running_session(repo)
+    log_in(page, server, f"/sessions/{session}")
+    head = page.get_by_role("region", name=f"Session {session}").locator(".session-head")
+    head.get_by_role("button", name="Stop session…").hover()
+    expect(page.get_by_role("tooltip")).to_have_text("Stop session…")
+    shot(page, "running")
+
+    head.get_by_role("button", name="Stop session…").click()
     asked = page.get_by_role("dialog", name=f'Stop session "{session}"?')
     expect(asked).to_contain_text("its agent is closed")
     expect(asked).to_contain_text("you can resume it later")
+    # Whole, not cut by the session's scrolling box: its left edge is its own.
+    box = asked.bounding_box()
+    edge = page.evaluate(
+        "([x, y]) => document.elementFromPoint(x, y).closest('[role=dialog]')?.ariaLabel ?? null",
+        [box["x"] + 4, box["y"] + box["height"] / 2],
+    )
+    assert edge == f'Stop session "{session}"?'
     shot(page, "asked")
 
     asked.get_by_role("button", name=f"Stop {session}").click()
-    head = page.get_by_role("region", name=f"Session {session}").locator(".session-head")
     expect(head.get_by_role("button", name="Resume…")).to_be_visible()
+    expect(head.get_by_role("button", name="Forget…")).to_be_visible()
+    expect(head.get_by_role("button", name="Stop session…")).to_have_count(0)
     assert state.get_session(session).stopped_at
     shot(page)
 
@@ -146,12 +192,16 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
 def test_forget_a_stopped_session(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")
-    # The name stays on one line beside the status and Resume…, its whole text in a tooltip.
-    name = page.get_by_role("region", name=f"Session {session}").locator(".session-head h2")
+    # The name stays on one line beside the status and the icons, its whole text in a tooltip.
+    head = page.get_by_role("region", name=f"Session {session}").locator(".session-head")
+    name = head.locator("h2")
     expect(name).to_have_attribute("title", session)
     assert name.bounding_box()["height"] < 36
-    page.get_by_role("button", name="Session actions").click()
-    page.get_by_role("menuitem", name="Forget…").click()
+    expect(head.get_by_role("button", name="Session actions")).to_have_count(0)
+    head.get_by_role("button", name="Forget…").focus()
+    expect(page.get_by_role("tooltip")).to_have_text("Forget…")
+    shot(page, "stopped")
+    head.get_by_role("button", name="Forget…").click()
     asked = page.get_by_role("dialog", name=f'Forget session "{session}"?')
     expect(asked).to_contain_text("This cannot be undone.")
     forget = asked.get_by_role("button", name=f"Forget {session}")

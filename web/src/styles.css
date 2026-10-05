@@ -2008,17 +2008,15 @@ h3 {
   text-decoration: underline;
 }
 
-/* A session's actions: in its head, at the right end; in its row, over the row's right end,
-   shown on hover and keyboard focus (and while their menu or question is open). */
+/* A session's actions: icons at the right end of its head. A list row's menu: over the
+   row's right end, shown on hover and keyboard focus (and while its menu, link or note is
+   shown). */
 .session-actions {
   position: relative;
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
-}
-
-.actions-head {
-  flex: none;
   margin-left: auto;
 }
 
@@ -2026,17 +2024,35 @@ h3 {
   position: relative;
 }
 
-.actions-row {
+.row-menu {
   position: absolute;
   top: 6px;
   right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   opacity: 0;
 }
 
-.session-row:hover .actions-row,
-.session-row:focus-within .actions-row,
-.actions-row.shown {
+.session-row:hover .row-menu,
+.session-row:focus-within .row-menu,
+.row-menu.shown {
   opacity: 1;
+}
+
+.row-note {
+  padding: 2px 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+/* Kept in the accessibility tree while empty, so a screen reader hears what comes in it. */
+.row-note:empty {
+  padding: 0;
+  border: 0;
 }
 
 .icon-button {
@@ -2057,10 +2073,18 @@ h3 {
   background: var(--raised);
 }
 
-.actions-head .icon-button {
+.session-actions .icon-button {
   width: 32px;
   height: 32px;
-  font-size: 15px;
+}
+
+.session-actions .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.icon-button.danger-icon {
+  color: var(--danger);
 }
 
 .action-menu {
@@ -2078,7 +2102,9 @@ h3 {
   box-shadow: 0 8px 24px var(--shadow);
 }
 
-.action-menu button {
+.action-menu [role="menuitem"] {
+  display: flex;
+  align-items: center;
   height: 34px;
   padding: 0 12px;
   border: 0;
@@ -2086,17 +2112,13 @@ h3 {
   background: transparent;
   color: var(--ink);
   text-align: left;
+  text-decoration: none;
   font-size: 14px;
 }
 
-.action-menu button:hover,
-.action-menu button:focus-visible {
+.action-menu [role="menuitem"]:hover,
+.action-menu [role="menuitem"]:focus-visible {
   background: var(--raised);
-}
-
-.action-menu .danger-item {
-  color: var(--danger);
-  font-weight: 600;
 }
 
 .stop-popover {
@@ -2106,9 +2128,16 @@ h3 {
   width: min(380px, calc(100vw - 32px));
 }
 
-.actions-row .stop-popover {
-  right: auto;
-  left: 0;
+.link-popover {
+  z-index: 6;
+  width: min(360px, calc(100vw - 32px));
+}
+
+.link-popover input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .stop-popover h3,

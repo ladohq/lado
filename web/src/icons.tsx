@@ -112,3 +112,23 @@ export const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
     {collapsed ? <path d="m13 10 2 2-2 2" /> : <path d="m15 10-2 2 2 2" />}
   </Icon>
 );
+
+// A session's actions in its head: Stop (a square), Resume (a triangle), Forget (a bin).
+export const StopIcon = () => (
+  <Icon>
+    <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />
+  </Icon>
+);
+
+export const ResumeIcon = () => (
+  <Icon>
+    <path d="M8 5.5v13l10-6.5z" />
+  </Icon>
+);
+
+export const ForgetIcon = () => (
+  <Icon>
+    <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.9 12.5h9.2L17.5 7" />
+    <path d="M10.5 10.5v5.5M13.5 10.5v5.5" />
+  </Icon>
+);

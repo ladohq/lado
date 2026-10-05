@@ -17,8 +17,8 @@ import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { duration } from "./ChatText";
 import { CopyButton } from "./Copy";
-import { FoldToggle } from "./Fold";
 import { Flows, isOpen } from "./Flows";
+import { GroupHead, type Tone } from "./GroupHead";
 import { AgentCliIcon, CollapsePanelIcon, FolderIcon, KitsIcon, LinkIcon, ProblemIcon } from "./icons";
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
@@ -33,11 +33,12 @@ import {
   SESSIONS_WIDTH,
   storeAgentMessages,
   storedAgentMessages,
+  storedSessionGroups,
   storedSessionsList,
-  storedStoppedOpen,
+  storeSessionGroups,
   storeSessionsList,
-  storeStoppedOpen,
   type ColumnPrefs,
+  type SessionGroup,
 } from "./prefs";
 import { useTitle } from "./Shell";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
@@ -58,15 +59,27 @@ export function Sessions() {
   const loaded = useLive().sessions;
   const launch = useLaunch();
   const [query, setQuery] = useState("");
-  const [stoppedOpen, setStoppedOpen] = useState(storedStoppedOpen);
+  const [folds, setFolds] = useState(storedSessionGroups);
+  const current = useParams().name;
 
   const wanted = query.trim().toLowerCase();
   const found = loaded && "sessions" in loaded ? loaded.sessions.filter((one) => one.name.toLowerCase().includes(wanted)) : [];
   const groups = grouped(found);
-  const toggleStopped = () => {
-    setStoppedOpen(!stoppedOpen);
-    storeStoppedOpen(!stoppedOpen);
+  const toggle = (group: SessionGroup) => {
+    const next = { ...folds, [group]: folds[group] === "open" ? "folded" : "open" } as const;
+    setFolds(next);
+    storeSessionGroups(next);
   };
+  const group = (id: SessionGroup) => (
+    <Group
+      id={id}
+      sessions={groups[id]}
+      open={wanted !== "" || folds[id] === "open"}
+      searching={wanted !== ""}
+      current={current}
+      onToggle={() => toggle(id)}
+    />
+  );
   const [list, setList] = useState(storedSessionsList);
   const focus = useStripFocus(list.collapsed);
   const [page, room] = useWidth<HTMLDivElement>();
@@ -78,7 +91,7 @@ export function Sessions() {
     setList(next);
     storeSessionsList(next);
   };
-  const toggle = (collapsed: boolean) => {
+  const collapse = (collapsed: boolean) => {
     focus.toggled();
     keep({ collapsed });
   };
@@ -105,7 +118,7 @@ export function Sessions() {
         />
       )}
       {list.collapsed ? (
-        <SessionStrip loaded={loaded} openRef={focus.open} onOpen={() => toggle(false)}>
+        <SessionStrip loaded={loaded} openRef={focus.open} onOpen={() => collapse(false)}>
           {newSession}
         </SessionStrip>
       ) : (
@@ -119,7 +132,7 @@ export function Sessions() {
               className="ghost"
               aria-label="Collapse sessions"
               title="Collapse sessions"
-              onClick={() => toggle(true)}
+              onClick={() => collapse(true)}
             >
               <CollapsePanelIcon side="left" />
             </button>
@@ -141,18 +154,9 @@ export function Sessions() {
             )}
             {loaded && "sessions" in loaded && (
               <>
-                <Group name="Needs you" sessions={groups.needsYou} />
-                <Group name="Running" sessions={groups.running} />
-                {groups.stopped.length > 0 && (
-                  <FoldToggle
-                    name="Stopped"
-                    count={groups.stopped.length}
-                    open={stoppedOpen}
-                    controls="stopped-sessions"
-                    onToggle={toggleStopped}
-                  />
-                )}
-                {stoppedOpen && <Group name="Stopped" id="stopped-sessions" sessions={groups.stopped} hideName />}
+                {group("needs-you")}
+                {group("running")}
+                {group("stopped")}
               </>
             )}
           </nav>
@@ -198,8 +202,8 @@ function SessionStrip({
         </Tooltip>
       ) : (
         <ul className="strip-icons" aria-busy={groups === null || undefined}>
-          {groups?.needsYou.map((session) => <StripIcon key={session.name} session={session} />)}
-          {groups && groups.needsYou.length > 0 && groups.running.length > 0 && (
+          {groups?.["needs-you"].map((session) => <StripIcon key={session.name} session={session} />)}
+          {groups && groups["needs-you"].length > 0 && groups.running.length > 0 && (
             <li className="strip-gap" aria-hidden="true" />
           )}
           {groups?.running.map((session) => <StripIcon key={session.name} session={session} />)}
@@ -233,20 +237,25 @@ function StripIcon({ session }: { session: SessionInfo }) {
   );
 }
 
-// Who a session is: its name, status and agents, what waits for the human, its folder, its
-// kits and provider.
+// Who a session is, the card of its row and of its icon: its name, status and agents (by a
+// dot of its group's tone), what waits for the human, its folder, its kits, provider and
+// permission mode; a stopped one, how to bring it back (Resume is in the session's head).
 function SessionTip({ session }: { session: SessionInfo }) {
+  const mode = session.permission_mode ? ` · mode ${session.permission_mode}` : "";
   return (
-    <>
+    <div className={`session-tip tone-${TONES[groupOf(session)]}`}>
       <div className="tooltip-line">
+        <span className="tip-dot" aria-hidden="true" />
         <b>{session.name}</b> · {STATUS[session.status]} · {count(session.agents, "agent")}
       </div>
       {waits(session) && <div className="tooltip-line waits">Needs you: {about(session)}</div>}
       <div className="tooltip-line">{session.repo}</div>
       <div className="tooltip-line">
         {session.kits.join(", ")} · {session.provider}
+        {mode}
       </div>
-    </>
+      {!isLive(session) && <div className="tooltip-line">Stopped: open it and press Resume</div>}
+    </div>
   );
 }
 
@@ -257,11 +266,18 @@ const waits = (session: SessionInfo) => {
   return isLive(session) && gates + questions + agents > 0;
 };
 
-// The list's groups: a stopped session is Stopped whatever waits in it.
-function grouped(sessions: SessionInfo[]) {
-  const stopped = sessions.filter((one) => !isLive(one));
-  const live = sessions.filter(isLive);
-  return { needsYou: live.filter(waits), running: live.filter((one) => !waits(one)), stopped };
+// The list's groups, by their ids (prefs.ts): a stopped session is Stopped whatever waits in
+// it. Each has its name and its heading's tone (GroupHead), which its rows and cards take.
+const groupOf = (session: SessionInfo): SessionGroup =>
+  !isLive(session) ? "stopped" : waits(session) ? "needs-you" : "running";
+
+const NAMES: Record<SessionGroup, string> = { "needs-you": "Needs you", running: "Running", stopped: "Stopped" };
+const TONES: Record<SessionGroup, Tone> = { "needs-you": "human", running: "done", stopped: "neutral" };
+
+function grouped(sessions: SessionInfo[]): Record<SessionGroup, SessionInfo[]> {
+  const groups: Record<SessionGroup, SessionInfo[]> = { "needs-you": [], running: [], stopped: [] };
+  for (const session of sessions) groups[groupOf(session)].push(session);
+  return groups;
 }
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -278,43 +294,47 @@ function about(session: SessionInfo): string {
   return parts.length ? parts.join(" · ") : count(session.agents, "agent");
 }
 
+// One group of the list under its heading, which folds it; a group without sessions is not
+// drawn. Folded, its list stays in the page (the heading's aria-controls) and shows only the
+// open session, when it is in the group: the open session is always seen. While the search
+// has text the group is open and its heading off: a click would change only what is
+// remembered, not what is seen.
 function Group({
-  name,
-  sessions,
   id,
-  hideName = false,
+  sessions,
+  open,
+  searching,
+  current,
+  onToggle,
 }: {
-  name: string;
+  id: SessionGroup;
   sessions: SessionInfo[];
-  id?: string;
-  hideName?: boolean;
+  open: boolean;
+  searching: boolean;
+  current?: string;
+  onToggle: () => void;
 }) {
   if (sessions.length === 0) return null;
-  const slug = name.toLowerCase().replace(/\s+/g, "-");
-  const headId = `group-${slug}`;
+  const rows = open ? sessions : sessions.filter((one) => one.name === current);
   return (
-    <section
-      className={`session-group group-${slug}`}
-      id={id}
-      aria-label={hideName ? name : undefined}
-      aria-labelledby={hideName ? undefined : headId}
-    >
-      {!hideName && (
-        <h3 id={headId} className="group-name">
-          {name}
-        </h3>
-      )}
-      <ul>
-        {sessions.map((session) => (
+    <section className={`session-group tone-${TONES[id]}`} aria-labelledby={`group-${id}-name`}>
+      <GroupHead
+        nameId={`group-${id}-name`}
+        name={NAMES[id]}
+        count={sessions.length}
+        tone={TONES[id]}
+        fold={{ open, controls: `group-${id}`, onToggle, disabled: searching }}
+      />
+      <ul id={`group-${id}`} hidden={rows.length === 0}>
+        {rows.map((session) => (
           <li key={session.name} className="session-row">
-            <NavLink
-              to={sessionPath(session.name)}
-              className={`session-link${session.status === "running" ? "" : " dim"}${waits(session) ? " waits" : ""}`}
-            >
-              <span className="session-name">{session.name}</span>
-              <span className="session-about">{about(session)}</span>
-              {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
-            </NavLink>
+            <Tooltip tip={<SessionTip session={session} />}>
+              <NavLink to={sessionPath(session.name)} className="session-link">
+                <span className="session-name">{session.name}</span>
+                <span className="session-about">{about(session)}</span>
+                {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
+              </NavLink>
+            </Tooltip>
             <SessionRowMenu name={session.name} />
           </li>
         ))}

@@ -306,7 +306,7 @@ test("/sessions lists the sessions and asks to select one", async () => {
   expect(within(list).getAllByRole("link")).toHaveLength(2); // the stopped one is folded
   expect(screen.getByText("Select a session")).toBeTruthy();
   const stuck = within(list).getByRole("link", { name: /old/ });
-  expect(stuck.className).toContain("dim");
+  expect(stuck.className).toBe("session-link"); // the rows look alike: no dim
   expect(stuck.textContent).toContain("session loop not running");
 });
 
@@ -374,7 +374,8 @@ test("a session with a space and a dot in its name opens by its encoded address"
   const view = await screen.findByRole("region", { name: "Session my app.v2" });
   expect(within(view).getByRole("region", { name: "Artifacts" })).toBeTruthy();
   const list = screen.getByRole("navigation", { name: "Sessions" });
-  fireEvent.click(within(list).getByRole("button", { name: "Stopped (1)" }));
+  // Stopped is folded, but the open session is seen in it.
+  expect(within(list).getByRole("button", { name: "Stopped 1" }).getAttribute("aria-expanded")).toBe("false");
   expect(within(list).getByRole("link", { name: /my app\.v2/ }).getAttribute("href")).toBe(
     "/sessions/my%20app.v2",
   );
@@ -427,7 +428,7 @@ test("changes update the list and the session's header as they come", async () =
   const list = screen.getByRole("navigation", { name: "Sessions" });
   stream().send("change", change("lado", { ...SESSIONS[0], status: "tmux_gone" }));
   expect(within(view).getByText("tmux session is gone")).toBeTruthy();
-  expect(within(list).getByRole("link", { name: /lado/ }).className).toContain("dim");
+  expect(within(list).getByRole("link", { name: /lado/ }).textContent).toContain("tmux session is gone");
   stream().send(
     "change",
     change("new", { name: "new", repo: "/src/new", status: "running", agents: 1, waiting: NONE, ...SETTINGS }, "insert"),

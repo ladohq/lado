@@ -19,7 +19,7 @@ function groups({ old = 3 }: { old?: number } = {}): Group[] {
     entry(`old-${at + 1}`, { at: new Date(Date.now() - (at + 1) * HOUR).toISOString(), tone: "dim" }),
   );
   return [
-    { name: "Waiting", tone: "waits", entries: [entry("a", { tone: "waits", search: ["a", "Alpha task"] })] },
+    { name: "Waiting", tone: "human", entries: [entry("a", { tone: "waits", search: ["a", "Alpha task"] })] },
     { name: "Active", entries: [entry("b", { search: ["b", "Beta"] }), entry("c")] },
     { name: "Ended", entries: ended, days: true, first: 10, empty: "Nothing ended yet" },
   ];
@@ -169,8 +169,8 @@ test("an item is picked by its key: two rows of one name are told apart", () => 
   open("/things/gone:7", { list: twins });
   const rows = within(nav()!).getAllByRole("link", { name: "dev" });
   expect(rows.map((one) => one.getAttribute("aria-current"))).toEqual([null, "page"]);
-  expect(within(nav()!).queryByRole("heading", { name: "Live" })).toBeNull();
-  expect(within(nav()!).getByRole("heading", { name: "Gone" })).toBeTruthy();
+  expect(within(nav()!).queryByRole("heading", { name: /^Live/ })).toBeNull();
+  expect(within(nav()!).getByRole("heading", { name: "Gone 1" })).toBeTruthy();
 });
 
 // The groups
@@ -186,8 +186,10 @@ test("every group is open under its heading with its count; nothing folds", () =
     ["Ended", "3"],
   ]) {
     const group = within(list).getByRole("region", { name });
-    expect(within(group).getByRole("heading", { level: 3, name }).textContent).toBe(name);
-    expect(group.querySelector(".group-count")?.textContent).toBe(count);
+    const heading = within(group).getByRole("heading", { level: 3, name: `${name} ${count}` });
+    expect(heading.querySelector(".group-name")?.textContent).toBe(name);
+    expect(heading.querySelector(".group-count")?.textContent).toBe(count);
+    expect(heading.querySelector("svg")).toBeNull(); // no chevron: nothing folds
   }
   expect(names(list)).toEqual(["a", "b", "c", "old-1", "old-2", "old-3"]);
 });
@@ -219,11 +221,14 @@ test("an empty group says its `empty` text; one without it is not shown", () => 
   expect(within(nav()!).queryByRole("region", { name: "Nothing" })).toBeNull();
 });
 
-test("the group that waits is marked, its rows too", () => {
+test("the group that waits is in the human's tone, its heading too, its rows marked", () => {
   wideColumn();
   open("/things/a");
   const waiting = within(nav()!).getByRole("region", { name: "Waiting" });
-  expect(waiting.className).toContain("waits");
+  expect(waiting.className).toContain("tone-human");
+  expect(within(waiting).getByRole("heading", { level: 3 }).className).toContain("group-head tone-human");
+  // The other groups are neutral.
+  expect(within(nav()!).getByRole("heading", { level: 3, name: "Active 2" }).className).toContain("tone-neutral");
   expect(within(waiting).getByRole("link").className).toContain("waits");
 });
 

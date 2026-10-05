@@ -569,6 +569,20 @@ supervisor, and an unknown one is not found" with `Unable to find role="region" 
 than the render under the full run's load.
 Wanted: the test waits for what it checks (findBy with a timeout that holds under load).
 Found: 2026-10-04, feature/without-at-kit (implement).
+
+## Flaky: vitest Flows tab tests that wait for a run's page
+
+Under a heavy load (load average 80–160, other worktrees' checks running) `make web`
+failed twice in `src/Flows.test.tsx`, each time another test: "with no runs both groups
+are there and say they are empty; with only ended ones the latest to end opens" (`Unable
+to find role="region" and name "Run fix/older"`) and "the flows tab without a run opens
+the first waiting run, else the first active one" (`… "Run feature/flows-tab"`). The file
+alone passed both times. Like the Agents entry above: `findBy`'s 1 s default is shorter
+than the redirect and render under that load.
+Wanted: the List and page tests wait with a timeout that holds under load (one shared
+helper or vitest's `asyncUtilTimeout` for these files).
+Found: 2026-10-05, feature/session-list-groups (implement).
+
 ## A refused permission leaves the Claude agent waiting until the human types
 
 When the human refuses a Claude Code permission dialog (or dismisses an AskUserQuestion
@@ -921,3 +935,13 @@ uses that default; it only filled the rows of sessions made before providers exi
 did run Claude Code. Wanted: when a migration touches these tables anyway, drop the default
 from the schema of new databases (keep the migration's fill for old rows).
 Found: 2026-10-05, feature/no-default-provider.
+## Flaky: UI e2e test of a question card under load
+
+`tests/ui/test_chat.py::test_the_supervisor_asks_and_the_human_answers_in_a_card` failed in
+`make check` with `Locator expected to be visible ... get_by_role("article", name="Question
+from supervisor").get_by_role("button", name="later")` (timeout 5000ms) at a load average of
+about 160; `tests/ui/test_chat.py` passed alone right after with no change.
+Wanted: the wait for the fake agent's question allows for a loaded machine (the shared
+timeout of the UI tests, or a wait on the message in lado.db first), so it fails only when
+the question never comes.
+Found: 2026-10-05, merge step of feature/session-list-groups.

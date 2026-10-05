@@ -862,3 +862,14 @@ Wanted: the hint follows what was found: a uv tool or pipx install not from an i
 the working copy yourself (git pull), then restart the sessions; a venv without pip:
 `uv pip install --python <prefix>/bin/python lado==X`; only a venv with pip: `<prefix>/bin/pip`.
 Found: 2026-10-05, second review of feature/self-update.
+
+## Flaky: vitest Flows tab tests that wait for the open run's region, under load
+
+`make check` failed once in `web/src/Flows.test.tsx` > "the flows tab without a run opens
+the first waiting run, else the first active one" (`Unable to find role="region" and name
+"Run fix/gate-bubble"`) and > "with no runs both groups are there and say they are empty;
+with only ended ones the latest to end opens" (`... name "Run fix/older"`), together with the
+known Agents.test.tsx flake; both files passed alone at once (47 passed).
+Wanted: the tests wait for the region with a timeout that holds under `make check`'s load,
+or the region comes without the slow step.
+Found: 2026-10-05, make check of run feature/opencode-provider after merging main.

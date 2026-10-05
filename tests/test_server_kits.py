@@ -10,9 +10,9 @@ import pytest
 from agent_helpers import init_repo, publish
 from fastapi.testclient import TestClient
 
-from lado import gitcache, marketplaces, runtime, state
+from lado import gitcache, kits, marketplaces, runtime, state
 from lado.server import app as server_app
-from lado.server import auth
+from lado.server import auth, models
 
 PORT = 8123
 OWN = "http://testserver"
@@ -135,6 +135,7 @@ def test_installed_kits_say_where_they_come_from(client, tmp_path):
         "skills": 0,
         "flows": 0,
         "mcp": ["db"],
+        "missing": False,
     }
     assert team["installed_at"]
     assert (mine["kind"], mine["folder"], mine["address"]) == (
@@ -150,7 +151,7 @@ def test_an_installed_kit_whose_folder_is_gone_says_so(client, tmp_path):
     ok(install(client, plan(client, str(kit))))
     subprocess.run(["rm", "-rf", str(kit)], check=True)
     (mine, _) = ok(client.get("/api/kits/installed"))
-    assert (mine["valid"], mine["version"]) == (False, "")
+    assert (mine["valid"], mine["version"], mine["missing"]) == (False, "", True)
     assert "its folder" in mine["problem"] and "is missing" in mine["problem"]
 
 
@@ -336,6 +337,7 @@ def test_check_updates_compares_each_installed_kit_with_its_remote(client, tmp_p
             "pre": None,
             "note": "local, not checked",
             "warnings": [],
+            "newer": None,
         },
         {
             "name": "team",
@@ -344,8 +346,24 @@ def test_check_updates_compares_each_installed_kit_with_its_remote(client, tmp_p
             "pre": None,
             "note": "",
             "warnings": [],
+            "newer": "v1.1.0",
         },
     ]
+
+
+@pytest.mark.parametrize(
+    ("installed", "latest", "newer"),
+    [
+        ("v1.0.0", "v1.0.0", None),
+        ("v1.2.0-rc.1", "v1.1.0", None),
+        ("v1.0.0-rc.1", "v1.0.0", "v1.0.0"),
+    ],
+)
+def test_newer_is_the_latest_release_only_when_it_is_above_the_installed_one(
+    installed, latest, newer
+):
+    row = kits.Outdated("team", installed, latest=latest)
+    assert models.outdated_info(row).newer == newer
 
 
 # Available and marketplaces

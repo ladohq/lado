@@ -54,6 +54,8 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (["/events", "/runs", "/notes", "/gates"].some((end) => path.endsWith(end))) {
       return new Response("[]");
     }
+    // The Kits page's lists (Kits.test.tsx).
+    if (path.startsWith("/api/kits/") || path === "/api/marketplaces") return new Response("[]");
     expect(path).toBe("/api/sessions");
     return new Response(JSON.stringify(body), { status });
   });
@@ -119,7 +121,6 @@ test("the rail lists every section in order, Settings at the bottom", () => {
     "Sessions",
     "Projects",
     "Kits",
-    "Marketplace",
     "Settings",
   ]);
   const settings = within(rail()).getByRole("link", { name: "Settings" });
@@ -132,7 +133,8 @@ test.each([
   ["/sessions", "Sessions", "Sessions"],
   ["/projects", "Projects", "Projects"],
   ["/kits", "Kits", "Kits"],
-  ["/marketplace", "Marketplace", "Marketplace"],
+  ["/kits/updates", "Kits", "Kits"],
+  ["/marketplace", "Kits", "Kits"], // the Marketplace page of earlier versions
   ["/settings", "Settings", "Settings"],
 ])("%s shows %s, marked in the rail", (path, title, item) => {
   open(path);
@@ -151,8 +153,6 @@ test("following a rail link opens its section", () => {
 test.each([
   ["/", "Home", /docs\/design\/ui\.md#home/],
   ["/projects", "Projects", /ROADMAP\.md#later-after-stage-7/],
-  ["/kits", "Kits", /docs\/design\/ui\.md#kits/],
-  ["/marketplace", "Marketplace", /ROADMAP\.md#later-after-stage-7/],
 ])("%s is a placeholder that links to its plan item", (path, title, plan) => {
   open(path);
   const placeholder = screen.getByRole("region", { name: title });

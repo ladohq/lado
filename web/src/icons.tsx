@@ -69,15 +69,6 @@ export const KitsIcon = () => (
   </Icon>
 );
 
-export const MarketplaceIcon = () => (
-  <Icon>
-    <path d="M4.5 9.5 6 4.5h12l1.5 5" />
-    <path d="M4.5 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0" />
-    <path d="M5.5 11.5v8h13v-8" />
-    <path d="M10 19.5v-4h4v4" />
-  </Icon>
-);
-
 export const SettingsIcon = () => (
   <Icon>
     <circle cx="12" cy="12" r="3" />

@@ -40,15 +40,10 @@ const ui = (anchor: string, label: string): Plan => ({
 
 export const PLANS = {
   home: ui("home", "Home"),
-  kits: ui("kits", "Kits"),
   activity: ui("activity", "Activity"),
   agents: ui("agents", "Agents"),
   flows: ui("flows", "Flows"),
   artifacts: ui("artifacts", "Artifacts"),
   providers: ui("providers-and-environment", "Providers and environment"),
   projects: { label: "Roadmap, Later: Projects", href: `${REPO}/ROADMAP.md#later-after-stage-7` },
-  marketplace: {
-    label: "Roadmap, Later: Kit marketplace",
-    href: `${REPO}/ROADMAP.md#later-after-stage-7`,
-  },
 } satisfies Record<string, Plan>;

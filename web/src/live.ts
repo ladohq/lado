@@ -7,7 +7,10 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import {
   ApiError,
   getAgents,
+  getAvailableKits,
   getGates,
+  getInstalledKits,
+  getMarketplaces,
   getMessages,
   getNotes,
   getRunEvents,
@@ -17,7 +20,10 @@ import {
   probeStream,
   type AgentInfo,
   type GateInfo,
+  type InstalledKitInfo,
+  type MarketplaceInfo,
   type MessageInfo,
+  type OfferInfo,
   type MessagePage,
   type MessageQuery,
   type NoteInfo,
@@ -102,9 +108,30 @@ export type LiveState = {
   runs: Record<string, ListLoaded<RunInfo>>; // open and closed, newest first
   notes: Record<string, ListLoaded<NoteInfo>>; // the steps of all its runs, oldest first
   waiting: ListLoaded<WaitingItem>;
+  kits: KitsLoaded | null; // while the Kits page watches them
   link: Link;
   problem: string | null;
 };
+
+// The Kits page's lists: the installed kits (then the built-in ones), the marketplaces and
+// the kits they offer. The feed carries the items of the first two (session ''); what is
+// available is asked again whole when either changes.
+export type KitsLoaded = {
+  installed: ListLoaded<InstalledKitInfo>;
+  marketplaces: ListLoaded<MarketplaceInfo>;
+  available: ListLoaded<OfferInfo>;
+};
+type KitList = keyof KitsLoaded;
+
+const KIT_LOADS: { [list in KitList]: () => Promise<KitsLoaded[list] extends ListLoaded<infer T> ? T[] : never> } = {
+  installed: getInstalledKits,
+  marketplaces: getMarketplaces,
+  available: getAvailableKits,
+};
+
+// An installed kit's place: the user's first, then the built-in ones, each by name.
+const kitOrder = (a: InstalledKitInfo, b: InstalledKitInfo) =>
+  Number(a.kind === "built-in") - Number(b.kind === "built-in") || a.name.localeCompare(b.name);
 
 // The change kinds that can change what waits for the human; a session's change does when
 // it stops or comes back (isLive).
@@ -155,8 +182,17 @@ export class Live {
     runs: {},
     notes: {},
     waiting: null,
+    kits: null,
     link: "connecting",
     problem: null,
+  };
+  // The Kits page's lists: how many pages watch them, and per list whether a load runs and
+  // whether another one follows it for the changes that came meanwhile.
+  private kitsWatchers = 0;
+  private kitLoads: Record<KitList, { loading: boolean; again: boolean }> = {
+    installed: { loading: false, again: false },
+    marketplaces: { loading: false, again: false },
+    available: { loading: false, again: false },
   };
   // What waits for the human: how many pages watch it, whether a load runs, and whether
   // another one follows it for the changes that came meanwhile.
@@ -248,13 +284,14 @@ export class Live {
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
-  // A page that shows the session's agents, messages, run events, gates, runs or notes, or what waits
-  // for the human: they load now and follow the feed until the last page that watches them
-  // lets go (the returned function).
-  watch(list: "waiting"): () => void;
+  // A page that shows the session's agents, messages, run events, gates, runs or notes, what
+  // waits for the human, or the kits: they load now and follow the feed until the last page
+  // that watches them lets go (the returned function).
+  watch(list: "waiting" | "kits"): () => void;
   watch(list: ListName, session: string): () => void;
-  watch(list: ListName | "waiting", session = ""): () => void {
+  watch(list: ListName | "waiting" | "kits", session = ""): () => void {
     if (list === "waiting") return this.watchWaiting();
+    if (list === "kits") return this.watchKits();
     const watched = this.watched[list];
     watched.set(session, (watched.get(session) ?? 0) + 1);
     if (!(session in this.state[list])) this.loadList(list, session);
@@ -430,6 +467,69 @@ export class Live {
       });
   }
 
+  private watchKits(): () => void {
+    this.kitsWatchers += 1;
+    if (this.kitsWatchers === 1) {
+      this.set({ kits: { installed: null, marketplaces: null, available: null } });
+      (Object.keys(KIT_LOADS) as KitList[]).forEach((list) => this.loadKits(list));
+    }
+    return () => {
+      this.kitsWatchers -= 1;
+      if (this.kitsWatchers === 0) this.set({ kits: null });
+    };
+  }
+
+  // One of the Kits page's lists, whole: one load at a time, as what waits (loadWaiting).
+  private loadKits(list: KitList) {
+    if (this.kitsWatchers === 0) return;
+    const load = this.kitLoads[list];
+    if (load.loading) {
+      load.again = true;
+      return;
+    }
+    load.loading = true;
+    KIT_LOADS[list]()
+      .then(
+        (items: unknown[]) => ({ items }),
+        (error: unknown) => ({ error: message(error) }),
+      )
+      .then((loaded) => {
+        load.loading = false;
+        if (this.state.kits !== null) this.set({ kits: { ...this.state.kits, [list]: loaded } });
+        if (load.again) {
+          load.again = false;
+          this.loadKits(list);
+        }
+      });
+  }
+
+  // A change of an installed kit or a marketplace: its item takes its place (a kit by its
+  // name, never a built-in one: they are not in the journal); during a load the list loads
+  // again after it. What is available follows both.
+  private applyKits(change: Change) {
+    const kits = this.state.kits;
+    if (kits === null) return;
+    const list: KitList = change.kind === "kits" ? "installed" : "marketplaces";
+    const loaded = kits[list];
+    if (this.kitLoads[list].loading) this.kitLoads[list].again = true;
+    else if (loaded !== null && "items" in loaded) {
+      if (list === "installed") {
+        const others = (loaded.items as InstalledKitInfo[]).filter(
+          (one) => one.kind === "built-in" || one.name !== change.key,
+        );
+        const item = change.item as InstalledKitInfo | null;
+        const items = (item === null ? others : [...others, item]).sort(kitOrder);
+        this.set({ kits: { ...kits, installed: { items } } });
+      } else {
+        const others = (loaded.items as MarketplaceInfo[]).filter((one) => one.name !== change.key);
+        const item = change.item as MarketplaceInfo | null;
+        const items = (item === null ? others : [...others, item]).sort((a, b) => a.name.localeCompare(b.name));
+        this.set({ kits: { ...kits, marketplaces: { items } } });
+      }
+    }
+    this.loadKits("available");
+  }
+
   private loadList(list: ListName, session: string) {
     const kind = LISTS[list] as ListKind<unknown>;
     const changes: Change[] = [];
@@ -474,6 +574,7 @@ export class Live {
     }
     this.windows.forEach((watched) => this.reloadWindow(watched));
     this.loadWaiting();
+    (Object.keys(KIT_LOADS) as KitList[]).forEach((list) => this.loadKits(list));
     const changes: Change[] = [];
     this.loading = changes;
     getSessions()
@@ -513,6 +614,7 @@ export class Live {
       });
     }
     if (WAITING_KINDS.has(change.kind)) this.loadWaiting();
+    if (change.kind === "kits" || change.kind === "marketplaces") this.applyKits(change);
     const loaded = this.state.sessions;
     if (change.kind !== "sessions" || loaded === null || "error" in loaded) return;
     const item = change.item as SessionInfo | null;

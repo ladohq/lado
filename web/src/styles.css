@@ -2671,3 +2671,409 @@ h3 {
 .run-step.now.waits .step-line {
   color: var(--human);
 }
+
+/* The Kits page (docs/design/ui.md, Kits; mockup C1): the tabs, search and source chips over
+   the list on the left, the marketplaces on the right; under the list on a narrow page. */
+
+.kits-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1180px;
+}
+
+.kits-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.kits-checked {
+  font-size: 13px;
+}
+
+.kits-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+.kits-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kits-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.kits-tabs a {
+  padding: 7px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.kits-tabs a:hover {
+  color: var(--ink);
+}
+
+.kits-tabs a[aria-current="page"] {
+  border-color: var(--action);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.kits-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.kits-bar .search {
+  flex: 1;
+  min-width: 160px;
+  margin: 0;
+}
+
+.kits-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kits-chips .chip {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.kit-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.kit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.kit-row:first-child {
+  border-top: 0;
+}
+
+.kit-row > :not(.kit-actions) {
+  grid-column: 1;
+}
+
+.kit-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kit-name {
+  font: 600 14px var(--mono);
+}
+
+.kit-version {
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+
+.kit-description,
+.kit-problem {
+  margin: 0;
+  font-size: 13px;
+}
+
+.kit-description {
+  color: var(--muted);
+}
+
+.kit-problem {
+  padding-left: 8px;
+  border-left: 3px solid var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.kit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kit-where {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.kit-actions {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  display: flex;
+  align-items: start;
+  gap: 6px;
+}
+
+.badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.badge-new {
+  background: var(--action);
+  color: var(--on-action);
+}
+
+.badge-warn {
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--ink);
+}
+
+.kit-notes p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.kit-warning {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--danger);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.kits-markets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 1px solid var(--line);
+}
+
+.kits-markets-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kits-markets h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.kits-markets ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kits-markets > .quiet {
+  align-self: start;
+}
+
+.market-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 2px 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.market-row .link-button {
+  margin: 0;
+}
+
+.market-name {
+  font-weight: 600;
+}
+
+.market-where,
+.market-problem,
+.market-error {
+  grid-column: 2 / -1;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.market-where {
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.market-problem {
+  color: var(--ink);
+}
+
+.market-error {
+  padding-left: 6px;
+  border-left: 3px solid var(--danger);
+}
+
+.kits-dialog {
+  width: min(580px, calc(100vw - 32px));
+}
+
+.kits-dialog > * + * {
+  margin-top: 12px;
+}
+
+.kits-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kits-ways {
+  display: flex;
+  gap: 2px;
+  width: max-content;
+  max-width: 100%;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.kits-ways label {
+  padding: 4px 10px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.kits-ways label.on {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.kits-ways input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kits-ways label:has(input:focus-visible) {
+  outline: 2px solid var(--action);
+}
+
+.kits-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kits-form input:not([type]),
+.kits-form select,
+.kits-check select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.kits-fields input:not([type]) {
+  flex: 1;
+  min-width: 120px;
+}
+
+.kits-wide {
+  width: 100%;
+  font-family: var(--mono) !important;
+}
+
+.kits-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kit-plan {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.kit-plan dt {
+  color: var(--muted);
+}
+
+.kit-plan dd {
+  margin: 0;
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.kit-alert {
+  padding: 8px 10px;
+  border: 1px solid var(--human);
+  border-radius: 6px;
+  background: var(--human-ground);
+  font-size: 13px;
+}
+
+.kit-alert b {
+  color: var(--human);
+}
+
+.kit-danger {
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.kits-failure {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .kits-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kits-markets {
+    padding-left: 0;
+    border-left: 0;
+  }
+}

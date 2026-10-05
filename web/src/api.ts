@@ -94,6 +94,7 @@ async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!answer.ok) throw await refused(answer);
+  if (answer.status === 204) return undefined as T;
   return (await answer.json()) as T;
 }
 
@@ -199,6 +200,52 @@ export const getForgetPreview = (session: string) => get<ForgetPreview>(`${sessi
 
 export const forgetSession = (session: string, force: boolean) =>
   post<Forgotten>(`${sessionPath(session)}?${query({ force: String(force) })}`, undefined, "DELETE");
+
+// The Kits page (docs/design/ui.md, Kits): what `lado kits` and `lado marketplaces` do.
+
+export type InstalledKitInfo = components["schemas"]["InstalledKitInfo"];
+export type OfferInfo = components["schemas"]["OfferInfo"];
+export type MarketplaceInfo = components["schemas"]["MarketplaceInfo"];
+export type PlanInfo = components["schemas"]["PlanInfo"];
+export type PlanAsk = components["schemas"]["PlanAsk"];
+export type InstallKit = components["schemas"]["InstallKit"];
+export type KitUsersInfo = components["schemas"]["KitUsersInfo"];
+export type OutdatedInfo = components["schemas"]["OutdatedInfo"];
+export type MarketplaceUpdate = components["schemas"]["MarketplaceUpdate"];
+
+const kitPath = (name: string) => `/api/kits/${encodeURIComponent(name)}`;
+const marketplacePath = (name: string) => `/api/marketplaces/${encodeURIComponent(name)}`;
+
+// The installed kits, then the built-in ones; the kits of the enabled marketplaces; the
+// marketplaces. None of them goes to the network.
+export const getInstalledKits = () => get<InstalledKitInfo[]>("/api/kits/installed");
+export const getAvailableKits = () => get<OfferInfo[]>("/api/kits/available");
+export const getMarketplaces = () => get<MarketplaceInfo[]>("/api/marketplaces");
+
+// The sessions that use an installed kit, and what the core says of them.
+export const getRemovePreview = (name: string) => get<KitUsersInfo>(`${kitPath(name)}/remove-preview`);
+
+// What an add would do (the network, the git cache); an install of what the plan showed.
+export const planKit = (ask: PlanAsk) => post<PlanInfo>("/api/kits/plan", ask);
+export const installKit = (given: InstallKit) => post<InstalledKitInfo>("/api/kits/install", given);
+
+export const planKitUpdate = (name: string, tag: string | null) =>
+  post<PlanInfo>(`${kitPath(name)}/plan-update`, tag === null ? {} : { tag });
+export const updateKit = (name: string, tag: string, commit: string) =>
+  post<InstalledKitInfo>(`${kitPath(name)}/update`, { tag, commit });
+export const removeKit = (name: string) => post<void>(kitPath(name), undefined, "DELETE");
+
+// Each installed kit against its repository's tags now (the network).
+export const checkUpdates = () => post<OutdatedInfo[]>("/api/kits/check-updates");
+
+export const addMarketplace = (name: string, url: string) =>
+  post<MarketplaceInfo>("/api/marketplaces", { name, url });
+export const setMarketplaceEnabled = (name: string, enabled: boolean) =>
+  post<MarketplaceInfo>(marketplacePath(name), { enabled }, "PATCH");
+export const removeMarketplace = (name: string) => post<void>(marketplacePath(name), undefined, "DELETE");
+// One marketplace, or each enabled one (the network); one that fails says why.
+export const updateMarketplaces = (name?: string) =>
+  post<MarketplaceUpdate[]>("/api/marketplaces/update", name === undefined ? {} : { name });
 
 // Why the server refuses the event stream at `path`: an ApiError, or nothing when it would
 // open now. Reads only the answer's head; an open stream is closed at once.

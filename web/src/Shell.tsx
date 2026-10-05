@@ -20,7 +20,6 @@ import {
   HomeIcon,
   KitsIcon,
   LaunchIcon,
-  MarketplaceIcon,
   NeedsYouIcon,
   ProjectsIcon,
   SessionsIcon,
@@ -40,7 +39,6 @@ const SECTIONS: { to: string; name: string; icon: ReactNode }[] = [
   { to: "/sessions", name: "Sessions", icon: <SessionsIcon /> },
   { to: "/projects", name: "Projects", icon: <ProjectsIcon /> },
   { to: "/kits", name: "Kits", icon: <KitsIcon /> },
-  { to: "/marketplace", name: "Marketplace", icon: <MarketplaceIcon /> },
 ];
 
 const TitleContext = createContext<(title: string) => void>(() => {});

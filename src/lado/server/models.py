@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lado import flows, kits, marketplaces, runs, runtime, state
+from lado import flows, gitcache, kits, marketplaces, runs, runtime, state
 
 log = logging.getLogger("lado.server")
 
@@ -99,6 +99,7 @@ class InstalledKitInfo(KitSummary):
     skills: int
     flows: int
     mcp: list[str]  # the MCP servers its agents start
+    missing: bool  # its folder (a folder kit's, or a git kit's clone) is gone
 
 
 class IndexEntryInfo(BaseModel):
@@ -201,6 +202,7 @@ class OutdatedInfo(BaseModel):
     pre: str | None
     note: str  # why it was not checked; '' when it was
     warnings: list[str]
+    newer: str | None  # the latest release when it is above the installed version
 
 
 class MarketplaceInfo(BaseModel):
@@ -846,6 +848,7 @@ def installed_kit_info(found: kits.Found) -> InstalledKitInfo:
         skills=len(_skill_names(kit)) if kit else 0,
         flows=len(kit.flows) if kit else 0,
         mcp=kits.mcp_names(kit) if kit else [],
+        missing=row is not None and not found.path.is_dir(),
     )
 
 
@@ -897,7 +900,13 @@ def plan_info(plan: kits.Install, users: runtime.KitUsers | None = None) -> Plan
 
 
 def outdated_info(row: kits.Outdated) -> OutdatedInfo:
+    above = (
+        row.latest
+        and row.latest != row.installed
+        and gitcache.sorted_versions([row.installed, row.latest])[-1] == row.latest
+    )
     return OutdatedInfo(
+        newer=row.latest if above else None,
         name=row.name,
         installed=row.installed,
         latest=row.latest,

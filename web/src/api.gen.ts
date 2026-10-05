@@ -1080,6 +1080,8 @@ export interface components {
             flows: number;
             /** Mcp */
             mcp: string[];
+            /** Missing */
+            missing: boolean;
         };
         /**
          * KitInfo
@@ -1321,6 +1323,8 @@ export interface components {
             note: string;
             /** Warnings */
             warnings: string[];
+            /** Newer */
+            newer: string | null;
         };
         /** PlanAsk */
         PlanAsk: {

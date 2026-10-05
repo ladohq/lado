@@ -2938,6 +2938,10 @@
             },
             "type": "array",
             "title": "Mcp"
+          },
+          "missing": {
+            "type": "boolean",
+            "title": "Missing"
           }
         },
         "type": "object",
@@ -2958,7 +2962,8 @@
           "agents",
           "skills",
           "flows",
-          "mcp"
+          "mcp",
+          "missing"
         ],
         "title": "InstalledKitInfo",
         "description": "An installed kit (its row in lado.db, its files) or a built-in one: the Kits page's\nInstalled list and the `kits` items of the change feed."
@@ -3661,6 +3666,17 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "newer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newer"
           }
         },
         "type": "object",
@@ -3670,7 +3686,8 @@
           "latest",
           "pre",
           "note",
-          "warnings"
+          "warnings",
+          "newer"
         ],
         "title": "OutdatedInfo",
         "description": "An installed kit against its repository's tags now (kits.Outdated)."

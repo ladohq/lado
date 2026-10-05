@@ -136,6 +136,15 @@ export function storeFlowsEndedOpen(open: boolean): void {
   write(FLOWS_ENDED, open ? "open" : "folded");
 }
 
+// The Kits page's source chip: "all", "git", "folder", "built-in" or "marketplace:<name>".
+const KITS_SOURCE = "lado.kitsSource";
+
+export const storedKitsSource = (): string => read(KITS_SOURCE) ?? "all";
+
+export function storeKitsSource(source: string): void {
+  write(KITS_SOURCE, source);
+}
+
 // Whether the session list shows its stopped sessions (folded by default).
 const STOPPED = "lado.stoppedSessions";
 

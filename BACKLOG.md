@@ -969,3 +969,12 @@ Wanted: the wait for the fake agent's question allows for a loaded machine (the 
 timeout of the UI tests, or a wait on the message in lado.db first), so it fails only when
 the question never comes.
 Found: 2026-10-05, merge step of feature/session-list-groups.
+
+## Flaky: installed-kit worker test times out at `starting` under load
+
+`tests/integration/test_agent_kits.py::test_a_worker_gets_its_role_from_an_installed_kit`
+failed once in a full `make check` at a load average near 200: `timed out after 30s waiting
+for dev to be idle; agents: supervisor idle, dev starting`; alone it passed twice. Same shape
+as "two kits' skill packs test times out waiting for a worker under load".
+Wanted: the kits integration tests wait with a timeout that holds under a parallel run.
+Found: 2026-10-05, make check after merging main into feature/kits-page-polish.

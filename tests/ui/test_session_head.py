@@ -126,7 +126,8 @@ def test_in_a_column_of_360_px_the_head_wraps_without_scrolling(page: Page, serv
         """() => [document.documentElement, document.querySelector('.session'),
                   ...document.querySelectorAll('.session-head, .session-head *')]
             .filter((e) => e.scrollWidth > e.clientWidth + 1
-                && !e.classList.contains('session-path') && getComputedStyle(e).overflowX !== 'visible'
+                && !e.classList.contains('session-path')
+                && getComputedStyle(e).overflowX !== 'visible'
                 || e === document.documentElement && e.scrollWidth > innerWidth)
             .map((e) => e.className || e.tagName)"""
     )

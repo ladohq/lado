@@ -93,6 +93,14 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
     runtime.start_session(str(repo), "s", None)
     runtime.start_session(str(repo), "t", "plan", "kilo", without=["agent:worker"])
     runtime.stop_session("t")
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET created_at = '2026-10-05 10:00:00'")
+        db.execute("UPDATE sessions SET stopped_at = '2026-10-05 10:30:00.500' WHERE name = 't'")
+        db.execute(
+            "UPDATE events SET created_at = '2026-10-05 10:30:00.500' WHERE session = 't'"
+            " AND kind = ?",
+            (state.SESSION_STOP,),
+        )
     held = loop.take_lock("s")
     answer = authorized(client).get("/api/sessions")
     held.close()
@@ -106,6 +114,9 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "agents": 1,
             "waiting": none,
             **defaults,
+            "ran_seconds": 0,
+            "running_since": "2026-10-05T10:00:00.000Z",
+            "stopped_at": None,
         },
         {
             "name": "t",
@@ -117,6 +128,9 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "provider": "kilo",
             "permission_mode": "plan",
             "without": ["agent:worker"],
+            "ran_seconds": 1800,
+            "running_since": None,
+            "stopped_at": "2026-10-05T10:30:00.500Z",
         },
     ]
 

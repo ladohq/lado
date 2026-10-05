@@ -100,6 +100,9 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "provider": "claude",
             "permission_mode": None,
             "without": [],
+            "ran_seconds": 0,
+            "running_since": None,
+            "stopped_at": None,
         },
     }
     state.delete_session("s")
@@ -473,6 +476,9 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
     stream = streams(after=position)
     snapshot = stream.next()
     assert (snapshot.event, snapshot.id) == ("change", None)
+    # From its creation, in whole seconds, to its latest event: the run time it was found
+    # gone with.
+    assert snapshot.data["item"].pop("ran_seconds") <= 1
     assert snapshot.data["item"] == {
         "name": "s",
         "repo": str(repo),
@@ -483,6 +489,8 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "provider": "claude",
         "permission_mode": None,
         "without": [],
+        "running_since": None,
+        "stopped_at": None,
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived
 

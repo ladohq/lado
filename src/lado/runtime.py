@@ -253,7 +253,7 @@ def start_session(
     spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env)
     started = Started(sess, lead=env.lead_line(), warnings=env.warnings)
     if old and not old.stopped_at:
-        state.stop_session(session)  # left over from a tmux session that is gone
+        state.stop_session(session, gone=True)  # left over from a tmux session that is gone
         terminal.close_viewers(session)  # they may keep its agents' windows alive
     # Taking the session is one step, so of two `lado start` at once only one goes on; the
     # other changes nothing.
@@ -455,6 +455,41 @@ def session_status(sess: state.Session) -> SessionStatus:
     if not loop.running(sess.name):
         return SessionStatus.LOOP_DOWN
     return SessionStatus.RUNNING
+
+
+@dataclass(frozen=True)
+class SessionTime:
+    ran_seconds: int  # its closed spans
+    running_since: datetime | None  # the start of the span it runs in now, UTC
+
+
+def session_time(sess: state.Session, status: SessionStatus | None = None) -> SessionTime:
+    """How long the session ran, stops and the time after its runtime died left out. A span
+    starts at its creation or a `session_resume` and ends at the next `session_gone` or
+    `session_stop`; a span's end before its start makes nothing. A running session's span
+    is open; one whose tmux is gone ends at its last sign of life (`state.last_alive`), as
+    the `session_gone` that a stop or resume writes for it. `status` as session_status
+    gives it, if known."""
+    status = status or session_status(sess)
+    start = _utc(sess.created_at) if sess.created_at else None
+    ran = 0.0
+    for event in state.span_events(sess.name):
+        at = _utc(event.created_at)
+        if event.kind == state.SESSION_RESUME:
+            start = start or at
+        elif start:
+            ran += max(0.0, (at - start).total_seconds())
+            start = None
+    if start and status in (SessionStatus.RUNNING, SessionStatus.LOOP_DOWN):
+        return SessionTime(int(ran), start)
+    if start and status == SessionStatus.TMUX_GONE:
+        alive = state.last_alive(sess.name)
+        ran += max(0.0, (_utc(alive) - start).total_seconds()) if alive else 0.0
+    return SessionTime(int(ran), None)
+
+
+def _utc(created_at: str) -> datetime:
+    return datetime.fromisoformat(created_at).replace(tzinfo=timezone.utc)
 
 
 @dataclass
@@ -1081,9 +1116,10 @@ def stop_session(session: str) -> Stopped:
     """Kill the session's agents and mark it stopped. Its history, runs and gates stay
     until `lado start` resumes it or `lado forget` drops it; worktrees stay on disk."""
     stop_preview(session)  # refuses an unknown or stopped session
-    if tmux.has_session(session):
+    alive = tmux.has_session(session)
+    if alive:
         tmux.kill_session(session)
-    agents, dropped = state.stop_session(session)
+    agents, dropped = state.stop_session(session, gone=not alive)
     # Then the UI's viewers, which keep the agents' windows: one opened meanwhile found no
     # window to link. Their streams end as the session is marked stopped already.
     terminal.close_viewers(session)

@@ -4308,6 +4308,32 @@
             },
             "type": "array",
             "title": "Without"
+          },
+          "ran_seconds": {
+            "type": "integer",
+            "title": "Ran Seconds"
+          },
+          "running_since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running Since"
+          },
+          "stopped_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped At"
           }
         },
         "type": "object",
@@ -4320,7 +4346,10 @@
           "kits",
           "provider",
           "permission_mode",
-          "without"
+          "without",
+          "ran_seconds",
+          "running_since",
+          "stopped_at"
         ],
         "title": "SessionInfo"
       },

@@ -82,6 +82,24 @@ def publish(work: Path, files: dict[str, str], tag: str | None = None) -> str:
     return remote.as_uri()
 
 
+def pypi_index(**releases) -> dict:
+    """PyPI's JSON of lado with these releases: version -> its upload day (YYYY-MM-DD), or
+    the list of its files' dicts."""
+    files = {
+        version: [{"upload_time_iso_8601": f"{day}T10:00:00.000Z", "yanked": False}]
+        if isinstance(day, str)
+        else day
+        for version, day in releases.items()
+    }
+    return {"info": {"name": "lado"}, "releases": files}
+
+
+def write_index(path: Path, **releases) -> Path:
+    """A local index for LADO_UPDATE_INDEX: pypi_index(**releases) in `path`."""
+    path.write_text(json.dumps(pypi_index(**releases)))
+    return path
+
+
 def spoil_snapshot(session: str, run: str, text: str = "{not json") -> None:
     """Give a run a flow snapshot this LADO cannot read, as a bad row or an older LADO's
     flow format would."""

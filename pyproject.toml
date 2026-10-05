@@ -17,6 +17,7 @@ dependencies = [
     "fastapi>=0.142",
     "mcp>=2.2,<3",
     "pyyaml>=6",
+    "tomli>=1.1; python_version < '3.11'",
     "uvicorn>=0.30",
     "websockets>=13",
 ]

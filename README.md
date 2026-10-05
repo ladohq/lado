@@ -29,6 +29,26 @@ lado doctor             # checks tmux and the agent CLIs (Claude Code, Kilo CLI)
 
 There is nothing else to run yet; see [ROADMAP.md](ROADMAP.md).
 
+## Update
+
+```bash
+lado update             # the latest version; lado update X.Y.Z for another one
+```
+
+`lado ls`, `lado doctor` and the web UI say when a newer LADO is out (they look on PyPI at
+most once a day; `LADO_NO_UPDATE_CHECK=1` switches that off). `lado update` shows its plan
+(the versions, the installer's command, the sessions and the UI server it restarts) and
+asks `Update? [y/N]` (`--yes` skips the question; without a terminal it is required). Then
+it stops the running sessions and the UI server, installs exactly that version with the
+installer LADO came with (`uv tool install lado==X.Y.Z`, or `pipx install --force`), checks
+the installed version and resumes the sessions and the server with the installed `lado`.
+Runs, gates, branches and worktrees stay; agents start a new conversation, and a busy
+agent loses its current turn. A LADO installed otherwise (pip in a venv, a working copy) is
+not upgraded: `lado update` prints the commands to run by hand. If an update does not
+finish, `lado ls` names the sessions left stopped and the `lado start` that resumes each.
+Going back to an older version works the same way (`lado update 0.20.0`), as far as that
+version accepts the database: an older LADO refuses a newer `lado.db`.
+
 ## Kits
 
 A kit is a team: agent roles, flows and skills, in a git repository (or a folder) with a

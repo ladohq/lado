@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from lado import agent_env, doctor
+from lado import __version__, agent_env, doctor
 from lado.providers import claude, kilo
 
 
@@ -19,7 +19,7 @@ def _versions(
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     _versions(monkeypatch)
     checks = doctor.run_checks(which=lambda cmd: cmd)
-    names = ["Python", "tmux", "Agent environment", "Claude Code", "Kilo CLI"]
+    names = ["LADO", "Python", "tmux", "Agent environment", "Claude Code", "Kilo CLI"]
     assert [c.name for c in checks] == names
     assert all(c.ok and not c.warning for c in checks)
 
@@ -88,6 +88,30 @@ def test_main_returns_nonzero_on_failure(monkeypatch, capsys):
     )
     assert doctor.main() == 1
     assert "[FAIL] tmux" in capsys.readouterr().out
+
+
+def test_lado_check_says_a_newer_version_is_available(published):
+    published(**{"99.0.0": "2026-10-04"})
+    check = doctor.check_lado()
+    assert check.ok and check.warning
+    assert check.detail == __version__
+    assert check.hint == "LADO 99.0.0 is available: lado update"
+
+
+def test_lado_check_says_why_the_update_check_failed(published, tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_UPDATE_INDEX", str(tmp_path / "missing.json"))
+    check = doctor.check_lado()
+    assert check.ok and check.warning
+    assert check.hint.startswith("cannot look up LADO's latest version: ")
+
+
+def test_lado_check_of_the_latest_version_and_with_the_check_off(published, monkeypatch):
+    published(**{__version__: "2026-10-04"})
+    assert doctor.check_lado() == doctor.Check("LADO", True, f"{__version__}, the latest version")
+    monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
+    assert doctor.check_lado() == doctor.Check(
+        "LADO", True, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)"
+    )
 
 
 def test_agent_environment_inherited():

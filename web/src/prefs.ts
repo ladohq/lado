@@ -23,6 +23,27 @@ function write(key: string, value: string): void {
   }
 }
 
+// The server version this tab reloaded for (the version banner's Reload), kept for the
+// tab only: after the reload, a banner for the same version says to restart the server.
+const RELOADED_FOR = "lado.reloadedFor";
+
+export function reloadedFor(): string | null {
+  try {
+    return sessionStorage.getItem(RELOADED_FOR);
+  } catch {
+    return null;
+  }
+}
+
+export function storeReloadedFor(version: string | null): void {
+  try {
+    if (version === null) sessionStorage.removeItem(RELOADED_FOR);
+    else sessionStorage.setItem(RELOADED_FOR, version);
+  } catch {
+    // Not remembered: after the reload the banner offers a reload again.
+  }
+}
+
 export function storedTheme(): Theme {
   const theme = read(THEME);
   return theme === "light" || theme === "dark" ? theme : "system";

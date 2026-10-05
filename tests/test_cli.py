@@ -112,7 +112,7 @@ def test_finish_ends_a_worker(repo, fake_tmux, capsys):
 
 def test_start_with_unknown_provider_fails(repo, fake_tmux, capsys):
     assert main(["start", str(repo), "--provider", "nope", "--no-attach"]) == 1
-    assert 'unknown provider "nope"; known: claude, kilo' in capsys.readouterr().err
+    assert 'unknown provider "nope"; known: claude, kilo, opencode' in capsys.readouterr().err
 
 
 def test_start_in_a_repository_without_commits_fails(tmp_path, fake_tmux, capsys):
@@ -129,6 +129,7 @@ def test_start_help_lists_each_providers_permission_modes(capsys):
         main(["start", "--help"])
     out = " ".join(capsys.readouterr().out.split())
     assert "kilo: default, acceptEdits, bypassPermissions, plan" in out
+    assert "opencode: default, acceptEdits, bypassPermissions, plan" in out
     assert "claude: " in out and "dontAsk" in out
 
 

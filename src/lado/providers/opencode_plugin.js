@@ -1,10 +1,11 @@
-// LADO plugin for Kilo CLI: reports the agent's lifecycle to LADO (see lado/providers/kilo.py).
+// LADO plugin for the OpenCode family (OpenCode, Kilo CLI): reports the agent's lifecycle to
+// LADO (see lado/providers/opencode_family.py). Checked with Kilo 7.8.3 and OpenCode 1.18.34.
 //
-// Options, from the agent's kilo.json `plugin` entry: { hooks: { <native event>: [argv...] } }.
-// For each native event that has an argv, the command runs with a JSON payload on stdin.
-// When "session.idle" prints text, that text becomes the session's next user message.
-// A missing argv means "do not report this event". The plugin must never break Kilo, so
-// every failure is swallowed.
+// Options, from the `plugin` entry of the agent's config (kilo.json, opencode.json):
+// { hooks: { <native event>: [argv...] } }. For each native event that has an argv, the
+// command runs with a JSON payload on stdin. When "session.idle" prints text, that text
+// becomes the session's next user message. A missing argv means "do not report this event".
+// The plugin must never break the CLI, so every failure is swallowed.
 import { spawn } from "node:child_process"
 
 function run(argv, payload) {
@@ -24,8 +25,8 @@ function run(argv, payload) {
   })
 }
 
-// Requests for the human and their answers (Kilo 7.8): a request has its `id`, an answer
-// names it as `requestID`. A refused permission is a "permission.replied" too.
+// Requests for the human and their answers (Kilo 7.8.3, OpenCode 1.18.34): a request has its
+// `id`, an answer names it as `requestID`. A refused permission is a "permission.replied" too.
 const REQUESTS = new Set([
   "permission.asked",
   "permission.replied",

@@ -24,7 +24,7 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 
 ```bash
 uv tool install lado    # or: pip install lado
-lado doctor             # checks tmux and the agent CLIs (Claude Code, Kilo CLI)
+lado doctor             # checks tmux and the agent CLIs (Claude Code, Kilo CLI, OpenCode)
 ```
 
 There is nothing else to run yet; see [ROADMAP.md](ROADMAP.md).

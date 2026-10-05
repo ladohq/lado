@@ -3,7 +3,7 @@ import re
 import pytest
 
 from lado import __version__, agent_env, doctor
-from lado.providers import claude, kilo
+from lado.providers import claude, kilo, opencode
 
 
 def _versions(
@@ -11,15 +11,21 @@ def _versions(
     kilo_version=f"{kilo.TESTED_VERSION}.1",
     claude_version=f"{claude.TESTED_VERSION} (Claude Code)",
     tmux_version="tmux 3.7c",
+    opencode_version=f"{opencode.TESTED_VERSION}.34",
 ):
-    versions = {"kilo": kilo_version, "claude": claude_version, "tmux": tmux_version}
+    versions = {
+        "kilo": kilo_version,
+        "claude": claude_version,
+        "tmux": tmux_version,
+        "opencode": opencode_version,
+    }
     monkeypatch.setattr(doctor, "_tool_version", lambda path, flag: versions.get(path, "v1"))
 
 
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     _versions(monkeypatch)
     checks = doctor.run_checks(which=lambda cmd: cmd)
-    names = ["LADO", "Python", "tmux", "Agent environment", "Claude Code", "Kilo CLI"]
+    names = ["LADO", "Python", "tmux", "Agent environment", "Claude Code", "Kilo CLI", "OpenCode"]
     assert [c.name for c in checks] == names
     assert all(c.ok and not c.warning for c in checks)
 
@@ -41,11 +47,16 @@ def test_old_tmux_warns_about_gate_popups_and_terminals(monkeypatch, version, hi
 
 def test_missing_default_provider_fails_other_providers_warn(monkeypatch):
     _versions(monkeypatch)
-    checks = doctor.run_checks(which=lambda cmd: None if cmd in ("claude", "kilo") else cmd)
-    claude, kilo_check = checks[-2:]
+    missing = ("claude", "kilo", "opencode")
+    checks = doctor.run_checks(which=lambda cmd: None if cmd in missing else cmd)
+    claude, kilo_check, opencode_check = checks[-3:]
     assert not claude.ok
     assert kilo_check.ok and kilo_check.warning
     assert "--provider kilo" in kilo_check.hint
+    assert opencode_check.ok and opencode_check.warning
+    assert opencode_check.hint == (
+        "install it: `npm install -g opencode-ai` (needed only for --provider opencode)"
+    )
 
 
 def test_untested_kilo_version_warns_but_passes(monkeypatch, capsys):
@@ -56,6 +67,16 @@ def test_untested_kilo_version_warns_but_passes(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "[warn] Kilo CLI: 9.0.0" in out
     assert f"{kilo.TESTED_VERSION}.x" in out
+
+
+def test_untested_opencode_version_warns_but_passes(monkeypatch, capsys):
+    _versions(monkeypatch, opencode_version="2.0.1")
+    checks = doctor.run_checks(which=lambda cmd: cmd)
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks)
+    assert doctor.main() == 0
+    out = capsys.readouterr().out
+    assert "[warn] OpenCode: 2.0.1" in out
+    assert "LADO is tested with OpenCode 1.18.x" in out
 
 
 def test_claude_code_2_1_289_is_the_tested_version(monkeypatch):

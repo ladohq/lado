@@ -20,6 +20,7 @@ from lado.providers.base import (
 )
 from lado.providers.claude import ClaudeProvider
 from lado.providers.kilo import KiloProvider
+from lado.providers.opencode import OpenCodeProvider
 
 __all__ = [
     "CONVERSATION_END",
@@ -44,7 +45,9 @@ __all__ = [
 
 DEFAULT = "claude"
 
-_PROVIDERS: dict[str, Provider] = {p.name: p for p in (ClaudeProvider(), KiloProvider())}
+_PROVIDERS: dict[str, Provider] = {
+    p.name: p for p in (ClaudeProvider(), KiloProvider(), OpenCodeProvider())
+}
 
 
 def get(name: str) -> Provider:

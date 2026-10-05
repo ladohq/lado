@@ -228,16 +228,6 @@ Wanted: a loop pass never migrates (the schema checked on the connection the pas
 so the refusal holds while the loop runs.
 Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason.
 
-## A repo's own Kilo config may override what LADO switches off
-
-LADO passes its Kilo settings (`autoupdate`, `snapshot`, permissions) in the file named by
-`KILO_CONFIG`. In the opencode family a project's own config (`kilo.json` in the repo, or the
-one Kilo's "Disable for this project" writes) is merged after that file, so a repo with
-`"snapshot": true` would bring the snapshot dialog back. Not verified for Kilo 7.8.1.
-Wanted: check the merge order; if the project wins, pass LADO's must-have settings where
-they win (e.g. `KILO_CONFIG_CONTENT`, which 7.8.1 reads) and test it.
-Found: 2026-10-02, run fix/kilo-no-snapshots.
-
 ## Claude agents load the user's global Claude Code plugins
 
 A Claude Code agent started by LADO still loads the plugins enabled in the user's own
@@ -770,6 +760,58 @@ go unnoticed. Wanted: the e2e test checks `overflow-y` of `.strip-icons`, or fil
 and checks that the buttons keep their place.
 Found: 2026-10-05, review of feature/sessions-list-collapse (Minor 1).
 
+## The OpenCode family's turn end depends on `session.idle`, which OpenCode calls transitional
+
+The plugin (`opencode_plugin.js`) takes the end of a turn from the bus event `session.idle`.
+OpenCode 1.18 marks that event as transitional, next to `session.status` (status `idle`).
+If OpenCode, or Kilo after it, drops `session.idle`, agents never go idle and get no
+queued messages at turn end.
+Wanted: watch the releases; when `session.idle` goes, take the turn end from
+`session.status` in the plugin, for both CLIs, with a JS test.
+Found: 2026-10-05, design of run feature/opencode-provider.
+
+## OpenCode and Kilo agents load the user's global skills
+
+Besides LADO's `skills.paths`, OpenCode 1.18.34 finds skills in `~/.claude/skills`,
+`~/.agents/skills` and `~/.config/opencode/skills` (seen with `opencode debug skill`), and
+Kilo probably does the same: an agent gets skills its kit never named. The switch
+`OPENCODE_DISABLE_EXTERNAL_SKILLS` drops the repo's own `.claude/skills` too. Same kind of
+leak as "Claude agents load the user's global Claude Code plugins".
+Wanted: decide which outside skills an agent may see, and keep the others away without
+touching the user's global config.
+Found: 2026-10-05, design of run feature/opencode-provider.
+
+## Flaky: Kilo live flow test, the passive supervisor acts on its own
+
+`make test-live PROVIDER=kilo`, `test_a_flow_run_moves_on_when_its_worker_reports[kilo]`
+on `kilo/kilo-auto/free` failed twice in three runs: the supervisor, whose role says to do
+nothing, once called `finish_worker(name="w1", discard=true)` after the run ended ("agent w1
+is gone"), once spawned its own worker `worker` for the step before the test's w1 (the run's
+move was by `worker`). The third run passed. The free model does not keep to the passive
+role when LADO's messages ("step needs a worker", "run ended") reach it.
+Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
+role, or the test tolerates and names it), so the test checks LADO, not the model.
+Found: 2026-10-05, live tests of run feature/opencode-provider.
+
+## A parent OpenCode or Kilo agent's variables reach the agents started from its shell
+
+`tmux._INHERITED_AGENT_VARS` and `_INHERITED_AGENT_PREFIXES` drop only Claude Code's
+variables. An OpenCode or Kilo agent's `OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_CONTENT`
+(the whole config, with hooks `--session … --agent …`) and `*_DISABLE_AUTOUPDATE` go on to
+an agent started from its shell with `LADO_AGENT_ENV=inherit` (the tests), and to an
+`opencode` or `kilo` the agent runs itself: that nested CLI's plugin would report hooks as
+the outer agent.
+Wanted: drop the OpenCode family's agent variables as Claude Code's are, with a unit test in
+test_tmux / agent_env.
+Found: 2026-10-05, review of feature/opencode-provider (Found on the way).
+
+## The lado-dev kit's lado-checks skill names the old plugin and providers
+
+Its table says "The Kilo plugin works" after a change to `kilo_plugin.js`, and
+`make test-live PROVIDER=claude` or `kilo`. The plugin is now `opencode_plugin.js` (OpenCode
+and Kilo) and `PROVIDER=claude|kilo|opencode`.
+Wanted: update the skill in the kit's own repository (kit-lado-dev), not in LADO.
+Found: 2026-10-05, review of feature/opencode-provider (Found on the way).
 ## Agents lose their conversation at every restart of a session
 
 `lado stop` then `lado start`, and so `lado update`, start every agent anew: the supervisor
@@ -892,3 +934,13 @@ note the core adds there later (a moved tag, the sessions that use the kit) woul
 Wanted: the server gives the current line apart from the other notes, and the window shows
 those; or the window shows `plan.notes` under its heading.
 Found: 2026-10-05, review of feature/kits-page-polish.
+## Flaky: vitest Flows tab tests that wait for the open run's region, under load
+
+`make check` failed once in `web/src/Flows.test.tsx` > "the flows tab without a run opens
+the first waiting run, else the first active one" (`Unable to find role="region" and name
+"Run fix/gate-bubble"`) and > "with no runs both groups are there and say they are empty;
+with only ended ones the latest to end opens" (`... name "Run fix/older"`), together with the
+known Agents.test.tsx flake; both files passed alone at once (47 passed).
+Wanted: the tests wait for the region with a timeout that holds under `make check`'s load,
+or the region comes without the slow step.
+Found: 2026-10-05, make check of run feature/opencode-provider after merging main.

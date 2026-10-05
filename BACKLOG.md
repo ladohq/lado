@@ -733,3 +733,21 @@ Found: 2026-10-05, feature/session-controls (review).
 upgrade LADO`.
 Wanted: one text from one function for every path.
 Found: 2026-10-05, fix/kits-check-tag (developer's concern, reviewer's Found on the way).
+
+## Flaky: vitest "without a kit Start stays off and the window says why" under load
+
+`web/src/Launch.test.tsx` (~283-289): after `fireEvent.click` on "Remove default" a
+synchronous `getByText("a session needs at least one kit")` did not find the text while a
+second vitest run loaded the machine; without the load the test is green.
+Wanted: wait for the text with `findByText`, or find the async update it does not wait for.
+Found: 2026-10-05, review of fix/chat-start-day-tz.
+
+## UI unit tests depend on the process's locale and nothing guards it
+
+`day()` and the clock in `web/src/ChatText.tsx` format with `toLocale*([], …)`; CI runs in
+en-US, local machines in other locales (en_NZ, ru). A test with a date written in one format
+passes locally and fails in CI, as the chat's "Start of session" tests did on 6a5c694 ("2 Oct"
+here, "Oct 2" in CI).
+Wanted: vitest run in `make web` (or CI) also under a second locale, e.g.
+`LC_ALL=ru_RU.UTF-8`, so such a test fails locally.
+Found: 2026-10-05, review of fix/chat-start-day-tz.

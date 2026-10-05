@@ -218,6 +218,21 @@ def test_a_marketplaces_change_comes_without_an_item(streams):
     }
 
 
+def test_an_installed_kits_change_comes_without_an_item(streams):
+    """No REST model of an installed kit yet (the Kits page adds it)."""
+    stream = streams()
+    stream.next()
+    state.add_kit(state.InstalledKit("team", folder="/dev/team"))
+    added = stream.until(is_change("kits", ""))[-1]
+    assert added.data == {
+        "kind": "kits",
+        "session": "",
+        "key": "team",
+        "op": "insert",
+        "item": None,
+    }
+
+
 def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
     kit = repo / ".lado" / "kits" / "team"
     (kit / "flows").mkdir(parents=True)

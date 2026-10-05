@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -124,6 +124,23 @@ OFFICIAL_MARKETPLACE = "official"
 MARKETPLACES_OFFICIAL = (
     f"INSERT OR IGNORE INTO marketplaces (name) VALUES ('{OFFICIAL_MARKETPLACE}')"
 )
+# The kits the user installed (lado.kits, `lado kits add`), from version 18 on: a kit from
+# git by its address, version tag and the tag's commit at install time (its clone's folder
+# is gitcache.clone_dir(address, tag), not kept), or a folder read in place. They belong to
+# no session.
+KITS = """
+CREATE TABLE IF NOT EXISTS kits (
+    name TEXT PRIMARY KEY,  -- the name in its kit.yaml
+    address TEXT,  -- a kit from git: its address, tag and commit; NULL for a folder
+    tag TEXT,
+    "commit" TEXT,
+    folder TEXT,  -- a folder kit's absolute path; NULL for a kit from git
+    marketplace TEXT,  -- the marketplace it was added from (-m), kept when that one goes
+    installed_at TEXT NOT NULL DEFAULT (datetime('now')),  -- UTC
+    updated_at TEXT,  -- UTC: its latest `lado kits update`; NULL for never
+    CHECK ((address IS NULL) <> (folder IS NULL)),
+    CHECK ((address IS NULL) = (tag IS NULL) AND (address IS NULL) = ("commit" IS NULL))
+)"""
 # The change journal, from version 12 on: one row for each insert, update and delete of the
 # tables the UI shows, written by triggers in the writer's own transaction, so a change by
 # any process (CLI, hooks, MCP server, session loop) is in it. The UI server reads it
@@ -152,10 +169,11 @@ JOURNALED = {
     "notes": "{row}.id",
     "events": "{row}.id",  # from version 14 on: run events only (RUN_EVENT)
     "marketplaces": "{row}.name",  # from version 17 on
+    "kits": "{row}.name",  # from version 18 on
 }
 # The session of a change, where it is not the row's session column: a session is its own,
-# a marketplace belongs to none ('').
-JOURNAL_SESSION = {"sessions": "{row}.name", "marketplaces": "''"}
+# a marketplace or an installed kit belongs to none ('').
+JOURNAL_SESSION = {"sessions": "{row}.name", "marketplaces": "''", "kits": "''"}
 ALL_OPS = ("insert", "update", "delete")
 # The writes of a table that are recorded, where not all are: an event is never changed,
 # and goes only with its session.
@@ -199,6 +217,7 @@ JOURNAL = [
 ]
 EVENTS_JOURNAL = _journal_triggers("events")
 MARKETPLACES_TABLE = [MARKETPLACES, MARKETPLACES_OFFICIAL, *_journal_triggers("marketplaces")]
+KITS_TABLE = [KITS, *_journal_triggers("kits")]
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.
@@ -274,6 +293,7 @@ SCHEMA += (
             *NOTES_STEP,
             AGENTS_WAITING_FOR,
             *MARKETPLACES_TABLE,
+            *KITS_TABLE,
         ]
     )
     + ";\n"
@@ -310,6 +330,7 @@ MIGRATIONS = {
     14: NOTES_STEP,
     15: [AGENTS_WAITING_FOR],
     16: MARKETPLACES_TABLE,
+    17: KITS_TABLE,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -415,6 +436,20 @@ class Marketplace:
     url: str | None  # None for the official one
     enabled: bool
     updated_at: str | None  # UTC; None while its clone was never brought up to date
+
+
+@dataclass(frozen=True)
+class InstalledKit:
+    """A kit the user installed: from git (address, tag, commit) or a folder."""
+
+    name: str
+    address: str | None = None
+    tag: str | None = None  # the version tag vX.Y.Z
+    commit: str | None = None  # the commit of the tag when it was installed
+    folder: str | None = None
+    marketplace: str | None = None  # the marketplace it was added from, if any
+    installed_at: str | None = None  # UTC; set by add_kit
+    updated_at: str | None = None  # UTC; None while never updated
 
 
 @dataclass
@@ -1796,6 +1831,48 @@ def delete_marketplace(name: str) -> bool:
     """False when there is no marketplace of that name."""
     with connect() as db:
         return db.execute("DELETE FROM marketplaces WHERE name = ?", (name,)).rowcount == 1
+
+
+def list_kits() -> list[InstalledKit]:
+    with connect() as db:
+        rows = db.execute("SELECT * FROM kits ORDER BY name").fetchall()
+    return [InstalledKit(**dict(row)) for row in rows]
+
+
+def get_kit(name: str) -> InstalledKit | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM kits WHERE name = ?", (name,)).fetchone()
+    return InstalledKit(**dict(row)) if row else None
+
+
+def add_kit(kit: InstalledKit) -> bool:
+    """False, with nothing changed, when a kit of that name is installed already. An
+    incomplete row is an IntegrityError (not OR IGNORE: that would pass over CHECK too)."""
+    with connect() as db:
+        added = db.execute(
+            'INSERT INTO kits (name, address, tag, "commit", folder, marketplace) '
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            (kit.name, kit.address, kit.tag, kit.commit, kit.folder, kit.marketplace),
+        ).rowcount
+    return added == 1
+
+
+def replace_kit(name: str, address: str, tag: str, commit: str) -> bool:
+    """Move kit `name`, installed from git, to another version; where it came from and
+    when it was installed stay. False when no kit of that name is installed."""
+    with connect() as db:
+        changed = db.execute(
+            'UPDATE kits SET address = ?, tag = ?, "commit" = ?, '
+            "updated_at = datetime('now') WHERE name = ?",
+            (address, tag, commit, name),
+        ).rowcount
+    return changed == 1
+
+
+def delete_kit(name: str) -> bool:
+    """False when no kit of that name is installed."""
+    with connect() as db:
+        return db.execute("DELETE FROM kits WHERE name = ?", (name,)).rowcount == 1
 
 
 def _marketplace(row: sqlite3.Row) -> Marketplace:

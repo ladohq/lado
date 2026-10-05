@@ -117,6 +117,18 @@ def test_each_write_of_a_marketplace_is_one_change_of_no_session(lado_home):
         assert journal(before) == [("marketplaces", "", "team", op)], statement
 
 
+def test_each_write_of_an_installed_kit_is_one_change_of_no_session(lado_home):
+    for statement, op in (
+        ("INSERT INTO kits (name, folder) VALUES ('team', '/dev/team')", "insert"),
+        ("UPDATE kits SET updated_at = datetime('now') WHERE name = 'team'", "update"),
+        ("DELETE FROM kits WHERE name = 'team'", "delete"),
+    ):
+        before = last()
+        with state.connect() as db:
+            db.execute(statement)
+        assert journal(before) == [("kits", "", "team", op)], statement
+
+
 def test_a_change_of_any_agent_column_but_seen_at_is_recorded(lado_home):
     with state.connect() as db:
         setup_agent(db)

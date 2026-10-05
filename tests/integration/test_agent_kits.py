@@ -7,7 +7,7 @@ import pytest
 from agent_helpers import init_repo, publish
 from test_agents import SESSION, wait_for, wait_status
 
-from lado import gitcache, runtime, state
+from lado import gitcache, kits, runtime, state
 
 pytestmark = pytest.mark.integration
 
@@ -107,3 +107,26 @@ def test_two_kits_get_two_versions_of_one_skill_pack(tmp_path, repo):
         link = state.home() / "agents" / SESSION / agent / "skills" / "tdd"
         clone = gitcache.clone_dir(url, ref)
         assert link.is_symlink() and link.resolve() == (clone / "skills" / "tdd").resolve()
+
+
+def test_a_worker_gets_its_role_from_an_installed_kit(tmp_path, repo):
+    """An installed kit is a row in lado.db; a running session reads it at each spawn."""
+    work = init_repo(tmp_path / "team-kit")
+    agent = "---\nname: dev\ndescription: d\n---\n{text}\n"
+    files = {"kit.yaml": "name: team\nversion: 1.0.0\n", "agents/dev.md": agent.format(text="v1")}
+    url = publish(work, files, tag="v1.0.0")
+    kits.install(kits.plan_add(url))
+    assert not (state.home() / "kits").exists()
+
+    runtime.start_session(str(repo), SESSION, None, "fake", ["default", "team"])
+    wait_status("supervisor", state.IDLE)
+    runtime.spawn_worker(SESSION, "sleep 0", role="dev")
+    wait_status("dev", state.IDLE)
+    assert seen("dev")["prompt"].startswith("v1")
+
+    files = {"kit.yaml": "name: team\nversion: 1.1.0\n", "agents/dev.md": agent.format(text="v2")}
+    publish(work, files, tag="v1.1.0")
+    kits.install(kits.plan_update("team"))
+    runtime.spawn_worker(SESSION, "sleep 0", role="dev")
+    wait_status("dev-2", state.IDLE)
+    assert seen("dev-2")["prompt"].startswith("v2")

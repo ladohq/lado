@@ -91,12 +91,12 @@ def recent_folders() -> list[models.RecentFolder]:
     ]
 
 
-def kit_infos(where: str | None) -> list[models.KitInfo]:
+def kit_infos(where: str | None, has_db: bool) -> list[models.KitInfo]:
     """The kit of each name a session of the folder `where` would take; one that does not
-    load is there too, with why."""
+    load is there too, with why. Without lado.db no kit is installed (and none is made)."""
     repo = _root_or_none(full_path(where)) if where else None
     try:
-        listed = kits.available(repo)
+        listed = kits.available(repo, with_installed=has_db)
     except kits.KitError as exc:
         raise runtime.LadoError(str(exc)) from exc
     infos = []

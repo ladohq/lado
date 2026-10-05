@@ -189,34 +189,39 @@ def test_kits_lists_where_each_kit_is(repo, capsys, monkeypatch, tmp_path, lado_
     )
     assert main(["marketplaces", "add", "ours", market]) == 0
     assert main(["kits", "add", str(local)]) == 0
-    assert main(["kits", "add", url, "--yes"]) == 0
-    _kit(tmp_path / "gone", "gone")
-    assert main(["kits", "add", str(tmp_path / "gone" / ".lado" / "kits" / "gone")]) == 0
+    assert main(["kits", "add", "solo", "-m", "ours", "--yes"]) == 0
+    gone = _kit(tmp_path / "gone", "gone")
+    assert main(["kits", "add", str(gone)]) == 0
     shutil.rmtree(tmp_path / "gone")
-    many = publish(init_repo(tmp_path / "many"), {"kits/old/kit.yaml": "name: old\n"}, "v1")
-    (lado_home / "kits" / "old").symlink_to(gitcache.fetch_pinned(many, "v1") / "kits" / "old")
     capsys.readouterr()
     monkeypatch.chdir(repo)
     assert main(["kits"]) == 0
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    out = captured.out
     assert (
         f"team             project   {kit}\n  1.0.0    about team; 2 packs not fetched yet" in out
     )
-    assert f"mine             user      {lado_home / 'kits' / 'mine'} → {local.resolve()}" in out
-    # Which marketplace lists it is read from its clone, not kept.
-    assert (
-        f"solo             user      {lado_home / 'kits' / 'solo'} → {url}@v1.0.0 "
-        "(marketplace ours)\n  1.0.0"
-    ) in out
-    assert (
-        "  installed from a multi-kit repository, no longer supported; `lado kits remove old` "
-        "and add it again\n"
-    ) in out
-    assert "gone             user" in out
-    assert "  invalid: gone: broken link → " in out and "run `lado kits remove gone`" in out
+    assert f"mine             user      {local.resolve()}\n  1.0.0" in out
+    # The marketplace it was added from is its row's.
+    clone = gitcache.clone_dir(url, "v1.0.0")
+    assert f"solo             user      {clone}  from {url}@v1.0.0 (marketplace ours)\n" in out
+    assert f'gone             user      {gone.resolve()}\n  invalid: kit "gone": its folder ' in out
     assert "default          built-in" in out
+    assert captured.err == ""
     # Nothing was fetched for the list.
     assert not (lado_home / "cache" / "a").exists()
+    # A marketplace removed: its kits stay, and name it.
+    assert main(["marketplaces", "remove", "ours"]) == 0
+    assert main(["kits"]) == 0
+    assert f"{clone}  from {url}@v1.0.0 (marketplace ours, removed)\n" in capsys.readouterr().out
+    # LADO_HOME/kits of an older LADO is named, with what to do.
+    (lado_home / "kits").mkdir()
+    (lado_home / "kits" / "mine").symlink_to(local)
+    assert main(["kits"]) == 0
+    assert capsys.readouterr().err == (
+        f"lado: {lado_home / 'kits'} is no longer read: installed kits are kept in lado.db; "
+        f"add them again:\n  lado kits add {local.resolve()}\nthen delete {lado_home / 'kits'}\n"
+    )
 
 
 def test_kits_show(repo, capsys):
@@ -384,7 +389,6 @@ def test_kits_add_from_git_shows_the_plan_and_asks(tmp_path, capsys, lado_home, 
     mcp = "---\nname: w\ndescription: d\nmcp: {db: {command: [db-server, --ro]}}\n---\n"
     work, url = team_repo(tmp_path, "1.0.0", agent=mcp)
     commit = gitcache.commit(gitcache.fetch_pinned(url, "v1.0.0"))
-    link = lado_home / "kits" / "team"
     tty(monkeypatch, None)
     assert main(["kits", "add", url]) == 1
     captured = capsys.readouterr()
@@ -394,7 +398,7 @@ def test_kits_add_from_git_shows_the_plan_and_asks(tmp_path, capsys, lado_home, 
         "  MCP servers it starts: db (db-server --ro)\n"
     )
     assert captured.err == "lado: not installed: confirm with --yes\n"
-    assert not link.exists()
+    assert state.list_kits() == []
     tty(monkeypatch, "n")
     assert main(["kits", "add", url]) == 1
     assert capsys.readouterr().out.endswith("Install? [y/N] Not installed.\n")
@@ -406,15 +410,18 @@ def test_kits_add_from_git_shows_the_plan_and_asks(tmp_path, capsys, lado_home, 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     assert main(["kits", "add", url]) == 1  # Ctrl-D: no traceback
     assert capsys.readouterr().out.endswith("\nNot installed.\n")
-    assert not link.exists()
+    assert state.list_kits() == []
     tty(monkeypatch, "y")
     assert main(["kits", "add", url]) == 0
     clone = gitcache.clone_dir(url, "v1.0.0").resolve()
-    assert f'Added kit "team" 1.0.0: {link} → {clone}\n' in capsys.readouterr().out
-    assert link.resolve() == clone
+    assert f'Added kit "team" 1.0.0: installed, in {clone}\n' in capsys.readouterr().out
+    assert [k.name for k in state.list_kits()] == ["team"]
+    assert not (lado_home / "kits").exists()
     # With --yes, too, the plan says what was installed.
     assert main(["kits", "remove", "team"]) == 0
-    capsys.readouterr()
+    assert capsys.readouterr().out == (
+        f'Removed kit "team" (was in {gitcache.clone_dir(url, "v1.0.0")}); the folder stays\n'
+    )
     assert main(["kits", "add", url, "--yes"]) == 0
     assert capsys.readouterr().out.startswith(
         f"Kit team 1.0.0 from git: {url}\n  version v1.0.0, commit {commit}\n"
@@ -463,14 +470,13 @@ def test_kits_update_does_not_ask_and_warns_about_new_mcp_servers(
     tty(monkeypatch, None)
     assert main(["kits", "update", "team"]) == 0
     captured = capsys.readouterr()
-    link = lado_home / "kits" / "team"
     new = gitcache.clone_dir(url, "v1.1.0").resolve()
     commit = gitcache.commit(new)
     assert captured.out.startswith(
         f"Kit team 1.1.0 from git: {url}\n  version v1.1.0, commit {commit}\n"
         "  MCP servers it starts: db (db-server)\n"
     )
-    assert f'Updated kit "team" from v1.0.0 to v1.1.0: {link} → {new}\n' in captured.out
+    assert f'Updated kit "team" from v1.0.0 to v1.1.0: installed, in {new}\n' in captured.out
     assert "running sessions get v1.1.0 for new agents only" in captured.out
     assert (
         "lado: WARNING: team v1.1.0 starts an MCP server v1.0.0 did not: db (db-server)\n"
@@ -478,7 +484,7 @@ def test_kits_update_does_not_ask_and_warns_about_new_mcp_servers(
     assert main(["kits", "update", "team"]) == 0
     assert capsys.readouterr().out == 'Kit "team" is at v1.1.0 already.\n'
     assert main(["kits", "update", "team", "v1.0.0"]) == 0
-    assert link.resolve() == gitcache.clone_dir(url, "v1.0.0").resolve()
+    assert state.get_kit("team").tag == "v1.0.0"
 
 
 def test_kits_outdated(tmp_path, capsys, lado_home):
@@ -556,17 +562,25 @@ def test_marketplaces_commands(tmp_path, capsys, lado_home, monkeypatch):
 
 def test_kits_add_update_remove(tmp_path, repo, capsys, lado_home):
     _, url = team_repo(tmp_path, "1.0.0", "1.1.0")
-    link = lado_home / "kits" / "team"
     assert main(["kits", "add", f"{url}@v1.0.0", "--yes"]) == 0
     capsys.readouterr()
     assert main(["kits", "update", "team", "v1.1.0"]) == 0
-    new = gitcache.clone_dir(url, "v1.1.0").resolve()
+    new = gitcache.clone_dir(url, "v1.1.0")
     capsys.readouterr()
     assert main(["kits", "remove", "team"]) == 0
-    assert f'Removed kit "team": {link} → {new}; the folder stays' in capsys.readouterr().out
-    assert not link.exists() and new.is_dir()
+    assert capsys.readouterr().out == f'Removed kit "team" (was in {new}); the folder stays\n'
+    assert state.list_kits() == [] and new.is_dir()
     assert main(["kits", "remove", "team"]) == 1
-    assert 'no kit "team" in' in capsys.readouterr().err
+    assert 'no kit "team" is installed' in capsys.readouterr().err
+    # A kit whose folder is gone is removed all the same.
+    gone = _kit(tmp_path / "dev", "gone")
+    assert main(["kits", "add", str(gone)]) == 0
+    shutil.rmtree(gone)
+    capsys.readouterr()
+    assert main(["kits", "remove", "gone"]) == 0
+    assert capsys.readouterr().out == (
+        f'Removed kit "gone" (was in {gone.resolve()}, a folder no longer there)\n'
+    )
 
 
 def test_kits_check_fetches_packs_and_warns_about_a_version(tmp_path, repo, capsys):

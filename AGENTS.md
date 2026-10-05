@@ -102,7 +102,7 @@ schema change.
     by their tmux labels (`@lado-viewer`, `@lado-home`, `@lado-session`) only. Never a
     read-only tmux client: tmux would refuse LADO's own `send-keys` while one is attached.
   - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup (project
-    `<repo>/.lado/kits`, then `LADO_HOME/kits`, then built-in), `dependencies` (`lado`: the
+    `<repo>/.lado/kits`, then the installed kits, then built-in), `dependencies` (`lado`: the
     oldest LADO the kit runs with; `skills`: skill packs by `<git-url>@<tag|commit>` or a
     folder relative to the kit), `supervisor` (the kit's agent that leads a session; the
     agent name `supervisor` is reserved for it), `--without` (`kind:name@kit` in one kit
@@ -118,14 +118,25 @@ schema change.
     would get besides is refused with both ways out),
     a name in two kits refused with both ways out (`KitError.switch_off`), a flow state of
     a kit's supervisor read as the lead's (`kits.LEAD`), validation, and the installed kits:
-    `lado kits add/update/remove` keep links in `LADO_HOME/kits` (what is there is
-    installed; no second list). A kit is one repository with kit.yaml at its root;
+    rows of the `kits` table in lado.db (`state.InstalledKit`; `installed_kits` gives each
+    as a `Found` with its row in `Found.installed`), which `lado kits add/update/remove`
+    write: a kit from git by address, tag and the tag's commit at install time, read from
+    `gitcache.clone_dir(address, tag)` (not kept), or a folder read in place; `marketplace`
+    is the `-m` it was added from, else NULL, never guessed. An installed kit's folder name
+    need not be its name (`load` with `named_folder=False`), but its kit.yaml must give the
+    row's name, else `KitError` with `remove` and `add`; a missing folder is a `KitError`
+    with the same way out, no network. Its origin (`Found.link`, `Kit.origin`,
+    `Kit.source`) is the row's. A kit is one repository with kit.yaml at its root;
     `version` is required of every kit and must agree with the tag `vX.Y.Z` it is installed
     by (a commit, a branch or `kits/<name>/` is refused). `plan_add` / `plan_update` say what
-    an add or update would do (an `Install`: tag, commit, source, MCP servers, whether to
-    ask, warnings such as a moved tag; the clone made, no link) and print nothing;
-    `install` makes the link; `outdated` compares each installed kit with its remote's tags.
-    The installed tag and commit are its clone's, kept nowhere else. `load` never uses the network (a git pack not in the cache
+    an add or update would do (an `Install`: tag, commit, source, marketplace, MCP servers,
+    whether to ask, warnings such as a moved tag; the clone made, nothing installed) and
+    print nothing; `install` writes the row (an update keeps `marketplace` and
+    `installed_at`, sets `updated_at`); `outdated` compares each installed kit with its
+    remote's tags. `LADO_HOME/kits`, where older LADOs kept links, is never read: while it
+    is there, `legacy_hint` (printed by `lado kits` and in "kit not found") gives the
+    `lado kits add` of each entry in it (`@<tag>` for a version tag; none for a multi-kit
+    `kits/<name>/` link) and `then delete`; LADO never changes it. `load` never uses the network (a git pack not in the cache
     yet is `Pack.skills is None`); `fetch` clones it; `resolve` builds an `Environment` only
     from fetched kits. An agent sees the session kits' own skills, its own kit's packs and
     the packs of kits without agents (`Environment.shared`, `.private`). A provider gets an
@@ -148,8 +159,7 @@ schema change.
     `add`, `remove`, `set_enabled`, `update`); the official one is a row made with the
     table, no url (`OFFICIAL_URL`), never removed, only disabled. Its clone in
     `LADO_HOME/marketplaces/<name>/` is a cache: made on first use, made again when its
-    origin is another address. `resolve` finds a kit's address for `lado kits add -m`;
-    `source_of` names the marketplace of an address from the clones there are, no network.
+    origin is another address. `resolve` finds a kit's address for `lado kits add -m`.
     `MarketplaceError`; it does not import `kits`.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
     a work or gate state's optional `needs` lists the states whose latest notes its step
@@ -215,7 +225,9 @@ schema change.
     `marketplaces` table (name, url, enabled, updated_at; `state.Marketplace`) holds the kit
     marketplaces; the `official` row is made with it (in `SCHEMA` and in the migration),
     and its changes are journaled with session `''` (`JOURNAL_SESSION`); the feed sends them
-    with `item: null`.
+    with `item: null`. From schema 18 the `kits` table (name, address, tag, commit, folder,
+    marketplace, installed_at, updated_at; a CHECK: an address with its tag and commit, or a
+    folder) holds the installed kits, journaled the same way (session `''`, `item: null`).
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -409,9 +421,9 @@ schema change.
 make a first commit). The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
-`lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository into `LADO_HOME/kits`:
-without a tag its latest release, with `--pre` its latest version of all. A folder (linked
-and read in place, the way to develop a kit) has no version. `lado kits add <kit>[@vX.Y.Z]
+`lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository (a row in lado.db; its
+clone in the git cache): without a tag its latest release, with `--pre` its latest version
+of all. A folder (read in place, the way to develop a kit) has no version. `lado kits add <kit>[@vX.Y.Z]
 -m <marketplace>` takes the kit's address from that marketplace's list; without `-m` LADO
 never looks in a marketplace. A kit not from the official marketplace or a folder shows
 what would be installed (address, version, commit, MCP servers) and asks `Install? [y/N]`;
@@ -421,14 +433,15 @@ installed from git to its latest or another version without asking, and warns on
 about the MCP servers the installed version did not start: running sessions build their
 kits again at each spawn and run start, so only their new agents get it (the output says
 so); the old clone stays in the cache. `lado kits outdated` checks each installed kit
-against its remote's tags and says why it does not check a folder, a kit pinned to a
-commit or one from an older LADO's `kits/<name>/`. `lado kits check <folder> --tag vX.Y.Z`
+against its remote's tags and says why it does not check a folder or a kit whose folder is
+missing. `lado kits check <folder> --tag vX.Y.Z`
 (a kit's CI) gives the verdict add would give for that tag without installing
 (`kits.load_release`, shared with add). A tag that points to another commit
 than the installed one is a loud warning (outdated, update, add). `lado kits remove <name>`
-drops the link. `lado kits` lists every kit with its version and where it comes from (the
-marketplace that lists it, read from the clones); `lado kits show` names each kit's packs
-and where each agent's skills come from.
+drops the row; its folder stays (one already gone is no error). `lado kits` lists every kit
+with its version and where it comes from (the marketplace it was added from, `removed` when
+that marketplace is gone), and on stderr what to do with an older LADO's `LADO_HOME/kits`;
+`lado kits show` names each kit's packs and where each agent's skills come from.
 `lado marketplaces [list]`, `add <name> <git-url>`, `remove <name>`, `enable|disable
 <name>` and `update [<name>]` manage the marketplaces; `official`
 (github.com/ladohq/marketplace) is always there and can only be disabled.
@@ -615,8 +628,8 @@ LADO borrows ideas from other orchestrators but must not repeat their mistakes:
 - **Native over injected.** Use each CLI's own way of loading skills, MCP servers and hooks
   instead of pasting their text into the prompt.
 - **Explicit lookup.** No hidden fallbacks to global locations; show where each resolved
-  piece came from. Kits are looked up in the project, then `LADO_HOME/kits`, then
-  built-in; a kit's packs come only from the addresses in its own `kit.yaml`.
+  piece came from. Kits are looked up in the project, then the installed ones (lado.db),
+  then built-in; a kit's packs come only from the addresses in its own `kit.yaml`.
 - **Only what is used.** Add a field, option or engine feature when a real kit needs it.
 - **Tested end to end.** Behaviour that crosses processes (tmux, hooks, MCP) gets an
   integration test with the fake agent.

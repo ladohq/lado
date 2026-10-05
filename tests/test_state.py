@@ -58,14 +58,83 @@ def test_version_1_database_is_migrated(lado_home):
 def test_the_official_marketplace_is_in_a_new_database_and_after_the_migration(lado_home):
     official = state.Marketplace("official", None, True, None)
     assert state.list_marketplaces() == [official]
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(17)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()
     assert not any("marketplaces" in name for name in names)
     assert state.list_marketplaces() == [official]  # migrates
     with state.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION == 17
+        assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION
+
+
+def test_the_kits_table_is_made_by_the_migration(lado_home):
+    state.add_kit(state.InstalledKit("team", folder="/dev/team"))
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    db.close()
+    assert version == 17 and not any("kits" in name for name in names)
+    assert state.list_kits() == []  # migrates
+    with state.connect() as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION == 18
+        columns = [row["name"] for row in db.execute("PRAGMA table_info(kits)")]
+    assert columns == [
+        "name",
+        "address",
+        "tag",
+        "commit",
+        "folder",
+        "marketplace",
+        "installed_at",
+        "updated_at",
+    ]
+
+
+def test_installed_kits_are_added_replaced_and_removed(lado_home):
+    git = state.InstalledKit(
+        "team", address="file:///team.git", tag="v1.0.0", commit="abc", marketplace="ours"
+    )
+    assert state.add_kit(git)
+    assert not state.add_kit(state.InstalledKit("team", folder="/dev/team"))
+    assert state.add_kit(state.InstalledKit("local", folder="/dev/local"))
+    team = state.get_kit("team")
+    assert dataclasses.replace(team, installed_at=None) == git
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", team.installed_at)
+    assert team.updated_at is None
+    assert [k.name for k in state.list_kits()] == ["local", "team"]
+    # An update moves the version and keeps where it came from and when it was installed.
+    assert state.replace_kit("team", "file:///team.git", "v1.1.0", "def") is True
+    updated = state.get_kit("team")
+    assert (updated.tag, updated.commit, updated.marketplace) == ("v1.1.0", "def", "ours")
+    assert updated.installed_at == team.installed_at and updated.updated_at is not None
+    assert state.delete_kit("team")
+    assert not state.delete_kit("team")
+    assert state.get_kit("team") is None
+    # Nothing to move: the kit is gone.
+    assert state.replace_kit("team", "file:///team.git", "v1.2.0", "123") is False
+    assert state.get_kit("team") is None
+
+
+def test_an_incomplete_kit_row_is_an_error_not_a_name_taken(lado_home):
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+        state.add_kit(state.InstalledKit("team", address="file:///team.git", tag="v1.0.0"))
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        "('x', NULL, NULL, NULL, NULL)",  # neither an address nor a folder
+        "('x', 'file:///x.git', 'v1.0.0', 'abc', '/dev/x')",  # both
+        "('x', 'file:///x.git', NULL, 'abc', NULL)",  # an address without its tag
+        "('x', 'file:///x.git', 'v1.0.0', NULL, NULL)",  # an address without its commit
+        "('x', NULL, 'v1.0.0', NULL, '/dev/x')",  # a folder with a tag
+    ],
+)
+def test_an_installed_kit_has_an_address_with_its_tag_and_commit_or_a_folder(lado_home, values):
+    with state.connect() as db, pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+        db.execute(f'INSERT INTO kits (name, address, tag, "commit", folder) VALUES {values}')
 
 
 def test_marketplaces_are_added_changed_and_removed(lado_home):

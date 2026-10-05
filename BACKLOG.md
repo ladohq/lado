@@ -667,3 +667,19 @@ alone passed (19 passed) and the next `make check` was green. The test takes abo
 when it passes, so vitest's default 5 s timeout leaves no margin.
 Wanted: the test made shorter (fewer steps or fake timers) or given its own timeout.
 Found: 2026-10-05, feature/lead-skills (implement, review fixes).
+
+## The Stop popover does not give focus back to its icon
+
+Esc, Cancel or a click outside closes the session's Stop popover (`SessionControl.tsx`,
+`onClose={close}`) and the focus goes to the page's body; the list row's menu gives it back
+to its button (`back()` in `SessionRowMenu`). It was so on main before the icons too.
+Wanted: closing the popover without a stop puts the focus back on the Stop icon.
+Found: 2026-10-05, feature/session-controls (review).
+
+## An open menu or popover stays where it opened when the page scrolls
+
+`useBelow` (`web/src/Menu.tsx`) places a row's menu or the Stop popover once, when it opens;
+scrolling the session list or the session's page, or resizing the window, leaves it at its
+old place, away from its button. The row's menu did so on main before.
+Wanted: the place computed again on scroll and resize, or the menu closed on scroll.
+Found: 2026-10-05, feature/session-controls (review).

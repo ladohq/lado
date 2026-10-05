@@ -574,6 +574,20 @@ supervisor, and an unknown one is not found" with `Unable to find role="region" 
 than the render under the full run's load.
 Wanted: the test waits for what it checks (findBy with a timeout that holds under load).
 Found: 2026-10-04, feature/without-at-kit (implement).
+
+## Flaky: vitest Flows tab tests that wait for a run's page
+
+Under a heavy load (load average 80–160, other worktrees' checks running) `make web`
+failed twice in `src/Flows.test.tsx`, each time another test: "with no runs both groups
+are there and say they are empty; with only ended ones the latest to end opens" (`Unable
+to find role="region" and name "Run fix/older"`) and "the flows tab without a run opens
+the first waiting run, else the first active one" (`… "Run feature/flows-tab"`). The file
+alone passed both times. Like the Agents entry above: `findBy`'s 1 s default is shorter
+than the redirect and render under that load.
+Wanted: the List and page tests wait with a timeout that holds under load (one shared
+helper or vitest's `asyncUtilTimeout` for these files).
+Found: 2026-10-05, feature/session-list-groups (implement).
+
 ## A refused permission leaves the Claude agent waiting until the human types
 
 When the human refuses a Claude Code permission dialog (or dismisses an AskUserQuestion

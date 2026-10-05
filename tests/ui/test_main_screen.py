@@ -11,7 +11,7 @@ from lado import loop, runtime, state
 
 pytestmark = pytest.mark.ui
 
-SECTIONS = ["Home", "Needs you", "Sessions", "Projects", "Kits", "Marketplace", "Settings"]
+SECTIONS = ["Home", "Needs you", "Sessions", "Projects", "Kits", "Settings"]
 
 
 def running_session(repo) -> str:
@@ -120,8 +120,8 @@ def test_the_rail_collapses_and_stays_so(page: Page, server, shot):
     log_in(page, server)
     rail = page.get_by_role("navigation", name="Sections")
     page.get_by_role("button", name="Collapse menu").click()
-    expect(rail.get_by_text("Marketplace")).to_be_hidden()
-    expect(rail.get_by_role("link", name="Marketplace")).to_be_visible()
+    expect(rail.get_by_text("Projects")).to_be_hidden()
+    expect(rail.get_by_role("link", name="Projects")).to_be_visible()
     shot(page)
     page.reload()
     expect(page.get_by_role("button", name="Expand menu")).to_have_attribute(

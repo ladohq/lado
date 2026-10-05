@@ -157,9 +157,8 @@ CASES = json.loads(
 
 
 @pytest.fixture
-def table(repo, fake_tmux) -> dict[int, int]:
+def table(session) -> dict[int, int]:
     """The case table's messages in session "s", with their times: case id -> real id."""
-    runtime.start_session(str(repo), "s", None, provider="claude")
     ids = {}
     for one in CASES["messages"]:
         real = state.queue_message("s", one["from"], one["to"], f"m{one['id']}")

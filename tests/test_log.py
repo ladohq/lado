@@ -20,10 +20,19 @@ def _at(table: str, row_id: int, created_at: str) -> None:
         db.execute(f"UPDATE {table} SET created_at = ? WHERE id = ?", (created_at, row_id))
 
 
+def _agents(*names: str) -> None:
+    """Running agents of session "s": a message is queued only for one."""
+    for name in names:
+        state.add_agent(
+            state.Agent("s", name, "worker", "/r", None, None, state.IDLE, provider="claude")
+        )
+
+
 @pytest.fixture
 def session(lado_home):
     """Session "s": w1 spawned, the supervisor sends it a task, w1 gets busy, reports back."""
     state.add_session(state.Session("s", "/r", None, provider="claude"))
+    _agents("supervisor", "w1")
     state.add_event("s", "w1", state.SPAWNED, "role developer, provider claude")
     _at("events", 1, "2026-10-01 10:00:00.100")
     state.queue_message("s", "supervisor", "w1", "fix it", "in a.py\nplease")
@@ -113,6 +122,7 @@ def test_follow_ends_when_the_session_is_forgotten(session, capsys):
 
 def test_messages_have_sub_second_times(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
+    _agents("b")
     state.queue_message("s", "a", "b", "hi")
     [message] = state.list_messages("s")
     assert len(message.created_at) == len("2026-10-01 10:00:00.000")

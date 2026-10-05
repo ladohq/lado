@@ -1079,3 +1079,13 @@ Found: 2026-10-06, check of the Inbox architecture candidate.
 transaction; when the supervisor is stopped, the copy stays `pending` with no notice.
 Wanted: the copy is dropped or reported when the supervisor is not running.
 Found: 2026-10-06, check of the Inbox architecture candidate.
+
+## A send crashes when the recipient is finished right after the message is queued
+
+`runtime.post`, `write_as_human` and `_reply` queue the message (the recipient checked in
+that transaction), then call `_deliver`, which reads `state.get_agent(...).status`. When
+`finish_worker` runs between the two, the message is dropped as it should be, but the
+sender gets `AttributeError: 'NoneType' object has no attribute 'status'` instead of an
+answer (seen on main d738c7f in the finish-race reproduction, one step later in the call).
+Wanted: `_deliver` of a recipient that is gone says the message was dropped with it.
+Found: 2026-10-06, run fix/finish-race (implement).

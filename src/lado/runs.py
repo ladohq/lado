@@ -406,10 +406,12 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
             lines.append(f"  {problem[0].upper()}{problem[1:]}.")
     count = len(open_runs)
     summary = f"session resumed: {count} open run{'' if count == 1 else 's'}"
-    state.queue_message(sess.name, LADO, SUPERVISOR, summary, "\n".join(lines))
+    # Before the supervisor is stored: they become its first input.
+    state.queue_message(sess.name, LADO, SUPERVISOR, summary, "\n".join(lines), before_start=True)
     for run in steps:
         summary = f"flow {run.name}: step {run.state}"
-        state.queue_message(sess.name, LADO, SUPERVISOR, summary, step_text(run, flow_of(run)))
+        text = step_text(run, flow_of(run))
+        state.queue_message(sess.name, LADO, SUPERVISOR, summary, text, before_start=True)
     return problems
 
 

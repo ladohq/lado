@@ -1,6 +1,7 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
-// session on the right with its tabs. The list's width is dragged on its edge and remembered.
-import { useEffect, useState, type CSSProperties } from "react";
+// session on the right with its tabs. The list's width is dragged on its edge and remembered;
+// the list collapses to a strip of the sessions' icons (remembered too).
+import { useEffect, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import {
   Link,
   NavLink,
@@ -16,8 +17,9 @@ import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { FoldToggle } from "./Fold";
 import { Flows, isOpen } from "./Flows";
+import { CollapsePanelIcon, ProblemIcon } from "./icons";
 import { useLaunch, type StartedState } from "./Launch";
-import { useLive, useLiveStore, type Loaded } from "./live";
+import { isLive, useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
 import { SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
@@ -33,10 +35,12 @@ import {
   storedStoppedOpen,
   storeSessionsList,
   storeStoppedOpen,
+  type ColumnPrefs,
 } from "./prefs";
 import { useTitle } from "./Shell";
-import { fitWidth, Splitter, useWidth } from "./Splitter";
+import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { Team } from "./Team";
+import { Tooltip } from "./Tooltip";
 
 // What each status means to the human, in the words of `lado ls`.
 const STATUS: Record<SessionStatus, string> = {
@@ -62,56 +66,96 @@ export function Sessions() {
     storeStoppedOpen(!stoppedOpen);
   };
   const [list, setList] = useState(storedSessionsList);
+  const focus = useStripFocus(list.collapsed);
   const [page, room] = useWidth<HTMLDivElement>();
-  // The list leaves the session and the terminals their least widths.
+  // The list leaves the session and the terminals their least widths; collapsed, the strip
+  // gives the session the rest.
   const width = fitWidth(list.width, SESSIONS_WIDTH, room === null ? null : room - MAIN_MIN - PANEL_WIDTH.min);
-  const resize = (next: number) => {
-    setList({ width: next });
-    storeSessionsList({ width: next });
+  const keep = (change: Partial<ColumnPrefs>) => {
+    const next = { ...list, ...change };
+    setList(next);
+    storeSessionsList(next);
   };
+  const toggle = (collapsed: boolean) => {
+    focus.toggled();
+    keep({ collapsed });
+  };
+  const newSession = (
+    <button type="button" className="plus" aria-label="New session" title="New session" onClick={() => launch()}>
+      <span aria-hidden="true">+</span>
+    </button>
+  );
+  // The session keeps its place in the page whether the list is open or not: its terminals
+  // stay connected.
   return (
-    <div ref={page} className="sessions" style={{ "--list-width": `${width}px` } as CSSProperties}>
-      <Splitter label="Resize the session list" edge="right" width={width} bounds={SESSIONS_WIDTH} onChange={resize} />
-      <div className="session-list">
-        <div className="session-list-head">
-          <h2>Sessions</h2>
-          <button type="button" className="plus" aria-label="New session" title="New session" onClick={() => launch()}>
-            <span aria-hidden="true">+</span>
-          </button>
-        </div>
-        <input
-          type="search"
-          className="search"
-          placeholder="Find a session"
-          aria-label="Find a session"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
+    <div
+      ref={page}
+      className={list.collapsed ? "sessions collapsed" : "sessions"}
+      style={{ "--list-width": `${list.collapsed ? STRIP_WIDTH : width}px` } as CSSProperties}
+    >
+      {!list.collapsed && (
+        <Splitter
+          label="Resize the session list"
+          edge="right"
+          width={width}
+          bounds={SESSIONS_WIDTH}
+          onChange={(next) => keep({ width: next })}
         />
-        <nav aria-label="Sessions">
-          {loaded === null && <p className="muted">Loading…</p>}
-          {loaded && "error" in loaded && (
-            <p className="problem" role="alert">
-              {loaded.error}
-            </p>
-          )}
-          {loaded && "sessions" in loaded && (
-            <>
-              <Group name="Needs you" sessions={groups.needsYou} />
-              <Group name="Running" sessions={groups.running} />
-              {groups.stopped.length > 0 && (
-                <FoldToggle
-                  name="Stopped"
-                  count={groups.stopped.length}
-                  open={stoppedOpen}
-                  controls="stopped-sessions"
-                  onToggle={toggleStopped}
-                />
-              )}
-              {stoppedOpen && <Group name="Stopped" id="stopped-sessions" sessions={groups.stopped} hideName />}
-            </>
-          )}
-        </nav>
-      </div>
+      )}
+      {list.collapsed ? (
+        <SessionStrip loaded={loaded} openRef={focus.open} onOpen={() => toggle(false)}>
+          {newSession}
+        </SessionStrip>
+      ) : (
+        <div className="session-list">
+          <div className="session-list-head">
+            <h2>Sessions</h2>
+            {newSession}
+            <button
+              ref={focus.collapse}
+              type="button"
+              className="ghost"
+              aria-label="Collapse sessions"
+              title="Collapse sessions"
+              onClick={() => toggle(true)}
+            >
+              <CollapsePanelIcon side="left" />
+            </button>
+          </div>
+          <input
+            type="search"
+            className="search"
+            placeholder="Find a session"
+            aria-label="Find a session"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <nav aria-label="Sessions">
+            {loaded === null && <p className="muted">Loading…</p>}
+            {loaded && "error" in loaded && (
+              <p className="problem" role="alert">
+                {loaded.error}
+              </p>
+            )}
+            {loaded && "sessions" in loaded && (
+              <>
+                <Group name="Needs you" sessions={groups.needsYou} />
+                <Group name="Running" sessions={groups.running} />
+                {groups.stopped.length > 0 && (
+                  <FoldToggle
+                    name="Stopped"
+                    count={groups.stopped.length}
+                    open={stoppedOpen}
+                    controls="stopped-sessions"
+                    onToggle={toggleStopped}
+                  />
+                )}
+                {stoppedOpen && <Group name="Stopped" id="stopped-sessions" sessions={groups.stopped} hideName />}
+              </>
+            )}
+          </nav>
+        </div>
+      )}
       <div className="session-detail">
         <Outlet context={loaded} />
       </div>
@@ -119,16 +163,102 @@ export function Sessions() {
   );
 }
 
-const waits = (session: SessionInfo) => {
-  const { gates, questions, agents } = session.waiting;
-  return gates + questions + agents > 0;
+// The width of the list collapsed to a strip, in pixels.
+const STRIP_WIDTH = 44;
+
+// The list collapsed to a strip: Sessions opens it again, then New session (`children`), then
+// an icon per session not stopped, in the open list's order (those that need the human first,
+// a line after them). While the list loads the icons' column is empty and busy; when it
+// cannot load, an alert says why, as the open list does.
+function SessionStrip({
+  loaded,
+  openRef,
+  onOpen,
+  children,
+}: {
+  loaded: Loaded;
+  openRef: RefObject<HTMLButtonElement | null>;
+  onOpen: () => void;
+  children: ReactNode;
+}) {
+  const groups = loaded && "sessions" in loaded ? grouped(loaded.sessions) : null;
+  return (
+    <nav className="sessions-strip" aria-label="Sessions">
+      <button ref={openRef} type="button" className="strip-open sessions-open" title="Show the sessions" onClick={onOpen}>
+        Sessions
+      </button>
+      {children}
+      {loaded && "error" in loaded ? (
+        <Tooltip tip={<div className="tooltip-line">{loaded.error}</div>}>
+          <span className="strip-problem" role="alert" aria-label={loaded.error} tabIndex={0}>
+            <ProblemIcon />
+          </span>
+        </Tooltip>
+      ) : (
+        <ul className="strip-icons" aria-busy={groups === null || undefined}>
+          {groups?.needsYou.map((session) => <StripIcon key={session.name} session={session} />)}
+          {groups && groups.needsYou.length > 0 && groups.running.length > 0 && (
+            <li className="strip-gap" aria-hidden="true" />
+          )}
+          {groups?.running.map((session) => <StripIcon key={session.name} session={session} />)}
+        </ul>
+      )}
+    </nav>
+  );
+}
+
+// A session's two letters: the first of its first two words, else its first two letters.
+// Two sessions may share them: the tooltip and the label tell them apart.
+const initials = (name: string) => {
+  const words = name.split(/[-_./\s]+/).filter(Boolean);
+  return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase();
 };
 
-// The list's groups, from what the server counts (SessionInfo.waiting): a stopped session is
-// Stopped whatever waits in it, since nothing in it can be answered.
+function StripIcon({ session }: { session: SessionInfo }) {
+  const needsYou = waits(session);
+  return (
+    <li>
+      <Tooltip tip={<SessionTip session={session} />}>
+        <NavLink
+          to={sessionPath(session.name)}
+          className={`strip-session${needsYou ? " waits" : ""}`}
+          aria-label={needsYou ? `${session.name}, needs you` : session.name}
+        >
+          {initials(session.name)}
+        </NavLink>
+      </Tooltip>
+    </li>
+  );
+}
+
+// Who a session is: its name, status and agents, what waits for the human, its folder, its
+// kits and provider.
+function SessionTip({ session }: { session: SessionInfo }) {
+  return (
+    <>
+      <div className="tooltip-line">
+        <b>{session.name}</b> · {STATUS[session.status]} · {count(session.agents, "agent")}
+      </div>
+      {waits(session) && <div className="tooltip-line waits">Needs you: {about(session)}</div>}
+      <div className="tooltip-line">{session.repo}</div>
+      <div className="tooltip-line">
+        {session.kits.join(", ")} · {session.provider}
+      </div>
+    </>
+  );
+}
+
+// Whether something in a session waits for the human, from what the server counts
+// (SessionInfo.waiting): never in a stopped session, since nothing in it can be answered.
+const waits = (session: SessionInfo) => {
+  const { gates, questions, agents } = session.waiting;
+  return isLive(session) && gates + questions + agents > 0;
+};
+
+// The list's groups: a stopped session is Stopped whatever waits in it.
 function grouped(sessions: SessionInfo[]) {
-  const stopped = sessions.filter((one) => one.status === "stopped");
-  const live = sessions.filter((one) => one.status !== "stopped");
+  const stopped = sessions.filter((one) => !isLive(one));
+  const live = sessions.filter(isLive);
   return { needsYou: live.filter(waits), running: live.filter((one) => !waits(one)), stopped };
 }
 
@@ -142,8 +272,8 @@ function about(session: SessionInfo): string {
     questions > 0 && count(questions, "question"),
     agents > 0 && `${count(agents, "agent")} waiting`,
   ].filter(Boolean);
-  if (session.status !== "stopped" && parts.length) return parts.join(" · ");
-  return session.status === "stopped" ? STATUS.stopped : count(session.agents, "agent");
+  if (!isLive(session)) return STATUS.stopped;
+  return parts.length ? parts.join(" · ") : count(session.agents, "agent");
 }
 
 function Group({
@@ -177,7 +307,7 @@ function Group({
           <li key={session.name} className="session-row">
             <NavLink
               to={sessionPath(session.name)}
-              className={`session-link${session.status === "running" ? "" : " dim"}${waits(session) && session.status !== "stopped" ? " waits" : ""}`}
+              className={`session-link${session.status === "running" ? "" : " dim"}${waits(session) ? " waits" : ""}`}
             >
               <span className="session-name">{session.name}</span>
               <span className="session-about">{about(session)}</span>
@@ -229,7 +359,7 @@ export function Session() {
 function SessionTab({ name, tab, item, loaded }: { name: string; tab: Tab; item?: string; loaded: Loaded }) {
   useTitle("Sessions");
   const started = (useLocation().state as StartedState | null)?.started;
-  if (loaded === null || "error" in loaded) return null; // the list says what is wrong
+  if (loaded === null || "error" in loaded) return null; // the list, or its strip, says what is wrong
   // Just started here: the change feed may bring it a moment after the start's answer.
   const session =
     loaded.sessions.find((one) => one.name === name) ?? (started?.session.name === name ? started.session : undefined);

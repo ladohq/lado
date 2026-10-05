@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeSocket, stream } from "./fakes";
+import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeSocket, stream, stubDialogs } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -48,6 +48,7 @@ beforeEach(() => {
   FakeEventSource.autoStart = true;
   vi.stubGlobal("EventSource", FakeEventSource);
   vi.stubGlobal("WebSocket", FakeSocket);
+  stubDialogs();
 });
 
 afterEach(() => {
@@ -176,7 +177,7 @@ test("the list's width changes with its edge and is remembered", async () => {
   expect(Number(edge.getAttribute("aria-valuenow"))).toBe(300);
   const columns = () => document.querySelector<HTMLElement>(".sessions")!.style.getPropertyValue("--list-width");
   expect(columns()).toBe("300px");
-  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 300 });
+  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 300, collapsed: false });
   cleanup();
   open("/sessions");
   expect(columns()).toBe("300px");
@@ -197,6 +198,167 @@ test("in a narrow window the list is narrowed to leave the session and its termi
   expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 400 });
   FakeResizeObserver.resize(() => 1600);
   expect(Number(edge.getAttribute("aria-valuenow"))).toBe(400);
+});
+
+// The session list collapsed to a strip (docs/design/ui.md, Structure: Sessions)
+
+const strip = () => document.querySelector<HTMLElement>("nav.sessions-strip");
+
+test("Collapse sessions folds the list to a strip and Sessions opens it again, remembered, the focus on the other button", async () => {
+  localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 320, collapsed: false }));
+  open("/sessions");
+  const collapse = screen.getByRole("button", { name: "Collapse sessions" });
+  expect(collapse.getAttribute("title")).toBe("Collapse sessions");
+  expect(collapse.querySelector("svg")).toBeTruthy();
+  fireEvent.click(collapse);
+  expect(strip()).toBeTruthy();
+  expect(strip()!.getAttribute("aria-label")).toBe("Sessions");
+  expect(screen.queryByRole("separator", { name: "Resize the session list" })).toBeNull();
+  expect(screen.queryByRole("searchbox", { name: "Find a session" })).toBeNull();
+  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 320, collapsed: true });
+  const show = within(strip()!).getByRole("button", { name: "Sessions" });
+  expect(show.getAttribute("title")).toBe("Show the sessions");
+  expect(document.activeElement).toBe(show);
+  cleanup();
+  open("/sessions");
+  expect(strip()).toBeTruthy(); // remembered
+  // A page that opens collapsed does not take the focus.
+  expect(document.activeElement).toBe(document.body);
+  fireEvent.click(within(strip()!).getByRole("button", { name: "Sessions" }));
+  expect(strip()).toBeNull();
+  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 320, collapsed: false });
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Collapse sessions" }));
+  const columns = document.querySelector<HTMLElement>(".sessions")!.style.getPropertyValue("--list-width");
+  expect(columns).toBe("320px");
+});
+
+test("on a narrow window with nothing remembered the list starts as a strip", async () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query === "(max-width: 900px)",
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  open("/sessions");
+  expect(strip()).toBeTruthy();
+});
+
+const collapsed = () => localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 260, collapsed: true }));
+const icons = () => within(strip()!).queryAllByRole("link");
+
+test("the strip shows each session not stopped as two letters, those that need the human first", async () => {
+  collapsed();
+  sessions = [
+    session("crm-api"),
+    session("gated.site", { waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("lado"),
+    session("old_one", { status: "stopped", waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("stuck", { status: "tmux_gone", waiting: { gates: 0, questions: 0, agents: 1 } }),
+  ];
+  open("/sessions");
+  await within(strip()!).findByRole("link", { name: "lado" });
+  // In the open list's order: Needs you, then Running; no stopped session.
+  expect(icons().map((icon) => icon.getAttribute("aria-label"))).toEqual([
+    "gated.site, needs you",
+    "stuck, needs you",
+    "crm-api",
+    "lado",
+  ]);
+  expect(icons().map((icon) => icon.textContent)).toEqual(["GS", "ST", "CA", "LA"]);
+  expect(icons().map((icon) => icon.classList.contains("waits"))).toEqual([true, true, false, false]);
+  expect(icons()[0].textContent).not.toMatch(/\d/); // no count
+  // A line between the two parts, only when both have sessions.
+  expect(strip()!.querySelectorAll(".strip-icons > li.strip-gap")).toHaveLength(1);
+  const gap = strip()!.querySelector(".strip-gap")!;
+  expect(gap.previousElementSibling!.textContent).toBe("ST");
+  expect(gap.getAttribute("aria-hidden")).toBe("true");
+});
+
+test("without a session that needs the human the strip has no line between parts", async () => {
+  collapsed();
+  sessions = [session("crm-api"), session("lado")];
+  open("/sessions");
+  await within(strip()!).findByRole("link", { name: "lado" });
+  expect(strip()!.querySelector(".strip-gap")).toBeNull();
+});
+
+test("an icon opens its session at the row's address and is current there", async () => {
+  collapsed();
+  sessions = [session("lado"), session("crm-api")];
+  open("/sessions/lado/flows");
+  const lado = await within(strip()!).findByRole("link", { name: "lado" });
+  const crm = within(strip()!).getByRole("link", { name: "crm-api" });
+  expect(crm.getAttribute("href")).toBe("/sessions/crm-api");
+  expect(lado.getAttribute("aria-current")).toBe("page");
+  expect(crm.getAttribute("aria-current")).toBeNull();
+  fireEvent.click(crm);
+  expect(await screen.findByRole("region", { name: "Session crm-api" })).toBeTruthy();
+  expect(crm.getAttribute("aria-current")).toBe("page");
+  expect(strip()).toBeTruthy(); // the strip stays
+});
+
+test("an icon's tooltip: name · status · agents, what needs the human, the folder, kits · provider; Esc hides it", async () => {
+  collapsed();
+  sessions = [
+    session("gated", { agents: 3, waiting: { gates: 1, questions: 2, agents: 0 }, kits: ["default", "review"] }),
+    session("stuck", { status: "loop_down", agents: 1, provider: "kilo" }),
+  ];
+  open("/sessions");
+  const tip = async (name: RegExp) => {
+    const icon = await within(strip()!).findByRole("link", { name });
+    fireEvent.focus(icon);
+    const shown = screen.getByRole("tooltip");
+    expect(icon.getAttribute("aria-describedby")).toBe(shown.id);
+    const lines = [...shown.querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+    const waits = [...shown.querySelectorAll(".tooltip-line.waits")].map((line) => line.textContent);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    return { lines, waits };
+  };
+  expect(await tip(/^gated/)).toEqual({
+    lines: ["gated · running · 3 agents", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude"],
+    waits: ["Needs you: 1 gate · 2 questions"],
+  });
+  expect(await tip(/^stuck/)).toEqual({
+    lines: ["stuck · session loop not running · 1 agent", "/src/stuck", "default · kilo"],
+    waits: [],
+  });
+});
+
+test("+ in the strip opens New session", async () => {
+  collapsed();
+  open("/sessions");
+  fireEvent.click(within(strip()!).getByRole("button", { name: "New session" }));
+  expect(await screen.findByRole("dialog", { name: "New session" })).toBeTruthy();
+});
+
+test("while the sessions load the strip's column is busy; a failed load is an alert with its text, Sessions and + still work", async () => {
+  collapsed();
+  const pending: ((response: Response) => void)[] = [];
+  const answer = (response: () => Response) => pending.forEach((resolve) => resolve(response()));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((path: string) => {
+      if (path === "/api/sessions") return new Promise<Response>((resolve) => pending.push(resolve));
+      return Promise.resolve(new Response("[]"));
+    }),
+  );
+  open("/sessions");
+  await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0));
+  const column = strip()!.querySelector(".strip-icons")!;
+  expect(column.getAttribute("aria-busy")).toBe("true");
+  expect(column.children).toHaveLength(0);
+  answer(() => new Response(JSON.stringify({ detail: "the database is locked" }), { status: 500 }));
+  const alert = await within(strip()!).findByRole("alert");
+  const text = alert.getAttribute("aria-label")!;
+  expect(text).toBe("the database is locked");
+  fireEvent.focus(alert);
+  expect(screen.getByRole("tooltip").textContent).toBe(text);
+  fireEvent.click(within(strip()!).getByRole("button", { name: "New session" }));
+  expect(await screen.findByRole("dialog", { name: "New session" })).toBeTruthy();
+  fireEvent.click(within(strip()!).getByRole("button", { name: "Sessions" }));
+  // The open list says the same.
+  expect(document.querySelector(".session-list [role=alert]")!.textContent).toBe(text);
 });
 
 // The top bar (Launch moved to the rail: Launch and session control, 2026-10-04)

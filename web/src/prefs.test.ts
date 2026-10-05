@@ -6,6 +6,8 @@ import {
   storeAskControl,
   storedAskControl,
   storedPanel,
+  storeColumn,
+  storedColumn,
   storedSessionsList,
   storePanel,
   storeSessionsList,
@@ -42,15 +44,49 @@ test("a panel remembered before it could collapse is open, also on a narrow wind
   expect(storedPanel()).toEqual({ width: 520, collapsed: false });
 });
 
-test("the session list's width is remembered within its bounds", () => {
-  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial });
+test("a column is open at its initial width at first, collapsed at first on a narrow window (max-width: 900px)", () => {
+  const bounds = { initial: 300, min: 100, max: 500 };
+  const queries: string[] = [];
+  vi.stubGlobal("matchMedia", (query: string) => {
+    queries.push(query);
+    return { matches: true, media: query };
+  });
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: true });
+  expect(queries).toEqual(["(max-width: 900px)"]);
+  narrow(false);
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: false });
+});
+
+test("a column's width and whether it is collapsed are remembered under its key", () => {
+  const bounds = { initial: 300, min: 100, max: 500 };
+  storeColumn("lado.some", { width: 420, collapsed: true });
+  expect(JSON.parse(localStorage.getItem("lado.some")!)).toEqual({ width: 420, collapsed: true });
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 420, collapsed: true });
+  expect(storedColumn("lado.other", bounds)).toEqual({ width: 300, collapsed: false });
+});
+
+test("a column remembered before it could collapse is open; a width out of bounds or no JSON is the initial one", () => {
+  const bounds = { initial: 300, min: 100, max: 500 };
+  narrow(true);
+  localStorage.setItem("lado.some", JSON.stringify({ width: 200 }));
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 200, collapsed: false });
+  localStorage.setItem("lado.some", JSON.stringify({ width: 9000, collapsed: true }));
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: true });
+  localStorage.setItem("lado.some", "not json");
+  expect(storedColumn("lado.some", bounds)).toEqual({ width: 300, collapsed: true }); // as nothing stored
+});
+
+test("the session list keeps its width and whether it is collapsed in lado.sessionsList", () => {
+  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: false });
   expect(SESSIONS_WIDTH).toEqual({ initial: 260, min: 200, max: 480 });
-  storeSessionsList({ width: 320 });
-  expect(storedSessionsList()).toEqual({ width: 320 });
-  localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 9000 }));
-  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial });
-  localStorage.setItem("lado.sessionsList", "not json");
-  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial });
+  storeSessionsList({ width: 320, collapsed: true });
+  expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 320, collapsed: true });
+  expect(storedSessionsList()).toEqual({ width: 320, collapsed: true });
+  localStorage.clear();
+  narrow(true);
+  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: true });
+  localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 300 })); // stored before it could collapse
+  expect(storedSessionsList()).toEqual({ width: 300, collapsed: false });
 });
 
 test("Take control asks until the human says not to ask again", () => {
@@ -68,9 +104,9 @@ test("without browser storage every default holds and nothing breaks", () => {
     throw new Error("denied");
   });
   storePanel({ width: 600, collapsed: true });
-  storeSessionsList({ width: 300 });
+  storeSessionsList({ width: 300, collapsed: true });
   storeAskControl(false);
   expect(storedPanel()).toEqual({ width: PANEL_WIDTH.initial, collapsed: false });
-  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial });
+  expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: false });
   expect(storedAskControl()).toBe(true);
 });

@@ -403,15 +403,6 @@ Wanted: the banner first offers to reload the page, and names `lado server stop`
 `lado ui` only when the versions still differ after a reload.
 Found: 2026-10-03, review of fix/stale-ui-server.
 
-## The session list has its own copy of "not stopped"
-
-web/src/Sessions.tsx (`grouped`) splits the sessions with its own `status === "stopped"`,
-while the rail's count and the live store's reloads of what waits use `live.isLive`. Both
-say the same now, but a change to one rule leaves the session list's groups apart from
-the count.
-Wanted: `grouped` (and `about`, `waits`) take the rule from `isLive`.
-Found: 2026-10-03, review of feature/needs-you.
-
 ## `lado stop` kills agents without a graceful exit
 
 `lado stop` (and Stop in the UI) kills the session's tmux windows at once. An agent CLI

@@ -327,6 +327,11 @@ Decided in the agent terminal task (2026-10-03).
   thin bar; the supervisor's tab stays at the left (sticky), the tab selected here or by a
   chip scrolls into view, and Expand and Collapse at the right never move. The whole name
   is in the tab's tooltip (below), not in a `title`.
+- **Focus** (2026-10-05, task feature/sessions-list-collapse): after **Collapse
+  terminals** the focus is on the strip's **Terminals**, after Terminals on Collapse
+  terminals, as for the session list's strip (`Splitter.useStripFocus`). Only those buttons
+  move it: a page that opens collapsed, or a chip that opens the panel, leaves it where it
+  is.
 - **Expand**: the panel's **Expand terminal** shows it over the whole content (the rail
   and the top bar stay; `position: absolute; inset: 0` in the content, so no widths are
   written twice; on a narrow window over the whole window), with the same terminals and
@@ -376,6 +381,32 @@ Sessions for now. The UI's texts are in English.
   but are hidden, so nothing is resized (in control too), and a panel collapsed when the
   page opens opens no socket until it is opened. A chip opens a collapsed panel. Collapsed
   is remembered in the browser (`lado.terminals`) and is the default below 900 px.
+- **The list collapsed to a strip** (decided 2026-10-05, task
+  feature/sessions-list-collapse; mockup `.lado/mockups/sessions-list-collapse/index.html`,
+  https://claude.ai/artifact/TTZcaWXnyooRPxyYBqEB3g version 2): **Collapse sessions** in
+  the list's head, after "+", with Collapse terminals' icon mirrored, folds the list to a
+  strip of 44 px, `nav "Sessions"`, and the session gets the room (no edge to drag; the
+  list's width stays remembered for when it opens). On the strip, in order: **Sessions**
+  (the Terminals button's look, read from the bottom up; it opens the list), "+" (New
+  session), and a column of icons that scrolls while the two buttons stay: one per session
+  not stopped (`live.isLive`), Needs you first, then Running, as the open list orders them,
+  with a line between the two when both have sessions. An icon is a link to the session at
+  the row's address (`aria-current` as the row's): two letters in the mono font in a
+  neutral square, the first of the name's first two words (split at `-`, `_`, `.`, `/`,
+  space) or else its first two (`crm-api` CA, `lado` LA); two sessions may share them. One
+  that needs the human is marked by colour only (`--human` on `--human-ground`, no count),
+  and its label says `<name>, needs you`. On hover or focus its tooltip (Tooltip.tsx) says
+  name · status · agents, `Needs you: <the row's line>` in the human's colour, the folder,
+  and kits · provider. While the list loads the column is empty and `aria-busy`; when
+  `/api/sessions` fails, an alert icon in `--danger` takes its place with the error in its
+  label and tooltip, the open list's text; Sessions and "+" work either way. Collapsed is
+  remembered with the width (`lado.sessionsList`, `{ width, collapsed }`) and is the
+  default below 900 px, the same rule as the terminals' (`prefs.storedColumn`: nothing
+  stored and `(max-width: 900px)` collapsed; a value stored before it could collapse is
+  open). Below 900 px, where the columns stack, the strip is a row over the session:
+  Sessions, "+", then the icons in a row that scrolls sideways. After Collapse sessions the
+  focus is on Sessions, after Sessions on Collapse sessions, only after those buttons (not
+  when a page opens collapsed).
 - **List and page** (task feature/flows-list, 2026-10-04, boards 14–15 of the canvas; one
   component, `ListPage.tsx`, for every tab with a list: Flows, Agents, later Artifacts):
   the tab's list of items and the page of the one its address names. In a column of 900 px

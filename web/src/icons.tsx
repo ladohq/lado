@@ -76,12 +76,30 @@ export const SettingsIcon = () => (
   </Icon>
 );
 
-// The terminal panel on the right: collapse it to a strip.
-export const CollapsePanelIcon = () => (
+// A column collapses to a strip at its side: the terminal panel on the right, the session
+// list on the left.
+export const CollapsePanelIcon = ({ side = "right" }: { side?: "left" | "right" }) => (
   <Icon>
     <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
-    <path d="M15 4.5v15" />
-    <path d="m9 10 2 2-2 2" />
+    {side === "right" ? (
+      <>
+        <path d="M15 4.5v15" />
+        <path d="m9 10 2 2-2 2" />
+      </>
+    ) : (
+      <>
+        <path d="M9 4.5v15" />
+        <path d="m15 10-2 2 2 2" />
+      </>
+    )}
+  </Icon>
+);
+
+// Something could not be loaded: what, in its tooltip.
+export const ProblemIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5v5.5M12 16.2v.3" />
   </Icon>
 );
 

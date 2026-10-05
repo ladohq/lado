@@ -1,7 +1,7 @@
 // The edge between two columns of a page (docs/design/ui.md, Structure): drag it, or use the
 // arrow keys on it, to change its column's width within the column's bounds; a double click
 // puts the default width back. One component for every resizable column.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Bounds } from "./prefs";
 
@@ -29,6 +29,25 @@ export function useWidth<T extends HTMLElement>(): [(element: T | null) => void,
     return () => observer.disconnect();
   }, [element]);
   return [setElement, width];
+}
+
+// The focus of a column that collapses to a strip: after the human collapses it (`toggled`
+// called before the change), the strip's button that opens it has the focus; after they open
+// it, the button that collapses it. A change the human did not make with those buttons (the
+// page opening, a terminal opened from a chip) leaves the focus where it is.
+export function useStripFocus(collapsed: boolean) {
+  const toggledHere = useRef(false);
+  const open = useRef<HTMLButtonElement>(null);
+  const collapse = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!toggledHere.current) return;
+    toggledHere.current = false;
+    (collapsed ? open : collapse).current?.focus();
+  }, [collapsed]);
+  const toggled = () => {
+    toggledHere.current = true;
+  };
+  return { open, collapse, toggled };
 }
 
 // `edge`: the side of its column the splitter is on; moving it outward widens the column.

@@ -238,6 +238,21 @@ test("Collapse terminals leaves a strip whose Terminals button opens the panel a
   expect(JSON.parse(localStorage.getItem("lado.terminals")!).collapsed).toBe(false);
 });
 
+test("after Collapse terminals the focus is on Terminals, after Terminals on Collapse terminals; nothing else moves it", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 480, collapsed: true }));
+  await open();
+  await team();
+  expect(document.activeElement).toBe(document.body); // opened collapsed
+  expandPanel();
+  expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Collapse terminals" }));
+  collapse();
+  expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Terminals" }));
+  const chipOf = await chip("w1");
+  chipOf.focus();
+  await openTerminal("w1"); // a chip opens the panel and keeps the focus
+  expect(document.activeElement).toBe(chipOf);
+});
+
 test("a panel collapsed when the page opens opens no socket until it is opened", async () => {
   localStorage.setItem("lado.terminals", JSON.stringify({ width: 480, collapsed: true }));
   await open();

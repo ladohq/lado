@@ -443,13 +443,99 @@ h3 {
 .session-list-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 4px;
   margin-bottom: 10px;
 }
 
 .session-list-head h2 {
+  flex: 1;
   margin: 0;
   font-size: 16px;
+}
+
+/* The list collapsed to a strip (Sessions.tsx), the terminals' strip mirrored: Sessions read
+   from the bottom up, New session, then a column of the sessions' icons that scrolls while
+   the buttons stay. */
+.sessions-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.sessions-open {
+  transform: rotate(180deg);
+}
+
+.sessions-strip .plus {
+  flex: none;
+  margin: 4px 0 8px;
+}
+
+.strip-icons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.strip-gap {
+  flex: none;
+  width: 20px;
+  margin: 2px 0;
+  border-top: 1px solid var(--line);
+}
+
+.strip-session {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 500 12px/1 var(--mono);
+  text-decoration: none;
+}
+
+.strip-session:hover {
+  background: var(--raised);
+}
+
+.strip-session[aria-current="page"] {
+  background: var(--raised);
+  border-color: var(--ink);
+}
+
+.strip-session.waits {
+  border-color: var(--human);
+  background: var(--human-ground);
+  color: var(--human);
+}
+
+.strip-session.waits[aria-current="page"] {
+  box-shadow: 0 0 0 1px var(--human);
+}
+
+.strip-problem {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-top: 6px;
+  color: var(--danger);
 }
 
 .plus {
@@ -858,7 +944,8 @@ h3 {
   align-items: center;
 }
 
-.terminals-open {
+/* The vertical button that opens a column collapsed to a strip: Terminals, Sessions. */
+.strip-open {
   flex: none;
   width: 100%;
   padding: 14px 0;
@@ -869,7 +956,7 @@ h3 {
   writing-mode: vertical-rl;
 }
 
-.terminals-open:hover {
+.strip-open:hover {
   background: var(--raised);
   color: var(--ink);
 }
@@ -911,6 +998,11 @@ h3 {
 
 .tooltip-line + .tooltip-line {
   color: var(--muted);
+}
+
+/* What waits for the human, in a session's tooltip. */
+.tooltip-line.waits {
+  color: var(--human);
 }
 
 .terminals.expanded {
@@ -1691,6 +1783,50 @@ h3 {
     border-bottom: 1px solid var(--line);
   }
 
+  /* The collapsed list: a row over the session, as the terminals' strip under it; the icons
+     scroll sideways while Sessions and + stay. */
+  .sessions-strip {
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sessions-open {
+    width: auto;
+    padding: 0 14px;
+    align-self: stretch;
+    transform: none;
+    writing-mode: horizontal-tb;
+  }
+
+  .sessions-strip .plus {
+    margin: 0 8px 0 4px;
+  }
+
+  .strip-icons {
+    flex: 1;
+    flex-direction: row;
+    width: auto;
+    min-width: 0;
+    padding: 6px 10px 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .strip-gap {
+    width: 0;
+    height: 20px;
+    margin: 0 2px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .strip-problem {
+    margin: 0 0 0 6px;
+  }
+
   .session-page {
     flex-direction: column;
   }
@@ -1714,7 +1850,7 @@ h3 {
     height: auto;
   }
 
-  .terminals-open {
+  .terminals .strip-open {
     flex: 1;
     writing-mode: horizontal-tb;
   }

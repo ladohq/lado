@@ -32,8 +32,8 @@ import { getHistory, type AgentInfo, type History } from "./api";
 import { CollapsePanelIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
 import { TERMINAL_PARAM } from "./paths";
-import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type PanelPrefs } from "./prefs";
-import { fitWidth, Splitter, useWidth } from "./Splitter";
+import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type ColumnPrefs } from "./prefs";
+import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
 import { Tooltip } from "./Tooltip";
 import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink";
@@ -95,7 +95,7 @@ export function TerminalPanel({ session, children }: { session: string; children
       ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
   }, [active, panel.collapsed]);
 
-  const keep = useCallback((change: Partial<PanelPrefs>) => {
+  const keep = useCallback((change: Partial<ColumnPrefs>) => {
     setPanel((now) => {
       const next = { ...now, ...change };
       storePanel(next);
@@ -143,8 +143,10 @@ export function TerminalPanel({ session, children }: { session: string; children
     if (active === agent) setActive(left[left.length - 1]);
   };
 
+  const focus = useStripFocus(panel.collapsed);
   const collapse = () => {
     setExpanded(false);
+    focus.toggled();
     keep({ collapsed: true });
   };
 
@@ -186,10 +188,14 @@ export function TerminalPanel({ session, children }: { session: string; children
           {panel.collapsed ? (
             <>
               <button
+                ref={focus.open}
                 type="button"
-                className="terminals-open"
+                className="strip-open"
                 title="Show the terminals"
-                onClick={() => keep({ collapsed: false })}
+                onClick={() => {
+                  focus.toggled();
+                  keep({ collapsed: false });
+                }}
               >
                 Terminals
               </button>
@@ -270,6 +276,7 @@ export function TerminalPanel({ session, children }: { session: string; children
                   </button>
                   {!expanded && (
                     <button
+                      ref={focus.collapse}
                       type="button"
                       className="ghost"
                       aria-label="Collapse terminals"

@@ -68,36 +68,37 @@ const widthIn = (value: unknown, bounds: Bounds) => {
   return width >= bounds.min && width <= bounds.max ? width : bounds.initial;
 };
 
-// The terminal panel on the right of a session page: its width, and whether it is collapsed
-// to a strip. Collapsed by default on a narrow window (≤ 900 px, where the columns stack);
-// a value stored before it could collapse is open.
+// A column of a session page that collapses to a strip: its width, and whether it is
+// collapsed. Collapsed by default on a narrow window (≤ 900 px, where the columns stack); a
+// value stored before it could collapse is open.
+export type ColumnPrefs = { width: number; collapsed: boolean };
+
+export function storedColumn(key: string, bounds: Bounds): ColumnPrefs {
+  const stored = readJson(key);
+  const collapsed =
+    stored === null ? (window.matchMedia?.("(max-width: 900px)").matches ?? false) : stored.collapsed === true;
+  return { width: widthIn(stored?.width, bounds), collapsed };
+}
+
+export function storeColumn(key: string, column: ColumnPrefs): void {
+  write(key, JSON.stringify(column));
+}
+
+// The terminal panel on the right of a session page.
 const PANEL = "lado.terminals";
 export const PANEL_WIDTH: Bounds = { initial: 480, min: 280, max: 1200 };
 
-export type PanelPrefs = { width: number; collapsed: boolean };
+export const storedPanel = (): ColumnPrefs => storedColumn(PANEL, PANEL_WIDTH);
 
-export function storedPanel(): PanelPrefs {
-  const stored = readJson(PANEL);
-  const collapsed =
-    stored === null ? (window.matchMedia?.("(max-width: 900px)").matches ?? false) : stored.collapsed === true;
-  return { width: widthIn(stored?.width, PANEL_WIDTH), collapsed };
-}
+export const storePanel = (panel: ColumnPrefs): void => storeColumn(PANEL, panel);
 
-export function storePanel(panel: PanelPrefs): void {
-  write(PANEL, JSON.stringify(panel));
-}
-
-// The session list on the left of the Sessions page: its width.
+// The session list on the left of the Sessions page.
 const SESSIONS_LIST = "lado.sessionsList";
 export const SESSIONS_WIDTH: Bounds = { initial: 260, min: 200, max: 480 };
 
-export const storedSessionsList = (): { width: number } => ({
-  width: widthIn(readJson(SESSIONS_LIST)?.width, SESSIONS_WIDTH),
-});
+export const storedSessionsList = (): ColumnPrefs => storedColumn(SESSIONS_LIST, SESSIONS_WIDTH);
 
-export function storeSessionsList(list: { width: number }): void {
-  write(SESSIONS_LIST, JSON.stringify(list));
-}
+export const storeSessionsList = (list: ColumnPrefs): void => storeColumn(SESSIONS_LIST, list);
 
 // Whether Take control asks first (until the human says not to ask again).
 const ASK_CONTROL = "lado.askControl";

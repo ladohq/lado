@@ -1027,3 +1027,12 @@ with `GIT_CONFIG_GLOBAL=/dev/null` and `user.useConfigOnly=true` it passes too.
 Wanted: find what the gate's popup reads from HOME, and either isolate it in the tests or
 say so in AGENTS.md.
 Found: 2026-10-06, fix/ci-git-identity, checking the tests without a global git identity.
+
+## Local test runs do not catch a commit without a git identity
+
+On macOS (and wherever git derives an identity from the host), a test that commits in a
+repository without a local user passes locally and fails only in CI ("Author identity
+unknown"), as `test_another_folders_session_does_not_count` did before 0.22.0.
+Wanted: tests/conftest.py sets `user.useConfigOnly=true` for the test run
+(GIT_CONFIG_COUNT/KEY/VALUE, as agent_helpers does for maintenance), so it fails locally too.
+Found: 2026-10-06, review of fix/ci-git-identity.

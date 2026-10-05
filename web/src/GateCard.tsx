@@ -18,9 +18,21 @@ const LABELS: Record<string, Record<string, string>> = {
 
 const title = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
 
-export function Gate({ session, gate, stopped }: { session: string; gate: GateInfo; stopped: boolean }) {
+// `compact` (a run's page in Flows, where the notes are in the run's history): an open gate's
+// card without the note that led to it and the notes it needs.
+export function Gate({
+  session,
+  gate,
+  stopped,
+  compact = false,
+}: {
+  session: string;
+  gate: GateInfo;
+  stopped: boolean;
+  compact?: boolean;
+}) {
   return gate.answer === null ? (
-    <GateCard session={session} gate={gate} stopped={stopped} />
+    <GateCard session={session} gate={gate} stopped={stopped} compact={compact} />
   ) : (
     <GateLine gate={gate} />
   );
@@ -56,7 +68,17 @@ export function GateAnswer({ gate, go }: { gate: GateInfo; go: (anchor: string) 
   );
 }
 
-function GateCard({ session, gate, stopped }: { session: string; gate: GateInfo; stopped: boolean }) {
+function GateCard({
+  session,
+  gate,
+  stopped,
+  compact,
+}: {
+  session: string;
+  gate: GateInfo;
+  stopped: boolean;
+  compact: boolean;
+}) {
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -80,9 +102,9 @@ function GateCard({ session, gate, stopped }: { session: string; gate: GateInfo;
         <time dateTime={gate.created_at}>{clock(gate.created_at)}</time>
       </header>
       <p className="gate-question">{gate.question}</p>
-      <Note gate={gate} />
-      {gate.problem && <p className="problem gate-problem">Notes it needs cannot be shown: {gate.problem}</p>}
-      {gate.needs && gate.needs.length > 0 && (
+      {!compact && <Note gate={gate} />}
+      {!compact && gate.problem && <p className="problem gate-problem">Notes it needs cannot be shown: {gate.problem}</p>}
+      {!compact && gate.needs && gate.needs.length > 0 && (
         <ul className="gate-needs" aria-label="Notes it needs">
           {gate.needs.map((need) => (
             <Needed key={need.state} need={need} />

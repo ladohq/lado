@@ -7,8 +7,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { columnWidth, FakeResizeObserver, narrowColumn, wideColumn } from "./fakes";
 import { ListPage, type Entry, type Group } from "./ListPage";
 
-const FOLD = "test.fold";
-
 const HOUR = 3600 * 1000;
 
 function entry(key: string, more: Partial<Entry> = {}): Entry {
@@ -23,12 +21,7 @@ function groups({ old = 3 }: { old?: number } = {}): Group[] {
   return [
     { name: "Waiting", tone: "waits", entries: [entry("a", { tone: "waits", search: ["a", "Alpha task"] })] },
     { name: "Active", entries: [entry("b", { search: ["b", "Beta"] }), entry("c")] },
-    {
-      name: "Ended",
-      entries: ended,
-      days: true,
-      fold: { stored: () => localStorage.getItem(FOLD) === "open", store: (open) => localStorage.setItem(FOLD, open ? "open" : "folded") },
-    },
+    { name: "Ended", entries: ended, days: true, first: 10, empty: "Nothing ended yet" },
   ];
 }
 
@@ -156,57 +149,15 @@ test("in a narrow column the list takes it without an item, the page with one, a
 
 // The selected item
 
-test("the selected item is always seen: its folded group opens and its row shows past the first 10, the fold not stored", () => {
+test("the selected item is always seen: its row shows past the first 10", () => {
   wideColumn();
   open("/things/old-12", { list: groups({ old: 14 }) });
   const list = nav()!;
   const row = within(list).getByRole("link", { name: "old-12" });
   expect(row.getAttribute("aria-current")).toBe("page");
-  expect(within(list).getByRole("button", { name: /Ended \(14\)/ }).getAttribute("aria-expanded")).toBe("true");
   expect(names(within(list).getByRole("region", { name: "Ended" }))).toHaveLength(12);
   expect(within(list).getByRole("button", { name: "Show 2 more" })).toBeTruthy();
-  expect(localStorage.getItem(FOLD)).toBeNull();
   expect(within(list).getAllByRole("link").filter((one) => one.getAttribute("aria-current"))).toHaveLength(1);
-});
-
-test("a group opened for its selected item folds on its toggle, and opens again whenever an item of it is picked", () => {
-  wideColumn();
-  open("/things/old-1", { list: groups({ old: 3 }) });
-  const toggle = () => within(nav()!).getByRole("button", { name: /Ended \(3\)/ });
-  fireEvent.click(toggle());
-  expect(toggle().getAttribute("aria-expanded")).toBe("false");
-  expect(within(nav()!).queryByRole("region", { name: "Ended" })).toBeNull();
-  expect(localStorage.getItem(FOLD)).toBe("folded");
-  expect(pageOf("old-1")).toBeTruthy(); // the page stays
-  fireEvent.click(toggle());
-  expect(localStorage.getItem(FOLD)).toBe("open");
-  fireEvent.click(toggle());
-  fireEvent.click(within(nav()!).getByRole("link", { name: "a" }));
-  expect(within(nav()!).queryByRole("region", { name: "Ended" })).toBeNull();
-  // Picked from elsewhere (a link, the address): its group opens for it, not remembered.
-  fireEvent.click(screen.getByRole("link", { name: "go to old-1" }));
-  expect(within(nav()!).getByRole("link", { name: "old-1" }).getAttribute("aria-current")).toBe("page");
-  // Folded again, another item picked, then the same one again: it opens again.
-  fireEvent.click(toggle());
-  fireEvent.click(within(nav()!).getByRole("link", { name: "a" }));
-  fireEvent.click(screen.getByRole("link", { name: "go to old-1" }));
-  expect(within(nav()!).getByRole("link", { name: "old-1" }).getAttribute("aria-current")).toBe("page");
-  fireEvent.click(screen.getByRole("link", { name: "go to old-2" }));
-  expect(within(nav()!).getByRole("link", { name: "old-2" }).getAttribute("aria-current")).toBe("page");
-  expect(localStorage.getItem(FOLD)).toBe("folded");
-});
-
-test("while the search has text a folded group is open and its toggle does nothing", () => {
-  wideColumn();
-  open("/things/a", { list: groups({ old: 3 }) });
-  fireEvent.change(screen.getByRole("searchbox", { name: "Find a thing" }), { target: { value: "old" } });
-  const toggle = within(nav()!).getByRole("button", { name: /Ended \(3\)/ }) as HTMLButtonElement;
-  expect(toggle.getAttribute("aria-expanded")).toBe("true");
-  expect(toggle.disabled).toBe(true);
-  fireEvent.click(toggle);
-  expect(localStorage.getItem(FOLD)).toBeNull();
-  fireEvent.change(screen.getByRole("searchbox", { name: "Find a thing" }), { target: { value: "" } });
-  expect(within(nav()!).queryByRole("region", { name: "Ended" })).toBeNull();
 });
 
 test("an item is picked by its key: two rows of one name are told apart", () => {
@@ -224,56 +175,75 @@ test("an item is picked by its key: two rows of one name are told apart", () => 
 
 // The groups
 
-test("a folded group opens on its toggle, which is remembered; it shows its days and its first 10, then Show N more", () => {
+test("every group is open under its heading with its count; nothing folds", () => {
+  wideColumn();
+  open("/things/a", { list: groups({ old: 3 }) });
+  const list = nav()!;
+  expect(within(list).queryByRole("button", { name: /Ended/ })).toBeNull();
+  for (const [name, count] of [
+    ["Waiting", "1"],
+    ["Active", "2"],
+    ["Ended", "3"],
+  ]) {
+    const group = within(list).getByRole("region", { name });
+    expect(within(group).getByRole("heading", { level: 3, name }).textContent).toBe(name);
+    expect(group.querySelector(".group-count")?.textContent).toBe(count);
+  }
+  expect(names(list)).toEqual(["a", "b", "c", "old-1", "old-2", "old-3"]);
+});
+
+test("a group with `first` shows its days and its first rows, then Show N more", () => {
   wideColumn();
   open("/things/a", { list: groups({ old: 30 }) });
-  const list = nav()!;
-  const toggle = within(list).getByRole("button", { name: /Ended \(30\)/ });
-  expect(toggle.getAttribute("aria-expanded")).toBe("false");
-  expect(within(list).queryByRole("region", { name: "Ended" })).toBeNull();
-  fireEvent.click(toggle);
-  expect(localStorage.getItem(FOLD)).toBe("open");
-  const ended = within(list).getByRole("region", { name: "Ended" });
+  const ended = within(nav()!).getByRole("region", { name: "Ended" });
   expect(names(ended)).toEqual(Array.from({ length: 10 }, (_, at) => `old-${at + 1}`));
+  expect(ended.querySelector(".group-count")?.textContent).toBe("30");
   fireEvent.click(within(ended).getByRole("button", { name: "Show 20 more" }));
   expect(names(ended)).toHaveLength(30);
   expect(within(ended).queryByRole("button", { name: /more/ })).toBeNull();
   // 30 hours back from now: today, yesterday and maybe the day before.
   const days = within(ended)
-    .getAllByRole("heading")
+    .getAllByRole("heading", { level: 4 })
     .map((one) => one.textContent);
   expect(days[0]).toBe(new Date(Date.now() - HOUR).getDate() === new Date().getDate() ? "Today" : "Yesterday");
   expect(days).toContain("Yesterday");
-  cleanup();
-  open("/things/a", { list: groups({ old: 30 }) });
-  expect(within(nav()!).getByRole("region", { name: "Ended" })).toBeTruthy();
 });
 
-test("the group that waits is marked, its rows too; an empty group is not shown", () => {
+test("an empty group says its `empty` text; one without it is not shown", () => {
   wideColumn();
-  const list: Group[] = [...groups(), { name: "Nothing", entries: [] }];
+  const list: Group[] = [...groups({ old: 0 }), { name: "Nothing", entries: [] }];
   open("/things/a", { list });
+  const ended = within(nav()!).getByRole("region", { name: "Ended" });
+  expect(within(ended).getByText("Nothing ended yet")).toBeTruthy();
+  expect(ended.querySelector(".group-count")?.textContent).toBe("0");
+  expect(within(nav()!).queryByRole("region", { name: "Nothing" })).toBeNull();
+});
+
+test("the group that waits is marked, its rows too", () => {
+  wideColumn();
+  open("/things/a");
   const waiting = within(nav()!).getByRole("region", { name: "Waiting" });
   expect(waiting.className).toContain("waits");
   expect(within(waiting).getByRole("link").className).toContain("waits");
-  expect(within(nav()!).queryByRole("region", { name: "Nothing" })).toBeNull();
 });
 
 // The search
 
-test("the search finds by any of an item's texts, any case; it opens folded groups and shows every match", () => {
+test("the search finds by any of an item's texts, any case, in every group, and shows every match", () => {
   wideColumn();
   open("/things/a", { list: groups({ old: 14 }) });
   const search = screen.getByRole("searchbox", { name: "Find a thing" });
   fireEvent.change(search, { target: { value: "ALPHA" } });
   expect(names(nav()!)).toEqual(["a"]);
+  // A group without `empty` and no match is gone; one with it says so.
   expect(within(nav()!).queryByRole("region", { name: "Active" })).toBeNull();
+  expect(within(within(nav()!).getByRole("region", { name: "Ended" })).getByText("No match")).toBeTruthy();
   fireEvent.change(search, { target: { value: "Old-1" } });
-  // old-1 and old-10 to old-14, past the first 10, from a folded group.
+  // old-1 and old-10 to old-14, past the first 10.
   expect(names(nav()!)).toEqual(["old-1", "old-10", "old-11", "old-12", "old-13", "old-14"]);
-  expect(localStorage.getItem(FOLD)).toBeNull();
+  expect(within(nav()!).queryByRole("button", { name: /more/ })).toBeNull();
   fireEvent.change(search, { target: { value: "nope" } });
   expect(within(nav()!).getByText("No thing matches “nope”")).toBeTruthy();
   fireEvent.change(search, { target: { value: "" } });
-  expect(names(nav()!)).toEqual(["a", "b", "c"]);
+  expect(names(nav()!)).toHaveLength(13);
 });

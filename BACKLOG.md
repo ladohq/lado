@@ -471,15 +471,6 @@ Wanted: the docs and `lado doctor`'s hint name this case and how to guard it in 
 (for example, skip the autostart when the shell is not interactive on a terminal).
 Found: 2026-10-04, review of fix/agent-env.
 
-## A snapshot's problem of several lines shows as one line in the UI
-
-When the validator refuses a run's flow snapshot, `problem` (`RunInfo`, `GateInfo`) holds
-one error per line (`flows.from_snapshot` joins them with "\n"). The run page
-(`web/src/Flows.tsx`, `.problem`) and the gate card (`web/src/GateCard.tsx`,
-`.gate-problem`) put it in a `<p>`, so the lines run together without a break.
-Wanted: `white-space: pre-wrap` on both (or one line per error).
-Found: 2026-10-04, review of fix/unreadable-snapshot (Minor).
-
 ## `lado answer` without a gate stops at a gate whose run's flow cannot be read
 
 `lado answer` (no arguments, or a session) and the gate popup show each open gate with the
@@ -751,3 +742,13 @@ here, "Oct 2" in CI).
 Wanted: vitest run in `make web` (or CI) also under a second locale, e.g.
 `LC_ALL=ru_RU.UTF-8`, so such a test fails locally.
 Found: 2026-10-05, review of fix/chat-start-day-tz.
+
+## UI screenshots of parallel worktrees overwrite each other
+
+The `shot` fixture (`tests/ui/conftest.py`) saves to `<temp dir>/lado-ui-shots/<test>.png`,
+one folder for every checkout on the machine. Two worktrees running `make test-ui` at once
+(two flow runs) write the same file names, so a reviewer may look at the other branch's
+screen: a run of feature/flows-tab-redesign showed the old Flows page from another worktree.
+Wanted: a folder per checkout (e.g. named after the repo root's path or the branch), printed
+as now.
+Found: 2026-10-05, feature/flows-tab-redesign (developer).

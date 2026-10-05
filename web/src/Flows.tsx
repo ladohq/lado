@@ -1,23 +1,25 @@
-// The session's Flows tab (docs/design/ui.md, Flows): its runs on the left, in groups, and
-// the selected run's page on the right: its head, every state of its flow, its open gate,
-// answered in place, and the timeline of its steps. A step is a note (NoteInfo: who
-// reported it, the outcome and where it leads); the run's start, end and cancel are its
-// events. All of it live from the feed (live.ts); the list and the page are a ListPage.
-import { useEffect } from "react";
+// The session's Flows tab (docs/design/ui.md, Flows): its runs on the left, Active (the
+// waiting ones first) and History, and the selected run's page on the right: its head
+// (status, task, its flow's states), what goes on now (who acts, its gate answered in
+// place, or how it ended) and its history, one feed of events that open to their details.
+// A step is a note (NoteInfo: who reported it, the outcome and where it leads); the run's
+// start, end and cancel are its events. All of it live from the feed (live.ts); the list and
+// the page are a ListPage.
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
 import { AgentName } from "./Agents";
-import { clock, Preview, since } from "./ChatText";
+import { Body, clock, since } from "./ChatText";
 import { Gate } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { ListPage, type Entry as ListEntry } from "./ListPage";
 import { runPath, sessionPath } from "./paths";
-import { storedFlowsEndedOpen, storeFlowsEndedOpen } from "./prefs";
+import { storedFlowsOrder, storeFlowsOrder, type FlowsOrder } from "./prefs";
 
-const NOTE_LINES = 6; // the lines of a step's note shown before Show all
+const HISTORY_FIRST = 10; // the ended runs shown before Show N more
 
-// The run's events the timeline shows; a transition (`flow`) is its step's note.
-const EVENT_WORDS: Record<string, string> = { flow_start: "started", flow_end: "ended", flow_cancel: "cancelled" };
+// The run's events the history shows; a transition (`flow`) is its step's note.
+const EDGES = ["flow_start", "flow_end", "flow_cancel"];
 
 export const isOpen = (run: RunInfo) => run.status === "active" || run.status === "waiting";
 
@@ -54,25 +56,23 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
     );
   } else if (!ready) {
     notice = <p className="muted">Loading…</p>;
-  } else if (lists.runs.length === 0) {
-    notice = <p className="empty">No flow runs yet</p>;
   }
   const groups = grouped(lists.runs);
   const selected = lists.runs.find((one) => one.name === run);
-  const first = groups.waiting[0] ?? groups.active[0] ?? groups.ended[0];
-  const open = groups.waiting.length + groups.active.length;
+  const first = groups.active[0] ?? groups.ended[0];
+  const open = groups.active.length;
   return (
     <ListPage
       label="Flow runs"
       noun="run"
       groups={[
-        { name: "Waiting for you", tone: "waits", entries: groups.waiting.map((one) => entry(session, one)) },
-        { name: "Active", entries: groups.active.map((one) => entry(session, one)) },
+        { name: "Active", entries: groups.active.map((one) => entry(session, one)), empty: "No active runs" },
         {
-          name: "Ended",
+          name: "History",
           entries: groups.ended.map((one) => entry(session, one)),
           days: true,
-          fold: { stored: storedFlowsEndedOpen, store: storeFlowsEndedOpen },
+          first: HISTORY_FIRST,
+          empty: "No ended runs yet",
         },
       ]}
       selected={run}
@@ -80,7 +80,7 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
         selected === undefined ? (
           <p className="empty">Run {run} not found</p>
         ) : (
-          <RunPage session={session} run={selected} stopped={stopped} lists={lists} />
+          <RunPage key={selected.name} session={session} run={selected} stopped={stopped} lists={lists} />
         )
       }
       listPath={sessionPath(session, "flows")}
@@ -91,14 +91,13 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
   );
 }
 
-// The list's groups: waiting for the human, active, and ended (ended or cancelled), the
-// latest end first.
+// The list's groups: the open runs, those waiting for the human first; and the ended or
+// cancelled ones, the latest end first.
 function grouped(runs: RunInfo[]) {
   const ended = runs.filter((one) => !isOpen(one));
   ended.sort((a, b) => (b.ended_at ?? "").localeCompare(a.ended_at ?? ""));
   return {
-    waiting: runs.filter((one) => one.status === "waiting"),
-    active: runs.filter((one) => one.status === "active"),
+    active: [...runs.filter((one) => one.status === "waiting"), ...runs.filter((one) => one.status === "active")],
     ended,
   };
 }
@@ -132,50 +131,84 @@ function waitsFor(run: RunInfo): string {
   return `→ ${run.acting}`;
 }
 
+// How long from one time to another, roughly: "<1 min", "12 min", "1 h 5 min", "1 d 2 h".
+function took(from: string, to: string): string {
+  const minutes = Math.floor((Date.parse(to) - Date.parse(from)) / 60000);
+  if (!(minutes >= 1)) return "<1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return hours % 24 ? `${days} d ${hours % 24} h` : `${days} d`;
+}
+
+// The page is keyed by the run: what is open in its history starts afresh with each run.
 function RunPage({ session, run, stopped, lists }: { session: string; run: RunInfo; stopped: boolean; lists: Lists }) {
   const gate = run.gate === null ? undefined : lists.gates.find((one) => one.id === run.gate);
+  const open = gate && gate.answer === null ? gate : undefined;
   return (
     <section className="run-page" aria-label={`Run ${run.name}`}>
-      <RunHead session={session} run={run} />
-      <StatePicture run={run} />
-      {gate && gate.answer === null && <Gate session={session} gate={gate} stopped={stopped} />}
-      <Timeline session={session} run={run} gate={gate} lists={lists} />
+      <RunHead run={run} />
+      <Now session={session} run={run} gate={open} stopped={stopped} lists={lists} />
+      <History session={session} run={run} gate={open} lists={lists} />
     </section>
   );
 }
 
-function RunHead({ session, run }: { session: string; run: RunInfo }) {
+const PILLS: Record<string, [string, string]> = {
+  active: ["Active", ""],
+  waiting: ["Waits for you", "waits"],
+  ended: ["Ended", "done"],
+  cancelled: ["Cancelled", "dim"],
+};
+
+function RunHead({ run }: { run: RunInfo }) {
   const kit = [run.kit.name, run.kit.version].filter(Boolean).join(" ");
+  const [label, tone] = PILLS[run.status] ?? [run.status, ""];
   return (
     <header className="run-head">
       <div className="run-title">
         <h3>{run.name}</h3>
-        <span className="run-meta">
-          flow {run.flow}
-          {kit && ` · ${kit}`} · started <time dateTime={run.created_at}>{clock(run.created_at)}</time>
-        </span>
+        <span className={`pill${tone ? ` ${tone}` : ""}`}>{label}</span>
       </div>
-      <p className="run-task">{run.task}</p>
-      <p className="run-now">
-        <strong>{run.state}</strong> · {run.status}
-        {run.acting && (
-          <>
-            {" · "}
-            <AgentName session={session} name={run.acting} />
-          </>
-        )}
-        {run.reason && ` · ${run.reason}`} · branch <code>{run.branch}</code>
+      <p className="run-meta">
+        <span>
+          flow {run.flow}
+          {kit && ` · ${kit}`}
+        </span>{" "}
+        <span>
+          started <time dateTime={run.created_at}>{clock(run.created_at)}</time>
+        </span>{" "}
+        <span>
+          branch <code>{run.branch}</code>
+        </span>
       </p>
+      {run.task && <Task text={run.task} />}
+      <States run={run} />
     </header>
   );
 }
 
-// Every state of the flow, in the order it declares them: name, who acts (you at a gate),
-// visits; the current one marked (orange while it waits for the human), the ones entered
-// solid, the others dashed. Under them the ways back: outcomes that lead to an earlier
-// state or to the same one. A run whose flow the server cannot read has none: the problem
-// stands in their place.
-function StatePicture({ run }: { run: RunInfo }) {
+// The task's first line, cut to one line, and the whole text on "more".
+function Task({ text }: { text: string }) {
+  const [all, setAll] = useState(false);
+  return (
+    <div className="run-task">
+      <span className="run-task-label">Task</span>
+      {!all && <span className="run-task-first">{text.split("\n")[0]}</span>}
+      <button type="button" className="link-button" aria-expanded={all} onClick={() => setAll(!all)}>
+        {all ? "less" : "more"}
+      </button>
+      {all && <p className="run-task-full">{text}</p>}
+    </div>
+  );
+}
+
+// Every state of the flow, in the order it declares them, as a chip: its name (◇ at a gate),
+// its visits, who acts in its title; the current one marked (orange while it waits for the
+// human), the ones entered solid, the others dashed. A run whose flow the server cannot
+// read has none: the problem stands in their place.
+function States({ run }: { run: RunInfo }) {
   if (run.problem) {
     return (
       <p className="problem" role="alert">
@@ -183,49 +216,97 @@ function StatePicture({ run }: { run: RunInfo }) {
       </p>
     );
   }
-  const order = run.states.map((one) => one.name);
-  const back = run.states.flatMap((from, at) =>
-    Object.entries(from.outcomes)
-      .filter(([, target]) => order.indexOf(target) >= 0 && order.indexOf(target) <= at)
-      .map(([outcome, target]) => `↶ ${from.name} –${outcome}→ ${target}`),
-  );
   const current = (name: string) => run.state === name && isOpen(run);
   return (
-    <div className="flow-picture">
-      <ol className="flow-states" aria-label="States">
-        {run.states.map((one) => {
-          const visits = run.visits[one.name] ?? 0;
-          const count = one.max_visits !== null ? `${visits}/${one.max_visits}` : visits > 0 ? `×${visits}` : "";
-          const who = one.kind === "gate" ? "you" : (one.agent ?? "");
-          const sub = [who, count].filter(Boolean).join(" · ");
-          const classes = [
-            "flow-state",
-            visits > 0 ? "visited" : "",
-            current(one.name) || (run.state === one.name && one.kind === "end") ? "current" : "",
-            current(one.name) && run.status === "waiting" ? "waiting" : "",
-          ];
-          const here = run.state === one.name && (isOpen(run) || one.kind === "end");
-          return (
-            <li
-              key={one.name}
-              className={classes.filter(Boolean).join(" ")}
-              aria-label={`State ${one.name}`}
-              aria-current={here ? "step" : undefined}
-            >
-              <b>{one.kind === "gate" ? `◇ ${one.name}` : one.name}</b>
-              {sub && <span>{sub}</span>}
-            </li>
-          );
-        })}
-      </ol>
-      {back.length > 0 && (
-        <ul className="flow-back" aria-label="Ways back">
-          {back.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <ol className="flow-states" aria-label="States">
+      {run.states.map((one) => {
+        const visits = run.visits[one.name] ?? 0;
+        const count = one.max_visits !== null ? `${visits}/${one.max_visits}` : visits > 0 ? `×${visits}` : "";
+        const who = one.kind === "gate" ? "you" : (one.agent ?? undefined);
+        const classes = [
+          "flow-state",
+          visits > 0 ? "visited" : "",
+          current(one.name) || (run.state === one.name && one.kind === "end") ? "current" : "",
+          current(one.name) && run.status === "waiting" ? "waiting" : "",
+        ];
+        const here = run.state === one.name && (isOpen(run) || one.kind === "end");
+        return (
+          <li
+            key={one.name}
+            className={classes.filter(Boolean).join(" ")}
+            aria-label={`State ${one.name}`}
+            aria-current={here ? "step" : undefined}
+            title={who || undefined}
+          >
+            <b>{one.kind === "gate" ? `◇ ${one.name}` : one.name}</b>
+            {count && <small>{count}</small>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// What goes on now: who acts, as the core says it, and the visit; the gate the run waits at,
+// compact, or why it waits; or when it ended, the end's or cancel's detail and how long the
+// run took.
+function Now({
+  session,
+  run,
+  gate,
+  stopped,
+  lists,
+}: {
+  session: string;
+  run: RunInfo;
+  gate?: GateInfo;
+  stopped: boolean;
+  lists: Lists;
+}) {
+  if (run.status === "waiting") {
+    return (
+      <section className="run-now waits" aria-label="Now">
+        <span className="now-head">Waits for you · {since(run.since)}</span>
+        {gate ? (
+          <Gate session={session} gate={gate} stopped={stopped} compact />
+        ) : (
+          <span className="now-text">{run.reason}</span>
+        )}
+      </section>
+    );
+  }
+  if (isOpen(run)) {
+    const max = run.states.find((one) => one.name === run.state)?.max_visits ?? null;
+    const visits = run.visits[run.state] ?? 0;
+    return (
+      <section className="run-now" aria-label="Now">
+        <span className="now-head">Now · {since(run.since)}</span>
+        <span className="now-text">
+          {run.acting && (
+            <>
+              <strong>
+                <AgentName session={session} name={run.acting} />
+              </strong>
+              {" · "}
+            </>
+          )}
+          {run.state} · visit {visits}
+          {max !== null && ` of ${max}`}
+        </span>
+      </section>
+    );
+  }
+  const end = lists.events.filter((one) => one.run === run.name && (one.kind === "flow_end" || one.kind === "flow_cancel")).at(-1);
+  const when = run.ended_at;
+  const text = [end?.detail, when && `took ${took(run.created_at, when)}`].filter(Boolean).join(" · ");
+  return (
+    <section className={`run-now ${run.status === "ended" ? "done" : "dim"}`} aria-label="Now">
+      <span className="now-head">
+        {PILLS[run.status]?.[0] ?? run.status}
+        {when && ` · ${clock(when)}`}
+      </span>
+      {text && <span className="now-text">{text}</span>}
+    </section>
   );
 }
 
@@ -240,81 +321,216 @@ function entries(run: RunInfo, lists: Lists): Entry[] {
     .filter((one) => one.run === run.name)
     .map((note) => ({ at: note.created_at, rank: 1, key: `note-${note.id}`, note }));
   const events = lists.events
-    .filter((one) => one.run === run.name && one.kind in EVENT_WORDS)
+    .filter((one) => one.run === run.name && EDGES.includes(one.kind))
     .map((event) => ({ at: event.created_at, rank: event.kind === "flow_start" ? 0 : 2, key: `event-${event.id}`, event }));
   return [...notes, ...events].sort((a, b) => a.rank - b.rank || a.at.localeCompare(b.at));
 }
 
-function Timeline({ session, run, gate, lists }: { session: string; run: RunInfo; gate?: GateInfo; lists: Lists }) {
-  return (
-    <ol className="run-steps" aria-label="Steps">
-      {entries(run, lists).map((entry) =>
-        entry.note ? (
-          <Step key={entry.key} session={session} note={entry.note} />
-        ) : (
-          <RunEvent key={entry.key} event={entry.event!} />
-        ),
-      )}
-      <Now run={run} gate={gate} />
-    </ol>
-  );
-}
+// What the history opens by itself: when the page opens, the latest note with a body; while
+// a gate is open, the notes it needs (by their ids, as the core chose them).
+const latestWithBody = (all: Entry[]) => all.filter((one) => one.note?.body).at(-1)?.key;
+const needed = (gate?: GateInfo) =>
+  (gate?.needs ?? []).flatMap((need) => (need.note === null ? [] : [`note-${need.note.id}`]));
 
-// A step: when, from which state, who reported it, the outcome and where it leads; then
-// its note. A note kept before LADO 0.18 has none of these but its state; the human's
-// flow-set has no outcome; a loop limit's answer is the human's override with one.
-function Step({ session, note }: { session: string; note: NoteInfo }) {
-  const loop = note.kind === "override" && note.outcome !== "";
-  const parts = [note.state, loop && "loop limit"].filter(Boolean).join(" · ");
-  const moves = [note.outcome, note.target].filter(Boolean).map((one) => ` → ${one}`);
-  return (
-    <li className={`run-step${note.kind === "override" ? " override" : ""}`}>
-      <span className="step-line">
-        <time dateTime={note.created_at}>{clock(note.created_at)}</time> · {parts}
-        {note.actor && (
-          <>
-            {" · "}
-            <AgentName session={session} name={note.actor} />
-          </>
-        )}
-        {moves.join("")}
-      </span>
-      <div className="step-note">
-        <strong>{note.summary}</strong>
-        {note.body && <Preview text={note.body} lines={NOTE_LINES} />}
-      </div>
-    </li>
+// The run's history: every event in one feed, the newest first or the oldest (remembered);
+// a step opens to its facts and its note's body. A note that comes later with a body opens
+// too.
+function History({ session, run, gate, lists }: { session: string; run: RunInfo; gate?: GateInfo; lists: Lists }) {
+  const all = entries(run, lists);
+  const [order, setOrder] = useState<FlowsOrder>(storedFlowsOrder);
+  const [opened, setOpened] = useState(
+    () => new Set([latestWithBody(all), ...needed(gate)].filter((key): key is string => key !== undefined)),
   );
-}
-
-function RunEvent({ event }: { event: RunEventInfo }) {
-  const by = event.actor === "lado" ? "" : ` by ${event.actor}`;
-  return (
-    <li className={`run-step run-${event.kind}`}>
-      <span className="step-line">
-        <time dateTime={event.created_at}>{clock(event.created_at)}</time> · {EVENT_WORDS[event.kind]}
-        {by}
-        {event.detail && ` · ${event.detail}`}
-      </span>
-    </li>
-  );
-}
-
-// What goes on now: who acts, as the core says it, and the visit; or the gate it waits at.
-function Now({ run, gate }: { run: RunInfo; gate?: GateInfo }) {
-  if (!isOpen(run)) return null;
-  let text;
-  if (run.status === "waiting") {
-    const where = gate?.state ?? run.state;
-    text = `now · ${where} · waits for you${run.gate !== null ? ` (gate #${run.gate})` : `: ${run.reason}`}`;
-  } else {
-    const max = run.states.find((one) => one.name === run.state)?.max_visits ?? null;
-    const visits = run.visits[run.state] ?? 0;
-    text = `now · ${run.state} · ${run.acting} · visit ${visits}${max !== null ? ` of ${max}` : ""}`;
+  const [seen, setSeen] = useState(() => new Set(all.map((one) => one.key)));
+  const [gateSeen, setGateSeen] = useState(gate?.id);
+  const fresh = all.filter((one) => !seen.has(one.key));
+  if (fresh.length > 0 || gate?.id !== gateSeen) {
+    const next = new Set(opened);
+    for (const one of fresh) if (one.note?.body) next.add(one.key);
+    if (gate?.id !== gateSeen) for (const key of needed(gate)) next.add(key);
+    setSeen(new Set(all.map((one) => one.key)));
+    setGateSeen(gate?.id);
+    setOpened(next);
   }
+
+  const steps = all.filter((one) => one.note).map((one) => one.key);
+  const allOpen = steps.length > 0 && steps.every((key) => opened.has(key));
+  const toggle = (key: string) => {
+    const next = new Set(opened);
+    if (!next.delete(key)) next.add(key);
+    setOpened(next);
+  };
+  const turn = () => {
+    const next = order === "newest" ? "oldest" : "newest";
+    setOrder(next);
+    storeFlowsOrder(next);
+  };
+  const rows = all.map((one, at) => (
+    <Row
+      key={one.key}
+      session={session}
+      run={run}
+      entry={one}
+      took={at > 0 ? took(all[at - 1].at, one.at) : undefined}
+      open={opened.has(one.key)}
+      onToggle={() => toggle(one.key)}
+    />
+  ));
   return (
-    <li className={`run-step now${run.status === "waiting" ? " waits" : ""}`}>
-      <span className="step-line">{text}</span>
+    <section className="run-history" aria-labelledby="run-history-name">
+      <div className="history-head">
+        <h4 id="run-history-name">History · {all.length} events</h4>
+        <span className="history-actions">
+          <button type="button" className="link-button" onClick={turn}>
+            {order === "newest" ? "Newest first ↓" : "Oldest first ↑"}
+          </button>
+          {steps.length > 0 && (
+            <>
+              {" · "}
+              <button type="button" className="link-button" onClick={() => setOpened(new Set(allOpen ? [] : steps))}>
+                {allOpen ? "Close all" : "Open all"}
+              </button>
+            </>
+          )}
+        </span>
+      </div>
+      <ol className="run-feed" aria-label="Events">
+        {order === "newest" ? rows.reverse() : rows}
+      </ol>
+    </section>
+  );
+}
+
+// A step goes back when it leads to a state the flow declares no later than the one it
+// left; unknown without the flow (its problem).
+function goesBack(run: RunInfo, note: NoteInfo): boolean {
+  const order = run.states.map((one) => one.name);
+  const from = order.indexOf(note.state);
+  const to = order.indexOf(note.target);
+  return from >= 0 && to >= 0 && to <= from;
+}
+
+// One line of the history. A step: when, a dot (green; orange for a way back or the human's
+// answer), who, `from [outcome] → to` and its summary, which opens its facts and its note's
+// body. A note kept before LADO 0.18 has only its state; the human's flow-set has no
+// outcome; a loop limit's answer is the human's override with one. The start, end and
+// cancel are one line each (a blue dot), never opened.
+function Row({
+  session,
+  run,
+  entry,
+  took,
+  open,
+  onToggle,
+}: {
+  session: string;
+  run: RunInfo;
+  entry: Entry;
+  took?: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const time = <time dateTime={entry.at}>{clock(entry.at)}</time>;
+  if (entry.event) {
+    const event = entry.event;
+    const by = event.actor === "lado" ? "" : event.actor;
+    let top: ReactNode;
+    if (event.kind === "flow_cancel") top = <span className="feed-move">cancelled{by && ` by ${by}`}</span>;
+    else {
+      top = (
+        <>
+          {by && (
+            <>
+              <span className="feed-who">
+                <AgentName session={session} name={by} />
+              </span>{" "}
+            </>
+          )}
+          <span className="feed-move">{event.kind === "flow_start" ? "started the run" : "ended the run"}</span>
+        </>
+      );
+    }
+    return (
+      <li className="feed-row">
+        <div className="feed-line">
+          {time}
+          <span className="feed-dot edge" aria-hidden="true" />
+          <div className="feed-what">
+            <div className="feed-top">{top}</div>
+            {event.kind === "flow_start" && event.detail && <span className="feed-summary">{event.detail}</span>}
+          </div>
+        </div>
+      </li>
+    );
+  }
+  const note = entry.note!;
+  const human = note.actor === "human";
+  const back = !run.problem && goesBack(run, note);
+  const label = note.kind === "override" ? (note.outcome ? "loop limit" : "flow-set") : "";
+  const who = note.actor && (human ? "you" : <AgentName session={session} name={note.actor} />);
+  const facts: [string, ReactNode][] = [
+    ["Who", who],
+    ["From", note.state],
+    ["Outcome", note.outcome],
+    ["To", note.target],
+    ["Step took", took],
+  ];
+  // A click anywhere on the line opens it, but on a link (who) or the summary's own button.
+  const click = (event: MouseEvent) => {
+    if (!(event.target as Element).closest("a, button")) onToggle();
+  };
+  return (
+    <li className={`feed-row step${open ? " open" : ""}`}>
+      <div className="feed-line" onClick={click}>
+        {time}
+        <span className={`feed-dot ${back || human ? "back" : "ok"}`} aria-hidden="true" />
+        <div className="feed-what">
+          <div className="feed-top">
+            {who && (
+              <>
+                <span className="feed-who">{who}</span>{" "}
+              </>
+            )}
+            <span className="feed-move">
+              {note.state}
+              {note.outcome && (
+                <>
+                  {" "}
+                  <span className={`feed-chip${back ? " back" : ""}`}>{note.outcome}</span>
+                </>
+              )}
+              {note.target && ` → ${note.target}`}
+            </span>
+            {label && (
+              <>
+                {" "}
+                <span className="feed-label">{label}</span>
+              </>
+            )}
+          </div>
+          <button type="button" className="feed-summary" aria-expanded={open} onClick={onToggle}>
+            {note.summary}
+          </button>
+        </div>
+        <span className="feed-chevron" aria-hidden="true">
+          ▸
+        </span>
+      </div>
+      {open && (
+        <div className="feed-detail">
+          <dl className="feed-facts">
+            {facts
+              .filter(([, value]) => value)
+              .map(([name, value]) => (
+                <div key={name}>
+                  <dt>{name}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+          </dl>
+          {note.body ? <Body text={note.body} /> : human && <p className="feed-none">No comment.</p>}
+        </div>
+      )}
     </li>
   );
 }

@@ -342,6 +342,7 @@ h3 {
 .problem {
   margin: 0;
   padding: 12px 16px;
+  white-space: pre-wrap; /* a problem of several lines keeps them */
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--ink);
@@ -2270,19 +2271,43 @@ h3 {
   margin-top: 2px;
 }
 
-.list-group + .list-group,
-.list-group + .group-toggle {
-  margin-top: 12px;
+/* A group's head: a band ruled above and below, its name and how many rows it has now; the
+   groups apart by a gap. */
+.list-group + .list-group {
+  margin-top: 18px;
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.group-head .group-name {
+  margin: 0;
+}
+
+.group-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .list-group.waits .group-name {
   color: var(--human);
 }
 
-.list-group > .problem,
-.list-group > .muted {
-  margin: 4px 10px;
+.list-empty,
+.list-none {
+  margin: 6px 10px;
   font-size: 13px;
+  font-style: italic;
 }
 
 .day-name {
@@ -2508,7 +2533,9 @@ h3 {
 .run-head {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
 
 .run-title {
@@ -2525,75 +2552,128 @@ h3 {
 }
 
 .run-meta {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.run-task {
-  margin: 0;
-  color: var(--muted);
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-
-.run-now {
-  margin: 0;
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.run-now code {
-  font-size: 12px;
-}
-
-/* The flow: its states in a row that wraps, the ways back under them as lines. */
-.flow-picture {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
+.run-meta code {
+  font-size: 12px;
+}
+
+/* A run's status: blue while it is active, orange while it waits for the human, green when
+   it ended, grey when it was cancelled. */
+.pill {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--action);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pill.waits {
+  background: var(--human-ground);
+  color: var(--human);
+}
+
+.pill.done {
+  background: var(--done-ground);
+  color: var(--done);
+}
+
+.pill.dim {
+  color: var(--muted);
+}
+
+/* The task: its first line cut to one line, the whole text under it on "more". */
+.run-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  max-width: 80ch;
+  margin-top: 2px;
+}
+
+.run-task-label,
+.history-head h4,
+.now-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.run-task-first {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-task .link-button {
+  flex: none;
+  margin: 0;
+  font-size: 12px;
+}
+
+.run-task-full {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The flow's states as chips in a row that wraps, joined by short lines. */
 .flow-states {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 22px;
-  margin: 0;
+  align-items: center;
+  gap: 6px 18px;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .flow-state {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 6px 10px;
+  padding: 2px 9px;
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: 999px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
-/* An arrow to the next state, in the gap; not read out (the list's order says it). */
 .flow-state + .flow-state::before {
-  content: "→" / "";
+  content: "";
   position: absolute;
   top: 50%;
-  left: -17px;
-  color: var(--muted);
-  transform: translateY(-50%);
+  left: -15px;
+  width: 12px;
+  height: 1px;
+  background: var(--line);
 }
 
 .flow-state b {
-  font-weight: 600;
+  font-weight: 500;
 }
 
-.flow-state span {
+.flow-state small {
+  margin-left: 5px;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .flow-state.visited {
@@ -2602,9 +2682,9 @@ h3 {
 }
 
 .flow-state.current {
-  border: 2px solid var(--action);
+  border: 1px solid var(--action);
   background: var(--raised);
-  color: var(--ink);
+  color: var(--action);
 }
 
 .flow-state.waiting {
@@ -2613,61 +2693,272 @@ h3 {
   color: var(--human);
 }
 
-.flow-back {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 18px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* The steps on a line down the left, the one now at the end. */
-.run-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin: 0 0 0 6px;
-  padding: 0 0 0 18px;
-  border-left: 2px solid var(--line);
-  list-style: none;
-}
-
-.run-step {
+/* What goes on now: a card; orange while the run waits for the human (its gate inside it,
+   compact), green when it ended. */
+.run-now {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.step-line {
-  color: var(--muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.step-note {
-  padding: 8px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
   overflow-wrap: anywhere;
 }
 
-.run-step.override .step-note {
-  border-style: dashed;
+.now-text {
+  font-size: 15px;
 }
 
-.step-note .chat-body {
-  margin-top: 4px;
+.run-now.waits {
+  border-color: var(--human);
+  background: var(--human-ground);
 }
 
-.run-step.now .step-line {
-  color: var(--action);
+.run-now.waits .now-head {
+  color: var(--human);
+}
+
+.run-now.waits .chat-gate.open {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.run-now.done {
+  border-color: transparent;
+  background: var(--done-ground);
+}
+
+.run-now.done .now-head {
+  color: var(--done);
+}
+
+/* The run's history: a head with the order and Open all, then one feed of events, each a
+   line (time, a dot on a rule down the feed, who and where, the summary, a chevron) that a
+   step opens to its facts and its note. */
+.history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin: 10px 0 8px;
+}
+
+.history-head h4 {
+  margin: 0;
+}
+
+.history-actions {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-actions .link-button {
+  margin: 0;
+  font-size: 12px;
+}
+
+.run-feed {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-feed::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 85px;
+  width: 1px;
+  background: var(--line);
+}
+
+.feed-line {
+  display: grid;
+  grid-template-columns: 64px 20px minmax(0, 1fr) 14px; /* the time fits "12:59 PM" */
+  gap: 0 10px;
+  align-items: start;
+  padding: 7px 6px;
+  border-radius: 6px;
+}
+
+.feed-row.step .feed-line {
+  cursor: pointer;
+}
+
+.feed-row.step .feed-line:hover {
+  background: var(--raised);
+}
+
+.feed-line time {
+  padding-top: 1px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The dot: green for a step, orange for a way back or the human's answer, blue for the
+   run's start, end and cancel. */
+.feed-dot {
+  position: relative;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  margin: 4px 0 0 4px;
+  border: 2px solid var(--done);
+  border-radius: 50%;
+  background: var(--panel);
+}
+
+.feed-dot.back {
+  border-color: var(--human);
+}
+
+.feed-dot.edge {
+  border-color: var(--action);
+  background: var(--action);
+}
+
+.feed-what {
+  min-width: 0;
+}
+
+.feed-who {
   font-weight: 600;
 }
 
-.run-step.now.waits .step-line {
+.feed-move {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.feed-chip,
+.feed-label {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--done-ground);
+  color: var(--done);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.feed-chip.back {
+  background: var(--human-ground);
   color: var(--human);
+}
+
+.feed-label {
+  background: var(--raised);
+  color: var(--muted);
+}
+
+.feed-summary {
+  display: block;
+  max-width: 100%;
+  margin-top: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-row.step .feed-summary {
+  cursor: pointer;
+}
+
+.feed-row.open .feed-summary {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.feed-chevron {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.2;
+  transition: transform 0.15s;
+}
+
+.feed-row:not(.step) .feed-chevron {
+  visibility: hidden;
+}
+
+.feed-row.open .feed-chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed-chevron {
+    transition: none;
+  }
+}
+
+.feed-detail {
+  margin: 2px 6px 12px 100px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.feed-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--ground);
+}
+
+.feed-facts div {
+  padding: 8px 12px;
+  border-right: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.feed-facts div:last-child {
+  border-right: 0;
+}
+
+.feed-facts dt {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.feed-facts dd {
+  margin: 0;
+  font-size: 13px;
+}
+
+.feed-detail .chat-body,
+.feed-none {
+  max-width: 76ch;
+  margin: 0;
+  padding: 10px 16px 14px;
+  overflow-wrap: anywhere;
+}
+
+.feed-none {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* A narrow page: no rule down the feed, the details under the line at full width. */
+@container (max-width: 560px) {
+  .run-feed::before {
+    display: none;
+  }
+
+  .feed-detail {
+    margin-left: 6px;
+  }
 }

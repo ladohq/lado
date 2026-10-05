@@ -304,9 +304,10 @@ test("a session opens on its Activity tab with its status, and no placeholder fo
 });
 
 test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address", async () => {
+  wideColumn();
   open("/sessions/lado/flows");
   const view = await screen.findByRole("region", { name: "Session lado" });
-  expect(await within(view).findByText("No flow runs yet")).toBeTruthy();
+  expect(await within(view).findByText("No active runs")).toBeTruthy();
   fireEvent.click(within(view).getByRole("link", { name: "Activity" }));
   expect(within(view).getByRole("region", { name: "Chat" })).toBeTruthy();
   expect(within(view).getByRole("link", { name: "Agents · 1" }).getAttribute("href")).toBe(

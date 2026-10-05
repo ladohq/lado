@@ -384,13 +384,18 @@ Sessions for now. The UI's texts are in English.
   the whole column, with no redirect, and an item's address shows its page alone, under a link back to the list (`‹ All runs (2 open, 39 ended)`, `‹ All
   agents`), which comes back with its search and its scroll as they were. Until the
   column is measured neither is drawn. Above the list a search (`Find a run`), any case,
-  by the texts each tab names; while it has text, folded groups are open and show every
-  match, and with none it says `No run matches “…”`. A folded group (ended runs) is
-  remembered as before, its rows under their local day (Today, Yesterday, a date; a row
-  has the time), the latest 10 first and then **Show N more**. The selected item is
-  always seen and marked (`aria-current`): its group opens for it and it shows past the
-  first 10, neither remembered; items are picked by key. The page is a size container:
-  its own layout goes by its own width (`@container`), not by the column's.
+  by the texts each tab names, over every group at once; while it has text each group
+  shows every match, a group with an `empty` text and no match says "No match", and with
+  none anywhere it says `No run matches “…”`. No group folds (decided 2026-10-05, task
+  feature/flows-tab-redesign): each is open under a head of its own, a band ruled above
+  and below with its name in capitals and how many rows it has now, the groups apart by a
+  gap. A group may say why it is empty (`empty`: "No active runs"; without it an empty
+  group is not drawn, as Agents' one group without a heading, `heading: false`), show its
+  rows under their local day (`days`: Today, Yesterday, a date; a row has the time) and
+  its first N (`first`) and then **Show N more**. The selected item is always seen and
+  marked (`aria-current`), also past the first N; items are picked by key. The page is a
+  size container: its own layout goes by its own width (`@container`), not by the
+  column's.
 - **Columns**: the list and the panel are resized on their edges with one component
   (`Splitter.tsx`: a `separator`, dragged, the arrow keys, a double click for the default
   width; a wide grip with a `col-resize` cursor and a line on hover and focus), within
@@ -854,33 +859,59 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   these items. Who acts in an open run depends on the session's agents, and the agent
   that was a run's worker may be deleted already: so any change of a session's agents
   also updates every open run of it (`feed.ALSO`).
-- **The list** (left, 240–300 px): **Waiting for you** (status `waiting`), **Active**,
-  and **Ended (n)** at the bottom, ended and cancelled runs by when they ended, the latest
-  first, folded (remembered in the browser, `lado.flowsEnded`). A row: the run's name
-  (mono), its state and who acts or the gate it waits at, how long it has been so; an
-  ended one its status and time, under its day. The tab is **Flows · N**, N the open runs
-  (none: Flows). A List and page (Structure): the search finds a run by name, task, flow
-  and state.
-- **A run's page** (`/sessions/<name>/flows/<run>`): the head (name, flow, kit, started,
-  task, state, status, who acts, why it waits, branch); the flow: every state in the order
-  the flow declares them, with who acts ("you" at a gate, marked ◇) and visits (`2/3`
-  with `max_visits`, else `×2`), the current state marked blue, orange while the run waits
-  for the human, entered states solid, the others dashed; under them the ways back
-  (outcomes that lead to an earlier state or the same one, `↶ review –changes→
-  implement`), no graph with arrows; a run whose flow cannot be read (its `problem`) shows
-  "Flow cannot be read: <problem>" there instead, and its gate's card the problem instead
-  of the notes it needs, its buttons as ever. Then the run's open gate, the chat's `Gate`
-  component, answered in place (disabled while the session is stopped); closed gates are
-  steps of the timeline (their answer is the step's note). Then the timeline: the start,
-  each step (time, state, who, outcome → target, the summary in bold and the body as
-  Markdown, the first lines and Show all), the end or cancel, and the line **now**: `now ·
-  <state> · <acting> · visit 2 of 3`, `acting` as the core says it (the UI does not parse
-  it), or `now · <state> · waits for you (gate #41)`. All of it follows the feed: an
-  answer anywhere moves the page on without a reload.
+- **The redesign** (decided with the human 2026-10-05, task feature/flows-tab-redesign;
+  mockup https://claude.ai/artifact/5G2wDV6kx6uyWNZTbyHo4S, version 2, variant "Feed"):
+  all runs always seen in two groups, and a run's page that shows first where the run is
+  and what it waits for, its history behind one line per event.
+- **The list** (left, 240–300 px), two groups, never folded: **Active**, the runs that
+  wait for the human first (their rows orange), then the active ones ("No active runs"
+  when there is none), and **History**, ended and cancelled runs by when they ended, the
+  latest first, under their day, the first 10 and then Show N more ("No ended runs yet").
+  A row: the run's name (mono), its state and who acts or the gate it waits at, how long
+  it has been so; an ended one its status and time. The tab is **Flows · N**, N the open
+  runs (none: Flows). A List and page (Structure): the search finds a run by name, task,
+  flow and state in both groups.
+- **A run's page** (`/sessions/<name>/flows/<run>`), keyed by the run:
+  - **The head**: the name (mono) and a pill of its status (Active blue, Waits for you
+    orange, Ended green, Cancelled grey); flow · kit, started, branch; the task's first
+    line cut to one line with **more** for the whole text; then every state of the flow
+    as a chip in the order the flow declares them: its name (◇ at a gate), its visits
+    (`2/3` with `max_visits`, else `×2`), who acts in its title ("you" at a gate); the
+    current state blue, orange while the run waits for the human, entered ones solid, the
+    others dashed. No ways back. A run whose flow cannot be read (its `problem`) shows
+    "Flow cannot be read: <problem>" there instead, its lines kept (`.problem` is
+    `pre-wrap`, so is the gate card's problem).
+  - **Now**, a card: an active run `Now · <how long>`, who acts as the core says it (the
+    UI does not parse it; a link to the agent while it lives) · state · `visit 2 of 3`; a
+    waiting run, orange, `Waits for you · <how long>` and its open gate, the chat's `Gate`
+    in its compact form (title, question, comment, buttons; no note, no needs, which are
+    in the history), answered in place through `answerGate` (disabled while the session
+    is stopped), or the run's `reason` without a gate; an ended or cancelled run `Ended ·
+    <time>` (green) or `Cancelled · <time>`, the end's or cancel's `detail` and how long
+    the run took (`created_at` to `ended_at`). The chat's gate card is unchanged.
+  - **History · N events**: one feed, the newest first by default; the switch "Newest
+    first ↓ / Oldest first ↑" is remembered in the browser (`lado.flowsOrder`); "Open all
+    / Close all". The order is the run's start, its steps by time, its end (by kind, then
+    time), turned by the switch. A step's line: time, a dot (green; orange for a way back,
+    a step whose `target` the flow declares no later than its state, or the human's
+    answer; none is a way back without the flow), who (a link while it lives; the human
+    is "you"), `<from> [outcome] → <to>` (a way back's outcome orange), "flow-set" or
+    "loop limit" for an override, and the summary on one line. It opens to its facts
+    (Who, From, Outcome, To, Step took: the time since the run's previous event) and the
+    note's whole body as Markdown, as in the chat ("No comment." for the human's answer
+    without one). A note from before schema 15 has its state and summary only. The start
+    ("started the run", with its detail), the end ("ended the run") and a cancel
+    ("cancelled by <actor>") are one line with a blue dot, never opened; the end's or
+    cancel's detail is in Now only. What is open lives in the page and starts afresh with
+    another run: at first the latest note with a body, and while a gate is open the notes
+    it needs (by the ids the core gives, `gate.needs`); a note with a body that the feed
+    brings later opens too. All of it follows the feed: an answer anywhere moves the page
+    on without a reload.
 - `/sessions/<name>/flows` without a run, in a wide column, opens the first run that waits
   for the human, else the first active one, else the latest to end (the address
-  replaced); in a narrow one it is the list. With no runs, "No flow runs yet". An unknown
-  run says "Run <name> not found" and the address stays.
+  replaced); in a narrow one it is the list. With no runs both groups say they are empty
+  and the page is empty. An unknown run says "Run <name> not found" and the address
+  stays.
 - Not in it (later tasks): cancel and flow-set from the UI (they stay in the CLI),
   starting a flow from the UI, editing flows.
 
@@ -915,6 +946,8 @@ and approved in its own task; this file keeps what was decided from them.
 
 The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8EAEE, muted
 #9AA1AD, actions #6FA0FF (labels on them #111317), waiting for the human #F0A25A on #3A2A1C.
-Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242C). Every
+Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242C), and
+(Flows, 2026-10-05) green for work that went well, a run that ended and a step of its
+history (#1E7A46 on #E7F4EC / #5CC98A on #18301F). Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test
 (`web/src/tokens.test.ts`) checks it.

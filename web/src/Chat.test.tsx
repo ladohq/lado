@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo } from "./api";
 import { App } from "./App";
+import { day } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -747,13 +748,17 @@ test("a question to the human shows while the agents' messages are hidden", asyn
 // Pages: the chat opens with the latest messages and loads earlier ones when the human
 // scrolls to the top.
 
-// Messages 1..n to and from the human, one a minute from 2 Oct 10:00 on.
+// Messages 1..n to and from the human, one a minute from 2 Oct 10:00 UTC on.
 const history = (n: number, first = 1) =>
   Array.from({ length: n }, (_, i) =>
     message(first + i, i % 2 ? "supervisor" : "human", i % 2 ? "human" : "supervisor", `note ${first + i}`, {
       created_at: new Date(Date.UTC(2026, 9, 2, 10, i)).toISOString(),
     }),
   );
+
+// The start of the session over history(): its first message's day as the chat writes it,
+// in the zone and locale the tests run in ("2 Oct", "Oct 2", "2 окт.").
+const historyStart = () => `Start of session lado · ${day(history(1)[0].created_at)}`;
 
 // The feed's height grows with what it shows: 100 pixels for each message.
 function measured(feed: HTMLElement) {
@@ -797,7 +802,7 @@ test("at the top the chat loads the earlier page and keeps what the human sees i
   expect(queries.slice(1)).toEqual([{ with: "human", limit: "50", before: "21" }]);
   expect(log.scrollTop).toBe(2000); // 20 messages above the one that was at the top
   expect(within(log).queryByRole("status")).toBeNull();
-  expect(within(log).getByText("Start of session lado · 2 Oct")).toBeTruthy();
+  expect(within(log).getByText(historyStart())).toBeTruthy();
 });
 
 test("a new message scrolls to it only when the human was at the bottom", async () => {
@@ -806,7 +811,7 @@ test("a new message scrolls to it only when the human was at the bottom", async 
   const log = await chat();
   await within(log).findByText("note 10");
   measured(log);
-  expect(within(log).getByText("Start of session lado · 2 Oct")).toBeTruthy();
+  expect(within(log).getByText(historyStart())).toBeTruthy();
   stream().send("change", changed(message(11, "supervisor", "human", "newer")), "11");
   await within(log).findByText("newer");
   expect(log.scrollTop).toBe(1100);

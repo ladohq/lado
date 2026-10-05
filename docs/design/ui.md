@@ -387,7 +387,8 @@ Sessions for now. The UI's texts are in English.
   by default Needs you and Running are open and Stopped folded. The older key of Stopped
   alone (`lado.stoppedSessions`) is only where Stopped starts while `lado.sessionGroups` is
   not stored, and never read after. While the search has text every group with a match is
-  shown open, and nothing remembered changes. The open session is always seen: in a folded
+  shown open, its heading is off (`disabled`: a click would change what is remembered and
+  nothing seen), and nothing remembered changes. The open session is always seen: in a folded
   group (the human folded it, or the session moved there, e.g. stopped into Stopped) its
   row alone shows under the heading; going to a session never opens a group nor changes
   what is remembered. The rows look alike in every group (no dimmed stopped ones, no

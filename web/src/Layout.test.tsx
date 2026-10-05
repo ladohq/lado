@@ -230,6 +230,10 @@ test("while the search has text the groups with matches are open, and what is re
   expect(head(/^Stopped/).getAttribute("aria-expanded")).toBe("true");
   fireEvent.change(search, { target: { value: "cal" } });
   expect(names(group("Running"))).toEqual(["calm"]);
+  // A heading folds nothing while the search has text: it is off, and a click changes nothing.
+  expect((head(/^Running/) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(head(/^Running/));
+  expect(names(group("Running"))).toEqual(["calm"]);
   expect(storedGroups()).toEqual(before);
   fireEvent.change(search, { target: { value: "" } });
   expect(names(group("Running"))).toEqual([]);

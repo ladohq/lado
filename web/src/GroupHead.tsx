@@ -8,7 +8,8 @@ import { ChevronIcon } from "./icons";
 // human: what waits for the human; done: what works now; neutral: the rest.
 export type Tone = "human" | "done" | "neutral";
 
-export type Fold = { open: boolean; controls: string; onToggle: () => void };
+// `disabled`: the list shows the group open whatever is chosen (a search), so the button is off.
+export type Fold = { open: boolean; controls: string; onToggle: () => void; disabled?: boolean };
 
 export function GroupHead({
   nameId,
@@ -41,6 +42,7 @@ export function GroupHead({
           aria-expanded={fold.open}
           aria-controls={fold.controls}
           onClick={fold.onToggle}
+          disabled={fold.disabled}
         >
           <ChevronIcon />
           {label}

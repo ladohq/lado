@@ -75,6 +75,7 @@ export function Sessions() {
       id={id}
       sessions={groups[id]}
       open={wanted !== "" || folds[id] === "open"}
+      searching={wanted !== ""}
       current={current}
       onToggle={() => toggle(id)}
     />
@@ -295,17 +296,21 @@ function about(session: SessionInfo): string {
 
 // One group of the list under its heading, which folds it; a group without sessions is not
 // drawn. Folded, its list stays in the page (the heading's aria-controls) and shows only the
-// open session, when it is in the group: the open session is always seen.
+// open session, when it is in the group: the open session is always seen. While the search
+// has text the group is open and its heading off: a click would change only what is
+// remembered, not what is seen.
 function Group({
   id,
   sessions,
   open,
+  searching,
   current,
   onToggle,
 }: {
   id: SessionGroup;
   sessions: SessionInfo[];
   open: boolean;
+  searching: boolean;
   current?: string;
   onToggle: () => void;
 }) {
@@ -318,7 +323,7 @@ function Group({
         name={NAMES[id]}
         count={sessions.length}
         tone={TONES[id]}
-        fold={{ open, controls: `group-${id}`, onToggle }}
+        fold={{ open, controls: `group-${id}`, onToggle, disabled: searching }}
       />
       <ul id={`group-${id}`} hidden={rows.length === 0}>
         {rows.map((session) => (

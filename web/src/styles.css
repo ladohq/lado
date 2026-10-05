@@ -621,6 +621,11 @@ h3 {
   text-transform: inherit;
 }
 
+/* Off while a search shows every group open: the band keeps its look, only the pointer says so. */
+.group-fold:disabled {
+  cursor: default;
+}
+
 .group-fold:focus-visible {
   outline: 2px solid var(--action);
   outline-offset: 1px;

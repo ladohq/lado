@@ -1,5 +1,6 @@
-// The session's Agents tab: its live agents on the left, the supervisor first; an agent's page on the right with what it does, the state of its work, its
-// messages and the actions on it, live from the feed.
+// The session's Agents tab: its live agents on the left, the supervisor first; an agent's
+// page on the right with what it does, the state of its work, its messages and the actions
+// on it, live from the feed.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";

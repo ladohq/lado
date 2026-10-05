@@ -77,7 +77,7 @@ export function Agents({ session, agent, stopped }: { session: string; agent?: s
   }
   const alive = agents?.find((one) => one.name === agent);
   const page = alive ? (
-    <AgentPage key={alive.name} session={session} agent={alive} stopped={stopped} lists={lists} />
+    <AgentPage key={alive.name} session={session} agent={alive} lists={lists} />
   ) : (
     <p className="empty">Agent {agent} not found</p>
   );
@@ -178,17 +178,8 @@ function useWork(session: string, agent: AgentInfo) {
   return { details, at, loading, problem, refresh: load };
 }
 
-function AgentPage({
-  session,
-  agent,
-  stopped,
-  lists,
-}: {
-  session: string;
-  agent: AgentInfo;
-  stopped: boolean;
-  lists: Lists;
-}) {
+// A live agent's page; a stopped session has none (its agents are forgotten).
+function AgentPage({ session, agent, lists }: { session: string; agent: AgentInfo; lists: Lists }) {
   const openTerminal = useOpenTerminal();
   const work = useWork(session, agent);
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -224,12 +215,10 @@ function AgentPage({
           <button type="button" className="quiet" onClick={() => openTerminal(agent.name)}>
             Open terminal
           </button>
-          {!stopped && (
-            <button type="button" className="quiet" onClick={() => composer.current?.focus()}>
-              Write to {agent.name}
-            </button>
-          )}
-          {worker && !stopped && (
+          <button type="button" className="quiet" onClick={() => composer.current?.focus()}>
+            Write to {agent.name}
+          </button>
+          {worker && (
             <button type="button" className="quiet finish-button" onClick={() => setFinishing(true)}>
               Finish…
             </button>
@@ -268,12 +257,10 @@ function AgentPage({
         )}
       </dl>
       <AgentMessages session={session} name={agent.name} from={agent.spawned_at} />
-      {!stopped && (
-        <div className="agent-composer">
-          <Composer session={session} stopped={stopped} to={agent.name} inputRef={composer} />
-          {worker && <p className="muted hint">The supervisor gets a one-line copy.</p>}
-        </div>
-      )}
+      <div className="agent-composer">
+        <Composer session={session} stopped={false} to={agent.name} inputRef={composer} />
+        {worker && <p className="muted hint">The supervisor gets a one-line copy.</p>}
+      </div>
       {finishing && <FinishDialog session={session} agent={agent.name} onClose={() => setFinishing(false)} />}
     </section>
   );

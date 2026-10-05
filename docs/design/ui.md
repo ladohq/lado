@@ -389,8 +389,7 @@ Sessions for now. The UI's texts are in English.
   remembered as before, its rows under their local day (Today, Yesterday, a date; a row
   has the time), the latest 10 first and then **Show N more**. The selected item is
   always seen and marked (`aria-current`): its group opens for it and it shows past the
-  first 10, neither remembered; items are picked by key. A group says why it has no items in their place:
-  its problem (an alert) or Loading…, also while searching. The page is a size container:
+  first 10, neither remembered; items are picked by key. The page is a size container:
   its own layout goes by its own width (`@container`), not by the column's.
 - **Columns**: the list and the panel are resized on their edges with one component
   (`Splitter.tsx`: a `separator`, dragged, the arrow keys, a double click for the default

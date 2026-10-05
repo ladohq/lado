@@ -7,8 +7,7 @@
 // before the column is measured: which of the two it is is not known yet.
 //
 // The list: a search over it, then groups of items; a folded group (ended runs) is at the
-// bottom, remembered, by days and its first 10 first. The selected item is
-// always seen. A group can say why it has no items (its problem, or that it is loading).
+// bottom, remembered, by days and its first 10 first. The selected item is always seen.
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router";
 
@@ -37,8 +36,6 @@ export type Group = {
   heading?: boolean; // its name above its rows (by default); a folded group has its toggle
   days?: boolean; // its rows under the local day of their `at`
   fold?: { stored: () => boolean; store: (open: boolean) => void };
-  problem?: string | null; // why it has no items, shown in their place
-  loading?: boolean;
 };
 
 export function ListPage({
@@ -50,7 +47,6 @@ export function ListPage({
   listPath,
   back,
   fallback,
-  empty,
   notice,
 }: {
   label: string; // the list's name: "Flow runs"
@@ -60,8 +56,7 @@ export function ListPage({
   page: ReactNode; // the page of the item the address names
   listPath: string; // the tab's address without an item
   back: string; // the link back to the list in a narrow column: "All runs (2 open)"
-  fallback?: string; // where a wide column without an item goes; none: `empty`
-  empty?: ReactNode;
+  fallback?: string; // where a wide column without an item goes; none: an empty page
   notice?: ReactNode; // in place of the list and the page: the tab is loading or failed
 }) {
   const [root, width] = useWidth<HTMLDivElement>();
@@ -118,7 +113,7 @@ export function ListPage({
         body = (
           <>
             {list}
-            <div className="list-main">{selected === undefined ? empty : page}</div>
+            <div className="list-main">{selected === undefined ? null : page}</div>
           </>
         );
       }
@@ -170,22 +165,6 @@ function ListGroup({
   }
   const id = `list-group-${slug(group.name)}`;
   const className = `list-group${group.tone ? ` ${group.tone}` : ""}`;
-  if (group.problem || group.loading) {
-    return (
-      <section className={className} aria-labelledby={`${id}-name`}>
-        <h3 id={`${id}-name`} className="group-name">
-          {group.name}
-        </h3>
-        {group.problem ? (
-          <p className="problem" role="alert">
-            {group.problem}
-          </p>
-        ) : (
-          <p className="muted">Loading…</p>
-        )}
-      </section>
-    );
-  }
   if (entries.length === 0) return null;
   const at = entries.findIndex((entry) => entry.key === selected);
   let rows = entries;

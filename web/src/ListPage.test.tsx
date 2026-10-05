@@ -16,7 +16,7 @@ function entry(key: string, more: Partial<Entry> = {}): Entry {
 }
 
 // 3 open things, and `old` ended ones, an hour apart from now back.
-function groups({ old = 3, ...more }: { old?: number; problem?: string; loading?: boolean } = {}): Group[] {
+function groups({ old = 3 }: { old?: number } = {}): Group[] {
   const ended = Array.from({ length: old }, (_, at) =>
     entry(`old-${at + 1}`, { at: new Date(Date.now() - (at + 1) * HOUR).toISOString(), tone: "dim" }),
   );
@@ -28,7 +28,6 @@ function groups({ old = 3, ...more }: { old?: number; problem?: string; loading?
       entries: ended,
       days: true,
       fold: { stored: () => localStorage.getItem(FOLD) === "open", store: (open) => localStorage.setItem(FOLD, open ? "open" : "folded") },
-      ...more,
     },
   ];
 }
@@ -53,7 +52,6 @@ function Things({ list = groups(), fallback = "/things/a", notice }: Props) {
       listPath="/things"
       back="All things (3 open)"
       fallback={fallback}
-      empty={<p>No things yet</p>}
       notice={notice === undefined ? undefined : <p>{notice}</p>}
     />
   );
@@ -124,14 +122,6 @@ test("in a wide column the list and the page are side by side, and no item goes 
   fireEvent.click(within(nav()!).getByRole("link", { name: "b" }));
   expect(address()).toBe("/things/b");
   expect(pageOf("b")).toBeTruthy();
-  expect(nav()).toBeTruthy();
-});
-
-test("in a wide column with no default, the empty page shows beside the list", () => {
-  wideColumn();
-  open("/things", { fallback: "" });
-  expect(address()).toBe("/things");
-  expect(screen.getByText("No things yet")).toBeTruthy();
   expect(nav()).toBeTruthy();
 });
 
@@ -267,17 +257,6 @@ test("the group that waits is marked, its rows too; an empty group is not shown"
   expect(waiting.className).toContain("waits");
   expect(within(waiting).getByRole("link").className).toContain("waits");
   expect(within(nav()!).queryByRole("region", { name: "Nothing" })).toBeNull();
-});
-
-test("a group's problem and loading show in its place, with no items and while searching", () => {
-  wideColumn();
-  const view = open("/things/a", { list: groups({ old: 0, problem: "cannot read the ended runs" }) });
-  const alert = within(nav()!).getByRole("alert");
-  expect(alert.textContent).toBe("cannot read the ended runs");
-  fireEvent.change(screen.getByRole("searchbox", { name: "Find a thing" }), { target: { value: "zzz" } });
-  expect(within(nav()!).getByRole("alert").textContent).toBe("cannot read the ended runs");
-  view.again({ list: groups({ old: 0, loading: true }) });
-  expect(within(nav()!).getByRole("region", { name: "Ended" }).textContent).toContain("Loading…");
 });
 
 // The search

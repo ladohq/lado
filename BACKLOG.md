@@ -992,3 +992,17 @@ for dev to be idle; agents: supervisor idle, dev starting`; alone it passed twic
 as "two kits' skill packs test times out waiting for a worker under load".
 Wanted: the kits integration tests wait with a timeout that holds under a parallel run.
 Found: 2026-10-05, make check after merging main into feature/kits-page-polish.
+
+## Vitest tests time out at vitest's default 5 s under load, one entry per test
+
+`cd web && npm test` at a load average of about 60 failed 3 of 365 tests on their 5000 ms
+timeout: Agents "the supervisor comes first, then the agents by spawn" (5791 ms), Chat "the
+chat shows who wrote each message ..." (5180 ms), Flows "the runs come in two groups"
+(5441 ms); `make web` had passed minutes before. BACKLOG.md already has seven entries for
+single vitest tests flaky under load (Launch, Flows, Agents tabs); the cause is shared:
+`web/vite.config.ts` keeps vitest's default `testTimeout` (5 s), and `findBy`'s default
+1 s, while `make check` runs vitest on a machine other checks keep busy.
+Wanted: one setting for the whole suite (a `testTimeout` and an `asyncUtilTimeout` that
+hold under load), so a test fails only when what it waits for never comes; the per-test
+entries closed with it.
+Found: 2026-10-06, investigation of why `make check` is slow (worker check-speed).

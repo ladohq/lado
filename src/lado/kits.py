@@ -424,9 +424,21 @@ def installed() -> Path:
 def installed_kits() -> list[Found]:
     """The kits the user installed (lado.db), each at its folder: a kit from git at its
     clone in the cache (gitcache.clone_dir), a folder kit in place."""
-    return [
-        Found(row.name, "user", _installed_path(row), installed=row) for row in state.list_kits()
-    ]
+    return [_found(row) for row in state.list_kits()]
+
+
+def installed_kit(name: str) -> Found | None:
+    """Installed kit `name`, or None when no kit of that name is installed."""
+    row = state.get_kit(name)
+    return None if row is None else _found(row)
+
+
+def builtin_kits() -> list[Found]:
+    return _in_folder(BUILTIN, "built-in")
+
+
+def _found(row: state.InstalledKit) -> Found:
+    return Found(row.name, "user", _installed_path(row), installed=row)
 
 
 def _installed_path(row: state.InstalledKit) -> Path:
@@ -443,7 +455,7 @@ def candidates(repo: str | Path | None, with_installed: bool = True) -> list[Fou
     return [
         *(_in_folder(project, "project") if project else []),
         *(installed_kits() if with_installed else []),
-        *_in_folder(BUILTIN, "built-in"),
+        *builtin_kits(),
     ]
 
 
@@ -489,6 +501,7 @@ class Install:
     needs_confirmation: bool = False  # an add not from the official marketplace or a folder
     new_mcp: tuple[str, ...] = ()  # an update's: MCP servers the installed version did not have
     warnings: tuple[str, ...] = ()  # a moved tag
+    versions: tuple[str, ...] = ()  # from git: the tags it could take instead, newest first
 
     @property
     def mcp(self) -> dict[str, McpDef]:
@@ -588,7 +601,7 @@ def plan_update(name: str, tag: str | None = None, pre: bool = False) -> Install
     )
     if plan.name != name:
         raise KitError(f'{row.address}@{plan.tag}: the kit is named "{plan.name}", not "{name}"')
-    before = set(_mcp_names(old)) if old else set()
+    before = set(mcp_names(old)) if old else set()
     return dataclasses.replace(
         plan,
         marketplace=row.marketplace,
@@ -685,8 +698,9 @@ def _plan_git(
             warnings += _moved(address, tag, gitcache.commit(clone), tags)
         except gitcache.GitError:
             pass  # a damaged clone is reported where it is read
-    older = [t for t in gitcache.sorted_versions(tags) if pre or "-" not in t]
-    older = older[: older.index(tag)] if tag in older else []
+    taken = [t for t in gitcache.sorted_versions(tags) if pre or "-" not in t or t == tag]
+    older = taken[: taken.index(tag)] if tag in taken else []
+    older = [t for t in older if pre or "-" not in t]
     hint = f", or add an older version: {again.format(tag=older[-1])}" if older else ""
     kit = load_release(clone, f"{address}@{tag}", tag, "user", hint)
     return Install(
@@ -698,6 +712,7 @@ def _plan_git(
         kit=kit,
         needs_confirmation=source != OFFICIAL,
         warnings=tuple(warnings),
+        versions=tuple(reversed(taken)),
     )
 
 
@@ -808,7 +823,7 @@ def _kit_or_none(path: Path) -> Kit | None:
         return None  # an older version LADO cannot read: each MCP server counts as new
 
 
-def _mcp_names(kit: Kit) -> list[str]:
+def mcp_names(kit: Kit) -> list[str]:
     return [name for agent in kit.agents.values() for name in agent.mcp]
 
 

@@ -238,6 +238,596 @@
         }
       }
     },
+    "/api/kits/installed": {
+      "get": {
+        "summary": "Installed Kits",
+        "description": "The installed kits and the built-in ones, each as it loads now.",
+        "operationId": "installed_kits_api_kits_installed_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InstalledKitInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Installed Kits Api Kits Installed Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/available": {
+      "get": {
+        "summary": "Available Kits",
+        "description": "The kits the enabled marketplaces list, from their clones (no network).",
+        "operationId": "available_kits_api_kits_available_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OfferInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Available Kits Api Kits Available Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/{name}/remove-preview": {
+      "get": {
+        "summary": "Remove Kit Preview",
+        "description": "The sessions that use the installed kit, which removing it touches.",
+        "operationId": "remove_kit_preview_api_kits__name__remove_preview_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitUsersInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/plan": {
+      "post": {
+        "summary": "Plan Kit",
+        "description": "What `lado kits add` would do: the kit cloned into the cache, nothing installed.",
+        "operationId": "plan_kit_api_kits_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanAsk"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/install": {
+      "post": {
+        "summary": "Install Kit",
+        "description": "Install the kit of a plan; 409 when it is no longer what the plan showed.",
+        "operationId": "install_kit_api_kits_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallKit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstalledKitInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "the kit changed since the plan"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/{name}/plan-update": {
+      "post": {
+        "summary": "Plan Kit Update",
+        "description": "What `lado kits update` would do, with the sessions that use the kit.",
+        "operationId": "plan_kit_update_api_kits__name__plan_update_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanUpdateAsk"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/{name}/update": {
+      "post": {
+        "summary": "Update Kit",
+        "description": "Move the kit to the plan's tag; 409 when the tag moved since.",
+        "operationId": "update_kit_api_kits__name__update_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstalledKitInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "description": "the kit changed since the plan"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/{name}": {
+      "delete": {
+        "summary": "Remove Kit",
+        "description": "Forget the installed kit, as `lado kits remove` does; its files stay.",
+        "operationId": "remove_kit_api_kits__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kits/check-updates": {
+      "post": {
+        "summary": "Check Updates",
+        "description": "Each installed kit against its repository's tags now (the network).",
+        "operationId": "check_updates_api_kits_check_updates_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OutdatedInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Check Updates Api Kits Check Updates Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/marketplaces": {
+      "get": {
+        "summary": "List Marketplaces",
+        "description": "The kit marketplaces and what their clones say (no network).",
+        "operationId": "list_marketplaces_api_marketplaces_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Marketplaces Api Marketplaces Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add Marketplace",
+        "description": "Add a marketplace: its clone made and its list read first.",
+        "operationId": "add_marketplace_api_marketplaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMarketplace"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/marketplaces/{name}": {
+      "patch": {
+        "summary": "Change Marketplace",
+        "description": "Enable or disable a marketplace.",
+        "operationId": "change_marketplace_api_marketplaces__name__patch",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove Marketplace",
+        "description": "Remove a marketplace (never the official one); its installed kits stay.",
+        "operationId": "remove_marketplace_api_marketplaces__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/marketplaces/update": {
+      "post": {
+        "summary": "Update Marketplaces",
+        "description": "Bring a marketplace's clone, or each enabled one's, up to date (the network); one\nthat fails does not stop the others.",
+        "operationId": "update_marketplaces_api_marketplaces_update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceUpdateAsk"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceUpdate"
+                  },
+                  "type": "array",
+                  "title": "Response Update Marketplaces Api Marketplaces Update Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/waiting": {
       "get": {
         "summary": "Waiting",
@@ -2043,6 +2633,336 @@
         ],
         "title": "History"
       },
+      "IndexEntryInfo": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "lado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lado"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "agents": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agents"
+          },
+          "skills": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skills"
+          },
+          "flows": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flows"
+          },
+          "mcp": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address",
+          "latest",
+          "commit",
+          "lado",
+          "description",
+          "agents",
+          "skills",
+          "flows",
+          "mcp"
+        ],
+        "title": "IndexEntryInfo",
+        "description": "A kit as its marketplace's index.json describes it (marketplaces.IndexEntry)."
+      },
+      "InstallKit": {
+        "properties": {
+          "spec": {
+            "type": "string",
+            "title": "Spec"
+          },
+          "marketplace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketplace"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "mcp": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec"
+        ],
+        "title": "InstallKit",
+        "description": "An install of what a plan showed: its `spec`, and the commit (git) or the MCP servers\n(a folder) the human saw; another one is 409."
+      },
+      "InstalledKitInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "git",
+              "folder",
+              "built-in"
+            ],
+            "title": "Kind"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "marketplace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketplace"
+          },
+          "installed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "agents": {
+            "type": "integer",
+            "title": "Agents"
+          },
+          "skills": {
+            "type": "integer",
+            "title": "Skills"
+          },
+          "flows": {
+            "type": "integer",
+            "title": "Flows"
+          },
+          "mcp": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mcp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "description",
+          "valid",
+          "problem",
+          "kind",
+          "address",
+          "tag",
+          "commit",
+          "folder",
+          "marketplace",
+          "installed_at",
+          "updated_at",
+          "agents",
+          "skills",
+          "flows",
+          "mcp"
+        ],
+        "title": "InstalledKitInfo",
+        "description": "An installed kit (its row in lado.db, its files) or a built-in one: the Kits page's\nInstalled list and the `kits` items of the change feed."
+      },
       "KitInfo": {
         "properties": {
           "name": {
@@ -2083,6 +3003,55 @@
         ],
         "title": "KitInfo",
         "description": "A kit a session of a folder can take: the one of each name that wins the lookup."
+      },
+      "KitUsersInfo": {
+        "properties": {
+          "running": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Running"
+          },
+          "stopped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stopped"
+          },
+          "running_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running Line"
+          },
+          "stopped_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "running",
+          "stopped",
+          "running_line",
+          "stopped_line"
+        ],
+        "title": "KitUsersInfo",
+        "description": "The sessions that use an installed kit (runtime.kit_users), and what the core says of\nthem."
       },
       "Launch": {
         "properties": {
@@ -2157,6 +3126,161 @@
         ],
         "title": "Launch",
         "description": "A new session, as `lado start` takes it."
+      },
+      "MarketplaceChange": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "MarketplaceChange"
+      },
+      "MarketplaceInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "official": {
+            "type": "boolean",
+            "title": "Official"
+          },
+          "kits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kits"
+          },
+          "index": {
+            "type": "boolean",
+            "title": "Index"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "enabled",
+          "updated_at",
+          "official",
+          "kits",
+          "index",
+          "problem"
+        ],
+        "title": "MarketplaceInfo",
+        "description": "A kit marketplace: its row in lado.db and what its clone says (the `marketplaces`\nitems of the change feed)."
+      },
+      "MarketplaceUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "marketplace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketplaceInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "marketplace",
+          "error"
+        ],
+        "title": "MarketplaceUpdate",
+        "description": "One marketplace's update: the marketplace now, or why it failed."
+      },
+      "MarketplaceUpdateAsk": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "title": "MarketplaceUpdateAsk"
+      },
+      "McpInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "command"
+        ],
+        "title": "McpInfo"
       },
       "MessageInfo": {
         "properties": {
@@ -2374,6 +3498,24 @@
         ],
         "title": "NeededNote"
       },
+      "NewMarketplace": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "url"
+        ],
+        "title": "NewMarketplace"
+      },
       "NoteInfo": {
         "properties": {
           "id": {
@@ -2436,6 +3578,325 @@
         ],
         "title": "NoteInfo",
         "description": "A note a run's step reported, with the state it was reported from: the record of\nthe step (state.NOTES_STEP)."
+      },
+      "OfferInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "marketplace": {
+            "type": "string",
+            "title": "Marketplace"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "installed": {
+            "type": "boolean",
+            "title": "Installed"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexEntryInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "marketplace",
+          "address",
+          "installed",
+          "index"
+        ],
+        "title": "OfferInfo",
+        "description": "A kit an enabled marketplace lists (the Available list)."
+      },
+      "OutdatedInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "installed": {
+            "type": "string",
+            "title": "Installed"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
+          "pre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "installed",
+          "latest",
+          "pre",
+          "note",
+          "warnings"
+        ],
+        "title": "OutdatedInfo",
+        "description": "An installed kit against its repository's tags now (kits.Outdated)."
+      },
+      "PlanAsk": {
+        "properties": {
+          "spec": {
+            "type": "string",
+            "title": "Spec"
+          },
+          "marketplace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketplace"
+          },
+          "pre": {
+            "type": "boolean",
+            "title": "Pre",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec"
+        ],
+        "title": "PlanAsk"
+      },
+      "PlanInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "spec": {
+            "type": "string",
+            "title": "Spec"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "marketplace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketplace"
+          },
+          "installed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed"
+          },
+          "needs_confirmation": {
+            "type": "boolean",
+            "title": "Needs Confirmation"
+          },
+          "current": {
+            "type": "boolean",
+            "title": "Current"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Versions"
+          },
+          "agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
+          "flows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flows"
+          },
+          "mcp": {
+            "items": {
+              "$ref": "#/components/schemas/McpInfo"
+            },
+            "type": "array",
+            "title": "Mcp"
+          },
+          "new_mcp": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "New Mcp"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "users": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KitUsersInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "description",
+          "spec",
+          "address",
+          "tag",
+          "commit",
+          "source",
+          "marketplace",
+          "installed",
+          "needs_confirmation",
+          "current",
+          "versions",
+          "agents",
+          "skills",
+          "flows",
+          "mcp",
+          "new_mcp",
+          "warnings",
+          "notes",
+          "users"
+        ],
+        "title": "PlanInfo",
+        "description": "What an add or update would do (kits.Install), as the CLI shows it before it asks."
+      },
+      "PlanUpdateAsk": {
+        "properties": {
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          },
+          "pre": {
+            "type": "boolean",
+            "title": "Pre",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PlanUpdateAsk"
       },
       "ProviderInfo": {
         "properties": {
@@ -2962,6 +4423,24 @@
         ],
         "title": "Taken",
         "description": "The detail of a 409 to a new session: the session that has the name."
+      },
+      "UpdateKit": {
+        "properties": {
+          "tag": {
+            "type": "string",
+            "title": "Tag"
+          },
+          "commit": {
+            "type": "string",
+            "title": "Commit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag",
+          "commit"
+        ],
+        "title": "UpdateKit"
       },
       "ValidationError": {
         "properties": {

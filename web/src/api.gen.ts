@@ -125,6 +125,255 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/kits/installed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Installed Kits
+         * @description The installed kits and the built-in ones, each as it loads now.
+         */
+        get: operations["installed_kits_api_kits_installed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Available Kits
+         * @description The kits the enabled marketplaces list, from their clones (no network).
+         */
+        get: operations["available_kits_api_kits_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/{name}/remove-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Remove Kit Preview
+         * @description The sessions that use the installed kit, which removing it touches.
+         */
+        get: operations["remove_kit_preview_api_kits__name__remove_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Kit
+         * @description What `lado kits add` would do: the kit cloned into the cache, nothing installed.
+         */
+        post: operations["plan_kit_api_kits_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Kit
+         * @description Install the kit of a plan; 409 when it is no longer what the plan showed.
+         */
+        post: operations["install_kit_api_kits_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/{name}/plan-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Kit Update
+         * @description What `lado kits update` would do, with the sessions that use the kit.
+         */
+        post: operations["plan_kit_update_api_kits__name__plan_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/{name}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Kit
+         * @description Move the kit to the plan's tag; 409 when the tag moved since.
+         */
+        post: operations["update_kit_api_kits__name__update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Kit
+         * @description Forget the installed kit, as `lado kits remove` does; its files stay.
+         */
+        delete: operations["remove_kit_api_kits__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kits/check-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Updates
+         * @description Each installed kit against its repository's tags now (the network).
+         */
+        post: operations["check_updates_api_kits_check_updates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/marketplaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Marketplaces
+         * @description The kit marketplaces and what their clones say (no network).
+         */
+        get: operations["list_marketplaces_api_marketplaces_get"];
+        put?: never;
+        /**
+         * Add Marketplace
+         * @description Add a marketplace: its clone made and its list read first.
+         */
+        post: operations["add_marketplace_api_marketplaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/marketplaces/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Marketplace
+         * @description Remove a marketplace (never the official one); its installed kits stay.
+         */
+        delete: operations["remove_marketplace_api_marketplaces__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Marketplace
+         * @description Enable or disable a marketplace.
+         */
+        patch: operations["change_marketplace_api_marketplaces__name__patch"];
+        trace?: never;
+    };
+    "/api/marketplaces/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Marketplaces
+         * @description Bring a marketplace's clone, or each enabled one's, up to date (the network); one
+         *     that fails does not stop the others.
+         */
+        post: operations["update_marketplaces_api_marketplaces_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/waiting": {
         parameters: {
             query?: never;
@@ -746,6 +995,93 @@ export interface components {
             alternate: boolean;
         };
         /**
+         * IndexEntryInfo
+         * @description A kit as its marketplace's index.json describes it (marketplaces.IndexEntry).
+         */
+        IndexEntryInfo: {
+            /** Address */
+            address: string;
+            /** Latest */
+            latest: string | null;
+            /** Commit */
+            commit: string | null;
+            /** Lado */
+            lado: string | null;
+            /** Description */
+            description: string | null;
+            /** Agents */
+            agents: {
+                [key: string]: string;
+            } | null;
+            /** Skills */
+            skills: string[] | null;
+            /** Flows */
+            flows: string[] | null;
+            /** Mcp */
+            mcp: {
+                [key: string]: string;
+            } | null;
+        };
+        /**
+         * InstallKit
+         * @description An install of what a plan showed: its `spec`, and the commit (git) or the MCP servers
+         *     (a folder) the human saw; another one is 409.
+         */
+        InstallKit: {
+            /** Spec */
+            spec: string;
+            /** Marketplace */
+            marketplace?: string | null;
+            /** Commit */
+            commit?: string | null;
+            /** Mcp */
+            mcp?: string[] | null;
+        };
+        /**
+         * InstalledKitInfo
+         * @description An installed kit (its row in lado.db, its files) or a built-in one: the Kits page's
+         *     Installed list and the `kits` items of the change feed.
+         */
+        InstalledKitInfo: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Description */
+            description: string;
+            /** Valid */
+            valid: boolean;
+            /** Problem */
+            problem: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "git" | "folder" | "built-in";
+            /** Address */
+            address: string | null;
+            /** Tag */
+            tag: string | null;
+            /** Commit */
+            commit: string | null;
+            /** Folder */
+            folder: string | null;
+            /** Marketplace */
+            marketplace: string | null;
+            /** Installed At */
+            installed_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Agents */
+            agents: number;
+            /** Skills */
+            skills: number;
+            /** Flows */
+            flows: number;
+            /** Mcp */
+            mcp: string[];
+        };
+        /**
          * KitInfo
          * @description A kit a session of a folder can take: the one of each name that wins the lookup.
          */
@@ -760,6 +1096,21 @@ export interface components {
             valid: boolean;
             /** Problem */
             problem: string | null;
+        };
+        /**
+         * KitUsersInfo
+         * @description The sessions that use an installed kit (runtime.kit_users), and what the core says of
+         *     them.
+         */
+        KitUsersInfo: {
+            /** Running */
+            running: string[];
+            /** Stopped */
+            stopped: string[];
+            /** Running Line */
+            running_line: string | null;
+            /** Stopped Line */
+            stopped_line: string | null;
         };
         /**
          * Launch
@@ -777,6 +1128,57 @@ export interface components {
             permission_mode?: string | null;
             /** Without */
             without?: string[] | null;
+        };
+        /** MarketplaceChange */
+        MarketplaceChange: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * MarketplaceInfo
+         * @description A kit marketplace: its row in lado.db and what its clone says (the `marketplaces`
+         *     items of the change feed).
+         */
+        MarketplaceInfo: {
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Updated At */
+            updated_at: string | null;
+            /** Official */
+            official: boolean;
+            /** Kits */
+            kits: number | null;
+            /** Index */
+            index: boolean;
+            /** Problem */
+            problem: string | null;
+        };
+        /**
+         * MarketplaceUpdate
+         * @description One marketplace's update: the marketplace now, or why it failed.
+         */
+        MarketplaceUpdate: {
+            /** Name */
+            name: string;
+            marketplace: components["schemas"]["MarketplaceInfo"] | null;
+            /** Error */
+            error: string | null;
+        };
+        /** MarketplaceUpdateAsk */
+        MarketplaceUpdateAsk: {
+            /** Name */
+            name?: string | null;
+        };
+        /** McpInfo */
+        McpInfo: {
+            /** Name */
+            name: string;
+            /** Command */
+            command: string;
         };
         /**
          * MessageInfo
@@ -850,6 +1252,13 @@ export interface components {
             state: string;
             note: components["schemas"]["NoteInfo"] | null;
         };
+        /** NewMarketplace */
+        NewMarketplace: {
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+        };
         /**
          * NoteInfo
          * @description A note a run's step reported, with the state it was reported from: the record of
@@ -879,6 +1288,108 @@ export interface components {
             body: string;
             /** Created At */
             created_at: string;
+        };
+        /**
+         * OfferInfo
+         * @description A kit an enabled marketplace lists (the Available list).
+         */
+        OfferInfo: {
+            /** Name */
+            name: string;
+            /** Marketplace */
+            marketplace: string;
+            /** Address */
+            address: string;
+            /** Installed */
+            installed: boolean;
+            index: components["schemas"]["IndexEntryInfo"] | null;
+        };
+        /**
+         * OutdatedInfo
+         * @description An installed kit against its repository's tags now (kits.Outdated).
+         */
+        OutdatedInfo: {
+            /** Name */
+            name: string;
+            /** Installed */
+            installed: string;
+            /** Latest */
+            latest: string | null;
+            /** Pre */
+            pre: string | null;
+            /** Note */
+            note: string;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** PlanAsk */
+        PlanAsk: {
+            /** Spec */
+            spec: string;
+            /** Marketplace */
+            marketplace?: string | null;
+            /**
+             * Pre
+             * @default false
+             */
+            pre: boolean;
+        };
+        /**
+         * PlanInfo
+         * @description What an add or update would do (kits.Install), as the CLI shows it before it asks.
+         */
+        PlanInfo: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Description */
+            description: string;
+            /** Spec */
+            spec: string;
+            /** Address */
+            address: string;
+            /** Tag */
+            tag: string | null;
+            /** Commit */
+            commit: string | null;
+            /** Source */
+            source: string;
+            /** Marketplace */
+            marketplace: string | null;
+            /** Installed */
+            installed: string | null;
+            /** Needs Confirmation */
+            needs_confirmation: boolean;
+            /** Current */
+            current: boolean;
+            /** Versions */
+            versions: string[];
+            /** Agents */
+            agents: string[];
+            /** Skills */
+            skills: string[];
+            /** Flows */
+            flows: string[];
+            /** Mcp */
+            mcp: components["schemas"]["McpInfo"][];
+            /** New Mcp */
+            new_mcp: string[];
+            /** Warnings */
+            warnings: string[];
+            /** Notes */
+            notes: string[];
+            users: components["schemas"]["KitUsersInfo"] | null;
+        };
+        /** PlanUpdateAsk */
+        PlanUpdateAsk: {
+            /** Tag */
+            tag?: string | null;
+            /**
+             * Pre
+             * @default false
+             */
+            pre: boolean;
         };
         /**
          * ProviderInfo
@@ -1070,6 +1581,13 @@ export interface components {
             status: components["schemas"]["SessionStatus"];
             /** Repo */
             repo: string;
+        };
+        /** UpdateKit */
+        UpdateKit: {
+            /** Tag */
+            tag: string;
+            /** Commit */
+            commit: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1352,6 +1870,498 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+        };
+    };
+    installed_kits_api_kits_installed_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledKitInfo"][];
+                };
+            };
+        };
+    };
+    available_kits_api_kits_available_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferInfo"][];
+                };
+            };
+        };
+    };
+    remove_kit_preview_api_kits__name__remove_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KitUsersInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_kit_api_kits_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_kit_api_kits_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallKit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledKitInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description the kit changed since the plan */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_kit_update_api_kits__name__plan_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanUpdateAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_kit_api_kits__name__update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateKit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledKitInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description the kit changed since the plan */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_kit_api_kits__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_updates_api_kits_check_updates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedInfo"][];
+                };
+            };
+        };
+    };
+    list_marketplaces_api_marketplaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketplaceInfo"][];
+                };
+            };
+        };
+    };
+    add_marketplace_api_marketplaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMarketplace"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketplaceInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_marketplace_api_marketplaces__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_marketplace_api_marketplaces__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketplaceChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketplaceInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_marketplaces_api_marketplaces_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarketplaceUpdateAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketplaceUpdate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

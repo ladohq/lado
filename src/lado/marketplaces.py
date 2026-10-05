@@ -62,6 +62,8 @@ LIST_FILE = "marketplace.yaml"
 INDEX_FILE = "index.json"
 INDEX_VERSION = 1  # the highest version of index.json this LADO reads
 NOT_FETCHED = "not fetched yet: update it"
+# The official marketplace's row as lado.db makes it, for a reader that must not make lado.db.
+UNMADE_OFFICIAL = state.Marketplace(OFFICIAL, None, True, None)
 NAME = re.compile(r"[a-z0-9-]+")
 # A kit's name, here and in kit.yaml (lado.kits.NAME is this one).
 KIT_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
@@ -213,18 +215,20 @@ def update_each(names: list[str] | None = None) -> list[tuple[str, state.Marketp
     return done
 
 
-def listed(name: str) -> dict[str, str] | None:
+def listed(name: str | state.Marketplace) -> dict[str, str] | None:
     """The kits marketplace `name` lists, from the clone there is, never the network; None
-    when there is no clone of its address yet. A list LADO cannot read is MarketplaceError."""
-    market = _get(name)
+    when there is no clone of its address yet. A list LADO cannot read is MarketplaceError.
+    Given its row, lado.db is not read."""
+    market = _row(name)
     folder = _clone_of(market)
     return None if folder is None else _read(folder, url(market))
 
 
-def index(name: str) -> Index:
+def index(name: str | state.Marketplace) -> Index:
     """Marketplace `name`'s index.json from its clone, never the network: the entries of the
-    kits its list has, checked as the module's docstring says."""
-    market = _get(name)
+    kits its list has, checked as the module's docstring says. Given its row, lado.db is
+    not read."""
+    market = _row(name)
     folder = _clone_of(market)
     if folder is None:
         return Index({}, NOT_FETCHED, present=False)
@@ -243,7 +247,10 @@ def index(name: str) -> Index:
     entries = data.get("kits")
     if not isinstance(entries, dict):
         return Index({}, f"{INDEX_FILE} is invalid: kits must map kit names to entries")
-    names = _read(folder, url(market))
+    try:
+        names = _read(folder, url(market))
+    except MarketplaceError as exc:
+        return Index({}, str(exc))
     kits_, problems = {}, []
     for kit, entry in entries.items():
         if kit not in names:
@@ -291,12 +298,12 @@ def available() -> list[Offer]:
         if not market.enabled:
             continue
         try:
-            names = listed(market.name)
+            names = listed(market)
         except MarketplaceError:
             continue
         if names is None:
             continue
-        entries = index(market.name).kits
+        entries = index(market).kits
         for kit, address in names.items():
             offers.append(Offer(kit, market.name, address, entries.get(kit)))
     return sorted(offers, key=lambda o: (o.name, o.marketplace))
@@ -319,6 +326,10 @@ def resolve(name: str, kit: str) -> str:
             f"lado marketplaces update {name}"
         )
     return listed[kit]
+
+
+def _row(market: str | state.Marketplace) -> state.Marketplace:
+    return market if isinstance(market, state.Marketplace) else _get(market)
 
 
 def _get(name: str) -> state.Marketplace:

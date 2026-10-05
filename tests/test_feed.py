@@ -16,7 +16,7 @@ import uvicorn
 from agent_helpers import previous_schema, spoil_snapshot
 from event_stream import EventStream
 
-from lado import loop, runs, runtime, state
+from lado import kits, loop, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth, feed, models
 
@@ -203,34 +203,51 @@ def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
     }
 
 
-def test_a_marketplaces_change_comes_without_an_item(streams):
-    """No REST model of a marketplace yet: the UI hears of the change, with no session."""
+def test_a_marketplaces_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
+    """A marketplace's change has no session; its item is its row and its clone's
+    (none yet), never the network."""
     stream = streams()
     stream.next()
     state.add_marketplace("team", "file:///m.git")
     added = stream.until(is_change("marketplaces", ""))[-1]
+    item = models.marketplace_info(state.get_marketplace("team")).model_dump(mode="json")
     assert added.data == {
         "kind": "marketplaces",
         "session": "",
         "key": "team",
         "op": "insert",
-        "item": None,
+        "item": item,
     }
+    assert item["problem"] == "not fetched yet: update it"
+    state.delete_marketplace("team")
+    gone = stream.until(is_change("marketplaces", ""))[-1]
+    assert (gone.data["op"], gone.data["item"]) == ("delete", None)
 
 
-def test_an_installed_kits_change_comes_without_an_item(streams):
-    """No REST model of an installed kit yet (the Kits page adds it)."""
+def test_an_installed_kits_change_comes_with_its_item_in_the_form_of_the_rest_api(
+    streams, tmp_path
+):
+    """Only the kit's own row and files: no sessions that use it, no marketplace's state."""
+    folder = tmp_path / "team"
+    (folder / "agents").mkdir(parents=True)
+    (folder / "kit.yaml").write_text("name: team\nversion: 1.0.0\ndescription: d\n")
     stream = streams()
     stream.next()
-    state.add_kit(state.InstalledKit("team", folder="/dev/team"))
+    state.add_kit(state.InstalledKit("team", folder=str(folder), marketplace="gone"))
     added = stream.until(is_change("kits", ""))[-1]
+    item = models.installed_kit_info(kits.installed_kit("team")).model_dump(mode="json")
     assert added.data == {
         "kind": "kits",
         "session": "",
         "key": "team",
         "op": "insert",
-        "item": None,
+        "item": item,
     }
+    assert (item["kind"], item["version"], item["marketplace"]) == ("folder", "1.0.0", "gone")
+    assert not {"users", "marketplace_removed", "installed_from"} & set(item)
+    state.delete_kit("team")
+    gone = stream.until(is_change("kits", ""))[-1]
+    assert (gone.data["op"], gone.data["item"]) == ("delete", None)
 
 
 def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):

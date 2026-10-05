@@ -1,13 +1,14 @@
 """The API's models, and each one built from the state: one form of an entity for the REST
 API and for the event stream's items (lado.server.feed)."""
 
+import dataclasses
 import datetime
 import logging
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lado import flows, runs, runtime, state
+from lado import flows, kits, marketplaces, runs, runtime, state
 
 log = logging.getLogger("lado.server")
 
@@ -65,14 +66,176 @@ class RecentFolder(BaseModel):
     session: SessionInfo  # its latest started session
 
 
-class KitInfo(BaseModel):
-    """A kit a session of a folder can take: the one of each name that wins the lookup."""
+class KitSummary(BaseModel):
+    """A kit as it loads now: what every list of kits shows of it."""
 
     name: str
     version: str
     description: str
     valid: bool
     problem: str | None  # why it is not valid
+
+
+class KitInfo(KitSummary):
+    """A kit a session of a folder can take: the one of each name that wins the lookup."""
+
+
+KitKind = Literal["git", "folder", "built-in"]
+
+
+class InstalledKitInfo(KitSummary):
+    """An installed kit (its row in lado.db, its files) or a built-in one: the Kits page's
+    Installed list and the `kits` items of the change feed."""
+
+    kind: KitKind
+    address: str | None  # from git
+    tag: str | None
+    commit: str | None
+    folder: str | None  # a folder kit's
+    marketplace: str | None  # the marketplace it was added from, removed since or not
+    installed_at: str | None
+    updated_at: str | None
+    agents: int
+    skills: int
+    flows: int
+    mcp: list[str]  # the MCP servers its agents start
+
+
+class IndexEntryInfo(BaseModel):
+    """A kit as its marketplace's index.json describes it (marketplaces.IndexEntry)."""
+
+    address: str
+    latest: str | None
+    commit: str | None
+    lado: str | None
+    description: str | None
+    agents: dict[str, str] | None
+    skills: list[str] | None
+    flows: list[str] | None
+    mcp: dict[str, str] | None
+
+
+class OfferInfo(BaseModel):
+    """A kit an enabled marketplace lists (the Available list)."""
+
+    name: str
+    marketplace: str
+    address: str
+    installed: bool  # a kit of that name is installed
+    index: IndexEntryInfo | None  # None without an index.json entry
+
+
+class McpInfo(BaseModel):
+    name: str
+    command: str  # one line
+
+
+class KitUsersInfo(BaseModel):
+    """The sessions that use an installed kit (runtime.kit_users), and what the core says of
+    them."""
+
+    running: list[str]
+    stopped: list[str]
+    running_line: str | None
+    stopped_line: str | None
+
+
+class PlanInfo(BaseModel):
+    """What an add or update would do (kits.Install), as the CLI shows it before it asks."""
+
+    name: str
+    version: str
+    description: str
+    spec: str  # what an install gives for this plan: its tag pinned
+    address: str  # the git address, or the folder
+    tag: str | None  # None for a folder
+    commit: str | None
+    source: str  # "official", "marketplace <name>", "git" or "folder"
+    marketplace: str | None
+    installed: str | None  # an update's: the tag installed now
+    needs_confirmation: bool  # the human must confirm (not official, or a folder)
+    current: bool  # an update to the installed version: nothing to do
+    versions: list[str]  # from git: the tags it could take, newest first
+    agents: list[str]
+    skills: list[str]
+    flows: list[str]
+    mcp: list[McpInfo]
+    new_mcp: list[str]  # an update's MCP servers the installed version did not start
+    warnings: list[str]  # a moved tag, new MCP servers
+    notes: list[str]  # what the core says besides: who gets an update, or that it is current
+    users: KitUsersInfo | None  # an update's: the sessions that use the kit
+
+
+class PlanAsk(BaseModel):
+    spec: str  # a git address[@tag], a folder, or with `marketplace` a kit's name[@tag]
+    marketplace: str | None = None
+    pre: bool = False
+
+
+class InstallKit(BaseModel):
+    """An install of what a plan showed: its `spec`, and the commit (git) or the MCP servers
+    (a folder) the human saw; another one is 409."""
+
+    spec: str
+    marketplace: str | None = None
+    commit: str | None = None
+    mcp: list[str] | None = None
+
+
+class PlanUpdateAsk(BaseModel):
+    tag: str | None = None  # None: the latest
+    pre: bool = False
+
+
+class UpdateKit(BaseModel):
+    tag: str
+    commit: str  # the plan's; another one is 409
+
+
+class OutdatedInfo(BaseModel):
+    """An installed kit against its repository's tags now (kits.Outdated)."""
+
+    name: str
+    installed: str
+    latest: str | None
+    pre: str | None
+    note: str  # why it was not checked; '' when it was
+    warnings: list[str]
+
+
+class MarketplaceInfo(BaseModel):
+    """A kit marketplace: its row in lado.db and what its clone says (the `marketplaces`
+    items of the change feed)."""
+
+    name: str
+    url: str  # its address; the official one's too
+    enabled: bool
+    updated_at: str | None
+    official: bool
+    kits: int | None  # how many it lists; None without a clone
+    index: bool  # its clone has index.json
+    problem: str | None  # not fetched, a list or index.json LADO cannot read
+
+
+class NewMarketplace(BaseModel):
+    name: str
+    url: str
+
+
+class MarketplaceChange(BaseModel):
+    enabled: bool
+
+
+class MarketplaceUpdateAsk(BaseModel):
+    name: str | None = None  # None: each enabled one
+
+
+class MarketplaceUpdate(BaseModel):
+    """One marketplace's update: the marketplace now, or why it failed."""
+
+    name: str
+    marketplace: MarketplaceInfo | None
+    error: str | None
 
 
 class ProviderInfo(BaseModel):
@@ -646,4 +809,132 @@ def started(done: runtime.Started) -> Started:
         resumed=done.resumed,
         changes=done.changes,
         problems=done.problems,
+    )
+
+
+def _skill_names(kit: kits.Kit) -> list[str]:
+    """Its own skills and those of its packs that are fetched."""
+    packs = [name for pack in kit.packs.values() for name in (pack.skills or {})]
+    return [*kit.skills, *packs]
+
+
+def installed_kit_info(found: kits.Found) -> InstalledKitInfo:
+    """An installed kit (`found.installed`) or a built-in one, loaded from its files; one
+    that does not load says why. Reads only its own row and files."""
+    row = found.installed
+    try:
+        kit: kits.Kit | None = found.load()
+        problem = None
+    except kits.KitError as exc:
+        kit, problem = None, str(exc)
+    kind: KitKind = "built-in" if row is None else "git" if row.address else "folder"
+    return InstalledKitInfo(
+        name=found.name,
+        version=kit.version if kit else "",
+        description=kit.description if kit else "",
+        valid=kit is not None,
+        problem=problem,
+        kind=kind,
+        address=row.address if row else None,
+        tag=row.tag if row else None,
+        commit=row.commit if row else None,
+        folder=row.folder if row else None,
+        marketplace=row.marketplace if row else None,
+        installed_at=_utc(row.installed_at) if row and row.installed_at else None,
+        updated_at=_utc(row.updated_at) if row and row.updated_at else None,
+        agents=len(kit.agents) if kit else 0,
+        skills=len(_skill_names(kit)) if kit else 0,
+        flows=len(kit.flows) if kit else 0,
+        mcp=kits.mcp_names(kit) if kit else [],
+    )
+
+
+def kit_users_info(kit: str, users: runtime.KitUsers) -> KitUsersInfo:
+    return KitUsersInfo(
+        running=users.running,
+        stopped=users.stopped,
+        running_line=users.running_line(kit),
+        stopped_line=users.stopped_line(kit),
+    )
+
+
+def plan_info(plan: kits.Install, users: runtime.KitUsers | None = None) -> PlanInfo:
+    """A plan as the UI shows it; an update's with the sessions that use the kit."""
+    if plan.tag is None:
+        spec = plan.address
+    elif plan.marketplace and plan.installed is None:
+        spec = f"{plan.name}@{plan.tag}"
+    else:
+        spec = f"{plan.address}@{plan.tag}"
+    notes = []
+    if plan.current:
+        notes.append(kits.current_line(plan))
+    elif users is not None:
+        notes.append(kits.update_line(plan, users.running))
+    return PlanInfo(
+        name=plan.name,
+        version=plan.kit.version,
+        description=plan.kit.description,
+        spec=spec,
+        address=plan.address,
+        tag=plan.tag,
+        commit=plan.commit,
+        source=plan.source,
+        marketplace=plan.marketplace,
+        installed=plan.installed,
+        needs_confirmation=plan.needs_confirmation,
+        current=plan.current,
+        versions=list(plan.versions),
+        agents=list(plan.kit.agents),
+        skills=_skill_names(plan.kit),
+        flows=list(plan.kit.flows),
+        mcp=[McpInfo(name=name, command=" ".join(m.command)) for name, m in plan.mcp.items()],
+        new_mcp=list(plan.new_mcp),
+        warnings=[*plan.warnings, *kits.new_mcp_warnings(plan)],
+        notes=notes,
+        users=None if users is None else kit_users_info(plan.name, users),
+    )
+
+
+def outdated_info(row: kits.Outdated) -> OutdatedInfo:
+    return OutdatedInfo(
+        name=row.name,
+        installed=row.installed,
+        latest=row.latest,
+        pre=row.pre,
+        note=row.note,
+        warnings=list(row.warnings),
+    )
+
+
+def offer_info(offer: marketplaces.Offer, installed: set[str]) -> OfferInfo:
+    entry = offer.entry
+    return OfferInfo(
+        name=offer.name,
+        marketplace=offer.marketplace,
+        address=offer.address,
+        installed=offer.name in installed,
+        index=None if entry is None else IndexEntryInfo(**dataclasses.asdict(entry)),
+    )
+
+
+def marketplace_info(market: state.Marketplace) -> MarketplaceInfo:
+    """A marketplace and what its clone says now; never the network."""
+    problems = []
+    try:
+        listed = marketplaces.listed(market)
+    except marketplaces.MarketplaceError as exc:
+        listed, problems = None, [str(exc)]
+    found = marketplaces.index(market)
+    if found.problem and found.problem not in problems:
+        problems.append(found.problem)
+    return MarketplaceInfo(
+        name=market.name,
+        url=marketplaces.url(market),
+        enabled=market.enabled,
+        updated_at=_utc(market.updated_at) if market.updated_at else None,
+        official=market.name == marketplaces.OFFICIAL,
+        kits=None if listed is None else len(listed),
+        index=found.present,
+        problem="; ".join(problems) or None,
     )

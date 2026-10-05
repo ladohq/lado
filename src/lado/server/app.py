@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, kits, runs, runtime, state, terminal
+from lado import __version__, kits, marketplaces, runs, runtime, state, terminal
 from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
@@ -30,11 +30,24 @@ from lado.server.models import (
     GateAnswer,
     GateInfo,
     History,
+    InstalledKitInfo,
+    InstallKit,
     KitInfo,
+    KitUsersInfo,
     Launch,
+    MarketplaceChange,
+    MarketplaceInfo,
+    MarketplaceUpdate,
+    MarketplaceUpdateAsk,
     MessagePage,
     MessageText,
+    NewMarketplace,
     NoteInfo,
+    OfferInfo,
+    OutdatedInfo,
+    PlanAsk,
+    PlanInfo,
+    PlanUpdateAsk,
     ProviderInfo,
     RecentFolder,
     Refused,
@@ -47,6 +60,7 @@ from lado.server.models import (
     Stopped,
     StopPreview,
     Taken,
+    UpdateKit,
     WaitingItem,
 )
 
@@ -87,6 +101,73 @@ def _kits_refused(refused: kits.KitError) -> HTTPException:
     """A start or resume the session's kits refuse: 400 with Refused."""
     detail = Refused(message=str(refused), switch_off=refused.switch_off)
     return HTTPException(400, detail.model_dump(mode="json"))
+
+
+def kits_core(action: Callable[..., T], *args) -> T:
+    """Do what the human asked of kits or marketplaces through the core; what it refuses
+    is 400 with Refused and its reason."""
+    try:
+        return action(*args)
+    except kits.KitError as refused:
+        raise _kits_refused(refused) from refused
+    except marketplaces.MarketplaceError as refused:
+        detail = Refused(message=str(refused), switch_off=[])
+        raise HTTPException(400, detail.model_dump(mode="json")) from refused
+
+
+def changed_since_plan(what: str) -> HTTPException:
+    return HTTPException(409, f"the kit changed since the plan: {what}; look at its plan again")
+
+
+def installed_kits_list(has_db: bool) -> list[InstalledKitInfo]:
+    """The installed kits, then the built-in ones. Without lado.db only the built-in ones."""
+    found = [*(kits.installed_kits() if has_db else []), *kits.builtin_kits()]
+    return [models.installed_kit_info(one) for one in found]
+
+
+def installed_one(name: str) -> InstalledKitInfo:
+    found = kits.installed_kit(name)
+    if found is None:
+        raise HTTPException(404, f'no kit "{name}" is installed')
+    return models.installed_kit_info(found)
+
+
+def install_planned(given: InstallKit) -> InstalledKitInfo:
+    """Install what the plan showed: the same commit (git) or MCP servers (a folder)."""
+    plan = kits.plan_add(given.spec, given.marketplace)
+    if plan.tag is not None and given.commit != plan.commit:
+        raise changed_since_plan(f"{plan.tag} is at {plan.commit}, the plan had {given.commit}")
+    if plan.tag is None and sorted(given.mcp or []) != sorted(plan.mcp):
+        servers = ", ".join(sorted(plan.mcp)) or "none"
+        raise changed_since_plan(f"its MCP servers are now: {servers}")
+    kits.install(plan)
+    return installed_one(plan.name)
+
+
+def update_planned(name: str, given: UpdateKit) -> InstalledKitInfo:
+    plan = kits.plan_update(name, given.tag)
+    if plan.commit != given.commit:
+        raise changed_since_plan(f"{plan.tag} is at {plan.commit}, the plan had {given.commit}")
+    if not plan.current:
+        kits.install(plan)
+    return installed_one(name)
+
+
+def marketplace_list(has_db: bool) -> list[MarketplaceInfo]:
+    markets = marketplaces.list_() if has_db else [marketplaces.UNMADE_OFFICIAL]
+    return [models.marketplace_info(m) for m in markets]
+
+
+def marketplace_updates(name: str | None) -> list[MarketplaceUpdate]:
+    """Each marketplace's update, one that fails with its error (marketplaces.update_each)."""
+    updates = []
+    for market, done in marketplaces.update_each([name] if name else None):
+        if isinstance(done, str):
+            updates.append(MarketplaceUpdate(name=market, marketplace=None, error=done))
+        else:
+            info = models.marketplace_info(done)
+            updates.append(MarketplaceUpdate(name=market, marketplace=info, error=None))
+    return updates
 
 
 def bundle_missing(static: Path) -> bool:
@@ -136,6 +217,122 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     def list_providers() -> list[ProviderInfo]:
         """LADO's providers and whether each one's CLI can run here, checked anew."""
         return launch.provider_infos()
+
+    # The Kits page (docs/design/ui.md, Kits): what `lado kits` and `lado marketplaces` do.
+    # A request that goes to the network or writes the git cache is a change too.
+
+    refused = {400: {"model": Refused}}
+
+    @app.get("/api/kits/installed", dependencies=[Depends(guard)])
+    def installed_kits(has_db: bool = Depends(database)) -> list[InstalledKitInfo]:
+        """The installed kits and the built-in ones, each as it loads now."""
+        return installed_kits_list(has_db)
+
+    @app.get("/api/kits/available", dependencies=[Depends(guard)])
+    def available_kits(has_db: bool = Depends(database)) -> list[OfferInfo]:
+        """The kits the enabled marketplaces list, from their clones (no network)."""
+        if not has_db:
+            return []
+        installed = {row.name for row in state.list_kits()}
+        return [models.offer_info(offer, installed) for offer in marketplaces.available()]
+
+    @app.get("/api/kits/{name}/remove-preview", dependencies=[Depends(guard)])
+    def remove_kit_preview(name: str, has_db: bool = Depends(database)) -> KitUsersInfo:
+        """The sessions that use the installed kit, which removing it touches."""
+        if not has_db or state.get_kit(name) is None:
+            raise HTTPException(404, f'no kit "{name}" is installed')
+        return models.kit_users_info(name, runtime.kit_users(name))
+
+    @app.post(
+        "/api/kits/plan",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=refused,
+    )
+    def plan_kit(given: PlanAsk) -> PlanInfo:
+        """What `lado kits add` would do: the kit cloned into the cache, nothing installed."""
+        return models.plan_info(kits_core(kits.plan_add, given.spec, given.marketplace, given.pre))
+
+    @app.post(
+        "/api/kits/install",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses={**refused, 409: {"description": "the kit changed since the plan"}},
+    )
+    def install_kit(given: InstallKit) -> InstalledKitInfo:
+        """Install the kit of a plan; 409 when it is no longer what the plan showed."""
+        return kits_core(install_planned, given)
+
+    @app.post(
+        "/api/kits/{name}/plan-update",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=refused,
+    )
+    def plan_kit_update(name: str, given: PlanUpdateAsk) -> PlanInfo:
+        """What `lado kits update` would do, with the sessions that use the kit."""
+        plan = kits_core(kits.plan_update, name, given.tag, given.pre)
+        return models.plan_info(plan, runtime.kit_users(name))
+
+    @app.post(
+        "/api/kits/{name}/update",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses={**refused, 409: {"description": "the kit changed since the plan"}},
+    )
+    def update_kit(name: str, given: UpdateKit) -> InstalledKitInfo:
+        """Move the kit to the plan's tag; 409 when the tag moved since."""
+        return kits_core(update_planned, name, given)
+
+    @app.delete(
+        "/api/kits/{name}",
+        status_code=204,
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=refused,
+    )
+    def remove_kit(name: str) -> None:
+        """Forget the installed kit, as `lado kits remove` does; its files stay."""
+        kits_core(kits.remove, name)
+
+    @app.post("/api/kits/check-updates", dependencies=[Depends(guard.changes), Depends(database)])
+    def check_updates() -> list[OutdatedInfo]:
+        """Each installed kit against its repository's tags now (the network)."""
+        return [models.outdated_info(row) for row in kits.outdated()]
+
+    @app.get("/api/marketplaces", dependencies=[Depends(guard)])
+    def list_marketplaces(has_db: bool = Depends(database)) -> list[MarketplaceInfo]:
+        """The kit marketplaces and what their clones say (no network)."""
+        return marketplace_list(has_db)
+
+    @app.post(
+        "/api/marketplaces",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=refused,
+    )
+    def add_marketplace(given: NewMarketplace) -> MarketplaceInfo:
+        """Add a marketplace: its clone made and its list read first."""
+        return models.marketplace_info(kits_core(marketplaces.add, given.name, given.url))
+
+    @app.patch(
+        "/api/marketplaces/{name}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=refused,
+    )
+    def change_marketplace(name: str, given: MarketplaceChange) -> MarketplaceInfo:
+        """Enable or disable a marketplace."""
+        return models.marketplace_info(kits_core(marketplaces.set_enabled, name, given.enabled))
+
+    @app.delete(
+        "/api/marketplaces/{name}",
+        status_code=204,
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=refused,
+    )
+    def remove_marketplace(name: str) -> None:
+        """Remove a marketplace (never the official one); its installed kits stay."""
+        kits_core(marketplaces.remove, name)
+
+    @app.post("/api/marketplaces/update", dependencies=[Depends(guard.changes), Depends(database)])
+    def update_marketplaces(given: MarketplaceUpdateAsk) -> list[MarketplaceUpdate]:
+        """Bring a marketplace's clone, or each enabled one's, up to date (the network); one
+        that fails does not stop the others."""
+        return marketplace_updates(given.name)
 
     @app.get("/api/waiting", dependencies=[Depends(guard)])
     def waiting(has_db: bool = Depends(database)) -> list[WaitingItem]:

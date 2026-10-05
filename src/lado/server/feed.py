@@ -29,7 +29,7 @@ from typing import Protocol
 
 from anyio import to_thread
 
-from lado import loop, runtime, state
+from lado import kits, loop, runtime, state
 from lado.server import models
 
 POLL = 0.25  # seconds between two reads of the source
@@ -42,7 +42,7 @@ log = logging.getLogger("lado.server")
 
 @dataclass(frozen=True)
 class Change:
-    kind: str  # sessions | agents | messages | runs | gates | notes | events
+    kind: str  # sessions | agents | messages | runs | gates | notes | events | kits | marketplaces
     session: str
     key: str  # the row in its session; '' for the session itself
     op: str  # insert | update | delete: for information, the item tells what is there
@@ -160,6 +160,16 @@ def _note_item(session: str, key: str) -> dict | None:
     return None if note is None else models.note_info(note).model_dump(mode="json")
 
 
+def _kit_item(session: str, key: str) -> dict | None:
+    found = kits.installed_kit(key)
+    return None if found is None else models.installed_kit_info(found).model_dump(mode="json")
+
+
+def _marketplace_item(session: str, key: str) -> dict | None:
+    market = state.get_marketplace(key)
+    return None if market is None else models.marketplace_info(market).model_dump(mode="json")
+
+
 # The kinds whose REST model exists, and how to build an item of it. Others' items are null.
 ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "sessions": _session_item,
@@ -169,6 +179,8 @@ ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "gates": _gate_item,
     "runs": _run_item,
     "notes": _note_item,
+    "kits": _kit_item,  # session ''
+    "marketplaces": _marketplace_item,  # session ''
 }
 
 

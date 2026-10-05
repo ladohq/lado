@@ -146,6 +146,15 @@ class KitUsersInfo(BaseModel):
     stopped_line: str | None
 
 
+class KitContentsInfo(BaseModel):
+    """What a version of a kit holds, by name: an update plan's installed version."""
+
+    agents: list[str]
+    skills: list[str]  # its own and its packs'
+    flows: list[str]
+    mcp: list[str]
+
+
 class PlanInfo(BaseModel):
     """What an add or update would do (kits.Install), as the CLI shows it before it asks."""
 
@@ -170,6 +179,9 @@ class PlanInfo(BaseModel):
     warnings: list[str]  # a moved tag, new MCP servers
     notes: list[str]  # what the core says besides: who gets an update, or that it is current
     users: KitUsersInfo | None  # an update's: the sessions that use the kit
+    # An update's installed version (kits.Install.before); null for an add, and when that
+    # version or one of its packs is not in the cache: what changes is then not known.
+    before: KitContentsInfo | None
 
 
 class PlanAsk(BaseModel):
@@ -915,6 +927,16 @@ def plan_info(plan: kits.Install, users: runtime.KitUsers | None = None) -> Plan
         warnings=[*plan.warnings, *kits.new_mcp_warnings(plan)],
         notes=notes,
         users=None if users is None else kit_users_info(plan.name, users),
+        before=None if plan.before is None else kit_contents_info(plan.before),
+    )
+
+
+def kit_contents_info(kit: kits.Kit) -> KitContentsInfo:
+    return KitContentsInfo(
+        agents=list(kit.agents),
+        skills=_skill_names(kit),
+        flows=list(kit.flows),
+        mcp=kits.mcp_names(kit),
     )
 
 

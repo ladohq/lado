@@ -502,6 +502,9 @@ class Install:
     new_mcp: tuple[str, ...] = ()  # an update's: MCP servers the installed version did not have
     warnings: tuple[str, ...] = ()  # a moved tag
     versions: tuple[str, ...] = ()  # from git: the tags it could take instead, newest first
+    # An update's: the installed version, when it loads with every pack in the cache; else
+    # None, since a partial one would show its missing skills as added.
+    before: Kit | None = None
 
     @property
     def mcp(self) -> dict[str, McpDef]:
@@ -608,6 +611,7 @@ def plan_update(name: str, tag: str | None = None, pre: bool = False) -> Install
         installed=row.tag,
         needs_confirmation=False,  # the human's decision: an update warns, never asks
         new_mcp=tuple(sorted(set(plan.mcp) - before)),
+        before=old if old and not old.unfetched() else None,
     )
 
 

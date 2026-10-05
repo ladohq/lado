@@ -1105,6 +1105,20 @@ export interface components {
             missing: boolean;
         };
         /**
+         * KitContentsInfo
+         * @description What a version of a kit holds, by name: an update plan's installed version.
+         */
+        KitContentsInfo: {
+            /** Agents */
+            agents: string[];
+            /** Skills */
+            skills: string[];
+            /** Flows */
+            flows: string[];
+            /** Mcp */
+            mcp: string[];
+        };
+        /**
          * KitInfo
          * @description A kit a session of a folder can take: the one of each name that wins the lookup.
          */
@@ -1405,6 +1419,7 @@ export interface components {
             /** Notes */
             notes: string[];
             users: components["schemas"]["KitUsersInfo"] | null;
+            before: components["schemas"]["KitContentsInfo"] | null;
         };
         /** PlanUpdateAsk */
         PlanUpdateAsk: {

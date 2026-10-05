@@ -2987,6 +2987,47 @@
         "title": "InstalledKitInfo",
         "description": "An installed kit (its row in lado.db, its files) or a built-in one: the Kits page's\nInstalled list and the `kits` items of the change feed."
       },
+      "KitContentsInfo": {
+        "properties": {
+          "agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
+          "flows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flows"
+          },
+          "mcp": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mcp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agents",
+          "skills",
+          "flows",
+          "mcp"
+        ],
+        "title": "KitContentsInfo",
+        "description": "What a version of a kit holds, by name: an update plan's installed version."
+      },
       "KitInfo": {
         "properties": {
           "name": {
@@ -3883,6 +3924,16 @@
                 "type": "null"
               }
             ]
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KitContentsInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3907,7 +3958,8 @@
           "new_mcp",
           "warnings",
           "notes",
-          "users"
+          "users",
+          "before"
         ],
         "title": "PlanInfo",
         "description": "What an add or update would do (kits.Install), as the CLI shows it before it asks."

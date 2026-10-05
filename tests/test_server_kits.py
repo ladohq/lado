@@ -3,6 +3,7 @@ update, remove, the check for updates and the marketplaces. In process, with Fas
 client; kits and marketplaces are local git repos, never the network."""
 
 import json
+import shutil
 import subprocess
 
 import agent_helpers
@@ -184,6 +185,7 @@ def test_a_plan_from_git_says_what_install_would_do_and_installs_nothing(client,
         "warnings": [],
         "notes": [],
         "users": None,
+        "before": None,
     }
     assert state.list_kits() == []
 
@@ -292,6 +294,70 @@ def test_a_plan_update_to_the_installed_version_says_so(client, tmp_path):
     planned = ok(client.post("/api/kits/team/plan-update", json={"tag": "v1.0.0"}))
     assert planned["current"] is True
     assert planned["notes"] == ['Kit "team" is at v1.0.0 already.']
+
+
+SKILL = "---\nname: {0}\ndescription: does {0}\n---\nDo {0}.\n"
+
+
+def pack_repo(tmp_path, *skills) -> str:
+    """A skill pack with a tag v1: its bare repo's URL."""
+    files = {f"skills/{s}/SKILL.md": SKILL.format(s) for s in skills}
+    return publish(init_repo(tmp_path / "pack"), files, tag="v1")
+
+
+def kit_with_pack(work, version, pack, own="own", agent=WORKER, flows=()):
+    files = {
+        "kit.yaml": f"name: team\nversion: {version}\n"
+        f"dependencies: {{skills: {{p: '{pack}@v1'}}}}\n",
+        "agents/w.md": agent,
+        f"skills/{own}/SKILL.md": SKILL.format(own),
+        **{f"flows/{f}.yaml": FLOW for f in flows},
+    }
+    return publish(work, files, tag=f"v{version}")
+
+
+FLOW = (
+    "name: ship\ndescription: ships\nstart: work\nstates:\n"
+    "  work: {agent: w, do: work, outcomes: {done: end}}\n  end: {end: true}\n"
+)
+
+
+def test_a_plan_update_gives_what_the_installed_version_has(client, tmp_path):
+    pack = pack_repo(tmp_path, "review")
+    work = init_repo(tmp_path / "team-kit")
+    url = kit_with_pack(work, "1.0.0", pack, own="old", agent=WITH_DB)
+    ok(install(client, plan(client, url)))
+    shutil.rmtree(work / "skills" / "old")
+    kit_with_pack(work, "1.1.0", pack, own="new", flows=["ship"])
+    planned = ok(client.post("/api/kits/team/plan-update", json={}))
+    assert planned["before"] == {
+        "agents": ["w"],
+        "skills": ["old", "review"],
+        "flows": [],
+        "mcp": ["db"],
+    }
+    assert (planned["skills"], planned["flows"]) == (["new", "review"], ["ship"])
+
+
+def test_a_plan_update_gives_no_before_without_the_installed_versions_clone(client, tmp_path):
+    work, url = kit_repo(tmp_path, "1.0.0")
+    ok(install(client, plan(client, url)))
+    publish(work, {"kit.yaml": "name: team\nversion: 1.1.0\n"}, "v1.1.0")
+    shutil.rmtree(gitcache.clone_dir(url, "v1.0.0"))
+    assert ok(client.post("/api/kits/team/plan-update", json={}))["before"] is None
+
+
+def test_a_plan_update_gives_no_before_when_a_pack_of_the_installed_version_is_gone(
+    client, tmp_path
+):
+    pack = pack_repo(tmp_path, "review")
+    work = init_repo(tmp_path / "team-kit")
+    url = kit_with_pack(work, "1.0.0", pack)
+    ok(install(client, plan(client, url)))
+    kit_with_pack(work, "1.1.0", pack)
+    shutil.rmtree(gitcache.clone_dir(pack, "v1"))
+    # Its skills would be missing from before: each would look added.
+    assert ok(client.post("/api/kits/team/plan-update", json={}))["before"] is None
 
 
 def test_an_update_of_a_folder_kit_is_refused(client, tmp_path):

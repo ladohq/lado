@@ -127,13 +127,15 @@ export function storeNotifications(on: boolean): void {
   write(NOTIFICATIONS, on ? "on" : "off");
 }
 
-// Whether the Flows tab's list shows its ended runs (folded by default).
-const FLOWS_ENDED = "lado.flowsEnded";
+// The order of a run's history on its page in the Flows tab (the newest first by default).
+export type FlowsOrder = "newest" | "oldest";
 
-export const storedFlowsEndedOpen = (): boolean => read(FLOWS_ENDED) === "open";
+const FLOWS_ORDER = "lado.flowsOrder";
 
-export function storeFlowsEndedOpen(open: boolean): void {
-  write(FLOWS_ENDED, open ? "open" : "folded");
+export const storedFlowsOrder = (): FlowsOrder => (read(FLOWS_ORDER) === "oldest" ? "oldest" : "newest");
+
+export function storeFlowsOrder(order: FlowsOrder): void {
+  write(FLOWS_ORDER, order);
 }
 
 // The Kits page's source chip: "all", "git", "folder", "built-in" or "marketplace:<name>".

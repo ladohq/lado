@@ -6,19 +6,17 @@
 // with a link back to the list, which keeps its search and its scroll. Nothing is drawn
 // before the column is measured: which of the two it is is not known yet.
 //
-// The list: a search over it, then groups of items; a folded group (ended runs) is at the
-// bottom, remembered, by days and its first 10 first. The selected item is always seen.
+// The list: a search over all of it, then groups of items, each always open under its
+// heading with its count; a group may say why it is empty, show its rows by days and its
+// first N before Show N more. The selected item is always seen.
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router";
 
 import { dayName } from "./ChatText";
-import { FoldToggle } from "./Fold";
 import { useWidth } from "./Splitter";
 
 // Narrower than this, a tab's list and page take the column in turn.
 export const NARROW = 900;
-
-const FIRST = 10; // the items of a folded group shown before Show N more
 
 export type Entry = {
   key: string; // what the tab's address picks it by: unique in the list
@@ -33,9 +31,10 @@ export type Group = {
   name: string;
   entries: Entry[];
   tone?: "waits";
-  heading?: boolean; // its name above its rows (by default); a folded group has its toggle
+  heading?: boolean; // its name and count above its rows (by default)
   days?: boolean; // its rows under the local day of their `at`
-  fold?: { stored: () => boolean; store: (open: boolean) => void };
+  empty?: string; // what it says without rows ("No match" while searching); none: not drawn
+  first?: number; // the rows shown before Show N more; none: all
 };
 
 export function ListPage({
@@ -99,7 +98,7 @@ export function ListPage({
             <ListGroup key={group.name} group={group} entries={entries} selected={selected} searching={wanted !== ""} />
           ))}
           {wanted && shown.every(({ entries }) => entries.length === 0) && (
-            <p className="muted">
+            <p className="muted list-none">
               No {noun} matches “{query.trim()}”
             </p>
           )}
@@ -139,9 +138,8 @@ export function ListPage({
 
 const slug = (name: string) => name.toLowerCase().replace(/\s+/g, "-");
 
-// One group of the list. A folded one is open while the search has text (its toggle then does
-// nothing) or when the human opened it; it opens, not remembered, each time an item of it is
-// selected, and folds again on its toggle.
+// One group of the list: its heading (name and how many rows it has now), then its rows,
+// or its `empty` text; while the search has text, every match.
 function ListGroup({
   group,
   entries,
@@ -153,75 +151,44 @@ function ListGroup({
   selected?: string;
   searching: boolean;
 }) {
-  const [folded, setFolded] = useState(() => (group.fold ? !group.fold.stored() : false));
   const [all, setAll] = useState(false);
-  // The selected item the group holds, as last seen: the group opens when it comes to hold one
-  // (picked, or loaded after it was picked), also the one it held before another was picked.
-  const [held, setHeld] = useState<string | undefined>(undefined);
-  const holds = group.entries.some((entry) => entry.key === selected) ? selected : undefined;
-  if (holds !== held) {
-    setHeld(holds);
-    if (holds !== undefined) setFolded(false);
-  }
+  if (entries.length === 0 && group.empty === undefined) return null;
   const id = `list-group-${slug(group.name)}`;
   const className = `list-group${group.tone ? ` ${group.tone}` : ""}`;
-  if (entries.length === 0) return null;
   const at = entries.findIndex((entry) => entry.key === selected);
   let rows = entries;
-  if (group.fold && !searching && !all) rows = entries.slice(0, Math.max(FIRST, at + 1));
+  if (group.first !== undefined && !searching && !all) rows = entries.slice(0, Math.max(group.first, at + 1));
   const rest = entries.length - rows.length;
-  const items = (
-    <>
-      {byDay(rows, group.days === true).map(({ day, entries: some }) => (
-        <div key={day ?? ""} className="list-day">
-          {day && <h4 className="day-name">{day}</h4>}
-          <ul>
-            {some.map((entry) => (
-              <li key={entry.key}>
-                <Link
-                  to={entry.to}
-                  className={`list-row${entry.tone ? ` ${entry.tone}` : ""}`}
-                  aria-current={entry.key === selected ? "page" : undefined}
-                >
-                  {entry.row}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-      {rest > 0 && (
-        <button type="button" className="link-button show-more" onClick={() => setAll(true)}>
-          Show {rest} more
-        </button>
-      )}
-    </>
-  );
-  if (group.fold) {
-    const fold = group.fold;
-    const open = !folded || searching;
-    const toggle = () => {
-      setFolded(open);
-      fold.store(!open);
-    };
-    return (
+  const items =
+    entries.length === 0 ? (
+      <p className="muted list-empty">{searching ? "No match" : group.empty}</p>
+    ) : (
       <>
-        <FoldToggle
-          name={group.name}
-          count={entries.length}
-          open={open}
-          controls={id}
-          onToggle={toggle}
-          disabled={searching}
-        />
-        {open && (
-          <section id={id} className={className} aria-label={group.name}>
-            {items}
-          </section>
+        {byDay(rows, group.days === true).map(({ day, entries: some }) => (
+          <div key={day ?? ""} className="list-day">
+            {day && <h4 className="day-name">{day}</h4>}
+            <ul>
+              {some.map((entry) => (
+                <li key={entry.key}>
+                  <Link
+                    to={entry.to}
+                    className={`list-row${entry.tone ? ` ${entry.tone}` : ""}`}
+                    aria-current={entry.key === selected ? "page" : undefined}
+                  >
+                    {entry.row}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {rest > 0 && (
+          <button type="button" className="link-button show-more" onClick={() => setAll(true)}>
+            Show {rest} more
+          </button>
         )}
       </>
     );
-  }
   if (group.heading === false) {
     return (
       <section className={className} aria-label={group.name}>
@@ -231,9 +198,12 @@ function ListGroup({
   }
   return (
     <section className={className} aria-labelledby={`${id}-name`}>
-      <h3 id={`${id}-name`} className="group-name">
-        {group.name}
-      </h3>
+      <div className="group-head">
+        <h3 id={`${id}-name`} className="group-name">
+          {group.name}
+        </h3>
+        <span className="group-count">{entries.length}</span>
+      </div>
       {items}
     </section>
   );

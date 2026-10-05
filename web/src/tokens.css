@@ -15,6 +15,9 @@
   --on-action: light-dark(#ffffff, #111317);
   --human: light-dark(#b4530f, #f0a25a);
   --human-ground: light-dark(#fdf1e6, #3a2a1c);
+  /* Work that went well: a run that ended, a step of a flow (the Flows tab). */
+  --done: light-dark(#1e7a46, #5cc98a);
+  --done-ground: light-dark(#e7f4ec, #18301f);
   /* What cannot be taken back or ends work: Stop and Forget. */
   --danger: light-dark(#b42318, #ff8f85);
   --on-danger: light-dark(#ffffff, #111317);

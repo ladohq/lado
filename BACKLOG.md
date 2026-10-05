@@ -471,15 +471,6 @@ Wanted: the docs and `lado doctor`'s hint name this case and how to guard it in 
 (for example, skip the autostart when the shell is not interactive on a terminal).
 Found: 2026-10-04, review of fix/agent-env.
 
-## A snapshot's problem of several lines shows as one line in the UI
-
-When the validator refuses a run's flow snapshot, `problem` (`RunInfo`, `GateInfo`) holds
-one error per line (`flows.from_snapshot` joins them with "\n"). The run page
-(`web/src/Flows.tsx`, `.problem`) and the gate card (`web/src/GateCard.tsx`,
-`.gate-problem`) put it in a `<p>`, so the lines run together without a break.
-Wanted: `white-space: pre-wrap` on both (or one line per error).
-Found: 2026-10-04, review of fix/unreadable-snapshot (Minor).
-
 ## `lado answer` without a gate stops at a gate whose run's flow cannot be read
 
 `lado answer` (no arguments, or a session) and the gate popup show each open gate with the
@@ -754,3 +745,25 @@ and `update` refreshes it in place, with no lock. The Kits page's Update all and
 Wanted: an exclusive lock per marketplace clone (as the session loop's `flock`) around
 clone, refresh and read.
 Found: 2026-10-05, design of feature/kits-page (Found on the way).
+## UI screenshots of parallel worktrees overwrite each other
+
+The `shot` fixture (`tests/ui/conftest.py`) saves to `<temp dir>/lado-ui-shots/<test>.png`,
+one folder for every checkout on the machine. Two worktrees running `make test-ui` at once
+(two flow runs) write the same file names, so a reviewer may look at the other branch's
+screen: a run of feature/flows-tab-redesign showed the old Flows page from another worktree.
+Wanted: a folder per checkout (e.g. named after the repo root's path or the branch), printed
+as now.
+Found: 2026-10-05, feature/flows-tab-redesign (developer).
+
+## Flaky: integration test "CLI refuses to migrate the database under a running session"
+
+`tests/integration/test_agents.py::test_cli_refuses_to_migrate_the_database_under_a_running_session`
+failed once in `make check` (`lado ls` exited 0, expected 1) and passed alone and in the
+next `make check`. Likely a race: after `agent_helpers.previous_schema()` rolls `lado.db`
+back, a hook or `lado mcp` of the session's running fake agent opens the database with
+`state.connect` and migrates it again (hooks and `lado mcp` do not check, AGENTS.md
+`state.py`) before the test's `lado ls`, so there is nothing left to refuse. Wanted: a
+session with no process that can open the database between the rollback and the check
+(stop the fake agent's hooks, or roll back with the session's tmux alive but no agent),
+then the assertion is deterministic.
+Found: 2026-10-05, merge step of run feature/flows-tab-redesign (after main got schema 18).

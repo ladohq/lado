@@ -7,7 +7,7 @@ import pytest
 import yaml
 from agent_helpers import init_repo, publish
 
-from lado import flows, gitcache, kits, marketplaces
+from lado import flows, gitcache, kits, marketplaces, state
 
 
 def make_kit(base, name, agents=None, skills=(), **meta):
@@ -176,11 +176,13 @@ def test_mcp_variables(project, monkeypatch):
         env.resolve("w").mcp_servers()
 
 
-def test_lookup_order(repo, project, lado_home):
-    user = lado_home / "kits"
-    make_kit(user, "default", agents={"boss": ({}, "user boss")}, supervisor="boss")
+def test_lookup_order(tmp_path, repo, project, lado_home):
+    user = make_kit(
+        tmp_path / "dev", "default", agents={"boss": ({}, "user boss")}, supervisor="boss"
+    )
+    state.add_kit(state.InstalledKit("default", folder=str(user)))
     found = kits.find("default", repo)
-    assert (found.where, found.path) == ("user", user / "default")
+    assert (found.where, found.path, found.installed) == ("user", user, state.get_kit("default"))
     make_kit(project, "default", agents={"boss": ({}, "project boss")}, supervisor="boss")
     found = kits.find("default", repo)
     assert (found.where, found.path) == ("project", project / "default")
@@ -192,8 +194,16 @@ def test_lookup_order(repo, project, lado_home):
         ("default", "user", "project"),
         ("default", "built-in", "project"),
     ]
-    with pytest.raises(kits.KitError, match=f'kit "nope" not found; looked in {project}'):
+    with pytest.raises(kits.KitError) as exc:
         kits.find("nope", repo)
+    assert str(exc.value) == (
+        f'kit "nope" not found; looked in {project}, the installed kits in '
+        f"{lado_home / 'lado.db'}, {kits.BUILTIN}"
+    )
+    # A kit in LADO_HOME/kits, the place of older LADOs, is not found.
+    make_kit(lado_home / "kits", "old")
+    with pytest.raises(kits.KitError, match='kit "old" not found'):
+        kits.find("old", repo)
 
 
 def test_kits_combine_in_a_session(repo, project):
@@ -954,9 +964,10 @@ TEAM = "name: team\nversion: 1.0.0\n"
 AGENT = "---\nname: w\ndescription: works\n---\nWork.\n"
 
 
-def links(lado_home):
-    folder = lado_home / "kits"
-    return sorted(p.name for p in folder.iterdir()) if folder.is_dir() else []
+def rows(lado_home):
+    """The installed kits' names; LADO_HOME/kits is never made."""
+    assert not (lado_home / "kits").exists()
+    return [kit.name for kit in state.list_kits()]
 
 
 def rev(work, ref) -> str:
@@ -1005,21 +1016,33 @@ def test_add_takes_the_latest_release_and_the_plan_changes_nothing(
         (),
     )
     assert plan.kit.version == "1.1.0"
-    assert links(lado_home) == [] and capsys.readouterr() == ("", "")
+    assert rows(lado_home) == [] and capsys.readouterr() == ("", "")
     kit = kits.install(plan)
-    link = lado_home / "kits" / "team"
+    row = state.get_kit("team")
+    assert (row.address, row.tag, row.commit, row.folder, row.marketplace) == (
+        url,
+        "v1.1.0",
+        rev(work, "v1.1.0"),
+        None,
+        None,
+    )
+    assert row.installed_at and row.updated_at is None and rows(lado_home) == ["team"]
     clone = gitcache.clone_dir(url, "v1.1.0").resolve()
-    assert link.is_symlink() and link.resolve() == clone == kit.path
+    assert kit.path == clone and kit.source == f"user {url}@v1.1.0: {clone}"
     found = kits.find("team", repo)
-    assert (found.where, found.path, found.link()) == ("user", link, f"{url}@v1.1.0")
+    assert (found.where, found.path.resolve(), found.link()) == ("user", clone, f"{url}@v1.1.0")
+    # The clone's folder is named after its tag, not the kit: an installed kit loads anyway.
     loaded = found.load()
     assert (loaded.name, loaded.path, list(loaded.agents)) == ("team", clone, ["w"])
     assert loaded.source == f"user {url}@v1.1.0: {clone}"
     assert kits.warnings(loaded) == []
-    with pytest.raises(
-        kits.KitError, match='kit "team" is installed already: .*; `lado kits update team`'
-    ):
+    assert found.release("v1.1.0").version == "1.1.0"
+    with pytest.raises(kits.KitError) as exc:
         kits.plan_add(url)
+    assert str(exc.value) == (
+        f'kit "team" is installed already: {url}@v1.1.0; `lado kits update team` or '
+        "`lado kits remove team` first"
+    )
 
 
 def test_add_takes_a_pre_release_when_asked(tmp_path, lado_home):
@@ -1080,7 +1103,7 @@ def test_the_latest_version_that_needs_a_newer_lado_is_refused(tmp_path, lado_ho
         f"team 1.4.0 needs LADO 99.1, this is {kits.__version__}; upgrade LADO, or add an "
         f"older version: lado kits add {url}@v1.3.0"
     )
-    assert links(lado_home) == []
+    assert rows(lado_home) == []
 
 
 def test_a_folder_released_at_a_tag_has_the_rules_of_add(tmp_path):
@@ -1137,13 +1160,26 @@ def test_add_a_kit_of_a_marketplace(tmp_path, lado_home, monkeypatch):
     _, url = kit_repo(tmp_path, "1.0.0", "1.1.0")
     marketplace(tmp_path, team=url, other=url)
     plan = kits.plan_add("team", market="team-m")
-    assert (plan.tag, plan.address, plan.source, plan.needs_confirmation) == (
+    assert (plan.tag, plan.address, plan.source, plan.needs_confirmation, plan.marketplace) == (
         "v1.1.0",
         url,
         "marketplace team-m",
         True,
+        "team-m",
     )
-    assert kits.plan_add("team@v1.0.0", market="team-m").tag == "v1.0.0"
+    old = kits.plan_add("team@v1.0.0", market="team-m")
+    assert old.tag == "v1.0.0"
+    # The row records the marketplace it was added from; an update keeps it, and its time.
+    kits.install(old)
+    added = state.get_kit("team")
+    assert (added.marketplace, added.tag, added.updated_at) == ("team-m", "v1.0.0", None)
+    update = kits.plan_update("team")
+    assert (update.source, update.marketplace) == ("marketplace team-m", "team-m")
+    kits.install(update)
+    updated = state.get_kit("team")
+    assert (updated.marketplace, updated.tag) == ("team-m", "v1.1.0")
+    assert updated.installed_at == added.installed_at and updated.updated_at is not None
+    kits.remove("team")
     with pytest.raises(
         kits.KitError,
         match=re.escape(f'marketplace "team-m" lists "other" at {url}, but its kit is "team"'),
@@ -1159,18 +1195,37 @@ def test_add_a_kit_of_a_marketplace(tmp_path, lado_home, monkeypatch):
     assert (plan.source, plan.needs_confirmation) == ("official", False)
 
 
-def test_add_a_local_folder_links_it(tmp_path, repo, lado_home):
+def test_add_a_local_folder_installs_it_in_place(tmp_path, repo, lado_home):
+    # The folder's name need not be the kit's.
     folder = make_kit(tmp_path / "dev", "team", agents={"w": ({}, "Work.")})
+    folder = folder.rename(tmp_path / "dev" / "team-work")
     plan = kits.plan_add(str(folder))
     assert (plan.source, plan.tag, plan.needs_confirmation) == ("folder", None, False)
     kit = kits.install(plan)
-    link = lado_home / "kits" / "team"
-    assert link.resolve() == folder.resolve()
-    assert kits.find("team", repo).link() == str(folder.resolve())
+    row = state.get_kit("team")
+    assert (row.folder, row.address, row.tag, row.commit) == (
+        str(folder.resolve()),
+        None,
+        None,
+        None,
+    )
+    assert rows(lado_home) == ["team"]
+    found = kits.find("team", repo)
+    assert (found.path, found.link()) == (folder.resolve(), str(folder.resolve()))
     # Read in place: a change in the folder is the kit's.
     (folder / "agents" / "w.md").write_text(AGENT.replace("Work.", "Changed."))
-    assert kits.find("team", repo).load().agents["w"].body == "Changed."
+    assert found.load().agents["w"].body == "Changed."
+    assert found.load().source == f"user: {folder.resolve()}"
     assert kit.where == "user"
+    # kit.yaml renamed after it was installed: the row's name is no longer the kit's.
+    (folder / "kit.yaml").write_text("name: other\nversion: 1.0.0\n")
+    for load in (found.load, lambda: found.release(None)):
+        with pytest.raises(kits.KitError) as exc:
+            load()
+        assert str(exc.value) == (
+            f'kit "team" is installed from {folder.resolve()}, but its kit.yaml names it '
+            f'"other": `lado kits remove team`, then `lado kits add {folder.resolve()}`'
+        )
 
 
 @pytest.mark.parametrize(
@@ -1202,14 +1257,20 @@ def test_add_errors_leave_no_link(tmp_path, lado_home, spec, error):
     values = {"many": many, "pack": pack, "bad": bad, "tmp": tmp_path}
     with pytest.raises(kits.KitError, match=error.format(**values)):
         kits.install(kits.plan_add(spec.format(**values)))
-    assert links(lado_home) == []
+    assert rows(lado_home) == []
 
 
-def test_add_refuses_a_name_taken_by_a_folder(tmp_path, lado_home):
-    make_kit(lado_home / "kits", "team")
-    make_kit(tmp_path / "dev", "team")
+def test_add_refuses_a_name_installed_already(tmp_path, lado_home):
+    first = make_kit(tmp_path / "dev", "team")
+    plan = kits.plan_add(str(first))
+    kits.install(plan)
+    make_kit(tmp_path / "other", "team")
+    with pytest.raises(kits.KitError, match=f'kit "team" is installed already: {first.resolve()}'):
+        kits.plan_add(str(tmp_path / "other" / "team"))
+    # Two adds planned at once: the second install is refused.
     with pytest.raises(kits.KitError, match='kit "team" is installed already'):
-        kits.plan_add(str(tmp_path / "dev" / "team"))
+        kits.install(plan)
+    assert state.get_kit("team").folder == str(first.resolve())
 
 
 def test_update_goes_to_the_latest_and_names_new_mcp_servers(tmp_path, repo, lado_home):
@@ -1225,11 +1286,12 @@ def test_update_goes_to_the_latest_and_names_new_mcp_servers(tmp_path, repo, lad
         False,
     )
     assert plan.source == "git" and sorted(plan.mcp) == ["db", "fs"]
-    link = lado_home / "kits" / "team"
-    assert link.resolve() == gitcache.clone_dir(url, "v1.0.0").resolve()  # a plan only
+    assert state.get_kit("team").tag == "v1.0.0"  # a plan only
     kit = kits.install(plan)
     assert (kit.version, kit.path) == ("1.1.0", gitcache.clone_dir(url, "v1.1.0").resolve())
-    assert link.resolve() == kit.path and links(lado_home) == ["team"]
+    row = state.get_kit("team")
+    assert (row.tag, row.commit) == ("v1.1.0", rev(work, "v1.1.0"))
+    assert rows(lado_home) == ["team"]
     assert kits.find("team", repo).link() == f"{url}@v1.1.0"
     # The old version stays in the cache for the agents that run it.
     assert gitcache.clone_dir(url, "v1.0.0").is_dir()
@@ -1237,29 +1299,7 @@ def test_update_goes_to_the_latest_and_names_new_mcp_servers(tmp_path, repo, lad
     assert (back.tag, back.new_mcp) == ("v1.0.0", ())
     with pytest.raises(kits.KitError, match="a kit is pinned by its version tag"):
         kits.plan_update("team", "main")
-    assert link.resolve() == kit.path
-
-
-def test_update_moves_a_kit_pinned_to_a_commit_to_a_version_tag(tmp_path, lado_home):
-    work, url = kit_repo(tmp_path, "1.0.0", "1.1.0")
-    commit = rev(work, "v1.0.0")
-    (lado_home / "kits").mkdir(parents=True)
-    (lado_home / "kits" / "team").symlink_to(gitcache.fetch_pinned(url, commit))
-    plan = kits.plan_update("team")
-    assert (plan.installed, plan.tag) == (commit, "v1.1.0")
-
-
-def test_a_kit_of_a_multi_kit_repository_cannot_be_updated(tmp_path, lado_home):
-    url = publish(init_repo(tmp_path / "many"), {"kits/team/kit.yaml": TEAM}, tag="v1.0.0")
-    (lado_home / "kits").mkdir(parents=True)
-    clone = gitcache.fetch_pinned(url, "v1.0.0")
-    (lado_home / "kits" / "team").symlink_to(clone / "kits" / "team")
-    with pytest.raises(kits.KitError) as exc:
-        kits.plan_update("team")
-    assert str(exc.value) == (
-        "team: installed from a multi-kit repository, no longer supported; "
-        "`lado kits remove team` and add it again"
-    )
+    assert state.get_kit("team").tag == "v1.1.0"
 
 
 def test_a_moved_tag_is_warned_about(tmp_path, lado_home):
@@ -1288,14 +1328,13 @@ def test_outdated_checks_each_kit_from_git_and_says_why_not_the_others(tmp_path,
     _, solo = kit_repo(tmp_path, "2.0.0", name="solo")
     kits.install(kits.plan_add(solo))
     kits.install(kits.plan_add(str(make_kit(tmp_path / "dev", "local"))))
-    make_kit(lado_home / "kits", "mine")
-    pinned_work, pinned = kit_repo(tmp_path, "1.0.0", name="pinned")
-    commit = rev(pinned_work, "HEAD")
-    (lado_home / "kits" / "pinned").symlink_to(gitcache.fetch_pinned(pinned, commit))
-    many = publish(init_repo(tmp_path / "many"), {"kits/old/kit.yaml": TEAM}, tag="v1.0.0")
-    (lado_home / "kits" / "old").symlink_to(gitcache.fetch_pinned(many, "v1.0.0") / "kits" / "old")
+    kits.install(kits.plan_add(str(make_kit(tmp_path / "dev", "moved"))))
+    shutil.rmtree(tmp_path / "dev" / "moved")
+    _, cleaned = kit_repo(tmp_path, "1.0.0", name="cleaned")
+    kits.install(kits.plan_add(cleaned))
+    shutil.rmtree(gitcache.clone_dir(cleaned, "v1.0.0"))
     rows = {row.name: row for row in kits.outdated()}
-    assert list(rows) == ["local", "mine", "old", "pinned", "solo", "team"]
+    assert list(rows) == ["cleaned", "local", "moved", "solo", "team"]
     team = rows["team"]
     assert (team.installed, team.latest, team.pre, team.note) == (
         "v1.0.0",
@@ -1309,42 +1348,60 @@ def test_outdated_checks_each_kit_from_git_and_says_why_not_the_others(tmp_path,
         None,
     )
     assert rows["local"].note == "local, not checked"
-    assert rows["mine"].note == "local, not checked"
-    assert rows["pinned"].note == (
-        f"pinned to commit {commit}; `lado kits update pinned` moves it to a version tag"
-    )
-    assert rows["old"].note == (
-        "installed from a multi-kit repository, no longer supported; "
-        "`lado kits remove old` and add it again"
+    assert rows["moved"].note == "folder missing; `lado kits remove moved`"
+    assert (rows["cleaned"].installed, rows["cleaned"].note) == (
+        "v1.0.0",
+        "folder missing; `lado kits remove cleaned`",
     )
 
 
-def test_update_and_remove_refuse_what_lado_did_not_install(tmp_path, lado_home):
-    make_kit(lado_home / "kits", "mine")
+def test_update_and_remove_refuse_what_is_not_installed_from_git(tmp_path, lado_home):
     make_kit(tmp_path / "dev", "local")
     kits.install(kits.plan_add(str(tmp_path / "dev" / "local")))
-    with pytest.raises(kits.KitError, match="mine is a folder LADO did not install; nothing to"):
-        kits.plan_update("mine")
-    with pytest.raises(kits.KitError, match="local links to the folder .*dev/local: it is read in"):
+    local = (tmp_path / "dev" / "local").resolve()
+    with pytest.raises(kits.KitError) as exc:
         kits.plan_update("local")
-    with pytest.raises(kits.KitError, match="not installed by LADO; delete .*mine yourself"):
-        kits.remove("mine")
-    with pytest.raises(kits.KitError, match='no kit "nope" in '):
-        kits.remove("nope")
-    assert kits.remove("local") == (tmp_path / "dev" / "local").resolve()
-    assert links(lado_home) == ["mine"] and (tmp_path / "dev" / "local").is_dir()
+    assert str(exc.value) == f"local is the folder {local}: it is read in place, nothing to update"
+    for refused in (lambda: kits.plan_update("nope"), lambda: kits.remove("nope")):
+        with pytest.raises(kits.KitError) as exc:
+            refused()
+        assert str(exc.value) == 'no kit "nope" is installed; `lado kits` lists the kits'
+    with pytest.raises(kits.KitError, match='no kit "default" is installed'):
+        kits.remove("default")  # a built-in kit
+    assert kits.remove("local") == local
+    assert rows(lado_home) == [] and local.is_dir()
 
 
-def test_a_broken_link_does_not_stop_other_kits(tmp_path, repo, lado_home):
+def test_an_installed_kit_whose_folder_is_gone_does_not_stop_other_kits(
+    tmp_path, repo, lado_home, monkeypatch
+):
     make_kit(tmp_path / "dev", "gone")
     kits.install(kits.plan_add(str(tmp_path / "dev" / "gone")))
+    _, url = kit_repo(tmp_path, "1.0.0")
+    kits.install(kits.plan_add(url))
+    clone = gitcache.clone_dir(url, "v1.0.0")
     shutil.rmtree(tmp_path / "dev")
-    (found,) = [f for f, _ in kits.available(repo) if f.name == "gone"]
-    with pytest.raises(kits.KitError, match="gone: broken link → .*; run `lado kits remove gone`"):
-        found.load()
+    shutil.rmtree(clone)
+    found = {f.name: f for f, _ in kits.available(repo)}
+    no_git(monkeypatch)
+    with pytest.raises(kits.KitError) as exc:
+        found["gone"].load()
+    gone = (tmp_path / "dev" / "gone").resolve()
+    assert str(exc.value) == (
+        f'kit "gone": its folder {gone} is missing; `lado kits remove gone`, then to have it '
+        f"back `lado kits add {gone}`"
+    )
+    with pytest.raises(kits.KitError) as exc:
+        found["team"].load()
+    assert str(exc.value) == (
+        f'kit "team": its folder {clone} is missing; `lado kits remove team`, then to have it '
+        f"back `lado kits add {url}@v1.0.0`"
+    )
     assert kits.resolve(repo, ["default"]).lead.name == "supervisor"
-    kits.remove("gone")
-    assert links(lado_home) == []
+    # Removing it is no error: the row goes, and the folder that was there is named.
+    assert kits.remove("gone") == gone
+    assert kits.remove("team") == clone
+    assert rows(lado_home) == []
 
 
 def test_kit_version_is_compared_with_the_tags_of_its_clone(tmp_path, lado_home):
@@ -1412,6 +1469,48 @@ def test_find_says_how_to_move_from_sources_yaml(tmp_path, repo, lado_home):
     with pytest.raises(kits.KitError) as exc:
         kits.find("mine", repo)
     assert "sources.yaml" not in str(exc.value)
+
+
+def test_kits_in_lado_home_kits_of_older_lados_are_named_with_how_to_add_them(
+    tmp_path, repo, lado_home
+):
+    old = lado_home / "kits"
+    old.mkdir(parents=True)
+    _, url = kit_repo(tmp_path, "1.0.0")
+    (old / "team").symlink_to(gitcache.fetch_pinned(url, "v1.0.0"))
+    work, pinned = kit_repo(tmp_path, "1.0.0", name="pinned")
+    commit = rev(work, "HEAD")
+    (old / "pinned").symlink_to(gitcache.fetch_pinned(pinned, commit))
+    many = publish(init_repo(tmp_path / "many"), {"kits/multi/kit.yaml": TEAM}, tag="v1.0.0")
+    (old / "multi").symlink_to(gitcache.fetch_pinned(many, "v1.0.0") / "kits" / "multi")
+    local = make_kit(tmp_path / "dev", "local")
+    (old / "local").symlink_to(local)
+    (old / "broken").symlink_to(tmp_path / "nowhere")
+    make_kit(old, "mine")
+    (old / ".team.new").symlink_to(local)  # a temporary link of an update of older LADOs
+    before = sorted((p.name, p.is_symlink()) for p in old.iterdir())
+    hint = kits.legacy_hint()
+    assert hint == "\n".join(
+        [
+            f"{old} is no longer read: installed kits are kept in lado.db; add them again:",
+            f"  broken: a broken link to {tmp_path / 'nowhere'}; nothing to add",
+            f"  lado kits add {local.resolve()}",
+            f"  mine: a folder in {old}: move it out, then `lado kits add <its new folder>`",
+            "  multi: from a multi-kit repository, no longer supported: add the kit from its "
+            "own repository",
+            f"  lado kits add {pinned}  (pinned was at {commit}, no version tag: this adds the "
+            "latest release)",
+            f"  lado kits add {url}@v1.0.0",
+            f"then delete {old}",
+        ]
+    )
+    with pytest.raises(kits.KitError) as exc:
+        kits.find("team", repo)
+    assert str(exc.value).endswith("\n" + hint)
+    # LADO leaves the folder as it is.
+    assert sorted((p.name, p.is_symlink()) for p in old.iterdir()) == before
+    shutil.rmtree(old)
+    assert kits.legacy_hint() is None
 
 
 def test_a_damaged_clone_is_a_kit_error_not_a_crash(tmp_path, lado_home):

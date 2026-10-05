@@ -128,9 +128,9 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         return launch.recent_folders() if has_db else []
 
     @app.get("/api/kits", dependencies=[Depends(guard)])
-    def list_kits(where: str | None = None) -> list[KitInfo]:
+    def list_kits(where: str | None = None, has_db: bool = Depends(database)) -> list[KitInfo]:
         """The kits a session of the folder `where` can take, one per name."""
-        return core(launch.kit_infos, where)
+        return core(launch.kit_infos, where, has_db)
 
     @app.get("/api/providers", dependencies=[Depends(guard)])
     def list_providers() -> list[ProviderInfo]:

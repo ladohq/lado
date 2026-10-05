@@ -130,16 +130,3 @@ def test_resolve_names_the_way_out_of_each_refusal(tmp_path, lado_home):
         marketplaces.resolve("team", "tool")
     with pytest.raises(marketplaces.MarketplaceError, match='no marketplace "far"'):
         marketplaces.resolve("far", "tool")
-
-
-def test_source_of_reads_the_clones_of_enabled_marketplaces_only(tmp_path, lado_home, official):
-    url = publish(init_repo(tmp_path / "team"), listing(tool="https://example.com/tool.git"))
-    marketplaces.add("team", url)
-    assert marketplaces.source_of("https://example.com/tool.git") == "team"
-    # Never the network: the official one has no clone yet, so it is not asked.
-    assert marketplaces.source_of("https://example.com/kit-lado-dev.git") is None
-    assert not (lado_home / "marketplaces" / "official").exists()
-    marketplaces.kits("official")
-    assert marketplaces.source_of("https://example.com/kit-lado-dev.git") == "official"
-    marketplaces.set_enabled("team", False)
-    assert marketplaces.source_of("https://example.com/tool.git") is None

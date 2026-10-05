@@ -16,7 +16,6 @@ from lado import (
     __version__,
     doctor,
     flows,
-    gitcache,
     kits,
     log,
     loop,
@@ -63,27 +62,28 @@ def cmd_start(args: argparse.Namespace) -> int:
 
 def cmd_kits(args: argparse.Namespace) -> int:
     _sources_warning()
+    legacy = kits.legacy_hint()
+    if legacy:
+        print(f"lado: {legacy}", file=sys.stderr)
     repo = _repo_or_none(args.repo)
     found = kits.available(repo)
+    markets = {m.name for m in marketplaces.list_()}
     for kit, shadowed_by in found:
         note = f"  (shadowed by {shadowed_by})" if shadowed_by else ""
-        link = kit.link()
         try:
             about = _about(kit.load())
         except kits.KitError as exc:
             about = (
                 f"invalid: {exc}"
-                if link and not kit.path.exists()
+                if kit.installed and not kit.path.exists()
                 else "invalid; see: lado kits check " + str(kit.path)
             )
-        target = f" → {link}" if link else ""
-        address = link and kits.cached_origin(kit.path.resolve())
-        market = address and marketplaces.source_of(gitcache.split_ref(address)[0])
-        target += f" (marketplace {market})" if market else ""
-        old = kit.where == "user" and kits.multi_kit(kit.name)
-        print(f"{kit.name:<16} {kit.where:<9} {kit.path}{target}{note}\n  {about}")
-        if old:
-            print(f"  {old}")
+        row = kit.installed
+        origin = f"  from {kit.link()}" if row and row.address else ""
+        if row and row.marketplace:
+            removed = "" if row.marketplace in markets else ", removed"
+            origin += f" (marketplace {row.marketplace}{removed})"
+        print(f"{kit.name:<16} {kit.where:<9} {kit.path}{origin}{note}\n  {about}")
     if not found:
         print("No kits found.")
     return 0
@@ -108,8 +108,7 @@ def cmd_kits_add(args: argparse.Namespace) -> int:
             return 1
     kit = kits.install(plan)
     source = "" if plan.source == "git" else f" ({plan.source})"
-    link = kits.installed() / kit.name
-    print(f'Added kit "{kit.name}" {kit.version}{source}: {link} → {kit.path}')
+    print(f'Added kit "{kit.name}" {kit.version}{source}: installed, in {kit.path}')
     return 0
 
 
@@ -143,8 +142,7 @@ def cmd_kits_update(args: argparse.Namespace) -> int:
         for name in plan.new_mcp
     )
     kit = kits.install(plan)
-    link = kits.installed() / kit.name
-    print(f'Updated kit "{kit.name}" from {plan.installed} to {plan.tag}: {link} → {kit.path}')
+    print(f'Updated kit "{kit.name}" from {plan.installed} to {plan.tag}: installed, in {kit.path}')
     print(f"running sessions get {plan.tag} for new agents only")
     return 0
 
@@ -207,8 +205,11 @@ def cmd_marketplaces_update(args: argparse.Namespace) -> int:
 
 
 def cmd_kits_remove(args: argparse.Namespace) -> int:
-    target = kits.remove(args.name)
-    print(f'Removed kit "{args.name}": {kits.installed() / args.name} → {target}; the folder stays')
+    folder = kits.remove(args.name)
+    if folder.is_dir():
+        print(f'Removed kit "{args.name}" (was in {folder}); the folder stays')
+    else:
+        print(f'Removed kit "{args.name}" (was in {folder}, a folder no longer there)')
     return 0
 
 
@@ -768,9 +769,7 @@ def main(argv: list[str] | None = None) -> int:
         "the root saying that version (for a kit's CI)",
     )
     check.set_defaults(func=cmd_kits_check)
-    add = kits_sub.add_parser(
-        "add", help=f"install a kit from git, a marketplace or a folder in {kits.installed()}"
-    )
+    add = kits_sub.add_parser("add", help="install a kit from git, a marketplace or a folder")
     add.add_argument(
         "spec",
         metavar="<git-url[@vX.Y.Z]|folder|kit[@vX.Y.Z]>",
@@ -797,7 +796,7 @@ def main(argv: list[str] | None = None) -> int:
         "outdated", help="installed kits against the versions their repositories have now"
     )
     outdated.set_defaults(func=cmd_kits_outdated)
-    remove = kits_sub.add_parser("remove", help="remove an installed kit's link")
+    remove = kits_sub.add_parser("remove", help="remove an installed kit (its folder stays)")
     remove.add_argument("name")
     remove.set_defaults(func=cmd_kits_remove)
 

@@ -668,14 +668,6 @@ kit.yaml at the root, `version` equal to its tag, the name equal to the name in
 Wanted: `lado kits check` covering those checks, for the marketplace's CI and its index.json.
 Found: 2026-10-05, design of feature/kit-marketplaces-core.
 
-## lado-dev lives in the multi-kit repository lado-kits
-
-lado-dev is installed from `kits/lado-dev/` of lado-kits. From LADO 0.20.0 such a kit keeps
-working, but `lado kits update` and a new `lado kits add` refuse it (no longer supported).
-Wanted: lado-dev in a repository of its own, kit.yaml at the root, `version` set and tags
-vX.Y.Z, before its next update.
-Found: 2026-10-05, design of feature/kit-marketplaces-core.
-
 ## A moved tag of a skill pack goes unnoticed
 
 A kit's `dependencies.skills` pins packs by tag too, but nothing compares the cached clone

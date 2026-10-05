@@ -150,10 +150,12 @@ def _kit(base: Path, name: str, text: str) -> Path:
     return kit
 
 
-def test_kits_are_the_ones_a_session_of_the_folder_would_take(client, repo, lado_home):
+def test_kits_are_the_ones_a_session_of_the_folder_would_take(client, repo, tmp_path):
     _kit(repo / ".lado" / "kits", "team", "name: team\nversion: 1.0.0\ndescription: ours\n")
-    _kit(lado_home / "kits", "team", "name: team\nversion: 9.9.9\ndescription: shadowed\n")
-    _kit(lado_home / "kits", "broken", "name: broken\nnope: 1\n")
+    user = _kit(tmp_path / "dev", "team", "name: team\nversion: 9.9.9\ndescription: shadowed\n")
+    broken = _kit(tmp_path / "dev", "broken", "name: broken\nnope: 1\n")
+    for name, folder in (("team", user), ("broken", broken)):
+        state.add_kit(state.InstalledKit(name, folder=str(folder)))
     kits = {k["name"]: k for k in client.get("/api/kits", params={"where": str(repo)}).json()}
     assert kits["team"] == {
         "name": "team",
@@ -168,6 +170,19 @@ def test_kits_are_the_ones_a_session_of_the_folder_would_take(client, repo, lado
     # Without the folder its project kits are not there, and the user's kit wins.
     user = [k for k in client.get("/api/kits").json() if k["name"] == "team"]
     assert [k["version"] for k in user] == ["9.9.9"]
+
+
+def test_kits_never_make_or_migrate_lado_db(client, lado_home):
+    """The server never migrates: without lado.db no kit is installed, and the file stays
+    unmade; a database of another schema is 503."""
+    names = [k["name"] for k in client.get("/api/kits").json()]
+    assert names == ["default"]
+    assert not (lado_home / "lado.db").exists()
+    state.list_sessions()  # creates lado.db
+    agent_helpers.previous_schema()
+    answer = client.get("/api/kits")
+    assert answer.status_code == 503
+    assert state.schema_version() == state.SCHEMA_VERSION - 1
 
 
 def test_kits_are_listed_without_fetching_their_packs(client, repo, monkeypatch):

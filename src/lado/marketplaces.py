@@ -13,8 +13,8 @@ OFFICIAL_URL. It can be disabled, never removed.
 Each marketplace has a clone of its main branch in LADO_HOME/marketplaces/<name>/, a cache
 only: made on first use, brought up to date by `update`, and made again when its origin is
 not the marketplace's address. `lado kits add <kit> -m <marketplace>` looks a kit up in that
-clone (resolve); without -m LADO never looks in a marketplace. source_of reads the clones
-there are, never the network.
+clone (resolve); without -m LADO never looks in a marketplace. The kit's row in lado.db
+keeps the marketplace it was added from (lado.kits).
 """
 
 import datetime
@@ -125,22 +125,6 @@ def resolve(name: str, kit: str) -> str:
             f"lado marketplaces update {name}"
         )
     return listed[kit]
-
-
-def source_of(address: str) -> str | None:
-    """The first enabled marketplace whose clone lists `address`, or None. Reads only the
-    clones there are: never the network."""
-    for market in list_():
-        folder = root() / market.name
-        if not market.enabled or not (folder / LIST_FILE).is_file():
-            continue
-        try:
-            listed = _read(folder, url(market))
-        except MarketplaceError:
-            continue  # a broken list is reported where it is read on purpose
-        if address in listed.values():
-            return market.name
-    return None
 
 
 def _get(name: str) -> state.Marketplace:

@@ -139,7 +139,11 @@ def test_finish_of_unmerged_work_is_refused_and_discard_ends_it(client, session)
 def test_finish_of_a_run_worker_closes_only_its_window(client, session):
     run = state.Run("s", "feature/x", "feature", "{}", {}, "do x", "design", "/w", "b")
     state.add_run(run, [("lado", state.FLOW_START, "at design")], None)
-    state.add_agent(state.Agent("s", "dev", "developer", "/w", "b", "step", "idle", run=run.name))
+    state.add_agent(
+        state.Agent(
+            "s", "dev", "developer", "/w", "b", "step", "idle", run=run.name, provider="claude"
+        )
+    )
     preview = client.get(f"{AGENTS}/dev/finish-preview").json()
     assert (preview["removes_worktree"], preview["refused"]) == (False, None)
     answer = client.post(f"{AGENTS}/dev/finish", json={"discard": False})

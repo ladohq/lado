@@ -54,8 +54,17 @@ def test_test_repos_never_run_git_maintenance(tmp_path, monkeypatch):
 def failed_session(lado_home, monkeypatch):
     """Session "s" as a live test leaves it when it fails: w1 busy, its report queued, a hook
     error logged, w1's config written, two tmux windows with something on the screen."""
-    state.add_session(state.Session("s", "/r", None))
-    w1 = state.Agent("s", "w1", "worker", "/r/.lado/worktrees/s/w1", "lado/s/w1", "t", state.BUSY)
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    w1 = state.Agent(
+        "s",
+        "w1",
+        "worker",
+        "/r/.lado/worktrees/s/w1",
+        "lado/s/w1",
+        "t",
+        state.BUSY,
+        provider="claude",
+    )
     state.add_agent(w1)
     state.add_event("s", "w1", state.STATUS, state.BUSY)
     state.queue_message("s", "w1", "supervisor", "done", "details")

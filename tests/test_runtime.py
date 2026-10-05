@@ -170,6 +170,25 @@ def _broken_env():
     raise agent_env.AgentEnvError("your shell failed with exit status 1: zsh -ilc ...")
 
 
+@pytest.mark.parametrize(
+    ("given", "refused"),
+    [
+        ({"provider": "nope"}, 'unknown provider "nope"'),
+        ({"provider": "kilo", "permission_mode": "dontAsk"}, 'permission mode "dontAsk"'),
+    ],
+)
+@pytest.mark.parametrize("resumed", [False, True])
+def test_a_wrong_provider_or_mode_is_refused_before_the_login_shell(
+    repo, fake_tmux, monkeypatch, given, refused, resumed
+):
+    if resumed:
+        runtime.start_session(str(repo), "s", None, "claude")
+        runtime.stop_session("s")
+    monkeypatch.setattr(agent_env, "resolve", _broken_env)
+    with pytest.raises(runtime.LadoError, match=re.escape(refused)):
+        runtime.start_session(str(repo), "s", given.get("permission_mode"), given["provider"])
+
+
 def test_a_start_whose_environment_fails_launches_nothing(repo, fake_tmux, monkeypatch):
     monkeypatch.setattr(agent_env, "resolve", _broken_env)
     with pytest.raises(runtime.LadoError, match="your shell failed with exit status 1"):
@@ -2036,7 +2055,9 @@ def test_a_message_is_checked_once(repo, fake_tmux):
 def test_only_an_agent_is_told_it_may_write_to_the_human(repo, fake_tmux):
     question = _asked(repo)
     runtime.finish_worker("s", "w1", discard=True)
-    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "t", state.STOPPED))
+    state.add_agent(
+        state.Agent("s", "w1", "worker", "/w", "b", "t", state.STOPPED, provider="claude")
+    )
     for act in (
         lambda: runtime.write_as_human("s", "hi", to="nobody"),
         lambda: runtime.post("s", "lado", "nobody", "a step"),
@@ -2203,7 +2224,9 @@ def test_kit_users_are_the_sessions_that_name_the_kit_split_by_status(
     }
     for name, (kit_names, _) in sessions.items():
         (tmp_path / name).mkdir()
-        state.add_session(state.Session(name, str(tmp_path / name), None, kits=kit_names))
+        state.add_session(
+            state.Session(name, str(tmp_path / name), None, kits=kit_names, provider="claude")
+        )
     (tmp_path / "f" / ".lado" / "kits" / "tool").mkdir(parents=True)
     monkeypatch.setattr(runtime, "session_status", lambda sess: sessions[sess.name][1])
     users = runtime.kit_users("tool")

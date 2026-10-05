@@ -119,9 +119,10 @@ fixes and docs only: no new feature, no API or schema change.
     `provider: ...`): the provider of the folder's last session (`state.last_session`) if
     `installed`, else the only one installed, else none, and the start refuses with the
     installed ones and `--provider NAME`, or every install hint when none is. `installed`
-    is the caller's `shutil.which` (never `--version`): `start_session` resolves the
-    agents' environment first and looks on its PATH; the UI's folder check on the
-    server's. A resume keeps its stored provider. `stop_preview` and `forget_preview` say what a
+    is the caller's `shutil.which` (never `--version`): for that choice `start_session`
+    resolves the agents' environment first and looks on its PATH (a provider given or
+    stored, and its permission mode, are checked before the login shell runs); the UI's
+    folder check looks on the server's. A resume keeps its stored provider. `stop_preview` and `forget_preview` say what a
     stop or forget would do now, refused alike; `stop_session` and `forget_session` use
     them. So does `finish_worker` with `finish_preview`, which goes by `work_state`: where
     a worker's branch stands against the repo's current branch and what its worktree has

@@ -98,7 +98,7 @@ def test_what_waits_is_for_the_token_holder_only(session):
 
 
 def test_an_agent_says_why_it_waits_only_while_it_waits(client, session, monkeypatch):
-    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "task", "idle"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "task", "idle", provider="claude"))
     state.set_status("s", "w1", state.WAITING)
     asked = []
 
@@ -117,7 +117,11 @@ def test_an_agent_says_why_it_waits_only_while_it_waits(client, session, monkeyp
 
 def test_an_agent_says_its_run_and_the_first_line_of_its_task(client, session):
     task = "\nBuild the layout\nwith three columns"
-    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", task, "idle", run="feature/x"))
+    state.add_agent(
+        state.Agent(
+            "s", "w1", "worker", "/w", "b", task, "idle", run="feature/x", provider="claude"
+        )
+    )
     supervisor, worker = client.get("/api/sessions/s/agents").json()
     assert (supervisor["run"], supervisor["task"]) == (None, None)
     assert (worker["run"], worker["task"]) == ("feature/x", "Build the layout")

@@ -71,7 +71,7 @@ def is_change(kind: str, session: str):
 
 
 def test_a_stream_without_a_position_starts_with_reset_at_the_latest_change(streams):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     stream = streams()
     first = stream.next()
     assert (first.event, first.id) == ("reset", last_change())
@@ -82,7 +82,7 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
 ):
     stream = streams()
     stream.next()  # reset
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     added = stream.until(is_change("sessions", "s"))[-1]
     assert added.id == last_change()
     assert added.data == {
@@ -111,10 +111,10 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
 
 
 def test_the_item_is_the_rows_current_state_whatever_the_op(streams, fake_tmux):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     position = last_change()
     state.delete_session("s")
-    state.add_session(state.Session("s", "/new", None))
+    state.add_session(state.Session("s", "/new", None, provider="claude"))
     stream = streams(after=position)
     change = stream.next()
     # The delete and the insert are one change of the same row; the item is what is there.
@@ -141,7 +141,7 @@ def bare_run() -> state.Run:
 
 
 def test_a_runs_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     stream = streams()
     stream.next()
     state.add_run(bare_run(), [("lado", state.FLOW_START, "at design")])
@@ -160,7 +160,7 @@ def test_a_runs_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
 
 
 def test_a_notes_change_comes_with_its_item_in_the_form_of_the_rest_api(streams):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     run = bare_run()
     state.add_run(run, [])
     stream = streams()
@@ -187,7 +187,7 @@ def test_a_notes_change_comes_with_its_item_in_the_form_of_the_rest_api(streams)
 
 
 def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     stream = streams()
     stream.next()
     run = bare_run()
@@ -377,9 +377,9 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
 
 
 def test_a_position_replays_what_came_after_it_once_per_row(streams):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     position = last_change()
-    state.add_session(state.Session("t", "/r", None))
+    state.add_session(state.Session("t", "/r", None, provider="claude"))
     with state.connect() as db:
         for repo in ("/a", "/b", "/c"):
             db.execute("UPDATE sessions SET repo = ? WHERE name = 's'", (repo,))
@@ -393,16 +393,16 @@ def test_a_position_replays_what_came_after_it_once_per_row(streams):
 
 
 def test_last_event_id_counts_before_after(streams):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     middle = last_change()
-    state.add_session(state.Session("t", "/r", None))
+    state.add_session(state.Session("t", "/r", None, provider="claude"))
     stream = streams(after=0, last_id=middle)
     assert stream.next().data["session"] == "t"
 
 
 @pytest.mark.parametrize("gone", ["trimmed", "ahead"])
 def test_a_position_the_journal_no_longer_has_starts_with_reset(streams, gone):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     old = last_change()
     if gone == "trimmed":
         with state.connect() as db:
@@ -434,7 +434,7 @@ def test_another_schema_answers_503(streams, which):
 
 
 def test_another_schema_ends_an_open_stream(streams):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     stream = streams()
     stream.next()
     with state.connect() as db:
@@ -448,7 +448,7 @@ def test_without_a_database_the_stream_waits_for_one_and_creates_none(streams, f
     assert (first.event, first.id) == ("reset", 0)
     time.sleep(0.3)
     assert not (state.home() / "lado.db").exists()
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     assert stream.until(is_change("sessions", "s"))[-1].id == last_change()
 
 
@@ -469,7 +469,7 @@ def test_a_session_whose_tmux_is_gone_comes_without_an_id(streams, repo, fake_tm
 
 def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
-    state.add_session(state.Session("stopped", "/r", None))
+    state.add_session(state.Session("stopped", "/r", None, provider="claude"))
     state.stop_session("stopped")
     position = last_change()
     fake_tmux.append(("kill_session", "s"))  # while no stream was open
@@ -513,7 +513,7 @@ def broken_journal(monkeypatch):
 def test_a_journal_that_cannot_be_read_ends_the_streams_and_new_ones_get_503(
     streams, monkeypatch, caplog
 ):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     stream = streams()
     stream.next()
     broken_journal(monkeypatch)
@@ -540,13 +540,13 @@ def test_a_pass_that_keeps_failing_ends_each_new_stream_too(streams, monkeypatch
         stream = streams()
         assert stream.status == 200, round
         stream.next()
-        state.add_session(state.Session(f"s{round}", "/r", None))
+        state.add_session(state.Session(f"s{round}", "/r", None, provider="claude"))
         assert stream.closed.wait(5), round
 
 
 def test_the_journal_is_read_only(streams):
     """The server never writes lado.db: not even to trim the journal."""
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     path = state.home() / "lado.db"
     db = sqlite3.connect(path)
     db.execute("PRAGMA wal_checkpoint(TRUNCATE)")

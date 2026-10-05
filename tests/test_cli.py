@@ -550,7 +550,7 @@ def test_kits_update_does_not_ask_and_warns_about_new_mcp_servers(
 def _sessions_using(tmp_path, monkeypatch, kit, **statuses):
     """Sessions named by `statuses` (name -> runtime.SessionStatus) whose kits name `kit`."""
     for name in statuses:
-        state.add_session(state.Session(name, str(tmp_path), None, kits=[kit]))
+        state.add_session(state.Session(name, str(tmp_path), None, kits=[kit], provider="claude"))
     monkeypatch.setattr(runtime, "session_status", lambda sess: statuses[sess.name])
 
 

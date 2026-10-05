@@ -222,7 +222,7 @@ def test_an_answer_needs_the_servers_own_origin(client, session):
 def test_what_waits_for_the_human_is_one_list_counted_by_each_session(client, session):
     gate = at_gate()
     runtime.ask_human("s", "supervisor", "Ship?", "Tests pass.", ["yes"])
-    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "task", "idle"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "task", "idle", provider="claude"))
     state.set_status("s", "w1", state.WAITING)
     answer = client.get("/api/waiting")
     assert answer.status_code == 200

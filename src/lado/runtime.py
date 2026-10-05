@@ -290,10 +290,11 @@ def start_session(
                 f"{repo}, give it another name with --name, or drop the old one with "
                 f"`lado forget {session}`"
             )
-    # Resolved before the provider is chosen: a new session's is the one on the agents' PATH.
-    base_env = _base_env()
-    chosen = None
+    base_env, chosen = None, None
     if not provider and not old:
+        # Resolved before the provider is chosen: it is the one on the agents' PATH. A
+        # provider given or stored is checked first, without waiting for the login shell.
+        base_env = _base_env()
         chosen = _new_sessions_provider(repo, base_env)
     agent_cli = _provider(provider or (old.provider if old else chosen.provider))
     sess = state.Session(
@@ -306,6 +307,8 @@ def start_session(
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(repo, sess.kits, sess.without)
+    if base_env is None:
+        base_env = _base_env()
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )

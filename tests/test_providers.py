@@ -107,8 +107,10 @@ def test_claude_hooks_leave_the_human_s_answer_to_the_human(repo, fake_tmux):
 
 
 def _claude_settings(repo, mode=None):
-    sess = state.Session("s", str(repo), mode)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), mode, provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv
     return json.loads(open(cmd[cmd.index("--settings") + 1]).read())["hooks"]
@@ -508,8 +510,10 @@ def skill_dir(tmp_path):
 
 
 def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
-    sess = state.Session("s", str(repo), None)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     claude = providers.get("claude")
     cmd = claude.launch_command(agent, sess, _spec_with_kit_parts(agent, skill_dir)).argv
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
@@ -531,8 +535,10 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
 
 
 def test_claude_agent_cannot_use_built_in_agent_messaging(repo):
-    sess = state.Session("s", str(repo), "bypassPermissions")
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), "bypassPermissions", provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv
     settings = json.loads(open(cmd[cmd.index("--settings") + 1]).read())
@@ -558,8 +564,10 @@ def test_opencode_family_gets_skills_and_kit_mcp(repo, skill_dir, provider):
 
 
 def test_claude_may_read_the_folders_of_spec_read(repo, skill_dir, tmp_path):
-    sess = state.Session("s", str(repo), None)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     read = [tmp_path / "files", tmp_path / "more"]
     spec = providers.AgentSpec("the role", skills={"notes": skill_dir}, read=read)
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv

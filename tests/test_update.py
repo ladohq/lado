@@ -274,7 +274,7 @@ def test_update_shows_the_plan_and_asks(installed, repo, fake_tmux, capsys, monk
 
 
 def _gone(repo, name):
-    state.add_session(state.Session(name, str(repo), None))  # no tmux session
+    state.add_session(state.Session(name, str(repo), None, provider="claude"))  # no tmux session
 
 
 def test_update_without_a_terminal_needs_yes(installed, capsys, monkeypatch):

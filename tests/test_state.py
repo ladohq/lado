@@ -105,13 +105,21 @@ def test_installed_kits_are_added_replaced_and_removed(lado_home):
     assert team.updated_at is None
     assert [k.name for k in state.list_kits()] == ["local", "team"]
     # An update moves the version and keeps where it came from and when it was installed.
-    state.replace_kit("team", "file:///team.git", "v1.1.0", "def")
+    assert state.replace_kit("team", "file:///team.git", "v1.1.0", "def") is True
     updated = state.get_kit("team")
     assert (updated.tag, updated.commit, updated.marketplace) == ("v1.1.0", "def", "ours")
     assert updated.installed_at == team.installed_at and updated.updated_at is not None
     assert state.delete_kit("team")
     assert not state.delete_kit("team")
     assert state.get_kit("team") is None
+    # Nothing to move: the kit is gone.
+    assert state.replace_kit("team", "file:///team.git", "v1.2.0", "123") is False
+    assert state.get_kit("team") is None
+
+
+def test_an_incomplete_kit_row_is_an_error_not_a_name_taken(lado_home):
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+        state.add_kit(state.InstalledKit("team", address="file:///team.git", tag="v1.0.0"))
 
 
 @pytest.mark.parametrize(

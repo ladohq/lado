@@ -569,7 +569,8 @@ def install(plan: Install) -> Kit:
     an update (the old version stays in the cache)."""
     if plan.installed is not None:
         assert plan.tag is not None and plan.commit is not None
-        state.replace_kit(plan.name, plan.address, plan.tag, plan.commit)
+        if not state.replace_kit(plan.name, plan.address, plan.tag, plan.commit):
+            raise KitError(f'kit "{plan.name}" is no longer installed; `lado kits add` it again')
     else:
         git = plan.tag is not None
         row = state.InstalledKit(

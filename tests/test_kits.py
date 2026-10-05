@@ -1273,6 +1273,18 @@ def test_add_refuses_a_name_installed_already(tmp_path, lado_home):
     assert state.get_kit("team").folder == str(first.resolve())
 
 
+def test_an_update_of_a_kit_removed_meanwhile_is_refused(tmp_path, lado_home):
+    work, url = kit_repo(tmp_path, "1.0.0")
+    kits.install(kits.plan_add(url))
+    publish(work, {"kit.yaml": TEAM.replace("1.0.0", "1.1.0")}, "v1.1.0")
+    plan = kits.plan_update("team")
+    kits.remove("team")  # by another process, while the update was planned
+    with pytest.raises(kits.KitError) as exc:
+        kits.install(plan)
+    assert str(exc.value) == 'kit "team" is no longer installed; `lado kits add` it again'
+    assert rows(lado_home) == []
+
+
 def test_update_goes_to_the_latest_and_names_new_mcp_servers(tmp_path, repo, lado_home):
     work, url = kit_repo(tmp_path, "1.0.0")
     kits.install(kits.plan_add(url))

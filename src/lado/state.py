@@ -1846,25 +1846,27 @@ def get_kit(name: str) -> InstalledKit | None:
 
 
 def add_kit(kit: InstalledKit) -> bool:
-    """False, with nothing changed, when a kit of that name is installed already."""
+    """False, with nothing changed, when a kit of that name is installed already. An
+    incomplete row is an IntegrityError (not OR IGNORE: that would pass over CHECK too)."""
     with connect() as db:
         added = db.execute(
-            'INSERT OR IGNORE INTO kits (name, address, tag, "commit", folder, marketplace) '
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            'INSERT INTO kits (name, address, tag, "commit", folder, marketplace) '
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
             (kit.name, kit.address, kit.tag, kit.commit, kit.folder, kit.marketplace),
         ).rowcount
     return added == 1
 
 
-def replace_kit(name: str, address: str, tag: str, commit: str) -> None:
+def replace_kit(name: str, address: str, tag: str, commit: str) -> bool:
     """Move kit `name`, installed from git, to another version; where it came from and
-    when it was installed stay."""
+    when it was installed stay. False when no kit of that name is installed."""
     with connect() as db:
-        db.execute(
-            "UPDATE kits SET address = ?, tag = ?, \"commit\" = ?, updated_at = datetime('now') "
-            "WHERE name = ?",
+        changed = db.execute(
+            'UPDATE kits SET address = ?, tag = ?, "commit" = ?, '
+            "updated_at = datetime('now') WHERE name = ?",
             (address, tag, commit, name),
-        )
+        ).rowcount
+    return changed == 1
 
 
 def delete_kit(name: str) -> bool:

@@ -179,3 +179,11 @@ def test_a_stop_during_a_repeating_error_is_no_recovery(repo, fake_tmux, monkeyp
     assert "passes work again" not in log  # the last pass swept nothing
     assert "the same error repeated 2 more times" in log
     assert log.splitlines()[-1].endswith("s: loop ended: the session is stopped")
+
+
+def test_wait_stopped_waits_for_the_loop_to_let_go_of_its_lock(lado_home):
+    held = loop.take_lock("s")
+    assert not loop.wait_stopped("s", timeout=0.2)
+    threading.Timer(0.2, held.close).start()
+    assert loop.wait_stopped("s", timeout=5)
+    assert loop.wait_stopped("never-ran", timeout=0)

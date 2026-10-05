@@ -77,6 +77,17 @@ def running(session: str) -> bool:
     return False
 
 
+def wait_stopped(session: str, timeout: float = 3 * INTERVAL) -> bool:
+    """Whether the session's loop has ended within `timeout` seconds: after a stop it ends
+    at its next pass. `lado update` waits for it, so no loop of the old LADO is left."""
+    deadline = time.monotonic() + timeout
+    while running(session):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
 def start(session: str) -> None:
     """Start the session's loop as a process of its own, outside tmux, that outlives the
     command starting it. If one runs already, the new one exits after LOCK_WAIT."""

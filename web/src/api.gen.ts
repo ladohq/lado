@@ -21,6 +21,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Update Info
+         * @description Whether a newer LADO is out. A plain `def`: FastAPI runs it in a worker thread,
+         *     so the check's look at PyPI (once a day) holds up no other request.
+         */
+        get: operations["update_info_api_update_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -1592,6 +1613,20 @@ export interface components {
             /** Repo */
             repo: string;
         };
+        /**
+         * UpdateInfo
+         * @description This LADO's version and what the daily update check found (lado.update.check).
+         */
+        UpdateInfo: {
+            /** Current */
+            current: string;
+            /** Latest */
+            latest: string | null;
+            /** Available */
+            available: string | null;
+            /** Checked At */
+            checked_at: string | null;
+        };
         /** UpdateKit */
         UpdateKit: {
             /** Tag */
@@ -1707,6 +1742,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    update_info_api_update_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
                 };
             };
         };

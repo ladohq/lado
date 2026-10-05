@@ -8,7 +8,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from lado import agent_env, providers, terminal, tmux
+from lado import __version__, agent_env, providers, terminal, tmux, update
 
 
 @dataclass
@@ -124,8 +124,20 @@ def check_agent_env() -> Check:
     return check
 
 
+def check_lado() -> Check:
+    """This LADO's version and whether a newer one is out (update.check: once a day)."""
+    checked = update.check()
+    if checked is None:
+        return Check("LADO", True, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)")
+    hints = [h for h in (update.available_line(checked), checked.error) if h]
+    if hints:
+        return Check("LADO", True, __version__, "; ".join(hints), warning=True)
+    return Check("LADO", True, f"{__version__}, the latest version")
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     return [
+        check_lado(),
         Check("Python", True, platform.python_version()),
         check_tmux(which),
         check_agent_env(),

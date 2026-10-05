@@ -55,6 +55,11 @@ export type Health = components["schemas"]["Health"];
 // The server's LADO version; needs no token.
 export const getHealth = () => get<Health>("/api/health");
 
+export type UpdateInfo = components["schemas"]["UpdateInfo"];
+
+// Whether a newer LADO is out (the server looks once a day).
+export const getUpdate = () => get<UpdateInfo>("/api/update");
+
 const agentsPath = (session: string) => `${sessionPath(session)}/agents`;
 
 export const getAgents = (session: string) => get<AgentInfo[]>(agentsPath(session));

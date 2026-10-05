@@ -639,3 +639,31 @@ def test_ui_names_server_log_when_the_server_does_not_come_up(capsys, monkeypatc
 def test_server_refuses_an_ipv6_host(capsys):
     assert cli.main(["server", "--host", "::"]) == 1
     assert "IPv6 is not supported yet" in capsys.readouterr().err
+
+
+def test_update_tells_the_version_and_a_newer_one(client, published):
+    published(**{"99.0.0": "2026-10-04"})
+    answer = authorized(client).get("/api/update").json()
+    assert answer["current"] == __version__
+    assert (answer["latest"], answer["available"]) == ("99.0.0", "99.0.0")
+    assert answer["checked_at"]
+    assert client.get("/api/update").json() == answer  # the cache, no new look
+    assert (state.home() / "update-check.json").exists()
+
+
+def test_update_of_the_latest_version_and_with_the_check_off(client, published, monkeypatch):
+    published(**{__version__: "2026-10-04"})
+    answer = authorized(client).get("/api/update").json()
+    assert (answer["latest"], answer["available"]) == (__version__, None)
+    monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
+    (state.home() / "update-check.json").unlink()
+    assert client.get("/api/update").json() == {
+        "current": __version__,
+        "latest": None,
+        "available": None,
+        "checked_at": None,
+    }
+
+
+def test_update_needs_the_token(client):
+    assert client.get("/api/update").status_code == 401

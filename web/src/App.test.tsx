@@ -36,12 +36,18 @@ const AGENTS: AgentInfo[] = [
 // The LADO version /api/health answers (it needs no token): the bundle's own unless a test
 // sets another.
 let serverVersion = BUNDLE_VERSION;
+// The newer LADO /api/update names, if any.
+let available: string | null = null;
 
 // The API: /api/sessions answers `status` and `body`; a request for the event stream (the
 // shell asking why one was refused) answers `events`, or the same as /api/sessions.
 function serve(status = 200, body: unknown = SESSIONS, events?: { status: number; body: unknown }) {
   const fetch = vi.fn(async (path: string) => {
     if (path === "/api/health") return new Response(JSON.stringify({ ok: true, version: serverVersion }));
+    if (path === "/api/update") {
+      const update = { current: BUNDLE_VERSION, latest: available, available, checked_at: null };
+      return new Response(JSON.stringify(update));
+    }
     if (path.startsWith("/api/events")) {
       const answer = events ?? { status, body: status === 200 ? "" : body };
       return new Response(JSON.stringify(answer.body), { status: answer.status });
@@ -91,9 +97,11 @@ function change(session: string, item: SessionInfo | null, op = "update") {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   delete document.documentElement.dataset.theme;
   wide(true);
   serverVersion = BUNDLE_VERSION;
+  available = null;
   serve();
   FakeEventSource.all = [];
   FakeEventSource.autoStart = true;
@@ -229,19 +237,65 @@ test("a server of the bundle's own version shows no banner", async () => {
 });
 
 test.each(["/", "/sessions", "/settings"])(
-  "on %s, a server of another version shows a banner that says what to do",
+  "on %s, a server of another version shows a banner that first offers a reload",
   async (path) => {
     serverVersion = "0.0.1";
     serve();
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
     open(path);
     const banner = await screen.findByRole("alert");
     expect(banner.textContent).toBe(
-      `This page is LADO ${BUNDLE_VERSION}, the server runs 0.0.1: run lado server stop, then lado ui.`,
+      `This page is LADO ${BUNDLE_VERSION}, the server runs 0.0.1: reload the page.Reload`,
     );
-    const commands = Array.from(banner.querySelectorAll("code"), (code) => code.textContent);
-    expect(commands).toEqual(["lado server stop", "lado ui"]);
+    expect(banner.querySelector("code")).toBeNull();
+    fireEvent.click(within(banner).getByRole("button", { name: "Reload" }));
+    expect(reload).toHaveBeenCalled();
   },
 );
+
+test("after a reload that did not help, the banner says to restart the server", async () => {
+  serverVersion = "0.0.1";
+  serve();
+  const reload = vi.fn();
+  vi.stubGlobal("location", { ...window.location, reload });
+  const first = open("/");
+  fireEvent.click(await screen.findByRole("button", { name: "Reload" }));
+  first.unmount(); // the page loads again, of the same version
+  open("/");
+  const banner = await screen.findByRole("alert");
+  expect(banner.textContent).toBe(
+    `This page is LADO ${BUNDLE_VERSION}, the server runs 0.0.1, also after a reload: run lado server stop, then lado ui.`,
+  );
+  const commands = Array.from(banner.querySelectorAll("code"), (code) => code.textContent);
+  expect(commands).toEqual(["lado server stop", "lado ui"]);
+});
+
+test("a reload for another server version than this one's does not count", async () => {
+  sessionStorage.setItem("lado.reloadedFor", "0.0.2");
+  serverVersion = "0.0.1";
+  serve();
+  open("/");
+  expect((await screen.findByRole("alert")).textContent).toContain("reload the page");
+});
+
+// A newer LADO on PyPI (/api/update)
+
+test("a newer LADO is named with the command that installs it", async () => {
+  available = "99.0.0";
+  serve();
+  open("/");
+  const line = await screen.findByText(/is available/);
+  expect(line.textContent).toBe("LADO 99.0.0 is available: run lado update");
+  expect(line.querySelector("code")?.textContent).toBe("lado update");
+});
+
+test("without a newer LADO nothing is said", async () => {
+  const fetch = serve();
+  open("/");
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/update", expect.anything()));
+  expect(screen.queryByText(/is available/)).toBeNull();
+});
 
 // Sessions
 

@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from agent_helpers import init_repo, no_maintenance_env
+from agent_helpers import init_repo, no_maintenance_env, write_index
 
 # Tests never use the user's LADO tmux server (socket "lado").
 TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
@@ -22,6 +22,10 @@ os.environ.update(no_maintenance_env(os.environ))
 # Agents get the test run's environment (the settings above, LADO_RETRY_DELAYS), not the
 # user's login shell; tests of the shell set their own.
 os.environ["LADO_AGENT_ENV"] = "inherit"
+
+# No test looks up LADO's latest version on PyPI; the tests of the check switch it on with a
+# local index (LADO_UPDATE_INDEX).
+os.environ["LADO_NO_UPDATE_CHECK"] = "1"
 
 
 def _kill_tmux_server(socket: str) -> None:
@@ -49,6 +53,16 @@ def lado_home(tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_HOME", str(home))
     monkeypatch.setenv("LADO_TMUX_SOCKET", TEST_SOCKET)
     return home
+
+
+@pytest.fixture
+def published(tmp_path, monkeypatch):
+    """The update check switched on, reading a local index: published(**releases) writes it
+    (agent_helpers.pypi_index)."""
+    path = tmp_path / "pypi-index.json"
+    monkeypatch.delenv("LADO_NO_UPDATE_CHECK", raising=False)
+    monkeypatch.setenv("LADO_UPDATE_INDEX", str(path))
+    return lambda **releases: write_index(path, **releases)
 
 
 @pytest.fixture

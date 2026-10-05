@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, kits, marketplaces, runs, runtime, state, terminal
+from lado import __version__, kits, marketplaces, runs, runtime, state, terminal, update
 from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
@@ -60,6 +60,7 @@ from lado.server.models import (
     Stopped,
     StopPreview,
     Taken,
+    UpdateInfo,
     UpdateKit,
     WaitingItem,
 )
@@ -190,6 +191,20 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     @app.get("/api/health")
     def health() -> Health:
         return Health(ok=True, version=__version__)
+
+    @app.get("/api/update", dependencies=[Depends(guard)])
+    def update_info() -> UpdateInfo:
+        """Whether a newer LADO is out. A plain `def`: FastAPI runs it in a worker thread,
+        so the check's look at PyPI (once a day) holds up no other request."""
+        checked = update.check()
+        if checked is None:
+            return UpdateInfo(current=__version__, latest=None, available=None, checked_at=None)
+        return UpdateInfo(
+            current=checked.current,
+            latest=checked.latest,
+            available=checked.available,
+            checked_at=checked.checked_at,
+        )
 
     @app.get("/api/sessions", dependencies=[Depends(guard)])
     def sessions(has_db: bool = Depends(database)) -> list[SessionInfo]:

@@ -22,6 +22,25 @@
         }
       }
     },
+    "/api/update": {
+      "get": {
+        "summary": "Update Info",
+        "description": "Whether a newer LADO is out. A plain `def`: FastAPI runs it in a worker thread,\nso the check's look at PyPI (once a day) holds up no other request.",
+        "operationId": "update_info_api_update_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions": {
       "get": {
         "summary": "Sessions",
@@ -4469,6 +4488,56 @@
         ],
         "title": "Taken",
         "description": "The detail of a 409 to a new session: the session that has the name."
+      },
+      "UpdateInfo": {
+        "properties": {
+          "current": {
+            "type": "string",
+            "title": "Current"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current",
+          "latest",
+          "available",
+          "checked_at"
+        ],
+        "title": "UpdateInfo",
+        "description": "This LADO's version and what the daily update check found (lado.update.check)."
       },
       "UpdateKit": {
         "properties": {

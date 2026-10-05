@@ -138,6 +138,9 @@ too. Also, a LADO upgraded in place (`pip install -U`) while a session runs migr
 that session's own hooks, which run the new code, under its older MCP servers. Wanted: a
 stop that kills the session before it opens the database, or one `lado stop --all`.
 Found: 2026-10-02, migration guard (fix/migration-guard).
+Update (2026-10-05, feature/self-update): `lado update` stops every running session with the
+old code before the new one migrates; upgrading by hand (`pip install -U`, `lado stop` of
+one session) is still exposed.
 
 ## The running-session check sees one tmux socket
 
@@ -147,6 +150,9 @@ database is migrated under it.
 Wanted: store the socket with the session and check that one (or say in the refusal and the
 docs that the check sees one socket). An edge case.
 Found: 2026-10-02, review of run fix/migration-guard.
+Update (2026-10-05, feature/self-update): `lado update` sees only the sessions on the current
+`LADO_TMUX_SOCKET` too: it does not stop a session on another socket and the new version
+migrates the database under it. Its plan says which socket it sees.
 
 ## A missing tmux binary crashes the CLI with a traceback
 
@@ -177,6 +183,10 @@ Found: 2026-10-02, review of run fix/session-loop.
 After upgrading LADO without a schema change, a running loop goes on with the old code until
 `lado stop`; `lado doctor` and `lado ls` do not show it. Low priority.
 Found: 2026-10-02, review of run fix/session-loop.
+Update (2026-10-05, feature/self-update): not after `lado update`, which stops each session
+and waits for its loop to end (`loop.wait_stopped`) before installing. An upgrade by hand
+still leaves it, and plain `lado stop` does not wait for the loop: a quick `lado start`
+after it can meet the old loop for up to `loop.INTERVAL`.
 
 ## A gate shows a needed note twice when it is the note before the gate
 
@@ -393,15 +403,6 @@ gate for a few lines.
 Wanted: an addendum to an open run (from the supervisor, approved by the human), kept in
 `notes` and shown to every later step and gate after the design note.
 Found: 2026-10-03, feature/ui-polish.
-
-## The version banner gives a stale tab the wrong advice
-
-A tab opened before an upgrade keeps its old bundle. Once `lado ui` restarts the server,
-that tab sees the new server's version and says to run `lado server stop` and `lado ui`,
-though reloading the page is enough. Stopping the server is needless there.
-Wanted: the banner first offers to reload the page, and names `lado server stop` and
-`lado ui` only when the versions still differ after a reload.
-Found: 2026-10-03, review of fix/stale-ui-server.
 
 ## `lado stop` kills agents without a graceful exit
 
@@ -769,6 +770,26 @@ go unnoticed. Wanted: the e2e test checks `overflow-y` of `.strip-icons`, or fil
 and checks that the buttons keep their place.
 Found: 2026-10-05, review of feature/sessions-list-collapse (Minor 1).
 
+## Agents lose their conversation at every restart of a session
+
+`lado stop` then `lado start`, and so `lado update`, start every agent anew: the supervisor
+and the workers of open runs begin a new conversation and only get what LADO tells them
+(the open runs' state), not what they were in the middle of. A busy agent loses its turn.
+Wanted: a session that survives a restart: each provider can continue a conversation
+(Claude Code `--resume <id>`, Kilo's own way), the runtime keeps each agent's conversation
+id, and a resume starts the supervisor and the run workers with their conversations. Worth
+an item in ROADMAP.md; `lado update` would then need no change.
+Found: 2026-10-05, design of feature/self-update.
+
+## `lado update`'s installer commands are not tried against real uv and pipx
+
+The tests run a fake installer (`LADO_UPDATE_INSTALLER`) and read hand-written receipts. That
+`uv tool install lado==X` (with the receipt's `--python` and `--with`) replaces an installed
+tool's version and keeps its options, and that `pipx install --force lado==X` keeps
+injected packages, comes from their documentation, not from a test.
+Wanted: a live test (not in CI) that installs an old LADO with uv tool and with pipx into a
+temp tool dir, runs `lado update` against PyPI and checks the version and the options after.
+Found: 2026-10-05, feature/self-update (implement).
 ## An agent whose turn ends on an API error stays busy
 
 After the computer slept, the reviewer's turn ended in Claude Code with `API Error: Your
@@ -813,3 +834,22 @@ putting the default kit back, so a product race is not ruled out.
 Wanted: if the kits test still fails with the wait, look for a load that resets the kits
 after the human removed them.
 Found: 2026-10-05, run feature/session-head (developer, reviewer).
+## Flaky: two kits' skill packs test times out waiting for a worker under load
+
+`tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack` failed
+once in a full `make check`: `timed out after 30s waiting for dev1 to be idle; agents:
+supervisor idle, dev1 busy, dev2 starting`; alone and on a rerun it passed. The machine may
+have slept during that run.
+Wanted: the test waits for the event it needs rather than for both workers within a fixed
+30 s under a parallel run (or a timeout that holds under load).
+Found: 2026-10-05, review of feature/self-update.
+
+## `lado update` by hand suggests a pip that may not be there
+
+For an install it does not upgrade itself, `lado update` prints `<prefix>/bin/pip install
+lado==X`. A venv made by uv (also a uv tool install of a working copy) has no pip, and for a
+working copy that command would replace it with the PyPI release.
+Wanted: the hint follows what was found: a uv tool or pipx install not from an index: update
+the working copy yourself (git pull), then restart the sessions; a venv without pip:
+`uv pip install --python <prefix>/bin/python lado==X`; only a venv with pip: `<prefix>/bin/pip`.
+Found: 2026-10-05, second review of feature/self-update.

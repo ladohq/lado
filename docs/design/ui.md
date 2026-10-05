@@ -80,9 +80,19 @@ later desktop app and a later cloud setup; the UI is its client.
   `lado server stop`. The bundle knows the version it was built for (`__LADO_VERSION__`,
   taken from `pyproject.toml` by `web/vite.config.ts` at build time) and compares it with
   `/api/health`'s each time the change feed opens: when they differ, every page shows a
-  banner (`role="alert"`) that names both versions and says to run `lado server stop`, then
-  `lado ui`. A list a page cannot load (e.g. a 404 from an older server) shows the API's
-  error, never an empty page.
+  banner (`role="alert"`) that names both versions and offers to reload the page (a
+  Reload button): mostly the tab is the old one, opened before an upgrade. The tab keeps
+  the server version it reloaded for (`sessionStorage`); when the versions still differ
+  after that reload, the banner says to run `lado server stop`, then `lado ui`. A list a
+  page cannot load (e.g. a 404 from an older server) shows the API's error, never an empty
+  page.
+- A newer LADO: `GET /api/update` (`UpdateInfo`: `current`, `latest`, `available`,
+  `checked_at`) gives what the daily update check found (`lado.update.check`, the rule
+  `lado ls` and `lado doctor` share; a plain `def`, so its look at PyPI holds up no other
+  request). Asked each time the change feed opens; when a newer version is `available`,
+  one quiet line under the top bar says `LADO X.Y.Z is available: run lado update`. A
+  failed check shows nothing here (`lado doctor` says why). `lado update` restarts the
+  server on the new version, on the same host and port.
 - Host (decided 2026-10-04): 127.0.0.1 by default; `--host` takes any IPv4 address or name
   (`lado server`, and `lado ui` for a server it starts), e.g. `0.0.0.0` to open the UI of a
   remote host from another machine. An IPv6 address is refused (not supported yet). A

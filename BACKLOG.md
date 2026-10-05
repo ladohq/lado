@@ -810,3 +810,13 @@ have slept during that run.
 Wanted: the test waits for the event it needs rather than for both workers within a fixed
 30 s under a parallel run (or a timeout that holds under load).
 Found: 2026-10-05, review of feature/self-update.
+
+## `lado update` by hand suggests a pip that may not be there
+
+For an install it does not upgrade itself, `lado update` prints `<prefix>/bin/pip install
+lado==X`. A venv made by uv (also a uv tool install of a working copy) has no pip, and for a
+working copy that command would replace it with the PyPI release.
+Wanted: the hint follows what was found: a uv tool or pipx install not from an index: update
+the working copy yourself (git pull), then restart the sessions; a venv without pip:
+`uv pip install --python <prefix>/bin/python lado==X`; only a venv with pip: `<prefix>/bin/pip`.
+Found: 2026-10-05, second review of feature/self-update.

@@ -357,8 +357,9 @@ def test_opencode_permission_modes(repo, lado_home, mode, flags, permission):
     assert launch.argv == ["opencode", *flags]
     readable = {"external_directory": {f"{lado_home}/**": "allow"}}
     assert config["permission"] == {**readable, **permission}
+    # OpenCode's plan agent runs bash without asking (1.18.34); plan changes nothing unasked.
     assert config.get("agent") == (
-        {"plan": {"permission": {"lado_*": "allow"}}} if mode == "plan" else None
+        {"plan": {"permission": {"lado_*": "allow", "bash": "ask"}}} if mode == "plan" else None
     )
     hooks_ = config["plugin"][0][1]["hooks"]
     for event in ("permission.asked", "permission.replied"):

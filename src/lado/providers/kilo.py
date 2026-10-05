@@ -21,13 +21,13 @@ class KiloProvider(opencode_family.OpenCodeFamily):
     install_hint = "install it: `npm install -g @kilocode/cli`"
     tested_version = TESTED_VERSION
     config_file_name = "kilo.json"
-    # How launch_command maps them (checked with `kilo agent list`, Kilo 7.8.1): Kilo's
-    # default agent edits without asking and asks before bash, which is acceptEdits as is.
 
     def permission(self, mode, spec):
+        # Kilo's default agent edits without asking and asks before bash (`kilo agent list`,
+        # Kilo 7.8.1): `default` adds `edit: ask`, acceptEdits is Kilo as is.
         permission = super().permission(mode, spec)
         if mode == "default":
-            permission["edit"] = "ask"  # Kilo's default agent edits without asking
+            permission["edit"] = "ask"
         return permission
 
     def bypass_argv(self) -> list[str]:

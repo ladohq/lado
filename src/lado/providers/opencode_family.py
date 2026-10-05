@@ -68,8 +68,9 @@ class OpenCodeFamily(base.Provider):
     ) -> dict:
         events = list(EVENTS)
         if mode == "bypassPermissions":
-            # Kilo 7.8.3's --auto still announces each permission and approves it at once:
-            # not a wait. OpenCode's --auto (1.18.34) approves them too; neither is reported.
+            # --auto approves each permission at once, with no dialog: not a wait (Kilo
+            # 7.8.3, which still announces them; OpenCode 1.18.34, checked by hand in a
+            # session of mode bypassPermissions, see opencode.py).
             events.remove("permission.asked")
             events.remove("permission.replied")
         config = {
@@ -106,8 +107,12 @@ class OpenCodeFamily(base.Provider):
             # The plan agent denies every tool it does not list, LADO's MCP tools too (Kilo
             # 7.8.1); its own rules come after the global ones (`opencode debug agent plan`,
             # OpenCode 1.18.34), so this allow wins.
-            config["agent"] = {"plan": {"permission": {"lado_*": "allow"}}}
+            config["agent"] = {"plan": {"permission": self.plan_permission()}}
         return config
+
+    def plan_permission(self) -> dict:
+        """The plan agent's own rules; a subclass adds what its plan agent lacks."""
+        return {"lado_*": "allow"}
 
     def permission(self, mode: str | None, spec: base.AgentSpec) -> dict:
         """The agent's `permission` rules; a subclass adds what its modes ask."""

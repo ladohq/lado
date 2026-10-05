@@ -791,3 +791,23 @@ role when LADO's messages ("step needs a worker", "run ended") reach it.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
+
+## A parent OpenCode or Kilo agent's variables reach the agents started from its shell
+
+`tmux._INHERITED_AGENT_VARS` and `_INHERITED_AGENT_PREFIXES` drop only Claude Code's
+variables. An OpenCode or Kilo agent's `OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_CONTENT`
+(the whole config, with hooks `--session … --agent …`) and `*_DISABLE_AUTOUPDATE` go on to
+an agent started from its shell with `LADO_AGENT_ENV=inherit` (the tests), and to an
+`opencode` or `kilo` the agent runs itself: that nested CLI's plugin would report hooks as
+the outer agent.
+Wanted: drop the OpenCode family's agent variables as Claude Code's are, with a unit test in
+test_tmux / agent_env.
+Found: 2026-10-05, review of feature/opencode-provider (Found on the way).
+
+## The lado-dev kit's lado-checks skill names the old plugin and providers
+
+Its table says "The Kilo plugin works" after a change to `kilo_plugin.js`, and
+`make test-live PROVIDER=claude` or `kilo`. The plugin is now `opencode_plugin.js` (OpenCode
+and Kilo) and `PROVIDER=claude|kilo|opencode`.
+Wanted: update the skill in the kit's own repository (kit-lado-dev), not in LADO.
+Found: 2026-10-05, review of feature/opencode-provider (Found on the way).

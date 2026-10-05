@@ -27,10 +27,16 @@ class OpenCodeProvider(opencode_family.OpenCodeFamily):
     # build`, 1.18.34): its default agent allows everything but external_directory and
     # doom_loop, which it asks about, so bash and edits run without asking; the plan agent
     # denies edits (but its plans) and allows bash. No mode keeps OpenCode's own defaults, as
-    # with Kilo. `default` asks before edits and bash,
-    # `acceptEdits` before bash, `plan` adds nothing: a global `edit: ask` would come after
-    # the plan agent's deny and let it edit. `--auto` (1.18.34: "auto-approve permissions
-    # that are not explicitly denied") approves the rest.
+    # with Kilo. `default` asks before edits and bash, `acceptEdits` before bash. `plan`
+    # adds no global rule (a global `edit: ask` would come after the plan agent's deny and
+    # let it edit) but asks before bash in the plan agent, whose own rules come last: plan
+    # changes nothing unasked, as in Claude Code. `--auto` ("auto-approve permissions that
+    # are not explicitly denied") approves the rest: checked by hand with 1.18.34, mode
+    # bypassPermissions, a read outside the repo (external_directory: ask by default) ran
+    # with no dialog and the agent never `waiting`.
+
+    def plan_permission(self) -> dict:
+        return {**super().plan_permission(), "bash": "ask"}
 
     def permission(self, mode, spec):
         permission = super().permission(mode, spec)

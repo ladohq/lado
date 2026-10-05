@@ -779,3 +779,15 @@ leak as "Claude agents load the user's global Claude Code plugins".
 Wanted: decide which outside skills an agent may see, and keep the others away without
 touching the user's global config.
 Found: 2026-10-05, design of run feature/opencode-provider.
+
+## Flaky: Kilo live flow test, the passive supervisor acts on its own
+
+`make test-live PROVIDER=kilo`, `test_a_flow_run_moves_on_when_its_worker_reports[kilo]`
+on `kilo/kilo-auto/free` failed twice in three runs: the supervisor, whose role says to do
+nothing, once called `finish_worker(name="w1", discard=true)` after the run ended ("agent w1
+is gone"), once spawned its own worker `worker` for the step before the test's w1 (the run's
+move was by `worker`). The third run passed. The free model does not keep to the passive
+role when LADO's messages ("step needs a worker", "run ended") reach it.
+Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
+role, or the test tolerates and names it), so the test checks LADO, not the model.
+Found: 2026-10-05, live tests of run feature/opencode-provider.

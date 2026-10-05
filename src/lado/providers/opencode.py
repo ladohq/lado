@@ -10,7 +10,9 @@ from pathlib import Path
 from lado.providers import opencode_family
 
 # The plugin API changes between releases: `lado doctor` warns when the installed OpenCode
-# is not this version.
+# is not this version. Checked by hand in the TUI with 1.18.34: the question tool and a
+# bash permission (mode `default`) make the agent `waiting`, answering there makes it
+# `busy` again (question.asked/replied, permission.asked/replied).
 TESTED_VERSION = "1.18"
 
 

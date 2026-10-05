@@ -7,7 +7,8 @@ default.
 Environment:
 - LADO_LIVE_CLAUDE_MODEL: model for Claude Code agents, default "haiku" (cheap and quick).
 - LADO_LIVE_KILO_MODEL: model for Kilo agents, default "kilo/kilo-auto/free" (no login).
-- LADO_LIVE_OPENCODE_MODEL: model for OpenCode agents, default "opencode/big-pickle" (no login).
+- LADO_LIVE_OPENCODE_MODEL: model for OpenCode agents, default "opencode/nemotron-3-ultra-free"
+  (no login; "opencode/big-pickle" is often rate-limited).
 
 Claude Code asks whether to trust a new workspace and records the answer in its own config;
 no option skips that. So the Claude test always uses the same repo path, and the test answers
@@ -39,7 +40,7 @@ from lado.providers.opencode import OpenCodeProvider
 MODELS = {
     "claude": os.environ.get("LADO_LIVE_CLAUDE_MODEL") or "haiku",
     "kilo": os.environ.get("LADO_LIVE_KILO_MODEL") or "kilo/kilo-auto/free",
-    "opencode": os.environ.get("LADO_LIVE_OPENCODE_MODEL") or "opencode/big-pickle",
+    "opencode": os.environ.get("LADO_LIVE_OPENCODE_MODEL") or "opencode/nemotron-3-ultra-free",
 }
 
 

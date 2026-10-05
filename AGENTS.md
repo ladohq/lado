@@ -48,7 +48,7 @@ login shell (tests of the shell set their own `SHELL`).
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`,
-OpenCode on `opencode/big-pickle` (override with `LADO_LIVE_CLAUDE_MODEL` /
+OpenCode on `opencode/nemotron-3-ultra-free` (override with `LADO_LIVE_CLAUDE_MODEL` /
 `LADO_LIVE_KILO_MODEL` / `LADO_LIVE_OPENCODE_MODEL`). The Claude test uses a fixed
 repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
 folder for it.

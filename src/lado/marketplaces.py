@@ -15,11 +15,41 @@ only: made on first use, brought up to date by `update`, and made again when its
 not the marketplace's address. `lado kits add <kit> -m <marketplace>` looks a kit up in that
 clone (resolve); without -m LADO never looks in a marketplace. The kit's row in lado.db
 keeps the marketplace it was added from (lado.kits).
+
+What the UI shows of each kit (its Available list) comes from index.json at the
+marketplace's root, which the marketplace's CI builds from the kits; LADO only reads it,
+from the clone, never the network (index). Version 1:
+
+    {
+      "index": 1,
+      "kits": {
+        "lado-dev": {
+          "address": "https://github.com/ladohq/kit-lado-dev.git",
+          "latest": "v0.9.1",                  # the latest release, no pre-release
+          "commit": "4be21c0...",              # that release's commit
+          "lado": ">=0.20",                    # dependencies.lado of the kit
+          "description": "...",
+          "agents": {"supervisor": "the first line of its description"},
+          "skills": ["lado-checks"],
+          "flows": ["feature", "fix"],
+          "mcp": {"playwright": "npx @playwright/mcp"}   # name -> command, one line
+        }
+      }
+    }
+
+Only `address` is required of an entry; keys LADO does not know, of an entry or at the top,
+are passed over, so the CI may add some without a new version. A higher `index` needs a
+newer LADO. marketplace.yaml stays the list of names and addresses: an entry of a kit it does
+not list is left out, and one whose address is not the list's is not used (the
+marketplace's `problem` says so). A marketplace without index.json shows names and addresses
+only.
 """
 
 import datetime
+import json
 import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -29,6 +59,9 @@ from lado import gitcache, state
 OFFICIAL = state.OFFICIAL_MARKETPLACE
 OFFICIAL_URL = "https://github.com/ladohq/marketplace.git"
 LIST_FILE = "marketplace.yaml"
+INDEX_FILE = "index.json"
+INDEX_VERSION = 1  # the highest version of index.json this LADO reads
+NOT_FETCHED = "not fetched yet: update it"
 NAME = re.compile(r"[a-z0-9-]+")
 # A kit's name, here and in kit.yaml (lado.kits.NAME is this one).
 KIT_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
@@ -36,6 +69,57 @@ KIT_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 
 class MarketplaceError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class IndexEntry:
+    """A kit as index.json describes it; only its address is sure to be there."""
+
+    address: str
+    latest: str | None = None
+    commit: str | None = None
+    lado: str | None = None
+    description: str | None = None
+    agents: dict[str, str] | None = None
+    skills: list[str] | None = None
+    flows: list[str] | None = None
+    mcp: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class Index:
+    """A marketplace's index.json: the entries of the kits its list has, and why some or all
+    could not be used (None when nothing is wrong). `present`: the file is there."""
+
+    kits: dict[str, IndexEntry]
+    problem: str | None
+    present: bool = True
+
+
+@dataclass(frozen=True)
+class Offer:
+    """A kit an enabled marketplace lists, with its index.json entry if there is one."""
+
+    name: str
+    marketplace: str
+    address: str
+    entry: IndexEntry | None
+
+
+# The optional fields of an entry and what each must be.
+_TEXT = "a text"
+_NAMES = "a list of names"
+_MAP = "a map of names to texts"
+ENTRY_FIELDS = {
+    "latest": _TEXT,
+    "commit": _TEXT,
+    "lado": _TEXT,
+    "description": _TEXT,
+    "agents": _MAP,
+    "skills": _NAMES,
+    "flows": _NAMES,
+    "mcp": _MAP,
+}
 
 
 def root() -> Path:
@@ -113,6 +197,116 @@ def kits(name: str) -> dict[str, str]:
     return _read(_folder(market), url(market))
 
 
+def update_each(names: list[str] | None = None) -> list[tuple[str, state.Marketplace | str]]:
+    """Update each of `names`, or each enabled marketplace, one after the other: one that
+    fails does not stop the others. Per name, the marketplace updated or why it was not."""
+    if names is None:
+        names = [m.name for m in list_() if m.enabled]
+    done: list[tuple[str, state.Marketplace | str]] = []
+    for name in names:
+        try:
+            (market,) = update(name)
+        except MarketplaceError as exc:
+            done.append((name, str(exc)))
+            continue
+        done.append((name, market))
+    return done
+
+
+def listed(name: str) -> dict[str, str] | None:
+    """The kits marketplace `name` lists, from the clone there is, never the network; None
+    when there is no clone of its address yet. A list LADO cannot read is MarketplaceError."""
+    market = _get(name)
+    folder = _clone_of(market)
+    return None if folder is None else _read(folder, url(market))
+
+
+def index(name: str) -> Index:
+    """Marketplace `name`'s index.json from its clone, never the network: the entries of the
+    kits its list has, checked as the module's docstring says."""
+    market = _get(name)
+    folder = _clone_of(market)
+    if folder is None:
+        return Index({}, NOT_FETCHED, present=False)
+    path = folder / INDEX_FILE
+    if not path.is_file():
+        return Index({}, None, present=False)
+    try:
+        data = json.loads(path.read_text())
+    except (ValueError, OSError) as exc:
+        return Index({}, f"{INDEX_FILE} is invalid: {exc}")
+    version = data.get("index") if isinstance(data, dict) else None
+    if not isinstance(version, int) or isinstance(version, bool):
+        return Index({}, f"{INDEX_FILE} is invalid: index must be a whole number")
+    if version > INDEX_VERSION:
+        return Index({}, f"{INDEX_FILE} is version {version}: it needs a newer LADO")
+    entries = data.get("kits")
+    if not isinstance(entries, dict):
+        return Index({}, f"{INDEX_FILE} is invalid: kits must map kit names to entries")
+    names = _read(folder, url(market))
+    kits_, problems = {}, []
+    for kit, entry in entries.items():
+        if kit not in names:
+            continue
+        problem = _entry_problem(entry, names[kit])
+        if problem:
+            problems.append(f'kit "{kit}": {problem}')
+            continue
+        known = {key: entry[key] for key in ENTRY_FIELDS if key in entry}
+        kits_[kit] = IndexEntry(address=entry["address"], **known)
+    problem = f"{INDEX_FILE}: {'; '.join(problems)}" if problems else None
+    return Index(kits_, problem)
+
+
+def _entry_problem(entry: object, address: str) -> str | None:
+    if not isinstance(entry, dict):
+        return "not a map"
+    given = entry.get("address")
+    if not isinstance(given, str):
+        return "no address"
+    if given != address:
+        return f"its address {given} is not the one {LIST_FILE} gives, {address}"
+    for key, kind in ENTRY_FIELDS.items():
+        if key in entry and not _is(entry[key], kind):
+            return f"{key} must be {kind}"
+    return None
+
+
+def _is(value: object, kind: str) -> bool:
+    if kind == _TEXT:
+        return isinstance(value, str)
+    if kind == _NAMES:
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    return isinstance(value, dict) and all(
+        isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+    )
+
+
+def available() -> list[Offer]:
+    """Every kit the enabled marketplaces with a clone list, with its index.json entry, by
+    name, then marketplace; no network. A marketplace whose list LADO cannot read gives
+    none (its problem is shown with it)."""
+    offers = []
+    for market in list_():
+        if not market.enabled:
+            continue
+        try:
+            names = listed(market.name)
+        except MarketplaceError:
+            continue
+        if names is None:
+            continue
+        entries = index(market.name).kits
+        for kit, address in names.items():
+            offers.append(Offer(kit, market.name, address, entries.get(kit)))
+    return sorted(offers, key=lambda o: (o.name, o.marketplace))
+
+
+def kits_from(name: str) -> list[str]:
+    """The installed kits added from marketplace `name`; they stay when it is removed."""
+    return [kit.name for kit in state.list_kits() if kit.marketplace == name]
+
+
 def resolve(name: str, kit: str) -> str:
     """The git address of `kit` in marketplace `name`, which must be enabled."""
     market = _get(name)
@@ -136,18 +330,25 @@ def _get(name: str) -> state.Marketplace:
 
 def _folder(market: state.Marketplace) -> Path:
     """The clone of `market`, made when there is none or its origin is another address."""
+    clone = _clone_of(market)
+    if clone is not None:
+        return clone
     folder = root() / market.name
-    address = url(market)
-    if folder.is_dir():
-        try:
-            if gitcache.address(folder) == address:
-                return folder
-        except gitcache.GitError:
-            pass
-        shutil.rmtree(folder)
-    _clone(address, folder)
+    shutil.rmtree(folder, ignore_errors=True)
+    _clone(url(market), folder)
     state.update_marketplace(market.name, updated_at=_now())
     return folder
+
+
+def _clone_of(market: state.Marketplace) -> Path | None:
+    """The clone of `market` if there is one of its address; never makes one."""
+    folder = root() / market.name
+    if not folder.is_dir():
+        return None
+    try:
+        return folder if gitcache.address(folder) == url(market) else None
+    except gitcache.GitError:
+        return None
 
 
 def _clone(address: str, folder: Path) -> None:

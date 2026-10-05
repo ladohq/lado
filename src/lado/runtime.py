@@ -1004,6 +1004,53 @@ class Stopped:
 
 
 @dataclass
+class KitUsers:
+    """The sessions that use an installed kit (kit_users): what removing or updating it
+    touches."""
+
+    running: list[str]  # their new agents and flow runs take the kit as it is then
+    stopped: list[str]  # stopped, or their tmux server gone: a resume needs the kit
+
+    def running_line(self, kit: str) -> str | None:
+        """What a removal does to the running ones, or None when there are none."""
+        if not self.running:
+            return None
+        one = len(self.running) == 1
+        return (
+            f"running session{'' if one else 's'} {_names(self.running)} "
+            f'use{"s" if one else ""} kit "{kit}": {"its" if one else "their"} new agents and '
+            "flow runs fail to start until it is added again; the agents running now keep "
+            "working"
+        )
+
+    def stopped_line(self, kit: str) -> str | None:
+        if not self.stopped:
+            return None
+        one = len(self.stopped) == 1
+        return (
+            f"stopped session{'' if one else 's'} {_names(self.stopped)} "
+            f'use{"s" if one else ""} kit "{kit}" too: a resume needs it'
+        )
+
+
+def _names(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def kit_users(kit: str) -> KitUsers:
+    """The sessions whose kits name `kit`, running or not; a session whose project has a
+    kit of that name of its own (`<repo>/.lado/kits/<kit>`) does not use the installed one."""
+    users = KitUsers([], [])
+    for sess in state.list_sessions():
+        project = kits.project_kits(sess.repo)
+        if kit not in sess.kits or (project and (project / kit).exists()):
+            continue
+        running = session_status(sess) in (SessionStatus.RUNNING, SessionStatus.LOOP_DOWN)
+        (users.running if running else users.stopped).append(sess.name)
+    return users
+
+
+@dataclass
 class StopPreview:
     agents: list[str]  # the agents a stop closes
     dropped: int  # messages no agent got, dropped by a stop now

@@ -1,6 +1,9 @@
 """Kit marketplaces (lado.marketplaces): git repositories that list kits by name, kept in
 lado.db, with a clone each in LADO_HOME/marketplaces. Local bare repos stand for remotes."""
 
+import json
+import shutil
+
 import pytest
 from agent_helpers import init_repo, publish
 
@@ -130,3 +133,135 @@ def test_resolve_names_the_way_out_of_each_refusal(tmp_path, lado_home):
         marketplaces.resolve("team", "tool")
     with pytest.raises(marketplaces.MarketplaceError, match='no marketplace "far"'):
         marketplaces.resolve("far", "tool")
+
+
+A = "https://example.com/a.git"
+B = "https://example.com/b.git"
+
+
+def team(tmp_path, files=None, **kits: str) -> str:
+    """Marketplace "team" added from a local repo listing `kits`, with `files` beside."""
+    url = publish(init_repo(tmp_path / "team"), {**listing(**kits), **(files or {})})
+    marketplaces.add("team", url)
+    return url
+
+
+def index_file(kits: dict, version=1, **extra) -> dict[str, str]:
+    return {"index.json": json.dumps({"index": version, "kits": kits, **extra})}
+
+
+def test_listed_reads_the_clone_without_the_network(tmp_path, lado_home, monkeypatch):
+    team(tmp_path, a=A)
+    assert marketplaces.listed("official") is None  # never cloned: nothing is fetched
+    monkeypatch.setattr(marketplaces.gitcache, "clone_branch", no_network)
+    monkeypatch.setattr(marketplaces.gitcache, "refresh", no_network)
+    assert marketplaces.listed("team") == {"a": A}
+    assert marketplaces.listed("official") is None
+    assert not (lado_home / "marketplaces" / "official").exists()
+
+
+def no_network(*args, **kwargs):
+    raise AssertionError("the network was used")
+
+
+def test_index_without_a_clone_or_a_file(tmp_path, lado_home):
+    assert marketplaces.index("official") == marketplaces.Index(
+        {}, "not fetched yet: update it", present=False
+    )
+    team(tmp_path, a=A)
+    assert marketplaces.index("team") == marketplaces.Index({}, None, present=False)
+
+
+def test_index_gives_each_listed_kits_entry(tmp_path, lado_home):
+    entry = {
+        "address": A,
+        "latest": "v0.9.1",
+        "commit": "4be21c0",
+        "lado": ">=0.20",
+        "description": "Develop LADO",
+        "agents": {"supervisor": "leads"},
+        "skills": ["lado-checks"],
+        "flows": ["feature"],
+        "mcp": {"playwright": "npx @playwright/mcp"},
+        "stars": 5,  # a key LADO does not know is passed over
+    }
+    files = index_file({"a": entry, "b": {"address": B}, "stray": {"address": A}}, built="x")
+    team(tmp_path, files, a=A, b=B)
+    found = marketplaces.index("team")
+    assert found.problem is None and found.present
+    assert list(found.kits) == ["a", "b"]  # a kit marketplace.yaml does not list is left out
+    assert found.kits["a"] == marketplaces.IndexEntry(
+        address=A,
+        latest="v0.9.1",
+        commit="4be21c0",
+        lado=">=0.20",
+        description="Develop LADO",
+        agents={"supervisor": "leads"},
+        skills=["lado-checks"],
+        flows=["feature"],
+        mcp={"playwright": "npx @playwright/mcp"},
+    )
+    assert found.kits["b"] == marketplaces.IndexEntry(address=B)  # only the address
+
+
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        ("{not json", "index.json is invalid: "),
+        ('{"index": "1", "kits": {}}', "index.json is invalid: index must be a whole number"),
+        ('{"index": 1, "kits": []}', "index.json is invalid: kits must map kit names to entries"),
+        ('{"index": 2, "kits": {}}', "index.json is version 2: it needs a newer LADO"),
+    ],
+)
+def test_an_index_lado_cannot_read_is_a_problem(tmp_path, lado_home, text, problem):
+    team(tmp_path, {"index.json": text}, a=A)
+    found = marketplaces.index("team")
+    assert found.kits == {} and found.present
+    assert found.problem.startswith(problem)
+
+
+def test_an_entry_that_does_not_agree_is_not_used(tmp_path, lado_home):
+    entries = {"a": {"address": B}, "b": {"latest": "v1.0.0"}, "c": {"address": A, "skills": "x"}}
+    team(tmp_path, index_file(entries), a=A, b=B, c=A)
+    found = marketplaces.index("team")
+    assert found.kits == {}
+    assert found.problem == (
+        f'index.json: kit "a": its address {B} is not the one marketplace.yaml gives, {A}; '
+        'kit "b": no address; kit "c": skills must be a list of names'
+    )
+
+
+def test_available_lists_the_kits_of_enabled_marketplaces_with_a_clone(tmp_path, lado_home):
+    team(tmp_path, index_file({"a": {"address": A, "latest": "v1.0.0"}}), a=A, b=B)
+    other = publish(init_repo(tmp_path / "other"), listing(a=A))
+    marketplaces.add("other", other)
+    offers = marketplaces.available()
+    assert [(o.name, o.marketplace, o.address) for o in offers] == [
+        ("a", "other", A),  # one kit in two marketplaces: two offers
+        ("a", "team", A),
+        ("b", "team", B),
+    ]
+    assert offers[1].entry == marketplaces.IndexEntry(address=A, latest="v1.0.0")
+    assert offers[0].entry is None and offers[2].entry is None
+    marketplaces.set_enabled("other", False)
+    assert [o.marketplace for o in marketplaces.available()] == ["team", "team"]
+
+
+def test_update_each_goes_on_past_a_marketplace_that_fails(tmp_path, lado_home, official):
+    team(tmp_path, a=A)
+    shutil.rmtree(tmp_path / "team.git")  # its remote is gone
+    marketplaces.add("other", publish(init_repo(tmp_path / "other"), listing(b=B)))
+    done = marketplaces.update_each()
+    assert [name for name, _ in done] == ["official", "other", "team"]
+    assert isinstance(done[0][1], state.Marketplace) and isinstance(done[1][1], state.Marketplace)
+    assert isinstance(done[2][1], str) and done[2][1].startswith('marketplace "team": ')
+    (one,) = marketplaces.update_each(["nope"])
+    assert one == ("nope", 'no marketplace "nope"; lado marketplaces lists them')
+
+
+def test_kits_from_names_the_installed_kits_added_from_a_marketplace(lado_home):
+    state.add_kit(state.InstalledKit("x", A, "v1.0.0", "c1", marketplace="team"))
+    state.add_kit(state.InstalledKit("y", B, "v1.0.0", "c2"))
+    state.add_kit(state.InstalledKit("z", B, "v1.0.0", "c3", marketplace="team"))
+    assert marketplaces.kits_from("team") == ["x", "z"]
+    assert marketplaces.kits_from("official") == []

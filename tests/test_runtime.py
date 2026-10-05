@@ -2085,3 +2085,37 @@ def test_a_provider_without_skills_names_the_way_out_of_lead_skills(
     runtime.start_session(
         str(repo), "s", None, "noskills", kit_names, ["skill:notes", "agent:chief@boss"]
     )
+
+
+def test_kit_users_are_the_sessions_that_name_the_kit_split_by_status(
+    tmp_path, lado_home, monkeypatch
+):
+    status = runtime.SessionStatus
+    sessions = {
+        "a": (["tool"], status.RUNNING),
+        "b": (["default", "tool"], status.LOOP_DOWN),
+        "c": (["tool"], status.STOPPED),
+        "d": (["tool"], status.TMUX_GONE),
+        "e": (["default"], status.RUNNING),
+        "f": (["tool"], status.RUNNING),  # its project has a kit "tool" of its own
+    }
+    for name, (kit_names, _) in sessions.items():
+        (tmp_path / name).mkdir()
+        state.add_session(state.Session(name, str(tmp_path / name), None, kits=kit_names))
+    (tmp_path / "f" / ".lado" / "kits" / "tool").mkdir(parents=True)
+    monkeypatch.setattr(runtime, "session_status", lambda sess: sessions[sess.name][1])
+    users = runtime.kit_users("tool")
+    assert users == runtime.KitUsers(running=["a", "b"], stopped=["c", "d"])
+    assert users.running_line("tool") == (
+        'running sessions a and b use kit "tool": their new agents and flow runs fail to '
+        "start until it is added again; the agents running now keep working"
+    )
+    assert users.stopped_line("tool") == (
+        'stopped sessions c and d use kit "tool" too: a resume needs it'
+    )
+    one = runtime.KitUsers(running=["a"], stopped=["c"])
+    assert one.running_line("tool").startswith('running session a uses kit "tool": its new ')
+    assert one.stopped_line("tool") == 'stopped session c uses kit "tool" too: a resume needs it'
+    none = runtime.kit_users("nope")
+    assert none == runtime.KitUsers([], [])
+    assert none.running_line("nope") is None and none.stopped_line("nope") is None

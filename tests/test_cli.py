@@ -487,6 +487,43 @@ def test_kits_update_does_not_ask_and_warns_about_new_mcp_servers(
     assert state.get_kit("team").tag == "v1.0.0"
 
 
+def _sessions_using(tmp_path, monkeypatch, kit, **statuses):
+    """Sessions named by `statuses` (name -> runtime.SessionStatus) whose kits name `kit`."""
+    for name in statuses:
+        state.add_session(state.Session(name, str(tmp_path), None, kits=[kit]))
+    monkeypatch.setattr(runtime, "session_status", lambda sess: statuses[sess.name])
+
+
+def test_kits_update_and_remove_name_the_sessions_that_use_the_kit(
+    tmp_path, capsys, lado_home, monkeypatch
+):
+    _, url = team_repo(tmp_path, "1.0.0", "1.1.0")
+    assert main(["kits", "add", f"{url}@v1.0.0", "--yes"]) == 0
+    status = runtime.SessionStatus
+    _sessions_using(tmp_path, monkeypatch, "team", a=status.RUNNING, b=status.STOPPED)
+    capsys.readouterr()
+    assert main(["kits", "update", "team"]) == 0
+    assert "running session a gets v1.1.0 for new agents only\n" in capsys.readouterr().out
+    assert main(["kits", "remove", "team"]) == 0
+    assert capsys.readouterr().err == (
+        'lado: WARNING: running session a uses kit "team": its new agents and flow runs fail '
+        "to start until it is added again; the agents running now keep working\n"
+        'lado: WARNING: stopped session b uses kit "team" too: a resume needs it\n'
+    )
+
+
+def test_marketplaces_remove_names_the_installed_kits_that_stay(tmp_path, capsys, lado_home):
+    _, url = team_repo(tmp_path, "1.0.0")
+    market = publish(init_repo(tmp_path / "ours"), {"marketplace.yaml": f"kits:\n  team: {url}\n"})
+    assert main(["marketplaces", "add", "ours", market]) == 0
+    assert main(["kits", "add", "team", "-m", "ours", "--yes"]) == 0
+    capsys.readouterr()
+    assert main(["marketplaces", "remove", "ours"]) == 0
+    assert capsys.readouterr().out == (
+        'Removed marketplace "ours"; 1 kit installed from it stays: team\n'
+    )
+
+
 def test_kits_outdated(tmp_path, capsys, lado_home):
     work, url = team_repo(tmp_path, "1.0.0")
     assert main(["kits", "add", url, "--yes"]) == 0

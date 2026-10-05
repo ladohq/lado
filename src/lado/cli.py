@@ -116,34 +116,27 @@ def _print_plan(plan: kits.Install) -> None:
     print(f"Kit {plan.name} {plan.kit.version} from {plan.source}: {plan.address}")
     if plan.tag:
         print(f"  version {plan.tag}, commit {plan.commit}")
-    servers = ", ".join(_mcp_line(mcp) for mcp in plan.mcp.values()) or "none"
+    servers = ", ".join(kits.mcp_line(mcp) for mcp in plan.mcp.values()) or "none"
     print(f"  MCP servers it starts: {servers}")
-
-
-def _mcp_line(mcp: kits.McpDef) -> str:
-    return f"{mcp.name} ({' '.join(mcp.command)})"
 
 
 def _warn(warnings) -> None:
     for warning in warnings:
-        print(f"lado: WARNING: {warning}", file=sys.stderr)
+        if warning:
+            print(f"lado: WARNING: {warning}", file=sys.stderr)
 
 
 def cmd_kits_update(args: argparse.Namespace) -> int:
     plan = kits.plan_update(args.name, args.tag, args.pre)
     _warn(plan.warnings)
-    if plan.tag == plan.installed:
-        print(f'Kit "{plan.name}" is at {plan.tag} already.')
+    if plan.current:
+        print(kits.current_line(plan))
         return 0
     _print_plan(plan)
-    _warn(
-        f"{plan.name} {plan.tag} starts an MCP server {plan.installed} did not: "
-        f"{_mcp_line(plan.mcp[name])}"
-        for name in plan.new_mcp
-    )
+    _warn(kits.new_mcp_warnings(plan))
     kit = kits.install(plan)
     print(f'Updated kit "{kit.name}" from {plan.installed} to {plan.tag}: installed, in {kit.path}')
-    print(f"running sessions get {plan.tag} for new agents only")
+    print(kits.update_line(plan, runtime.kit_users(plan.name).running))
     return 0
 
 
@@ -179,8 +172,17 @@ def cmd_marketplaces_add(args: argparse.Namespace) -> int:
 
 
 def cmd_marketplaces_remove(args: argparse.Namespace) -> int:
+    stay = marketplaces.kits_from(args.name)
     marketplaces.remove(args.name)
-    print(f'Removed marketplace "{args.name}"; kits installed from it stay')
+    if not stay:
+        print(f'Removed marketplace "{args.name}"; kits installed from it stay')
+    elif len(stay) == 1:
+        print(f'Removed marketplace "{args.name}"; 1 kit installed from it stays: {stay[0]}')
+    else:
+        print(
+            f'Removed marketplace "{args.name}"; {len(stay)} kits installed from it stay: '
+            f"{', '.join(stay)}"
+        )
     return 0
 
 
@@ -191,13 +193,10 @@ def cmd_marketplaces_enable(args: argparse.Namespace) -> int:
 
 
 def cmd_marketplaces_update(args: argparse.Namespace) -> int:
-    names = [args.name] if args.name else [m.name for m in marketplaces.list_() if m.enabled]
     failed = False
-    for name in names:
-        try:
-            marketplaces.update(name)
-        except marketplaces.MarketplaceError as exc:
-            print(f"lado: {name}: {exc}", file=sys.stderr)
+    for name, done in marketplaces.update_each([args.name] if args.name else None):
+        if isinstance(done, str):
+            print(f"lado: {name}: {done}", file=sys.stderr)
             failed = True
             continue
         print(f'Updated marketplace "{name}" ({_kits_count(name)})')
@@ -205,7 +204,9 @@ def cmd_marketplaces_update(args: argparse.Namespace) -> int:
 
 
 def cmd_kits_remove(args: argparse.Namespace) -> int:
+    users = runtime.kit_users(args.name)
     folder = kits.remove(args.name)
+    _warn([users.running_line(args.name), users.stopped_line(args.name)])
     if folder.is_dir():
         print(f'Removed kit "{args.name}" (was in {folder}); the folder stays')
     else:

@@ -495,6 +495,40 @@ class Install:
         """The MCP servers the kit's agents start, by name."""
         return {name: mcp for a in self.kit.agents.values() for name, mcp in a.mcp.items()}
 
+    @property
+    def current(self) -> bool:
+        """An update to the version installed now: nothing to do (current_line)."""
+        return self.installed is not None and self.tag == self.installed
+
+
+# What a plan says to the human, the same in the CLI and the UI.
+
+
+def mcp_line(mcp: McpDef) -> str:
+    return f"{mcp.name} ({' '.join(mcp.command)})"
+
+
+def current_line(plan: Install) -> str:
+    return f'Kit "{plan.name}" is at {plan.tag} already.'
+
+
+def new_mcp_warnings(plan: Install) -> list[str]:
+    """An update's MCP servers the installed version did not start, one warning each."""
+    return [
+        f"{plan.name} {plan.tag} starts an MCP server {plan.installed} did not: "
+        f"{mcp_line(plan.mcp[name])}"
+        for name in plan.new_mcp
+    ]
+
+
+def update_line(plan: Install, running: list[str]) -> str:
+    """Who gets an update: the running sessions (runtime.kit_users) only for new agents."""
+    if not running:
+        return f"running sessions get {plan.tag} for new agents only"
+    one = len(running) == 1
+    sessions = f"session{'' if one else 's'} {_and(running)} get{'s' if one else ''}"
+    return f"running {sessions} {plan.tag} for new agents only"
+
 
 @dataclass(frozen=True)
 class Outdated:

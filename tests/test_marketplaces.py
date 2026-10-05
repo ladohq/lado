@@ -15,7 +15,7 @@ def listing(**kits: str) -> dict[str, str]:
 def official(tmp_path, monkeypatch):
     """The official marketplace, at a local bare repo instead of github.com."""
     work = init_repo(tmp_path / "official")
-    url = publish(work, listing(**{"lado-dev": "https://example.com/lado-dev-kit.git"}))
+    url = publish(work, listing(**{"lado-dev": "https://example.com/kit-lado-dev.git"}))
     monkeypatch.setattr(marketplaces, "OFFICIAL_URL", url)
     return work
 
@@ -33,7 +33,7 @@ def test_the_official_marketplace_is_there_and_can_only_be_disabled(lado_home, o
     marketplaces.set_enabled("official", False)
     assert not state.get_marketplace("official").enabled
     marketplaces.set_enabled("official", True)
-    assert marketplaces.kits("official") == {"lado-dev": "https://example.com/lado-dev-kit.git"}
+    assert marketplaces.kits("official") == {"lado-dev": "https://example.com/kit-lado-dev.git"}
     assert (lado_home / "marketplaces" / "official" / "marketplace.yaml").is_file()
     assert state.get_marketplace("official").updated_at  # its first clone
 
@@ -137,9 +137,9 @@ def test_source_of_reads_the_clones_of_enabled_marketplaces_only(tmp_path, lado_
     marketplaces.add("team", url)
     assert marketplaces.source_of("https://example.com/tool.git") == "team"
     # Never the network: the official one has no clone yet, so it is not asked.
-    assert marketplaces.source_of("https://example.com/lado-dev-kit.git") is None
+    assert marketplaces.source_of("https://example.com/kit-lado-dev.git") is None
     assert not (lado_home / "marketplaces" / "official").exists()
     marketplaces.kits("official")
-    assert marketplaces.source_of("https://example.com/lado-dev-kit.git") == "official"
+    assert marketplaces.source_of("https://example.com/kit-lado-dev.git") == "official"
     marketplaces.set_enabled("team", False)
     assert marketplaces.source_of("https://example.com/tool.git") is None

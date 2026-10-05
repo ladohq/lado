@@ -3,7 +3,7 @@
 A marketplace has marketplace.yaml at its root:
 
     kits:
-      lado-dev: https://github.com/ladohq/lado-dev-kit.git
+      lado-dev: https://github.com/ladohq/kit-lado-dev.git
 
 Each name must be the name in that kit's kit.yaml (lado.kits checks it at install). The
 marketplaces are kept in lado.db (state.Marketplace: name, url, enabled, when it was last

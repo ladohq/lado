@@ -1089,3 +1089,13 @@ sender gets `AttributeError: 'NoneType' object has no attribute 'status'` instea
 answer (seen on main d738c7f in the finish-race reproduction, one step later in the call).
 Wanted: `_deliver` of a recipient that is gone says the message was dropped with it.
 Found: 2026-10-06, run fix/finish-race (implement).
+
+## Flaky: integration test "spawned worker reports back to supervisor" times out at `starting` under load
+
+`tests/integration/test_agents.py::test_spawned_worker_reports_back_to_supervisor` failed in a
+full `make check` at load average ~200: "timed out after 30s waiting for the report; agents:
+supervisor idle, worker starting". Alone it passed 3 of 3. The same pattern as the
+installed-kit worker and two kits' skill packs tests.
+Wanted: integration tests that wait for a worker's start share one wait helper with a margin
+for parallel runs under load, not 30 s in each test.
+Found: 2026-10-06, review of fix/finish-race.

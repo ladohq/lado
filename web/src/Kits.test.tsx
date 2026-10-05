@@ -150,6 +150,7 @@ const PLAN: PlanInfo = {
   warnings: [],
   notes: [],
   users: null,
+  before: null,
 };
 
 type Answer = { status?: number; body?: unknown };
@@ -254,23 +255,75 @@ test("/kits/elsewhere is Not found", async () => {
 
 // Installed
 
+const sourceOfRow = (row: HTMLElement) => row.querySelector("[data-source]")?.getAttribute("data-source");
+
 test("Installed shows each kit with its source; built-in ones have no buttons", async () => {
   open("/kits");
   const dev = await screen.findByRole("listitem", { name: "lado-dev" });
+  expect(within(dev).getByText("LD")).toBeTruthy();
   expect(within(dev).getByText("v0.9.1")).toBeTruthy();
   expect(within(dev).getByText("official")).toBeTruthy();
-  expect(within(dev).getByText("4 roles · 12 skills · 2 flows")).toBeTruthy();
+  expect(within(dev).getByLabelText("4 roles, 12 skills, 2 flows")).toBeTruthy();
   expect(within(dev).getByRole("button", { name: "Update lado-dev…" })).toBeTruthy();
   expect(within(dev).getByRole("button", { name: "Remove lado-dev…" })).toBeTruthy();
   // A kit of a marketplace removed since says so; the UI counts it from the two lists.
   expect(within(kitRow("jira")).getByText("old (removed)")).toBeTruthy();
+  expect(within(kitRow("jira")).getByLabelText("2 skills")).toBeTruthy();
   const mine = kitRow("my-reviewers");
+  expect(within(mine).getByText("MR")).toBeTruthy();
   expect(within(mine).getByText("folder")).toBeTruthy();
+  expect(within(mine).getByText("/work/my-reviewers")).toBeTruthy();
   expect(within(mine).getByRole("alert").textContent).toContain("is missing");
   expect(within(mine).queryByRole("button", { name: /Update/ })).toBeNull();
   const builtin = kitRow("default");
+  expect(within(builtin).getByText("DE")).toBeTruthy();
   expect(within(builtin).getByText("built-in")).toBeTruthy();
   expect(within(builtin).queryAllByRole("button")).toEqual([]);
+});
+
+test("a kit's dot says the kind of its source; its address is short, the full one on hover", async () => {
+  const ssh: InstalledKitInfo = {
+    ...INSTALLED[0],
+    name: "by_ssh",
+    marketplace: null,
+    address: "git@github.com:acme/kit-ssh.git",
+  };
+  serve({ "GET /api/kits/installed": () => [...INSTALLED, ssh] });
+  open("/kits");
+  const dev = await screen.findByRole("listitem", { name: "lado-dev" });
+  expect(sourceOfRow(dev)).toBe("official");
+  expect(sourceOfRow(kitRow("jira"))).toBe("marketplace");
+  expect(sourceOfRow(kitRow("by_ssh"))).toBe("git");
+  expect(sourceOfRow(kitRow("my-reviewers"))).toBe("folder");
+  expect(sourceOfRow(kitRow("default"))).toBe("built-in");
+  expect(within(dev).getByText("github.com/ladohq/kit-lado-dev").getAttribute("title")).toBe(
+    "https://github.com/ladohq/kit-lado-dev.git",
+  );
+  expect(within(kitRow("by_ssh")).getByText("BS")).toBeTruthy();
+  expect(within(kitRow("by_ssh")).getByText("github.com/acme/kit-ssh")).toBeTruthy();
+  cleanup();
+  open("/kits/available");
+  expect(sourceOfRow(await screen.findByRole("listitem", { name: "reviewers" }))).toBe("official");
+  expect(sourceOfRow(kitRow("wiki"))).toBe("marketplace");
+});
+
+test("a description cut to two lines has more, which shows it all, and less", async () => {
+  // jsdom lays nothing out: a paragraph taller than its box is one CSS cut.
+  const tall = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.textContent === "Develop LADO itself." && this.classList.contains("clamped") ? 80 : 20;
+  });
+  const box = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(20);
+  open("/kits");
+  const dev = await screen.findByRole("listitem", { name: "lado-dev" });
+  const text = within(dev).getByText("Develop LADO itself.");
+  expect(text.getAttribute("title")).toBe("Develop LADO itself.");
+  expect(within(kitRow("jira")).queryByRole("button", { name: "more" })).toBeNull();
+  fireEvent.click(await within(dev).findByRole("button", { name: "more" }));
+  expect(text.classList.contains("clamped")).toBe(false);
+  fireEvent.click(within(dev).getByRole("button", { name: "less" }));
+  expect(text.classList.contains("clamped")).toBe(true);
+  tall.mockRestore();
+  box.mockRestore();
 });
 
 test("a kit installed elsewhere (the CLI) comes in through the feed, without a reload", async () => {
@@ -313,17 +366,30 @@ test("the search and the source chips filter the kits; the chip is remembered", 
 
 // Available
 
-test("Available lists the marketplaces' kits; an installed one has no Install", async () => {
+test("Available lists the marketplaces' kits not installed, as many as its count says", async () => {
   open("/kits/available");
   const reviewers = await screen.findByRole("listitem", { name: "reviewers" });
   expect(within(reviewers).getByText("Strict reviewers.")).toBeTruthy();
   expect(within(reviewers).getByText("v2.0.0")).toBeTruthy();
   expect(within(reviewers).getByRole("button", { name: "Install reviewers…" })).toBeTruthy();
   // Without an index.json entry: its name and address.
-  expect(within(kitRow("wiki")).getByText("https://github.com/acme/kit-wiki.git")).toBeTruthy();
-  const dev = kitRow("lado-dev");
-  expect(within(dev).getByText("installed")).toBeTruthy();
-  expect(within(dev).queryByRole("button")).toBeNull();
+  expect(within(kitRow("wiki")).getByText("github.com/acme/kit-wiki")).toBeTruthy();
+  // lado-dev is installed: it is in Installed, not here.
+  expect(kitNames()).toEqual(["reviewers", "wiki"]);
+  const tabs = screen.getByRole("navigation", { name: "Kits" });
+  expect(within(tabs).getByRole("link", { name: /Available/ }).textContent).toBe("Available 2");
+});
+
+test("when every kit of the marketplaces is installed, Available says so and links to Installed", async () => {
+  serve({ "GET /api/kits/available": () => [OFFERS[0], { ...OFFERS[2], name: "jira", installed: true }] });
+  open("/kits/available");
+  expect(await screen.findByText("All kits of your marketplaces are installed")).toBeTruthy();
+  expect(screen.getByText("official lists 1 kit, team lists 1 kit.")).toBeTruthy();
+  expect(screen.queryByRole("list", { name: "Kits" })).toBeNull();
+  const tabs = screen.getByRole("navigation", { name: "Kits" });
+  expect(within(tabs).getByRole("link", { name: /Available/ }).textContent).toBe("Available 0");
+  fireEvent.click(screen.getByRole("link", { name: "Show installed kits" }));
+  expect(await screen.findByRole("listitem", { name: "lado-dev" })).toBeTruthy();
 });
 
 test("on a fresh LADO_HOME Available says no marketplace is fetched, with Update", async () => {
@@ -370,9 +436,12 @@ test("updates are checked only with the button", async () => {
   expect(screen.getByText(/^Updates checked/)).toBeTruthy();
   const tabs = screen.getByRole("navigation", { name: "Kits" });
   expect(within(tabs).getByRole("link", { name: /Updates/ }).textContent).toBe("Updates 1");
-  // The badge is on Installed too.
+  // The badge is on Installed too, and Update… is the primary action only where it updates.
   fireEvent.click(within(tabs).getByRole("link", { name: /Installed/ }));
-  expect(within(await screen.findByRole("listitem", { name: "lado-dev" })).getByText("v0.10.0 available")).toBeTruthy();
+  const installedDev = await screen.findByRole("listitem", { name: "lado-dev" });
+  expect(within(installedDev).getByText("v0.10.0 available")).toBeTruthy();
+  const primary = (name: string) => screen.getByRole("button", { name: `Update ${name}…` }).classList.contains("primary");
+  expect([primary("lado-dev"), primary("jira")]).toEqual([true, false]);
 });
 
 test("a kit updated since the check is no longer an update", async () => {

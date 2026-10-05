@@ -3210,11 +3210,13 @@ h3 {
   background: var(--panel);
 }
 
+/* A kit's card (docs/design/ui.md, Kits: Card): mark, body, actions. */
 .kit-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 16px;
-  padding: 12px 14px;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 14px;
+  padding: 14px 16px;
   border-top: 1px solid var(--line);
 }
 
@@ -3222,24 +3224,46 @@ h3 {
   border-top: 0;
 }
 
-.kit-row > :not(.kit-actions) {
-  grid-column: 1;
+.kit-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--action-ground);
+  color: var(--action);
+  font: 600 13px var(--mono);
+}
+
+.kit-mark.built-in {
+  background: var(--raised);
+  color: var(--muted);
+}
+
+.kit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .kit-title {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 
 .kit-name {
-  font: 600 14px var(--mono);
+  font: 600 15px var(--mono);
 }
 
 .kit-version {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
   color: var(--muted);
-  font: 12px var(--mono);
+  font: 500 12px var(--mono);
 }
 
 .kit-description,
@@ -3252,6 +3276,69 @@ h3 {
   color: var(--muted);
 }
 
+.kit-description.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.kit-more {
+  margin-top: 0;
+  font-size: 12px;
+}
+
+.empty b {
+  color: var(--ink);
+}
+
+/* The source: a dot by its kind, always beside its text. */
+.kit-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.kit-source::before {
+  content: "";
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.kit-source[data-source="official"]::before {
+  background: var(--done);
+}
+
+.kit-source[data-source="marketplace"]::before {
+  background: var(--action);
+}
+
+.kit-source[data-source="folder"]::before {
+  border: 1.5px solid var(--muted);
+  background: transparent;
+}
+
+.kit-source[data-source="built-in"]::before {
+  border: 1px solid var(--muted);
+  background: transparent;
+}
+
+.kit-counts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.kit-counts b {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .kit-problem {
   padding-left: 8px;
   border-left: 3px solid var(--danger);
@@ -3262,7 +3349,8 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 16px;
+  margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -3273,11 +3361,21 @@ h3 {
 }
 
 .kit-actions {
-  grid-column: 2;
-  grid-row: 1 / span 4;
   display: flex;
   align-items: start;
   gap: 6px;
+}
+
+/* A narrow page: the actions go under the body. */
+@media (max-width: 600px) {
+  .kit-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .kit-actions {
+    grid-column: 2;
+    flex-wrap: wrap;
+  }
 }
 
 .badge {

@@ -13,6 +13,8 @@
   --muted: light-dark(#5b6270, #9aa1ad);
   --action: light-dark(#1f5fd6, #6fa0ff);
   --on-action: light-dark(#ffffff, #111317);
+  /* A quiet ground for the action colour: a kit's mark. */
+  --action-ground: light-dark(#e8effc, #1c2840);
   --human: light-dark(#b4530f, #f0a25a);
   --human-ground: light-dark(#fdf1e6, #3a2a1c);
   /* Work that went well: a run that ended, a step of a flow (the Flows tab). */

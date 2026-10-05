@@ -45,8 +45,9 @@ function contrast(a: string, b: string): number {
 
 // Text and its grounds: ink, muted text and actions on the page, on panels and on the
 // current item, a button's label, what waits for the human on its own ground, and a
-// dangerous action on panels and on the page (Forget in a session's head).
+// dangerous action on panels and on the page (Forget in a session's head), a kit's mark.
 const PAIRS = [
+  ["action", "action-ground"],
   ["ink", "ground"],
   ["ink", "panel"],
   ["muted", "ground"],

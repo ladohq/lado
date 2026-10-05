@@ -27,6 +27,7 @@ import {
   type PlanAsk,
   type PlanInfo,
 } from "./api";
+import { KitCard, type Source, type SourceKind } from "./KitCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { NotFound } from "./pages";
 import { storedKitsSource, storeKitsSource } from "./prefs";
@@ -46,23 +47,22 @@ const itemsOf = <T,>(loaded: ListLoaded<T> | undefined): T[] =>
 const short = (commit: string | null) => (commit ? commit.slice(0, 12) : "");
 const time = (at: Date) => at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-// "4 roles · 12 skills · 2 flows", leaving out what it has none of.
-function counts(agents: number, skills: number, flows: number): string {
-  const parts = [[agents, "role"] as const, [skills, "skill"] as const, [flows, "flow"] as const];
-  return parts
-    .filter(([count]) => count > 0)
-    .map(([count, word]) => plural(count, word))
-    .join(" · ");
-}
+// The dot of a kit from a marketplace: the official one's, or any other's (also one gone).
+const marketKind = (name: string, markets: MarketplaceInfo[] | null): SourceKind =>
+  markets?.find((m) => m.name === name)?.official ? "official" : "marketplace";
 
 // Where an installed kit comes from: its marketplace ("<name> (removed)" when that one is
-// gone, counted from the two lists), git, folder or built-in; and its chip.
-function sourceOf(kit: InstalledKitInfo, markets: string[] | null): { label: string; chip: string } {
+// gone, counted from the two lists), git, folder or built-in; its dot and its chip.
+function sourceOf(kit: InstalledKitInfo, markets: MarketplaceInfo[] | null): Source & { chip: string } {
   if (kit.kind === "git" && kit.marketplace) {
-    const gone = markets !== null && !markets.includes(kit.marketplace);
-    return { label: gone ? `${kit.marketplace} (removed)` : kit.marketplace, chip: marketSource(kit.marketplace) };
+    const gone = markets !== null && !markets.some((m) => m.name === kit.marketplace);
+    return {
+      label: gone ? `${kit.marketplace} (removed)` : kit.marketplace,
+      kind: marketKind(kit.marketplace, markets),
+      chip: marketSource(kit.marketplace),
+    };
   }
-  return { label: kit.kind, chip: kit.kind };
+  return { label: kit.kind, kind: kit.kind, chip: kit.kind };
 }
 
 type Dialog =
@@ -97,8 +97,12 @@ function KitsPage({ tab }: { tab: KitsTab }) {
   const installed = itemsOf(loaded?.installed);
   const marketList = loaded?.marketplaces;
   const markets = itemsOf(marketList);
-  const marketNames = marketList && "items" in marketList ? markets.map((m) => m.name) : null;
+  // The marketplaces when their list loaded: only then is a kit's one known to be gone.
+  const knownMarkets = marketList && "items" in marketList ? markets : null;
   const offers = itemsOf(loaded?.available);
+  // What Available lists and counts: an installed kit is in Installed, a new version of it
+  // in Updates.
+  const notInstalled = offers.filter((offer) => !offer.installed);
   // A check's newer version, while the kit is still at the tag it was checked at: an
   // update since (here or from the CLI, through the feed) ends it.
   const checks = new Map((checked?.rows ?? []).map((row) => [row.name, row]));
@@ -145,17 +149,16 @@ function KitsPage({ tab }: { tab: KitsTab }) {
     setUpdating(false);
   };
 
-  const shownInstalled = installed.filter((kit) => found(kit.name, kit.description, sourceOf(kit, marketNames).chip));
-  const shownOffers = offers.filter((offer) =>
+  const shownInstalled = installed.filter((kit) => found(kit.name, kit.description, sourceOf(kit, knownMarkets).chip));
+  const shownOffers = notInstalled.filter((offer) =>
     found(offer.name, offer.index?.description, marketSource(offer.marketplace)),
   );
   const updates = installed.filter((kit) => newerOf(kit) !== null);
-  const shownUpdates = updates.filter((kit) => found(kit.name, kit.description, sourceOf(kit, marketNames).chip));
-  const offered = offers.filter((offer) => !offer.installed).length;
+  const shownUpdates = updates.filter((kit) => found(kit.name, kit.description, sourceOf(kit, knownMarkets).chip));
 
   const tabLabels: Record<KitsTab, string> = {
     installed: `Installed ${installed.length}`,
-    available: `Available ${offered}`,
+    available: `Available ${notInstalled.length}`,
     updates: checked ? `Updates ${updates.length}` : "Updates",
   };
 
@@ -228,7 +231,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
                 <InstalledRow
                   key={`${kit.kind}:${kit.name}`}
                   kit={kit}
-                  source={sourceOf(kit, marketNames).label}
+                  source={sourceOf(kit, knownMarkets)}
                   newer={newerOf(kit)}
                   onUpdate={() => setDialog({ kind: "update", kit })}
                   onRemove={() => setDialog({ kind: "remove", kit })}
@@ -239,12 +242,15 @@ function KitsPage({ tab }: { tab: KitsTab }) {
           {tab === "available" &&
             (loaded?.available != null && offers.length === 0 ? (
               <NoOffers markets={markets} busy={updating} onUpdate={(name) => void update(name)} />
+            ) : offers.length > 0 && notInstalled.length === 0 ? (
+              <AllInstalled offers={offers} />
             ) : (
               <KitList loading={loaded?.available == null} empty="No kit matches.">
                 {shownOffers.map((offer) => (
                   <OfferRow
                     key={`${offer.marketplace}:${offer.name}`}
                     offer={offer}
+                    official={marketKind(offer.marketplace, knownMarkets) === "official"}
                     onInstall={() =>
                       setDialog({
                         kind: "add",
@@ -270,7 +276,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
                     <InstalledRow
                       key={kit.name}
                       kit={kit}
-                      source={sourceOf(kit, marketNames).label}
+                      source={sourceOf(kit, knownMarkets)}
                       newer={newerOf(kit)}
                       onUpdate={() => setDialog({ kind: "update", kit })}
                       onRemove={() => setDialog({ kind: "remove", kit })}
@@ -326,77 +332,72 @@ function KitList({ loading, empty, children }: { loading: boolean; empty: string
 
 function InstalledRow(props: {
   kit: InstalledKitInfo;
-  source: string;
+  source: Source;
   newer: string | null;
   onUpdate: () => void;
   onRemove: () => void;
 }) {
   const { kit } = props;
-  const version = kit.tag ?? kit.version;
-  const what = counts(kit.agents, kit.skills, kit.flows);
-  const where = kit.address ?? kit.folder;
   return (
-    <li className="kit-row" aria-label={kit.name}>
-      <div className="kit-title">
-        <span className="kit-name">{kit.name}</span>
-        {version && <span className="kit-version">{version}</span>}
-        {props.newer && <span className="badge badge-new">{props.newer} available</span>}
-        {kit.missing && <span className="badge badge-warn">folder missing</span>}
-      </div>
-      {kit.description && <p className="kit-description">{kit.description}</p>}
-      {kit.problem && (
-        <p className="kit-problem" role="alert">
-          {kit.problem}
-        </p>
-      )}
-      <div className="kit-meta">
-        <span className="badge">{props.source}</span>
-        {what && <span>{what}</span>}
-        {where && <span className="kit-where">{where}</span>}
-      </div>
-      {kit.kind !== "built-in" && (
-        <div className="kit-actions">
-          {kit.kind === "git" && (
-            <button type="button" className="quiet" aria-label={`Update ${kit.name}…`} onClick={props.onUpdate}>
-              Update…
+    <KitCard
+      name={kit.name}
+      builtIn={kit.kind === "built-in"}
+      version={kit.tag ?? kit.version}
+      badges={
+        <>
+          {props.newer && <span className="badge badge-new">{props.newer} available</span>}
+          {kit.missing && <span className="badge badge-warn">folder missing</span>}
+        </>
+      }
+      description={kit.description}
+      problem={kit.problem}
+      source={props.source}
+      agents={kit.agents}
+      skills={kit.skills}
+      flows={kit.flows}
+      address={kit.address}
+      folder={kit.folder}
+      actions={
+        kit.kind !== "built-in" && (
+          <>
+            {kit.kind === "git" && (
+              <button
+                type="button"
+                className={props.newer ? "primary" : "quiet"}
+                aria-label={`Update ${kit.name}…`}
+                onClick={props.onUpdate}
+              >
+                Update…
+              </button>
+            )}
+            <button type="button" className="quiet" aria-label={`Remove ${kit.name}…`} onClick={props.onRemove}>
+              Remove…
             </button>
-          )}
-          <button type="button" className="quiet" aria-label={`Remove ${kit.name}…`} onClick={props.onRemove}>
-            Remove…
-          </button>
-        </div>
-      )}
-    </li>
+          </>
+        )
+      }
+    />
   );
 }
 
-function OfferRow({ offer, onInstall }: { offer: OfferInfo; onInstall: () => void }) {
+function OfferRow({ offer, official, onInstall }: { offer: OfferInfo; official: boolean; onInstall: () => void }) {
   const entry = offer.index;
-  const what = entry
-    ? counts(Object.keys(entry.agents ?? {}).length, entry.skills?.length ?? 0, entry.flows?.length ?? 0)
-    : "";
   return (
-    <li className="kit-row" aria-label={offer.name}>
-      <div className="kit-title">
-        <span className="kit-name">{offer.name}</span>
-        {entry?.latest && <span className="kit-version">{entry.latest}</span>}
-      </div>
-      {entry?.description && <p className="kit-description">{entry.description}</p>}
-      <div className="kit-meta">
-        <span className="badge">{offer.marketplace}</span>
-        {what && <span>{what}</span>}
-        <span className="kit-where">{offer.address}</span>
-      </div>
-      <div className="kit-actions">
-        {offer.installed ? (
-          <span className="badge">installed</span>
-        ) : (
-          <button type="button" className="quiet" aria-label={`Install ${offer.name}…`} onClick={onInstall}>
-            Install…
-          </button>
-        )}
-      </div>
-    </li>
+    <KitCard
+      name={offer.name}
+      version={entry?.latest ?? null}
+      description={entry?.description ?? null}
+      source={{ label: offer.marketplace, kind: official ? "official" : "marketplace" }}
+      agents={Object.keys(entry?.agents ?? {}).length}
+      skills={entry?.skills?.length ?? 0}
+      flows={entry?.flows?.length ?? 0}
+      address={offer.address}
+      actions={
+        <button type="button" className="quiet" aria-label={`Install ${offer.name}…`} onClick={onInstall}>
+          Install…
+        </button>
+      }
+    />
   );
 }
 
@@ -420,6 +421,22 @@ function NoOffers(props: { markets: MarketplaceInfo[]; busy: boolean; onUpdate: 
           {`Update ${m.name}`}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Available when the marketplaces list kits and each of them is installed.
+function AllInstalled({ offers }: { offers: OfferInfo[] }) {
+  const listed = new Map<string, number>();
+  offers.forEach((offer) => listed.set(offer.marketplace, (listed.get(offer.marketplace) ?? 0) + 1));
+  const lists = [...listed].map(([market, count]) => `${market} lists ${plural(count, "kit")}`);
+  return (
+    <div className="empty">
+      <p>
+        <b>All kits of your marketplaces are installed</b>
+      </p>
+      <p>{`${lists.join(", ")}.`}</p>
+      <Link to="/kits/installed">Show installed kits</Link>
     </div>
   );
 }

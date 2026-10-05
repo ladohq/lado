@@ -7,9 +7,10 @@ import shutil
 from lado import state
 from lado.providers import base
 
-# `lado doctor` warns when the installed Claude Code is not this version. Checked with it
-# (and 2.1.286) by hand: a server with alwaysLoad in --mcp-config has its tools loaded up
-# front when it is connected before the first turn; one that connects later has its tools
+# `lado doctor` warns when the installed Claude Code is not this version, the one
+# `make test-live PROVIDER=claude` last passed on. Checked with 2.1.287 (and 2.1.286) by
+# hand: a server with alwaysLoad in --mcp-config has its tools loaded up front when it is
+# connected before the first turn; one that connects later has its tools
 # deferred behind ToolSearch all the same. The interactive first turn does not wait for
 # MCP servers (CLAUDE_CODE_MCP_STARTUP_WAIT_MS, MCP_CONNECTION_NONBLOCKING=false and
 # CLAUDE_CODE_MCP_PREWAIT_SERVERS change nothing there), but it does wait for the
@@ -18,7 +19,7 @@ from lado.providers import base
 # AgentSpec.read (the lead's lead-files, lado.runtime) checked by hand with 2.1.289 in mode
 # default (`claude -p`): a SKILL.md folder in an --add-dir directory without .claude/skills
 # is not listed as a skill, and the Read tool reads it with no permission denial.
-TESTED_VERSION = "2.1.287"
+TESTED_VERSION = "2.1.289"
 
 # Claude Code hook events and the neutral events they stand for.
 #

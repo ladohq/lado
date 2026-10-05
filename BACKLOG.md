@@ -357,13 +357,6 @@ the same test. The reviewer can look at the wrong build's screens.
 Wanted: a folder per worktree or per run (e.g. named after the branch or a hash of the
 repo path), printed by the tests, so each report names its own screenshots.
 Found: 2026-10-03, implement of feature/ui-layout (the rail change).
-## Claude Code 2.1.288 is installed but TESTED_VERSION is 2.1.287
-
-`lado doctor` warns: the installed Claude Code is 2.1.288, `providers/claude.py`
-`TESTED_VERSION` is 2.1.287.
-Wanted: run `make test-live PROVIDER=claude` on 2.1.288 and raise `TESTED_VERSION` if it
-is green.
-Found: 2026-10-03, design of feature/ui-polish.
 
 ## A terminal closed for good shows its reason twice
 
@@ -625,16 +618,6 @@ feature/waiting-ends checked PermissionRequest and PostToolUse by hand with Clau
 PermissionRequest, no hook comes and the agent shows waiting until its turn ends.
 Wanted: the check in auto on a model that has it (the human's OK: it is paid); if
 PermissionRequest runs there without a dialog, a hook that ends the wait (PermissionDenied).
-Found: 2026-10-04, review of feature/waiting-ends.
-
-## Claude's TESTED_VERSION is older than the hooks LADO now relies on
-
-`providers/claude.py` has `TESTED_VERSION = "2.1.287"`, but the waiting hooks
-(PermissionRequest without tool_use_id, its tool_input equal to PostToolUse's, async
-PostToolUse) were checked with 2.1.289 only; `lado doctor` warns about 2.1.289 and not
-about 2.1.287.
-Wanted: before the release, `make test-live PROVIDER=claude` on 2.1.289 (with the human's
-OK) and TESTED_VERSION raised to it.
 Found: 2026-10-04, review of feature/waiting-ends.
 
 ## The Flows tab loads every note of the session

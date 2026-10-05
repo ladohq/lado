@@ -400,7 +400,7 @@ schema change.
   the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists
   its tools, and the session-start hook of a provider with `hold_first_turn` waits for it
   (at most `hooks.MCP_READY_TIMEOUT`; giving up is written to `hooks.log`). Verified with
-  Claude Code 2.1.287 (`providers/claude.py`: `TESTED_VERSION`; `lado doctor` warns about
+  Claude Code 2.1.289 (`providers/claude.py`: `TESTED_VERSION`; `lado doctor` warns about
   others); the live test checks w1's transcript.
 
 ## Try it locally

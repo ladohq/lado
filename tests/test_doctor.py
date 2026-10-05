@@ -58,7 +58,14 @@ def test_untested_kilo_version_warns_but_passes(monkeypatch, capsys):
     assert f"{kilo.TESTED_VERSION}.x" in out
 
 
-@pytest.mark.parametrize("version", ["2.1.286", "2.1.288", "2.2.0", "2.1.2870"])
+def test_claude_code_2_1_289_is_the_tested_version(monkeypatch):
+    """make test-live PROVIDER=claude passed on 2.1.289 (2026-10-05)."""
+    _versions(monkeypatch, claude_version="2.1.289 (Claude Code)")
+    check = next(c for c in doctor.run_checks(which=lambda cmd: cmd) if c.name == "Claude Code")
+    assert check.ok and not check.warning
+
+
+@pytest.mark.parametrize("version", ["2.1.287", "2.1.290", "2.2.0", "2.1.2890"])
 def test_claude_code_other_than_the_tested_version_warns(monkeypatch, version):
     """Whether LADO's tools load up front was checked on one Claude Code version only."""
     _versions(monkeypatch, claude_version=f"{version} (Claude Code)")

@@ -815,6 +815,39 @@ hook for a failed stop, check which; Kilo's plugin likewise), so the agent is `i
 its queue; until then `lado ls` could flag an agent busy far longer than usual.
 Found: 2026-10-05, run feature/self-update (supervisor).
 
+## The end of a session whose tmux died is recorded only at its next stop or resume
+
+`session_gone` (the run time's end for a session whose tmux died) is written only when
+`lado stop` or a resume finds the tmux session gone, at the last sign of life it can find
+then (its agents' latest hook, else its latest event). The session loop (`loop.py`) sees
+the tmux session go at once, but only exits.
+Wanted: the loop records `session_gone` when it sees the tmux session gone, at a closer
+time, through the same `state` function (once per session, not after a stop).
+Found: 2026-10-05, run feature/session-head (design).
+
+## Events have no index by session
+
+`SessionInfo` reads each session's span events (`state.span_events`: `events` by session and
+kind) at every build, in REST and in the change feed; `events` has no index on `session`,
+so each read walks the whole table.
+Wanted: when that becomes noticeable, an index `events(session, kind)` (a schema change, its
+own task).
+Found: 2026-10-05, run feature/session-head (design).
+
+## Launch vitest tests fail now and then under the load of a full run
+
+In a full vitest run (`make check`, `npx vitest run`), about 2 runs in 7,
+`Launch.test.tsx > without a kit Start stays off and the window says why` did not find
+"a session needs at least one kit" right after the click on Remove default
+(`TestingLibraryElementError: Unable to find an element with the text`); the file alone
+passes. Once `with a refused copy Copy link shows the address selected` failed on the
+field's focus (`expected <body> to be <input>`), checked before the effect that focuses it.
+Both now wait for what they check (`findByText`, `waitFor`). Not shown: why the kits
+message is late; the Launch window's `touched` guard should keep a late folder load from
+putting the default kit back, so a product race is not ruled out.
+Wanted: if the kits test still fails with the wait, look for a load that resets the kits
+after the human removed them.
+Found: 2026-10-05, run feature/session-head (developer, reviewer).
 ## Flaky: two kits' skill packs test times out waiting for a worker under load
 
 `tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack` failed

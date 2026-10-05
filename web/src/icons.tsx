@@ -148,3 +148,21 @@ export const ForgetIcon = () => (
     <path d="M10.5 10.5v5.5M13.5 10.5v5.5" />
   </Icon>
 );
+
+// In a session's head: Copy link (two chain links), Copy path (a folder), and before the
+// agents' CLI a chip.
+export const LinkIcon = () => (
+  <Icon>
+    <path d="M10.5 13.5a4 4 0 0 0 5.7.3l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.3 1.3" />
+    <path d="M13.5 10.5a4 4 0 0 0-5.7-.3l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.3-1.3" />
+  </Icon>
+);
+
+export const FolderIcon = ProjectsIcon;
+
+export const AgentCliIcon = () => (
+  <Icon>
+    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    <path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3" />
+  </Icon>
+);

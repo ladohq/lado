@@ -11,6 +11,11 @@ export function sessionPath(name: string, tab?: Tab): string {
   return tab ? `${path}/${tab}` : path;
 }
 
+// The session page's whole address, without the token (the login is the browser's cookie).
+export function sessionLink(name: string): string {
+  return `${window.location.origin}${sessionPath(name)}`;
+}
+
 // A flow run's page in the session's Flows tab: /sessions/<name>/flows/<run, encoded whole>.
 export const runPath = (session: string, run: string) => `${sessionPath(session, "flows")}/${encodeURIComponent(run)}`;
 

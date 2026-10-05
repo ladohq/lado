@@ -33,6 +33,11 @@ class SessionInfo(BaseModel):
     provider: str
     permission_mode: str | None
     without: list[str]  # "agent:x", "skill:y", "mcp:z", "flow:w"
+    # How long it ran (runtime.session_time): its closed spans, and the start of the one it
+    # runs in now (UTC, ISO 8601), None unless it runs; the UI adds the time since.
+    ran_seconds: int
+    running_since: str | None
+    stopped_at: str | None  # UTC, ISO 8601: when it was stopped; None unless stopped
 
 
 class Where(BaseModel):
@@ -797,16 +802,21 @@ def gate_info(gate: state.Gate) -> GateInfo:
 
 def session_info(sess: state.Session) -> SessionInfo:
     gates, questions, agents = state.waiting_for_human(sess.name)
+    status = runtime.session_status(sess)
+    ran = runtime.session_time(sess, status)
     return SessionInfo(
         name=sess.name,
         repo=sess.repo,
-        status=runtime.session_status(sess),
+        status=status,
         agents=len(state.list_agents(sess.name)),
         waiting=Waiting(gates=gates, questions=questions, agents=agents),
         kits=sess.kits,
         provider=sess.provider,
         permission_mode=sess.permission_mode,
         without=sess.without,
+        ran_seconds=ran.ran_seconds,
+        running_since=_iso(ran.running_since) if ran.running_since else None,
+        stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
     )
 
 

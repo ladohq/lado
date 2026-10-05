@@ -1006,3 +1006,14 @@ Wanted: one setting for the whole suite (a `testTimeout` and an `asyncUtilTimeou
 hold under load), so a test fails only when what it waits for never comes; the per-test
 entries closed with it.
 Found: 2026-10-06, investigation of why `make check` is slow (worker check-speed).
+
+## Flaky: Kilo live test does not see the resume line on the supervisor's screen
+
+`make test-live PROVIDER=kilo`, `test_worker_does_a_task_reports_and_gets_a_message[kilo]`
+timed out after 120 s "waiting for the supervisor to take the resume message": the
+supervisor got `session resumed: 0 open runs`, answered the human and was idle, but the
+line `[from lado] session resumed: 0 open runs` was not on its captured screen (Kilo's TUI
+had scrolled it away). Passed on the rerun with no change.
+Wanted: the test checks that the supervisor took the message by its delivery (state), not
+by the screen.
+Found: 2026-10-06, `make test-live` on main before the 0.22.0 release.

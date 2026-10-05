@@ -994,7 +994,10 @@ def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
 
 def test_session_start_types_in_what_was_queued_while_the_agent_started(repo, fake_tmux):
     _session_with_worker(repo)
-    assert runtime.send_message("s", "w1", "supervisor", "report").startswith("queued")
+    # Not at its turn's end: as soon as it is idle.
+    assert runtime.send_message("s", "w1", "supervisor", "report") == (
+        "queued; supervisor is starting and will get it when it is idle"
+    )
     _hook("SessionStart", "supervisor", {"source": "startup"})
     assert _typed(fake_tmux) == ["[from w1] report"]
     assert [m.state for m in state.list_messages("s")] == [state.SENT]

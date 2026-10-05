@@ -738,7 +738,7 @@ def send_message(
     """Queue a message and deliver it now if the recipient is idle. Only the one-line
     summary is typed; the recipient reads the body with read_messages.
 
-    A busy recipient gets it from its turn-end hook when its current turn ends (see lado.hooks).
+    A recipient not idle gets it from the hook that makes it idle (see lado.hooks).
     """
     summary = summary.strip()
     _check_summary(summary)
@@ -941,7 +941,7 @@ def _deliver(session: str, recipient: str) -> str:
     # reverse, so a message is never left behind by an agent that went idle in between.
     status = state.get_agent(session, recipient).status
     if status != state.IDLE:
-        return f"queued; {recipient} is {status} and will get it when its turn ends"
+        return f"queued; {recipient} is {status} and will get it when it is idle"
     if state.has_sent(session, recipient):
         return f"queued; {recipient} has not confirmed the message typed before"
     return "sent" if deliver_pending(session, recipient) else "queued"

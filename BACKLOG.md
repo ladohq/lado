@@ -1081,3 +1081,29 @@ Wanted: the pasted line never ends in a backslash (e.g. a trailing space or the 
 suffix after it, or escaping per provider), checked for each provider (Kilo and OpenCode may
 treat it the same way), with a test.
 Found: 2026-10-06, by the human in session kit-creator.
+
+## A hook that makes an agent idle types new messages while one typed before is unconfirmed
+
+`hooks._idle` hands over the queue with `deliver_pending` without `idle_only`, as the
+turn-end and conversation-start hooks did before: at a turn's end or a conversation's start
+the queue is typed in even while a message typed earlier (one a dialog swallowed, say) is
+still `sent`. AGENTS.md says "a new message waits while one typed before is unconfirmed";
+the sender's path and the sweep keep that rule, the hooks do not.
+Wanted: one rule, decided and kept by code and text alike (the hooks take the queue with
+`idle_only`, or AGENTS.md says where the rule does not hold and why).
+Found: 2026-10-06, review of fix/deliver-on-idle.
+
+## `make check` fails on timeouts when the machine is under heavy load
+
+With a load average of 150-420 (other agents of the session running), three full
+`make check` runs failed on different timeouts each time, and every failed test passed on
+its own: test_event_stream::test_the_server_stops_with_a_stream_open (STOP_TIMEOUT/2),
+test_fake_agent::test_the_agent_ends_its_process_on_exit, test_agent_terminal's
+test_the_humans_tmux_session_is_left_as_it_was and
+test_history_gives_the_windows_past_lines_and_says_when_it_is_full_screen,
+test_flow_runs::test_a_worker_gets_a_step_far_longer_than_a_tmux_command, the UI tests
+test_chat::test_a_long_chat_opens_with_its_latest_page… and
+test_layout::test_a_chip_opens_its_agents_terminal…, and vitest `findBy…` waits.
+Wanted: `make check` gives the same verdict under load (time bounds that hold under
+parallel load, or `-n` chosen by the machine's load), so a red run means a real failure.
+Found: 2026-10-06, review of fix/deliver-on-idle.

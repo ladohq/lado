@@ -1079,3 +1079,15 @@ Found: 2026-10-06, check of the Inbox architecture candidate.
 transaction; when the supervisor is stopped, the copy stays `pending` with no notice.
 Wanted: the copy is dropped or reported when the supervisor is not running.
 Found: 2026-10-06, check of the Inbox architecture candidate.
+
+## A message ending in a backslash is not submitted
+
+When the human's message (or any message) ends in `\`, e.g. `что требуется от меня?\`,
+the line LADO pastes into an idle agent (`[from human] <summary>`) ends in a backslash.
+`tmux.send_text` pastes it and presses Enter; Claude Code reads `\` + Enter as "continue on
+the next line", so the prompt is not submitted and the agent sits with the text in its input
+until someone presses Enter. The message stays `sent` and the sweep pastes it again later.
+Wanted: the pasted line never ends in a backslash (e.g. a trailing space or the `(#id)`
+suffix after it, or escaping per provider), checked for each provider (Kilo and OpenCode may
+treat it the same way), with a test.
+Found: 2026-10-06, by the human in session kit-creator.

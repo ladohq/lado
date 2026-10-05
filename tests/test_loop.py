@@ -6,7 +6,7 @@ from lado import loop, runtime, state, tmux
 
 
 def _session(repo):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
 
 
 def test_the_loop_goes_on_while_the_session_runs(repo, fake_tmux):
@@ -90,7 +90,7 @@ def test_start_starts_the_loop_once_the_tmux_session_exists(
         fake_tmux.append(("new_session", *args))
 
     monkeypatch.setattr(tmux, "new_session", new_session)
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     assert loop_starts == ["s"]
     runtime.stop_session("s")
     runtime.start_session(str(repo), "s", None)  # resumed

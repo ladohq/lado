@@ -27,7 +27,7 @@ def client():
 
 @pytest.fixture
 def session(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
     return "s"
 
@@ -159,7 +159,7 @@ CASES = json.loads(
 @pytest.fixture
 def table(repo, fake_tmux) -> dict[int, int]:
     """The case table's messages in session "s", with their times: case id -> real id."""
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     ids = {}
     for one in CASES["messages"]:
         real = state.queue_message("s", one["from"], one["to"], f"m{one['id']}")

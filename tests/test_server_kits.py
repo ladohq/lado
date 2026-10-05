@@ -260,8 +260,8 @@ def test_a_plan_update_names_new_mcp_servers_and_the_running_sessions(
     work, url = kit_repo(tmp_path, "1.0.0")
     ok(install(client, plan(client, url)))
     publish(work, {"kit.yaml": "name: team\nversion: 1.1.0\n", "agents/w.md": WITH_DB}, "v1.1.0")
-    state.add_session(state.Session("a", str(tmp_path), None, kits=["team"]))
-    state.add_session(state.Session("b", str(tmp_path), None, kits=["team"]))
+    state.add_session(state.Session("a", str(tmp_path), None, kits=["team"], provider="claude"))
+    state.add_session(state.Session("b", str(tmp_path), None, kits=["team"], provider="claude"))
     status = {"a": runtime.SessionStatus.RUNNING, "b": runtime.SessionStatus.STOPPED}
     monkeypatch.setattr(runtime, "session_status", lambda sess: status[sess.name])
     planned = ok(client.post("/api/kits/team/plan-update", json={}))
@@ -375,7 +375,7 @@ def test_remove_preview_names_the_sessions_and_remove_forgets_the_kit(
 ):
     _, url = kit_repo(tmp_path, "1.0.0")
     ok(install(client, plan(client, url)))
-    state.add_session(state.Session("a", str(tmp_path), None, kits=["team"]))
+    state.add_session(state.Session("a", str(tmp_path), None, kits=["team"], provider="claude"))
     monkeypatch.setattr(runtime, "session_status", lambda sess: runtime.SessionStatus.RUNNING)
     preview = ok(client.get("/api/kits/team/remove-preview"))
     assert (preview["running"], preview["stopped"], preview["stopped_line"]) == (["a"], [], None)

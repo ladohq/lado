@@ -184,13 +184,13 @@ def test_no_pending_migration_without_a_database(lado_home):
 
 
 def test_no_pending_migration_at_the_current_version(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     assert state.pending_migration() is None
 
 
 def test_pending_migration_names_the_sessions_not_stopped(lado_home):
     for name in ("b", "a", "gone"):
-        state.add_session(state.Session(name, "/r", None))
+        state.add_session(state.Session(name, "/r", None, provider="claude"))
     state.stop_session("gone")
     agent_helpers.previous_schema()
     before = _database()
@@ -242,11 +242,11 @@ def test_version_3_database_gets_events(lado_home):
 
 
 def _agent(name="w1", status=state.STARTING):
-    return state.Agent("s", name, "worker", "/r", None, None, status)
+    return state.Agent("s", name, "worker", "/r", None, None, status, provider="claude")
 
 
 def test_status_change_is_an_event_once(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(_agent())
     state.set_status("s", "w1", state.BUSY)
     state.set_status("s", "w1", state.BUSY)
@@ -263,7 +263,7 @@ def _status_events():
 
 
 def _waiting_agent(key=""):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(_agent(status=state.BUSY))
     state.wait("s", "w1", key)
 
@@ -320,7 +320,7 @@ def test_any_resume_ends_a_wait_without_a_key(lado_home):
 
 @pytest.mark.parametrize("status", [state.IDLE, state.BUSY, state.STARTING, state.STOPPED])
 def test_resume_of_an_agent_not_waiting_changes_nothing(lado_home, status):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(_agent(status=status))
     state.resume("s", "w1", "k1")
     state.resume("s", "w1", "")
@@ -347,7 +347,7 @@ def _event_at(agent, kind, created_at, detail=""):
 
 
 def test_status_since_is_the_latest_status_event_or_the_spawn(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
     _event_at("w1", state.STATUS, "2026-10-01 10:00:05.250", state.BUSY)
     _event_at("w1", state.STATUS, "2026-10-01 10:07:00.000", state.IDLE)
@@ -361,7 +361,7 @@ def test_status_since_is_the_latest_status_event_or_the_spawn(lado_home):
 
 
 def test_status_since_of_a_reused_name_starts_at_its_new_spawn(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
     _event_at("w1", state.STATUS, "2026-10-01 10:05:00.000", state.IDLE)
     _event_at("w1", state.SPAWNED, "2026-10-01 12:00:00.000")
@@ -369,7 +369,7 @@ def test_status_since_of_a_reused_name_starts_at_its_new_spawn(lado_home):
 
 
 def test_agent_times_are_its_latest_spawn_and_the_status_since_of_lado_ls(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
     _event_at("w1", state.STATUS, "2026-10-01 10:05:00.000", state.IDLE)
     _event_at("w1", state.FINISHED, "2026-10-01 11:00:00.000", "merged")
@@ -388,14 +388,16 @@ def test_agent_times_are_its_latest_spawn_and_the_status_since_of_lado_ls(lado_h
 
 
 def test_an_agent_has_the_time_it_was_added(lado_home):
-    state.add_session(state.Session("s", "/r", None))
-    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, state.IDLE))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(
+        state.Agent("s", "w1", "worker", "/r", None, None, state.IDLE, provider="claude")
+    )
     created = state.get_agent("s", "w1").created_at
     assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", created)
 
 
 def test_events_have_sub_second_times_and_go_with_the_session(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_event("s", "w1", "finished", "")
     [event] = state.list_events("s")
     assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", event.created_at)
@@ -437,7 +439,7 @@ def test_old_message_gets_a_summary_from_its_first_line():
 
 
 def test_read_messages_returns_unread_bodies_once(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     one = state.queue_message("s", "w1", "supervisor", "done", "the report")
     state.queue_message("s", "w1", "supervisor", "no body")
     later = state.queue_message("s", "w2", "supervisor", "blocked", "why")
@@ -489,7 +491,7 @@ def _run(name="feature/x", **changes):
 
 
 def test_a_run_is_stored_with_its_start_event(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_run(_run(), [("supervisor", state.FLOW_START, "feature/x: started")])
     run = state.get_run("s", "feature/x")
     assert run == _run(created_at=run.created_at)
@@ -502,7 +504,7 @@ def test_a_run_is_stored_with_its_start_event(lado_home):
 
 
 def test_a_run_changes_only_from_the_state_it_was_read_in(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
     before = state.get_run("s", "feature/x")
     after = dataclasses.replace(before, state="build", visits={"build": 1})
@@ -516,7 +518,7 @@ def test_a_run_changes_only_from_the_state_it_was_read_in(lado_home):
 
 
 def test_two_self_loops_from_the_same_read_write_once(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_run(_run(visits={"design": 1}), [("supervisor", state.FLOW_START, "started")])
     before = state.get_run("s", "feature/x")
     again = dataclasses.replace(before, visits={"design": 2})
@@ -526,7 +528,7 @@ def test_two_self_loops_from_the_same_read_write_once(lado_home):
 
 
 def test_runs_go_with_their_session(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
     state.add_run(
         _run("feature/y", status=state.ENDED), [("supervisor", state.FLOW_START, "started")]
@@ -564,7 +566,7 @@ def _gate(**changes):
 
 def _waiting(lado_home):
     """A run that waits at an open gate."""
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
     before = state.get_run("s", "feature/x")
     after = dataclasses.replace(before, state="design_ok", status=state.WAITING)
@@ -631,7 +633,9 @@ def test_the_gate_closes_with_the_runs_next_write(lado_home):
 
 
 def _agent_waiting(session, name):
-    state.add_agent(state.Agent(session, name, "worker", "/w", None, None, "idle"))
+    state.add_agent(
+        state.Agent(session, name, "worker", "/w", None, None, "idle", provider="claude")
+    )
     state.add_event(session, name, state.SPAWNED)
     state.set_status(session, name, state.WAITING)
 
@@ -640,9 +644,11 @@ def test_what_waits_for_the_human_is_one_list_of_sessions_not_stopped(lado_home)
     run, gate = _waiting(lado_home)
     question = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
     _agent_waiting("s", "w1")
-    state.add_session(state.Session("gone", "/r", None))  # tmux gone: still not stopped
+    state.add_session(
+        state.Session("gone", "/r", None, provider="claude")
+    )  # tmux gone: still not stopped
     _agent_waiting("gone", "w2")
-    state.add_session(state.Session("old", "/r", None))
+    state.add_session(state.Session("old", "/r", None, provider="claude"))
     state.add_run(
         _run(session="old"), [("supervisor", state.FLOW_START, "x")], _gate(session="old")
     )
@@ -673,7 +679,7 @@ def test_what_waits_for_the_human_is_one_list_of_sessions_not_stopped(lado_home)
 
 
 def test_a_new_run_can_start_at_a_gate_and_gates_go_with_their_session(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     gate = _gate()
     state.add_run(_run(status=state.WAITING), [("supervisor", state.FLOW_START, "x")], gate)
     assert state.open_gates() == [state.get_gate(gate.id)]
@@ -724,7 +730,7 @@ def test_version_9_database_gets_message_attempts_and_when_agents_were_seen(lado
 
 
 def test_a_run_keeps_the_language_of_the_human(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_run(_run(language="ru"), [("supervisor", state.FLOW_START, "started")])
     assert state.get_run("s", "feature/x").language == "ru"
 
@@ -754,7 +760,7 @@ def _moved(run, to, note, body="", kind=state.REPORT):
 
 
 def test_every_note_is_kept_with_the_state_it_was_reported_from(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     run = _run()
     state.add_run(run, [("supervisor", state.FLOW_START, "started")])
     run = _moved(run, "implement", "first design", "plan A")
@@ -776,7 +782,7 @@ def test_every_note_is_kept_with_the_state_it_was_reported_from(lado_home):
 
 
 def test_notes_belong_to_their_run(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     for name in ("feature/x", "feature/y"):
         state.add_run(_run(name), [("supervisor", state.FLOW_START, "started")])
     _moved(_run("feature/x"), "implement", "x designed")
@@ -784,7 +790,7 @@ def test_notes_belong_to_their_run(lado_home):
 
 
 def test_the_humans_override_is_kept_but_never_taken_for_a_states_report(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     run = _run()
     state.add_run(run, [("supervisor", state.FLOW_START, "started")])
     run = _moved(run, "implement", "the design")
@@ -801,7 +807,7 @@ def test_the_humans_override_is_kept_but_never_taken_for_a_states_report(lado_ho
 
 
 def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(_agent("supervisor", state.IDLE))
     state.add_agent(_agent("w1", state.BUSY))
     state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
@@ -840,7 +846,7 @@ def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(l
 
 
 def test_a_resumed_session_gets_its_new_settings(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.stop_session("s")
     state.resume_session(state.Session("s", "/r", "plan", "kilo", ["team"], ["skill:x"]), "kits")
     sess = state.get_session("s")
@@ -852,7 +858,7 @@ def test_a_resumed_session_gets_its_new_settings(lado_home):
 
 
 def test_version_12_messages_become_plain_messages_in_version_13(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.queue_message("s", "w1", "supervisor", "hi", "body")
     agent_helpers.schema_before(13)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
@@ -865,7 +871,7 @@ def test_version_12_messages_become_plain_messages_in_version_13(lado_home):
 
 
 def test_version_14_notes_get_an_empty_actor_outcome_and_target(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     run = _run()
     state.add_run(run, [("supervisor", state.FLOW_START, "started")])
     agent_helpers.schema_before(15)
@@ -887,7 +893,7 @@ def test_version_14_notes_get_an_empty_actor_outcome_and_target(lado_home):
 
 
 def test_version_15_agents_wait_for_no_key(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(_agent(status=state.WAITING))
     agent_helpers.schema_before(16)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
@@ -901,7 +907,7 @@ def test_version_15_agents_wait_for_no_key(lado_home):
 
 
 def test_run_notes_are_the_steps_of_the_session_in_order(lado_home):
-    state.add_session(state.Session("s", "/r", None))
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
     x, y = _run("feature/x"), _run("feature/y")
     for run in (x, y):
         state.add_run(run, [("supervisor", state.FLOW_START, "started")])
@@ -921,3 +927,12 @@ def test_run_notes_are_the_steps_of_the_session_in_order(lado_home):
     assert (first.actor, first.outcome, first.target) == ("supervisor", "ready", "implement")
     assert notes[0].id < notes[1].id < notes[2].id
     assert [n.summary for n in state.run_notes("s", "feature/y")] == ["y designed"]
+
+
+def test_a_session_and_an_agent_need_their_provider():
+    """No provider is the default (feature/no-default-provider): one left out is an error,
+    never Claude Code."""
+    with pytest.raises(TypeError, match="provider"):
+        state.Session("s", "/repo", None)
+    with pytest.raises(TypeError, match="provider"):
+        state.Agent("s", "w1", "worker", "/repo", None, None, state.IDLE)

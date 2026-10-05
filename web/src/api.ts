@@ -168,6 +168,7 @@ export type FolderInfo = components["schemas"]["FolderInfo"];
 export type RecentFolder = components["schemas"]["RecentFolder"];
 export type KitInfo = components["schemas"]["KitInfo"];
 export type ProviderInfo = components["schemas"]["ProviderInfo"];
+export type ProviderSuggestion = components["schemas"]["ProviderSuggestion"];
 export type Launch = components["schemas"]["Launch"];
 export type Resume = components["schemas"]["Resume"];
 export type Started = components["schemas"]["Started"];

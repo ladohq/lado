@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from lado import doctor, gitcache, providers, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
+from lado.server import launch as server_launch
 
 PORT = 8123
 OWN = "http://testserver"  # the test client's Host
@@ -23,6 +24,14 @@ def client(lado_home):
     client.cookies.set(auth.cookie_name(PORT), auth.token())
     client.headers["origin"] = OWN
     return client
+
+
+@pytest.fixture(autouse=True)
+def installed(monkeypatch):
+    """The provider CLIs the server finds (server_launch._installed), all of them unless set."""
+    found = set(providers.names())
+    monkeypatch.setattr(server_launch, "_installed", lambda provider: provider.name in found)
+    return found
 
 
 def folder(client, path) -> dict:
@@ -49,6 +58,7 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
         "subfolders": ["docs", "src"],
         "default_name": "my-repo",
         "name_state": "free",
+        "provider": None,
     }
 
 
@@ -93,7 +103,7 @@ def test_the_subfolders_are_at_most_fifty(client, tmp_path):
 def test_the_default_name_says_whether_a_session_has_it(
     client, repo, fake_tmux, status, name_state
 ):
-    runtime.start_session(str(repo), None, None)  # "my-repo"
+    runtime.start_session(str(repo), None, None, provider="claude")  # "my-repo"
     if status == "stopped":
         runtime.stop_session("my-repo")
     elif status == "tmux_gone":
@@ -103,10 +113,35 @@ def test_the_default_name_says_whether_a_session_has_it(
 
 
 def test_the_default_name_taken_by_a_session_of_another_folder(client, repo, tmp_path, fake_tmux):
-    runtime.start_session(str(repo), None, None)
+    runtime.start_session(str(repo), None, None, provider="claude")
     other = agent_helpers.init_repo(tmp_path / "x" / "My Repo")
     info = folder(client, other)
     assert (info["default_name"], info["name_state"]) == ("my-repo", "taken_elsewhere")
+
+
+def test_the_folder_suggests_the_only_installed_provider(client, repo, installed, lado_home):
+    installed.intersection_update({"kilo"})
+    info = folder(client, repo)
+    assert info["provider"] == {"name": "kilo", "reason": "only_installed"}
+    assert not (lado_home / "lado.db").exists()  # no history to look at, none made
+
+
+def test_the_folder_suggests_its_last_sessions_provider(client, repo, installed, fake_tmux):
+    runtime.start_session(str(repo), "s", None, "opencode")
+    assert folder(client, repo)["provider"] == {"name": "opencode", "reason": "last_session"}
+    installed.discard("opencode")  # not installed: the others leave a choice
+    assert folder(client, repo)["provider"] is None
+
+
+def test_a_subfolder_takes_its_repositorys_last_session(client, repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, "kilo")
+    (repo / "src").mkdir()
+    assert folder(client, repo / "src")["provider"]["name"] == "kilo"
+
+
+def test_a_folder_that_will_not_do_suggests_by_what_is_installed(client, tmp_path, installed):
+    installed.intersection_update({"claude"})
+    assert folder(client, tmp_path)["provider"] == {"name": "claude", "reason": "only_installed"}
 
 
 # Recent folders
@@ -116,9 +151,9 @@ def test_recent_folders_are_the_folders_of_past_sessions_latest_start_first(
     client, repo, tmp_path, fake_tmux
 ):
     other = agent_helpers.init_repo(tmp_path / "other")
-    runtime.start_session(str(repo), "a", None)
-    runtime.start_session(str(other), "b", "plan")
-    runtime.start_session(str(repo), "c", None, kit_names=["default"])
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    runtime.start_session(str(other), "b", "plan", provider="claude")
+    runtime.start_session(str(repo), "c", None, kit_names=["default"], provider="claude")
     runtime.stop_session("a")
     runtime.start_session(str(repo), "a", None)  # resumed: the latest start
     recent = client.get("/api/folders/recent").json()
@@ -131,7 +166,9 @@ def test_recent_folders_are_the_folders_of_past_sessions_latest_start_first(
 
 def test_recent_folders_are_at_most_ten(client, tmp_path, fake_tmux):
     for n in range(12):
-        runtime.start_session(str(agent_helpers.init_repo(tmp_path / f"r{n}")), None, None)
+        runtime.start_session(
+            str(agent_helpers.init_repo(tmp_path / f"r{n}")), None, None, provider="claude"
+        )
     recent = client.get("/api/folders/recent").json()
     assert [r["session"]["name"] for r in recent] == [f"r{n}" for n in range(11, 1, -1)]
 
@@ -217,7 +254,6 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
     assert claude == {
         "name": "claude",
         "title": "Claude Code",
-        "default": True,
         "permission_modes": list(providers.get("claude").permission_modes),
         "install_hint": providers.get("claude").install_hint,
         "installed": True,
@@ -226,8 +262,8 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
         "tested_version": "2.1.287",
         "warning": "",
     }
-    assert (kilo["default"], kilo["installed"], kilo["detail"]) == (
-        False,
+    assert "default" not in kilo
+    assert (kilo["installed"], kilo["detail"]) == (
         False,
         "`kilo` not found on PATH",
     )
@@ -277,7 +313,7 @@ def test_a_session_starts_from_the_api(client, repo, fake_tmux):
 def test_the_first_start_makes_the_database(client, repo, fake_tmux, lado_home):
     assert not (lado_home / "lado.db").exists()
     assert client.get("/api/sessions").json() == []
-    assert launch(client, repo).status_code == 200
+    assert launch(client, repo, provider="kilo").status_code == 200
     assert [s["name"] for s in client.get("/api/sessions").json()] == ["my-repo"]
 
 
@@ -285,7 +321,7 @@ def test_the_first_start_makes_the_database(client, repo, fake_tmux, lado_home):
 def test_a_start_under_a_taken_name_is_409_with_that_sessions_status_and_folder(
     client, repo, fake_tmux, status
 ):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     if status == "stopped":
         runtime.stop_session("s")
     answer = launch(client, repo, name="s")
@@ -307,19 +343,35 @@ def test_a_start_the_core_refuses_is_400_with_its_reason(client, tmp_path, repo,
     assert 'permission mode "dontAsk" is not supported by Kilo CLI' in answer.json()["detail"]
 
 
+def test_a_start_without_provider_goes_by_the_cores_rule(client, repo, fake_tmux):
+    answer = launch(client, repo, name="a")  # the agents' PATH has every CLI, no history
+    assert answer.status_code == 400
+    assert "give one with --provider NAME" in answer.json()["detail"]
+    assert state.get_session("a") is None
+    runtime.start_session(str(repo), "b", None, "opencode")
+    answer = launch(client, repo, name="c")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["session"]["provider"] == "opencode"
+
+
 def test_a_name_in_two_kits_is_refused_with_the_ways_to_switch_one_off(client, repo, fake_tmux):
     for name in ("a", "b"):
         kit = repo / ".lado" / "kits" / name
         (kit / "agents").mkdir(parents=True)
         (kit / "kit.yaml").write_text(f"name: {name}\nversion: 1.0.0\n")
         (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\n")
-    answer = launch(client, repo, kits=["a", "b"])
+    answer = launch(client, repo, kits=["a", "b"], provider="claude")
     assert answer.status_code == 400
     detail = answer.json()["detail"]
     assert detail["switch_off"] == ["agent:rev@a", "agent:rev@b"]
     assert detail["message"].startswith('agent "rev" is defined by two kits: a (')
     assert client.get("/api/sessions").json() == []
-    assert launch(client, repo, kits=["a", "b"], without=["agent:rev@b"]).status_code == 200
+    assert (
+        launch(
+            client, repo, kits=["a", "b"], without=["agent:rev@b"], provider="claude"
+        ).status_code
+        == 200
+    )
     runtime.stop_session("my-repo")
     answer = client.post("/api/sessions/my-repo/resume", json={"without": []})
     assert answer.status_code == 400
@@ -335,7 +387,7 @@ def test_a_kit_not_found_says_how_to_move_from_sources_yaml(client, repo, fake_t
     (lado_home / "sources.yaml").write_text(
         "sources:\n- {name: dev, kind: path, location: /nowhere/dev}\n"
     )
-    answer = launch(client, repo, kits=["mine"])
+    answer = launch(client, repo, kits=["mine"], provider="claude")
     assert answer.status_code == 400
     refused = answer.json()["detail"]
     assert refused["switch_off"] == []
@@ -369,7 +421,7 @@ def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
         "  build:\n    agent: rev\n    do: Build.\n    outcomes: {done: end}\n"
         "  end:\n    end: true\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     runs.start("s", "ship", "Add x", name="x")
     runtime.stop_session("s")
     answer = client.post(
@@ -390,7 +442,7 @@ def test_an_empty_list_of_kits_is_refused_not_replaced(client, repo, fake_tmux):
         "a session needs at least one kit",
     )
     assert client.get("/api/sessions").json() == []
-    runtime.start_session(str(repo), "s", None, kit_names=["default"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default"], provider="claude")
     runtime.stop_session("s")
     answer = client.post("/api/sessions/s/resume", json={"kits": []})
     assert (answer.status_code, answer.json()["detail"]) == (
@@ -401,18 +453,18 @@ def test_an_empty_list_of_kits_is_refused_not_replaced(client, repo, fake_tmux):
 
 
 def test_a_resume_of_an_unknown_session_is_404(client, repo, fake_tmux):
-    runtime.start_session(str(repo), "other", None)
+    runtime.start_session(str(repo), "other", None, provider="claude")
     assert client.post("/api/sessions/s/resume", json={}).status_code == 404
 
 
 def test_a_resume_of_a_running_session_is_400(client, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     answer = client.post("/api/sessions/s/resume", json={})
     assert answer.status_code == 400 and "already running" in answer.json()["detail"]
 
 
 def test_stop_shows_what_it_does_then_does_it(client, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     worker = runtime.spawn_worker("s", "task", name="w1")
     runtime.send_message("s", "supervisor", "w1", "hi")
     preview = client.get("/api/sessions/s/stop-preview").json()
@@ -430,7 +482,7 @@ def test_stop_shows_what_it_does_then_does_it(client, repo, fake_tmux):
 
 
 def test_forget_shows_what_it_drops_and_needs_force_for_open_runs(client, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     run = state.Run("s", "feature/x", "feature", "{}", {}, "do x", "design", "/w", "b")
     state.add_run(run, [("lado", state.FLOW_START, "at design")], None)
     answer = client.delete("/api/sessions/s")
@@ -460,7 +512,7 @@ CHANGES = [
 def test_a_launch_change_needs_the_token_and_the_servers_own_origin(
     client, repo, fake_tmux, method, path
 ):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     payload = {"where": {"kind": "folder", "path": str(repo)}} if path == "/api/sessions" else {}
     send = getattr(client, method)
     kwargs = {"json": payload} if method == "post" else {}

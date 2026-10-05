@@ -90,7 +90,7 @@ def authorized(client: TestClient) -> TestClient:
 
 
 def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.start_session(str(repo), "t", "plan", "kilo", without=["agent:worker"])
     runtime.stop_session("t")
     with state.connect() as db:

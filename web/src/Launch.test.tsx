@@ -44,6 +44,7 @@ function folder(path: string, more: Partial<FolderInfo> = {}): FolderInfo {
     subfolders: [],
     default_name: path.split("/").pop() ?? "",
     name_state: "free",
+    provider: null,
     ...more,
   };
 }
@@ -52,7 +53,6 @@ function provider(name: string, more: Partial<ProviderInfo> = {}): ProviderInfo 
   return {
     name,
     title: name === "claude" ? "Claude Code" : "Kilo CLI",
-    default: name === "claude",
     permission_modes: name === "claude" ? ["default", "acceptEdits", "plan", "dontAsk"] : ["default", "plan"],
     install_hint: `install ${name}`,
     installed: true,
@@ -155,11 +155,15 @@ function type(path: string) {
 }
 
 const startButton = () => screen.getByRole("button", { name: "Start session" }) as HTMLButtonElement;
+const providerSelect = () => screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
 
+// A folder that will do, with claude suggested unless `more` says otherwise; the providers
+// answered.
 async function ready(path: string, more: Partial<FolderInfo> = {}) {
-  folders[path] = folder(path, more);
+  folders[path] = folder(path, { provider: { name: "claude", reason: "only_installed" }, ...more });
   type(path);
   await screen.findByText(/✓ git repository · branch main/);
+  await waitFor(() => expect(providerSelect().disabled).toBe(false));
 }
 
 // Launch on the rail and "+"
@@ -227,7 +231,7 @@ test("a recent folder is one click, and its last session gives kits, provider an
       session: session("app", { repo: "/src/app", kits: ["team"], provider: "kilo", permission_mode: "plan" }),
     },
   ];
-  folders["/src/app"] = folder("/src/app");
+  folders["/src/app"] = folder("/src/app", { provider: { name: "kilo", reason: "last_session" } });
   await openLaunch();
   fireEvent.click(await screen.findByRole("button", { name: "/src/app" }));
   expect(where().value).toBe("/src/app");
@@ -237,6 +241,7 @@ test("a recent folder is one click, and its last session gives kits, provider an
   expect(within(kitsField).queryByText("default")).toBeNull();
   expect(screen.getAllByText("from the last session of this folder").length).toBeGreaterThan(0);
   await waitFor(() => expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).value).toBe("kilo"));
+  expect(screen.getByText("from the folder's last session")).toBeTruthy();
   expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
 });
 
@@ -308,16 +313,61 @@ test("providers show checking while their CLIs are asked, a missing one is off, 
     ]),
   );
   await waitFor(() => expect(select.disabled).toBe(false));
+  fireEvent.change(select, { target: { value: "claude" } });
   const kilo = within(select).getByRole("option", { name: /kilo/ }) as HTMLOptionElement;
   expect(kilo.disabled).toBe(true);
   expect(kilo.textContent).toContain("not installed");
   expect(screen.getByText(/LADO is tested with Claude Code 2\.1\.287/)).toBeTruthy();
 });
 
+test("the folder's suggested provider is chosen, with the core's reason", async () => {
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "last_session" } });
+  await waitFor(() => expect(providerSelect().value).toBe("kilo"));
+  expect(screen.getByText("from the folder's last session")).toBeTruthy();
+  await ready("/src/one", { provider: { name: "claude", reason: "only_installed" } });
+  await waitFor(() => expect(providerSelect().value).toBe("claude"));
+  expect(screen.getByText("the only one installed")).toBeTruthy();
+  expect(screen.queryByText("from the folder's last session")).toBeNull();
+  expect(startButton().disabled).toBe(false);
+});
+
+test("without a suggestion no provider is chosen and Start is off until the human picks one", async () => {
+  await openLaunch();
+  await ready("/src/app", { provider: null });
+  expect(providerSelect().value).toBe("");
+  expect(screen.getByText("choose the agent CLI for this session")).toBeTruthy();
+  expect(startButton().disabled).toBe(true);
+  fireEvent.change(providerSelect(), { target: { value: "kilo" } });
+  expect(providerSelect().value).toBe("kilo");
+  expect(startButton().disabled).toBe(false);
+});
+
+test("a provider not installed cannot be chosen, even when suggested", async () => {
+  providers = async () => [provider("claude"), provider("kilo", { installed: false, version: "" })];
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "last_session" } });
+  await waitFor(() => expect(providerSelect().disabled).toBe(false));
+  const kilo = within(providerSelect()).getByRole("option", { name: /kilo/ }) as HTMLOptionElement;
+  expect(kilo.disabled).toBe(true);
+  expect(startButton().disabled).toBe(true);
+});
+
+test("the human's own choice of provider is kept when the folder changes", async () => {
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "last_session" } });
+  await waitFor(() => expect(providerSelect().value).toBe("kilo"));
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await ready("/src/other", { provider: { name: "kilo", reason: "only_installed" } });
+  expect(providerSelect().value).toBe("claude");
+  expect(screen.queryByText("the only one installed")).toBeNull();
+});
+
 test("a mode the new provider does not support goes back to default, and the window says so", async () => {
   await openLaunch();
   const providerSelect = (await screen.findByRole("combobox", { name: "Provider" })) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.disabled).toBe(false));
+  fireEvent.change(providerSelect, { target: { value: "claude" } });
   const mode = screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement;
   fireEvent.change(mode, { target: { value: "dontAsk" } });
   fireEvent.change(providerSelect, { target: { value: "kilo" } });

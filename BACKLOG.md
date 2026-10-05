@@ -420,9 +420,14 @@ environment, while agents now run with their login shell's PATH (`agent_env.reso
 CLI found by one may be missing for the other. The UI's New session window shows the same
 check (`GET /api/providers`, `doctor.provider_status` with the server's PATH), so it can
 offer a provider whose start then fails with "not on the agents' PATH", or the other way.
+Since there is no default provider, the window's suggestion (`FolderInfo.provider`,
+`runtime.suggested_provider` with the server's `shutil.which`) has the same gap: it may
+suggest "the only one installed" that the agents' PATH lacks, or none where `lado start`
+(which looks on the agents' PATH) would choose one; the start then refuses loudly.
 Wanted: doctor looks the agent CLIs up on the resolved environment's PATH too and says
 where they differ.
-Found: 2026-10-04, fix/agent-env; the UI's case in feature/launch.
+Found: 2026-10-04, fix/agent-env; the UI's case in feature/launch; the suggestion's in
+feature/no-default-provider.
 
 ## No tmux on an agent's PATH breaks its LADO calls with a raw error and a ghost worker
 
@@ -959,6 +964,15 @@ Wanted: the tests wait for the region with a timeout that holds under `make chec
 or the region comes without the slow step.
 Found: 2026-10-05, make check of run feature/opencode-provider after merging main.
 
+## The database schema still names `claude` as the provider column's default
+
+`sessions.provider` and `agents.provider` are `NOT NULL DEFAULT 'claude'` in `state.SCHEMA`
+and in the migration that added them. Since there is no default provider in the code
+(feature/no-default-provider), every insert gives the provider, so a fresh database never
+uses that default; it only filled the rows of sessions made before providers existed, which
+did run Claude Code. Wanted: when a migration touches these tables anyway, drop the default
+from the schema of new databases (keep the migration's fill for old rows).
+Found: 2026-10-05, feature/no-default-provider.
 ## Flaky: UI e2e test of a question card under load
 
 `tests/ui/test_chat.py::test_the_supervisor_asks_and_the_human_answers_in_a_card` failed in

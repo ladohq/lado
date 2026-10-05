@@ -2390,6 +2390,16 @@
               }
             ],
             "title": "Name State"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderSuggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2402,7 +2412,8 @@
           "has_commits",
           "subfolders",
           "default_name",
-          "name_state"
+          "name_state",
+          "provider"
         ],
         "title": "FolderInfo",
         "description": "A folder as the New session window checks it."
@@ -3996,10 +4007,6 @@
             "type": "string",
             "title": "Title"
           },
-          "default": {
-            "type": "boolean",
-            "title": "Default"
-          },
           "permission_modes": {
             "items": {
               "type": "string"
@@ -4036,7 +4043,6 @@
         "required": [
           "name",
           "title",
-          "default",
           "permission_modes",
           "install_hint",
           "installed",
@@ -4047,6 +4053,28 @@
         ],
         "title": "ProviderInfo",
         "description": "A provider of LADO's registry and whether its CLI can run here."
+      },
+      "ProviderSuggestion": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "last_session",
+              "only_installed"
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "reason"
+        ],
+        "title": "ProviderSuggestion"
       },
       "RecentFolder": {
         "properties": {

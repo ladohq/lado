@@ -240,7 +240,7 @@ def test_update_at_the_latest_version_says_so_and_stops_nothing(
     installed, published, repo, fake_tmux, capsys
 ):
     published(**{__version__: "2026-10-01"})
-    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 0
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     capsys.readouterr()
     assert main(["update"]) == 0
     assert capsys.readouterr().out == f"LADO {__version__} is the latest version.\n"
@@ -248,7 +248,7 @@ def test_update_at_the_latest_version_says_so_and_stops_nothing(
 
 
 def test_update_shows_the_plan_and_asks(installed, repo, fake_tmux, capsys, monkeypatch):
-    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 0
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     runtime.spawn_worker("s", "task", name="w1")
     state.set_status("s", "w1", state.BUSY)
     _gone(repo, "old")
@@ -274,7 +274,7 @@ def test_update_shows_the_plan_and_asks(installed, repo, fake_tmux, capsys, monk
 
 
 def _gone(repo, name):
-    state.add_session(state.Session(name, str(repo), None))  # no tmux session
+    state.add_session(state.Session(name, str(repo), None, provider="claude"))  # no tmux session
 
 
 def test_update_without_a_terminal_needs_yes(installed, capsys, monkeypatch):
@@ -295,14 +295,14 @@ def test_update_to_an_older_version_warns_about_the_database(installed, capsys, 
 
 
 def test_update_to_a_version_pypi_does_not_have_stops_nothing(installed, repo, fake_tmux, capsys):
-    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 0
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     assert main(["update", "98.0.0", "--yes"]) == 1
     assert capsys.readouterr().err == ("lado: PyPI has no LADO 98.0.0; nothing was stopped\n")
     assert not state.get_session("s").stopped_at
 
 
 def test_update_inside_an_agent_is_refused(installed, repo, fake_tmux, capsys, monkeypatch):
-    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 0
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     monkeypatch.setenv("LADO_AGENT", "supervisor")
     assert main(["update", "--yes"]) == 1
     assert "lado update is for the human" in capsys.readouterr().err
@@ -313,7 +313,7 @@ def test_update_of_another_install_prints_the_commands_and_stops_nothing(
     installed, tmp_path, repo, fake_tmux, capsys, monkeypatch
 ):
     monkeypatch.setenv("LADO_UPDATE_PREFIX", str(tmp_path / "venv"))
-    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 0
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     monkeypatch.setattr(
         server_run, "running", lambda: {"url": "http://127.0.0.1:8123", "port": 8123}
     )
@@ -343,7 +343,7 @@ def test_a_loop_that_does_not_end_stops_the_update_before_the_installer(
         path.write_text(f'#!/bin/sh\necho "{line}" >> "{calls}"\n')
         path.chmod(0o755)
     monkeypatch.setenv("LADO_UPDATE_INSTALLER", str(tmp_path / "installer"))
-    assert main(["start", str(repo), "--name", "s", "--no-attach"]) == 0
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 0
     monkeypatch.setattr(loop, "wait_stopped", lambda session, timeout=0: False)
     capsys.readouterr()
     assert main(["update", "--yes"]) == 1
@@ -360,7 +360,9 @@ def test_ls_and_update_name_the_sessions_an_unfinished_update_left_stopped(
     published(**{__version__: "2026-10-01"})
     repos = {name: init_repo(tmp_path / name) for name in ("a", "b")}
     for name, repo in repos.items():
-        assert main(["start", str(repo), "--name", name, "--no-attach"]) == 0
+        assert (
+            main(["start", str(repo), "--provider", "claude", "--name", name, "--no-attach"]) == 0
+        )
     update.write_pending(update.Pending({n: str(r) for n, r in repos.items()}, None))
     runtime.stop_session("a")
     capsys.readouterr()

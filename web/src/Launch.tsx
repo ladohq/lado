@@ -16,6 +16,7 @@ import {
   type FolderInfo,
   type KitInfo,
   type ProviderInfo,
+  type ProviderSuggestion,
   type RecentFolder,
   type SessionInfo,
   type Refused,
@@ -30,6 +31,11 @@ export const DEBOUNCE = 200;
 
 const DEFAULT_KIT = "default";
 const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
+// Why the folder's provider was chosen, in the words `lado start` prints (runtime.Suggestion).
+const SUGGESTED: Record<ProviderSuggestion["reason"], string> = {
+  last_session: "from the folder's last session",
+  only_installed: "the only one installed",
+};
 
 // A session of these statuses can be resumed; a running one only opened.
 const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);
@@ -136,7 +142,9 @@ function LaunchDialog({
   const [path, setPath] = useState(resuming?.repo ?? "");
   const [name, setName] = useState<string | null>(resuming?.name ?? null); // null: the default
   const [kits, setKits] = useState<string[]>(resuming?.kits ?? [DEFAULT_KIT]);
-  const [provider, setProvider] = useState<string | null>(resuming?.provider ?? null); // null: LADO's default
+  // null: none chosen; a new session's comes from the folder's suggestion (the core's rule)
+  const [provider, setProvider] = useState<string | null>(resuming?.provider ?? null);
+  const [suggested, setSuggested] = useState<ProviderSuggestion["reason"] | null>(null);
   const [permissionMode, setPermissionMode] = useState(resuming?.permission_mode ?? DEFAULT_MODE);
   const [without, setWithout] = useState(resuming?.without.join(", ") ?? "");
   const [touched, setTouched] = useState<Set<string>>(new Set());
@@ -159,7 +167,7 @@ function LaunchDialog({
   const providerList = useOnce(getProviders);
   const providers = valueOf(providerList);
 
-  const chosenProvider = provider ?? providers?.find((one) => one.default)?.name ?? null;
+  const chosenProvider = provider;
   const providerInfo = providers?.find((one) => one.name === chosenProvider) ?? null;
   const modes = providerInfo?.permission_modes ?? [];
 
@@ -168,12 +176,19 @@ function LaunchDialog({
   useEffect(() => {
     if (resuming || folder === null) return;
     if (!touched.has("kits")) setKits(last?.kits ?? [DEFAULT_KIT]);
-    if (!touched.has("provider")) setProvider(last?.provider ?? null);
     if (!touched.has("mode")) setPermissionMode(last?.permission_mode ?? DEFAULT_MODE);
     setFromLast(last !== null);
     // Again only when the folder's last session is another one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [last?.name, folder?.root]);
+
+  // No provider is the default: the folder's suggestion, with its reason, or none.
+  useEffect(() => {
+    if (resuming || folder === null || touched.has("provider")) return;
+    setProvider(folder.provider?.name ?? null);
+    setSuggested(folder.provider?.reason ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folder?.path, folder?.provider?.name, folder?.provider?.reason]);
 
   const touch = (field: string) => setTouched((before) => new Set(before).add(field));
 
@@ -190,6 +205,7 @@ function LaunchDialog({
   const chooseProvider = (next: string) => {
     touch("provider");
     setProvider(next);
+    setSuggested(null);
     const info = providers?.find((one) => one.name === next);
     const supported = info?.permission_modes ?? [];
     if (permissionMode !== DEFAULT_MODE && !supported.includes(permissionMode)) {
@@ -200,7 +216,8 @@ function LaunchDialog({
     }
   };
 
-  const ready = (resuming !== null || (current?.ok ?? false)) && kits.length > 0;
+  const ready =
+    (resuming !== null || ((current?.ok ?? false) && providerInfo?.installed === true)) && kits.length > 0;
 
   const submit = async () => {
     setBusy(true);
@@ -323,14 +340,27 @@ function LaunchDialog({
               {providers === null ? (
                 <option value="">checking…</option>
               ) : (
-                providers.map((one) => (
-                  <option key={one.name} value={one.name} disabled={!one.installed}>
-                    {one.installed ? `${one.name} · ${one.title} ${one.version}`.trim() : `${one.name} · not installed`}
-                  </option>
-                ))
+                <>
+                  {chosenProvider === null && (
+                    <option value="" disabled>
+                      choose…
+                    </option>
+                  )}
+                  {providers.map((one) => (
+                    <option key={one.name} value={one.name} disabled={!one.installed}>
+                      {one.installed ? `${one.name} · ${one.title} ${one.version}`.trim() : `${one.name} · not installed`}
+                    </option>
+                  ))}
+                </>
               )}
             </select>
             <ProviderNote asked={providerList} info={providerInfo} chosen={chosenProvider} />
+            {providers !== null && chosenProvider === null && (
+              <span className="field-note">choose the agent CLI for this session</span>
+            )}
+            {suggested !== null && providerInfo?.installed && (
+              <span className="field-note">{SUGGESTED[suggested]}</span>
+            )}
           </div>
 
           <div className="field">

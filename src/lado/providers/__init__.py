@@ -43,8 +43,6 @@ __all__ = [
     "names",
 ]
 
-DEFAULT = "claude"
-
 _PROVIDERS: dict[str, Provider] = {
     p.name: p for p in (ClaudeProvider(), KiloProvider(), OpenCodeProvider())
 }

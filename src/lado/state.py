@@ -416,7 +416,7 @@ class Agent:
     branch: str | None
     task: str | None
     status: str
-    provider: str = "claude"
+    provider: str
     instance: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     run: str | None = None  # the flow run it works for
     seen_at: float = 0  # when its latest hook ran (time.time()); 0 for none yet
@@ -429,7 +429,7 @@ class Session:
     name: str
     repo: str
     permission_mode: str | None
-    provider: str = "claude"
+    provider: str
     kits: list[str] = field(default_factory=lambda: ["default"])
     without: list[str] = field(default_factory=list)  # switched-off agents, skills, MCP
     stopped_at: str | None = None  # UTC; None while it runs
@@ -843,6 +843,11 @@ def sessions_by_start() -> list[Session]:
             (SPAWNED,),
         ).fetchall()
     return [_session(r) for r in rows]
+
+
+def last_session(repo: str) -> Session | None:
+    """The session of the folder `repo` started (or resumed) latest, if any."""
+    return next((s for s in sessions_by_start() if s.repo == repo), None)
 
 
 def add_agent(agent: Agent) -> None:

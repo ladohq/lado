@@ -10,14 +10,18 @@ from dataclasses import dataclass
 
 from lado import __version__, agent_env, providers, terminal, tmux, update
 
+OK = "ok"
+INFO = "info"  # for the human to know; nothing to fix
+WARN = "warn"  # worth a look, but LADO works
+FAIL = "fail"  # LADO does not work until it is fixed
+
 
 @dataclass
 class Check:
     name: str
-    ok: bool
+    level: str  # OK, INFO, WARN or FAIL
     detail: str
     hint: str = ""
-    warning: bool = False  # worth a look, but LADO works
 
 
 def _tool_version(path: str, flag: str) -> str:
@@ -36,8 +40,8 @@ def check_tool(
 ) -> Check:
     path = which(command)
     if path is None:
-        return Check(name, False, f"`{command}` not found on PATH", hint)
-    return Check(name, True, _tool_version(path, flag))
+        return Check(name, FAIL, f"`{command}` not found on PATH", hint)
+    return Check(name, OK, _tool_version(path, flag))
 
 
 @dataclass
@@ -56,7 +60,7 @@ def provider_status(
 ) -> ProviderStatus:
     tool = check_tool(provider.title, provider.command, "--version", "", which)
     tested = provider.tested_version
-    if not tool.ok:
+    if tool.level == FAIL:
         return ProviderStatus(False, "", tool.detail, tested, "")
     found = re.search(r"\d+\.\d+\.\d+", tool.detail)
     version = found[0] if found else ""
@@ -71,16 +75,20 @@ def provider_status(
     return ProviderStatus(True, version, tool.detail, tested, warning)
 
 
-def check_provider(provider: providers.Provider, which: Callable[[str], str | None]) -> Check:
-    """Only the default provider is required; the others are optional."""
-    status = provider_status(provider, which)
-    if not status.installed:
-        check = Check(provider.title, False, status.detail, provider.install_hint)
-        if provider.name != providers.DEFAULT:
-            check.ok, check.warning = True, True
-            check.hint += f" (needed only for --provider {provider.name})"
-        return check
-    return Check(provider.title, True, status.detail, status.warning, warning=bool(status.warning))
+def check_providers(which: Callable[[str], str | None]) -> list[Check]:
+    """No provider is required, but one is: a missing one is only `info`; with none
+    installed there is one failed check with how to install each."""
+    registry = [providers.get(name) for name in providers.names()]
+    statuses = [provider_status(provider, which) for provider in registry]
+    if not any(status.installed for status in statuses):
+        hints = "; ".join(f"{p.title}: {p.install_hint}" for p in registry)
+        return [Check("Agent CLI", FAIL, "no agent CLI installed", hints)]
+    return [
+        Check(p.title, INFO, s.detail, p.install_hint)
+        if not s.installed
+        else Check(p.title, WARN if s.warning else OK, s.detail, s.warning)
+        for p, s in zip(registry, statuses, strict=True)
+    ]
 
 
 def check_tmux(which: Callable[[str], str | None]) -> Check:
@@ -88,17 +96,17 @@ def check_tmux(which: Callable[[str], str | None]) -> Check:
     terminals in the web UI."""
     hint = "install it: `brew install tmux` or `sudo apt install tmux`"
     check = check_tool("tmux", "tmux", "-V", hint, which)
-    found = tmux.parse_version(check.detail) if check.ok else None
+    found = tmux.parse_version(check.detail) if check.level == OK else None
     missing = []
     if found and found < tmux.POPUP_VERSION:
         missing.append("no gate popups before tmux 3.2: gates show only in `lado ls`")
     if found and found < terminal.VERSION:
         missing.append("no agent terminals in the web UI before tmux 3.2 (attach -f ignore-size)")
     if missing:
-        check.warning = True
+        check.level = WARN
         check.hint = "; ".join(missing)
     elif found and found < tmux.POPUP_BORDER_VERSION:
-        check.warning = True
+        check.level = WARN
         check.hint = "gate popups have no coloured border before tmux 3.3"
     return check
 
@@ -109,15 +117,15 @@ def check_agent_env() -> Check:
     try:
         if agent_env.source() == agent_env.INHERIT:
             detail = f"from the process that starts each agent ({agent_env.SOURCE_VAR}=inherit)"
-            return Check(name, True, detail)
+            return Check(name, OK, detail)
         _, seconds = agent_env.timed()
     except agent_env.AgentEnvError as exc:
-        return Check(name, False, str(exc))
+        return Check(name, FAIL, str(exc))
     check = Check(
-        name, True, f"from your login shell {os.environ['SHELL']}, resolved in {seconds:.1f} s"
+        name, OK, f"from your login shell {os.environ['SHELL']}, resolved in {seconds:.1f} s"
     )
     if seconds > agent_env.SLOW:
-        check.warning = True
+        check.level = WARN
         check.hint = (
             "each agent's start waits for your shell this long; make its startup files faster"
         )
@@ -128,31 +136,31 @@ def check_lado() -> Check:
     """This LADO's version and whether a newer one is out (update.check: once a day)."""
     checked = update.check()
     if checked is None:
-        return Check("LADO", True, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)")
+        return Check("LADO", OK, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)")
     hints = [h for h in (update.available_line(checked), checked.error) if h]
     if hints:
-        return Check("LADO", True, __version__, "; ".join(hints), warning=True)
-    return Check("LADO", True, f"{__version__}, the latest version")
+        return Check("LADO", WARN, __version__, "; ".join(hints))
+    return Check("LADO", OK, f"{__version__}, the latest version")
 
 
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     return [
         check_lado(),
-        Check("Python", True, platform.python_version()),
+        Check("Python", OK, platform.python_version()),
         check_tmux(which),
         check_agent_env(),
-        *(check_provider(providers.get(name), which) for name in providers.names()),
+        *check_providers(which),
     ]
 
 
 def main() -> int:
     checks = run_checks()
     for check in checks:
-        mark = "FAIL" if not check.ok else "warn" if check.warning else "ok  "
+        mark = "FAIL" if check.level == FAIL else f"{check.level:<4}"
         print(f"[{mark}] {check.name}: {check.detail}")
         if check.hint:
             print(f"       {check.hint}")
-    failed = [c for c in checks if not c.ok]
+    failed = [c for c in checks if c.level == FAIL]
     if failed:
         print(f"\n{len(failed)} check(s) failed.")
         return 1

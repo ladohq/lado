@@ -932,6 +932,7 @@ export interface components {
             default_name: string | null;
             /** Name State */
             name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
+            provider: components["schemas"]["ProviderSuggestion"] | null;
         };
         /** ForgetPreview */
         ForgetPreview: {
@@ -1440,8 +1441,6 @@ export interface components {
             name: string;
             /** Title */
             title: string;
-            /** Default */
-            default: boolean;
             /** Permission Modes */
             permission_modes: string[];
             /** Install Hint */
@@ -1456,6 +1455,16 @@ export interface components {
             tested_version: string;
             /** Warning */
             warning: string;
+        };
+        /** ProviderSuggestion */
+        ProviderSuggestion: {
+            /** Name */
+            name: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "last_session" | "only_installed";
         };
         /** RecentFolder */
         RecentFolder: {

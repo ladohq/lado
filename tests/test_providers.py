@@ -13,7 +13,8 @@ FAMILY = {"kilo": "KILO_CONFIG_CONTENT", "opencode": "OPENCODE_CONFIG_CONTENT"}
 
 
 def test_registry():
-    assert providers.DEFAULT in providers.names()
+    assert not hasattr(providers, "DEFAULT")  # no provider is privileged
+    assert providers.names() == ["claude", "kilo", "opencode"]
     claude = providers.get("claude")
     assert (claude.name, claude.command) == ("claude", "claude")
     assert claude.capabilities.deliver_on_turn_end
@@ -93,7 +94,7 @@ def test_claude_tells_another_tool_call_from_the_one_asked_about():
 
 def test_claude_hooks_leave_the_human_s_answer_to_the_human(repo, fake_tmux):
     """The hooks that see a dialog print nothing: any output could decide it."""
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     claude = providers.get("claude")
     for native, payload in [
         ("PermissionRequest", BASH),
@@ -106,8 +107,10 @@ def test_claude_hooks_leave_the_human_s_answer_to_the_human(repo, fake_tmux):
 
 
 def _claude_settings(repo, mode=None):
-    sess = state.Session("s", str(repo), mode)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), mode, provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv
     return json.loads(open(cmd[cmd.index("--settings") + 1]).read())["hooks"]
@@ -150,7 +153,7 @@ def test_claude_continues_with_queued_messages():
 
 
 def test_agents_get_the_session_provider(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task")
     assert state.get_session("s").provider == "claude"
     assert [a.provider for a in state.list_agents("s")] == ["claude", "claude"]
@@ -170,7 +173,7 @@ class _NoTurnEndDelivery(providers.Provider):
 
 
 def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
     out = hooks.handle(_NoTurnEndDelivery(), Event(providers.TURN_END), "s", "supervisor")
     assert out is None
@@ -420,7 +423,7 @@ def test_opencode_turn_end_prints_queued_messages(repo, fake_tmux):
 def test_turn_end_hands_over_queued_messages_without_an_idle_moment(repo, fake_tmux, monkeypatch):
     """No one sees the messages delivered and the agent idle, as if it were done with them
     before it got them."""
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     state.set_status("s", "supervisor", state.BUSY)
     runtime.send_message("s", "w1", "supervisor", "done")  # busy: queued
     status_once_delivered = []
@@ -456,7 +459,7 @@ def test_unknown_provider_is_refused(repo, fake_tmux):
     with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
         runtime.start_session(str(repo), "s", None, "nope")
     assert state.get_session("s") is None
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
         runtime.spawn_worker("s", "task", provider="nope")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
@@ -467,7 +470,7 @@ def test_permission_mode_the_provider_cannot_honour_is_refused(repo, fake_tmux):
         runtime.start_session(str(repo), "s", "dontAsk", "kilo")
     assert state.get_session("s") is None
     assert fake_tmux == []
-    runtime.start_session(str(repo), "s", "dontAsk")
+    runtime.start_session(str(repo), "s", "dontAsk", provider="claude")
     with pytest.raises(runtime.LadoError, match="supported: default, acceptEdits"):
         runtime.spawn_worker("s", "task", provider="kilo")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
@@ -475,7 +478,7 @@ def test_permission_mode_the_provider_cannot_honour_is_refused(repo, fake_tmux):
 
 
 def test_resume_with_a_provider_that_cannot_honour_the_stored_mode_is_refused(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", "dontAsk")
+    runtime.start_session(str(repo), "s", "dontAsk", provider="claude")
     runtime.stop_session("s")
     with pytest.raises(runtime.LadoError, match='"dontAsk" is not supported by Kilo CLI'):
         runtime.start_session(str(repo), "s", None, "kilo")
@@ -507,8 +510,10 @@ def skill_dir(tmp_path):
 
 
 def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
-    sess = state.Session("s", str(repo), None)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     claude = providers.get("claude")
     cmd = claude.launch_command(agent, sess, _spec_with_kit_parts(agent, skill_dir)).argv
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
@@ -530,8 +535,10 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
 
 
 def test_claude_agent_cannot_use_built_in_agent_messaging(repo):
-    sess = state.Session("s", str(repo), "bypassPermissions")
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), "bypassPermissions", provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv
     settings = json.loads(open(cmd[cmd.index("--settings") + 1]).read())
@@ -557,8 +564,10 @@ def test_opencode_family_gets_skills_and_kit_mcp(repo, skill_dir, provider):
 
 
 def test_claude_may_read_the_folders_of_spec_read(repo, skill_dir, tmp_path):
-    sess = state.Session("s", str(repo), None)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING)
+    sess = state.Session("s", str(repo), None, provider="claude")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
+    )
     read = [tmp_path / "files", tmp_path / "more"]
     spec = providers.AgentSpec("the role", skills={"notes": skill_dir}, read=read)
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv

@@ -725,10 +725,17 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   **Provider** (`/api/providers`: each provider of the registry with
   `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
   a version warning shows under it) and **Permission mode** (the provider's modes; a mode
-  the new provider lacks goes back to `default`, and the window says so). Kits, provider
-  and mode of a new session come from the folder's last session ("from the last session
-  of this folder"), else LADO's defaults; only the UI does this, `lado start` is
-  unchanged. **Advanced** (folded): the `--without` items, `kind:name` or `kind:name@kit`
+  the new provider lacks goes back to `default`, and the window says so). Kits and mode
+  of a new session come from the folder's last session ("from the last session of this
+  folder"), else LADO's defaults; only the UI does this, `lado start` is unchanged. No
+  provider is the default (task feature/no-default-provider, 2026-10-05): the provider is
+  the folder's suggestion (`FolderInfo.provider`, the core's rule that `lado start` uses
+  too: the folder's last session's if installed, else the only one installed) with its
+  reason in `lado start`'s words under it ("from the folder's last session", "the only
+  one installed"); without a suggestion none is chosen ("choose…", "choose the agent CLI
+  for this session") and Start stays off until the human picks one; a suggested one that
+  is not installed stays off too, with its install hint. The human's own pick is kept
+  when the folder changes. **Advanced** (folded): the `--without` items, `kind:name` or `kind:name@kit`
   (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with
   the fields off; a refusal is shown whole (`role="alert"`) and the window stays; a name
   taken (409, `Taken`: its status and folder) offers Resume it for a session of this

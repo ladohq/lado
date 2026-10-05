@@ -13,7 +13,7 @@ def _tools(session, agent):
 
 
 def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
     supervisor_tools = [
         "ask_human",
@@ -40,14 +40,14 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
 
 def test_listing_the_tools_records_that_the_server_is_ready(repo, fake_tmux):
     """The agent's session-start hook waits for this (lado.hooks)."""
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     asyncio.run(mcp_server.build("s", "supervisor", instance="abc").list_tools())
     ready = [(e.agent, e.detail) for e in state.list_events("s") if e.kind == state.MCP_READY]
     assert ready == [("supervisor", "abc")]
 
 
 def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
     with state.connect() as db:
         db.execute(
@@ -63,7 +63,7 @@ def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake
 
 
 def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
@@ -79,7 +79,7 @@ def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tm
 
 
 def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
     worker = mcp_server.build("s", "w1")
     report = {"to": "supervisor", "summary": "DONE: x added", "body": "Files: x.py\nChecks: ok"}
@@ -100,7 +100,7 @@ def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
 
 
 def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     worker = runtime.spawn_worker("s", "task", name="w1")
     server = mcp_server.build("s", "supervisor")
     result = asyncio.run(server.call_tool("finish_worker", {"name": "w1", "discard": True}))
@@ -123,7 +123,7 @@ def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
     ],
 )
 def test_tool_errors_tell_the_agent_why(repo, fake_tmux, tool, args, reason):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     server = mcp_server.build("s", "supervisor")
     with pytest.raises(ToolError) as error:
         asyncio.run(server.call_tool(tool, args))
@@ -131,7 +131,7 @@ def test_tool_errors_tell_the_agent_why(repo, fake_tmux, tool, args, reason):
 
 
 def test_spawn_worker_refuses_a_provider_without_the_sessions_mode(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", "dontAsk")
+    runtime.start_session(str(repo), "s", "dontAsk", provider="claude")
     server = mcp_server.build("s", "supervisor")
     with pytest.raises(ToolError) as error:
         asyncio.run(server.call_tool("spawn_worker", {"task": "t", "provider": "kilo"}))
@@ -155,7 +155,7 @@ ACCEPTED = {
 @pytest.mark.parametrize("tool", ACCEPTED)
 def test_tools_refuse_unknown_arguments(repo, fake_tmux, tool):
     """An agent with a stale tool schema, or a typo, learns that its argument was not used."""
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     assert sorted(ACCEPTED) == _tools("s", "supervisor")
     server = mcp_server.build("s", "supervisor")
     with pytest.raises(ToolError) as error:
@@ -167,7 +167,7 @@ def test_tools_refuse_unknown_arguments(repo, fake_tmux, tool):
 
 
 def test_spawn_worker_takes_a_provider(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     server = mcp_server.build("s", "supervisor")
     asyncio.run(server.call_tool("spawn_worker", {"task": "t", "provider": "kilo"}))
     agents = asyncio.run(server.call_tool("list_agents", {}))
@@ -198,7 +198,7 @@ def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux)
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="claude")
     run = _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
     assert (run["run"], run["state"], run["acting"]) == ("ship/x", "build", "worker (not spawned)")
     [run] = _call("s", "supervisor", "flow_status", {"run": "ship/x"})
@@ -227,7 +227,7 @@ def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, f
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="claude")
     task = "Add x. " + "Details. " * 50
     args = {"flow": "ship", "task": task, "name": "x", "human_language": "ru"}
     run = _call("s", "supervisor", "flow_start", args)
@@ -258,7 +258,7 @@ def test_no_agent_can_answer_a_gate(repo, fake_tmux):
         "  check: {gate: approval, ask: 'Go?', outcomes: {approved: merge, rejected: build}}\n"
     )
     (kit / "flows" / "ship.yaml").write_text(gated)
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="claude")
     _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
     _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})
     waiting = _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "done"})
@@ -270,7 +270,7 @@ def test_no_agent_can_answer_a_gate(repo, fake_tmux):
 
 
 def test_spawn_worker_needs_a_task_without_a_run(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     with pytest.raises(ToolError, match="give the worker a task"):
         _call("s", "supervisor", "spawn_worker", {})
 
@@ -282,7 +282,7 @@ def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
     (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: reviews\n---\nReview.\n")
     (kit / "skills" / "s").mkdir(parents=True)
     (kit / "skills" / "s" / "SKILL.md").write_text("---\nname: s\ndescription: d\n---\n")
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="claude")
     server = mcp_server.build("s", "supervisor")
     args = {"task": "t", "role": "rev", "without": ["skill:s"]}
     asyncio.run(server.call_tool("spawn_worker", args))
@@ -293,7 +293,7 @@ def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
 
 
 def test_an_agent_writes_to_and_asks_the_human(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
     sent = _call("s", "w1", "send_message", {"to": "human", "summary": "a milestone"})
     assert sent == runtime.TO_HUMAN
@@ -312,7 +312,7 @@ def test_an_agent_writes_to_and_asks_the_human(repo, fake_tmux):
 
 
 def test_the_tools_tell_agents_about_the_human(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     tools = {t.name: t for t in asyncio.run(mcp_server.build("s", "supervisor").list_tools())}
     assert 'to="human"' in tools["send_message"].description
     assert "message from human" in tools["ask_human"].description

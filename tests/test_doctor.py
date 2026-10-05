@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from lado import __version__, agent_env, doctor
+from lado import __version__, agent_env, doctor, providers
 from lado.providers import claude, kilo, opencode
 
 
@@ -27,7 +27,7 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     checks = doctor.run_checks(which=lambda cmd: cmd)
     names = ["LADO", "Python", "tmux", "Agent environment", "Claude Code", "Kilo CLI", "OpenCode"]
     assert [c.name for c in checks] == names
-    assert all(c.ok and not c.warning for c in checks)
+    assert all(c.level == doctor.OK for c in checks)
 
 
 @pytest.mark.parametrize(
@@ -41,22 +41,43 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
 def test_old_tmux_warns_about_gate_popups_and_terminals(monkeypatch, version, hint):
     _versions(monkeypatch, tmux_version=version)
     tmux = next(c for c in doctor.run_checks(which=lambda cmd: cmd) if c.name == "tmux")
-    assert tmux.ok and tmux.warning
+    assert tmux.level == doctor.WARN
     assert hint in tmux.hint
 
 
-def test_missing_default_provider_fails_other_providers_warn(monkeypatch):
+@pytest.mark.parametrize("installed", ["claude", "kilo", "opencode"])
+def test_a_missing_provider_is_info_when_another_is_installed(monkeypatch, capsys, installed):
     _versions(monkeypatch)
-    missing = ("claude", "kilo", "opencode")
-    checks = doctor.run_checks(which=lambda cmd: None if cmd in missing else cmd)
-    claude, kilo_check, opencode_check = checks[-3:]
-    assert not claude.ok
-    assert kilo_check.ok and kilo_check.warning
-    assert "--provider kilo" in kilo_check.hint
-    assert opencode_check.ok and opencode_check.warning
-    assert opencode_check.hint == (
-        "install it: `npm install -g opencode-ai` (needed only for --provider opencode)"
-    )
+    checks = doctor.run_checks(which=lambda cmd: cmd if cmd in (installed, "tmux") else None)
+    by_name = {c.name: c for c in checks[-3:]}
+    for name in ("claude", "kilo", "opencode"):
+        provider = providers.get(name)
+        check = by_name[provider.title]
+        if name == installed:
+            assert check.level == doctor.OK
+        else:
+            assert (check.level, check.hint) == (doctor.INFO, provider.install_hint)
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks)
+    assert doctor.main() == 0
+    out = capsys.readouterr().out
+    missing = next(providers.get(n) for n in providers.names() if n != installed)
+    assert f"[info] {missing.title}: `{missing.command}` not found on PATH" in out
+    assert "All checks passed." in out
+
+
+def test_no_provider_installed_fails_once_with_every_install_hint(monkeypatch, capsys):
+    _versions(monkeypatch)
+    checks = doctor.run_checks(which=lambda cmd: cmd if cmd == "tmux" else None)
+    assert [c.name for c in checks][-1] == "Agent CLI"
+    agent_cli = checks[-1]
+    assert agent_cli.level == doctor.FAIL
+    assert agent_cli.detail == "no agent CLI installed"
+    for name in providers.names():
+        assert providers.get(name).install_hint in agent_cli.hint
+    assert not any(c.name == "Claude Code" for c in checks)
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks)
+    assert doctor.main() == 1
+    assert "[FAIL] Agent CLI: no agent CLI installed" in capsys.readouterr().out
 
 
 def test_untested_kilo_version_warns_but_passes(monkeypatch, capsys):
@@ -83,7 +104,7 @@ def test_claude_code_2_1_289_is_the_tested_version(monkeypatch):
     """make test-live PROVIDER=claude passed on 2.1.289 (2026-10-05)."""
     _versions(monkeypatch, claude_version="2.1.289 (Claude Code)")
     check = next(c for c in doctor.run_checks(which=lambda cmd: cmd) if c.name == "Claude Code")
-    assert check.ok and not check.warning
+    assert check.level == doctor.OK
 
 
 @pytest.mark.parametrize("version", ["2.1.287", "2.1.290", "2.2.0", "2.1.2890"])
@@ -91,21 +112,21 @@ def test_claude_code_other_than_the_tested_version_warns(monkeypatch, version):
     """Whether LADO's tools load up front was checked on one Claude Code version only."""
     _versions(monkeypatch, claude_version=f"{version} (Claude Code)")
     check = next(c for c in doctor.run_checks(which=lambda cmd: cmd) if c.name == "Claude Code")
-    assert check.ok and check.warning
+    assert check.level == doctor.WARN
     assert f"LADO is tested with Claude Code {claude.TESTED_VERSION};" in check.hint
 
 
 def test_missing_tool_fails_with_hint():
     checks = doctor.run_checks(which=lambda cmd: None if cmd == "tmux" else f"/bin/{cmd}")
     tmux = next(c for c in checks if c.name == "tmux")
-    assert not tmux.ok
+    assert tmux.level == doctor.FAIL
     assert "not found" in tmux.detail
     assert tmux.hint
 
 
 def test_main_returns_nonzero_on_failure(monkeypatch, capsys):
     monkeypatch.setattr(
-        doctor, "run_checks", lambda: [doctor.Check("tmux", False, "missing", "install it")]
+        doctor, "run_checks", lambda: [doctor.Check("tmux", doctor.FAIL, "missing", "install it")]
     )
     assert doctor.main() == 1
     assert "[FAIL] tmux" in capsys.readouterr().out
@@ -114,7 +135,7 @@ def test_main_returns_nonzero_on_failure(monkeypatch, capsys):
 def test_lado_check_says_a_newer_version_is_available(published):
     published(**{"99.0.0": "2026-10-04"})
     check = doctor.check_lado()
-    assert check.ok and check.warning
+    assert check.level == doctor.WARN
     assert check.detail == __version__
     assert check.hint == "LADO 99.0.0 is available: lado update"
 
@@ -122,22 +143,24 @@ def test_lado_check_says_a_newer_version_is_available(published):
 def test_lado_check_says_why_the_update_check_failed(published, tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_UPDATE_INDEX", str(tmp_path / "missing.json"))
     check = doctor.check_lado()
-    assert check.ok and check.warning
+    assert check.level == doctor.WARN
     assert check.hint.startswith("cannot look up LADO's latest version: ")
 
 
 def test_lado_check_of_the_latest_version_and_with_the_check_off(published, monkeypatch):
     published(**{__version__: "2026-10-04"})
-    assert doctor.check_lado() == doctor.Check("LADO", True, f"{__version__}, the latest version")
+    assert doctor.check_lado() == doctor.Check(
+        "LADO", doctor.OK, f"{__version__}, the latest version"
+    )
     monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
     assert doctor.check_lado() == doctor.Check(
-        "LADO", True, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)"
+        "LADO", doctor.OK, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)"
     )
 
 
 def test_agent_environment_inherited():
     check = doctor.check_agent_env()  # the tests run with LADO_AGENT_ENV=inherit
-    assert check.ok and not check.warning
+    assert check.level == doctor.OK
     assert "LADO_AGENT_ENV=inherit" in check.detail
 
 
@@ -153,7 +176,7 @@ def login_shell(tmp_path, monkeypatch):
 
 def test_agent_environment_from_the_login_shell(login_shell):
     check = doctor.check_agent_env()
-    assert check.ok and not check.warning
+    assert check.level == doctor.OK
     assert re.fullmatch(
         rf"from your login shell {login_shell}, resolved in \d+\.\d s", check.detail
     )
@@ -162,14 +185,14 @@ def test_agent_environment_from_the_login_shell(login_shell):
 def test_a_slow_login_shell_warns(login_shell, monkeypatch):
     monkeypatch.setattr(agent_env, "SLOW", 0)
     check = doctor.check_agent_env()
-    assert check.ok and check.warning
+    assert check.level == doctor.WARN
     assert "each agent's start waits for your shell" in check.hint
 
 
 def test_a_failing_login_shell_fails(login_shell):
     login_shell.write_text("#!/bin/sh\necho 'rc is broken' >&2\nexit 2\n")
     check = doctor.check_agent_env()
-    assert not check.ok
+    assert check.level == doctor.FAIL
     assert "exit status 2" in check.detail and "rc is broken" in check.detail
 
 

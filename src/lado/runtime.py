@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -187,9 +188,64 @@ def check_repo(path: str) -> str:
     return root
 
 
+LAST_SESSION = "last_session"  # the provider of the folder's last session
+ONLY_INSTALLED = "only_installed"  # the one provider installed
+
+_REASONS = {LAST_SESSION: "the folder's last session", ONLY_INSTALLED: "the only one installed"}
+
+
+@dataclass(frozen=True)
+class Suggestion:
+    """The provider a new session of a folder takes when none is given, and why."""
+
+    provider: str
+    reason: str  # LAST_SESSION or ONLY_INSTALLED
+
+    def line(self) -> str:
+        return f"{self.provider} ({_REASONS[self.reason]})"
+
+
+def suggested_provider(
+    repo: str | None, installed: Callable[[providers.Provider], bool]
+) -> Suggestion | None:
+    """No provider is the default: a new session takes the provider of the folder's last
+    session (`repo` None: a folder with no sessions known) if it is `installed`, else the
+    only one installed; None when that leaves a choice to the human, or none to make.
+    `installed` is the caller's look for the CLI (`shutil.which` on some PATH), never
+    `<cli> --version`."""
+    last = state.last_session(repo) if repo else None
+    if last and last.provider in providers.names() and installed(providers.get(last.provider)):
+        return Suggestion(last.provider, LAST_SESSION)
+    found = [name for name in providers.names() if installed(providers.get(name))]
+    return Suggestion(found[0], ONLY_INSTALLED) if len(found) == 1 else None
+
+
+def _new_sessions_provider(repo: str, base_env: dict[str, str]) -> Suggestion:
+    """The suggested provider of a new session, its CLI looked for on the agents' PATH."""
+    path = base_env.get("PATH", os.defpath)
+
+    def installed(provider: providers.Provider) -> bool:
+        return shutil.which(provider.command, path=path) is not None
+
+    suggestion = suggested_provider(repo, installed)
+    if suggestion:
+        return suggestion
+    found = [n for n in providers.names() if installed(providers.get(n))]
+    if found:
+        raise LadoError(
+            "which agent CLI should the session run? Installed on the agents' PATH: "
+            f"{', '.join(found)}; give one with --provider NAME"
+        )
+    hints = "; ".join(
+        f"{providers.get(n).title}: {providers.get(n).install_hint}" for n in providers.names()
+    )
+    raise LadoError(f"no agent CLI is on the agents' PATH; {hints}")
+
+
 @dataclass
 class Started:
     session: state.Session
+    chosen: Suggestion | None = None  # the provider LADO chose, none given or stored
     resumed: bool = False  # a stopped session started again, with its history and runs
     changes: list[str] = field(default_factory=list)  # settings a resume replaced
     problems: list[str] = field(default_factory=list)  # open runs that cannot go on as they are
@@ -234,7 +290,13 @@ def start_session(
                 f"{repo}, give it another name with --name, or drop the old one with "
                 f"`lado forget {session}`"
             )
-    agent_cli = _provider(provider or (old.provider if old else providers.DEFAULT))
+    base_env, chosen = None, None
+    if not provider and not old:
+        # Resolved before the provider is chosen: it is the one on the agents' PATH. A
+        # provider given or stored is checked first, without waiting for the login shell.
+        base_env = _base_env()
+        chosen = _new_sessions_provider(repo, base_env)
+    agent_cli = _provider(provider or (old.provider if old else chosen.provider))
     sess = state.Session(
         session,
         repo,
@@ -245,13 +307,14 @@ def start_session(
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
     env = kits.resolve(repo, sess.kits, sess.without)
-    base_env = _base_env()
+    if base_env is None:
+        base_env = _base_env()
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
     instructions = _supervisor_instructions(env, session)
     spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env)
-    started = Started(sess, lead=env.lead_line(), warnings=env.warnings)
+    started = Started(sess, chosen, lead=env.lead_line(), warnings=env.warnings)
     if old and not old.stopped_at:
         state.stop_session(session, gone=True)  # left over from a tmux session that is gone
         terminal.close_viewers(session)  # they may keep its agents' windows alive

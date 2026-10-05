@@ -3,7 +3,7 @@
 // an install or update would do and who uses a kit all come from the core; the page decides
 // nothing the core decides. Nothing goes to the network on its own: updates are checked and
 // marketplaces fetched only with a button.
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
 import {
@@ -28,6 +28,7 @@ import {
   type PlanInfo,
 } from "./api";
 import { KitCard, type Source, type SourceKind } from "./KitCard";
+import { PlanContents } from "./KitPlan";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { NotFound } from "./pages";
 import { storedKitsSource, storeKitsSource } from "./prefs";
@@ -44,7 +45,6 @@ const messageOf = (error: unknown) => (error instanceof ApiError ? error.message
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 const itemsOf = <T,>(loaded: ListLoaded<T> | undefined): T[] =>
   loaded && "items" in loaded ? loaded.items : [];
-const short = (commit: string | null) => (commit ? commit.slice(0, 12) : "");
 const time = (at: Date) => at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 // The dot of a kit from a marketplace: the official one's, or any other's (also one gone).
@@ -542,12 +542,30 @@ function Marketplaces(props: {
   );
 }
 
-// A modal window of the page: Esc and Cancel close it unless a request runs.
-function Modal(props: { title: string; busy: boolean; onClose: () => void; children: ReactNode }) {
+// A modal window of the page: Esc and Cancel close it unless a request runs. Its head and
+// its footer with the buttons stay in place; only the middle scrolls. With `onSubmit` the
+// window is a form, and Enter in a field submits it.
+function Modal(props: {
+  title: string;
+  head?: ReactNode;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit?: () => void;
+  footer: ReactNode;
+  children: ReactNode;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
   }, []);
+  const frame = (
+    <>
+      <header className="kits-dialog-head">{props.head ?? <h3>{props.title}</h3>}</header>
+      <div className="kits-dialog-body">{props.children}</div>
+      <footer className="kits-dialog-foot">{props.footer}</footer>
+    </>
+  );
+  const { onSubmit } = props;
   return (
     <dialog
       ref={dialog}
@@ -563,8 +581,19 @@ function Modal(props: { title: string; busy: boolean; onClose: () => void; child
         if (!props.busy) props.onClose();
       }}
     >
-      <h3>{props.title}</h3>
-      {props.children}
+      {onSubmit ? (
+        <form
+          className="kits-dialog-frame"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          {frame}
+        </form>
+      ) : (
+        <div className="kits-dialog-frame">{frame}</div>
+      )}
     </dialog>
   );
 }
@@ -624,15 +653,19 @@ function AddKitDialog(props: { markets: MarketplaceInfo[]; offers: OfferInfo[]; 
   }
   if (step.kind === "refused") {
     return (
-      <Modal title="Refused" busy={false} onClose={props.onClose}>
-        <p className="problem" role="alert">
-          {step.message}
-        </p>
-        <div className="question-buttons">
+      <Modal
+        title="Refused"
+        busy={false}
+        onClose={props.onClose}
+        footer={
           <button type="button" className="quiet" onClick={back}>
             Back
           </button>
-        </div>
+        }
+      >
+        <p className="problem" role="alert">
+          {step.message}
+        </p>
       </Modal>
     );
   }
@@ -640,146 +673,100 @@ function AddKitDialog(props: { markets: MarketplaceInfo[]; offers: OfferInfo[]; 
   const ask = askOf();
   const names = [...new Set(props.offers.filter((o) => o.marketplace === market).map((o) => o.name))];
   return (
-    <Modal title="Add kit" busy={busy} onClose={props.onClose}>
-      <form
-        className="kits-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (ask && !busy) void plan(ask);
-        }}
-      >
-        <div className="kits-ways" role="radiogroup" aria-label="Where from">
-          {WAYS.map(([value, label]) => (
-            <label key={value} className={way === value ? "on" : undefined}>
-              <input
-                type="radio"
-                name={`${ids}-way`}
-                value={value}
-                checked={way === value}
-                disabled={busy}
-                onChange={() => setWay(value)}
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-        {way === "marketplace" && (
-          <div className="kits-fields">
-            <select
-              aria-label="Marketplace"
-              value={market}
-              disabled={busy}
-              onChange={(event) => setMarket(event.target.value)}
-            >
-              {props.markets.map((m) => (
-                <option key={m.name} value={m.name}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label="Kit"
-              placeholder="kit name"
-              list={`${ids}-names`}
-              value={name}
-              disabled={busy}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <datalist id={`${ids}-names`}>
-              {names.map((one) => (
-                <option key={one} value={one} />
-              ))}
-            </datalist>
-          </div>
-        )}
-        {way === "git" && (
-          <input
-            className="kits-wide"
-            aria-label="Git address"
-            placeholder="https://github.com/you/kit.git"
-            value={address}
-            disabled={busy}
-            onChange={(event) => setAddress(event.target.value)}
-          />
-        )}
-        {way === "folder" && (
-          <input
-            className="kits-wide"
-            aria-label="Folder"
-            placeholder="/full/path/to/kit"
-            value={folder}
-            disabled={busy}
-            onChange={(event) => setFolder(event.target.value)}
-          />
-        )}
-        {way !== "folder" && (
-          <div className="kits-fields">
-            <input
-              aria-label="Version"
-              placeholder="latest"
-              value={version}
-              disabled={busy}
-              onChange={(event) => setVersion(event.target.value)}
-            />
-            <label className="kits-check">
-              <input type="checkbox" checked={pre} disabled={busy} onChange={(event) => setPre(event.target.checked)} />
-              Include pre-releases
-            </label>
-          </div>
-        )}
-        {busy && <p className="muted">Making the plan: the kit is cloned into the cache, nothing is installed…</p>}
-        <div className="question-buttons">
+    <Modal
+      title="Add kit"
+      busy={busy}
+      onClose={props.onClose}
+      onSubmit={() => {
+        if (ask && !busy) void plan(ask);
+      }}
+      footer={
+        <>
           <button type="button" className="quiet" disabled={busy} onClick={props.onClose}>
             Cancel
           </button>
           <button type="submit" className="primary" disabled={busy || ask === null}>
             Next
           </button>
+        </>
+      }
+    >
+      <div className="kits-ways" role="radiogroup" aria-label="Where from">
+        {WAYS.map(([value, label]) => (
+          <label key={value} className={way === value ? "on" : undefined}>
+            <input
+              type="radio"
+              name={`${ids}-way`}
+              value={value}
+              checked={way === value}
+              disabled={busy}
+              onChange={() => setWay(value)}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      {way === "marketplace" && (
+        <div className="kits-fields">
+          <select aria-label="Marketplace" value={market} disabled={busy} onChange={(event) => setMarket(event.target.value)}>
+            {props.markets.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <input
+            aria-label="Kit"
+            placeholder="kit name"
+            list={`${ids}-names`}
+            value={name}
+            disabled={busy}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <datalist id={`${ids}-names`}>
+            {names.map((one) => (
+              <option key={one} value={one} />
+            ))}
+          </datalist>
         </div>
-      </form>
+      )}
+      {way === "git" && (
+        <input
+          className="kits-wide"
+          aria-label="Git address"
+          placeholder="https://github.com/you/kit.git"
+          value={address}
+          disabled={busy}
+          onChange={(event) => setAddress(event.target.value)}
+        />
+      )}
+      {way === "folder" && (
+        <input
+          className="kits-wide"
+          aria-label="Folder"
+          placeholder="/full/path/to/kit"
+          value={folder}
+          disabled={busy}
+          onChange={(event) => setFolder(event.target.value)}
+        />
+      )}
+      {way !== "folder" && (
+        <div className="kits-fields">
+          <input
+            aria-label="Version"
+            placeholder="latest"
+            value={version}
+            disabled={busy}
+            onChange={(event) => setVersion(event.target.value)}
+          />
+          <label className="kits-check">
+            <input type="checkbox" checked={pre} disabled={busy} onChange={(event) => setPre(event.target.checked)} />
+            Include pre-releases
+          </label>
+        </div>
+      )}
+      {busy && <p className="muted">Making the plan: the kit is cloned into the cache, nothing is installed…</p>}
     </Modal>
-  );
-}
-
-// The plan's facts, as the CLI prints them before it asks.
-function PlanFacts({ plan }: { plan: PlanInfo }) {
-  const servers = plan.mcp.map((m) => `${m.name}: ${m.command}`).join(", ") || "none";
-  const latest = plan.versions[0] === plan.tag ? " (latest)" : "";
-  return (
-    <dl className="kit-plan">
-      <dt>From</dt>
-      <dd>{plan.source}</dd>
-      <dt>{plan.tag === null ? "Folder" : "Address"}</dt>
-      <dd>{plan.address}</dd>
-      <dt>Version</dt>
-      <dd>{plan.tag === null ? `${plan.version || "none"} (a folder has no version tag)` : `${plan.tag}${latest}`}</dd>
-      {plan.commit && (
-        <>
-          <dt>Commit</dt>
-          <dd>{short(plan.commit)}</dd>
-        </>
-      )}
-      {plan.agents.length > 0 && (
-        <>
-          <dt>Agents</dt>
-          <dd>{plan.agents.join(", ")}</dd>
-        </>
-      )}
-      {plan.skills.length > 0 && (
-        <>
-          <dt>Skills</dt>
-          <dd>{plan.skills.join(", ")}</dd>
-        </>
-      )}
-      {plan.flows.length > 0 && (
-        <>
-          <dt>Flows</dt>
-          <dd>{plan.flows.join(", ")}</dd>
-        </>
-      )}
-      <dt>MCP servers</dt>
-      <dd>{servers}</dd>
-    </dl>
   );
 }
 
@@ -816,7 +803,7 @@ function PlanStep(props: { plan: PlanInfo; onBack: () => void; onAgain: () => vo
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<ApiError | null>(null);
-  const title = plan.tag === null ? `Install ${plan.name} from a folder?` : `Install ${plan.name} ${plan.tag}?`;
+  const title = plan.tag === null ? `Install ${plan.name} from a folder` : `Install ${plan.name} ${plan.tag}`;
   const install = async () => {
     setBusy(true);
     setFailed(null);
@@ -833,7 +820,32 @@ function PlanStep(props: { plan: PlanInfo; onBack: () => void; onAgain: () => vo
     }
   };
   return (
-    <Modal title={title} busy={busy} onClose={props.onClose}>
+    <Modal
+      title={title}
+      head={
+        <>
+          <span className="kits-dialog-kicker">{plan.source}</span>
+          <h3>{title}</h3>
+        </>
+      }
+      busy={busy}
+      onClose={props.onClose}
+      footer={
+        <>
+          <button type="button" className="quiet" disabled={busy} onClick={props.onBack}>
+            Back
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || (plan.needs_confirmation && !checked)}
+            onClick={() => void install()}
+          >
+            {busy ? "Installing…" : "Install"}
+          </button>
+        </>
+      }
+    >
       {plan.needs_confirmation && (
         <p className="kit-alert">
           <b>Not from the official marketplace.</b> LADO has not checked this kit. Its MCP servers below will run in
@@ -846,8 +858,9 @@ function PlanStep(props: { plan: PlanInfo; onBack: () => void; onAgain: () => vo
           new agents.
         </p>
       )}
-      <PlanFacts plan={plan} />
+      {plan.description && <p className="kit-plan-description">{plan.description}</p>}
       <Warnings lines={plan.warnings} />
+      <PlanContents plan={plan} before={null} />
       {plan.needs_confirmation && (
         <label className="kits-check">
           <input type="checkbox" checked={checked} disabled={busy} onChange={(event) => setChecked(event.target.checked)} />
@@ -855,19 +868,6 @@ function PlanStep(props: { plan: PlanInfo; onBack: () => void; onAgain: () => vo
         </label>
       )}
       {failed && <Failure error={failed} onAgain={props.onAgain} />}
-      <div className="question-buttons">
-        <button type="button" className="quiet" disabled={busy} onClick={props.onBack}>
-          Back
-        </button>
-        <button
-          type="button"
-          className="primary"
-          disabled={busy || (plan.needs_confirmation && !checked)}
-          onClick={() => void install()}
-        >
-          {busy ? "Installing…" : "Install"}
-        </button>
-      </div>
     </Modal>
   );
 }
@@ -910,59 +910,121 @@ function UpdateDialog({ kit, onClose }: { kit: InstalledKitInfo; onClose: () => 
     }
   };
 
-  const title =
-    plan && !plan.current ? `Update ${kit.name} ${plan.installed} → ${plan.tag}?` : `Update ${kit.name}`;
+  const title = `Update ${kit.name}`;
+  const failure = failed && <Failure error={failed} onAgain={() => void ask(plan?.tag ?? null)} />;
+  const options = versions.map((one, i) => {
+    const marks = [i === 0 && "latest", one === kit.tag && "installed"].filter(Boolean);
+    return (
+      <option key={one} value={one}>
+        {marks.length > 0 ? `${one} (${marks.join(", ")})` : one}
+      </option>
+    );
+  });
+  const choose = (event: ChangeEvent<HTMLSelectElement>) => void ask(event.target.value);
+
+  // Nothing to update: a short answer, and another version to choose.
+  if (plan === null || plan.current) {
+    const latest = plan !== null && plan.tag === versions[0];
+    return (
+      <Modal
+        title={title}
+        busy={busy}
+        onClose={onClose}
+        footer={
+          <button type="button" className="primary" disabled={busy} onClick={onClose}>
+            {plan === null ? "Cancel" : "Close"}
+          </button>
+        }
+      >
+        {plan === null && busy && <p className="muted">Making the plan…</p>}
+        {plan && (
+          // The core's current_line, said here with the versions it knows: plan.notes holds
+          // only that line for a current plan.
+          <div className="kit-state">
+            {latest && (
+              <span className="kit-ok" aria-hidden="true">
+                ✓
+              </span>
+            )}
+            <div>
+              <p className="kit-state-head">
+                {latest ? `${kit.name} is up to date` : `${kit.name} is at ${plan.tag} already`}
+              </p>
+              <p className="muted">{`${versions[0] ?? plan.tag} is the latest version · ${plan.source}`}</p>
+            </div>
+          </div>
+        )}
+        {plan && <Warnings lines={plan.warnings} />}
+        {plan && versions.length > 1 && (
+          <label className="kits-check">
+            Install another version
+            <select aria-label="Install another version" value={plan.tag ?? ""} disabled={busy} onChange={choose}>
+              {options}
+            </select>
+          </label>
+        )}
+        {failure}
+      </Modal>
+    );
+  }
+
   return (
-    <Modal title={title} busy={busy} onClose={onClose}>
-      {plan === null && busy && <p className="muted">Making the plan…</p>}
-      {plan && (
+    <Modal
+      title={title}
+      head={
         <>
-          <PlanFacts plan={plan} />
-          {plan.new_mcp.length > 0 && (
-            <p className="kit-alert">
-              <b>New MCP server{plan.new_mcp.length === 1 ? "" : "s"}.</b> The new version starts what the installed
-              one did not.
-            </p>
-          )}
-          <Warnings lines={plan.warnings} />
+          <span className="kits-dialog-kicker">{`Update ${kit.name} · ${plan.source}`}</span>
+          <div className="kit-jump">
+            <span className="kit-jump-from">{plan.installed}</span>
+            <span className="kit-jump-arrow" aria-hidden="true">
+              →
+            </span>
+            <span className="kit-jump-to">{plan.tag}</span>
+            {plan.tag === versions[0] && <span className="badge">latest</span>}
+          </div>
+        </>
+      }
+      busy={busy}
+      onClose={onClose}
+      footer={
+        <>
+          <label className="kits-dialog-version">
+            Version
+            <select aria-label="Version" value={plan.tag ?? ""} disabled={busy} onChange={choose}>
+              {options}
+            </select>
+          </label>
+          <button type="button" className="quiet" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="primary" disabled={busy} onClick={() => void update()}>
+            {`Update to ${plan.tag}`}
+          </button>
+        </>
+      }
+    >
+      {plan.new_mcp.length > 0 && (
+        <p className="kit-alert">
+          <b>{`New MCP server${plan.new_mcp.length === 1 ? "" : "s"}: ${plan.new_mcp.join(", ")}.`}</b> The new version
+          starts what the installed one did not.
+        </p>
+      )}
+      <Warnings lines={plan.warnings} />
+      {plan.before === null && (
+        <p className="muted">The installed version's files are not in the cache: changes are not shown.</p>
+      )}
+      <PlanContents key={plan.tag} plan={plan} before={plan.before} />
+      {plan.notes.length > 0 && (
+        <div className="kit-group">
+          <h4>Who gets it</h4>
           {plan.notes.map((note) => (
-            <p key={note} className="muted">
+            <p key={note} className="kit-who">
               {note}
             </p>
           ))}
-          {versions.length > 0 && (
-            <label className="kits-check">
-              Version
-              <select
-                aria-label="Version"
-                value={plan.tag ?? ""}
-                disabled={busy}
-                onChange={(event) => void ask(event.target.value)}
-              >
-                {versions.map((one, i) => (
-                  <option key={one} value={one}>
-                    {i === 0 ? `${one} (latest)` : one}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </>
+        </div>
       )}
-      {failed && <Failure error={failed} onAgain={() => void ask(plan?.tag ?? null)} />}
-      <div className="question-buttons">
-        <button type="button" className="quiet" disabled={busy} onClick={onClose}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="primary"
-          disabled={busy || plan === null || plan.current}
-          onClick={() => void update()}
-        >
-          Update
-        </button>
-      </div>
+      {failure}
     </Modal>
   );
 }
@@ -995,7 +1057,21 @@ function RemoveKitDialog({ kit, onClose }: { kit: InstalledKitInfo; onClose: () 
   };
   const found = users !== null && "running" in users ? users : null;
   return (
-    <Modal title={`Remove ${kit.name}?`} busy={busy} onClose={onClose}>
+    <Modal
+      title={`Remove ${kit.name}?`}
+      busy={busy}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="quiet" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="danger" disabled={busy || users === null} onClick={() => void remove()}>
+            Remove
+          </button>
+        </>
+      }
+    >
       {users === null && <p className="muted">Loading…</p>}
       {users !== null && "error" in users && (
         <p className="problem" role="alert">
@@ -1021,14 +1097,6 @@ function RemoveKitDialog({ kit, onClose }: { kit: InstalledKitInfo; onClose: () 
           {refused}
         </p>
       )}
-      <div className="question-buttons">
-        <button type="button" className="quiet" disabled={busy} onClick={onClose}>
-          Cancel
-        </button>
-        <button type="button" className="danger" disabled={busy || users === null} onClick={() => void remove()}>
-          Remove
-        </button>
-      </div>
     </Modal>
   );
 }
@@ -1051,42 +1119,43 @@ function AddMarketplaceDialog({ onClose }: { onClose: () => void }) {
     }
   };
   return (
-    <Modal title="Add marketplace" busy={busy} onClose={onClose}>
-      <form
-        className="kits-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (ready && !busy) void add();
-        }}
-      >
-        <div className="kits-fields">
-          <input aria-label="Name" placeholder="name" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
-          <input
-            className="kits-wide"
-            aria-label="Git address"
-            placeholder="https://github.com/you/marketplace.git"
-            value={url}
-            disabled={busy}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-        </div>
-        <p className="muted">
-          LADO clones it and reads its list. LADO does not check its kits: each install from it asks you to confirm.
-        </p>
-        {refused && (
-          <p className="problem" role="alert">
-            {refused}
-          </p>
-        )}
-        <div className="question-buttons">
+    <Modal
+      title="Add marketplace"
+      busy={busy}
+      onClose={onClose}
+      onSubmit={() => {
+        if (ready && !busy) void add();
+      }}
+      footer={
+        <>
           <button type="button" className="quiet" disabled={busy} onClick={onClose}>
             Cancel
           </button>
           <button type="submit" className="primary" disabled={busy || !ready}>
             {busy ? "Adding…" : "Add"}
           </button>
-        </div>
-      </form>
+        </>
+      }
+    >
+      <div className="kits-fields">
+        <input aria-label="Name" placeholder="name" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="kits-wide"
+          aria-label="Git address"
+          placeholder="https://github.com/you/marketplace.git"
+          value={url}
+          disabled={busy}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+      </div>
+      <p className="muted">
+        LADO clones it and reads its list. LADO does not check its kits: each install from it asks you to confirm.
+      </p>
+      {refused && (
+        <p className="problem" role="alert">
+          {refused}
+        </p>
+      )}
     </Modal>
   );
 }
@@ -1108,7 +1177,21 @@ function RemoveMarketplaceDialog(props: { market: MarketplaceInfo; stay: string[
   };
   const one = stay.length === 1;
   return (
-    <Modal title={`Remove marketplace ${market.name}?`} busy={busy} onClose={props.onClose}>
+    <Modal
+      title={`Remove marketplace ${market.name}?`}
+      busy={busy}
+      onClose={props.onClose}
+      footer={
+        <>
+          <button type="button" className="quiet" disabled={busy} onClick={props.onClose}>
+            Cancel
+          </button>
+          <button type="button" className="danger" disabled={busy} onClick={() => void remove()}>
+            Remove
+          </button>
+        </>
+      }
+    >
       {stay.length === 0 ? (
         <p>No installed kit comes from it.</p>
       ) : (
@@ -1123,14 +1206,6 @@ function RemoveMarketplaceDialog(props: { market: MarketplaceInfo; stay: string[
           {refused}
         </p>
       )}
-      <div className="question-buttons">
-        <button type="button" className="quiet" disabled={busy} onClick={props.onClose}>
-          Cancel
-        </button>
-        <button type="button" className="danger" disabled={busy} onClick={() => void remove()}>
-          Remove
-        </button>
-      </div>
     </Modal>
   );
 }

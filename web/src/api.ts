@@ -212,6 +212,7 @@ export type InstalledKitInfo = components["schemas"]["InstalledKitInfo"];
 export type OfferInfo = components["schemas"]["OfferInfo"];
 export type MarketplaceInfo = components["schemas"]["MarketplaceInfo"];
 export type PlanInfo = components["schemas"]["PlanInfo"];
+export type KitContentsInfo = components["schemas"]["KitContentsInfo"];
 export type PlanAsk = components["schemas"]["PlanAsk"];
 export type InstallKit = components["schemas"]["InstallKit"];
 export type KitUsersInfo = components["schemas"]["KitUsersInfo"];

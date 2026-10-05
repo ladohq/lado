@@ -3481,18 +3481,255 @@ h3 {
   border-left: 3px solid var(--danger);
 }
 
+/* A window of the Kits page: its head and its footer with the buttons stay in place, only
+   the middle scrolls (docs/design/ui.md, Kits: Update). The other pages' windows keep
+   .question-dialog as it is. */
 .kits-dialog {
   width: min(580px, calc(100vw - 32px));
+  padding: 0;
+  overflow: hidden;
 }
 
-.kits-dialog > * + * {
-  margin-top: 12px;
-}
-
-.kits-form {
+.kits-dialog[open] {
   display: flex;
   flex-direction: column;
+}
+
+.kits-dialog-frame {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.kits-dialog-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.kits-dialog .kits-dialog-head h3 {
+  margin: 0;
+}
+
+.kits-dialog-kicker {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kits-dialog-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px 22px;
+  overflow: auto;
+}
+
+.kits-dialog .kits-dialog-body p {
+  margin: 0;
+}
+
+.kits-dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--line);
+}
+
+.kits-dialog-version {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Update: the move from the installed version to the new one. */
+.kit-jump {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font: 600 20px var(--mono);
+}
+
+.kit-jump-from {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.kit-jump-arrow {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.kit-jump-to {
+  color: var(--action);
+}
+
+.kit-jump .badge {
+  font-family: var(--sans);
+}
+
+/* Update with nothing to update. */
+.kit-state {
+  display: flex;
+  align-items: center;
   gap: 12px;
+}
+
+.kit-ok {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--done-ground);
+  color: var(--done);
+  font-weight: 700;
+}
+
+.kits-dialog .kit-state-head {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* What a plan brings: tiles, then groups of chips. */
+.kit-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.kit-fact {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+}
+
+.kit-fact-name,
+.kit-group h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kit-fact-value {
+  font: 600 16px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.kit-delta {
+  margin-left: 4px;
+  color: var(--done);
+  font-size: 12px;
+}
+
+.kit-delta.minus {
+  color: var(--danger);
+}
+
+.kit-group {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 6px;
+}
+
+.kit-group .link-button {
+  margin-top: 0;
+}
+
+.kit-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kit-chip {
+  padding: 1px 9px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 12px var(--mono);
+  text-decoration: none;
+}
+
+.kit-chip.added {
+  border-color: var(--done);
+  background: var(--done-ground);
+  color: var(--done);
+}
+
+.kit-chip.removed {
+  border-color: var(--danger);
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.kit-mcp {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.kit-mcp li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kit-mcp-name {
+  font: 600 13px var(--mono);
+}
+
+del.kit-mcp-name {
+  color: var(--danger);
+}
+
+.kit-mcp-command {
+  color: var(--muted);
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.kit-who {
+  padding-left: 10px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kit-plan-description {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kits-dialog .kit-where {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .kits-ways {
@@ -3534,9 +3771,8 @@ h3 {
   gap: 8px;
 }
 
-.kits-form input:not([type]),
-.kits-form select,
-.kits-check select {
+.kits-dialog input:not([type]),
+.kits-dialog select {
   height: 34px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -3563,24 +3799,6 @@ h3 {
   gap: 8px;
   color: var(--muted);
   font-size: 13px;
-}
-
-.kit-plan {
-  display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
-  gap: 6px 12px;
-  margin: 0;
-  font-size: 13px;
-}
-
-.kit-plan dt {
-  color: var(--muted);
-}
-
-.kit-plan dd {
-  margin: 0;
-  font-family: var(--mono);
-  overflow-wrap: anywhere;
 }
 
 .kit-alert {

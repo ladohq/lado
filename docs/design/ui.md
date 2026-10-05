@@ -1012,12 +1012,31 @@ page (LADO has one source of kits, git).
   description, its source (the marketplace it was added from, `<name> (removed)` when that
   one is gone, counted by the UI from the two lists; git; folder; built-in), its roles,
   skills and flows, its address or folder, the core's problem when it does not load;
-  Update… (a kit from git) and Remove….
-- **Available**: each kit the enabled marketplaces list, from their clones (no network):
-  `marketplace.yaml` for the names and addresses, `index.json` for the rest (README, Kits:
-  version 1), only the name and address without an entry. Install…, or `installed`. A
-  fresh LADO_HOME says no marketplace is fetched yet, with a button to update each; nothing
-  is cloned by itself.
+  Update… (a kit from git) and Remove…. A row is a card (below).
+- **Available**: each kit the enabled marketplaces list that is not installed, from their
+  clones (no network): `marketplace.yaml` for the names and addresses, `index.json` for
+  the rest (README, Kits: version 1), only the name and address without an entry; Install….
+  An installed kit is in Installed and a new version of it in Updates, never here: the
+  list and the tab's count are one set, the offers whose `installed` (the server's) is
+  false, before the search and the source chips. When every listed kit is installed, the
+  tab says "All kits of your marketplaces are installed", how many kits each marketplace
+  lists, and links to Installed. A fresh LADO_HOME says no marketplace is fetched yet, with
+  a button to update each; nothing is cloned by itself. (Decided with the human, task
+  feature/kits-page-polish, 2026-10-05.)
+- **Card** (variant A of that task's mockups, decided 2026-10-05): a list of rows, each a
+  mark, a body and the actions on the right (under the body on a page narrower than
+  600 px). The mark: the first letters of the name's first two parts (split at `-` and
+  `_`; else its first two letters) in mono on `--action-ground` in `--action`, a
+  built-in kit's on `--raised` in `--muted`; its colour says nothing. The body: the name,
+  the version as a tag (Available: the index's `latest`), the badges (`vX available`,
+  `folder missing`); the description cut to two lines by CSS, with **more** only when it
+  is cut (measured, again on a resize) and **less**, the whole text on hover, not
+  remembered; the source as a dot with its text (the dot by its kind: official `--done`,
+  another marketplace, also a removed one, `--action`, git a `--muted` dot, folder a
+  `--muted` ring, built-in an empty circle); the counts, number first ("4 roles 71 skills
+  2 flows", none of a zero); a git address short (no scheme or user, `host:` as `host/`,
+  no `.git`), the whole one on hover, a folder as it is. Update… is the primary button
+  only when a check found a newer version.
 - **Updates**: only after Check for updates (`kits.outdated`, the network); the time of
   the check is kept in the page, not stored; no check in the background. The kits it did
   not check say why; a moved tag is a warning.
@@ -1029,17 +1048,39 @@ page (LADO has one source of kits, git).
 - **Install**: Add kit… asks what (a kit of a marketplace, with the names it lists as
   suggestions; a git address; a folder; a version and pre-releases), then shows the core's
   plan (`POST /api/kits/plan`: `kits.plan_add`, the kit cloned into the cache, nothing
-  installed): source, address, version, commit, agents, skills, flows, MCP servers,
-  warnings. When the core says `needs_confirmation` (not the official marketplace, as
+  installed) in the windows' frame (below): the source and `Install <name> <tag>` in the
+  head; the description, warnings, three tiles (roles, skills, flows), roles and flows by
+  name, the skills behind "Show all N", the MCP servers with their commands, the address
+  and commit. When the core says `needs_confirmation` (not the official marketplace, as
   the CLI asks), a warning about its MCP servers and **Install** only after "I checked the
   address and the MCP servers". Install sends the plan's tag and commit (a folder: its MCP
   servers); the server plans again and refuses another one with 409, and the window offers
   the plan again. Install… on an Available row starts at the plan. A refusal of the core
   shows its words with Back.
 - **Update**: the core's plan for the latest version or another one chosen from the
-  repository's tags (`POST /api/kits/{name}/plan-update`): its new MCP servers, who gets it
-  (the core's line: running sessions only for new agents), Update; the installed version
-  says so and has nothing to update.
+  repository's tags (`POST /api/kits/{name}/plan-update`). Decided with the human
+  (feature/kits-page-polish, 2026-10-05, the "No update" window and D1):
+  - Nothing to update (`current`): a short window, no contents: "<name> is up to date"
+    with a check mark (or "<name> is at vX already" when a newer version exists), the
+    latest version and the source, the core's warnings, "Install another version" and
+    Close. This says what the core's `current_line` says. Choosing another version makes
+    it the update window.
+  - An update (D1): the head `Update <name> · <source>` and `vOld → vNew` (with `latest`);
+    the new MCP servers by name and the core's warnings first; the tiles with `+N`/`−N`;
+    roles and flows as chips, the added ones green "+ name", the dropped ones struck red;
+    the added and dropped skills, all of them behind "Show all N"; the MCP servers, "new"
+    only by the core's `new_mcp` (as the CLI warns), "removed" only from `before`; "Who
+    gets it", the core's line; the address and commit. The footer: the version, Cancel and
+    "Update to vX".
+  - `PlanInfo.before` is the installed version's roles, skills (its own and its packs'),
+    flows and MCP servers (`kits.Install.before`), null for an add and when that version's
+    clone or one of its packs is not in the cache: a partial list would show its missing
+    skills as added. Without it the window marks nothing but the new MCP servers and says
+    "The installed version's files are not in the cache: changes are not shown."
+- **Windows**: every window of the page has its head and its footer with the buttons in
+  place and only its middle scrolling, at most the screen's height less 32 px, so a kit
+  with 70 skills never pushes the buttons off the screen. Its styles are only under
+  `.kits-dialog`; the other pages' `.question-dialog` stays as it is.
 - **Remove**: never blocked: the window names the running sessions that use the kit
   (their new agents and runs fail to start) and the stopped ones (a resume needs it), the
   core's lines, as `lado kits remove` prints them; a kit whose folder is gone is only
@@ -1066,6 +1107,8 @@ The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8E
 #9AA1AD, actions #6FA0FF (labels on them #111317), waiting for the human #F0A25A on #3A2A1C.
 Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242C), and
 (Flows, 2026-10-05) green for work that went well, a run that ended and a step of its
-history (#1E7A46 on #E7F4EC / #5CC98A on #18301F). Every
+history (#1E7A46 on #E7F4EC / #5CC98A on #18301F), and (Kits, 2026-10-05) a quiet ground
+for the action colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official
+`--done`, another marketplace `--action`, always beside the source's text. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test
 (`web/src/tokens.test.ts`) checks it.

@@ -853,3 +853,33 @@ Wanted: the hint follows what was found: a uv tool or pipx install not from an i
 the working copy yourself (git pull), then restart the sessions; a venv without pip:
 `uv pip install --python <prefix>/bin/python lado==X`; only a venv with pip: `<prefix>/bin/pip`.
 Found: 2026-10-05, second review of feature/self-update.
+
+## A kit's skill count differs between Available and Installed
+
+Available counts a kit's skills from `index.json`, only its own (lado-dev: 1); Installed and
+the plans count its packs' skills too (`models._skill_names`: 71). The same kit shows two
+numbers.
+Wanted: one count everywhere, e.g. "N skills (M from packs)", or index.json gives the total.
+Found: 2026-10-05, design of feature/kits-page-polish.
+
+## Update… stays on a kit a check found up to date
+
+After Check for updates says a kit has no newer version, its row still offers Update…; the
+window now answers briefly, but the button promises an update.
+Wanted: after a check, such a kit's button says what it does (e.g. "Versions…").
+Found: 2026-10-05, design of feature/kits-page-polish.
+
+## The UI scrolls sideways on a phone-wide screen
+
+At a 420 px wide viewport the Kits page (the rail and the page) is wider than the screen:
+a full-page screenshot is 476 px wide, and the Marketplaces block runs past the right edge.
+Wanted: no horizontal page scroll at phone width (the rail collapses, the page fits).
+Found: 2026-10-05, UI e2e screenshot update-narrow of feature/kits-page-polish.
+
+## Flaky: vitest "the flows tab without a run opens the first waiting run" under load
+
+In `make check` (18 vitest workers beside the build) it failed once with `Unable to find
+role="region" and name "Run fix/gate-bubble"`; rerun alone, it passed twice. Like the
+Agents tab's entry above: a `findBy` with the default 1 s wait under load.
+Wanted: the test waits for what the page loads, with a margin, or the run isolates less.
+Found: 2026-10-05, make check of feature/kits-page-polish.

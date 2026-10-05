@@ -219,6 +219,8 @@ const kitList = () => screen.getByRole("list", { name: "Kits" });
 const kitRow = (name: string) => within(kitList()).getByRole("listitem", { name });
 const kitNames = () => within(kitList()).getAllByRole("listitem").map((row) => row.getAttribute("aria-label"));
 const marketplacesBlock = () => screen.getByRole("complementary", { name: "Marketplaces" });
+// A dialog's buttons stay in its footer while its middle scrolls.
+const footer = (dialog: HTMLElement) => dialog.querySelector("footer") as HTMLElement;
 
 // Addresses and tabs
 
@@ -481,11 +483,17 @@ test("Add kit shows the core's plan and installs its tag and commit only after t
   fireEvent.change(within(dialog).getByRole("combobox", { name: "Marketplace" }), { target: { value: "team" } });
   fireEvent.change(within(dialog).getByRole("combobox", { name: "Kit" }), { target: { value: "wiki" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "Next" }));
-  const plan = await screen.findByRole("dialog", { name: "Install wiki v1.0.0?" });
+  const plan = await screen.findByRole("dialog", { name: "Install wiki v1.0.0" });
   expect(asked("POST", "/api/kits/plan")[0].body).toEqual({ spec: "wiki", marketplace: "team", pre: false });
   expect(within(plan).getByText("npx -y wiki-mcp", { exact: false })).toBeTruthy();
   expect(within(plan).getByText(/Not from the official marketplace/)).toBeTruthy();
-  const install = within(plan).getByRole("button", { name: "Install" });
+  // The new version's contents: counts, roles by name, skills behind Show all.
+  expect(within(within(plan).getByRole("group", { name: "Roles" })).getByText("1")).toBeTruthy();
+  expect(within(plan).getByText("writer")).toBeTruthy();
+  expect(within(plan).queryByText("wiki", { selector: ".kit-chip" })).toBeNull();
+  fireEvent.click(within(plan).getByRole("button", { name: "Show all 1" }));
+  expect(within(plan).getByText("wiki", { selector: ".kit-chip" })).toBeTruthy();
+  const install = within(footer(plan)).getByRole("button", { name: "Install" });
   expect((install as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(within(plan).getByRole("checkbox", { name: "I checked the address and the MCP servers" }));
   expect((install as HTMLButtonElement).disabled).toBe(false);
@@ -518,7 +526,7 @@ test("an official kit needs no check; a folder sends the MCP servers the plan sh
   fireEvent.click(within(dialog).getByRole("radio", { name: "Folder" }));
   fireEvent.change(within(dialog).getByRole("textbox", { name: "Folder" }), { target: { value: "/work/mine" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "Next" }));
-  const plan = await screen.findByRole("dialog", { name: "Install mine from a folder?" });
+  const plan = await screen.findByRole("dialog", { name: "Install mine from a folder" });
   expect(within(plan).queryByRole("checkbox")).toBeNull();
   fireEvent.click(within(plan).getByRole("button", { name: "Install" }));
   await waitFor(() => expect(asked("POST", "/api/kits/install")).toHaveLength(1));
@@ -552,7 +560,7 @@ test("a refused plan shows the core's words with Back; a 409 asks to look at the
   expect((within(dialog).getByRole("textbox", { name: "Version" }) as HTMLInputElement).value).toBe("v1.2.0");
   refuse = false;
   fireEvent.click(within(dialog).getByRole("button", { name: "Next" }));
-  const plan = await screen.findByRole("dialog", { name: "Install wiki v1.0.0?" });
+  const plan = await screen.findByRole("dialog", { name: "Install wiki v1.0.0" });
   fireEvent.click(within(plan).getByRole("checkbox"));
   fireEvent.click(within(plan).getByRole("button", { name: "Install" }));
   expect((await within(plan).findByRole("alert")).textContent).toBe("the kit changed since the plan: v1.0.0 moved");
@@ -564,7 +572,7 @@ test("Install… on an Available row goes straight to the plan", async () => {
   serve({ "POST /api/kits/plan": () => PLAN });
   open("/kits/available");
   fireEvent.click(await screen.findByRole("button", { name: "Install wiki…" }));
-  expect(await screen.findByRole("dialog", { name: "Install wiki v1.0.0?" })).toBeTruthy();
+  expect(await screen.findByRole("dialog", { name: "Install wiki v1.0.0" })).toBeTruthy();
   expect(asked("POST", "/api/kits/plan")[0].body).toEqual({ spec: "wiki", marketplace: "team", pre: false });
 });
 
@@ -577,7 +585,7 @@ test("Esc does not close a dialog while its request runs", async () => {
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.getByRole("dialog")).toBeTruthy();
   await act(async () => answer(PLAN));
-  fireEvent.keyDown(await screen.findByRole("dialog", { name: "Install wiki v1.0.0?" }), { key: "Escape" });
+  fireEvent.keyDown(await screen.findByRole("dialog", { name: "Install wiki v1.0.0" }), { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
@@ -602,28 +610,116 @@ const UPDATE: PlanInfo = {
   users: { running: ["lado"], stopped: [], running_line: "x", stopped_line: null },
 };
 
+const CURRENT: PlanInfo = {
+  ...UPDATE,
+  tag: "v0.9.1",
+  version: "0.9.1",
+  commit: "4be21c0",
+  current: true,
+  versions: ["v0.9.1", "v0.9.0"],
+  new_mcp: [],
+  warnings: [],
+  notes: ['Kit "lado-dev" is at v0.9.1 already.'],
+};
+
+async function openUpdate() {
+  open("/kits");
+  fireEvent.click(await screen.findByRole("button", { name: "Update lado-dev…" }));
+  return screen.findByRole("dialog", { name: "Update lado-dev" });
+}
+
 test("Update shows the core's plan, its warnings and who gets it; another version plans again", async () => {
   serve({
     "POST /api/kits/lado-dev/plan-update": (body) =>
-      (body as { tag?: string }).tag === "v0.9.1"
-        ? { ...UPDATE, tag: "v0.9.1", current: true, notes: ['Kit "lado-dev" is at v0.9.1 already.'], warnings: [] }
-        : UPDATE,
+      (body as { tag?: string }).tag === "v0.9.1" ? { ...CURRENT, versions: UPDATE.versions } : UPDATE,
     "POST /api/kits/lado-dev/update": () => ({ ...INSTALLED[1], tag: "v0.10.0" }),
   });
-  open("/kits");
-  fireEvent.click(await screen.findByRole("button", { name: "Update lado-dev…" }));
-  const dialog = await screen.findByRole("dialog", { name: "Update lado-dev v0.9.1 → v0.10.0?" });
-  expect(within(dialog).getByText(UPDATE.warnings[0])).toBeTruthy();
+  const dialog = await openUpdate();
+  expect(await within(dialog).findByText(UPDATE.warnings[0])).toBeTruthy();
   expect(within(dialog).getByText(UPDATE.notes[0])).toBeTruthy();
-  const version = within(dialog).getByRole("combobox", { name: "Version" });
+  const version = within(footer(dialog)).getByRole("combobox", { name: "Version" });
+  // The installed version, chosen: not the latest, so not "up to date".
   fireEvent.change(version, { target: { value: "v0.9.1" } });
-  expect(await within(dialog).findByText('Kit "lado-dev" is at v0.9.1 already.')).toBeTruthy();
-  expect((within(dialog).getByRole("button", { name: "Update" }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(version, { target: { value: "v0.10.0" } });
+  expect(await within(dialog).findByText("lado-dev is at v0.9.1 already")).toBeTruthy();
+  expect(within(dialog).queryByRole("button", { name: /^Update/ })).toBeNull();
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Install another version" }), {
+    target: { value: "v0.10.0" },
+  });
   await within(dialog).findByText(UPDATE.notes[0]);
-  fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+  fireEvent.click(within(footer(dialog)).getByRole("button", { name: "Update to v0.10.0" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(asked("POST", "/api/kits/lado-dev/update")[0].body).toEqual({ tag: "v0.10.0", commit: "c81d0e4" });
+});
+
+test("Update of a kit at its latest version says it is up to date, without the kit's contents", async () => {
+  serve({
+    "POST /api/kits/lado-dev/plan-update": (body) => ((body as { tag?: string }).tag === "v0.9.0" ? { ...UPDATE, tag: "v0.9.0" } : CURRENT),
+  });
+  const dialog = await openUpdate();
+  expect(await within(dialog).findByText("lado-dev is up to date")).toBeTruthy();
+  expect(within(dialog).getByText("v0.9.1 is the latest version · official")).toBeTruthy();
+  expect(within(dialog).queryByText("wiki")).toBeNull(); // no skills, roles or flows
+  expect(within(dialog).queryByRole("group", { name: "Skills" })).toBeNull();
+  const another = within(dialog).getByRole("combobox", { name: "Install another version" });
+  expect([...(another as HTMLSelectElement).options].map((o) => o.textContent)).toEqual([
+    "v0.9.1 (latest, installed)",
+    "v0.9.0",
+  ]);
+  fireEvent.click(within(footer(dialog)).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+const BEFORE = {
+  agents: ["supervisor", "developer"],
+  skills: ["review", "tdd", "grill-me"],
+  flows: ["feature", "fix"],
+  mcp: ["jira"],
+};
+const CHANGED: PlanInfo = {
+  ...UPDATE,
+  agents: ["supervisor", "developer", "tester"],
+  skills: ["review", "tdd", "test-plan"],
+  flows: ["feature"],
+  before: BEFORE,
+};
+
+test("Update with the installed version's contents shows what is added and what goes", async () => {
+  serve({ "POST /api/kits/lado-dev/plan-update": () => CHANGED });
+  const dialog = await openUpdate();
+  const roles = await within(dialog).findByRole("group", { name: "Roles" });
+  expect(within(roles).getByText("3")).toBeTruthy();
+  expect(within(roles).getByText("+1")).toBeTruthy();
+  const skills = within(dialog).getByRole("group", { name: "Skills" });
+  expect([within(skills).getByText("+1"), within(skills).getByText("−1")]).toHaveLength(2);
+  expect(within(within(dialog).getByRole("group", { name: "Flows" })).getByText("−1")).toBeTruthy();
+  expect(within(dialog).getByText("+ tester").tagName).toBe("INS");
+  expect(within(dialog).getByText("+ test-plan").tagName).toBe("INS");
+  expect(within(dialog).getByText("grill-me").tagName).toBe("DEL");
+  expect(within(dialog).getByText("fix").tagName).toBe("DEL");
+  // Unchanged skills are behind Show all.
+  expect(within(dialog).queryByText("tdd")).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Show all 3" }));
+  expect(within(dialog).getByText("tdd")).toBeTruthy();
+  // MCP servers: new by the core's new_mcp, gone by the installed version's list.
+  const mcp = within(dialog).getByRole("list", { name: "MCP servers" });
+  expect(within(mcp).getByRole("listitem", { name: "playwright, new" })).toBeTruthy();
+  expect(within(mcp).getByText("jira").tagName).toBe("DEL");
+  expect(within(dialog).getByText(/^v0\.9\.1$/)).toBeTruthy();
+  expect(within(dialog).queryByText(/not in the cache/)).toBeNull();
+});
+
+test("Update without the installed version's contents says the changes are not shown", async () => {
+  serve({ "POST /api/kits/lado-dev/plan-update": () => ({ ...CHANGED, before: null }) });
+  const dialog = await openUpdate();
+  expect(
+    await within(dialog).findByText("The installed version's files are not in the cache: changes are not shown."),
+  ).toBeTruthy();
+  expect(within(dialog).queryByText(/^[+−]\d/)).toBeNull();
+  expect(within(dialog).queryByText("+ tester")).toBeNull();
+  expect(within(dialog).getByText("tester").tagName).not.toBe("INS");
+  // The core says which MCP servers are new, with or without the installed version.
+  const mcp = within(dialog).getByRole("list", { name: "MCP servers" });
+  expect(within(mcp).getByRole("listitem", { name: "playwright, new" })).toBeTruthy();
 });
 
 // Remove

@@ -768,3 +768,14 @@ by hand: 40 icons, `overflow-y: auto`), but a change to `min-height: 0` or the g
 go unnoticed. Wanted: the e2e test checks `overflow-y` of `.strip-icons`, or fills the strip
 and checks that the buttons keep their place.
 Found: 2026-10-05, review of feature/sessions-list-collapse (Minor 1).
+
+## An agent whose turn ends on an API error stays busy
+
+After the computer slept, the reviewer's turn ended in Claude Code with `API Error: Your
+computer went to sleep mid-response` and its prompt was empty, but LADO kept it `busy`
+for two hours: no turn-end hook ran, so its queue was never handed over and a message to it
+would have waited forever. The supervisor typed into its window by hand to get it going.
+Wanted: the provider reports a turn that ends on an error as a turn end (Claude Code has a
+hook for a failed stop, check which; Kilo's plugin likewise), so the agent is `idle` and gets
+its queue; until then `lado ls` could flag an agent busy far longer than usual.
+Found: 2026-10-05, run feature/self-update (supervisor).

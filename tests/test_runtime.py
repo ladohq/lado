@@ -66,10 +66,7 @@ def test_the_last_sessions_provider_not_installed_falls_back_to_the_only_one(rep
 
 
 def test_another_folders_session_does_not_count(repo, tmp_path, fake_tmux):
-    other = tmp_path / "other"
-    other.mkdir()
-    runtime.git(str(other), "init", "-q")
-    runtime.git(str(other), "commit", "-q", "--allow-empty", "-m", "first")
+    other = agent_helpers.init_repo(tmp_path / "other")
     runtime.start_session(str(other), "o", None, "kilo")
     assert runtime.suggested_provider(str(repo), _installed("claude", "kilo")) is None
 

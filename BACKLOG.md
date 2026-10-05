@@ -1017,3 +1017,13 @@ had scrolled it away). Passed on the rerun with no change.
 Wanted: the test checks that the supervisor took the message by its delivery (state), not
 by the screen.
 Found: 2026-10-06, `make test-live` on main before the 0.22.0 release.
+
+## The popup integration test fails with an empty HOME
+
+`HOME=<empty dir> uv run pytest -m integration -n0 tests/integration/test_flow_runs.py -k
+popup` times out waiting for the popup (the worker's `flow_advance` fails with
+`Error executing tool flow_advance`); with the usual HOME it passes. Not the git identity:
+with `GIT_CONFIG_GLOBAL=/dev/null` and `user.useConfigOnly=true` it passes too.
+Wanted: find what the gate's popup reads from HOME, and either isolate it in the tests or
+say so in AGENTS.md.
+Found: 2026-10-06, fix/ci-git-identity, checking the tests without a global git identity.

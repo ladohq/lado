@@ -99,7 +99,13 @@ function KitsPage({ tab }: { tab: KitsTab }) {
   const markets = itemsOf(marketList);
   const marketNames = marketList && "items" in marketList ? markets.map((m) => m.name) : null;
   const offers = itemsOf(loaded?.available);
-  const newer = new Map((checked?.rows ?? []).filter((row) => row.newer).map((row) => [row.name, row.newer!]));
+  // A check's newer version, while the kit is still at the tag it was checked at: an
+  // update since (here or from the CLI, through the feed) ends it.
+  const checks = new Map((checked?.rows ?? []).map((row) => [row.name, row]));
+  const newerOf = (kit: InstalledKitInfo): string | null => {
+    const row = checks.get(kit.name);
+    return row?.newer && row.installed === (kit.tag ?? "") ? row.newer : null;
+  };
 
   const chooseSource = (next: string) => {
     setSource(next);
@@ -143,7 +149,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
   const shownOffers = offers.filter((offer) =>
     found(offer.name, offer.index?.description, marketSource(offer.marketplace)),
   );
-  const updates = installed.filter((kit) => newer.has(kit.name));
+  const updates = installed.filter((kit) => newerOf(kit) !== null);
   const shownUpdates = updates.filter((kit) => found(kit.name, kit.description, sourceOf(kit, marketNames).chip));
   const offered = offers.filter((offer) => !offer.installed).length;
 
@@ -223,7 +229,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
                   key={`${kit.kind}:${kit.name}`}
                   kit={kit}
                   source={sourceOf(kit, marketNames).label}
-                  newer={newer.get(kit.name) ?? null}
+                  newer={newerOf(kit)}
                   onUpdate={() => setDialog({ kind: "update", kit })}
                   onRemove={() => setDialog({ kind: "remove", kit })}
                 />
@@ -265,7 +271,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
                       key={kit.name}
                       kit={kit}
                       source={sourceOf(kit, marketNames).label}
-                      newer={newer.get(kit.name) ?? null}
+                      newer={newerOf(kit)}
                       onUpdate={() => setDialog({ kind: "update", kit })}
                       onRemove={() => setDialog({ kind: "remove", kit })}
                     />

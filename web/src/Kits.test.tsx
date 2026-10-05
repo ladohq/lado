@@ -375,6 +375,25 @@ test("updates are checked only with the button", async () => {
   expect(within(await screen.findByRole("listitem", { name: "lado-dev" })).getByText("v0.10.0 available")).toBeTruthy();
 });
 
+test("a kit updated since the check is no longer an update", async () => {
+  const outdated: OutdatedInfo[] = [
+    { name: "lado-dev", installed: "v0.9.1", latest: "v0.10.0", pre: null, note: "", warnings: [], newer: "v0.10.0" },
+  ];
+  serve({ "POST /api/kits/check-updates": () => outdated });
+  open("/kits/updates");
+  fireEvent.click((await within(page()).findAllByRole("button", { name: "Check for updates" }))[0]);
+  await screen.findByRole("listitem", { name: "lado-dev" });
+  const updated: InstalledKitInfo = { ...INSTALLED[1], tag: "v0.10.0", version: "0.10.0" };
+  stream().send("change", { kind: "kits", session: "", key: "lado-dev", op: "update", item: updated }, "11");
+  const tabs = screen.getByRole("navigation", { name: "Kits" });
+  await waitFor(() => expect(within(tabs).getByRole("link", { name: /Updates/ }).textContent).toBe("Updates 0"));
+  expect(screen.queryByRole("listitem", { name: "lado-dev" })).toBeNull();
+  fireEvent.click(within(tabs).getByRole("link", { name: /Installed/ }));
+  const dev = await screen.findByRole("listitem", { name: "lado-dev" });
+  expect(within(dev).getByText("v0.10.0")).toBeTruthy();
+  expect(within(dev).queryByText("v0.10.0 available")).toBeNull();
+});
+
 // Install
 
 function addKit() {

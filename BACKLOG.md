@@ -883,3 +883,12 @@ role="region" and name "Run fix/gate-bubble"`; rerun alone, it passed twice. Lik
 Agents tab's entry above: a `findBy` with the default 1 s wait under load.
 Wanted: the test waits for what the page loads, with a margin, or the run isolates less.
 Found: 2026-10-05, make check of feature/kits-page-polish.
+
+## The Kits up-to-date window drops the plan's other notes
+
+`UpdateDialog` (`web/src/Kits.tsx`, the `plan.current` branch) rewords `kits.current_line`
+as its heading and shows no `plan.notes`. Today a current plan has only that line, but a
+note the core adds there later (a moved tag, the sessions that use the kit) would not show.
+Wanted: the server gives the current line apart from the other notes, and the window shows
+those; or the window shows `plan.notes` under its heading.
+Found: 2026-10-05, review of feature/kits-page-polish.

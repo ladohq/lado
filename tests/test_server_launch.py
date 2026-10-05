@@ -208,11 +208,12 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
     statuses = {
         "claude": doctor.ProviderStatus(True, "2.1.287", "2.1.287 (Claude Code)", "2.1.287", ""),
         "kilo": doctor.ProviderStatus(False, "", "`kilo` not found on PATH", "7.2", ""),
+        "opencode": doctor.ProviderStatus(True, "1.18.34", "1.18.34", "1.18", ""),
     }
     monkeypatch.setattr(doctor, "provider_status", lambda p, which: statuses[p.name])
     answer = client.get("/api/providers").json()
     assert [p["name"] for p in answer] == providers.names()
-    claude, kilo = answer
+    claude, kilo, opencode = answer
     assert claude == {
         "name": "claude",
         "title": "Claude Code",
@@ -229,6 +230,11 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
         False,
         False,
         "`kilo` not found on PATH",
+    )
+    assert (opencode["title"], opencode["installed"], opencode["version"]) == (
+        "OpenCode",
+        True,
+        "1.18.34",
     )
 
 

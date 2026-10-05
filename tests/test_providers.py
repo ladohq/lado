@@ -6,7 +6,10 @@ import agent_helpers
 import pytest
 
 from lado import hooks, providers, runtime, state, tmux
-from lado.providers import Event, base, kilo
+from lado.providers import Event, base, opencode_family
+
+# The OpenCode family (lado.providers.opencode_family) and the variable its config goes in.
+FAMILY = {"kilo": "KILO_CONFIG_CONTENT", "opencode": "OPENCODE_CONFIG_CONTENT"}
 
 
 def test_registry():
@@ -14,7 +17,7 @@ def test_registry():
     claude = providers.get("claude")
     assert (claude.name, claude.command) == ("claude", "claude")
     assert claude.capabilities.deliver_on_turn_end
-    with pytest.raises(ValueError, match='unknown provider "nope"; known: claude, kilo'):
+    with pytest.raises(ValueError, match='unknown provider "nope"; known: claude, kilo, opencode'):
         providers.get("nope")
 
 
@@ -132,8 +135,11 @@ def test_providers_that_report_a_wait_report_its_end():
     """A wait no event ends keeps the agent waiting until its turn ends."""
     for name in providers.names():
         provider = providers.get(name)
-        # Each provider's module maps its native events in EVENTS.
-        mapped = set(importlib.import_module(type(provider).__module__).EVENTS.values())
+        # Each provider's module, or the module of the base it shares, maps its native
+        # events in EVENTS.
+        modules = [importlib.import_module(c.__module__) for c in type(provider).__mro__]
+        events = next(m.EVENTS for m in modules if hasattr(m, "EVENTS"))
+        mapped = set(events.values())
         if providers.WAITING in mapped:
             assert providers.RESUMED in mapped, name
 
@@ -179,7 +185,7 @@ def _kilo_launch(repo, permission_mode=None, first_message=None):
     )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
     launch = providers.get("kilo").launch_command(agent, sess, spec, first_message)
-    config = json.loads(open(launch.env["KILO_CONFIG"]).read())
+    config = json.loads(launch.env["KILO_CONFIG_CONTENT"])
     return launch, config
 
 
@@ -187,6 +193,11 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
     launch, config = _kilo_launch(repo, first_message="do it")
     assert launch.argv == ["kilo", "--prompt", "do it"]
     assert launch.env["KILO_NO_DAEMON"] == "1"
+    # The config goes in as text: a KILO_CONFIG file loses to the repo's own kilo.json, the
+    # text wins (Kilo 7.8.3). The same text is in the agent's config folder to look at.
+    assert "KILO_CONFIG" not in launch.env
+    file = lado_home / "agents" / "s" / "w1" / "kilo.json"
+    assert file.read_text() == launch.env["KILO_CONFIG_CONTENT"]
     [role] = config["instructions"]
     assert open(role).read() == "the role"
     mcp = config["mcp"]["lado"]
@@ -200,8 +211,8 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
         "LADO_INSTANCE": "i1",
     }
     [[plugin, options]] = config["plugin"]
-    assert plugin == kilo.PLUGIN.as_uri()
-    assert set(options["hooks"]) == set(kilo.EVENTS)
+    assert plugin == opencode_family.PLUGIN.as_uri()
+    assert set(options["hooks"]) == set(opencode_family.EVENTS)
     idle = options["hooks"]["session.idle"]
     assert idle[-7:-6] == ["session.idle"]
     assert idle[-6:-2] == ["--session", "s", "--agent", "w1"]
@@ -282,14 +293,90 @@ def test_permission_mode_check_names_mode_provider_and_supported_modes():
     )
 
 
-def test_kilo_plugin_ships_inside_the_package():
-    import lado
+def test_kilo_turn_end_prints_queued_messages(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, "kilo")
+    runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
+    kilo_cli = providers.get("kilo")
+    out = hooks.handle(kilo_cli, kilo_cli.parse_event("session.idle", "{}"), "s", "supervisor")
+    assert out == "[from w1] done"
+    assert state.get_agent("s", "supervisor").status == state.BUSY
 
-    assert kilo.PLUGIN.is_file()
-    assert kilo.PLUGIN.parent == Path(lado.__file__).parent / "providers"
-    assert "export const LadoPlugin" in kilo.PLUGIN.read_text()
+
+def _opencode_launch(repo, permission_mode=None, first_message=None):
+    sess = state.Session("s", str(repo), permission_mode, "opencode")
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, "opencode", instance="i1"
+    )
+    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
+    launch = providers.get("opencode").launch_command(agent, sess, spec, first_message)
+    config = json.loads(launch.env["OPENCODE_CONFIG_CONTENT"])
+    return launch, config
 
 
+def test_opencode_launch_writes_config_and_env(repo, lado_home):
+    launch, config = _opencode_launch(repo, first_message="do it")
+    assert launch.argv == ["opencode", "--prompt", "do it"]
+    # The config goes in as text, after the repo's own opencode.json (OpenCode 1.18.34); the
+    # same text is in the agent's config folder to look at.
+    assert launch.env == {
+        "OPENCODE_CONFIG_CONTENT": launch.env["OPENCODE_CONFIG_CONTENT"],
+        "OPENCODE_DISABLE_AUTOUPDATE": "1",
+    }
+    file = lado_home / "agents" / "s" / "w1" / "opencode.json"
+    assert file.read_text() == launch.env["OPENCODE_CONFIG_CONTENT"]
+    [role] = config["instructions"]
+    assert open(role).read() == "the role"
+    mcp = config["mcp"]["lado"]
+    assert (mcp["type"], mcp["command"][-1]) == ("local", "mcp")
+    assert mcp["environment"]["LADO_INSTANCE"] == "i1"
+    [[plugin, options]] = config["plugin"]
+    assert plugin == opencode_family.PLUGIN.as_uri()
+    assert set(options["hooks"]) == set(opencode_family.EVENTS)
+    idle = options["hooks"]["session.idle"]
+    assert idle[-7:-6] == ["session.idle"]
+    assert idle[-6:-2] == ["--session", "s", "--agent", "w1"]
+    assert config["skills"] == {"paths": [str(lado_home / "agents" / "s" / "w1" / "skills")]}
+    assert config["permission"]["external_directory"] == {f"{lado_home}/**": "allow"}
+    assert (config["autoupdate"], config["snapshot"]) == (False, False)
+
+
+# What each mode asks the human, as Claude Code's modes of the same name do. OpenCode's
+# default agent asks only before external_directory and doom_loop (OpenCode 1.18.34).
+@pytest.mark.parametrize(
+    ("mode", "flags", "permission"),
+    [
+        (None, [], {}),  # OpenCode's own defaults, as with Kilo
+        ("default", [], {"edit": "ask", "bash": "ask"}),
+        ("acceptEdits", [], {"bash": "ask"}),
+        ("bypassPermissions", ["--auto"], {}),
+        ("plan", ["--agent", "plan"], {}),
+    ],
+)
+def test_opencode_permission_modes(repo, lado_home, mode, flags, permission):
+    launch, config = _opencode_launch(repo, mode)
+    assert launch.argv == ["opencode", *flags]
+    readable = {"external_directory": {f"{lado_home}/**": "allow"}}
+    assert config["permission"] == {**readable, **permission}
+    # OpenCode's plan agent runs bash without asking (1.18.34); plan changes nothing unasked.
+    assert config.get("agent") == (
+        {"plan": {"permission": {"lado_*": "allow", "bash": "ask"}}} if mode == "plan" else None
+    )
+    hooks_ = config["plugin"][0][1]["hooks"]
+    for event in ("permission.asked", "permission.replied"):
+        assert (event in hooks_) == (mode != "bypassPermissions")
+    for event in ("question.asked", "question.replied", "question.rejected"):
+        assert event in hooks_  # --auto does not answer questions
+
+
+def test_opencode_declares_its_permission_modes_and_version():
+    opencode_cli = providers.get("opencode")
+    assert (opencode_cli.title, opencode_cli.command) == ("OpenCode", "opencode")
+    assert opencode_cli.permission_modes == ("default", "acceptEdits", "bypassPermissions", "plan")
+    assert opencode_cli.tested_version == "1.18"
+    assert opencode_cli.install_hint == "install it: `npm install -g opencode-ai`"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
 @pytest.mark.parametrize(
     ("native", "payload", "expected"),
     [
@@ -297,23 +384,35 @@ def test_kilo_plugin_ships_inside_the_package():
         ("chat.message", {"sessionID": "x", "prompt": "hi"}, Event(providers.PROMPT_SUBMIT, "hi")),
         ("session.idle", {"sessionID": "x"}, Event(providers.TURN_END)),
         ("permission.asked", {"id": "per_1"}, Event(providers.WAITING, key="per_1")),
-        ("question.asked", {"id": "que_1"}, Event(providers.WAITING, key="que_1")),
         ("permission.replied", {"id": "per_1"}, Event(providers.RESUMED, key="per_1")),
+        ("question.asked", {"id": "que_1"}, Event(providers.WAITING, key="que_1")),
         ("question.replied", {"id": "que_1"}, Event(providers.RESUMED, key="que_1")),
         ("question.rejected", {"id": "que_1"}, Event(providers.RESUMED, key="que_1")),
         ("dispose", {}, Event(providers.SESSION_END)),
         ("session.created", {}, None),
     ],
 )
-def test_kilo_maps_native_events(native, payload, expected):
-    assert providers.get("kilo").parse_event(native, json.dumps(payload)) == expected
+def test_opencode_family_maps_native_events(provider, native, payload, expected):
+    assert providers.get(provider).parse_event(native, json.dumps(payload)) == expected
 
 
-def test_kilo_turn_end_prints_queued_messages(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, "kilo")
+def test_opencode_family_shares_one_plugin_inside_the_package():
+    import lado
+
+    assert opencode_family.PLUGIN.is_file()
+    assert opencode_family.PLUGIN.name == "opencode_plugin.js"
+    assert opencode_family.PLUGIN.parent == Path(lado.__file__).parent / "providers"
+    assert "export const LadoPlugin" in opencode_family.PLUGIN.read_text()
+    for name in FAMILY:
+        assert providers.get(name).plugin == opencode_family.PLUGIN
+        assert isinstance(providers.get(name), opencode_family.OpenCodeFamily)
+
+
+def test_opencode_turn_end_prints_queued_messages(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, "opencode")
     runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
-    kilo_cli = providers.get("kilo")
-    out = hooks.handle(kilo_cli, kilo_cli.parse_event("session.idle", "{}"), "s", "supervisor")
+    cli = providers.get("opencode")
+    out = hooks.handle(cli, cli.parse_event("session.idle", "{}"), "s", "supervisor")
     assert out == "[from w1] done"
     assert state.get_agent("s", "supervisor").status == state.BUSY
 
@@ -354,11 +453,11 @@ def test_provider_chosen_per_session_and_worker(repo, fake_tmux):
 
 
 def test_unknown_provider_is_refused(repo, fake_tmux):
-    with pytest.raises(runtime.LadoError, match="known: claude, kilo"):
+    with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
         runtime.start_session(str(repo), "s", None, "nope")
     assert state.get_session("s") is None
     runtime.start_session(str(repo), "s", None)
-    with pytest.raises(runtime.LadoError, match="known: claude, kilo"):
+    with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
         runtime.spawn_worker("s", "task", provider="nope")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
 
@@ -439,12 +538,13 @@ def test_claude_agent_cannot_use_built_in_agent_messaging(repo):
     assert settings["permissions"]["deny"] == ["SendMessage", "ListAgents"]
 
 
-def test_kilo_gets_skills_and_kit_mcp(repo, skill_dir):
-    sess = state.Session("s", str(repo), None, "kilo")
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_opencode_family_gets_skills_and_kit_mcp(repo, skill_dir, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
     spec = _spec_with_kit_parts(agent, skill_dir)
-    launch = providers.get("kilo").launch_command(agent, sess, spec)
-    config = json.loads(open(launch.env["KILO_CONFIG"]).read())
+    launch = providers.get(provider).launch_command(agent, sess, spec)
+    config = json.loads(launch.env[FAMILY[provider]])
     assert config["mcp"]["db"] == {
         "type": "local",
         "command": ["db-server", "--port", "1"],
@@ -467,15 +567,16 @@ def test_claude_may_read_the_folders_of_spec_read(repo, skill_dir, tmp_path):
     assert added[0] == str(base.config_dir(agent) / "skills")
 
 
-def test_kilo_may_read_the_folders_of_spec_read_and_takes_no_skills_from_them(
-    repo, skill_dir, tmp_path, lado_home
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_opencode_family_may_read_the_folders_of_spec_read_and_takes_no_skills_from_them(
+    repo, skill_dir, tmp_path, lado_home, provider
 ):
-    sess = state.Session("s", str(repo), None, "kilo")
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
     read = [tmp_path / "files"]
     spec = providers.AgentSpec("the role", skills={"notes": skill_dir}, read=read)
-    launch = providers.get("kilo").launch_command(agent, sess, spec)
-    config = json.loads(open(launch.env["KILO_CONFIG"]).read())
+    launch = providers.get(provider).launch_command(agent, sess, spec)
+    config = json.loads(launch.env[FAMILY[provider]])
     assert config["permission"]["external_directory"] == {
         f"{lado_home}/**": "allow",
         f"{tmp_path / 'files'}/**": "allow",

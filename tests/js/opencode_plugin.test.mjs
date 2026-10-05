@@ -1,4 +1,6 @@
-// Tests for the Kilo plugin (src/lado/providers/kilo_plugin.js). Run: node --test tests/js/*.test.mjs
+// Tests for the OpenCode-family plugin (src/lado/providers/opencode_plugin.js), which Kilo CLI
+// and OpenCode run with the same API (Kilo 7.8.3, OpenCode 1.18.34).
+// Run: node --test tests/js/*.test.mjs
 import assert from "node:assert/strict"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -6,13 +8,13 @@ import { dirname, join } from "node:path"
 import { afterEach, beforeEach, test } from "node:test"
 import { fileURLToPath } from "node:url"
 
-import { LadoPlugin } from "../../src/lado/providers/kilo_plugin.js"
+import { LadoPlugin } from "../../src/lado/providers/opencode_plugin.js"
 
 const RECORDER = fileURLToPath(new URL("record_hook.mjs", import.meta.url))
 let log
 
 beforeEach(() => {
-  log = join(mkdtempSync(join(tmpdir(), "lado-kilo-")), "hooks.jsonl")
+  log = join(mkdtempSync(join(tmpdir(), "lado-plugin-")), "hooks.jsonl")
 })
 
 afterEach(() => {
@@ -29,7 +31,7 @@ function calls() {
   return readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line))
 }
 
-// A fake Kilo client that records the prompts the plugin sends.
+// A fake client of the CLI that records the prompts the plugin sends.
 function fakeClient() {
   const prompts = []
   return { prompts, session: { promptAsync: async (request) => prompts.push(request) } }
@@ -52,7 +54,7 @@ test("chat.message passes the prompt without synthetic parts", async () => {
     {
       parts: [
         { type: "text", text: "[from w1] done" },
-        { type: "text", text: "added by Kilo", synthetic: true },
+        { type: "text", text: "added by the CLI", synthetic: true },
         { type: "file", url: "file:///x" },
         { type: "text", text: "second line" },
       ],
@@ -79,8 +81,8 @@ test("session.idle sends nothing when the hook prints nothing", async () => {
   assert.deepEqual(client.prompts, [])
 })
 
-// Kilo 7.8's requests for the human and their answers: a request has its `id`, an answer
-// names it as `requestID`. A permission refused is replied with reply "reject".
+// Requests for the human and their answers (Kilo 7.8.3, OpenCode 1.18.34): a request has its
+// `id`, an answer names it as `requestID`. A permission refused is replied with reply "reject".
 const REQUESTS = {
   "permission.asked": { id: "per_1", sessionID: "s1", permission: "edit", patterns: ["*"] },
   "permission.replied": { requestID: "per_1", sessionID: "s1", reply: "reject" },

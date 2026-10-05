@@ -20,13 +20,13 @@ make lint               # ruff format --check + ruff check
 make fmt                # ruff format + ruff check --fix
 make test               # unit tests (uv run pytest -n auto)
 make test-integration   # uv run pytest -m integration -n auto: real tmux, git and processes, no LLM
-make test-js            # node --test: the Kilo plugin
+make test-js            # node --test: the OpenCode-family plugin (Kilo, OpenCode)
 make web                # the web UI: npm ci, stale-types check, tsc, vitest, build into src/lado/server/static
 make web-types          # web/openapi.json and web/src/api.gen.ts from the server's API (commit both)
 make test-ui            # uv run pytest -m ui: Chromium against a real lado server, fake agent
 make dist               # uv build, and check that the sdist and the wheel ship the web UI
-make check              # lint, the Kilo plugin, the web UI, unit, integration and UI tests in one run
-make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=kilo|claude
+make check              # lint, the plugin, the web UI, unit, integration and UI tests in one run
+make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=claude|kilo|opencode
 ```
 
 The web UI needs Node (npm) to build; users of the wheel do not. `make browser` (part of
@@ -49,8 +49,9 @@ login shell (tests of the shell set their own `SHELL`). It also sets
 on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`).
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
-is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`
-(override with `LADO_LIVE_CLAUDE_MODEL` / `LADO_LIVE_KILO_MODEL`). The Claude test uses a fixed
+is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`,
+OpenCode on `opencode/nemotron-3-ultra-free` (override with `LADO_LIVE_CLAUDE_MODEL` /
+`LADO_LIVE_KILO_MODEL` / `LADO_LIVE_OPENCODE_MODEL`). The Claude test uses a fixed
 repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
 folder for it.
 
@@ -115,9 +116,17 @@ fixes and docs only: no new feature, no API or schema change.
     not committed (the UI's Agents tab shows both).
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
-    `EVENTS` maps its native events; `claude.py`: Claude Code; `kilo.py`: Kilo CLI, with
-    `kilo_plugin.js`, the Kilo plugin that runs LADO's hooks). A provider writes the agent's
-    config, returns its argv and env and translates its hook events. The provider is chosen
+    `EVENTS` maps its native events; `claude.py`: Claude Code; `opencode_family.py`: the
+    base of OpenCode and its fork Kilo, holding only what is checked on both (each claim
+    names the CLI and version), with `opencode_plugin.js`, the plugin that runs LADO's
+    hooks, and one config dict per agent, written to its config folder and passed in the
+    environment (`env`, the subclass's: `KILO_CONFIG_CONTENT`, `OPENCODE_CONFIG_CONTENT`,
+    which win over the repo's own config); `kilo.py`: Kilo CLI and `opencode.py`: OpenCode,
+    its subclasses, each with its own `TESTED_VERSION`, config file name, switches and
+    permission rules). OpenCode and Kilo still read the user's global config and global
+    skills (`~/.claude/skills`, `~/.agents/skills`; BACKLOG.md); LADO's keys go on top. A
+    provider writes the agent's config, returns its argv and env and translates its hook
+    events. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
     Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
@@ -172,8 +181,8 @@ fixes and docs only: no new feature, no API or schema change.
     from fetched kits. An agent sees the session kits' own skills, its own kit's packs and
     the packs of kits without agents (`Environment.shared`, `.private`). A provider gets an
     `AgentSpec` (prompt, skill folders, MCP servers, and `read`: folders the agent reads
-    without asking that are no skills: Claude Code `--add-dir`, Kilo `external_directory`),
-    never the kit itself. `builtin_kits/`:
+    without asking that are no skills: Claude Code `--add-dir`, Kilo and OpenCode
+    `external_directory`), never the kit itself. `builtin_kits/`:
     kits shipped with LADO (`default`: supervisor + worker). LADO's own instructions to
     agents stay in `runtime.py` and are appended to the role. `LADO_HOME/sources.yaml` of
     older LADOs is not read; while it exists, `migration_hint` says how to move.
@@ -346,8 +355,8 @@ fixes and docs only: no new feature, no API or schema change.
   by `make web-types` and committed.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent
-  CLIs; `tests/js/`: Node tests of the Kilo plugin; `web/src/*.test.tsx`: the UI's unit
-  tests (vitest).
+  CLIs; `tests/js/`: Node tests of the OpenCode-family plugin; `web/src/*.test.tsx`: the
+  UI's unit tests (vitest).
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
@@ -399,7 +408,7 @@ fixes and docs only: no new feature, no API or schema change.
   adds to the input), or the MCP server of an elicitation. When the human refuses a
   permission or dismisses a question, no hook runs: the agent stays `waiting` until the
   human types (BACKLOG.md); a refusal with a comment ends the wait at the turn's end.
-  `Notification` is not used. Kilo: the plugin reports `permission.asked`,
+  `Notification` is not used. Kilo and OpenCode: the plugin reports `permission.asked`,
   `question.asked` (WAITING) and `permission.replied` (also a refusal),
   `question.replied`, `question.rejected` (RESUMED) with the request's id, also for
   subagents' sessions; with `--auto` the permission events are not reported.
@@ -471,9 +480,10 @@ fixes and docs only: no new feature, no API or schema change.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so
-  is self-updating (Kilo: `autoupdate: false` and `KILO_DISABLE_AUTOUPDATE=1`). Kilo's
-  snapshots (its undo; git keeps the history) are off too (`snapshot: false`): on a slow
-  repo their setup stops the agent on a question for the human.
+  is self-updating (Kilo and OpenCode: `autoupdate: false`, and `KILO_DISABLE_AUTOUPDATE=1`
+  or `OPENCODE_DISABLE_AUTOUPDATE=1`). Their snapshots (their undo; git keeps the history)
+  are off too (`snapshot: false`): on a slow repo their setup stops the agent on a question
+  for the human.
 - Claude Code starts an agent's first turn after its SessionStart hooks, not after its MCP
   servers, and defers the tools of a server that connects later, `alwaysLoad` or not. So
   the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists
@@ -561,8 +571,8 @@ default kit's) gives it a skill `lead-<kit>` (`runtime._write_lead_skills`, at e
 and resume, once the session is taken): in the lead's config folder,
 `lead-skills/lead-<kit>/SKILL.md` holds that supervisor's prompt and the paths of the
 skills its `skills:` names, copied (links followed) into `lead-files/<kit>/<skill>/` in
-that kit's versions. `lead-files` is no skills folder of any CLI (Kilo finds SKILL.md at
-any depth under its skill paths) but `AgentSpec.read`; the lead's instructions name the
+that kit's versions. `lead-files` is no skills folder of any CLI (Kilo and OpenCode find
+SKILL.md at any depth under their skill paths) but `AgentSpec.read`; the lead's instructions name the
 kits with a lead skill.
 A worker started without a name (`spawn_worker`, also for a run) is named after its role,
 made valid like a given name (`slug`: `Code Reviewer` gives `code-reviewer`): `developer`,

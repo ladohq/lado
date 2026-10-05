@@ -80,7 +80,8 @@ fixes and docs only: no new feature, no API or schema change.
     per `CHECK_EVERY` and `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`,
     `lado doctor` and the UI's `GET /api/update` alike; `LADO_NO_UPDATE_CHECK=1`: no look and
     no line), the installer (`installer`: by this LADO's `sys.prefix`, a uv tool with
-    `uv-receipt.toml` or pipx with `pipx_metadata.json`, else None; its `command` installs
+    `uv-receipt.toml` or pipx with `pipx_metadata.json` of lado from an index, else None,
+    also for an editable, folder, git or URL install of lado; its `command` installs
     exactly the version, `uv tool install lado==X` with the receipt's `--python` and
     `--with` again, never `uv tool upgrade`; `lost` names what it cannot repeat; `binary`
     is `<prefix>/bin/lado`, never one on PATH), `installed_version` and the mark of an

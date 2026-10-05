@@ -172,6 +172,42 @@ def test_another_install_is_none(tmp_path):
     assert update.installer(tmp_path) is None
 
 
+@pytest.mark.parametrize(
+    "lado",
+    [
+        '{ name = "lado", editable = "/src/lado" }',
+        '{ name = "lado", directory = "/src/lado" }',
+        '{ name = "lado", git = "https://github.com/ladohq/lado" }',
+        '{ name = "lado", url = "https://example.com/lado-0.20.0.whl" }',
+    ],
+)
+def test_a_uv_tool_install_of_lado_not_from_an_index_is_none(tmp_path, lado):
+    """A working copy or a git install: `uv tool install lado==X` would replace it with
+    PyPI's release."""
+    receipt = f"[tool]\nrequirements = [{lado}]\nentrypoints = []\n"
+    assert update.installer(uv_tool(tmp_path, receipt)) is None
+
+
+@pytest.mark.parametrize(
+    "spec, from_index",
+    [
+        ("lado", True),
+        ("lado==0.20.0", True),
+        ("LADO[x]>=0.19", True),
+        ("/src/lado", False),
+        ("git+https://github.com/ladohq/lado", False),
+        ("./lado", False),
+    ],
+)
+def test_a_pipx_install_of_lado_not_from_an_index_is_none(tmp_path, spec, from_index):
+    prefix = tmp_path / "pipx" / "venvs" / "lado"
+    prefix.mkdir(parents=True)
+    metadata = {"main_package": {"package": "lado", "package_or_url": spec, "pip_args": []}}
+    (prefix / "pipx_metadata.json").write_text(json.dumps(metadata))
+    found = update.installer(prefix)
+    assert (found is not None) == from_index
+
+
 def test_the_tests_name_the_installer_and_the_prefix(tmp_path, monkeypatch):
     prefix = uv_tool(tmp_path, PLAIN_RECEIPT)
     monkeypatch.setenv("LADO_UPDATE_PREFIX", str(prefix))
@@ -286,7 +322,8 @@ def test_update_of_another_install_prints_the_commands_and_stops_nothing(
     out = capsys.readouterr().out
     venv = tmp_path / "venv"
     assert out.endswith(
-        f"LADO runs from {venv}, not a uv tool or pipx install; lado update does not "
+        f"LADO runs from {venv}, not a uv tool or pipx install of lado from PyPI; "
+        "lado update does not "
         "upgrade it. By hand:\n"
         "  lado stop s\n"
         "  lado server stop\n"

@@ -216,9 +216,10 @@ def prefix() -> Path:
 
 def installer(where: Path | None = None) -> Installer | None:
     """The installer of the LADO in `where` (default: this one's prefix): a uv tool
-    (`uv-receipt.toml` there) or pipx (`pipx_metadata.json`); None for anything else (pip
-    in a venv, a working copy). LADO_UPDATE_INSTALLER (tests) is the argv of an installer
-    instead, given the version as its last argument."""
+    (`uv-receipt.toml` there) or pipx (`pipx_metadata.json`) of lado from an index; None
+    for anything else (pip in a venv, a working copy, also one installed with uv tool or
+    pipx: installing `lado==X` would replace it with PyPI's). LADO_UPDATE_INSTALLER (tests)
+    is the argv of an installer instead, given the version as its last argument."""
     where = where or prefix()
     test = os.environ.get("LADO_UPDATE_INSTALLER")
     if test:
@@ -230,7 +231,11 @@ def installer(where: Path | None = None) -> Installer | None:
     return None
 
 
-def _uv_tool(where: Path) -> Installer:
+_FROM_INDEX = {"name", "extras", "specifier", "marker"}  # a uv receipt's requirement keys
+_PIPX_SPEC = re.compile(r"lado\s*(\[[^\]]*\])?\s*([<>=!~][^/]*)?", re.IGNORECASE)
+
+
+def _uv_tool(where: Path) -> Installer | None:
     with open(where / "uv-receipt.toml", "rb") as file:
         tool = tomllib.load(file).get("tool", {})
     requirement, options, lost = "lado", [], []
@@ -240,8 +245,10 @@ def _uv_tool(where: Path) -> Installer:
         name = req.get("name", "")
         extras = f"[{','.join(req['extras'])}]" if req.get("extras") else ""
         if name == "lado":
+            if not set(req) <= _FROM_INDEX:
+                return None  # editable, a folder, git or a URL
             requirement = f"lado{extras}"
-        elif set(req) <= {"name", "extras", "specifier", "marker"}:
+        elif set(req) <= _FROM_INDEX:
             marker = f"; {req['marker']}" if req.get("marker") else ""
             options += ["--with", f"{name}{extras}{req.get('specifier', '')}{marker}"]
         else:
@@ -250,9 +257,11 @@ def _uv_tool(where: Path) -> Installer:
     return Installer("uv tool", where, ("uv", "tool", "install"), requirement, tuple(options), lost)
 
 
-def _pipx(where: Path) -> Installer:
+def _pipx(where: Path) -> Installer | None:
     metadata = json.loads((where / "pipx_metadata.json").read_text())
     main = metadata.get("main_package") or {}
+    if not _PIPX_SPEC.fullmatch(main.get("package_or_url") or "lado"):
+        return None  # a folder, git or a URL
     options = []
     if main.get("pip_args"):
         options.append(f"--pip-args={shlex.join(main['pip_args'])}")

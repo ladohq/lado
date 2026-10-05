@@ -43,8 +43,8 @@ it stops the running sessions and the UI server, installs exactly that version w
 installer LADO came with (`uv tool install lado==X.Y.Z`, or `pipx install --force`), checks
 the installed version and resumes the sessions and the server with the installed `lado`.
 Runs, gates, branches and worktrees stay; agents start a new conversation, and a busy
-agent loses its current turn. A LADO installed otherwise (pip in a venv, a working copy) is
-not upgraded: `lado update` prints the commands to run by hand. If an update does not
+agent loses its current turn. A LADO installed otherwise (pip in a venv, a working copy or
+a git address, also through uv tool or pipx) is not upgraded: `lado update` prints the commands to run by hand. If an update does not
 finish, `lado ls` names the sessions left stopped and the `lado start` that resumes each.
 Going back to an older version works the same way (`lado update 0.20.0`), as far as that
 version accepts the database: an older LADO refuses a newer `lado.db`.

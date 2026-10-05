@@ -486,7 +486,8 @@ def _print_update_plan(
 def _print_update_by_hand(version: str, restarts: Restarts) -> None:
     prefix = update.prefix()
     print(
-        f"LADO runs from {prefix}, not a uv tool or pipx install; lado update does not "
+        f"LADO runs from {prefix}, not a uv tool or pipx install of lado from PyPI; "
+        "lado update does not "
         "upgrade it. By hand:"
     )
     for sess in restarts.sessions:

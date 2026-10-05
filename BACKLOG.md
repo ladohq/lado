@@ -800,3 +800,13 @@ Wanted: the provider reports a turn that ends on an error as a turn end (Claude 
 hook for a failed stop, check which; Kilo's plugin likewise), so the agent is `idle` and gets
 its queue; until then `lado ls` could flag an agent busy far longer than usual.
 Found: 2026-10-05, run feature/self-update (supervisor).
+
+## Flaky: two kits' skill packs test times out waiting for a worker under load
+
+`tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack` failed
+once in a full `make check`: `timed out after 30s waiting for dev1 to be idle; agents:
+supervisor idle, dev1 busy, dev2 starting`; alone and on a rerun it passed. The machine may
+have slept during that run.
+Wanted: the test waits for the event it needs rather than for both workers within a fixed
+30 s under a parallel run (or a timeout that holds under load).
+Found: 2026-10-05, review of feature/self-update.

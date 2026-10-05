@@ -6,8 +6,8 @@
 // with a link back to the list, which keeps its search and its scroll. Nothing is drawn
 // before the column is measured: which of the two it is is not known yet.
 //
-// The list: a search over it, then groups of items; a folded group (ended runs, finished
-// agents) is at the bottom, remembered, by days and its first 10 first. The selected item is
+// The list: a search over it, then groups of items; a folded group (ended runs) is at the
+// bottom, remembered, by days and its first 10 first. The selected item is
 // always seen. A group can say why it has no items (its problem, or that it is loading).
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router";

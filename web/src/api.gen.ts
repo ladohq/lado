@@ -184,26 +184,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sessions/{name}/agents/finished": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Finished Agents
-         * @description The session's finished workers, from their "finished" events, newest first.
-         */
-        get: operations["finished_agents_api_sessions__name__agents_finished_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/sessions/{name}/agents/{agent}/details": {
         parameters: {
             query?: never;
@@ -631,22 +611,6 @@ export interface components {
             /** Refused */
             refused: string | null;
             work: components["schemas"]["WorkInfo"] | null;
-        };
-        /**
-         * FinishedAgentInfo
-         * @description A worker that was finished, from its "finished" event.
-         */
-        FinishedAgentInfo: {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** Detail */
-            detail: string;
-            /** Spawned At */
-            spawned_at: string | null;
-            /** Finished At */
-            finished_at: string;
         };
         /**
          * FlowStateInfo
@@ -1463,37 +1427,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentInfo"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    finished_agents_api_sessions__name__agents_finished_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FinishedAgentInfo"][];
                 };
             };
             /** @description Validation Error */

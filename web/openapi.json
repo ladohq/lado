@@ -363,50 +363,6 @@
         }
       }
     },
-    "/api/sessions/{name}/agents/finished": {
-      "get": {
-        "summary": "Finished Agents",
-        "description": "The session's finished workers, from their \"finished\" events, newest first.",
-        "operationId": "finished_agents_api_sessions__name__agents_finished_get",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/FinishedAgentInfo"
-                  },
-                  "title": "Response Finished Agents Api Sessions  Name  Agents Finished Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/sessions/{name}/agents/{agent}/details": {
       "get": {
         "summary": "Agent Details",
@@ -1651,47 +1607,6 @@
         ],
         "title": "FinishPreviewInfo",
         "description": "What finishing the worker would do now (runtime.finish_preview)."
-      },
-      "FinishedAgentInfo": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "detail": {
-            "type": "string",
-            "title": "Detail"
-          },
-          "spawned_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Spawned At"
-          },
-          "finished_at": {
-            "type": "string",
-            "title": "Finished At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "detail",
-          "spawned_at",
-          "finished_at"
-        ],
-        "title": "FinishedAgentInfo",
-        "description": "A worker that was finished, from its \"finished\" event."
       },
       "FlowStateInfo": {
         "properties": {

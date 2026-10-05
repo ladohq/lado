@@ -1,5 +1,5 @@
-"""A session's agents in the UI server's API: what each does, the state of its work, the
-finished ones, and finishing a worker. In process, with FastAPI's test client."""
+"""A session's agents in the UI server's API: what each does, the state of its work, and
+finishing a worker. In process, with FastAPI's test client."""
 
 from pathlib import Path
 
@@ -94,29 +94,15 @@ def test_details_say_why_the_work_cannot_be_read(client, session, repo):
         "/api/sessions/x/agents/w1/details",
         f"{AGENTS}/w9/details",
         f"{AGENTS}/w9/finish-preview",
-        "/api/sessions/x/agents/finished",
     ],
 )
 def test_an_unknown_session_or_agent_is_404(client, session, path):
     assert client.get(path).status_code == 404
 
 
-def test_finished_agents_come_newest_first_with_their_event_id(client, session):
+def test_there_is_no_list_of_finished_agents(client, session):
     runtime.finish_worker("s", "w1")
-    runtime.spawn_worker("s", "again", name="w1")
-    runtime.finish_worker("s", "w1", discard=True)
-    second, first = client.get(f"{AGENTS}/finished").json()
-    events = [e for e in state.list_events("s") if e.kind == state.FINISHED]
-    assert (first["id"], first["name"], first["detail"]) == (events[0].id, "w1", "merged")
-    assert (second["id"], second["detail"]) == (events[1].id, "discarded")
-    assert first["spawned_at"] < first["finished_at"] < second["spawned_at"]
-    assert second["finished_at"].endswith("Z")
-
-
-def test_an_agent_named_finished_has_its_own_details(client, session):
-    runtime.spawn_worker("s", "the one named so", name="finished")
-    assert client.get(f"{AGENTS}/finished/details").json()["task"].startswith("the one")
-    assert client.get(f"{AGENTS}/finished").json() == []
+    assert client.get(f"{AGENTS}/finished").status_code == 404
 
 
 def test_finish_preview_is_the_cores(client, session):

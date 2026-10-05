@@ -14,10 +14,9 @@ export function sessionPath(name: string, tab?: Tab): string {
 // A flow run's page in the session's Flows tab: /sessions/<name>/flows/<run, encoded whole>.
 export const runPath = (session: string, run: string) => `${sessionPath(session, "flows")}/${encodeURIComponent(run)}`;
 
-// An agent's page in the session's Agents tab: /sessions/<name>/agents/<agent>; a finished
-// one's by the id of its "finished" event (names are used again): ?finished=<id>.
-export const agentPath = (session: string, agent: string, finished?: number) =>
-  `${sessionPath(session, "agents")}/${encodeURIComponent(agent)}${finished === undefined ? "" : `?finished=${finished}`}`;
+// A live agent's page in the session's Agents tab: /sessions/<name>/agents/<agent>.
+export const agentPath = (session: string, agent: string) =>
+  `${sessionPath(session, "agents")}/${encodeURIComponent(agent)}`;
 
 // The address's parameter that opens an agent's terminal on its session's page.
 export const TERMINAL_PARAM = "terminal";

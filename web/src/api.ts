@@ -68,14 +68,10 @@ export const getHistory = (session: string, agent: string, lines = 2000) =>
 export type AgentDetails = components["schemas"]["AgentDetails"];
 export type WorkInfo = components["schemas"]["WorkInfo"];
 export type FinishPreviewInfo = components["schemas"]["FinishPreviewInfo"];
-export type FinishedAgentInfo = components["schemas"]["FinishedAgentInfo"];
 
 // The agent's whole task and where its work stands in git now (asked anew each time).
 export const getAgentDetails = (session: string, agent: string) =>
   get<AgentDetails>(`${agentPath(session, agent)}/details`);
-
-// The session's finished workers, newest first.
-export const getFinishedAgents = (session: string) => get<FinishedAgentInfo[]>(`${agentsPath(session)}/finished`);
 
 // What finishing the worker would do now, as the core says.
 export const getFinishPreview = (session: string, agent: string) =>

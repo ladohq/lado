@@ -9,7 +9,6 @@ import {
   useNavigate,
   useOutletContext,
   useParams,
-  useSearchParams,
 } from "react-router";
 
 import { Agents } from "./Agents";
@@ -254,7 +253,6 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
   const live = useLiveStore();
   const runs = useLive().runs[name] ?? null;
   const agents = useLive().agents[name] ?? null;
-  const [search] = useSearchParams();
   useEffect(() => live.watch("runs", name), [live, name]);
   useEffect(() => live.watch("agents", name), [live, name]);
   const counts: Partial<Record<Tab, number>> = {
@@ -284,7 +282,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
         ))}
       </nav>
       {tab === "agents" ? (
-        <Agents session={name} agent={item} finished={search.get("finished") ?? undefined} stopped={stopped} />
+        <Agents session={name} agent={item} stopped={stopped} />
       ) : tab === "activity" ? (
         <Activity session={name} stopped={stopped} />
       ) : tab === "flows" ? (

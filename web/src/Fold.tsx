@@ -1,4 +1,4 @@
-// The button that folds a list's last group (stopped sessions, ended runs, finished agents):
+// The button that folds a list's last group (stopped sessions, ended runs):
 // "› Name (n)", or "▾ Name (n)" when open; the open group has the id `controls`.
 export function FoldToggle({
   name,

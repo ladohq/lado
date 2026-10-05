@@ -23,7 +23,6 @@ from lado.server.models import (
     AgentInfo,
     Answer,
     Finish,
-    FinishedAgentInfo,
     FinishPreviewInfo,
     FolderInfo,
     ForgetPreview,
@@ -181,12 +180,6 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         if found is None:
             raise HTTPException(404, f'no agent "{agent}" in session "{name}"')
         return found
-
-    @app.get("/api/sessions/{name}/agents/finished", dependencies=[Depends(guard)])
-    def finished_agents(name: str, has_db: bool = Depends(database)) -> list[FinishedAgentInfo]:
-        """The session's finished workers, from their "finished" events, newest first."""
-        known(name, has_db)
-        return [models.finished_agent_info(f) for f in state.finished_agents(name)]
 
     @app.get("/api/sessions/{name}/agents/{agent}/details", dependencies=[Depends(guard)])
     def agent_details(name: str, agent: str, has_db: bool = Depends(database)) -> AgentDetails:

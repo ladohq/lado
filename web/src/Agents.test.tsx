@@ -1,5 +1,4 @@
-// The session's Agents tab: its agents on the left, the supervisor first, the finished ones
-// folded; an agent's page on the right with what it does, the state of its work, its
+// The session's Agents tab: its live agents on the left, the supervisor first; an agent's page on the right with what it does, the state of its work, its
 // messages and the actions on it, live from the feed.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
@@ -8,7 +7,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type {
   AgentDetails,
   AgentInfo,
-  FinishedAgentInfo,
   FinishPreviewInfo,
   MessageInfo,
   RunInfo,
@@ -78,23 +76,6 @@ const RUN = {
   problem: null,
 } as RunInfo;
 
-const FINISHED: FinishedAgentInfo[] = [
-  {
-    id: 90,
-    name: "reviewer",
-    detail: "merged",
-    spawned_at: "2026-10-04T09:30:00.000Z",
-    finished_at: "2026-10-04T10:31:00.000Z",
-  },
-  {
-    id: 70,
-    name: "developer",
-    detail: "discarded; 2 messages dropped",
-    spawned_at: "2026-10-04T08:00:00.000Z",
-    finished_at: "2026-10-04T09:12:00.000Z",
-  },
-];
-
 const WORK: AgentDetails = {
   task: "Run feature/agents-tab (flow feature), step implement.\nline 2\nline 3\nline 4\nline 5",
   work: {
@@ -131,7 +112,6 @@ function message(id: number, from: string, to: string, at: string, more: Partial
 
 type Data = {
   agents?: AgentInfo[];
-  finished?: FinishedAgentInfo[];
   details?: Record<string, AgentDetails>;
   preview?: FinishPreviewInfo | { status: number; detail: string };
   messages?: MessageInfo[];
@@ -171,7 +151,6 @@ const messageQueries = () =>
 function serve(data: Data = {}) {
   const {
     agents = [SUPERVISOR, DEVELOPER, WAITING],
-    finished = FINISHED,
     details = {},
     messages = [],
     runs = [RUN],
@@ -187,7 +166,6 @@ function serve(data: Data = {}) {
     }
     if (method === "POST") return of({ result: "sent" });
     if (path === "/api/sessions") return of(SESSIONS);
-    if (path.endsWith("/agents/finished")) return of(path.includes("/old/") ? [FINISHED[0]] : finished);
     if (path.endsWith("/agents")) return of(path.includes("/old/") ? [] : agents);
     const detailsOf = path.match(/\/agents\/([^/]+)\/details$/);
     if (detailsOf) {
@@ -271,23 +249,16 @@ test("the supervisor comes first, then the agents by spawn; a waiting one is ora
   expect((await screen.findByRole("link", { name: "Agents · 3" })).getAttribute("aria-current")).toBe("page");
 });
 
-test("the finished agents are folded, newest first, and the choice is remembered", async () => {
+test("the list has the live agents only: no Finished group, nothing asked about finished agents", async () => {
   serve();
   open("/sessions/lado/agents/developer");
   const nav = await list();
-  const toggle = await within(nav).findByRole("button", { name: /Finished \(2\)/ });
-  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  await within(nav).findAllByRole("link");
+  expect(within(nav).getAllByRole("link")).toHaveLength(3);
+  expect(within(nav).queryByRole("button")).toBeNull();
   expect(within(nav).queryByRole("region", { name: "Finished" })).toBeNull();
-  fireEvent.click(toggle);
-  const finished = within(nav).getByRole("region", { name: "Finished" });
-  const rows = within(finished).getAllByRole("link");
-  expect(rows.map((one) => one.textContent)).toEqual([
-    expect.stringContaining("reviewer"),
-    expect.stringContaining("developer"),
-  ]);
-  expect(rows[1].textContent).toContain("discarded; 2 messages dropped");
-  expect(rows[0].getAttribute("href")).toBe("/sessions/lado/agents/reviewer?finished=90");
-  expect(localStorage.getItem("lado.agentsFinished")).toBe("open");
+  expect(nav.textContent).not.toContain("Finished");
+  expect(asked.filter((one) => one.path.includes("/agents/finished"))).toEqual([]);
 });
 
 test("the tab without an agent opens the supervisor, and an unknown one is not found", async () => {
@@ -302,6 +273,18 @@ test("the tab without an agent opens the supervisor, and an unknown one is not f
   expect(address()).toBe("/sessions/lado/agents/ghost");
 });
 
+test("an agent that is not live is not found, also with the old ?finished= of a finished one", async () => {
+  serve();
+  open("/sessions/lado/agents/reviewer?finished=90");
+  expect(await screen.findByText("Agent reviewer not found")).toBeTruthy();
+  cleanup();
+  serve();
+  open("/sessions/lado/agents/developer?finished=70");
+  expect(await page("developer")).toBeTruthy(); // the live one: the parameter means nothing
+  const rows = within(await list()).getAllByRole("link");
+  expect(rows.filter((one) => one.getAttribute("aria-current") === "page")).toHaveLength(1);
+});
+
 test("in a column narrower than 900 px the list takes it without an agent, an agent's page has the way back", async () => {
   narrowColumn();
   serve();
@@ -310,83 +293,41 @@ test("in a column narrower than 900 px the list takes it without an agent, an ag
   expect(address()).toBe("/sessions/lado/agents");
   expect(screen.queryByRole("combobox")).toBeNull();
   expect(screen.queryByRole("region", { name: /^Agent / })).toBeNull();
-  fireEvent.click(await within(nav).findByRole("button", { name: /Finished \(2\)/ }));
-  fireEvent.click(within(nav).getByRole("link", { name: /reviewer/ }));
-  expect(await page("reviewer")).toBeTruthy();
-  expect(address()).toBe("/sessions/lado/agents/reviewer?finished=90");
+  fireEvent.click(await within(nav).findByRole("link", { name: /developer-2/ }));
+  expect(await page("developer-2")).toBeTruthy();
+  expect(address()).toBe("/sessions/lado/agents/developer-2");
   expect(screen.queryByRole("navigation", { name: "Agents" })).toBeNull();
   fireEvent.click(screen.getByRole("link", { name: "‹ All agents" }));
   expect(address()).toBe("/sessions/lado/agents");
   expect(await list()).toBeTruthy();
 });
 
-test("a finished agent's row is marked, not the live one of the same name; its folded group opens for it", async () => {
-  serve();
-  open("/sessions/lado/agents/developer?finished=70");
-  expect(await page("developer")).toBeTruthy();
-  const nav = await list();
-  const rows = within(nav)
-    .getAllByRole("link")
-    .filter((one) => one.querySelector(".agent-row-name")?.textContent === "developer");
-  expect(rows.map((one) => one.getAttribute("aria-current"))).toEqual([null, "page"]);
-  expect(within(nav).getByRole("region", { name: "Finished" })).toBeTruthy();
-  expect(localStorage.getItem("lado.agentsFinished")).toBeNull();
-});
-
-test("the search finds an agent by its name, role, task or run, a finished one by its name or how it ended", async () => {
+test("the search finds a live agent by its name, role, task or run", async () => {
   serve();
   open("/sessions/lado/agents/supervisor");
   const nav = await list();
-  await within(nav).findByRole("button", { name: /Finished/ });
+  await within(nav).findAllByRole("link");
   const search = screen.getByRole("searchbox", { name: "Find an agent" });
   const found = () => within(nav).getAllByRole("link").map((one) => one.querySelector(".agent-row-name")?.textContent);
   fireEvent.change(search, { target: { value: "AGENTS-TAB" } });
   expect(found()).toEqual(["developer"]);
-  fireEvent.change(search, { target: { value: "discarded" } });
-  expect(found()).toEqual(["developer"]);
-  expect(within(nav).getByRole("region", { name: "Finished" })).toBeTruthy();
   fireEvent.change(search, { target: { value: "nobody" } });
   expect(within(nav).getByText("No agent matches “nobody”")).toBeTruthy();
 });
 
-test("the finished agents that cannot be read say why in their group, also while searching", async () => {
-  serve();
-  const fetch = vi.mocked(globalThis.fetch);
-  const answer = fetch.getMockImplementation()!;
-  fetch.mockImplementation(async (path, init) =>
-    String(path).endsWith("/agents/finished")
-      ? new Response(JSON.stringify({ detail: "no events table" }), { status: 500 })
-      : answer(path as string, init),
-  );
-  open("/sessions/lado/agents/supervisor");
-  const nav = await list();
-  const finished = await within(nav).findByRole("region", { name: "Finished" });
-  expect(within(finished).getByRole("alert").textContent).toContain("no events table");
-  fireEvent.change(screen.getByRole("searchbox", { name: "Find an agent" }), { target: { value: "zzz" } });
-  expect(within(nav).getByRole("alert").textContent).toContain("no events table");
-});
-
-test("a stopped session has no agents, only its finished ones, and nothing to write or finish", async () => {
+test("a stopped session's tab says Session stopped: no agents, and nothing else", async () => {
   serve();
   open("/sessions/old/agents");
-  expect(await screen.findByText("Session stopped: no agents")).toBeTruthy();
+  const tab = (await screen.findByText("Session stopped: no agents")).closest(".list-page")!;
   expect(address()).toBe("/sessions/old/agents");
-  const nav = await list();
-  fireEvent.click(await within(nav).findByRole("button", { name: /Finished \(1\)/ }));
-  fireEvent.click(within(nav).getByRole("link", { name: /reviewer/ }));
-  const region = await page("reviewer");
-  expect(within(region).queryByRole("button", { name: /Finish/ })).toBeNull();
-  expect(within(region).queryByRole("textbox")).toBeNull();
-});
-
-test("the finished list is loaded again when an agent leaves", async () => {
+  expect(tab.textContent).toBe("Session stopped: no agents");
+  expect(screen.queryByRole("navigation", { name: "Agents" })).toBeNull();
+  expect(within(tab as HTMLElement).queryByRole("searchbox")).toBeNull();
+  cleanup();
   serve();
-  open("/sessions/lado/agents/developer");
-  await within(await list()).findByRole("button", { name: /Finished \(2\)/ });
-  const loads = () => asked.filter((one) => one.path.endsWith("/agents/finished")).length;
-  const before = loads();
-  stream().send("change", { kind: "agents", session: "lado", key: "developer-2", op: "delete", item: null }, "11");
-  await waitFor(() => expect(loads()).toBe(before + 1));
+  open("/sessions/old/agents/reviewer");
+  const named = (await screen.findByText("Session stopped: no agents")).closest(".list-page")!;
+  expect(named.textContent).toBe("Session stopped: no agents");
 });
 
 // An agent's page
@@ -576,7 +517,7 @@ test("an agent's messages say they load, and why they could not", async () => {
   expect((await within(box).findByRole("alert")).textContent).toBe("lado.db is newer");
 });
 
-test("two agents of one name: the live one's page has none of the finished one's messages", async () => {
+test("two agents of one name: the live one's page has none of an earlier one's messages", async () => {
   serve({ messages: MESSAGES.slice(0, 4) });
   open("/sessions/lado/agents/developer");
   const box = within(await page("developer")).getByRole("region", { name: "Messages" });
@@ -585,38 +526,6 @@ test("two agents of one name: the live one's page has none of the finished one's
     expect.stringContaining("message 10"),
     expect.stringContaining("message 11"),
   ]);
-});
-
-test("a finished agent's page is read only, with its messages between its spawn and its finish", async () => {
-  serve({ messages: MESSAGES });
-  open("/sessions/lado/agents/developer?finished=70");
-  const region = await page("developer");
-  expect(region.textContent).toContain("discarded; 2 messages dropped");
-  const box = within(region).getByRole("region", { name: "Messages" });
-  const lines = await within(box).findAllByRole("listitem");
-  expect(lines.map((one) => one.textContent)).toEqual([
-    expect.stringContaining("to the old developer"),
-    expect.stringContaining("the old developer reports"),
-  ]);
-  expect(messageQueries()).toContainEqual({
-    agent: "developer",
-    since: "2026-10-04T08:00:00.000Z",
-    until: "2026-10-04T09:12:00.000Z",
-    limit: "10",
-  });
-  expect(within(region).queryByRole("button", { name: /Finish|Write|Open terminal/ })).toBeNull();
-  expect(within(region).queryByRole("textbox")).toBeNull();
-  const nav = await list();
-  const live = within(nav).getByRole("link", { name: /^developerbusy/ });
-  expect(live.getAttribute("aria-current")).toBeNull();
-  const listed = within(nav).getByRole("link", { name: /^developerfinished/ });
-  expect(listed.getAttribute("aria-current")).toBe("page");
-});
-
-test("an unknown finished id is not found", async () => {
-  serve();
-  open("/sessions/lado/agents/reviewer?finished=70");
-  expect(await screen.findByText("Agent reviewer not found")).toBeTruthy();
 });
 
 // Finish

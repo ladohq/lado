@@ -1304,31 +1304,6 @@ def agent_times(
     )
 
 
-@dataclass
-class FinishedAgent:
-    id: int  # of its "finished" event: names are used again
-    name: str
-    detail: str  # how it was finished, as the event says
-    spawned_at: str | None  # UTC, its latest "spawned" event before that; None for none
-    finished_at: str  # UTC
-
-
-def finished_agents(session: str) -> list[FinishedAgent]:
-    """The session's finished workers, from their "finished" events, newest first."""
-    with connect() as db:
-        rows = db.execute(
-            "SELECT f.id, f.agent, f.detail, f.created_at, (SELECT s.created_at FROM events s"
-            " WHERE s.session = f.session AND s.agent = f.agent AND s.kind = ? AND s.id < f.id"
-            " ORDER BY s.id DESC LIMIT 1) AS spawned_at FROM events f"
-            " WHERE f.session = ? AND f.kind = ? ORDER BY f.id DESC",
-            (SPAWNED, session, FINISHED),
-        ).fetchall()
-    return [
-        FinishedAgent(r["id"], r["agent"], r["detail"], r["spawned_at"], r["created_at"])
-        for r in rows
-    ]
-
-
 MESSAGE_COLUMNS = (
     "id, sender, summary, body, recipient, state, created_at, attempts, sent_at, kind, choices,"
     " free_answer, question_state, answered_by, reply_to, choice, reply_state"

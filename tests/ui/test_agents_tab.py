@@ -1,6 +1,6 @@
 """The session's Agents tab in a browser: the agents, a worker's page with the state of its
 work in git, and Finish, refused for unmerged work and done with Discard work…, the worker
-then among the finished ones without a reload."""
+then gone from the list without a reload."""
 
 import re
 import uuid
@@ -65,17 +65,13 @@ def test_a_workers_page_shows_its_work_and_finish_discards_it(page: Page, server
     dialog.get_by_role("button", name="Discard and finish").click()
     expect(dialog).to_be_hidden()
 
-    # The worker is gone from the live list and is among the finished, with no reload.
+    # The worker is gone from the list with no reload, and the tab opens the supervisor.
     expect(page.get_by_role("link", name="Agents · 1")).to_be_visible()
     expect(agents.get_by_role("link", name="w1")).to_have_count(0)
-    agents.get_by_role("button", name="Finished (1)").click()
-    finished = agents.get_by_role("region", name="Finished").get_by_role("link")
-    expect(finished).to_contain_text("w1")
-    expect(finished).to_contain_text("discarded")
+    expect(agents.get_by_role("button")).to_have_count(0)
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents/supervisor")
     assert state.get_agent(session, "w1") is None
     assert not Path(worktree).exists()
-    finished.click()
-    expect(page.get_by_role("region", name="Agent w1")).to_contain_text("discarded")
     shot(page, "finished")
 
 

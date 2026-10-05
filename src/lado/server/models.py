@@ -212,16 +212,6 @@ class FinishPreviewInfo(BaseModel):
     work: WorkInfo | None
 
 
-class FinishedAgentInfo(BaseModel):
-    """A worker that was finished, from its "finished" event."""
-
-    id: int  # the event's: a name is used again
-    name: str
-    detail: str  # how: merged, closed, discarded; n messages dropped
-    spawned_at: str | None  # UTC, ISO 8601
-    finished_at: str  # UTC, ISO 8601
-
-
 class Finish(BaseModel):
     discard: bool = False
 
@@ -493,16 +483,6 @@ def finish_preview_info(preview: runtime.FinishPreview) -> FinishPreviewInfo:
         removes_worktree=preview.removes_worktree,
         refused=preview.refused,
         work=work_info(preview.work) if preview.work else None,
-    )
-
-
-def finished_agent_info(finished: state.FinishedAgent) -> FinishedAgentInfo:
-    return FinishedAgentInfo(
-        id=finished.id,
-        name=finished.name,
-        detail=finished.detail,
-        spawned_at=_utc(finished.spawned_at) if finished.spawned_at else None,
-        finished_at=_utc(finished.finished_at),
     )
 
 

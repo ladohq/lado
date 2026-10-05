@@ -1,10 +1,9 @@
-// The session's Agents tab (docs/design/ui.md, Agents): its agents on the left, the
-// supervisor first, the finished ones folded at the bottom; the selected agent's page on the
-// right: what it does (status, run and step, task), its branch, worktree and the state of
-// its work in git, its latest messages, and the actions on it (its terminal, a message to
-// it, Finish). A finished agent's page is read only. The agents follow the feed (live.ts);
-// the state of the work and the finished agents are asked of the server: git and the
-// "finished" events have no item in the feed. The list and the page are a ListPage.
+// The session's Agents tab (docs/design/ui.md, Agents): its live agents on the left, the
+// supervisor first; the selected agent's page on the right: what it does (status, run and
+// step, task), its branch, worktree and the state of its work in git, its latest messages,
+// and the actions on it (its terminal, a message to it, Finish). The agents follow the feed
+// (live.ts); the state of the work is asked of the server: git has no item in the feed. The
+// list and the page are a ListPage.
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
@@ -12,11 +11,9 @@ import {
   ApiError,
   finishAgent,
   getAgentDetails,
-  getFinishedAgents,
   getFinishPreview,
   type AgentDetails,
   type AgentInfo,
-  type FinishedAgentInfo,
   type FinishPreviewInfo,
   type RunInfo,
 } from "./api";
@@ -26,7 +23,7 @@ import { isOpen } from "./Flows";
 import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } from "./live";
 import { ListPage, type Entry } from "./ListPage";
 import { agentPath, runPath, sessionPath } from "./paths";
-import { storeAgentMessages, storedAgentsFinishedOpen, storeAgentsFinishedOpen } from "./prefs";
+import { storeAgentMessages } from "./prefs";
 import { StatusDot, SUPERVISOR } from "./Team";
 import { useOpenTerminal } from "./Terminals";
 
@@ -54,38 +51,7 @@ export function AgentName({ session, name }: { session: string; name: string }) 
   return alive ? <Link to={agentPath(session, name)}>{name}</Link> : <>{name}</>;
 }
 
-type Finished = { items: FinishedAgentInfo[] } | { error: string } | null;
-
-// The session's finished agents, loaded again whenever its live agents change: a finish
-// deletes the agent, and its "finished" event has no item in the feed.
-function useFinished(session: string, agents: AgentInfo[] | null): Finished {
-  const [finished, setFinished] = useState<Finished>(null);
-  const names = agents?.map((one) => one.name).join("\n") ?? null;
-  useEffect(() => {
-    if (names === null) return;
-    let current = true;
-    getFinishedAgents(session).then(
-      (items) => current && setFinished({ items }),
-      (error: unknown) => current && setFinished({ error: messageOf(error) }),
-    );
-    return () => {
-      current = false;
-    };
-  }, [session, names]);
-  return finished;
-}
-
-export function Agents({
-  session,
-  agent,
-  finished: finishedId,
-  stopped,
-}: {
-  session: string;
-  agent?: string;
-  finished?: string;
-  stopped: boolean;
-}) {
+export function Agents({ session, agent, stopped }: { session: string; agent?: string; stopped: boolean }) {
   const live = useLiveStore();
   const state = useLive();
   useEffect(() => live.watch("agents", session), [live, session]);
@@ -93,7 +59,6 @@ export function Agents({
 
   const loaded = state.agents[session] ?? null;
   const agents = loaded && "items" in loaded ? agentOrder(loaded.items) : null;
-  const finished = useFinished(session, agents);
   const runs = state.runs[session];
   const lists = { runs: runs && "items" in runs ? runs.items : [] };
 
@@ -106,22 +71,16 @@ export function Agents({
         {loaded.error}
       </p>
     );
+  } else if (stopped) {
+    // `lado stop` forgets a session's agents: there is nothing to list.
+    notice = <p className="empty">Session stopped: no agents</p>;
   }
-  const done = finished && "items" in finished ? finished.items : [];
-  const record = finishedId === undefined ? undefined : done.find((one) => String(one.id) === finishedId);
-  const alive = finishedId === undefined ? agents?.find((one) => one.name === agent) : undefined;
-  let page;
-  if (alive) {
-    page = <AgentPage key={alive.name} session={session} agent={alive} stopped={stopped} lists={lists} />;
-  } else if (record && record.name === agent) {
-    page = <FinishedPage session={session} record={record} />;
-  } else if (finishedId !== undefined && finished === null) {
-    page = <p className="muted">Loading…</p>;
-  } else {
-    page = <p className="empty">Agent {agent} not found</p>;
-  }
-  let selected;
-  if (agent !== undefined) selected = finishedId === undefined ? `agent:${agent}` : `finished:${finishedId}`;
+  const alive = agents?.find((one) => one.name === agent);
+  const page = alive ? (
+    <AgentPage key={alive.name} session={session} agent={alive} stopped={stopped} lists={lists} />
+  ) : (
+    <p className="empty">Agent {agent} not found</p>
+  );
   return (
     <ListPage
       label="Agents"
@@ -132,21 +91,12 @@ export function Agents({
           heading: false,
           entries: (agents ?? []).map((one) => liveEntry(session, one, lists.runs)),
         },
-        {
-          name: "Finished",
-          entries: done.map((one) => finishedEntry(session, one)),
-          days: true,
-          fold: { stored: storedAgentsFinishedOpen, store: storeAgentsFinishedOpen },
-          problem: finished && "error" in finished ? finished.error : null,
-          loading: finished === null,
-        },
       ]}
-      selected={selected}
+      selected={agent === undefined ? undefined : `agent:${agent}`}
       page={page}
       listPath={sessionPath(session, "agents")}
       back="All agents"
-      fallback={stopped ? undefined : agentPath(session, SUPERVISOR)}
-      empty={<p className="empty">Session stopped: no agents</p>}
+      fallback={agentPath(session, SUPERVISOR)}
       notice={notice}
     />
   );
@@ -161,8 +111,7 @@ function workingOn(agent: AgentInfo, runs: RunInfo[]): string {
   return firstLine(agent.task);
 }
 
-// A live agent's row: its status, and why it waits or what it works for. The keys tell a live
-// agent from a finished one of the same name.
+// A live agent's row: its status, and why it waits or what it works for.
 function liveEntry(session: string, agent: AgentInfo, runs: RunInfo[]): Entry {
   const waits = agent.status === "waiting";
   const detail = waits && agent.waiting_reason ? firstLine(agent.waiting_reason) : workingOn(agent, runs);
@@ -183,25 +132,6 @@ function liveEntry(session: string, agent: AgentInfo, runs: RunInfo[]): Entry {
     ),
     search: [agent.name, agent.role, agent.task ?? "", agent.run ?? ""],
     tone: waits ? "waits" : undefined,
-  };
-}
-
-// A finished agent's row: when (its day heads the rows) and how it ended.
-function finishedEntry(session: string, one: FinishedAgentInfo): Entry {
-  return {
-    key: `finished:${one.id}`,
-    to: agentPath(session, one.name, one.id),
-    row: (
-      <>
-        <span className="agent-row-name">{one.name}</span>
-        <span className="agent-row-about">
-          finished {clock(one.finished_at)} · {one.detail}
-        </span>
-      </>
-    ),
-    search: [one.name, one.detail],
-    tone: "dim",
-    at: one.finished_at,
   };
 }
 
@@ -381,10 +311,10 @@ function Work({ work }: { work: ReturnType<typeof useWork> }) {
 
 // The agent's latest messages, from and to it, in its lifetime only (a name is used again):
 // a window of the session's messages the server takes them from, one load.
-function AgentMessages({ session, name, from, to }: { session: string; name: string; from: string | null; to?: string }) {
+function AgentMessages({ session, name, from }: { session: string; name: string; from: string }) {
   const navigate = useNavigate();
   const live = useLiveStore();
-  const spec: MessageSpec = { agent: name, since: from ?? undefined, until: to, limit: MESSAGES };
+  const spec: MessageSpec = { agent: name, since: from, limit: MESSAGES };
   const key = windowKey(spec);
   useEffect(() => live.watchMessages(session, spec), [live, session, key]); // key: the spec's
   const window = messageWindow(useLive(), session, spec);
@@ -419,28 +349,6 @@ function AgentMessages({ session, name, from, to }: { session: string; name: str
       <button type="button" className="link-button" onClick={all}>
         All in Activity
       </button>
-    </section>
-  );
-}
-
-function FinishedPage({ session, record }: { session: string; record: FinishedAgentInfo }) {
-  return (
-    <section className="agent-page" aria-label={`Agent ${record.name}`}>
-      <header className="agent-head">
-        <div className="agent-title">
-          <h3>{record.name}</h3>
-          <span className="muted">finished</span>
-        </div>
-        <p className="agent-now">
-          {record.spawned_at && (
-            <>
-              spawned <time dateTime={record.spawned_at}>{clock(record.spawned_at)}</time> ·{" "}
-            </>
-          )}
-          finished <time dateTime={record.finished_at}>{clock(record.finished_at)}</time> · {record.detail}
-        </p>
-      </header>
-      <AgentMessages session={session} name={record.name} from={record.spawned_at} to={record.finished_at} />
     </section>
   );
 }

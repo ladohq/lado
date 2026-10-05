@@ -271,11 +271,11 @@ test("the group that waits is marked, its rows too; an empty group is not shown"
 
 test("a group's problem and loading show in its place, with no items and while searching", () => {
   wideColumn();
-  const view = open("/things/a", { list: groups({ old: 0, problem: "cannot read the finished agents" }) });
+  const view = open("/things/a", { list: groups({ old: 0, problem: "cannot read the ended runs" }) });
   const alert = within(nav()!).getByRole("alert");
-  expect(alert.textContent).toBe("cannot read the finished agents");
+  expect(alert.textContent).toBe("cannot read the ended runs");
   fireEvent.change(screen.getByRole("searchbox", { name: "Find a thing" }), { target: { value: "zzz" } });
-  expect(within(nav()!).getByRole("alert").textContent).toBe("cannot read the finished agents");
+  expect(within(nav()!).getByRole("alert").textContent).toBe("cannot read the ended runs");
   view.again({ list: groups({ old: 0, loading: true }) });
   expect(within(nav()!).getByRole("region", { name: "Ended" }).textContent).toContain("Loading…");
 });

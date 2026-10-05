@@ -385,12 +385,11 @@ Sessions for now. The UI's texts are in English.
   agents`), which comes back with its search and its scroll as they were. Until the
   column is measured neither is drawn. Above the list a search (`Find a run`), any case,
   by the texts each tab names; while it has text, folded groups are open and show every
-  match, and with none it says `No run matches “…”`. A folded group (ended runs, finished
-  agents) is remembered as before, its rows under their local day (Today, Yesterday, a
-  date; a row has the time), the latest 10 first and then **Show N more**. The selected
-  item is always seen and marked (`aria-current`): its group opens for it and it shows
-  past the first 10, neither remembered; items are picked by key, so a live and a
-  finished agent of one name differ. A group says why it has no items in their place:
+  match, and with none it says `No run matches “…”`. A folded group (ended runs) is
+  remembered as before, its rows under their local day (Today, Yesterday, a date; a row
+  has the time), the latest 10 first and then **Show N more**. The selected item is
+  always seen and marked (`aria-current`): its group opens for it and it shows past the
+  first 10, neither remembered; items are picked by key. A group says why it has no items in their place:
   its problem (an alert) or Loading…, also while searching. The page is a size container:
   its own layout goes by its own width (`@container`), not by the column's.
 - **Columns**: the list and the panel are resized on their edges with one component
@@ -444,9 +443,8 @@ Sessions for now. The UI's texts are in English.
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
   activity, agents, flows, artifacts; without one, activity), a flow run's page
   `/sessions/<name>/flows/<run>` (Flows below), an agent's page
-  `/sessions/<name>/agents/<agent>` and a finished agent's
-  `/sessions/<name>/agents/<agent>?finished=<id>` (Agents below; another tab has no
-  pages), `/projects`,
+  `/sessions/<name>/agents/<agent>` (Agents below; another tab has no pages),
+  `/projects`,
   `/kits`, `/marketplace`, `/settings`. Anything else is Not found with a link to Home.
   Opened directly or reloaded, each works (the server's page fallback, Server above).
   Routing: react-router in declarative mode.
@@ -795,21 +793,18 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   work stands in git now (`runtime.work_state`: branch, base, ahead, behind, uncommitted
   paths, last commit), or `work_problem` when git cannot tell; both none for an agent
   without a branch (the supervisor). Not in the feed: git is asked on each request.
-  `GET …/agents/finished` (`FinishedAgentInfo`, newest first): the `finished` events, each
-  with its id (a name is used again), detail as the core wrote it, and the agent's spawn
-  before it. `GET …/agents/{agent}/finish-preview` (`runtime.finish_preview`: whether the
+  `GET …/agents/{agent}/finish-preview` (`runtime.finish_preview`: whether the
   worktree goes, why the finish is refused, the work) and `POST …/agents/{agent}/finish
   {discard}` (`runtime.finish_worker`, under `Guard.changes`; a refusal is 400 with the
   core's reason). Finish and the UI's dialog go by the same preview: the UI has no rules
   of its own about runs.
 - **The list** (left, as Flows'): the supervisor first, then the live agents by spawn; a
   row: status dot, name, `status · since`, and the run with its state, or the first line
-  of the task; an agent in `waiting` is orange with the first line of why. **Finished
-  (n)** at the bottom, folded (remembered, `lado.agentsFinished`), newest first: name,
-  when, how. It is asked again whenever the live agents change (a finish deletes one).
-  The tab is **Agents · N**, N the live agents. A List and page (Structure): the search
-  finds a live agent by name, role, task and run, a finished one by name and how it
-  ended; Finished says in its place why it cannot be read, or Loading…. On a narrow page
+  of the task; an agent in `waiting` is orange with the first line of why. Only live
+  agents: what an ended worker did is in Flows (step notes and who reported them),
+  Activity (messages filtered by agent) and `lado log`. The tab is **Agents · N**, N the
+  live agents. A List and page (Structure): the search finds an agent by name, role, task
+  and run. On a narrow page
   the facts' names stand above their values and Write takes the page's width.
 - **An agent's page**: the head (name, role, provider, status and for how long, when it
   was spawned, for which run and step with the visit, from the run in the store), Open
@@ -819,20 +814,17 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   Work (asked when the page opens, when the agent becomes idle and with Refresh; "as of"
   its time; no polling), Worktree, Task (first lines, Show all); its latest 10 messages
   from and to it, only in its lifetime (a name is used again: one request,
-  `agent=<name>&since=<spawned_at>&limit=10`, a finished agent's with
-  `until=<finished_at>`; the server and the feed's rule filter, the page does not), and
+  `agent=<name>&since=<spawned_at>&limit=10`; the server and the feed's rule filter, the
+  page does not), and
   **All in Activity**, which turns Show agent messages on.
 - **Finish…** asks in a dialog with what the preview says: the branch and worktree go,
   or, for a worker of a run that keeps its worktree, only its window closes. A refusal
   shows its reason and **Discard work…**, which asks again with what is lost (commits not
   in the base, uncommitted files) and a red **Discard and finish**.
-- **A finished agent's page** (`?finished=<id>`): read only, when it was spawned and
-  finished and how, its messages between the two. An unknown agent or id: "Agent <name>
-  not found".
+- An agent that is not live: "Agent <name> not found".
 - `/sessions/<name>/agents` opens the supervisor in a wide column, the list in a narrow
-  one. A stopped session has no live agents
-  (`lado stop` forgets them): "Session stopped: no agents", its finished ones, no Write
-  or Finish.
+  one. A stopped session has no agents (`lado stop` forgets them): its tab says "Session
+  stopped: no agents" and nothing else.
 - In Flows, who acts in a run's head and who reported a step link to the agent's page
   while the agent lives.
 - Not in it (later): spawning a worker from the UI, changing an agent's model or mode,

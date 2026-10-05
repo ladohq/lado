@@ -87,8 +87,10 @@ Found: 2026-10-02, first flow run `fix/resume-stopped`.
 ## Delivery at turn end reads "Stop hook error"
 
 Claude Code shows a message delivered by the turn-end hook as a "Stop hook error" line.
-Wanted: check whether another form of the hook's answer (e.g. JSON `decision: block`) shows a
-neutral label. Cosmetic.
+Update (2026-10-06): the hook already answers with JSON `decision: block`
+(`providers/claude.py`, `continue_output`), and Claude Code still labels it "Stop hook
+blocking error". Wanted: find a form of Claude Code's Stop hook answer that shows a neutral
+label, or record that none exists. Cosmetic.
 Found: 2026-10-02, first flow run `fix/resume-stopped`.
 
 ## Flows cannot work on another repository
@@ -1036,3 +1038,44 @@ unknown"), as `test_another_folders_session_does_not_count` did before 0.22.0.
 Wanted: tests/conftest.py sets `user.useConfigOnly=true` for the test run
 (GIT_CONFIG_COUNT/KEY/VALUE, as agent_helpers does for maintenance), so it fails locally too.
 Found: 2026-10-06, review of fix/ci-git-identity.
+
+## Message delivery is spread over runtime, state and hooks
+
+The delivery rule (How agents talk) lives in `runtime.py` (post, _deliver, sweep, _plan),
+`state.py` (take_pending, sweep, seen, confirm_sent) and `hooks.py`; its ordering against
+the turn-end hook is held by comments. It is correct (checked 2026-10-06) but hard to read
+and test as one rule. Wanted: one module for delivery, with tests through its interface.
+Low priority: no bug depends on it.
+Found: 2026-10-06, architecture review and its check (session improve-architecture).
+
+## Delivery channels with different guarantees are not named
+
+A message reaches an agent four ways: typed into tmux (`sent`, confirmed by prompt-submit,
+retried, can fail), the turn-end hook's output (`delivered` at once, no confirmation), the
+command line (first input, resume) and the human's UI. Confirm and retry are properties of
+tmux typing, not of delivery. Wanted: for Stage 8 (ACP), name the channels and their
+guarantees, so the tmux retry rule does not become the core's rule.
+Found: 2026-10-06, check of the Inbox architecture candidate.
+
+## A message handed over by the turn-end hook can be lost silently
+
+At turn end with `deliver_on_turn_end`, the pending messages are marked `delivered` before
+the hook prints them (`hooks.py`, TURN_END). An exception after the take, or a CLI that
+ignores the output, loses them; only `hooks.log` may show it. Against "No silent drops".
+Wanted: the messages count as delivered only when the agent's prompt shows them, or a
+failure puts them back in the queue.
+Found: 2026-10-06, check of the Inbox architecture candidate.
+
+## Messages to an agent that died before its first hook stay pending for good
+
+`_running_agent` accepts a `starting` agent; if its process dies before any hook, nothing
+hands over or fails its queue, and `lado ls` shows it `starting`.
+Wanted: such messages fail (with a notice to the sender) when the agent is found gone.
+Found: 2026-10-06, check of the Inbox architecture candidate.
+
+## The supervisor's copy of the human's message stays pending while it is stopped
+
+`queue_with_copy` queues the "human wrote to <agent>" copy for the supervisor in the same
+transaction; when the supervisor is stopped, the copy stays `pending` with no notice.
+Wanted: the copy is dropped or reported when the supervisor is not running.
+Found: 2026-10-06, check of the Inbox architecture candidate.

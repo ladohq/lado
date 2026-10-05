@@ -1,12 +1,13 @@
 // The session page's layout (docs/design/ui.md, Structure): the team chips, the session
 // list's groups and "+", the rail with Launch and the top bar.
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeSocket, stream, stubDialogs } from "./fakes";
+import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -128,36 +129,202 @@ test("a chip follows its agent's changes", async () => {
 const list = () => screen.getByRole("navigation", { name: "Sessions" });
 const group = (name: string) => within(list()).getByRole("region", { name });
 
-test("the list groups the sessions: Needs you, Running, then Stopped folded", async () => {
-  sessions = [
-    session("calm"),
-    session("gated", { waiting: { gates: 1, questions: 0, agents: 0 } }),
-    session("asking", { waiting: { gates: 0, questions: 2, agents: 0 } }),
-    session("stuck", { status: "tmux_gone", waiting: { gates: 0, questions: 0, agents: 1 } }),
-    session("gone", { status: "stopped", agents: 0 }), // its gates are open, but nothing waits in it
-    session("old", { status: "stopped", agents: 0 }),
-  ];
+const names = (region: HTMLElement) =>
+  within(region)
+    .queryAllByRole("link")
+    .map((link) => link.querySelector(".session-name")!.textContent);
+const head = (name: RegExp) => within(list()).getByRole("button", { name });
+const storedGroups = () => JSON.parse(localStorage.getItem("lado.sessionGroups") ?? "null");
+
+// Six sessions: three need the human, one runs, two are stopped.
+const MIXED = () => [
+  session("calm"),
+  session("gated", { waiting: { gates: 1, questions: 0, agents: 0 } }),
+  session("asking", { waiting: { gates: 0, questions: 2, agents: 0 } }),
+  session("stuck", { status: "tmux_gone", waiting: { gates: 0, questions: 0, agents: 1 } }),
+  session("gone", { status: "stopped", agents: 0 }), // its gates are open, but nothing waits in it
+  session("old", { status: "stopped", agents: 0 }),
+];
+
+test("the list groups the sessions: Needs you, Running, then Stopped folded, each under a heading in its tone", async () => {
+  sessions = MIXED();
   open("/sessions");
   await within(list()).findByRole("link", { name: /calm/ });
-  const names = (region: HTMLElement) =>
-    within(region)
-      .queryAllByRole("link")
-      .map((link) => link.querySelector(".session-name")!.textContent);
   expect(names(group("Needs you"))).toEqual(["gated", "asking", "stuck"]);
   expect(names(group("Running"))).toEqual(["calm"]);
-  // A stopped session is stopped first: nothing can be answered in it.
-  const stopped = within(list()).getByRole("button", { name: "Stopped (2)" });
+  expect(group("Needs you").className).toContain("tone-human");
+  expect(group("Running").className).toContain("tone-done");
+  expect(group("Stopped").className).toContain("tone-neutral");
+  // Each heading is a button in an h3, with its count; Stopped is folded by default.
+  expect(head(/^Needs you/).textContent).toBe("Needs you 3");
+  expect(head(/^Needs you/).closest("h3")!.className).toContain("group-head");
+  expect(head(/^Running/).getAttribute("aria-expanded")).toBe("true");
+  const stopped = head(/^Stopped/);
+  expect(stopped.textContent).toBe("Stopped 2");
   expect(stopped.getAttribute("aria-expanded")).toBe("false");
-  expect(within(list()).queryByRole("link", { name: /^gone/ })).toBeNull();
+  // A stopped session is stopped first: nothing can be answered in it.
+  expect(names(group("Stopped"))).toEqual([]);
   expect(within(group("Needs you")).getByRole("link", { name: /gated/ }).textContent).toContain("1 gate");
   expect(within(group("Needs you")).getByRole("link", { name: /asking/ }).textContent).toContain("2 questions");
   expect(within(group("Needs you")).getByRole("link", { name: /stuck/ }).textContent).toContain("1 agent waiting");
   fireEvent.click(stopped);
   expect(names(group("Stopped"))).toEqual(["gone", "old"]);
+});
+
+test("a group without sessions is not drawn, heading and all", async () => {
+  sessions = [session("calm")];
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /calm/ });
+  expect(within(list()).queryByRole("region", { name: "Needs you" })).toBeNull();
+  expect(within(list()).queryByRole("region", { name: "Stopped" })).toBeNull();
+  expect(within(list()).queryByRole("button", { name: /^(Needs you|Stopped)/ })).toBeNull();
+});
+
+test("each heading folds and opens its group; its list stays in the page for aria-controls; remembered by the group's id", async () => {
+  sessions = MIXED();
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /calm/ });
+  for (const [name, rows] of [
+    ["Needs you", ["gated", "asking", "stuck"]],
+    ["Running", ["calm"]],
+  ] as const) {
+    const button = head(new RegExp(`^${name}`));
+    const controlled = () => document.getElementById(button.getAttribute("aria-controls")!);
+    expect(controlled()).toBeTruthy();
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(names(group(name))).toEqual([]);
+    expect(button.textContent).toBe(`${name} ${rows.length}`); // the count stays
+    expect(controlled()).toBeTruthy();
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(names(group(name))).toEqual(rows);
+  }
+  fireEvent.click(head(/^Running/));
+  fireEvent.click(head(/^Stopped/));
+  expect(storedGroups()).toEqual({ "needs-you": "open", running: "folded", stopped: "open" });
   cleanup();
   open("/sessions");
   await within(list()).findByRole("link", { name: /^gone/ }); // remembered open
-  expect(within(list()).getByRole("button", { name: "Stopped (2)" }).getAttribute("aria-expanded")).toBe("true");
+  expect(head(/^Running/).getAttribute("aria-expanded")).toBe("false");
+  expect(names(group("Running"))).toEqual([]);
+});
+
+test("an older LADO's open Stopped is where Stopped starts, until the groups are stored", async () => {
+  sessions = MIXED();
+  localStorage.setItem("lado.stoppedSessions", "open");
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^gone/ });
+  expect(head(/^Stopped/).getAttribute("aria-expanded")).toBe("true");
+});
+
+test("while the search has text the groups with matches are open, and what is remembered stays", async () => {
+  sessions = MIXED();
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /calm/ });
+  fireEvent.click(head(/^Running/));
+  const before = storedGroups();
+  const search = screen.getByRole("searchbox", { name: "Find a session" });
+  fireEvent.change(search, { target: { value: "o" } }); // only gone and old
+  expect(names(group("Stopped"))).toEqual(["gone", "old"]);
+  expect(head(/^Stopped/).getAttribute("aria-expanded")).toBe("true");
+  fireEvent.change(search, { target: { value: "cal" } });
+  expect(names(group("Running"))).toEqual(["calm"]);
+  // A heading folds nothing while the search has text: it is off, and a click changes nothing.
+  expect((head(/^Running/) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(head(/^Running/));
+  expect(names(group("Running"))).toEqual(["calm"]);
+  expect(storedGroups()).toEqual(before);
+  fireEvent.change(search, { target: { value: "" } });
+  expect(names(group("Running"))).toEqual([]);
+  expect(head(/^Stopped/).getAttribute("aria-expanded")).toBe("false");
+});
+
+test("the open session stays in sight in its folded group, also when it moves to one; going there changes nothing remembered", async () => {
+  sessions = [session("lado"), session("calm"), session("old", { status: "stopped", agents: 0 })];
+  open("/sessions/lado");
+  await within(list()).findByRole("link", { name: /calm/ });
+  fireEvent.click(head(/^Running/));
+  expect(names(group("Running"))).toEqual(["lado"]);
+  expect(head(/^Running/).getAttribute("aria-expanded")).toBe("false");
+  const remembered = storedGroups();
+  // Stopped is folded: the open session goes there when it stops, and is seen there alone.
+  const stopped = session("lado", { status: "stopped", agents: 0 });
+  stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: stopped }, "11");
+  expect(names(group("Stopped"))).toEqual(["lado"]);
+  expect(head(/^Stopped/).getAttribute("aria-expanded")).toBe("false");
+  expect(names(group("Running"))).toEqual([]);
+  // Another session from the list: the folded group shows nothing again.
+  fireEvent.click(head(/^Running/));
+  fireEvent.click(within(group("Running")).getByRole("link", { name: /calm/ }));
+  expect(await screen.findByRole("region", { name: "Session calm" })).toBeTruthy();
+  expect(names(group("Stopped"))).toEqual([]);
+  expect(storedGroups()).toEqual({ ...remembered, running: "open" });
+});
+
+test("the rows look alike in every group: no dim, no mark of waiting; the status line of a session in trouble stays", async () => {
+  sessions = MIXED();
+  localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^gone/ });
+  const rows = [...list().querySelectorAll<HTMLElement>(".session-link")];
+  expect(rows).toHaveLength(6);
+  for (const row of rows) expect(row.className).toBe("session-link");
+  expect(within(group("Needs you")).getByRole("link", { name: /stuck/ }).querySelector(".status-tmux_gone")!.textContent).toBe(
+    "tmux session is gone",
+  );
+});
+
+test("a row's card on focus and hover: name · status · agents, what needs the human, the folder, kits · provider · mode", async () => {
+  sessions = [
+    session("gated", {
+      agents: 3,
+      waiting: { gates: 1, questions: 2, agents: 0 },
+      kits: ["default", "review"],
+      permission_mode: "auto",
+    }),
+    session("calm", { provider: "kilo" }),
+    session("old", { status: "stopped", agents: 0 }),
+  ];
+  localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
+  open("/sessions");
+  const card = async (name: RegExp) => {
+    const row = await within(list()).findByRole("link", { name });
+    fireEvent.focus(row);
+    const shown = screen.getByRole("tooltip");
+    expect(row.getAttribute("aria-describedby")).toBe(shown.id);
+    const lines = [...shown.querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+    const tone = shown.querySelector(".session-tip")!.className;
+    fireEvent.blur(row);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    return { lines, tone };
+  };
+  expect(await card(/^gated/)).toEqual({
+    lines: ["gated · running · 3 agents", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude · mode auto"],
+    tone: "session-tip tone-human",
+  });
+  expect(await card(/^calm/)).toEqual({
+    lines: ["calm · running · 1 agent", "/src/calm", "default · kilo"],
+    tone: "session-tip tone-done",
+  });
+  const stopped = await card(/^old/);
+  expect(stopped).toEqual({
+    lines: ["old · stopped · 0 agents", "/src/old", "default · claude", "Stopped: open it and press Resume"],
+    tone: "session-tip tone-neutral",
+  });
+  // The pointer resting on a row shows it too.
+  vi.useFakeTimers();
+  try {
+    const row = within(list()).getByRole("link", { name: /^calm/ });
+    fireEvent.mouseEnter(row);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toContain("calm · running · 1 agent");
+    fireEvent.mouseLeave(row);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("a session moves to Needs you when the feed says something waits in it", async () => {

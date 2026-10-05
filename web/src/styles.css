@@ -565,57 +565,108 @@ h3 {
   background: var(--raised);
 }
 
-.session-group + .session-group,
-.session-group + .group-toggle {
-  margin-top: 12px;
+/* A group's tone (GroupHead.tsx): its colour and ground, for its heading, its rows' stripe
+   and its sessions' cards. Tokens only. */
+.tone-human {
+  --g: var(--human);
+  --g-ground: var(--human-ground);
 }
 
-.group-name {
-  margin: 10px 10px 4px;
-  color: var(--muted);
-  font-size: 11px;
+.tone-done {
+  --g: var(--done);
+  --g-ground: var(--done-ground);
+}
+
+.tone-neutral {
+  --g: var(--muted);
+  --g-ground: var(--raised);
+}
+
+/* A group's heading, every list's: a band of the group's ground, its name in small capitals
+   and its count in the group's colour; folding, the whole band is the button, the chevron
+   turned to the right while the group is folded. */
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 7px 8px 6px;
+  border-radius: 6px;
+  background: var(--g-ground);
+  color: var(--g);
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
-.group-needs-you .group-name {
-  color: var(--human);
+.group-head:has(.group-fold) {
+  padding: 0;
 }
 
-.group-toggle {
-  display: block;
-  width: 100%;
-  margin-top: 12px;
-  padding: 6px 10px;
+.group-fold {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 8px 6px;
   border: 0;
-  border-top: 1px solid var(--line);
+  border-radius: 6px;
   background: transparent;
-  color: var(--muted);
-  font-size: 13px;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
   text-align: left;
+  text-transform: inherit;
 }
 
-.group-toggle:hover {
-  color: var(--ink);
-}
-
-.group-toggle:disabled {
-  color: var(--muted);
+/* Off while a search shows every group open: the band keeps its look, only the pointer says so. */
+.group-fold:disabled {
   cursor: default;
+}
+
+.group-fold:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 1px;
+}
+
+.group-fold .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+  transition: transform 0.15s;
+}
+
+.group-fold[aria-expanded="false"] .icon {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-fold .icon {
+    transition: none;
+  }
+}
+
+.group-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.group-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.session-group + .session-group {
+  margin-top: 10px;
 }
 
 .session-about {
   color: var(--muted);
   font-size: 13px;
-}
-
-.session-link.waits {
-  box-shadow: inset 3px 0 0 var(--human);
-}
-
-.session-link.waits .session-about {
-  color: var(--human);
 }
 
 .session-detail {
@@ -651,17 +702,17 @@ h3 {
   text-decoration: none;
 }
 
-.session-link:hover {
+/* Rows alike in every group; the open one and the one under the pointer get a stripe of
+   their group's colour. */
+.session-link:hover,
+.session-link:focus-visible {
   background: var(--raised);
+  box-shadow: inset 3px 0 0 var(--g);
 }
 
 .session-link[aria-current="page"] {
   background: var(--raised);
-  box-shadow: inset 3px 0 0 var(--action);
-}
-
-.session-link.waits[aria-current="page"] {
-  box-shadow: inset 3px 0 0 var(--human);
+  box-shadow: inset 3px 0 0 var(--g);
 }
 
 .session-name {
@@ -671,11 +722,6 @@ h3 {
 
 .session-link .status {
   font-size: 13px;
-}
-
-.session-link.dim .session-name {
-  color: var(--muted);
-  font-weight: 400;
 }
 
 /* Two lines. The name, status and run time, then the icons; in a narrow column the icons go
@@ -1120,6 +1166,16 @@ h3 {
 /* What waits for the human, in a session's tooltip. */
 .tooltip-line.waits {
   color: var(--human);
+}
+
+/* A session's card: a dot of its group's colour before its name. */
+.tip-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--g);
 }
 
 .terminals.expanded {
@@ -2535,36 +2591,9 @@ h3 {
   margin-top: 2px;
 }
 
-/* A group's head: a band ruled above and below, its name and how many rows it has now; the
-   groups apart by a gap. */
+/* The groups apart by a gap; each under its heading (.group-head). */
 .list-group + .list-group {
   margin-top: 18px;
-}
-
-.group-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-  padding: 6px 10px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-}
-
-.group-head .group-name {
-  margin: 0;
-}
-
-.group-count {
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.list-group.waits .group-name {
-  color: var(--human);
 }
 
 .list-empty,

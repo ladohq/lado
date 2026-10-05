@@ -13,6 +13,7 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router";
 
 import { dayName } from "./ChatText";
+import { GroupHead, type Tone } from "./GroupHead";
 import { useWidth } from "./Splitter";
 
 // Narrower than this, a tab's list and page take the column in turn.
@@ -30,7 +31,7 @@ export type Entry = {
 export type Group = {
   name: string;
   entries: Entry[];
-  tone?: "waits";
+  tone?: Tone; // its heading's (GroupHead): neutral by default
   heading?: boolean; // its name and count above its rows (by default)
   days?: boolean; // its rows under the local day of their `at`
   empty?: string; // what it says without rows ("No match" while searching); none: not drawn
@@ -154,7 +155,8 @@ function ListGroup({
   const [all, setAll] = useState(false);
   if (entries.length === 0 && group.empty === undefined) return null;
   const id = `list-group-${slug(group.name)}`;
-  const className = `list-group${group.tone ? ` ${group.tone}` : ""}`;
+  const tone = group.tone ?? "neutral";
+  const className = `list-group tone-${tone}`;
   const at = entries.findIndex((entry) => entry.key === selected);
   let rows = entries;
   if (group.first !== undefined && !searching && !all) rows = entries.slice(0, Math.max(group.first, at + 1));
@@ -198,12 +200,7 @@ function ListGroup({
   }
   return (
     <section className={className} aria-labelledby={`${id}-name`}>
-      <div className="group-head">
-        <h3 id={`${id}-name`} className="group-name">
-          {group.name}
-        </h3>
-        <span className="group-count">{entries.length}</span>
-      </div>
+      <GroupHead nameId={`${id}-name`} name={group.name} count={entries.length} tone={tone} />
       {items}
     </section>
   );

@@ -758,3 +758,13 @@ session with no process that can open the database between the rollback and the 
 (stop the fake agent's hooks, or roll back with the session's tmux alive but no agent),
 then the assertion is deterministic.
 Found: 2026-10-05, merge step of run feature/flows-tab-redesign (after main got schema 18).
+
+## No test that the wide session strip scrolls with its buttons fixed
+
+`tests/ui/test_sessions_strip.py` checks the collapsed session list on a wide window with
+two sessions only: nothing checks that its column of icons (`.strip-icons`) scrolls while
+"Sessions" and "+" stay put (feature/sessions-list-collapse, AC-2). It works now (checked
+by hand: 40 icons, `overflow-y: auto`), but a change to `min-height: 0` or the grid would
+go unnoticed. Wanted: the e2e test checks `overflow-y` of `.strip-icons`, or fills the strip
+and checks that the buttons keep their place.
+Found: 2026-10-05, review of feature/sessions-list-collapse (Minor 1).

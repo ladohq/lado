@@ -44,7 +44,9 @@ instead of a real agent CLI. They use a temp `LADO_HOME` and their own tmux serv
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
 `LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
-login shell (tests of the shell set their own `SHELL`).
+login shell (tests of the shell set their own `SHELL`). It also sets
+`LADO_NO_UPDATE_CHECK=1`, so no test looks on PyPI; the tests of the update check switch it
+on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`).
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`,
@@ -63,8 +65,8 @@ tag against the package version, builds with `make dist` and publishes to PyPI.
 
 Versions (0.x): bump the minor (0.7.0) for new features, an MCP tool or CLI change that older
 agents cannot use, or a database schema migration; running sessions must be restarted after
-such an upgrade. Bump the patch (0.7.1) for fixes and docs only: no new feature, no API or
-schema change.
+such an upgrade (`lado update` does both: see `update.py` below). Bump the patch (0.7.1) for
+fixes and docs only: no new feature, no API or schema change.
 
 ## Layout
 
@@ -72,6 +74,35 @@ schema change.
   - `cli.py`: the `lado` command. `doctor.py`: environment checks; a provider's state
     (installed, version, tested version, warning) is `doctor.provider_status`, which
     `lado doctor` formats and the UI's `GET /api/providers` serves.
+  - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
+    (`fetch_index`; `latest` skips pre-releases and yanked ones, `release` finds a named
+    one), the one PEP 440 comparison (`newer`, `same`; not `gitcache.latest`, which sorts
+    kit tags), the daily check (`check`: `LADO_HOME/update-check.json`, a look at most once
+    per `CHECK_EVERY` and `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`,
+    `lado doctor` and the UI's `GET /api/update` alike; `LADO_NO_UPDATE_CHECK=1`: no look and
+    no line), the installer (`installer`: by this LADO's `sys.prefix`, a uv tool with
+    `uv-receipt.toml` or pipx with `pipx_metadata.json` of lado from an index, else None,
+    also for an editable, folder, git or URL install of lado; its `command` installs
+    exactly the version, `uv tool install lado==X` with the receipt's `--python` and
+    `--with` again, never `uv tool upgrade`; `lost` names what it cannot repeat; `binary`
+    is `<prefix>/bin/lado`, never one on PATH), `installed_version` and the mark of an
+    update that did not finish (`LADO_HOME/update.json`, `Pending`). `lado update`
+    (`cli.cmd_update`) does the rest: the sessions `runtime.session_status` says run (also
+    with the loop down) and the UI server, the plan and `Update? [y/N]` (`--yes`; refused
+    inside an agent), then writes update.json, stops each session with
+    `runtime.stop_session` and waits for its loop's lock (`loop.wait_stopped`; one that
+    does not end stops the update before the installer, and the sessions are resumed),
+    stops the server, runs the installer, checks `<prefix>/bin/lado --version` and resumes
+    with that binary's public commands (`lado start <repo> --name <s> --no-attach`, `lado
+    ui --no-open [--host H] --port P`; `--host` only for another than 127.0.0.1, which a
+    LADO before 0.20 lacks), whatever version is installed; a failed installer resumes on
+    the old one. After the installer the old process starts nothing of its own
+    (`providers.lado_command`) and imports nothing more. update.json is removed when every
+    step worked; while one of its sessions is stopped, `lado ls` and `lado update` name
+    them with their `lado start`. Sessions on another tmux socket are not seen (the plan
+    says so). Tests: `LADO_UPDATE_INDEX` (a local file instead of PyPI),
+    `LADO_UPDATE_INSTALLER` (an installer's argv, given the version as its last argument)
+    and `LADO_UPDATE_PREFIX` (the install's prefix instead of `sys.prefix`).
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: does not exist, not inside a git repository, no commits yet), asked

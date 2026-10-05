@@ -91,11 +91,19 @@ def test_a_bundle_of_another_version_than_the_servers_shows_a_banner(page: Page,
         lambda route: route.fulfill(json={"ok": True, "version": "0.0.1"}),
     )
     page.reload()
-    expect(page.get_by_role("alert")).to_have_text(
-        f"This page is LADO {server['version']}, the server runs 0.0.1: "
+    banner = page.get_by_role("alert")
+    # Mostly the tab is the old one: a reload is offered first.
+    expect(banner).to_have_text(
+        f"This page is LADO {server['version']}, the server runs 0.0.1: reload the page.Reload"
+    )
+    shot(page, "reload")
+    banner.get_by_role("button", name="Reload").click()
+    # Still another version after the reload: the server is the old one.
+    expect(banner).to_have_text(
+        f"This page is LADO {server['version']}, the server runs 0.0.1, also after a reload: "
         "run lado server stop, then lado ui."
     )
-    shot(page)
+    shot(page, "restart")
 
 
 def test_a_page_loads_without_a_console_error_and_with_its_icon(page: Page, server, repo, shot):

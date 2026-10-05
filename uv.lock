@@ -673,6 +673,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "mcp" },
     { name = "pyyaml" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "uvicorn" },
     { name = "websockets", version = "16.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "websockets", version = "17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -692,6 +693,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.142" },
     { name = "mcp", specifier = ">=2.2,<3" },
     { name = "pyyaml", specifier = ">=6" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=1.1" },
     { name = "uvicorn", specifier = ">=0.30" },
     { name = "websockets", specifier = ">=13" },
 ]

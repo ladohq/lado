@@ -240,6 +240,15 @@ class MarketplaceUpdate(BaseModel):
     error: str | None
 
 
+class UpdateInfo(BaseModel):
+    """This LADO's version and what the daily update check found (lado.update.check)."""
+
+    current: str
+    latest: str | None  # the latest release; None before a look found one or with the check off
+    available: str | None  # the latest release when it is newer than this LADO
+    checked_at: str | None  # when the check last looked; None with the check off
+
+
 class ProviderInfo(BaseModel):
     """A provider of LADO's registry and whether its CLI can run here."""
 

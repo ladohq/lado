@@ -14,7 +14,7 @@ import {
 } from "react";
 import { NavLink, Outlet } from "react-router";
 
-import { getHealth, onDenied } from "./api";
+import { getHealth, getUpdate, onDenied } from "./api";
 import {
   CollapseIcon,
   HomeIcon,
@@ -28,7 +28,7 @@ import {
 import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
-import { storeRailCollapsed, storedRailCollapsed } from "./prefs";
+import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { BUNDLE_VERSION } from "./version";
 
 const NEEDS_YOU = "/needs-you"; // its link counts what waits
@@ -120,6 +120,7 @@ export function Shell() {
           <LinkState />
         </header>
         <VersionBanner />
+        <UpdateLine />
         <main className="content">
           {denied !== null ? (
             <p className="problem" role="alert">
@@ -141,9 +142,11 @@ export function Shell() {
   );
 }
 
-// A server of another LADO version than this bundle's (one left running across an
-// upgrade, or upgraded under an open tab) answers an API this page does not know. Asked
-// each time the change feed opens, so also after the server restarted.
+// A server of another LADO version than this bundle's answers an API this page does not
+// know. Asked each time the change feed opens, so also after the server restarted. Mostly
+// the tab is the old one (opened before an upgrade): a reload is enough. Only when the
+// page is still another version after reloading for this server is the server the old
+// one (left running across an upgrade): then it says to restart it.
 function VersionBanner() {
   const { link } = useLive();
   const [server, setServer] = useState<string | null>(null);
@@ -158,11 +161,52 @@ function VersionBanner() {
       current = false;
     };
   }, [link]);
+  useEffect(() => {
+    if (server === BUNDLE_VERSION) storeReloadedFor(null);
+  }, [server]);
   if (server === null || server === BUNDLE_VERSION) return null;
+  if (reloadedFor() === server) {
+    return (
+      <p className="problem version-banner" role="alert">
+        This page is LADO {BUNDLE_VERSION}, the server runs {server}, also after a reload: run{" "}
+        <code>lado server stop</code>, then <code>lado ui</code>.
+      </p>
+    );
+  }
+  const reload = () => {
+    storeReloadedFor(server);
+    window.location.reload();
+  };
   return (
     <p className="problem version-banner" role="alert">
-      This page is LADO {BUNDLE_VERSION}, the server runs {server}: run <code>lado server stop</code>, then{" "}
-      <code>lado ui</code>.
+      This page is LADO {BUNDLE_VERSION}, the server runs {server}: reload the page.
+      <button type="button" className="primary" onClick={reload}>
+        Reload
+      </button>
+    </p>
+  );
+}
+
+// A newer LADO on PyPI, as the server's daily check found it: one quiet line. Asked, like
+// the version, each time the change feed opens.
+function UpdateLine() {
+  const { link } = useLive();
+  const [available, setAvailable] = useState<string | null>(null);
+  useEffect(() => {
+    if (link !== "open") return;
+    let current = true;
+    getUpdate().then(
+      (update) => current && setAvailable(update.available ?? null),
+      () => {}, // no line: `lado doctor` says why the check failed
+    );
+    return () => {
+      current = false;
+    };
+  }, [link]);
+  if (available === null) return null;
+  return (
+    <p className="update-line">
+      LADO {available} is available: run <code>lado update</code>
     </p>
   );
 }

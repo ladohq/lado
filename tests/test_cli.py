@@ -29,6 +29,19 @@ def test_start_with_provider_and_ls_shows_it(repo, fake_tmux, capsys):
     assert "supervisor   supervisor kilo" in capsys.readouterr().out
 
 
+def test_ls_says_a_newer_version_is_available_but_not_why_a_check_failed(
+    published, capsys, tmp_path, monkeypatch
+):
+    published(**{"99.0.0": "2026-10-04"})
+    assert main(["ls"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "LADO 99.0.0 is available: lado update"
+    (state.home() / "update-check.json").unlink()
+    monkeypatch.setenv("LADO_UPDATE_INDEX", str(tmp_path / "missing.json"))
+    assert main(["ls"]) == 0
+    captured = capsys.readouterr()
+    assert "available" not in captured.out and "missing.json" not in captured.out + captured.err
+
+
 @pytest.mark.parametrize(
     "seconds, shown",
     [

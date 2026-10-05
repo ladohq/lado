@@ -743,3 +743,14 @@ here, "Oct 2" in CI).
 Wanted: vitest run in `make web` (or CI) also under a second locale, e.g.
 `LC_ALL=ru_RU.UTF-8`, so such a test fails locally.
 Found: 2026-10-05, review of fix/chat-start-day-tz.
+
+## A marketplace's clone has no lock: an update from the UI and the CLI at once race
+
+`marketplaces._folder` removes a clone whose origin is another address and clones again,
+and `update` refreshes it in place, with no lock. The Kits page's Update all and
+`lado marketplaces update` (or two UI tabs) at the same time work on the same
+`LADO_HOME/marketplaces/<name>/`; one can read a half-made clone or fail on the other's
+`rmtree`. The UI makes this more likely.
+Wanted: an exclusive lock per marketplace clone (as the session loop's `flock`) around
+clone, refresh and read.
+Found: 2026-10-05, design of feature/kits-page (Found on the way).

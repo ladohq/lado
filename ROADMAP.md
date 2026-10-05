@@ -137,5 +137,6 @@ their time comes.
   A project brings sessions over several repos (BACKLOG: "Flows cannot work on another
   repository") and ties in with the task trackers (stage 9). Until then a session is one
   repo, and Launch in the UI starts one from a folder.
-- [ ] Kit marketplace: find and add kits from the UI (the same `lado kits add`, later by a
-  name from a public index); skill packs reach a session through a kit's `dependencies`
+- [x] Kit marketplace: find and add kits from the UI (the same `lado kits add`, later by a
+  name from a public index): the UI's Kits page (installed, available from the
+  marketplaces' `index.json`, updates, marketplaces); skill packs reach a session through a kit's `dependencies`

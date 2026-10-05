@@ -32,8 +32,8 @@ a surface, it takes nothing away.
    layer can be replaced by a real login for a remote host without touching the rest.
 3. **One change feed: "changes after id N".** The UI learns about changes from one stream,
    never by polling lists. SQLite triggers write every insert, update and delete of the
-   tables the UI shows (sessions, agents, messages, runs, gates, notes; of events, the
-   flow runs' new ones) to the journal
+   tables the UI shows (sessions, agents, messages, runs, gates, notes, kits,
+   marketplaces; of events, the flow runs' new ones) to the journal
    `changes` in the writer's own transaction, so a write by any process (CLI, hooks, MCP
    server, session loop) reaches the UI, and no code path can forget to report one. What
    the UI shows but no table keeps (a session's `tmux_gone`) is derived: the server
@@ -342,8 +342,9 @@ them visible from the start; a section not built yet is a placeholder. The work 
 Sessions for now. The UI's texts are in English.
 
 - **Rail** on the left, top to bottom: Home, **Launch** (a button that opens the New
-  session window: Launch and session control, below), Needs you, Sessions, Projects, Kits,
-  Marketplace; Settings apart at the bottom. A button collapses it to icons (each with its
+  session window: Launch and session control, below), Needs you, Sessions, Projects, Kits
+  (one page for the kits and their marketplaces: Kits below); Settings apart at the
+  bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
   remembers the choice; a window narrower than 900 px starts collapsed.
 - **Top bar**: the page's title on the left; on the right the server's address and the
@@ -437,14 +438,16 @@ Sessions for now. The UI's texts are in English.
   own). New sections go below.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
-  section has an item in ROADMAP.md or in Tasks below: Projects and Marketplace are
-  ROADMAP's "Later (after stage 7)", the others are Tasks here.
+  section has an item in ROADMAP.md or in Tasks below: Projects is ROADMAP's "Later (after
+  stage 7)", the others are Tasks here.
 - **Addresses**: `/` Home, `/needs-you`, `/sessions`, `/sessions/<name>/<tab>` (tab:
   activity, agents, flows, artifacts; without one, activity), a flow run's page
   `/sessions/<name>/flows/<run>` (Flows below), an agent's page
   `/sessions/<name>/agents/<agent>` (Agents below; another tab has no pages),
   `/projects`,
-  `/kits`, `/marketplace`, `/settings`. Anything else is Not found with a link to Home.
+  `/kits`, `/kits/<tab>` (installed, available, updates; without one, installed),
+  `/settings`; `/marketplace` of earlier versions goes (replaced) to `/kits`. Anything else
+  is Not found with a link to Home.
   Opened directly or reloaded, each works (the server's page fallback, Server above).
   Routing: react-router in declarative mode.
 - **Encoding rule**: every name in an address is one segment, encoded whole with
@@ -902,8 +905,63 @@ Later: an overview of all sessions, what runs, what is stuck and what waits for 
 
 ### Kits
 
-Later: the kits LADO knows and where they come from (`lado kits`), with their roles,
-skills, MCP servers and flows.
+Decided with the human (task feature/kits-page, 2026-10-05, mockups v3, layout C1): one
+page for what `lado kits` and `lado marketplaces` do, instead of a Kits and a Marketplace
+page (LADO has one source of kits, git).
+
+- **Layout**: above, the time of the last check, **Check for updates** and **Add kit…**.
+  Under them the tabs **Installed | Available | Updates** (in the address, `/kits/<tab>`),
+  a search by name and description and the source chips (All, each marketplace, git,
+  folder, built-in; remembered in the browser, `lado.kitsSource`), which filter every tab;
+  then the list. The **Marketplaces** block is on the right on every tab, under the list on
+  a page narrower than 900 px.
+- **Installed**: the kits of lado.db's `kits` table, then the built-in ones (read only,
+  no buttons); not a project's kits (`<repo>/.lado/kits`: Launch shows them for its
+  folder). A row: the name, its tag or version, `vX available` after a check, the
+  description, its source (the marketplace it was added from, `<name> (removed)` when that
+  one is gone, counted by the UI from the two lists; git; folder; built-in), its roles,
+  skills and flows, its address or folder, the core's problem when it does not load;
+  Update… (a kit from git) and Remove….
+- **Available**: each kit the enabled marketplaces list, from their clones (no network):
+  `marketplace.yaml` for the names and addresses, `index.json` for the rest (README, Kits:
+  version 1), only the name and address without an entry. Install…, or `installed`. A
+  fresh LADO_HOME says no marketplace is fetched yet, with a button to update each; nothing
+  is cloned by itself.
+- **Updates**: only after Check for updates (`kits.outdated`, the network); the time of
+  the check is kept in the page, not stored; no check in the background. The kits it did
+  not check say why; a moved tag is a warning.
+- **Freshness**: the installed kits and the marketplaces are items of the change feed
+  (`kits`, `marketplaces`, session `''`), so a change from the CLI shows without a reload;
+  Available is asked again whole when either changes. Each item holds only its own row and
+  files (`InstalledKitInfo`, `MarketplaceInfo`): who uses a kit is asked when it is
+  removed (`GET /api/kits/{name}/remove-preview`, `runtime.kit_users`).
+- **Install**: Add kit… asks what (a kit of a marketplace, with the names it lists as
+  suggestions; a git address; a folder; a version and pre-releases), then shows the core's
+  plan (`POST /api/kits/plan`: `kits.plan_add`, the kit cloned into the cache, nothing
+  installed): source, address, version, commit, agents, skills, flows, MCP servers,
+  warnings. When the core says `needs_confirmation` (not the official marketplace, as
+  the CLI asks), a warning about its MCP servers and **Install** only after "I checked the
+  address and the MCP servers". Install sends the plan's tag and commit (a folder: its MCP
+  servers); the server plans again and refuses another one with 409, and the window offers
+  the plan again. Install… on an Available row starts at the plan. A refusal of the core
+  shows its words with Back.
+- **Update**: the core's plan for the latest version or another one chosen from the
+  repository's tags (`POST /api/kits/{name}/plan-update`): its new MCP servers, who gets it
+  (the core's line: running sessions only for new agents), Update; the installed version
+  says so and has nothing to update.
+- **Remove**: never blocked: the window names the running sessions that use the kit
+  (their new agents and runs fail to start) and the stopped ones (a resume needs it), the
+  core's lines, as `lado kits remove` prints them; a kit whose folder is gone is only
+  forgotten.
+- **Marketplaces**: each with enabled (a checkbox), its address, when it was updated, how
+  many kits it lists and its problem (not fetched, a list or `index.json` LADO cannot
+  read); Update all (one that fails shows its error and the others go on,
+  `marketplaces.update_each`), Remove (never the official one; the window names its
+  installed kits, which stay), Add marketplace….
+- **Server**: every request that changes something or goes to the network is under
+  `Guard.changes` (plan, install, plan-update, update, remove, check-updates, and adding,
+  enabling, removing and updating marketplaces); the lists never make lado.db nor clone.
+  While a request runs, the window's buttons are disabled and Esc does not close it.
 
 ## Look
 

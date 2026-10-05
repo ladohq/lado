@@ -159,7 +159,15 @@ schema change.
     `add`, `remove`, `set_enabled`, `update`); the official one is a row made with the
     table, no url (`OFFICIAL_URL`), never removed, only disabled. Its clone in
     `LADO_HOME/marketplaces/<name>/` is a cache: made on first use, made again when its
-    origin is another address. `resolve` finds a kit's address for `lado kits add -m`.
+    origin is another address. `resolve` finds a kit's address for `lado kits add -m`
+    (`kits` clones when there is no clone; only for the CLI). Never the network: `listed`
+    (the list of the clone there is, None without one), `index` (the clone's `index.json`,
+    format version 1 in the module's docstring and README.md: entries of the listed kits,
+    only `address` required, unknown keys passed over, a higher `index` "needs a newer
+    LADO"; what does not agree is the `Index.problem`), `available` (each kit of the
+    enabled marketplaces with a clone, `Offer`). `update_each` updates one by one, a failure
+    is that marketplace's text and the others go on (the CLI and the API); `kits_from` the
+    installed kits added from one (`lado marketplaces remove` names them).
     `MarketplaceError`; it does not import `kits`.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
     a work or gate state's optional `needs` lists the states whose latest notes its step
@@ -225,9 +233,10 @@ schema change.
     `marketplaces` table (name, url, enabled, updated_at; `state.Marketplace`) holds the kit
     marketplaces; the `official` row is made with it (in `SCHEMA` and in the migration),
     and its changes are journaled with session `''` (`JOURNAL_SESSION`); the feed sends them
-    with `item: null`. From schema 18 the `kits` table (name, address, tag, commit, folder,
+    with a `MarketplaceInfo`. From schema 18 the `kits` table (name, address, tag, commit, folder,
     marketplace, installed_at, updated_at; a CHECK: an address with its tag and commit, or a
-    folder) holds the installed kits, journaled the same way (session `''`, `item: null`).
+    folder) holds the installed kits, journaled the same way (session `''`, an
+    `InstalledKitInfo`; each item only its own row and files).
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -270,6 +279,22 @@ schema change.
     `POST …/stop`, `GET …/forget-preview`, `DELETE /api/sessions/{name}?force=`, all
     through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the
     session's kits, provider, permission mode and without;
+    the Kits page's endpoints are in `app.py` too (docs/design/ui.md, Kits):
+    `GET /api/kits/installed` (`InstalledKitInfo`, the installed then the built-in kits;
+    with `KitInfo` it shares `KitSummary`), `GET /api/kits/available` (`OfferInfo`),
+    `GET /api/marketplaces` (`MarketplaceInfo`) and `GET /api/kits/{name}/remove-preview`
+    (`runtime.kit_users`: the running and stopped sessions whose kits name it, not those a
+    project kit of that name shadows, with the core's lines `lado kits remove` prints);
+    under `Guard.changes`, as they change something or go to the network:
+    `POST /api/kits/plan` (`PlanInfo`, `kits.plan_add`), `POST /api/kits/install` (the
+    plan's `spec` with its tag, and its commit, or a folder's MCP servers: planned again,
+    another one is 409), `POST /api/kits/{name}/plan-update` (with `users` and the core's
+    `kits.update_line`), `POST /api/kits/{name}/update` (tag and commit, 409 likewise),
+    `DELETE /api/kits/{name}`, `POST /api/kits/check-updates` (`kits.outdated`; `newer`),
+    `POST`, `PATCH` and `DELETE /api/marketplaces[/{name}]` and
+    `POST /api/marketplaces/update` (`update_each`); a core refusal is 400 `Refused`
+    (`kits_core`). Without lado.db the lists make none and clone nothing (the official
+    marketplace as the table would make it, `marketplaces.UNMADE_OFFICIAL`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
     `Listening`: the local link, the remote one and the warning for the address taken),
     the background start and stop. `static/`:
@@ -432,19 +457,23 @@ version needs a newer LADO is refused. `lado kits update <name> [vX.Y.Z]` moves 
 installed from git to its latest or another version without asking, and warns on stderr
 about the MCP servers the installed version did not start: running sessions build their
 kits again at each spawn and run start, so only their new agents get it (the output says
-so); the old clone stays in the cache. `lado kits outdated` checks each installed kit
+so and names the running sessions that use it, `kits.update_line`); the old clone stays
+in the cache. `lado kits outdated` checks each installed kit
 against its remote's tags and says why it does not check a folder or a kit whose folder is
 missing. `lado kits check <folder> --tag vX.Y.Z`
 (a kit's CI) gives the verdict add would give for that tag without installing
 (`kits.load_release`, shared with add). A tag that points to another commit
 than the installed one is a loud warning (outdated, update, add). `lado kits remove <name>`
-drops the row; its folder stays (one already gone is no error). `lado kits` lists every kit
+drops the row; its folder stays (one already gone is no error); it warns on stderr about
+the running and stopped sessions that use the kit (`runtime.kit_users`, the lines the UI
+shows too). `lado kits` lists every kit
 with its version and where it comes from (the marketplace it was added from, `removed` when
 that marketplace is gone), and on stderr what to do with an older LADO's `LADO_HOME/kits`;
 `lado kits show` names each kit's packs and where each agent's skills come from.
 `lado marketplaces [list]`, `add <name> <git-url>`, `remove <name>`, `enable|disable
 <name>` and `update [<name>]` manage the marketplaces; `official`
-(github.com/ladohq/marketplace) is always there and can only be disabled.
+(github.com/ladohq/marketplace) is always there and can only be disabled. `remove` names
+the installed kits from it, which stay. The UI's Kits page does all of this too.
 
 `lado log <session>` shows what happened in a session: messages between agents (one line
 with their delivery state and summary, the body indented below) and agent events (spawned,

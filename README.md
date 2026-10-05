@@ -68,6 +68,40 @@ lado marketplaces update                           # fetch their latest lists
 lado marketplaces disable official                 # remove works for the others
 ```
 
+The UI's Kits page (`lado ui`, then Kits) does the same: the installed kits, the kits the
+enabled marketplaces offer, the updates (checked only with its button) and the
+marketplaces. Each install and update shows the plan the CLI prints before it asks.
+
+What the page shows of a marketplace's kits comes from an `index.json` at the
+marketplace's root, which its CI builds from the kits; LADO reads it from the marketplace's
+clone, never the network. Version 1:
+
+```json
+{
+  "index": 1,
+  "kits": {
+    "lado-dev": {
+      "address": "https://github.com/ladohq/kit-lado-dev.git",
+      "latest": "v0.9.1",
+      "commit": "4be21c0…",
+      "lado": ">=0.20",
+      "description": "Develop LADO itself.",
+      "agents": {"supervisor": "the first line of the role's description"},
+      "skills": ["lado-checks"],
+      "flows": ["feature", "fix"],
+      "mcp": {"playwright": "npx @playwright/mcp"}
+    }
+  }
+}
+```
+
+`latest` is the latest release (no pre-release) and `commit` its commit, `lado` the kit's
+`dependencies.lado`, `mcp` each MCP server's command on one line. Only `address` is
+required, and it must be the one `marketplace.yaml` gives; keys LADO does not know are
+passed over, so the CI may add some without a new version; a higher `index` needs a newer
+LADO. `marketplace.yaml` stays the list of names and addresses: an entry of a kit it does
+not list is left out. Without `index.json` the page shows each kit's name and address.
+
 Who leads a session: if exactly one of its kits has a supervisor, that one; otherwise
 LADO's built-in supervisor. Then each kit's supervisor hands its rules to the built-in one
 as a skill `lead-<kit>`: its prompt, and where to read the skills its `skills:` names, in

@@ -1083,6 +1083,37 @@ def test_the_latest_version_that_needs_a_newer_lado_is_refused(tmp_path, lado_ho
     assert links(lado_home) == []
 
 
+def test_a_folder_released_at_a_tag_has_the_rules_of_add(tmp_path):
+    """`lado kits check <folder> --tag` and `lado kits add <address>@<tag>` share them."""
+    root = make_kit(tmp_path, "team", version="1.2.0")
+    assert kits.load_release(root, f"{root}@v1.2.0", "v1.2.0").version == "1.2.0"
+    cases = {
+        "main": f"{root}@main: a kit is pinned by its version tag vX.Y.Z; to try an unreleased",
+        "1.2.0": f"{root}@1.2.0: a kit is pinned by its version tag vX.Y.Z",
+        "v1.3.0": f"{root}@v1.3.0: kit.yaml says version 1.2.0; the tag and kit.yaml must agree",
+    }
+    for tag, error in cases.items():
+        with pytest.raises(kits.KitError, match=re.escape(error)):
+            kits.load_release(root, f"{root}@{tag}", tag)
+    old = make_kit(tmp_path / "old", "kits/team")
+    with pytest.raises(kits.KitError) as exc:
+        kits.load_release(old.parent.parent, "x@v1.0.0", "v1.0.0")
+    assert str(exc.value) == (
+        "x@v1.0.0: kits in kits/<name>/ are no longer supported: a kit is one repository "
+        "with kit.yaml at its root"
+    )
+
+
+def test_a_folder_that_needs_a_newer_lado_has_the_text_of_add(tmp_path):
+    root = make_kit(tmp_path, "team", version="1.4.0", dependencies={"lado": ">=99.1"})
+    for tag in ("v1.4.0", None):
+        with pytest.raises(kits.KitError) as exc:
+            kits.load_release(root, str(root), tag)
+        assert str(exc.value) == (
+            f"team 1.4.0 needs LADO 99.1, this is {kits.__version__}; upgrade LADO"
+        )
+
+
 def test_a_bare_name_is_no_kit_of_a_marketplace_without_m(lado_home):
     with pytest.raises(kits.KitError) as exc:
         kits.plan_add("lado-dev")

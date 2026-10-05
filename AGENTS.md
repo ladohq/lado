@@ -422,7 +422,9 @@ about the MCP servers the installed version did not start: running sessions buil
 kits again at each spawn and run start, so only their new agents get it (the output says
 so); the old clone stays in the cache. `lado kits outdated` checks each installed kit
 against its remote's tags and says why it does not check a folder, a kit pinned to a
-commit or one from an older LADO's `kits/<name>/`. A tag that points to another commit
+commit or one from an older LADO's `kits/<name>/`. `lado kits check <folder> --tag vX.Y.Z`
+(a kit's CI) gives the verdict add would give for that tag without installing
+(`kits.load_release`, shared with add). A tag that points to another commit
 than the installed one is a loud warning (outdated, update, add). `lado kits remove <name>`
 drops the link. `lado kits` lists every kit with its version and where it comes from (the
 marketplace that lists it, read from the clones); `lado kits show` names each kit's packs

@@ -52,6 +52,7 @@ lado kits add ./my-team                            # a local folder, read in pla
 lado kits add lado-dev -m official                 # a kit of a marketplace
 lado kits outdated                                 # newer versions of the installed kits
 lado kits update my-team                           # to the latest release
+lado kits check . --tag "$TAG"                     # a kit's CI: what add would say of that tag
 lado start . --kit default --kit my-team
 ```
 

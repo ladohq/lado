@@ -170,12 +170,21 @@ class Found:
     path: Path  # the entry in its kits folder; a link in LADO_HOME/kits stays a link
 
     def load(self) -> Kit:
+        self._check_link()
+        return load(self.path, self.where)
+
+    def release(self, tag: str | None) -> Kit:
+        """Loaded and fetched with the rules of `lado kits add` (`load_release`)."""
+        self._check_link()
+        spec = f"{self.name}@{tag}" if tag else self.name
+        return load_release(self.path, spec, tag, self.where, named=True)
+
+    def _check_link(self) -> None:
         if self.path.is_symlink() and not self.path.exists():
             raise KitError(
                 f"{self.name}: broken link → {os.readlink(self.path)}; "
                 f"run `lado kits remove {self.name}`"
             )
-        return load(self.path, self.where)
 
     def link(self) -> str | None:
         """What a link in a kits folder leads to: address@ref of a kit from the git cache,
@@ -591,22 +600,10 @@ def _plan_git(
         warnings += _moved(address, current[0], current[1], tags)
     if cached and not (current and current[0] == tag):
         warnings += _moved(address, tag, clone, tags)
-    _check_root(clone, f"{address}@{tag}")
-    need = _lado_needed(clone)
-    if need:
-        older = [t for t in gitcache.sorted_versions(tags) if pre or "-" not in t]
-        older = older[: older.index(tag)] if tag in older else []
-        hint = f", or add an older version: {again.format(tag=older[-1])}" if older else ""
-        version = _yaml_file(clone / KIT_FILE, []).get("version")
-        raise KitError(
-            f"{_kit_name(clone)} {version} needs LADO {need}, this is {__version__}; "
-            f"upgrade LADO{hint}"
-        )
-    kit = fetch(load(clone, "user", named_folder=False))
-    if kit.version != tag[1:]:
-        raise KitError(
-            f"{address}@{tag}: kit.yaml says version {kit.version}; the tag and kit.yaml must agree"
-        )
+    older = [t for t in gitcache.sorted_versions(tags) if pre or "-" not in t]
+    older = older[: older.index(tag)] if tag in older else []
+    hint = f", or add an older version: {again.format(tag=older[-1])}" if older else ""
+    kit = load_release(clone, f"{address}@{tag}", tag, "user", hint)
     return Install(
         name=kit.name,
         address=address,
@@ -636,15 +633,50 @@ def _plan_folder(spec: str) -> Install:
     return Install(kit.name, str(root), None, None, "folder", kit)
 
 
+def load_release(
+    root: Path,
+    spec: str,
+    tag: str | None,
+    where: str = "path",
+    hint: str = "",
+    named: bool = False,
+) -> Kit:
+    """The kit in folder `root` as `lado kits add` takes its release `tag`, loaded and
+    fetched: a version tag, kit.yaml at the root saying that version, a LADO new enough.
+    Without `tag` only the LADO it needs. `spec` names it in errors; `hint` ends the error
+    about LADO; `named` is load's `named_folder`. `lado kits add <address>@<tag>` and
+    `lado kits check [--tag]` share it."""
+    if tag:
+        _check_tag(spec, tag)
+        _check_root(root, spec)
+    need = _lado_needed(root)
+    if need:
+        version = _yaml_file(root / KIT_FILE, []).get("version")
+        raise KitError(
+            f"{_kit_name(root)} {version} needs LADO {need}, this is {__version__}; "
+            f"upgrade LADO{hint}"
+        )
+    kit = fetch(load(root, where, named_folder=named))
+    if tag and kit.version != tag[1:]:
+        raise KitError(
+            f"{spec}: kit.yaml says version {kit.version}; the tag and kit.yaml must agree"
+        )
+    return kit
+
+
+def _check_tag(spec: str, ref: str) -> None:
+    if not gitcache.VERSION_TAG.fullmatch(ref):
+        raise KitError(
+            f"{spec}: a kit is pinned by its version tag vX.Y.Z; to try an "
+            "unreleased kit, tag a pre-release (vX.Y.Z-rc.1) or add its folder"
+        )
+
+
 def _pick(address: str, tags: dict[str, str], ref: str | None, pre: bool) -> str:
     """The version tag to take: `ref`, which must be one, or the latest."""
     versions = gitcache.sorted_versions(tags)
     if ref:
-        if not gitcache.VERSION_TAG.fullmatch(ref):
-            raise KitError(
-                f"{address}@{ref}: a kit is pinned by its version tag vX.Y.Z; to try an "
-                "unreleased kit, tag a pre-release (vX.Y.Z-rc.1) or add its folder"
-            )
+        _check_tag(f"{address}@{ref}", ref)
         if ref not in tags:
             listed = ", ".join(versions) or "none"
             raise KitError(f"{address} has no tag {ref}; its versions: {listed}")

@@ -297,12 +297,13 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     target = Path(args.kit)
     repo = _repo_or_none(str(target) if target.is_dir() else args.repo)
     try:
-        # A folder may be any kit, e.g. a kit at the root of its repository.
-        kit = kits.fetch(
-            kits.load(target, named_folder=False)
-            if target.is_dir()
-            else kits.find(args.kit, repo).load()
-        )
+        # A folder may be any kit, e.g. a kit at the root of its repository; with --tag,
+        # what `lado kits add <address>@<tag>` would say of it.
+        if target.is_dir():
+            spec = f"{args.kit}@{args.tag}" if args.tag else args.kit
+            kit = kits.load_release(target, spec, args.tag)
+        else:
+            kit = kits.find(args.kit, repo).release(args.tag)
         env = kits.resolve(repo, [kit])
         problems = kits.lint(kit)
         doubts = kits.warnings(kit)
@@ -760,6 +761,12 @@ def main(argv: list[str] | None = None) -> int:
     show.set_defaults(func=cmd_kits_show)
     check = kits_sub.add_parser("check", help="validate a kit and fetch its skill packs")
     check.add_argument("kit", help="kit folder or name")
+    check.add_argument(
+        "--tag",
+        metavar="vX.Y.Z",
+        help="check it as `lado kits add <address>@<tag>` would: the version tag, kit.yaml at "
+        "the root saying that version (for a kit's CI)",
+    )
     check.set_defaults(func=cmd_kits_check)
     add = kits_sub.add_parser(
         "add", help=f"install a kit from git, a marketplace or a folder in {kits.installed()}"

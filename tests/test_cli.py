@@ -317,7 +317,9 @@ def test_kits_check(repo, capsys, monkeypatch):
     monkeypatch.chdir(repo)
     assert main(["kits", "check", "team"]) == 0
     assert main(["kits", "check", "default"]) == 0
-    capsys.readouterr()
+    assert main(["kits", "check", "team", "--tag", "v1.0.0"]) == 0
+    assert main(["kits", "check", "team", "--tag", "v2.0.0"]) == 1
+    assert "team@v2.0.0: kit.yaml says version 1.0.0" in capsys.readouterr().err
     (kit / "agents" / "rev.md").write_text(
         "---\nname: rev\ndescription: d\nmodel: x\n---\nSee ~/notes.\n"
     )
@@ -327,6 +329,36 @@ def test_kits_check(repo, capsys, monkeypatch):
     assert main(["kits", "check", str(kit)]) == 1
     assert 'hardcoded path "~/notes."' in capsys.readouterr().err
     assert main(["kits", "check", "nope"]) == 1
+
+
+def test_kits_check_tag(tmp_path, capsys):
+    """A kit's CI: `lado kits check . --tag "$TAG"` says what `lado kits add <url>@<tag>` would."""
+    kit = tmp_path / "team"
+    kit.mkdir()
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.2.0\n")
+    assert main(["kits", "check", str(kit), "--tag", "v1.2.0"]) == 0
+    assert "team: OK" in capsys.readouterr().out
+    for tag, error in {
+        "1.2.0": f"{kit}@1.2.0: a kit is pinned by its version tag vX.Y.Z",
+        "v1.3.0": f"{kit}@v1.3.0: kit.yaml says version 1.2.0; the tag and kit.yaml must agree",
+    }.items():
+        assert main(["kits", "check", str(kit), "--tag", tag]) == 1
+        err = capsys.readouterr().err
+        assert err.startswith(error) and err.count("\n") == 1
+    old = tmp_path / "old"
+    _kit(old, "team")  # old/.lado/kits/team: no kit.yaml at the root of .lado
+    assert main(["kits", "check", str(old / ".lado"), "--tag", "v1.0.0"]) == 1
+    assert "kits in kits/<name>/ are no longer supported" in capsys.readouterr().err
+    assert main(["kits", "check", str(old / ".lado" / "kits" / "team")]) == 0  # as before
+    (kit / "kit.yaml").write_text('name: team\nversion: 1.2.0\ndependencies:\n  lado: ">=99.1"\n')
+    for extra in (["--tag", "v1.2.0"], []):
+        assert main(["kits", "check", str(kit), *extra]) == 1
+        assert capsys.readouterr().err == (
+            f"team 1.2.0 needs LADO 99.1, this is {__version__}; upgrade LADO\n"
+        )
+    with pytest.raises(SystemExit):
+        main(["kits", "check", "--help"])
+    assert "--tag vX.Y.Z" in capsys.readouterr().out
 
 
 def team_repo(tmp_path, *versions, agent=None):

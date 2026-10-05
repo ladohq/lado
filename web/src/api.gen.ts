@@ -1563,6 +1563,12 @@ export interface components {
             permission_mode: string | null;
             /** Without */
             without: string[];
+            /** Ran Seconds */
+            ran_seconds: number;
+            /** Running Since */
+            running_since: string | null;
+            /** Stopped At */
+            stopped_at: string | null;
         };
         /**
          * SessionStatus

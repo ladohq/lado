@@ -28,13 +28,22 @@ export function dayName(iso: string, now = new Date()): string {
   return day(iso);
 }
 
-// How long ago, roughly: "<1 min", "12 min", "3 h", "2 d".
-export function since(iso: string): string {
-  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+// How long, in its largest unit ("<1 min", "12 min", "3 h", "2 d"), or `exact` with the
+// next unit too ("2 h 14 min", "1 d 3 h").
+export function duration(seconds: number, exact = false): string {
+  const minutes = Math.floor(seconds / 60);
   if (!(minutes >= 1)) return "<1 min";
   if (minutes < 60) return `${minutes} min`;
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} h`;
-  return `${Math.floor(minutes / (60 * 24))} d`;
+  const [big, unit, rest, small] =
+    minutes < 60 * 24
+      ? [Math.floor(minutes / 60), "h", minutes % 60, "min"]
+      : [Math.floor(minutes / (60 * 24)), "d", Math.floor(minutes / 60) % 24, "h"];
+  return exact && rest ? `${big} ${unit} ${rest} ${small}` : `${big} ${unit}`;
+}
+
+// How long ago, roughly: "<1 min", "12 min", "3 h", "2 d".
+export function since(iso: string): string {
+  return duration((Date.now() - new Date(iso).getTime()) / 1000);
 }
 
 // The body is the agent's text: Markdown, with any HTML in it left out.

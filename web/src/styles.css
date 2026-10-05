@@ -678,18 +678,124 @@ h3 {
   font-weight: 400;
 }
 
-/* The name and status, then the actions; in a narrow column the actions go to a line of
-   their own rather than cut the name. */
+/* Two lines. The name, status and run time, then the icons; in a narrow column the icons go
+   to a line of their own rather than cut the name. */
 .session-head {
+  margin-bottom: 10px;
+}
+
+.session-title {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 14px;
-  margin-bottom: 10px;
 }
 
-.session-head .status {
+.session-head .status,
+.session-ran {
   flex: none;
+}
+
+.session-ran {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.session-head-actions .icon-button {
+  width: 32px;
+  height: 32px;
+}
+
+.session-head-actions .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* The second line, small and quiet: the folder, the kits, the agents' CLI; each goes to a
+   line of its own when the column is narrow. */
+.session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.session-folder,
+.session-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.session-fact .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.session-folder .icon-button {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.session-folder .icon-button:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.session-folder .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* One line, cut with "…" at its start (right to left), so its end stays in view; the path
+   itself reads left to right in its bdi. */
+.session-path {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* A copy's note under its button, over what follows, so nothing moves. */
+.copy-button {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.copy-button .row-note {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 6;
+  white-space: nowrap;
+}
+
+.session-head-actions .copy-button .row-note {
+  right: 0;
+  left: auto;
 }
 
 /* One line; a name longer than the row ends in "…", whole in its title. */
@@ -1413,6 +1519,16 @@ h3 {
   max-width: 860px;
 }
 
+/* In a column wider than that (the terminals folded), the Activity chat stands in its
+   middle: as much room on each side, a percentage of the column; an agent's composer
+   (Agents) stays at its page's left edge. Above the `margin: 0` of the feed's items
+   (.chat-start, .run-events); a human's message (.mine) adds its indent to its side. */
+.chat > .chat-feed > *,
+.chat > .composer {
+  --chat-side: max(0px, (100% - 860px) / 2);
+  margin-inline: var(--chat-side);
+}
+
 /* The top of the feed: where earlier messages load, or the start of the session. */
 .chat-top {
   flex: none;
@@ -1498,7 +1614,7 @@ h3 {
 }
 
 .chat-message.mine {
-  margin-left: 48px;
+  margin-left: calc(var(--chat-side, 0px) + 48px);
   background: var(--raised);
   border-color: transparent;
 }
@@ -1758,7 +1874,7 @@ h3 {
 
 @media (max-width: 760px) {
   .chat-message.mine {
-    margin-left: 16px;
+    margin-left: calc(var(--chat-side, 0px) + 16px);
   }
 
   .content {

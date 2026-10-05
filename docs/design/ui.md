@@ -375,11 +375,26 @@ Sessions for now. The UI's texts are in English.
   it is resumed. Each shows a line under its name: what waits, or its agents, and on hover
   or keyboard focus of the row ⋯ with the entry's menu, Copy link and Open in new tab; the
   session's own actions are in its head (Launch and session control, below). The **session**
-  in the middle: its name, status and actions, then the tabs **Activity | Agents | Flows |
+  in the middle: its head in two lines (task feature/session-head, 2026-10-05), then the
+  tabs **Activity | Agents | Flows |
   Artifacts** (its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents the agents and what each does (Agents
   below), Flows the runs (Flows below), Artifacts a placeholder naming the task that fills
-  it. The **terminal panel** on the
+  it. The head's first line: the name, the status, how long the session ran, then on the
+  right Copy link and its actions (Launch and session control, below). The run time is
+  the server's (`SessionInfo.ran_seconds`, `running_since`: `runtime.session_time`, stops
+  and the time after its tmux died left out); while it runs the UI adds the time since
+  `running_since` and counts on each minute ("2 h 14 min"); a stopped session says
+  `stopped 5 h ago · ran 3 h 2 min` (from `stopped_at`), one whose tmux is gone `ran …`.
+  One formatter (`ChatText.duration`) says every duration: exact to the next unit here,
+  roughly (its largest unit) for `since` in Agents and Flows. The second line, small and
+  quiet: Copy path (a folder icon, no other copy button), the folder in mono on one line,
+  cut with "…" at its start so its end stays in view, whole in its `title`; the kits; the
+  provider · permission mode (the provider alone without a mode). In a narrow column the
+  icons of the first line and the items of the second go to lines of their own, with no
+  sideways scrolling. The Activity chat (its feed and composer) is at most 860 px wide and
+  stands in the middle of a wider column (the terminals folded), as much room on each
+  side; an agent's composer (Agents) stays at its page's left edge. The **terminal panel** on the
   right, on every tab (Terminal above), is always there, so the page never jumps (the UI
   polish, 2026-10-03): its first tab is the supervisor's, pinned (no ×), shown when the
   page opens; a team chip or Open terminal adds an agent's tab or selects it, and the
@@ -701,7 +716,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   a Stop in the list row was too easy to hit), only in the session's head, as icons with a
   tooltip and the same accessible name: running and `loop_down`: Stop session…; stopped:
   Resume… and Forget… (in the colour of a dangerous action); `tmux_gone`: Resume… and Stop
-  session… (which marks it stopped). The head has no ⋯.
+  session… (which marks it stopped). The head has no ⋯. Before them **Copy link** (a link
+  icon) copies the session page's address as the list row's Copy link does, and on the
+  head's second line **Copy path** its folder (Structure, above); both say what was copied
+  ("Link copied", "Path copied") under the button for 2 s, or show the text selected when
+  the copy fails. Copying is one module, `Copy.tsx`, for the head and the row's menu.
 - **The list row's menu** (`SessionRowMenu.tsx`, on the shared `Menu.tsx`): ⋯ holds
   actions on the entry only, and only ones that work now; no placeholders for features
   that do not exist (no Rename, Pin or colour until they do). **Copy link** copies the

@@ -18,6 +18,9 @@ const session = (name: string, status: SessionInfo["status"] = "running"): Sessi
   provider: "claude",
   permission_mode: null,
   without: [],
+  ran_seconds: 0,
+  running_since: null,
+  stopped_at: null,
 });
 
 const item = (key: string): WaitingItem => ({

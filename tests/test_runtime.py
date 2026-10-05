@@ -2119,3 +2119,138 @@ def test_kit_users_are_the_sessions_that_name_the_kit_split_by_status(
     none = runtime.kit_users("nope")
     assert none == runtime.KitUsers([], [])
     assert none.running_line("nope") is None and none.stopped_line("nope") is None
+
+
+# The time a session ran (runtime.session_time) and the end of one whose tmux died.
+
+
+def _utc(at: str) -> datetime.datetime:
+    return datetime.datetime.fromisoformat(at).replace(tzinfo=datetime.timezone.utc)
+
+
+def _set_created(session, at):
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET created_at = ? WHERE name = ?", (at, session))
+
+
+def _set_events(session, kind, *times):
+    """Give the session's events of `kind`, oldest first, these times."""
+    with state.connect() as db:
+        ids = [
+            r[0]
+            for r in db.execute(
+                "SELECT id FROM events WHERE session = ? AND kind = ? ORDER BY id", (session, kind)
+            )
+        ]
+        db.executemany(
+            "UPDATE events SET created_at = ? WHERE id = ?", zip(times, ids, strict=True)
+        )
+
+
+def _set_all_events(session, at):
+    with state.connect() as db:
+        db.execute("UPDATE events SET created_at = ? WHERE session = ?", (at, session))
+
+
+def _set_seen(session, at):
+    with state.connect() as db:
+        db.execute(
+            "UPDATE agents SET seen_at = ? WHERE session = ?", (_utc(at).timestamp(), session)
+        )
+
+
+def _gone(session):
+    return [e.created_at for e in state.list_events(session) if e.kind == state.SESSION_GONE]
+
+
+def test_a_new_session_runs_since_it_was_created(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    _set_created("s", "2026-10-05 10:00:00")
+    sess = state.get_session("s")
+    assert sess.created_at == "2026-10-05 10:00:00"
+    assert runtime.session_time(sess) == runtime.SessionTime(0, _utc("2026-10-05 10:00:00"))
+
+
+def test_a_session_ran_between_its_starts_and_stops(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    _set_created("s", "2026-10-05 10:00:00")
+    _set_all_events("s", "2026-10-05 10:00:00.000")
+    _set_events("s", state.SESSION_STOP, "2026-10-05 10:10:00.000", "2026-10-05 11:05:00.500")
+    _set_events("s", state.SESSION_RESUME, "2026-10-05 11:00:00.000", "2026-10-05 12:00:00.000")
+    running = runtime.session_time(state.get_session("s"))
+    assert running == runtime.SessionTime(900, _utc("2026-10-05 12:00:00"))
+    runtime.stop_session("s")
+    _set_events(
+        "s",
+        state.SESSION_STOP,
+        *["2026-10-05 10:10:00.000", "2026-10-05 11:05:00.500"],
+        "2026-10-05 12:01:00.000",
+    )
+    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(960, None)
+    assert _gone("s") == []
+
+
+def _died(repo, fake_tmux, seen):
+    """Session "s", created at 10:00, whose agents' latest hook ran at `seen` (none for
+    None), and whose tmux server died then."""
+    runtime.start_session(str(repo), "s", None)
+    _set_created("s", "2026-10-05 10:00:00")
+    _set_all_events("s", "2026-10-05 10:05:00.000")
+    if seen:
+        _set_seen("s", seen)
+    fake_tmux.append(("kill_session", "s"))
+
+
+def test_a_resume_after_tmux_died_counts_no_time_after_the_last_sign_of_life(repo, fake_tmux):
+    _died(repo, fake_tmux, "2026-10-05 10:20:00")
+    gone = runtime.session_time(state.get_session("s"))
+    assert gone == runtime.SessionTime(1200, None)
+    runtime.start_session(str(repo), "s", None)
+    assert _gone("s") == ["2026-10-05 10:20:00.000"]
+    _set_events("s", state.SESSION_STOP, "2026-10-05 13:00:00.000")
+    _set_events("s", state.SESSION_RESUME, "2026-10-05 13:00:00.000")
+    resumed = runtime.session_time(state.get_session("s"))
+    assert resumed == runtime.SessionTime(gone.ran_seconds, _utc("2026-10-05 13:00:00"))
+
+
+def test_a_stop_after_tmux_died_counts_no_time_after_the_last_sign_of_life(repo, fake_tmux):
+    _died(repo, fake_tmux, "2026-10-05 10:20:00")
+    gone = runtime.session_time(state.get_session("s"))
+    runtime.stop_session("s")
+    assert _gone("s") == ["2026-10-05 10:20:00.000"]
+    assert runtime.session_time(state.get_session("s")) == gone == runtime.SessionTime(1200, None)
+
+
+def test_without_hooks_the_last_sign_of_life_is_the_sessions_latest_event(repo, fake_tmux):
+    _died(repo, fake_tmux, None)
+    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(300, None)
+    runtime.stop_session("s")
+    assert _gone("s") == ["2026-10-05 10:05:00.000"]
+    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(300, None)
+
+
+def test_a_stop_of_a_session_whose_tmux_runs_records_no_end_of_life(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    assert _gone("s") == []
+
+
+@pytest.mark.parametrize("seen", [None, "2026-10-05 10:50:00"])
+def test_a_last_sign_of_life_before_the_resume_makes_a_span_of_nothing(repo, fake_tmux, seen):
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    _set_created("s", "2026-10-05 10:00:00")
+    _set_all_events("s", "2026-10-05 10:05:00.000")
+    _set_events("s", state.SESSION_STOP, "2026-10-05 10:10:00.000")
+    _set_events("s", state.SESSION_RESUME, "2026-10-05 11:00:00.000")
+    if seen:  # a hook of the agents of before the stop, say
+        _set_seen("s", seen)
+    fake_tmux.append(("kill_session", "s"))
+    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(600, None)
+    runtime.stop_session("s")
+    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(600, None)

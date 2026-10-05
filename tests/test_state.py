@@ -844,7 +844,9 @@ def test_a_resumed_session_gets_its_new_settings(lado_home):
     state.stop_session("s")
     state.resume_session(state.Session("s", "/r", "plan", "kilo", ["team"], ["skill:x"]), "kits")
     sess = state.get_session("s")
-    assert sess == state.Session("s", "/r", "plan", "kilo", ["team"], ["skill:x"])
+    assert sess == state.Session(
+        "s", "/r", "plan", "kilo", ["team"], ["skill:x"], created_at=sess.created_at
+    )
     last = state.list_events("s")[-1]
     assert (last.agent, last.kind, last.detail) == ("lado", state.SESSION_RESUME, "kits")
 

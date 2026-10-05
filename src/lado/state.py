@@ -374,6 +374,11 @@ GATE_ANSWER = "gate_answer"  # the gate closed; detail: "#<id> <answer>[: <comme
 # Session events, by LADO.
 SESSION_STOP = "session_stop"  # detail: what was dropped
 SESSION_RESUME = "session_resume"  # detail: what changed
+# Its runtime was found gone at a stop or resume: created_at is the last sign of life
+# (last_alive), not when it was found; the session_stop follows.
+SESSION_GONE = "session_gone"
+# The events that start and end the spans a session ran (runtime.session_time).
+SPAN_EVENTS = (SESSION_RESUME, SESSION_STOP, SESSION_GONE)
 
 # Message kinds.
 MESSAGE = "message"
@@ -428,6 +433,7 @@ class Session:
     kits: list[str] = field(default_factory=lambda: ["default"])
     without: list[str] = field(default_factory=list)  # switched-off agents, skills, MCP
     stopped_at: str | None = None  # UTC; None while it runs
+    created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
 
 
 @dataclass(frozen=True)
@@ -687,13 +693,16 @@ def delete_session(name: str) -> None:
         db.execute("DELETE FROM sessions WHERE name = ?", (name,))
 
 
-def stop_session(name: str) -> tuple[list[Agent], int]:
+def stop_session(name: str, gone: bool = False) -> tuple[list[Agent], int]:
     """Mark the session stopped and forget its agents, so their names can be used again;
     their messages and events stay. Messages they never got, and bodies they never read,
-    are dropped. Returns the agents
+    are dropped. `gone`: its runtime was found gone, so a session not stopped yet gets a
+    `session_gone` at its last sign of life first. Returns the agents
     and how many messages were dropped."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        if gone:
+            _session_gone(db, name)
         rows, dropped = _stop_session(db, name, "")
         db.execute("COMMIT")
     return [_agent(r) for r in rows], dropped
@@ -706,6 +715,46 @@ def unreceived(name: str) -> int:
             f"SELECT count(*) FROM messages WHERE session = ? AND {UNRECEIVED}",
             (name, *UNRECEIVED_ARGS),
         ).fetchone()[0]
+
+
+def _session_gone(db: sqlite3.Connection, name: str) -> None:
+    """Record, for a session not stopped, that it ended at its last sign of life; before
+    _stop_session, which forgets the agents whose hooks tell it."""
+    if db.execute(
+        "SELECT 1 FROM sessions WHERE name = ? AND stopped_at IS NULL", (name,)
+    ).fetchone():
+        db.execute(
+            "INSERT INTO events (session, agent, kind, created_at) VALUES (?, ?, ?, ?)",
+            (name, LADO, SESSION_GONE, _last_alive(db, name)),
+        )
+
+
+def last_alive(name: str) -> str:
+    """The session's last sign of life, in events' form ("YYYY-MM-DD HH:MM:SS.SSS", UTC)."""
+    with connect() as db:
+        return _last_alive(db, name)
+
+
+def _last_alive(db: sqlite3.Connection, name: str) -> str:
+    """When the latest hook of its agents ran; with none, its latest event."""
+    seen = db.execute("SELECT max(seen_at) FROM agents WHERE session = ?", (name,)).fetchone()[0]
+    if seen:
+        at = datetime.datetime.fromtimestamp(seen, datetime.timezone.utc)
+        return at.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    latest = "SELECT max(created_at) FROM events WHERE session = ?"
+    return db.execute(latest, (name,)).fetchone()[0] or ""
+
+
+def span_events(name: str) -> list[Event]:
+    """The session's events that start or end a span it ran (SPAN_EVENTS), oldest first."""
+    marks = ", ".join("?" * len(SPAN_EVENTS))
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id, agent, kind, detail, created_at, run FROM events"
+            f" WHERE session = ? AND kind IN ({marks}) ORDER BY id",
+            (name, *SPAN_EVENTS),
+        ).fetchall()
+    return [Event(*r) for r in rows]
 
 
 def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, int]:
@@ -1888,4 +1937,5 @@ def _session(row: sqlite3.Row) -> Session:
         json.loads(row["kits"]),
         json.loads(row["switched_off"]),
         row["stopped_at"],
+        row["created_at"],
     )

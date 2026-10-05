@@ -122,6 +122,13 @@ export const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
   </Icon>
 );
 
+// A chevron down: an open group; turned to the right (CSS) when it is folded.
+export const ChevronIcon = () => (
+  <Icon>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+
 // A session's actions in its head: Stop (a square), Resume (a triangle), Forget (a bin).
 export const StopIcon = () => (
   <Icon>

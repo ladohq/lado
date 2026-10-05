@@ -8,8 +8,10 @@ import {
   storedPanel,
   storeColumn,
   storedColumn,
+  storedSessionGroups,
   storedSessionsList,
   storePanel,
+  storeSessionGroups,
   storeSessionsList,
 } from "./prefs";
 
@@ -89,6 +91,26 @@ test("the session list keeps its width and whether it is collapsed in lado.sessi
   expect(storedSessionsList()).toEqual({ width: 300, collapsed: false });
 });
 
+test("each session group is remembered open or folded by its id; Stopped is folded by default", () => {
+  expect(storedSessionGroups()).toEqual({ "needs-you": "open", running: "open", stopped: "folded" });
+  storeSessionGroups({ "needs-you": "folded", running: "open", stopped: "open" });
+  expect(JSON.parse(localStorage.getItem("lado.sessionGroups")!)).toEqual({
+    "needs-you": "folded",
+    running: "open",
+    stopped: "open",
+  });
+  expect(storedSessionGroups()).toEqual({ "needs-you": "folded", running: "open", stopped: "open" });
+  localStorage.setItem("lado.sessionGroups", JSON.stringify({ running: "folded", stopped: "sideways" }));
+  expect(storedSessionGroups()).toEqual({ "needs-you": "open", running: "folded", stopped: "folded" });
+});
+
+test("the older key of the stopped sessions is only where Stopped starts, until the groups are stored", () => {
+  localStorage.setItem("lado.stoppedSessions", "open");
+  expect(storedSessionGroups().stopped).toBe("open");
+  storeSessionGroups({ "needs-you": "open", running: "folded", stopped: "folded" });
+  expect(storedSessionGroups().stopped).toBe("folded");
+});
+
 test("Take control asks until the human says not to ask again", () => {
   expect(storedAskControl()).toBe(true);
   storeAskControl(false);
@@ -106,7 +128,9 @@ test("without browser storage every default holds and nothing breaks", () => {
   storePanel({ width: 600, collapsed: true });
   storeSessionsList({ width: 300, collapsed: true });
   storeAskControl(false);
+  storeSessionGroups({ "needs-you": "folded", running: "folded", stopped: "open" });
   expect(storedPanel()).toEqual({ width: PANEL_WIDTH.initial, collapsed: false });
   expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: false });
   expect(storedAskControl()).toBe(true);
+  expect(storedSessionGroups()).toEqual({ "needs-you": "open", running: "open", stopped: "folded" });
 });

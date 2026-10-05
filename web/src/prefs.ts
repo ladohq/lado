@@ -169,11 +169,25 @@ export function storeKitsSource(source: string): void {
   write(KITS_SOURCE, source);
 }
 
-// Whether the session list shows its stopped sessions (folded by default).
+// Each group of the session list open or folded, by the group's id: Needs you and Running
+// open, Stopped folded by default. An older LADO kept only Stopped's, under STOPPED: it is
+// where Stopped starts until the groups are stored, and never read after that.
+export type SessionGroup = "needs-you" | "running" | "stopped";
+export type SessionGroups = Record<SessionGroup, "open" | "folded">;
+
+const SESSION_GROUPS = "lado.sessionGroups";
 const STOPPED = "lado.stoppedSessions";
 
-export const storedStoppedOpen = (): boolean => read(STOPPED) === "open";
+export function storedSessionGroups(): SessionGroups {
+  const stored = readJson(SESSION_GROUPS);
+  const first = stored === null && read(STOPPED) === "open" ? "open" : "folded";
+  const fold = (group: SessionGroup, fallback: "open" | "folded") => {
+    const value = stored?.[group];
+    return value === "open" || value === "folded" ? value : fallback;
+  };
+  return { "needs-you": fold("needs-you", "open"), running: fold("running", "open"), stopped: fold("stopped", first) };
+}
 
-export function storeStoppedOpen(open: boolean): void {
-  write(STOPPED, open ? "open" : "folded");
+export function storeSessionGroups(groups: SessionGroups): void {
+  write(SESSION_GROUPS, JSON.stringify(groups));
 }

@@ -41,7 +41,8 @@ def test_a_new_session_and_lado_stop_show_without_a_reload(page: Page, server, r
 
     assert lado_cli("stop", first).returncode == 0  # another process
     expect(view).to_contain_text("stopped")
-    sessions.get_by_role("button", name="Stopped (1)").click()  # folded at first
+    # Stopped is folded at first, but the open session is seen in it.
+    expect(sessions.get_by_role("button", name="Stopped 1")).to_have_attribute("aria-expanded", "false")
     stopped = sessions.get_by_role("region", name="Stopped")
     expect(stopped.get_by_role("link", name=first)).to_contain_text("stopped")
     assert page.evaluate("window.notReloaded") is True

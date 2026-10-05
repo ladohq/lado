@@ -369,12 +369,38 @@ Sessions for now. The UI's texts are in English.
   window, as Launch), the
   search by name, and the sessions in groups: **Needs you** (something waits for the
   human: `SessionInfo.waiting`, counted by the server: open gates, open questions, agents
-  in `waiting`), **Running**, and **Stopped** at the bottom, folded (remembered in the
-  browser). Nothing in a stopped session counts as waiting (its waiting is all zeros),
-  though its gates stay open and `lado ls` shows them: nothing in it can be answered until
-  it is resumed. Each shows a line under its name: what waits, or its agents, and on hover
-  or keyboard focus of the row ⋯ with the entry's menu, Copy link and Open in new tab; the
-  session's own actions are in its head (Launch and session control, below). The **session**
+  in `waiting`), **Running**, and **Stopped** at the bottom. Nothing in a stopped session
+  counts as waiting (its waiting is all zeros), though its gates stay open and `lado ls`
+  shows them: nothing in it can be answered until it is resumed. The groups (decided
+  2026-10-05, task feature/session-list-groups; mockup
+  `.lado/mockups/session-list-groups/index.html`, variant C2,
+  https://claude.ai/artifact/36B8Z5KWxKWhyMPcyswL5M version 3) look and work alike: each
+  is under the one group heading of every list (`GroupHead.tsx`, List and page below), a
+  band of its tone, Needs you `human` (`--human` on `--human-ground`), Running `done`
+  (`--done` on `--done-ground`), Stopped `neutral` (`--muted` on `--raised`), the name in
+  small capitals and the count on the right in the group's colour, a chevron on the left.
+  The whole band is a button (`aria-expanded`, `aria-controls` naming the group's list,
+  which stays in the page folded or not; Enter and Space as any button) that folds and
+  opens its group; a folded group keeps its count, and a group without sessions is not
+  drawn, heading and all. Each group's state is remembered in the browser by its id
+  (`lado.sessionGroups`: `{"needs-you", "running", "stopped"}`, each `open` or `folded`);
+  by default Needs you and Running are open and Stopped folded. The older key of Stopped
+  alone (`lado.stoppedSessions`) is only where Stopped starts while `lado.sessionGroups` is
+  not stored, and never read after. While the search has text every group with a match is
+  shown open, and nothing remembered changes. The open session is always seen: in a folded
+  group (the human folded it, or the session moved there, e.g. stopped into Stopped) its
+  row alone shows under the heading; going to a session never opens a group nor changes
+  what is remembered. The rows look alike in every group (no dimmed stopped ones, no
+  orange in Needs you): the open row and the one under the pointer or focus get a stripe
+  of their group's colour on the left. Each shows a line under its name: what waits, or
+  its agents, the status of a session whose tmux session is gone or whose loop does not
+  run, and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
+  Open in new tab; the session's own actions are in its head (Launch and session control,
+  below). On hover or keyboard focus a row shows the session's card (`SessionTip` in a
+  `Tooltip`, the one of the strip's icons, below): a dot of its group's colour, name ·
+  status · agents, `Needs you: <the row's line>` in the human's colour, the folder, kits ·
+  provider · `mode <permission mode>` when it has one, and for a stopped session `Stopped:
+  open it and press Resume`; all from `SessionInfo`, no CLI commands. The **session**
   in the middle: its name, status and actions, then the tabs **Activity | Agents | Flows |
   Artifacts** (its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents the agents and what each does (Agents
@@ -405,9 +431,8 @@ Sessions for now. The UI's texts are in English.
   neutral square, the first of the name's first two words (split at `-`, `_`, `.`, `/`,
   space) or else its first two (`crm-api` CA, `lado` LA); two sessions may share them. One
   that needs the human is marked by colour only (`--human` on `--human-ground`, no count),
-  and its label says `<name>, needs you`. On hover or focus its tooltip (Tooltip.tsx) says
-  name · status · agents, `Needs you: <the row's line>` in the human's colour, the folder,
-  and kits · provider. While the list loads the column is empty and `aria-busy`; when
+  and its label says `<name>, needs you`. On hover or focus it shows the session's card,
+  the row's (above). While the list loads the column is empty and `aria-busy`; when
   `/api/sessions` fails, an alert icon in `--danger` takes its place with the error in its
   label and tooltip, the open list's text; Sessions and "+" work either way. Collapsed is
   remembered with the width (`lado.sessionsList`, `{ width, collapsed }`) and is the
@@ -429,8 +454,11 @@ Sessions for now. The UI's texts are in English.
   by the texts each tab names, over every group at once; while it has text each group
   shows every match, a group with an `empty` text and no match says "No match", and with
   none anywhere it says `No run matches “…”`. No group folds (decided 2026-10-05, task
-  feature/flows-tab-redesign): each is open under a head of its own, a band ruled above
-  and below with its name in capitals and how many rows it has now, the groups apart by a
+  feature/flows-tab-redesign): each is open under its heading, the one of every list
+  (`GroupHead.tsx`, since task feature/session-list-groups): a band of the group's tone
+  (`Group.tone`: `human`, `done` or `neutral`, the default; Flows' Active and History are
+  neutral), its name in small capitals and how many rows it has now, no chevron; the
+  session list's groups use it with folding (Sessions, above). The groups are apart by a
   gap. A group may say why it is empty (`empty`: "No active runs"; without it an empty
   group is not drawn, as Agents' one group without a heading, `heading: false`), show its
   rows under their local day (`days`: Today, Yesterday, a date; a row has the time) and
@@ -1047,6 +1075,8 @@ The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8E
 #9AA1AD, actions #6FA0FF (labels on them #111317), waiting for the human #F0A25A on #3A2A1C.
 Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242C), and
 (Flows, 2026-10-05) green for work that went well, a run that ended and a step of its
-history (#1E7A46 on #E7F4EC / #5CC98A on #18301F). Every
+history (#1E7A46 on #E7F4EC / #5CC98A on #18301F); since task feature/session-list-groups
+green (`--done`) also means what works now, the session list's Running group, while the
+Flows tab's active runs stay neutral. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test
 (`web/src/tokens.test.ts`) checks it.

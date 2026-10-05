@@ -287,7 +287,8 @@ test("without a kit Start stays off and the window says why", async () => {
   await ready("/src/lado");
   const field = screen.getByRole("group", { name: "Kits" });
   fireEvent.click(within(field).getByRole("button", { name: "Remove default" }));
-  expect(screen.getByText("a session needs at least one kit")).toBeTruthy();
+  // Waited for: under the load of a full run it was not there yet when looked for at once.
+  expect(await screen.findByText("a session needs at least one kit")).toBeTruthy();
   expect(startButton().disabled).toBe(true);
 });
 
@@ -508,6 +509,20 @@ test.each([
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
   expect(ranText()).toBe(text);
+});
+
+test("a stopped session's head counts on how long ago it stopped", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    sessions = [session("lado", { status: "stopped", ran_seconds: 120, stopped_at: ago(59 * MINUTE + 30_000) })];
+    open("/sessions/lado");
+    await screen.findByRole("region", { name: "Session lado" });
+    expect(ranText()).toBe("stopped 59 min ago · ran 2 min");
+    act(() => vi.advanceTimersByTime(MINUTE));
+    expect(ranText()).toBe("stopped 1 h ago · ran 2 min");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("the head's second line has the folder, whole in its title, the kits, the provider and the mode", async () => {

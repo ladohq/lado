@@ -99,7 +99,6 @@ def test_with_the_terminals_folded_the_chat_stands_in_the_middle(page: Page, ser
     page.goto(f"{server['url']}/sessions/{session}/agents/supervisor")
     composer = ".agent-composer .composer"
     expect(page.locator(composer)).to_be_visible()
-    shot(page, "agent")
     left, right = gaps(page, ".agent-page", composer)
     assert abs(left) <= 2 and right > 10, (left, right)
     shot(page, "agent")

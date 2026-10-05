@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 
 import { CopyField, useCopy } from "./Copy";
 import { Menu, useBelow, useDismiss } from "./Menu";
-import { sessionPath } from "./paths";
+import { sessionLink, sessionPath } from "./paths";
 
 export function SessionRowMenu({ name }: { name: string }) {
   const [shown, setShown] = useState<"menu" | "link" | null>(null);
@@ -59,9 +59,4 @@ export function SessionRowMenu({ name }: { name: string }) {
       {shown === "link" && <CopyField title={`Link to ${name}`} label="Link" text={link} style={below} onClose={back} />}
     </div>
   );
-}
-
-// The session page's address, without the token.
-export function sessionLink(name: string): string {
-  return `${window.location.origin}${sessionPath(name)}`;
 }

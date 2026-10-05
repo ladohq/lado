@@ -15,7 +15,7 @@ import {
 import { Agents } from "./Agents";
 import type { SessionInfo, SessionStatus } from "./api";
 import { Chat } from "./Chat";
-import { duration, since as ago } from "./ChatText";
+import { duration } from "./ChatText";
 import { CopyButton } from "./Copy";
 import { FoldToggle } from "./Fold";
 import { Flows, isOpen } from "./Flows";
@@ -23,10 +23,10 @@ import { AgentCliIcon, CollapsePanelIcon, FolderIcon, KitsIcon, LinkIcon, Proble
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
-import { sessionLink, SessionRowMenu } from "./SessionRowMenu";
+import { SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
-import { isTab, PLANS, sessionPath, TABS, type Tab } from "./paths";
+import { isTab, PLANS, sessionLink, sessionPath, TABS, type Tab } from "./paths";
 import { Placeholder } from "./Placeholder";
 import {
   PANEL_WIDTH,
@@ -473,22 +473,23 @@ function SessionHead({ session }: { session: SessionInfo }) {
   );
 }
 
-const TICK_MS = 60_000; // how often a running session's time is counted on
+const TICK_MS = 60_000; // how often the times in a session's head are counted on
 
 // How long the session ran: while it runs, its closed spans and the time since its last
-// start, counted on each minute; stopped, how long ago too.
+// start; stopped, how long ago too; both counted on each minute.
 function Ran({ session }: { session: SessionInfo }) {
   const { running_since: since, stopped_at: stopped } = session;
+  const from = since ?? stopped; // the time counted from
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    if (!since) return;
+    if (!from) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(timer);
-  }, [since]);
-  const open = since ? Math.max(0, (now - new Date(since).getTime()) / 1000) : 0;
-  const ran = duration(session.ran_seconds + open, true);
-  const text = since ? ran : stopped ? `stopped ${ago(stopped)} ago · ran ${ran}` : `ran ${ran}`;
+  }, [from]);
+  const seconds = (iso: string) => Math.max(0, (now - new Date(iso).getTime()) / 1000);
+  const ran = duration(session.ran_seconds + (since ? seconds(since) : 0), true);
+  const text = since ? ran : stopped ? `stopped ${duration(seconds(stopped))} ago · ran ${ran}` : `ran ${ran}`;
   return <span className="session-ran">{text}</span>;
 }
 

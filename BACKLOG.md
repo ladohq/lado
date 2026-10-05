@@ -799,12 +799,17 @@ Wanted: when that becomes noticeable, an index `events(session, kind)` (a schema
 own task).
 Found: 2026-10-05, run feature/session-head (design).
 
-## A vitest test failed once under load and was not named
+## Launch vitest tests fail now and then under the load of a full run
 
-In run feature/session-head `make web` ended once with `Tests 1 failed | 347 passed`; the
-output kept only the summary (the run piped it through grep), and ten later runs passed.
-Another time `with a refused copy Copy link shows the address selected` failed on the
-field's focus (`expected <body> to be <input>`): checked right after the dialog showed,
-before the effect that focuses it; that check now waits.
-Wanted: if a vitest test fails again in `make check`, name it here with its first error.
-Found: 2026-10-05, run feature/session-head (developer).
+In a full vitest run (`make check`, `npx vitest run`), about 2 runs in 7,
+`Launch.test.tsx > without a kit Start stays off and the window says why` did not find
+"a session needs at least one kit" right after the click on Remove default
+(`TestingLibraryElementError: Unable to find an element with the text`); the file alone
+passes. Once `with a refused copy Copy link shows the address selected` failed on the
+field's focus (`expected <body> to be <input>`), checked before the effect that focuses it.
+Both now wait for what they check (`findByText`, `waitFor`). Not shown: why the kits
+message is late; the Launch window's `touched` guard should keep a late folder load from
+putting the default kit back, so a product race is not ruled out.
+Wanted: if the kits test still fails with the wait, look for a load that resets the kits
+after the human removed them.
+Found: 2026-10-05, run feature/session-head (developer, reviewer).

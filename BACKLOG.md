@@ -741,3 +741,12 @@ scrolling the session list or the session's page, or resizing the window, leaves
 old place, away from its button. The row's menu did so on main before.
 Wanted: the place computed again on scroll and resize, or the menu closed on scroll.
 Found: 2026-10-05, feature/session-controls (review).
+
+## Two texts for one rule: a kit that needs a newer LADO
+
+`lado kits add ./folder` and `lado start` (through `kits.load`, `_load_dependencies`) say
+`<file>: kit "k" needs LADO >=99.0, this is X; upgrade LADO`; `lado kits add <git>` and
+`lado kits check` (through `kits.load_release`) say `k 1.2.0 needs LADO 99.0, this is X;
+upgrade LADO`.
+Wanted: one text from one function for every path.
+Found: 2026-10-05, fix/kits-check-tag (developer's concern, reviewer's Found on the way).

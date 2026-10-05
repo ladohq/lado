@@ -176,7 +176,7 @@ class Found:
     def release(self, tag: str | None) -> Kit:
         """Loaded and fetched with the rules of `lado kits add` (`load_release`)."""
         self._check_link()
-        spec = f"{self.name}@{tag}" if tag else self.name
+        spec = f"{self.name}@{tag}" if tag is not None else self.name
         return load_release(self.path, spec, tag, self.where, named=True)
 
     def _check_link(self) -> None:
@@ -646,7 +646,7 @@ def load_release(
     Without `tag` only the LADO it needs. `spec` names it in errors; `hint` ends the error
     about LADO; `named` is load's `named_folder`. `lado kits add <address>@<tag>` and
     `lado kits check [--tag]` share it."""
-    if tag:
+    if tag is not None:
         _check_tag(spec, tag)
         _check_root(root, spec)
     need = _lado_needed(root)
@@ -657,7 +657,7 @@ def load_release(
             f"upgrade LADO{hint}"
         )
     kit = fetch(load(root, where, named_folder=named))
-    if tag and kit.version != tag[1:]:
+    if tag is not None and kit.version != tag[1:]:
         raise KitError(
             f"{spec}: kit.yaml says version {kit.version}; the tag and kit.yaml must agree"
         )

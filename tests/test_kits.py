@@ -1088,6 +1088,7 @@ def test_a_folder_released_at_a_tag_has_the_rules_of_add(tmp_path):
     root = make_kit(tmp_path, "team", version="1.2.0")
     assert kits.load_release(root, f"{root}@v1.2.0", "v1.2.0").version == "1.2.0"
     cases = {
+        "": f"{root}@: a kit is pinned by its version tag vX.Y.Z",
         "main": f"{root}@main: a kit is pinned by its version tag vX.Y.Z; to try an unreleased",
         "1.2.0": f"{root}@1.2.0: a kit is pinned by its version tag vX.Y.Z",
         "v1.3.0": f"{root}@v1.3.0: kit.yaml says version 1.2.0; the tag and kit.yaml must agree",

@@ -300,7 +300,7 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
         # A folder may be any kit, e.g. a kit at the root of its repository; with --tag,
         # what `lado kits add <address>@<tag>` would say of it.
         if target.is_dir():
-            spec = f"{args.kit}@{args.tag}" if args.tag else args.kit
+            spec = f"{args.kit}@{args.tag}" if args.tag is not None else args.kit
             kit = kits.load_release(target, spec, args.tag)
         else:
             kit = kits.find(args.kit, repo).release(args.tag)

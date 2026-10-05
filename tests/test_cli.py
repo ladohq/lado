@@ -339,6 +339,7 @@ def test_kits_check_tag(tmp_path, capsys):
     assert main(["kits", "check", str(kit), "--tag", "v1.2.0"]) == 0
     assert "team: OK" in capsys.readouterr().out
     for tag, error in {
+        "": f"{kit}@: a kit is pinned by its version tag vX.Y.Z",  # CI's $TAG unset
         "1.2.0": f"{kit}@1.2.0: a kit is pinned by its version tag vX.Y.Z",
         "v1.3.0": f"{kit}@v1.3.0: kit.yaml says version 1.2.0; the tag and kit.yaml must agree",
     }.items():

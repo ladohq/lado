@@ -28,8 +28,12 @@ def test_each_group_folds_by_its_heading_remembered_and_the_open_session_stays_i
     running = sessions.get_by_role("region", name="Running")
     head = sessions.get_by_role("button", name="Running 2")
     expect(running.get_by_role("link", name=other)).to_be_visible()
-    expect(sessions.get_by_role("button", name="Needs you 1")).to_have_attribute("aria-expanded", "true")
-    expect(sessions.get_by_role("button", name="Stopped 1")).to_have_attribute("aria-expanded", "false")
+    expect(sessions.get_by_role("button", name="Needs you 1")).to_have_attribute(
+        "aria-expanded", "true"
+    )
+    expect(sessions.get_by_role("button", name="Stopped 1")).to_have_attribute(
+        "aria-expanded", "false"
+    )
     expect(sessions.get_by_role("region", name="Stopped").get_by_role("link")).to_have_count(0)
     shot(page, "light")
 
@@ -54,7 +58,9 @@ def test_each_group_folds_by_its_heading_remembered_and_the_open_session_stays_i
 
     page.emulate_media(color_scheme="dark")
     sessions.get_by_role("button", name="Stopped 1").click()
-    expect(sessions.get_by_role("region", name="Stopped").get_by_role("link", name=old)).to_be_visible()
+    expect(
+        sessions.get_by_role("region", name="Stopped").get_by_role("link", name=old)
+    ).to_be_visible()
     shot(page, "dark")
 
 

@@ -744,3 +744,16 @@ screen: a run of feature/flows-tab-redesign showed the old Flows page from anoth
 Wanted: a folder per checkout (e.g. named after the repo root's path or the branch), printed
 as now.
 Found: 2026-10-05, feature/flows-tab-redesign (developer).
+
+## Flaky: integration test "CLI refuses to migrate the database under a running session"
+
+`tests/integration/test_agents.py::test_cli_refuses_to_migrate_the_database_under_a_running_session`
+failed once in `make check` (`lado ls` exited 0, expected 1) and passed alone and in the
+next `make check`. Likely a race: after `agent_helpers.previous_schema()` rolls `lado.db`
+back, a hook or `lado mcp` of the session's running fake agent opens the database with
+`state.connect` and migrates it again (hooks and `lado mcp` do not check, AGENTS.md
+`state.py`) before the test's `lado ls`, so there is nothing left to refuse. Wanted: a
+session with no process that can open the database between the rollback and the check
+(stop the fake agent's hooks, or roll back with the session's tmux alive but no agent),
+then the assertion is deterministic.
+Found: 2026-10-05, merge step of run feature/flows-tab-redesign (after main got schema 18).

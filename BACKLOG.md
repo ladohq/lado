@@ -920,3 +920,14 @@ known Agents.test.tsx flake; both files passed alone at once (47 passed).
 Wanted: the tests wait for the region with a timeout that holds under `make check`'s load,
 or the region comes without the slow step.
 Found: 2026-10-05, make check of run feature/opencode-provider after merging main.
+
+## Flaky: UI e2e test of a question card under load
+
+`tests/ui/test_chat.py::test_the_supervisor_asks_and_the_human_answers_in_a_card` failed in
+`make check` with `Locator expected to be visible ... get_by_role("article", name="Question
+from supervisor").get_by_role("button", name="later")` (timeout 5000ms) at a load average of
+about 160; `tests/ui/test_chat.py` passed alone right after with no change.
+Wanted: the wait for the fake agent's question allows for a loaded machine (the shared
+timeout of the UI tests, or a wait on the message in lado.db first), so it fails only when
+the question never comes.
+Found: 2026-10-05, merge step of feature/session-list-groups.

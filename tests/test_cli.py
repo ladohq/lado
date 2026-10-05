@@ -29,6 +29,26 @@ def test_start_with_provider_and_ls_shows_it(repo, fake_tmux, capsys):
     assert "supervisor   supervisor kilo" in capsys.readouterr().out
 
 
+def test_start_without_provider_says_which_it_took_and_why(repo, fake_tmux, capsys):
+    assert main(["start", str(repo), "--name", "a", "--provider", "opencode", "--no-attach"]) == 0
+    assert "provider:" not in capsys.readouterr().out  # given, not chosen
+    assert main(["start", str(repo), "--name", "b", "--no-attach"]) == 0
+    assert "provider: opencode (the folder's last session)" in capsys.readouterr().out
+
+
+def test_start_without_provider_refuses_a_choice_it_cannot_make(repo, fake_tmux, capsys):
+    assert main(["start", str(repo), "--no-attach"]) == 1
+    assert "give one with --provider NAME" in capsys.readouterr().err
+
+
+def test_start_help_names_no_default_provider(capsys):
+    with pytest.raises(SystemExit):
+        main(["start", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "default: claude" not in out
+    assert "without it, a new session takes its folder's last session's provider" in out
+
+
 def test_ls_says_a_newer_version_is_available_but_not_why_a_check_failed(
     published, capsys, tmp_path, monkeypatch
 ):
@@ -62,7 +82,7 @@ def test_duration_is_short(seconds, shown):
 
 
 def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys):
-    main(["start", str(repo), "--name", "s", "--no-attach"])
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")
     with state.connect() as db:
         db.execute(
@@ -79,7 +99,7 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
 
 
 def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsys):
-    main(["start", str(repo), "--name", "s", "--no-attach"])
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
@@ -98,7 +118,7 @@ def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsy
 
 
 def test_finish_ends_a_worker(repo, fake_tmux, capsys):
-    main(["start", str(repo), "--name", "s", "--no-attach"])
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     worker = runtime.spawn_worker("s", "task", name="w1")
     (Path(worker.cwd) / "x.txt").write_text("x")
     assert main(["finish", "s", "w1"]) == 1
@@ -150,7 +170,7 @@ def _kit(repo, name, body="---\nname: rev\ndescription: reviews\n---\nReview.\n"
 
 def test_start_with_kits_and_without(repo, fake_tmux):
     _kit(repo, "team")
-    args = ["start", str(repo), "--name", "s", "--kit", "default"]
+    args = ["start", str(repo), "--provider", "claude", "--name", "s", "--kit", "default"]
     args += ["--kit", "team"]
     assert main([*args, "--without", "agent:rev", "--no-attach"]) == 0
     sess = state.get_session("s")
@@ -160,13 +180,39 @@ def test_start_with_kits_and_without(repo, fake_tmux):
 def test_start_says_who_leads_and_which_supervisor_is_not_used(repo, fake_tmux, capsys):
     kit = _kit(repo, "team")
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\nsupervisor: rev\n")
-    assert main(["start", str(repo), "--name", "s", "--kit", "team", "--no-attach"]) == 0
+    assert (
+        main(
+            [
+                "start",
+                str(repo),
+                "--provider",
+                "claude",
+                "--name",
+                "s",
+                "--kit",
+                "team",
+                "--no-attach",
+            ]
+        )
+        == 0
+    )
     captured = capsys.readouterr()
     assert "lead: rev of kit team\n" in captured.out and captured.err == ""
     assert main(["stop", "s"]) == 0
     capsys.readouterr()
     # A resume with one more kit that has a supervisor.
-    args = ["start", str(repo), "--name", "s", "--kit", "default", "--kit", "team"]
+    args = [
+        "start",
+        str(repo),
+        "--provider",
+        "claude",
+        "--name",
+        "s",
+        "--kit",
+        "default",
+        "--kit",
+        "team",
+    ]
     assert main([*args, "--no-attach"]) == 0
     captured = capsys.readouterr()
     assert (
@@ -185,7 +231,7 @@ def test_start_says_who_leads_and_which_supervisor_is_not_used(repo, fake_tmux, 
 
 
 def test_start_with_bad_kit_fails(repo, fake_tmux, capsys):
-    assert main(["start", str(repo), "--kit", "nope", "--no-attach"]) == 1
+    assert main(["start", str(repo), "--provider", "claude", "--kit", "nope", "--no-attach"]) == 1
     assert 'lado: kit "nope" not found' in capsys.readouterr().err
 
 
@@ -666,9 +712,9 @@ def test_sources_yaml_gets_a_warning_and_sources_is_gone(repo, capsys, fake_tmux
     for command in (
         ["kits"],
         ["doctor"],
-        ["start", str(repo), "--no-attach"],
+        ["start", str(repo), "--provider", "claude", "--no-attach"],
         # A kit not found says it in its error: once, not twice.
-        ["start", str(repo), "--name", "t", "--kit", "mine", "--no-attach"],
+        ["start", str(repo), "--provider", "claude", "--name", "t", "--kit", "mine", "--no-attach"],
     ):
         main(command)
         err = capsys.readouterr().err
@@ -699,7 +745,21 @@ def _session_with_run(repo):
     kit = _kit(repo, "team")
     (kit / "flows").mkdir()
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    main(["start", str(repo), "--name", "s", "--kit", "default", "--kit", "team", "--no-attach"])
+    main(
+        [
+            "start",
+            str(repo),
+            "--provider",
+            "claude",
+            "--name",
+            "s",
+            "--kit",
+            "default",
+            "--kit",
+            "team",
+            "--no-attach",
+        ]
+    )
     return runs.start("s", "ship", "Add x", name="x")
 
 
@@ -879,7 +939,21 @@ def _at_gate_with_needs(repo, capsys):
     kit = _kit(repo, "team")
     (kit / "flows").mkdir()
     (kit / "flows" / "plan.yaml").write_text(PLAN)
-    main(["start", str(repo), "--name", "s", "--kit", "default", "--kit", "team", "--no-attach"])
+    main(
+        [
+            "start",
+            str(repo),
+            "--provider",
+            "claude",
+            "--name",
+            "s",
+            "--kit",
+            "default",
+            "--kit",
+            "team",
+            "--no-attach",
+        ]
+    )
     runs.start("s", "plan", "Add x", name="x")
     runs.advance("s", "supervisor", "plan/x", "ready", "the plan", "step 1\nstep 2")
     runs.spawn_worker("s", "plan/x")
@@ -1150,7 +1224,17 @@ def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
     assert main(["answer"]) == 0  # a stopped session's gates wait for its resume
     assert capsys.readouterr().out == "No open gates.\n"
 
-    args = ["start", str(repo), "--name", "s", "--without", "agent:rev", "--no-attach"]
+    args = [
+        "start",
+        str(repo),
+        "--provider",
+        "claude",
+        "--name",
+        "s",
+        "--without",
+        "agent:rev",
+        "--no-attach",
+    ]
     assert main(args) == 0
     captured = capsys.readouterr()
     assert captured.out.startswith(
@@ -1249,7 +1333,7 @@ def test_source_commands_are_not_under_kits(capsys):
 
 
 def test_a_command_does_not_migrate_the_database_under_a_running_session(repo, fake_tmux, capsys):
-    assert main(["start", str(repo), "--name", "old", "--no-attach"]) == 0
+    assert main(["start", str(repo), "--provider", "claude", "--name", "old", "--no-attach"]) == 0
     agent_helpers.previous_schema()
     capsys.readouterr()
     assert main(["ls"]) == 1
@@ -1266,7 +1350,7 @@ def test_a_command_does_not_migrate_the_database_under_a_running_session(repo, f
 def test_ls_shows_a_running_session_without_its_loop(repo, fake_tmux, capsys):
     from lado import loop
 
-    main(["start", str(repo), "--name", "s", "--no-attach"])
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     capsys.readouterr()
     main(["ls"])
     assert capsys.readouterr().out.splitlines()[0] == (
@@ -1284,7 +1368,7 @@ def test_attach_restarts_a_dead_loop(repo, fake_tmux, loop_starts, monkeypatch):
 
     attached = []
     monkeypatch.setattr(os, "execvpe", lambda *args: attached.append(args[1]))
-    main(["start", str(repo), "--name", "s", "--no-attach"])
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     assert loop_starts == ["s"]
     main(["attach", "s"])
     assert loop_starts == ["s", "s"]  # its lock was free: the loop had died

@@ -30,7 +30,7 @@ def no_attach(monkeypatch):
 
 @pytest.fixture
 def agent_session(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     return "s"
 
 

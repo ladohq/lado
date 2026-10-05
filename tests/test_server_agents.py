@@ -25,7 +25,7 @@ def client(lado_home):
 
 @pytest.fixture
 def session(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "Build the layout\nwith three columns", name="w1")
     return "s"
 

@@ -62,7 +62,7 @@ def at_gate(session="s"):
 
 @pytest.fixture
 def session(repo, kit, fake_tmux):
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     return "s"
 
 
@@ -182,7 +182,7 @@ def test_an_answer_the_core_refuses_is_400_with_its_reason(client, session, repo
     answer = client.post(f"{GATES}/1/answer", json={"option": "maybe"})
     assert answer.status_code == 400
     assert answer.json()["detail"] == 'no option "maybe" for gate #1; options: approve, reject'
-    runtime.start_session(str(repo), "t", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "t", None, kit_names=["default", "team"], provider="claude")
     at_gate("t")
     other = client.post(f"{GATES}/2/answer", json={"option": "approve"})
     assert (other.status_code, other.json()["detail"]) == (

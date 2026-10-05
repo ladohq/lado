@@ -54,6 +54,8 @@ def cmd_start(args: argparse.Namespace) -> int:
             print(f"lado: {problem}", file=sys.stderr)
     else:
         print(f'Started session "{sess.name}" in {sess.repo}')
+    if started.chosen:
+        print(f"provider: {started.chosen.line()}")
     print(started.lead)
     for warning in started.warnings:
         print(f"lado: {warning}", file=sys.stderr)
@@ -978,8 +980,9 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--name", help="session name (default: repository folder name)")
     start.add_argument(
         "--provider",
-        help=f"agent CLI for the session's agents: {', '.join(providers.names())} "
-        f"(default: {providers.DEFAULT})",
+        help=f"agent CLI for the session's agents: {', '.join(providers.names())}; without "
+        "it, a new session takes its folder's last session's provider if installed, else the "
+        "only one installed (a resume keeps its own)",
     )
     start.add_argument(
         "--permission-mode",

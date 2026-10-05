@@ -51,7 +51,7 @@ def session(repo, fake_tmux):
         "---\nname: developer\ndescription: d\n---\nYou build.\n"
     )
     (kit / "flows" / "ship.yaml").write_text(SHIP)
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     return "s"
 
 

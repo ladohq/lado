@@ -264,7 +264,7 @@ def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams,
         " {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     stream = streams()
     stream.next()
     runs.start("s", "ship", "Add x", name="x")
@@ -295,7 +295,7 @@ def waiting_of(session: str):
 
 
 def test_a_gate_and_a_question_change_what_waits_in_their_session(streams, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     stream = streams()
     stream.next()
     run = bare_run()
@@ -310,7 +310,7 @@ def test_a_gate_and_a_question_change_what_waits_in_their_session(streams, repo,
 def test_a_messages_change_comes_with_its_item_in_the_form_of_the_rest_api(
     streams, repo, fake_tmux
 ):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     stream = streams()
     stream.next()
     runtime.ask_human("s", "supervisor", "Ship?", None, ["yes"])
@@ -335,7 +335,7 @@ def test_a_messages_change_comes_with_its_item_in_the_form_of_the_rest_api(
 
 
 def test_a_change_of_an_agent_also_updates_its_session(streams, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     stream = streams()
     stream.next()
     runtime.stop_session("s")
@@ -350,7 +350,7 @@ def test_a_change_of_an_agent_also_updates_its_session(streams, repo, fake_tmux)
 def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
     stream = streams()
     stream.next()
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     state.set_status("s", "supervisor", state.IDLE)
     added = stream.until(
         lambda e: is_change("agents", "s")(e) and e.data["item"]["status"] == "idle"
@@ -453,7 +453,7 @@ def test_without_a_database_the_stream_waits_for_one_and_creates_none(streams, f
 
 
 def test_a_session_whose_tmux_is_gone_comes_without_an_id(streams, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     held = loop.take_lock("s")
     try:
         stream = streams()
@@ -468,7 +468,7 @@ def test_a_session_whose_tmux_is_gone_comes_without_an_id(streams, repo, fake_tm
 
 
 def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     state.add_session(state.Session("stopped", "/r", None))
     state.stop_session("stopped")
     position = last_change()
@@ -583,7 +583,7 @@ def test_any_change_of_the_sessions_agents_updates_who_acts_in_its_open_runs(
         "  build: {agent: developer, do: Build it., outcomes: {done: end}}\n"
         "  end: {end: true}\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     runs.start("s", "ship", "Add x", name="x")
     state.add_run(dataclasses.replace(bare_run(), session="s", name="feature/closed"), [])
     runs.cancel("s", "feature/closed", "not needed")
@@ -613,7 +613,7 @@ def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
         " {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     runs.start("s", "ship", "Add x", name="x")
     runs.start("s", "ship", "Add y", name="y")  # open and active: its acting needs the flow
     runs.advance("s", "supervisor", "ship/x", "ready", "the plan")

@@ -65,7 +65,7 @@ def team(repo):
 
 @pytest.fixture
 def session(repo, team, fake_tmux):
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"])
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     return "s"
 
 
@@ -996,7 +996,7 @@ def test_a_run_worker_without_a_step_is_told_to_report_its_task(session, fake_tm
 
 
 def test_a_session_without_flows_is_not_told_about_them(repo, fake_tmux):
-    runtime.start_session(str(repo), "plain", None)
+    runtime.start_session(str(repo), "plain", None, provider="claude")
     supervisor = fake_tmux[0][-1]
     assert "flow_start" not in supervisor[supervisor.index("--append-system-prompt") + 1]
 
@@ -1100,7 +1100,7 @@ def test_a_step_of_a_kits_supervisor_is_the_sessions_lead(repo, fake_tmux, kit_n
         write(kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nx\n")
     flow = FEATURE.replace("agent: supervisor", "agent: lead")
     write(kit / "flows" / "feature.yaml", flow.replace("{merged: done}", "{merged: gated}"))
-    runtime.start_session(str(repo), "s", None, kit_names=kit_names)
+    runtime.start_session(str(repo), "s", None, kit_names=kit_names, provider="claude")
     run = runs.start("s", "feature", "Plan it", name="plan")
     assert runs.acting(run) == "supervisor"
     step = messages("supervisor")[-1]

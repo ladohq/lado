@@ -72,7 +72,7 @@ def terms(monkeypatch):
 
 @pytest.fixture
 def session(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
 
 
 @pytest.fixture

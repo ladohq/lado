@@ -845,6 +845,11 @@ def sessions_by_start() -> list[Session]:
     return [_session(r) for r in rows]
 
 
+def last_session(repo: str) -> Session | None:
+    """The session of the folder `repo` started (or resumed) latest, if any."""
+    return next((s for s in sessions_by_start() if s.repo == repo), None)
+
+
 def add_agent(agent: Agent) -> None:
     with connect() as db:
         db.execute(

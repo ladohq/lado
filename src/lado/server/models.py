@@ -64,6 +64,14 @@ class FolderInfo(BaseModel):
     # free; running: a session of that name runs; stopped_here: one of this folder can be
     # resumed; taken_elsewhere: a session of another folder has it
     name_state: NameState | None
+    # the provider a new session here takes (runtime.suggested_provider); none: the human picks
+    provider: "ProviderSuggestion | None"
+
+
+class ProviderSuggestion(BaseModel):
+    name: str
+    # last_session: the folder's last session's; only_installed: the one CLI installed
+    reason: Literal["last_session", "only_installed"]
 
 
 class RecentFolder(BaseModel):
@@ -259,7 +267,6 @@ class ProviderInfo(BaseModel):
 
     name: str
     title: str
-    default: bool
     permission_modes: list[str]
     install_hint: str
     installed: bool

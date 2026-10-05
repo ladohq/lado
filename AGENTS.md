@@ -73,7 +73,11 @@ fixes and docs only: no new feature, no API or schema change.
 - `src/lado/`: the Python package.
   - `cli.py`: the `lado` command. `doctor.py`: environment checks; a provider's state
     (installed, version, tested version, warning) is `doctor.provider_status`, which
-    `lado doctor` formats and the UI's `GET /api/providers` serves.
+    `lado doctor` formats and the UI's `GET /api/providers` serves. A `doctor.Check` has
+    one `level` (`OK`, `INFO`, `WARN`, `FAIL`; printed `[ok  ]`, `[info]`, `[warn]`,
+    `[FAIL]`; exit 1 only for a `FAIL`). No provider is required: a missing one is `info`
+    with its install hint, an installed one with an untested version `warn`, and only
+    none installed is one `FAIL` (`Agent CLI: no agent CLI installed`, every install hint).
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
     (`fetch_index`; `latest` skips pre-releases and yanked ones, `release` finds a named
     one), the one PEP 440 comparison (`newer`, `same`; not `gitcache.latest`, which sorts
@@ -109,7 +113,15 @@ fixes and docs only: no new feature, no API or schema change.
     by `start_session` and the UI's folder check. `start_session(resume=...)` takes what
     the caller means: `False` a new session (`SessionExists`, with that session's status
     and folder, when the name is taken), `True` a resume (`NoSuchSession` for an unknown
-    name), `None` either, as `lado start`. `stop_preview` and `forget_preview` say what a
+    name), `None` either, as `lado start`. No provider is the default: a new session
+    without one takes `suggested_provider(repo, installed)`, a `Suggestion` (provider and
+    reason, `LAST_SESSION` or `ONLY_INSTALLED`; `line()` is what `lado start` prints as
+    `provider: ...`): the provider of the folder's last session (`state.last_session`) if
+    `installed`, else the only one installed, else none, and the start refuses with the
+    installed ones and `--provider NAME`, or every install hint when none is. `installed`
+    is the caller's `shutil.which` (never `--version`): `start_session` resolves the
+    agents' environment first and looks on its PATH; the UI's folder check on the
+    server's. A resume keeps its stored provider. `stop_preview` and `forget_preview` say what a
     stop or forget would do now, refused alike; `stop_session` and `forget_session` use
     them. So does `finish_worker` with `finish_preview`, which goes by `work_state`: where
     a worker's branch stands against the repo's current branch and what its worktree has
@@ -316,9 +328,11 @@ fixes and docs only: no new feature, no API or schema change.
     too;
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, subfolders, the
-    default name and whether a session has it), `/api/folders/recent`, `/api/kits?where=`
-    (the kit of each name the lookup takes, an invalid one `valid: false`) and
-    `/api/providers`; `app.py` has the session control: `POST /api/sessions` (a new
+    default name and whether a session has it, and `provider`, the core's
+    `runtime.suggested_provider` with the server's `shutil.which`, a
+    `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
+    `/api/kits?where=` (the kit of each name the lookup takes, an invalid one
+    `valid: false`) and `/api/providers` (no provider is marked the default); `app.py` has the session control: `POST /api/sessions` (a new
     session, 409 `Taken` for a taken name), `POST …/{name}/resume`, `GET …/stop-preview`,
     `POST …/stop`, `GET …/forget-preview`, `DELETE /api/sessions/{name}?force=`, all
     through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the

@@ -13,7 +13,8 @@ FAMILY = {"kilo": "KILO_CONFIG_CONTENT", "opencode": "OPENCODE_CONFIG_CONTENT"}
 
 
 def test_registry():
-    assert providers.DEFAULT in providers.names()
+    assert not hasattr(providers, "DEFAULT")  # no provider is privileged
+    assert providers.names() == ["claude", "kilo", "opencode"]
     claude = providers.get("claude")
     assert (claude.name, claude.command) == ("claude", "claude")
     assert claude.capabilities.deliver_on_turn_end
@@ -93,7 +94,7 @@ def test_claude_tells_another_tool_call_from_the_one_asked_about():
 
 def test_claude_hooks_leave_the_human_s_answer_to_the_human(repo, fake_tmux):
     """The hooks that see a dialog print nothing: any output could decide it."""
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     claude = providers.get("claude")
     for native, payload in [
         ("PermissionRequest", BASH),
@@ -150,7 +151,7 @@ def test_claude_continues_with_queued_messages():
 
 
 def test_agents_get_the_session_provider(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task")
     assert state.get_session("s").provider == "claude"
     assert [a.provider for a in state.list_agents("s")] == ["claude", "claude"]
@@ -170,7 +171,7 @@ class _NoTurnEndDelivery(providers.Provider):
 
 
 def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
     out = hooks.handle(_NoTurnEndDelivery(), Event(providers.TURN_END), "s", "supervisor")
     assert out is None
@@ -420,7 +421,7 @@ def test_opencode_turn_end_prints_queued_messages(repo, fake_tmux):
 def test_turn_end_hands_over_queued_messages_without_an_idle_moment(repo, fake_tmux, monkeypatch):
     """No one sees the messages delivered and the agent idle, as if it were done with them
     before it got them."""
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     state.set_status("s", "supervisor", state.BUSY)
     runtime.send_message("s", "w1", "supervisor", "done")  # busy: queued
     status_once_delivered = []
@@ -456,7 +457,7 @@ def test_unknown_provider_is_refused(repo, fake_tmux):
     with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
         runtime.start_session(str(repo), "s", None, "nope")
     assert state.get_session("s") is None
-    runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None, provider="claude")
     with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
         runtime.spawn_worker("s", "task", provider="nope")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
@@ -467,7 +468,7 @@ def test_permission_mode_the_provider_cannot_honour_is_refused(repo, fake_tmux):
         runtime.start_session(str(repo), "s", "dontAsk", "kilo")
     assert state.get_session("s") is None
     assert fake_tmux == []
-    runtime.start_session(str(repo), "s", "dontAsk")
+    runtime.start_session(str(repo), "s", "dontAsk", provider="claude")
     with pytest.raises(runtime.LadoError, match="supported: default, acceptEdits"):
         runtime.spawn_worker("s", "task", provider="kilo")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
@@ -475,7 +476,7 @@ def test_permission_mode_the_provider_cannot_honour_is_refused(repo, fake_tmux):
 
 
 def test_resume_with_a_provider_that_cannot_honour_the_stored_mode_is_refused(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", "dontAsk")
+    runtime.start_session(str(repo), "s", "dontAsk", provider="claude")
     runtime.stop_session("s")
     with pytest.raises(runtime.LadoError, match='"dontAsk" is not supported by Kilo CLI'):
         runtime.start_session(str(repo), "s", None, "kilo")

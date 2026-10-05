@@ -33,6 +33,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         ok, problem, has_commits = False, str(refused), False
         root = _root_or_none(path)
     name = runtime.slug(Path(root).name) if root else None
+    suggestion = runtime.suggested_provider(root if has_db else None, _installed)
     return models.FolderInfo(
         path=path,
         ok=ok,
@@ -43,7 +44,16 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         subfolders=_subfolders(Path(path)),
         default_name=name,
         name_state=_name_state(name, root, has_db) if name and root else None,
+        provider=models.ProviderSuggestion(name=suggestion.provider, reason=suggestion.reason)
+        if suggestion
+        else None,
     )
+
+
+def _installed(provider: providers.Provider) -> bool:
+    """Whether the server finds the provider's CLI, as GET /api/providers does; no
+    `--version`, which each folder check would wait for."""
+    return shutil.which(provider.command) is not None
 
 
 def _root_or_none(path: str) -> str | None:
@@ -133,7 +143,6 @@ def provider_infos() -> list[models.ProviderInfo]:
         models.ProviderInfo(
             name=provider.name,
             title=provider.title,
-            default=provider.name == providers.DEFAULT,
             permission_modes=list(provider.permission_modes),
             install_hint=provider.install_hint,
             installed=status.installed,

@@ -225,18 +225,19 @@ def check_agent_config(provider: str, repo, worker: state.Agent) -> None:
 
 
 def check_no_snapshots(provider: str, repo) -> None:
-    """Kilo: the agents took no snapshots of the repo. Kilo keeps them in
-    <data>/snapshot/<project id>/ and the project id in the repo's .git/kilo (Kilo 7.8.1);
-    on a slow repo their setup stops the agent on a question for the human."""
-    if provider != "kilo":
+    """Kilo and OpenCode: the agents took no snapshots of the repo. Both keep them in
+    <data>/snapshot/<project id>/ and the project id in the repo's .git/<command> (Kilo 7.8.1,
+    OpenCode 1.18.34); on a slow repo their setup stops the agent on a question for the
+    human."""
+    if provider not in ("kilo", "opencode"):
         return
     paths = subprocess.run(
-        ["kilo", "debug", "paths"], capture_output=True, text=True, check=True
+        [provider, "debug", "paths"], capture_output=True, text=True, check=True
     ).stdout
     [data] = [line.split(None, 1)[1] for line in paths.splitlines() if line.startswith("data ")]
-    project = (repo / ".git" / "kilo").read_text().strip()
+    project = (repo / ".git" / provider).read_text().strip()
     snapshots = Path(data) / "snapshot" / project
-    assert not snapshots.exists(), f"Kilo took snapshots: {snapshots}"
+    assert not snapshots.exists(), f"{provider} took snapshots: {snapshots}"
 
 
 LADO_TOOLS = {"mcp__lado__flow_advance", "mcp__lado__send_message", "mcp__lado__read_messages"}
@@ -333,9 +334,9 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     check_terminal_ended(supervisor)
     check_loop_ended()
     check_resume(live_provider, repo)
-    # Kilo updates itself unless told not to; LADO's agents must not (the Kilo provider
-    # switches it off, so the test needs no KILO_DISABLE_AUTOUPDATE from outside).
-    if live_provider == "kilo":
+    # Kilo and OpenCode update themselves unless told not to; LADO's agents must not (the
+    # providers switch it off, so the test needs no *_DISABLE_AUTOUPDATE from outside).
+    if live_provider in ("kilo", "opencode"):
         assert cli_version(live_provider) == version
     print(f"{live_provider}: {time.monotonic() - started:.0f}s")
 

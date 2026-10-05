@@ -218,16 +218,6 @@ Wanted: a loop pass never migrates (the schema checked on the connection the pas
 so the refusal holds while the loop runs.
 Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason.
 
-## A repo's own Kilo config may override what LADO switches off
-
-LADO passes its Kilo settings (`autoupdate`, `snapshot`, permissions) in the file named by
-`KILO_CONFIG`. In the opencode family a project's own config (`kilo.json` in the repo, or the
-one Kilo's "Disable for this project" writes) is merged after that file, so a repo with
-`"snapshot": true` would bring the snapshot dialog back. Not verified for Kilo 7.8.1.
-Wanted: check the merge order; if the project wins, pass LADO's must-have settings where
-they win (e.g. `KILO_CONFIG_CONTENT`, which 7.8.1 reads) and test it.
-Found: 2026-10-02, run fix/kilo-no-snapshots.
-
 ## Claude agents load the user's global Claude Code plugins
 
 A Claude Code agent started by LADO still loads the plugins enabled in the user's own
@@ -768,3 +758,24 @@ by hand: 40 icons, `overflow-y: auto`), but a change to `min-height: 0` or the g
 go unnoticed. Wanted: the e2e test checks `overflow-y` of `.strip-icons`, or fills the strip
 and checks that the buttons keep their place.
 Found: 2026-10-05, review of feature/sessions-list-collapse (Minor 1).
+
+## The OpenCode family's turn end depends on `session.idle`, which OpenCode calls transitional
+
+The plugin (`opencode_plugin.js`) takes the end of a turn from the bus event `session.idle`.
+OpenCode 1.18 marks that event as transitional, next to `session.status` (status `idle`).
+If OpenCode, or Kilo after it, drops `session.idle`, agents never go idle and get no
+queued messages at turn end.
+Wanted: watch the releases; when `session.idle` goes, take the turn end from
+`session.status` in the plugin, for both CLIs, with a JS test.
+Found: 2026-10-05, design of run feature/opencode-provider.
+
+## OpenCode and Kilo agents load the user's global skills
+
+Besides LADO's `skills.paths`, OpenCode 1.18.34 finds skills in `~/.claude/skills`,
+`~/.agents/skills` and `~/.config/opencode/skills` (seen with `opencode debug skill`), and
+Kilo probably does the same: an agent gets skills its kit never named. The switch
+`OPENCODE_DISABLE_EXTERNAL_SKILLS` drops the repo's own `.claude/skills` too. Same kind of
+leak as "Claude agents load the user's global Claude Code plugins".
+Wanted: decide which outside skills an agent may see, and keep the others away without
+touching the user's global config.
+Found: 2026-10-05, design of run feature/opencode-provider.

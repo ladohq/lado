@@ -21,10 +21,10 @@ test: ## unit tests, in parallel (PYTEST_ARGS=-n0: serially)
 test-integration: ## integration tests: real tmux, git and processes, fake agent, no LLM; in parallel
 	uv run pytest -m integration $(PYTEST_ARGS)
 
-test-js: ## Node tests of the Kilo plugin
+test-js: ## Node tests of the OpenCode-family plugin (Kilo, OpenCode)
 	node --test tests/js/*.test.mjs
 
-test-live: ## live e2e tests with real agent CLIs and models, serially; PROVIDER=kilo|claude picks one
+test-live: ## live e2e tests with real agent CLIs and models, serially; PROVIDER=claude|kilo|opencode picks one
 	uv run pytest -m live -n0 $(if $(PROVIDER),-k $(PROVIDER)) -v
 
 test-ui: web browser ## UI end-to-end tests: Chromium against a real lado server, fake agent

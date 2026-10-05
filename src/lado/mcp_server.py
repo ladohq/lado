@@ -183,7 +183,7 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             one. Without `name`, the worker is named after its role: "developer", else
             "developer-2", …. `without` switches off skills or MCP servers for this worker,
             e.g. ["skill:x", "mcp:y"], or only those of one kit: ["skill:x@kit"].
-            `provider` is the agent CLI to run it with, e.g. "claude" or "kilo" (default: the
+            `provider` is the agent CLI to run it with: "claude", "kilo" or "opencode" (default: the
             session's). The worker reports back with send_message when it is done or blocked,
             or with flow_advance when it finished a step of a run.
 

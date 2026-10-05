@@ -1,11 +1,13 @@
 """Live end-to-end tests: real agent CLIs and real models, one short scenario per provider.
 
 Run them with `uv run pytest -m live` (or `make test-live`, `make test-live PROVIDER=kilo`).
-They cost tokens (Claude Code) or depend on free models (Kilo), so they never run by default.
+They cost tokens (Claude Code) or depend on free models (Kilo, OpenCode), so they never run by
+default.
 
 Environment:
 - LADO_LIVE_CLAUDE_MODEL: model for Claude Code agents, default "haiku" (cheap and quick).
 - LADO_LIVE_KILO_MODEL: model for Kilo agents, default "kilo/kilo-auto/free" (no login).
+- LADO_LIVE_OPENCODE_MODEL: model for OpenCode agents, default "opencode/big-pickle" (no login).
 
 Claude Code asks whether to trust a new workspace and records the answer in its own config;
 no option skips that. So the Claude test always uses the same repo path, and the test answers
@@ -32,10 +34,12 @@ from lado import providers
 from lado.providers import base
 from lado.providers.claude import ClaudeProvider
 from lado.providers.kilo import KiloProvider
+from lado.providers.opencode import OpenCodeProvider
 
 MODELS = {
     "claude": os.environ.get("LADO_LIVE_CLAUDE_MODEL") or "haiku",
     "kilo": os.environ.get("LADO_LIVE_KILO_MODEL") or "kilo/kilo-auto/free",
+    "opencode": os.environ.get("LADO_LIVE_OPENCODE_MODEL") or "opencode/big-pickle",
 }
 
 
@@ -68,11 +72,12 @@ def _claude_unusable() -> str | None:
     return None if logged_in else "Claude Code is not logged in (`claude auth status`)"
 
 
-CLASSES = {"claude": ClaudeProvider, "kilo": KiloProvider}
-UNUSABLE = {"claude": _claude_unusable, "kilo": lambda: None}  # Kilo's free models need no login
+CLASSES = {"claude": ClaudeProvider, "kilo": KiloProvider, "opencode": OpenCodeProvider}
+# Kilo's and OpenCode's free models need no login.
+UNUSABLE = {"claude": _claude_unusable, "kilo": lambda: None, "opencode": lambda: None}
 
 
-@pytest.fixture(params=["claude", "kilo"])
+@pytest.fixture(params=["claude", "kilo", "opencode"])
 def live_provider(request, monkeypatch) -> str:
     """The name of a provider whose CLI is installed and usable, set up with its test model."""
     name = request.param

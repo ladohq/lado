@@ -71,7 +71,7 @@ def fake_clis(tmp_path, monkeypatch):
     """Stand-ins for the agent CLIs on PATH, which a launch looks its CLI up on; the folder."""
     folder = tmp_path / "fake-clis"
     folder.mkdir()
-    for name in ("claude", "kilo", "noskills"):
+    for name in ("claude", "kilo", "opencode", "noskills"):
         (folder / name).write_text("#!/bin/sh\n")
         (folder / name).chmod(0o755)
     monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")

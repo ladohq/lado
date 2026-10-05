@@ -254,13 +254,15 @@ packs may do the same. Wanted: decide whether LADO supports such packs (e.g. set
 source folder) or `lado kits check` warns about unknown `${...}` variables in a skill.
 Found: 2026-10-03, choosing UI skills for the lado-dev kit.
 
-## `lado kits check` warns about skills no role uses
+## A kit's lint problems are seen only by `lado kits check`
 
-Every `lado kits check lado-dev` prints four hardcoded-path warnings from superpowers skills
-that no lado-dev role lists (diagnosing-superpowers, subagent-driven-development,
-writing-skills). The kit cannot act on them, so the warnings are noise that hides real ones.
-Wanted: lint only the skills the kit's roles use, or mark the others "(not used by any role)".
-Found: 2026-10-03, review of lado-dev 0.5.0.
+`kits.lint` (hardcoded paths, and now the flow graph rules: traps, unbounded cycles, needs
+that never come before) runs only in `lado kits check`. `lado kits add` / `update` (whose
+`Install` already carries `warnings`), `lado start` and the UI's Kits page do not show them,
+so the user of an installed kit never learns that one of its flows can loop forever.
+Wanted: show `kits.lint` and `kits.warnings` lines at add/update, at start (stderr) and on
+the Kits page, from the same two calls.
+Found: 2026-10-06, design of the flow graph checks.
 
 ## `lado ui` fails while another server is just starting
 

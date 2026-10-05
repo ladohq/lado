@@ -1486,7 +1486,8 @@ def _and(names: list[str]) -> str:
 
 def lint(kit: Kit) -> list[str]:
     """Problems a kit can run with but should not have: paths that only work on one
-    machine (use ${KIT_DIR} or a relative path instead)."""
+    machine (use ${KIT_DIR} or a relative path instead), and the graph problems of its
+    flows (flows.lint). Only `lado kits check` fails on them."""
     problems = []
     for agent in kit.agents.values():
         raw = _frontmatter(agent.path.read_text(), agent.path, [])[1]
@@ -1498,23 +1499,44 @@ def lint(kit: Kit) -> list[str]:
     for skill in kit.skills.values():
         skill_md = skill.path / "SKILL.md"
         problems += _hardcoded(skill_md.read_text(), str(skill_md))
+    for flow in kit.flows.values():
+        problems += flows.lint(flow)
     return problems
 
 
 def warnings(kit: Kit) -> list[str]:
     """Doubts about a kit that do not stop it: a kit from the git cache whose version
-    differs from the version tags on its clone's commit."""
+    differs from the version tags on its clone's commit (or whose tags cannot be read), a
+    flow step whose role is not in the kit (another kit of the session may have it) and,
+    when the kit has flows, a role of the kit but its supervisor that acts in none of them
+    (it may still be spawned outside a flow)."""
+    doubts = []
     clone = gitcache.clone_root(kit.path)
     try:
         tags = gitcache.versions(clone) if clone and kit.version else []
     except gitcache.GitError as exc:
-        return [f"{kit.name}: cannot read the version tags of {clone}: {exc}"]
+        doubts.append(f"{kit.name}: cannot read the version tags of {clone}: {exc}")
+        tags = []
     if tags and kit.version not in tags:
-        return [
+        doubts.append(
             f"{kit.name}: version {kit.version} in kit.yaml, but {_cached_origin(kit.path)} "
             f"is at {', '.join('v' + t for t in tags)}"
-        ]
-    return []
+        )
+    for flow in kit.flows.values():
+        for step in flow.states.values():
+            if step.kind == flows.WORK and step.agent not in (*kit.agents, LEAD):
+                doubts.append(
+                    f'{flow.path}: state "{step.name}": role "{step.agent}" is not in kit '
+                    f'"{kit.name}"; a session needs a kit that has it'
+                )
+    acting = {role for flow in kit.flows.values() for role in flow.roles()}
+    for agent in kit.agents.values():
+        if kit.flows and agent.name != kit.supervisor and agent.name not in acting:
+            doubts.append(
+                f'{agent.path}: role "{agent.name}" acts in no state of the kit\'s flows; '
+                "it can still be spawned outside a flow"
+            )
+    return doubts
 
 
 def _hardcoded(text: str, where: str) -> list[str]:

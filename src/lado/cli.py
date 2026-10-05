@@ -317,14 +317,6 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     except kits.KitError as exc:
         print(exc, file=sys.stderr)
         return 1
-    # A flow may take a role from another kit of the session.
-    for flow in kit.flows.values():
-        for step in flow.states.values():
-            if step.kind == flows.WORK and step.agent not in (*kit.agents, kits.LEAD):
-                doubts.append(
-                    f'flow "{flow.name}": state "{step.name}": role "{step.agent}" is not in '
-                    f'kit "{kit.name}"; a session needs a kit that has it'
-                )
     for doubt in doubts:
         print(f"warning: {doubt}", file=sys.stderr)
     for problem in problems:

@@ -790,3 +790,13 @@ injected packages, comes from their documentation, not from a test.
 Wanted: a live test (not in CI) that installs an old LADO with uv tool and with pipx into a
 temp tool dir, runs `lado update` against PyPI and checks the version and the options after.
 Found: 2026-10-05, feature/self-update (implement).
+## An agent whose turn ends on an API error stays busy
+
+After the computer slept, the reviewer's turn ended in Claude Code with `API Error: Your
+computer went to sleep mid-response` and its prompt was empty, but LADO kept it `busy`
+for two hours: no turn-end hook ran, so its queue was never handed over and a message to it
+would have waited forever. The supervisor typed into its window by hand to get it going.
+Wanted: the provider reports a turn that ends on an error as a turn end (Claude Code has a
+hook for a failed stop, check which; Kilo's plugin likewise), so the agent is `idle` and gets
+its queue; until then `lado ls` could flag an agent busy far longer than usual.
+Found: 2026-10-05, run feature/self-update (supervisor).

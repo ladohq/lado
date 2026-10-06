@@ -222,13 +222,21 @@ loop.py constants).
 
 ## Flaky: integration test of the migration refusal under a running session
 
-`test_cli_refuses_to_migrate_the_database_under_a_running_session` failed once in nine
-parallel integration runs: `lado ls` exited 0 (`assert 0 == 1`) because the database was
-already migrated back. Likely a session-loop pass that passed `why_stop` before
-`previous_schema()` and then opened the database through `runtime.sweep`, which migrates.
+`tests/integration/test_agents.py::test_cli_refuses_to_migrate_the_database_under_a_running_session`
+failed once in nine parallel integration runs (2026-10-02) and once in `make check`
+(2026-10-05, merge step of feature/flows-tab-redesign, after main got schema 18): `lado ls`
+exited 0 (`assert 0 == 1`) because the database was already migrated back; it passed alone
+and in the next `make check`. Two likely races after `agent_helpers.previous_schema()`
+rolls `lado.db` back: a session-loop pass that passed `why_stop` before the rollback opens
+the database through `runtime.sweep`, which migrates; or a hook or `lado mcp` of the
+session's running fake agent opens it with `state.connect` (hooks and `lado mcp` do not
+check, AGENTS.md `state.py`) before the test's `lado ls`.
 Wanted: a loop pass never migrates (the schema checked on the connection the pass uses),
-so the refusal holds while the loop runs.
-Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason.
+so the refusal holds while the loop runs; and a test session with no process that can open
+the database between the rollback and the check (stop the fake agent's hooks, or roll back
+with the session's tmux alive but no agent), so the assertion is deterministic.
+Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason; 2026-10-05,
+merge step of run feature/flows-tab-redesign.
 
 ## Claude agents load the user's global Claude Code plugins
 
@@ -342,14 +350,16 @@ supervisor. Wanted: revisit with more kits in use: a worker-specific hint in LAD
 worker instructions, or tools only for the supervisor unless a role asks for them.
 Found: 2026-10-03, review of lado-dev 0.6.0.
 
-## Activity loads every message and run event of a session at once
+## Activity loads every run event of a session at once
 
-The Activity feed (Layout task) loads `GET …/messages` (now without `with`: all of the
-session's messages, agent-to-agent too) and `GET …/events` whole on each reset, and the store
-keeps them all. A long session (hundreds of worker reports, dozens of runs) makes every
-reconnect load and re-render all of it, while the human looks at the last screen.
+The Activity feed (Layout task) loads `GET …/events` whole on each reset, and the store
+keeps them all. A long session (dozens of runs) makes every reconnect load and re-render all
+of it, while the human looks at the last screen.
 Wanted: the latest N with "load earlier" (`?before=<id>&limit=`), or a window the feed asks
 for as it scrolls; the store's lists keep only what was loaded.
+Update (2026-10-06, backlog revision): messages are paged since feature/chat-paging (86ae3cc:
+`MessagePage`, `watchMessages` in `web/src/live.ts`); run events are not (`live.ts` loads
+`getRunEvents` whole).
 Found: 2026-10-03, implement of feature/ui-layout.
 
 ## UI e2e screenshots of parallel runs overwrite each other
@@ -358,9 +368,12 @@ Every `make test-ui` / `make check` writes to the same `<temp dir>/lado-ui-shots
 whatever worktree it runs in. When a developer and a reviewer (or two runs) test at once,
 the folder holds a mix: a screenshot of the old rail showed up after the new code had passed
 the same test. The reviewer can look at the wrong build's screens.
+The same on 2026-10-05: a run of feature/flows-tab-redesign showed the old Flows page from
+another worktree. The `shot` fixture (`tests/ui/conftest.py`, `SHOTS`) writes there.
 Wanted: a folder per worktree or per run (e.g. named after the branch or a hash of the
 repo path), printed by the tests, so each report names its own screenshots.
-Found: 2026-10-03, implement of feature/ui-layout (the rail change).
+Found: 2026-10-03, implement of feature/ui-layout (the rail change); 2026-10-05,
+feature/flows-tab-redesign (developer).
 
 ## A terminal closed for good shows its reason twice
 
@@ -494,11 +507,13 @@ Found: 2026-10-04, feature/flows-list (review).
 `tests/integration/test_server_process.py::test_ui_says_at_once_when_the_server_it_started_exits`
 failed once in `make check` on feature/flows-list (`assert 10.22 < 15.0 / 2`, the time
 `lado ui` took to report the exit, against `server_run.READY_TIMEOUT / 2`); run alone it
-passed 3 of 3 (0.7–5.2 s). Under the full parallel run the machine is slow enough to cross
-the bound.
+passed 3 of 3 (0.7–5.2 s). Again in the review of feature/kit-manifest-v2 (`assert
+9.038402291946113 < (15.0 / 2)`; alone 0.79 s). Under the full parallel run the machine is
+slow enough to cross the bound.
 Wanted: a bound that tells "at once" from "waited for the timeout" under load too (e.g.
 compare with the full READY_TIMEOUT, or measure the wait the code does, not wall time).
-Found: 2026-10-04, feature/flows-list (implement, make check).
+Found: 2026-10-04, feature/flows-list (implement, make check); review of
+feature/kit-manifest-v2.
 ## The git cache is never cleaned
 
 `LADO_HOME/cache` keeps a clone of every (address, tag or commit) a pack or `lado kits add`
@@ -518,16 +533,6 @@ Wanted: one error type for what the core refuses (or `core()` and the endpoints 
 known one to 400), so no refusal reaches the UI as a 500.
 Found: 2026-10-04, feature/kit-manifest-v2 (implement).
 
-## Flaky: integration test of the UI server's early exit
-
-`tests/integration/test_server_process.py::test_ui_says_at_once_when_the_server_it_started_exits`
-failed once in `make check` (pytest -n auto) with `assert 9.038402291946113 < (15.0 / 2)`;
-alone it passes in 0.79 s. Its bound is half of `READY_TIMEOUT` in wall time, which a
-loaded machine can exceed.
-Wanted: a bound that holds under parallel load, or a check without absolute time (the
-answer came before `READY_TIMEOUT`, not within half of it).
-Found: 2026-10-04, review of feature/kit-manifest-v2.
-
 ## README says there is nothing to run yet
 
 `README.md`, Install, still ends with "There is nothing else to run yet" and the status
@@ -545,37 +550,6 @@ after the start (or not at all) that LADO's built-in supervisor leads.
 Wanted: the window shows the lead line and the warnings for the chosen kits and Switch off
 items (an endpoint over `kits.resolve`), before Start.
 Found: 2026-10-04, design of feature/without-at-kit.
-
-## lado-dev in lado-kits still uses the old kit format
-
-LADO 0.19.0 reads the lead from `supervisor:` in kit.yaml; `supervisor: true` in an agent
-and `default_agent` in kit.yaml are unknown keys now. lado-dev on the lado-0.19 branch of
-the lado-kits repo still has both, so it fails to load with 0.19.0.
-Wanted: lado-dev with `supervisor: supervisor` in kit.yaml, without `default_agent` and
-`supervisor: true`, before the 0.19.0 release (the supervisor does it after the merge).
-Found: 2026-10-04, design of feature/without-at-kit.
-
-## Flaky: vitest "the tab without an agent opens the supervisor"
-
-`make web` failed once in `src/Agents.test.tsx` > "the tab without an agent opens the
-supervisor, and an unknown one is not found" with `Unable to find role="region" and name
-"Agent supervisor"`; the file alone and the next `make web` passed. Probably a wait shorter
-than the render under the full run's load.
-Wanted: the test waits for what it checks (findBy with a timeout that holds under load).
-Found: 2026-10-04, feature/without-at-kit (implement).
-
-## Flaky: vitest Flows tab tests that wait for a run's page
-
-Under a heavy load (load average 80–160, other worktrees' checks running) `make web`
-failed twice in `src/Flows.test.tsx`, each time another test: "with no runs both groups
-are there and say they are empty; with only ended ones the latest to end opens" (`Unable
-to find role="region" and name "Run fix/older"`) and "the flows tab without a run opens
-the first waiting run, else the first active one" (`… "Run feature/flows-tab"`). The file
-alone passed both times. Like the Agents entry above: `findBy`'s 1 s default is shorter
-than the redirect and render under that load.
-Wanted: the List and page tests wait with a timeout that holds under load (one shared
-helper or vitest's `asyncUtilTimeout` for these files).
-Found: 2026-10-05, feature/session-list-groups (implement).
 
 ## A refused permission leaves the Claude agent waiting until the human types
 
@@ -627,16 +601,6 @@ Wanted: a live check of both in mode default; if a dialog shows, give the agent 
 folders to read (`AgentSpec.read`) or copy what it reads, as the lead's lead-files are.
 Found: 2026-10-04, design and architect's review of feature/lead-skills.
 
-## Flaky: vitest "the runs come in groups" times out under load
-
-`make check` failed twice in a row in `web/src/Flows.test.tsx` > "the runs come in groups,
-the ended ones folded and remembered, the tab counts the open ones" with `Error: Test timed
-out in 5000ms` (5572 ms, 5823 ms) while the machine's load average was 180-220; the file
-alone passed (19 passed) and the next `make check` was green. The test takes about 5 s even
-when it passes, so vitest's default 5 s timeout leaves no margin.
-Wanted: the test made shorter (fewer steps or fake timers) or given its own timeout.
-Found: 2026-10-05, feature/lead-skills (implement, review fixes).
-
 ## A kit whose tag was moved cannot be installed again with the new content
 
 `lado kits outdated`, `update` and `add` warn when a remote tag now points to another commit
@@ -670,23 +634,6 @@ Wanted: the hint says `lado kits add <url>` (the latest release) and names the
 one-kit-per-repository rule, or the hint is dropped with sources.yaml support.
 Found: 2026-10-05, feature/kit-marketplaces-core (implement).
 
-## Flaky: vitest "the tab without an agent opens the supervisor" under load
-
-`make check` failed once in `web/src/Agents.test.tsx` > "the tab without an agent opens the
-supervisor, and an unknown one is not found" with `TestingLibraryElementError: Unable to
-find role="region" and name "Agent supervisor"` (the file took 26 s, load average 100);
-the file alone passed (27 passed) and the next `make check` was green with no change.
-Wanted: the test waits for the region (`findByRole`) instead of expecting it at once.
-Found: 2026-10-05, feature/kit-marketplaces-core (implement).
-
-## Flaky: vitest "the Agents tab follows the agents' changes" under load
-
-`make check` failed once in `web/src/App.test.tsx` > "the Agents tab follows the agents'
-changes; a reset loads them again" with `TestingLibraryElementError: Unable to find
-role="navigation" and name "Agents"` at load average 238; the same commit was green on the
-next run with no change (296 passed).
-Wanted: the test waits for the navigation (`findByRole`) or gets its own timeout.
-Found: 2026-10-05, review of feature/kit-marketplaces-core.
 ## The Stop popover does not give focus back to its icon
 
 Esc, Cancel or a click outside closes the session's Stop popover (`SessionControl.tsx`,
@@ -712,14 +659,6 @@ upgrade LADO`.
 Wanted: one text from one function for every path.
 Found: 2026-10-05, fix/kits-check-tag (developer's concern, reviewer's Found on the way).
 
-## Flaky: vitest "without a kit Start stays off and the window says why" under load
-
-`web/src/Launch.test.tsx` (~283-289): after `fireEvent.click` on "Remove default" a
-synchronous `getByText("a session needs at least one kit")` did not find the text while a
-second vitest run loaded the machine; without the load the test is green.
-Wanted: wait for the text with `findByText`, or find the async update it does not wait for.
-Found: 2026-10-05, review of fix/chat-start-day-tz.
-
 ## UI unit tests depend on the process's locale and nothing guards it
 
 `day()` and the clock in `web/src/ChatText.tsx` format with `toLocale*([], …)`; CI runs in
@@ -740,28 +679,6 @@ and `update` refreshes it in place, with no lock. The Kits page's Update all and
 Wanted: an exclusive lock per marketplace clone (as the session loop's `flock`) around
 clone, refresh and read.
 Found: 2026-10-05, design of feature/kits-page (Found on the way).
-## UI screenshots of parallel worktrees overwrite each other
-
-The `shot` fixture (`tests/ui/conftest.py`) saves to `<temp dir>/lado-ui-shots/<test>.png`,
-one folder for every checkout on the machine. Two worktrees running `make test-ui` at once
-(two flow runs) write the same file names, so a reviewer may look at the other branch's
-screen: a run of feature/flows-tab-redesign showed the old Flows page from another worktree.
-Wanted: a folder per checkout (e.g. named after the repo root's path or the branch), printed
-as now.
-Found: 2026-10-05, feature/flows-tab-redesign (developer).
-
-## Flaky: integration test "CLI refuses to migrate the database under a running session"
-
-`tests/integration/test_agents.py::test_cli_refuses_to_migrate_the_database_under_a_running_session`
-failed once in `make check` (`lado ls` exited 0, expected 1) and passed alone and in the
-next `make check`. Likely a race: after `agent_helpers.previous_schema()` rolls `lado.db`
-back, a hook or `lado mcp` of the session's running fake agent opens the database with
-`state.connect` and migrates it again (hooks and `lado mcp` do not check, AGENTS.md
-`state.py`) before the test's `lado ls`, so there is nothing left to refuse. Wanted: a
-session with no process that can open the database between the rollback and the check
-(stop the fake agent's hooks, or roll back with the session's tmux alive but no agent),
-then the assertion is deterministic.
-Found: 2026-10-05, merge step of run feature/flows-tab-redesign (after main got schema 18).
 
 ## No test that the wide session strip scrolls with its buttons fixed
 
@@ -881,7 +798,9 @@ In a full vitest run (`make check`, `npx vitest run`), about 2 runs in 7,
 `Launch.test.tsx > without a kit Start stays off and the window says why` did not find
 "a session needs at least one kit" right after the click on Remove default
 (`TestingLibraryElementError: Unable to find an element with the text`); the file alone
-passes. Once `with a refused copy Copy link shows the address selected` failed on the
+passes. It was first seen in the review of fix/chat-start-day-tz (2026-10-05), while a
+second vitest run loaded the machine, with a synchronous `getByText` after `fireEvent.click`.
+Once `with a refused copy Copy link shows the address selected` failed on the
 field's focus (`expected <body> to be <input>`), checked before the effect that focuses it.
 Both now wait for what they check (`findByText`, `waitFor`). Not shown: why the kits
 message is late; the Launch window's `touched` guard should keep a late folder load from
@@ -889,16 +808,6 @@ putting the default kit back, so a product race is not ruled out.
 Wanted: if the kits test still fails with the wait, look for a load that resets the kits
 after the human removed them.
 Found: 2026-10-05, run feature/session-head (developer, reviewer).
-## Flaky: two kits' skill packs test times out waiting for a worker under load
-
-`tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack` failed
-once in a full `make check`: `timed out after 30s waiting for dev1 to be idle; agents:
-supervisor idle, dev1 busy, dev2 starting`; alone and on a rerun it passed. The machine may
-have slept during that run.
-Wanted: the test waits for the event it needs rather than for both workers within a fixed
-30 s under a parallel run (or a timeout that holds under load).
-Found: 2026-10-05, review of feature/self-update.
-
 ## `lado update` by hand suggests a pip that may not be there
 
 For an install it does not upgrade itself, `lado update` prints `<prefix>/bin/pip install
@@ -931,13 +840,6 @@ a full-page screenshot is 476 px wide, and the Marketplaces block runs past the 
 Wanted: no horizontal page scroll at phone width (the rail collapses, the page fits).
 Found: 2026-10-05, UI e2e screenshot update-narrow of feature/kits-page-polish.
 
-## Flaky: vitest "the flows tab without a run opens the first waiting run" under load
-
-In `make check` (18 vitest workers beside the build) it failed once with `Unable to find
-role="region" and name "Run fix/gate-bubble"`; rerun alone, it passed twice. Like the
-Agents tab's entry above: a `findBy` with the default 1 s wait under load.
-Wanted: the test waits for what the page loads, with a margin, or the run isolates less.
-Found: 2026-10-05, make check of feature/kits-page-polish.
 
 ## The Kits up-to-date window drops the plan's other notes
 
@@ -947,16 +849,6 @@ note the core adds there later (a moved tag, the sessions that use the kit) woul
 Wanted: the server gives the current line apart from the other notes, and the window shows
 those; or the window shows `plan.notes` under its heading.
 Found: 2026-10-05, review of feature/kits-page-polish.
-## Flaky: vitest Flows tab tests that wait for the open run's region, under load
-
-`make check` failed once in `web/src/Flows.test.tsx` > "the flows tab without a run opens
-the first waiting run, else the first active one" (`Unable to find role="region" and name
-"Run fix/gate-bubble"`) and > "with no runs both groups are there and say they are empty;
-with only ended ones the latest to end opens" (`... name "Run fix/older"`), together with the
-known Agents.test.tsx flake; both files passed alone at once (47 passed).
-Wanted: the tests wait for the region with a timeout that holds under `make check`'s load,
-or the region comes without the slow step.
-Found: 2026-10-05, make check of run feature/opencode-provider after merging main.
 
 ## The database schema still names `claude` as the provider column's default
 
@@ -978,28 +870,36 @@ timeout of the UI tests, or a wait on the message in lado.db first), so it fails
 the question never comes.
 Found: 2026-10-05, merge step of feature/session-list-groups.
 
-## Flaky: installed-kit worker test times out at `starting` under load
-
-`tests/integration/test_agent_kits.py::test_a_worker_gets_its_role_from_an_installed_kit`
-failed once in a full `make check` at a load average near 200: `timed out after 30s waiting
-for dev to be idle; agents: supervisor idle, dev starting`; alone it passed twice. Same shape
-as "two kits' skill packs test times out waiting for a worker under load".
-Wanted: the kits integration tests wait with a timeout that holds under a parallel run.
-Found: 2026-10-05, make check after merging main into feature/kits-page-polish.
-
 ## Vitest tests time out at vitest's default 5 s under load, one entry per test
 
 `cd web && npm test` at a load average of about 60 failed 3 of 365 tests on their 5000 ms
 timeout: Agents "the supervisor comes first, then the agents by spawn" (5791 ms), Chat "the
 chat shows who wrote each message ..." (5180 ms), Flows "the runs come in two groups"
-(5441 ms); `make web` had passed minutes before. BACKLOG.md already has seven entries for
-single vitest tests flaky under load (Launch, Flows, Agents tabs); the cause is shared:
+(5441 ms); `make web` had passed minutes before. The cause is shared:
 `web/vite.config.ts` keeps vitest's default `testTimeout` (5 s), and `findBy`'s default
 1 s, while `make check` runs vitest on a machine other checks keep busy.
+Earlier single failures of the same kind, each passing alone and on the next run:
+- `src/Agents.test.tsx` > "the tab without an agent opens the supervisor, and an unknown one
+  is not found": `Unable to find role="region" and name "Agent supervisor"` (2026-10-04,
+  feature/without-at-kit; 2026-10-05, feature/kit-marketplaces-core, the file took 26 s at
+  load average 100).
+- `src/Flows.test.tsx` > "the flows tab without a run opens the first waiting run, else the
+  first active one" (`… "Run feature/flows-tab"`, `… "Run fix/gate-bubble"`) and "with no
+  runs both groups are there and say they are empty; with only ended ones the latest to end
+  opens" (`… "Run fix/older"`): 2026-10-05 at load average 80–160 (feature/session-list-groups),
+  in feature/kits-page-polish (18 vitest workers beside the build) and in
+  feature/opencode-provider after merging main (with the Agents flake; 47 passed alone).
+- `src/Flows.test.tsx` > "the runs come in groups, the ended ones folded and remembered, the
+  tab counts the open ones": `Test timed out in 5000ms` twice in a row (5572 ms, 5823 ms) at
+  load average 180-220 (2026-10-05, feature/lead-skills); it takes about 5 s even when it
+  passes, so it may also need to be made shorter (fewer steps or fake timers).
+- `src/App.test.tsx` > "the Agents tab follows the agents' changes; a reset loads them
+  again": `Unable to find role="navigation" and name "Agents"` at load average 238
+  (2026-10-05, review of feature/kit-marketplaces-core).
 Wanted: one setting for the whole suite (a `testTimeout` and an `asyncUtilTimeout` that
-hold under load), so a test fails only when what it waits for never comes; the per-test
-entries closed with it.
-Found: 2026-10-06, investigation of why `make check` is slow (worker check-speed).
+hold under load), so a test fails only when what it waits for never comes.
+Found: 2026-10-04..06, the tests above; this entry 2026-10-06, investigation of why
+`make check` is slow (worker check-speed).
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
@@ -1072,25 +972,22 @@ transaction; when the supervisor is stopped, the copy stays `pending` with no no
 Wanted: the copy is dropped or reported when the supervisor is not running.
 Found: 2026-10-06, check of the Inbox architecture candidate.
 
-## A send crashes when the recipient is finished right after the message is queued
-
-`runtime.post`, `write_as_human` and `_reply` queue the message (the recipient checked in
-that transaction), then call `_deliver`, which reads `state.get_agent(...).status`. When
-`finish_worker` runs between the two, the message is dropped as it should be, but the
-sender gets `AttributeError: 'NoneType' object has no attribute 'status'` instead of an
-answer (seen on main d738c7f in the finish-race reproduction, one step later in the call).
-Wanted: `_deliver` of a recipient that is gone says the message was dropped with it.
-Found: 2026-10-06, run fix/finish-race (implement).
-
 ## Flaky: integration test "spawned worker reports back to supervisor" times out at `starting` under load
 
 `tests/integration/test_agents.py::test_spawned_worker_reports_back_to_supervisor` failed in a
 full `make check` at load average ~200: "timed out after 30s waiting for the report; agents:
-supervisor idle, worker starting". Alone it passed 3 of 3. The same pattern as the
-installed-kit worker and two kits' skill packs tests.
+supervisor idle, worker starting". Alone it passed 3 of 3. The same pattern, each once in a
+full `make check` and passing alone or on a rerun:
+- `tests/integration/test_agent_kits.py::test_a_worker_gets_its_role_from_an_installed_kit`:
+  `timed out after 30s waiting for dev to be idle; agents: supervisor idle, dev starting`
+  at load average near 200 (2026-10-05, after merging main into feature/kits-page-polish).
+- `tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack`:
+  `timed out after 30s waiting for dev1 to be idle; agents: supervisor idle, dev1 busy, dev2
+  starting`; the machine may have slept during that run (2026-10-05, review of
+  feature/self-update). It could wait for the event it needs rather than for both workers.
 Wanted: integration tests that wait for a worker's start share one wait helper with a margin
 for parallel runs under load, not 30 s in each test.
-Found: 2026-10-06, review of fix/finish-race.
+Found: 2026-10-05, the kits tests above; 2026-10-06, review of fix/finish-race.
 ## A message ending in a backslash is not submitted
 
 When the human's message (or any message) ends in `\`, e.g. `что требуется от меня?\`,

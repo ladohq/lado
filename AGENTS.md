@@ -38,6 +38,16 @@ file. To debug serially, with output in order: `make test PYTEST_ARGS=-n0` (`PYT
 replaces `-n auto` and takes any pytest options, e.g. `PYTEST_ARGS="-n0 -k gate -x"`), or
 `uv run pytest` without `-n`. Live tests always run serially.
 
+One heavy test run per machine at a time: `make check`, `make test`, `make test-integration`
+and `make test-ui` run under a lock (`scripts/check_lock.py`, an flock on
+`/tmp/lado-check-<uid>.lock`, shared by every worktree, session and `LADO_HOME`). A second
+run waits and prints once whose run it waits for (`check lock: waiting for the run in
+<worktree> (pid N)`). The lock is the helper process's: it goes when the run ends, also on a
+failure, Ctrl-C or a kill, and a process the run leaves behind does not hold it. The command
+gets `LADO_CHECK_LOCK_HELD`, so `make check` takes it once for its parts.
+`LADO_CHECK_LOCK=0` runs without the lock (a parallel run on purpose); CI calls pytest
+directly and takes no lock. A plain `uv run pytest` takes none either.
+
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
 instead of a real agent CLI; it keeps its logs (`inputs.jsonl`, `seen.json`) in
 `agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. They use a temp `LADO_HOME` and their own tmux server
@@ -431,6 +441,7 @@ fixes and docs only: no new feature, no API or schema change.
   CLIs; `tests/js/`: Node tests of the OpenCode-family plugin; `web/src/*.test.tsx`: the
   UI's unit tests (vitest).
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
+- `scripts/check_lock.py`: the Makefile's machine-wide test-run lock (Commands).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk

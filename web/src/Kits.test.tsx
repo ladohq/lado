@@ -382,6 +382,16 @@ test("Available lists the marketplaces' kits not installed, as many as its count
   expect(within(tabs).getByRole("link", { name: /Available/ }).textContent).toBe("Available 2");
 });
 
+test("the Kits tabs are the UI's tabs, their counts apart", async () => {
+  open("/kits/available");
+  await screen.findByRole("listitem", { name: "reviewers" });
+  const tabs = screen.getByRole("navigation", { name: "Kits" });
+  expect(tabs.classList).toContain("tab-bar");
+  const links = within(tabs).getAllByRole("link");
+  expect(links.map((link) => link.classList.contains("tab-item"))).toEqual([true, true, true]);
+  expect(within(tabs).getByRole("link", { name: "Available 2" }).querySelector(".tab-count")?.textContent).toBe("2");
+});
+
 test("when every kit of the marketplaces is installed, Available says so and links to Installed", async () => {
   serve({ "GET /api/kits/available": () => [OFFERS[0], { ...OFFERS[2], name: "jira", installed: true }] });
   open("/kits/available");

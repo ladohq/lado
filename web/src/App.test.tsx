@@ -357,6 +357,23 @@ test("a session opens on its Activity tab with its status, and no placeholder fo
   );
 });
 
+test("the session's tabs are the UI's tabs, each with its section's icon and its count apart", async () => {
+  open("/sessions/lado");
+  const view = await screen.findByRole("region", { name: "Session lado" });
+  const tabs = within(view).getByRole("navigation", { name: "Session sections" });
+  expect(tabs.classList).toContain("tab-bar");
+  const links = within(tabs).getAllByRole("link");
+  expect(links.map((link) => link.classList.contains("tab-item"))).toEqual([true, true, true, true]);
+  expect(links.map((link) => link.querySelectorAll("svg[aria-hidden='true']").length)).toEqual([1, 1, 1, 1]);
+  expect(links.map((link) => link.querySelector(".tab-count")?.textContent ?? null)).toEqual([
+    null,
+    "· 1",
+    null,
+    null,
+  ]);
+  expect(within(tabs).getByRole("link", { name: "Agents · 1" })).toBe(links[1]);
+});
+
 test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address", async () => {
   wideColumn();
   open("/sessions/lado/flows");

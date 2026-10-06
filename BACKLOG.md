@@ -140,6 +140,10 @@ test_flows_tab::test_in_a_narrow_column_the_runs_take_it_and_a_run_has_the_way_b
 test_kits_page::test_the_update_window_keeps_its_buttons_on_a_short_screen and
 test_agent_terminal::test_a_viewer_has_only_the_agents_window_and_no_tmux_keys failed in
 `make check` and passed together on a serial rerun.
+Partly done (2026-10-06, fix/check-lock): concurrent runs from separate sessions or
+worktrees no longer add up, since `make check`, `make test`, `make test-integration` and
+`make test-ui` take one lock per machine (`scripts/check_lock.py`, AGENTS.md). Still open:
+one run on a machine other agents keep busy, with `-n` not chosen by the load.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 
@@ -244,6 +248,21 @@ putting the default kit back, so a product race is not ruled out.
 Wanted: if the kits test still fails with the wait, look for a load that resets the kits
 after the human removed them.
 Found: 2026-10-05, run feature/session-head (developer, reviewer).
+
+## Test runs leave `lado server` processes behind
+
+Size: S. Why here: each leaked server keeps loading a machine whose load already makes `make check` fail on timeouts, and one ran for 29 hours.
+
+On 2026-10-06 the supervisor found 23 orphaned `tests/integration/fake_provider.py server
+--port 0` processes (parent 1, about 35 minutes old, from the feature-mcp-secrets and
+session-tabs worktrees) and a `lado.cli server --port 0` from the feature-self-update
+worktree that had run for 29 hours. Cause: the `server` fixture in tests/ui/conftest.py:44-60
+only calls `server_run.stop()` and `process.wait(timeout=10)` in its `finally`; when
+`wait_ready` times out under load (no server.json yet), `stop()` finds no server and nothing
+kills the process.
+Wanted: every test that starts a server kills its process whatever `stop()` did, and a
+check at the end of the test session that no process a test started is still alive.
+Found: 2026-10-06, supervisor; recorded in fix/check-lock.
 
 ## Flaky terminal socket test: input checked before it is written
 
@@ -487,6 +506,25 @@ screen of a window that is gone, so why the CLI exited is not known.
 Wanted: the evidence keeps a closed agent window's last screen (e.g. tmux `remain-on-exit`
 in live tests, related to "Keep a crashed agent's last output"), and the cause is found.
 Found: 2026-10-06, live tests of run feature/trust-dialog.
+
+## An agent whose turn ended on a transient API error is not resumed
+
+Size: M. Why here: a worker stops mid-task on a temporary server error (529 Overloaded, rate_limit) and stays idle until someone types to it; with the agent-liveness change LADO tells the supervisor, but nothing resumes the agent.
+
+On 2026-10-06 developer-2 of run feature/mcp-secrets (session lado, LADO 0.23.1, Claude Code
+2.1.291) got `API Error: 529 Overloaded. This is a server-side issue, usually temporary — try
+again in a moment` on its first turn. The turn ended (StopFailure, which 0.23.1 does not
+register, so LADO kept it busy for hours); the human had to type "продолжай" in its window.
+Since agent-liveness (6d562b6) the turn ends as `idle` and the supervisor gets one line with
+the error type, but the worker's task is still left half done until the supervisor or the
+human acts.
+Wanted: for transient error types (Claude: overloaded, rate_limit, server_error; the
+OpenCode-family equivalents) LADO resumes the agent by itself after a backoff (e.g. types a
+neutral "continue" message from `lado`, at most N times with growing delays), tells the
+supervisor only when the retries run out; permanent errors (authentication, billing,
+invalid_request) are reported at once as now. The error types per provider live in the
+provider, the retry rule in the core.
+Found: 2026-10-06, by the human in session lado.
 
 # P2: when convenient
 
@@ -1298,3 +1336,12 @@ now runs only in `test_worker_does_a_task_reports_and_gets_a_message`.
 Wanted: know whether a kit MCP server makes the passive supervisor act; then the check can
 go in both scenarios.
 Found: 2026-10-06, run feature/mcp-secrets, `make test-live PROVIDER=kilo`.
+## Session tabs are cut in a narrow column with no sign they scroll
+
+With the terminal column open (window 1280 px), the session's tab bar overflows: Artifacts
+shows half ("A"). `.tab-bar` of the session has `overflow-x: auto`, but no visible scrollbar
+(macOS) and no wheel scrolling as the terminal tabs have. It overflowed before
+feature/session-tabs too; Mono and the icons made it wider.
+Wanted: the session's tabs always whole, or plainly scrollable: a thin bar and the wheel as
+for the terminals, or shorter labels / icons only in a narrow column.
+Found: 2026-10-06, review of feature/session-tabs (`session-light.png`).

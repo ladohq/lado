@@ -156,10 +156,10 @@ function KitsPage({ tab }: { tab: KitsTab }) {
   const updates = installed.filter((kit) => newerOf(kit) !== null);
   const shownUpdates = updates.filter((kit) => found(kit.name, kit.description, sourceOf(kit, knownMarkets).chip));
 
-  const tabLabels: Record<KitsTab, string> = {
-    installed: `Installed ${installed.length}`,
-    available: `Available ${notInstalled.length}`,
-    updates: checked ? `Updates ${updates.length}` : "Updates",
+  const tabLabels: Record<KitsTab, [string, number | null]> = {
+    installed: ["Installed", installed.length],
+    available: ["Available", notInstalled.length],
+    updates: ["Updates", checked ? updates.length : null],
   };
 
   const listProblem = [loaded?.installed, loaded?.available].find(
@@ -184,12 +184,26 @@ function KitsPage({ tab }: { tab: KitsTab }) {
       )}
       <div className="kits-split">
         <div className="kits-main">
-          <nav className="kits-tabs" aria-label="Kits">
-            {TABS.map((one) => (
-              <Link key={one} to={`/kits/${one}`} aria-current={one === tab ? "page" : undefined}>
-                {tabLabels[one]}
-              </Link>
-            ))}
+          <nav className="tab-bar" aria-label="Kits">
+            {TABS.map((one) => {
+              const [label, count] = tabLabels[one];
+              return (
+                <Link
+                  key={one}
+                  to={`/kits/${one}`}
+                  className="tab-item"
+                  aria-current={one === tab ? "page" : undefined}
+                >
+                  {label}
+                  {count !== null && (
+                    <>
+                      {" "}
+                      <span className="tab-count">{count}</span>
+                    </>
+                  )}
+                </Link>
+              );
+            })}
           </nav>
           <div className="kits-bar">
             <input

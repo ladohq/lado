@@ -223,7 +223,7 @@ export function TerminalPanel({ session, children }: { session: string; children
                   ref={tabList}
                   role="tablist"
                   aria-label="Open terminals"
-                  className="term-tabs"
+                  className="tab-bar term-tabs"
                   onWheel={(event) => {
                     // The wheel scrolls the tabs sideways.
                     if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY;
@@ -232,7 +232,7 @@ export function TerminalPanel({ session, children }: { session: string; children
                   {tabs.map((agent) => (
                     <div
                       key={agent}
-                      className={`term-tab${agent === SUPERVISOR ? " pinned" : ""}`}
+                      className={`tab-item term-tab${agent === SUPERVISOR ? " pinned" : ""}`}
                       data-active={agent === active || undefined}
                       style={{ "--chars": agent.length } as CSSProperties}
                     >

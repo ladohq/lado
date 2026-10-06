@@ -63,21 +63,62 @@ states:
 """
 
 
-def passive_kit(repo) -> str:
+# The passive supervisor's MCP server: it writes the token it got next to itself, then
+# answers as an MCP server with no tools, so the CLI keeps it.
+TOKEN_SERVER = """\
+import json, os, pathlib, sys
+pathlib.Path(sys.argv[0]).with_name("mcp-token").write_text(os.environ.get("TOKEN", ""))
+for line in sys.stdin:
+    request = json.loads(line)
+    if "id" not in request:
+        continue
+    result = {}
+    if request["method"] == "initialize":
+        version = request["params"].get("protocolVersion", "2024-11-05")
+        info = {"name": "token", "version": "1"}
+        result = {"protocolVersion": version, "capabilities": {"tools": {}}, "serverInfo": info}
+    elif request["method"] == "tools/list":
+        result = {"tools": []}
+    print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}), flush=True)
+"""
+MCP_TOKEN = "live-s3cr3t"
+
+
+def passive_kit(repo, token_server: bool) -> str:
     """A project kit: the default kit's worker with a supervisor that does nothing, and the
-    flow `tiny`."""
+    flow `tiny`. With `token_server` the supervisor has an MCP server whose env refers to
+    LIVE_MCP_TOKEN."""
     kit = repo / ".lado" / "kits" / "live"
     (kit / "agents").mkdir(parents=True)
     (kit / "flows").mkdir()
     (kit / "kit.yaml").write_text("name: live\nversion: 1.0.0\nsupervisor: passive\n")
-    (kit / "agents" / "passive.md").write_text(PASSIVE_SUPERVISOR)
+    passive = PASSIVE_SUPERVISOR
+    if token_server:
+        command = f"[{json.dumps(sys.executable)}, '${{KIT_DIR}}/token.py']"
+        mcp = f"mcp:\n  token:\n    command: {command}\n    env: {{TOKEN: '${{LIVE_MCP_TOKEN}}'}}\n"
+        passive = passive.replace("---\nYou", f"{mcp}---\nYou")
+        (kit / "token.py").write_text(TOKEN_SERVER)
+    (kit / "agents" / "passive.md").write_text(passive)
     (kit / "flows" / "tiny.yaml").write_text(TINY_FLOW)
     return kit.name
 
 
-def start_session(repo, provider: str) -> None:
-    """Start the session with the passive supervisor and wait until it is idle."""
-    kit = passive_kit(repo)
+def check_mcp_token(repo) -> None:
+    """The kit's MCP server got LIVE_MCP_TOKEN from the agent's environment, through
+    lado.mcp_exec: the config holds only its name."""
+    got = repo / ".lado" / "kits" / "live" / "mcp-token"
+    wait_for(lambda: got.exists() and got.read_text() == MCP_TOKEN, "the MCP server's token", 60)
+    configs = state.home() / "agents" / SESSION
+    token = MCP_TOKEN.encode()
+    assert [p for p in configs.rglob("*") if p.is_file() and token in p.read_bytes()] == []
+
+
+def start_session(repo, provider: str, monkeypatch=None) -> None:
+    """Start the session with the passive supervisor and wait until it is idle. With
+    `monkeypatch` the supervisor has the token server, and the token is checked."""
+    if monkeypatch:
+        monkeypatch.setenv("LIVE_MCP_TOKEN", MCP_TOKEN)
+    kit = passive_kit(repo, token_server=bool(monkeypatch))
     # The default kit's supervisor is switched off in its kit only, so the live kit's leads.
     started = runtime.start_session(
         str(repo),
@@ -101,6 +142,8 @@ def start_session(repo, provider: str) -> None:
 
     wait_for(supervisor_idle, "the supervisor to be idle", 60)
     assert loop.running(SESSION)
+    if monkeypatch:
+        check_mcp_token(repo)
 
 
 def check_loop_ended() -> None:
@@ -302,11 +345,11 @@ def cli_version(provider: str) -> str:
     return subprocess.run([command, "--version"], capture_output=True, text=True).stdout
 
 
-def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider):
+def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider, monkeypatch):
     repo = live_repo
     started, since = time.monotonic(), time.time()
     version = cli_version(live_provider)
-    start_session(repo, live_provider)
+    start_session(repo, live_provider, monkeypatch)
 
     worker = runtime.spawn_worker(SESSION, TASK, name="w1")
     wait_for(lambda: status("w1") == state.BUSY, "w1 to be busy", 60)

@@ -105,6 +105,11 @@ class ClaudeProvider(base.Provider):
         config_dir = base.config_dir(agent)
 
         mcp_config = config_dir / "mcp.json"
+        # A stdio server gets Claude Code's whole environment, the agent's, also names the
+        # config does not list, AWS_SECRET_ACCESS_KEY included: a kit's secrets reach it
+        # through lado.mcp_exec, never through this file. Claude Code expands ${VAR} in
+        # the args of a --mcp-config file, so the wrapper's args hold none (both checked by
+        # hand with 2.1.291, `claude -p --mcp-config`).
         servers = {
             name: {"command": s.command[0], "args": s.command[1:], "env": s.env}
             for name, s in spec.mcp.items()

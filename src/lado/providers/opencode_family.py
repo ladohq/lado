@@ -82,6 +82,11 @@ class OpenCodeFamily(base.Provider):
             events.remove("permission.replied")
         config = {
             "instructions": [str(role)],
+            # A local server gets the CLI's whole environment, the agent's, also names
+            # `environment` does not list, AWS_SECRET_ACCESS_KEY included: a kit's secrets
+            # reach it through lado.mcp_exec, never through this config. Both expand
+            # {env:VAR} in the command, so the wrapper's args hold none (checked by hand
+            # with Kilo 7.8.3 and OpenCode 1.18.34, `run` with the config in the env).
             "mcp": {
                 name: {"type": "local", "command": s.command, "environment": s.env}
                 for name, s in spec.mcp.items()

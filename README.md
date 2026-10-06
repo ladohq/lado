@@ -159,7 +159,7 @@ mcp:
 `${KIT_DIR}` is the kit's folder. `${NAME}` in `env` is a variable of the agent's
 environment (your login shell's, as a new terminal sees it): a missing one stops the agent's
 start. Its value is never written to disk: the agent's CLI starts such a server through
-LADO's wrapper (`python -m lado.mcp_exec`), whose arguments name the variables only; the
+LADO's wrapper (`lado.mcp_exec`), whose arguments name the variables only; the
 wrapper takes the values from the environment the CLI passes on and starts the server.
 `lado doctor` warns about config folders under `LADO_HOME/agents/` that no running agent
 uses: an older LADO wrote such values there.

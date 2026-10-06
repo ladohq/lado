@@ -56,7 +56,7 @@ def wrap(name: str, command: list[str], templates: Mapping[str, str]) -> list[st
 
 def main(args: list[str]) -> None:
     if len(args) < 5 or args[0] != "--name" or args[3] != "--":
-        sys.exit("usage: python -m lado.mcp_exec --name <server> <templates> -- <command...>")
+        sys.exit("usage: lado.mcp_exec --name <server> <templates> -- <command...>")
     name, encoded, command = args[1], args[2], args[4:]
     templates = json.loads(base64.b64decode(encoded))
     try:

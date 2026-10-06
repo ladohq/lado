@@ -127,7 +127,9 @@ entrypoints = [
 def test_a_uv_tool_install_installs_exactly_the_version(tmp_path):
     found = update.installer(uv_tool(tmp_path, PLAIN_RECEIPT))
     assert found.kind == "uv tool"
-    assert found.command("0.22.0") == ["uv", "tool", "install", "lado==0.22.0"]
+    assert found.command("0.22.0") == [
+        "uv", "tool", "install", "lado==0.22.0", "--refresh-package", "lado",
+    ]  # fmt: skip
     assert found.lost == []
     assert found.binary == tmp_path / "uv-tools" / "lado" / "bin" / "lado"
 
@@ -146,25 +148,41 @@ entrypoints = []
 """
     found = update.installer(uv_tool(tmp_path, receipt))
     assert found.command("0.22.0") == [
-        "uv", "tool", "install", "lado[x]==0.22.0", "--python", "3.12", "--with", "rich>=13",
+        "uv", "tool", "install", "lado[x]==0.22.0", "--refresh-package", "lado",
+        "--python", "3.12", "--with", "rich>=13",
     ]  # fmt: skip
     assert found.lost == ["--with local (not from an index)", "constraints"]
 
 
-def test_a_pipx_install_installs_exactly_the_version_with_its_pip_args(tmp_path):
+def pipx(tmp_path, pip_args: list[str]):
     prefix = tmp_path / "pipx" / "venvs" / "lado"
     prefix.mkdir(parents=True)
     metadata = {
-        "main_package": {"package": "lado", "pip_args": ["--no-cache-dir"], "suffix": ""},
+        "main_package": {"package": "lado", "pip_args": pip_args, "suffix": ""},
         "injected_packages": {"rich": {}},
         "pipx_metadata_version": "0.5",
     }
     (prefix / "pipx_metadata.json").write_text(json.dumps(metadata))
-    found = update.installer(prefix)
+    return prefix
+
+
+@pytest.mark.parametrize(
+    "pip_args, given",
+    [
+        ([], "--pip-args=--no-cache-dir"),
+        (["--no-cache-dir"], "--pip-args=--no-cache-dir"),
+        (
+            ["--index-url", "https://x/simple"],
+            "--pip-args=--index-url https://x/simple --no-cache-dir",
+        ),
+    ],
+)
+def test_a_pipx_install_installs_exactly_the_version_with_its_pip_args(tmp_path, pip_args, given):
+    """pip's cache of the index may not have the release yet: pip gets --no-cache-dir, in
+    the one --pip-args pipx takes."""
+    found = update.installer(pipx(tmp_path, pip_args))
     assert found.kind == "pipx"
-    assert found.command("0.22.0") == [
-        "pipx", "install", "--force", "lado==0.22.0", "--pip-args=--no-cache-dir",
-    ]  # fmt: skip
+    assert found.command("0.22.0") == ["pipx", "install", "--force", "lado==0.22.0", given]
     assert found.lost == []
 
 
@@ -259,7 +277,7 @@ def test_update_shows_the_plan_and_asks(installed, repo, fake_tmux, capsys, monk
     out = capsys.readouterr().out
     assert out.startswith(
         f"LADO {__version__} -> 99.0.0 (PyPI, released 2026-10-04)\n"
-        "Installed with uv tool: uv tool install lado==99.0.0\n"
+        "Installed with uv tool: uv tool install lado==99.0.0 --refresh-package lado\n"
         "Restarts:\n"
         f"  session s  ({repo})  supervisor starting, w1 busy; no open runs\n"
         "  UI server  http://127.0.0.1:8123\n"

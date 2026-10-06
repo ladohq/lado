@@ -238,7 +238,8 @@ _PIPX_SPEC = re.compile(r"lado\s*(\[[^\]]*\])?\s*([<>=!~][^/]*)?", re.IGNORECASE
 def _uv_tool(where: Path) -> Installer | None:
     with open(where / "uv-receipt.toml", "rb") as file:
         tool = tomllib.load(file).get("tool", {})
-    requirement, options, lost = "lado", [], []
+    # uv's cached index of lado (PyPI's max-age) may not have the release yet.
+    requirement, options, lost = "lado", ["--refresh-package", "lado"], []
     if tool.get("python"):
         options += ["--python", str(tool["python"])]
     for req in tool.get("requirements", []):
@@ -262,9 +263,11 @@ def _pipx(where: Path) -> Installer | None:
     main = metadata.get("main_package") or {}
     if not _PIPX_SPEC.fullmatch(main.get("package_or_url") or "lado"):
         return None  # a folder, git or a URL
-    options = []
-    if main.get("pip_args"):
-        options.append(f"--pip-args={shlex.join(main['pip_args'])}")
+    # pip's cached index may not have the release yet; pipx takes one --pip-args.
+    pip_args = list(main.get("pip_args") or [])
+    if "--no-cache-dir" not in pip_args:
+        pip_args.append("--no-cache-dir")
+    options = [f"--pip-args={shlex.join(pip_args)}"]
     if main.get("suffix"):
         options += ["--suffix", main["suffix"]]
     # --force installs into the existing venv: its injected packages stay.

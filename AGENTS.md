@@ -88,7 +88,9 @@ fixes and docs only: no new feature, no API or schema change.
     `uv-receipt.toml` or pipx with `pipx_metadata.json` of lado from an index, else None,
     also for an editable, folder, git or URL install of lado; its `command` installs
     exactly the version, `uv tool install lado==X` with the receipt's `--python` and
-    `--with` again, never `uv tool upgrade`; `lost` names what it cannot repeat; `binary`
+    `--with` again, never `uv tool upgrade`; it refreshes lado's index entry (uv
+    `--refresh-package lado`, pip `--no-cache-dir` in pipx's one `--pip-args`), since a
+    cached index may not have a release PyPI's JSON already shows; `lost` names what it cannot repeat; `binary`
     is `<prefix>/bin/lado`, never one on PATH), `installed_version` and the mark of an
     update that did not finish (`LADO_HOME/update.json`, `Pending`). `lado update`
     (`cli.cmd_update`) does the rest: the sessions `runtime.session_status` says run (also

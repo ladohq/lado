@@ -33,7 +33,7 @@ def test_the_supervisors_terminal_opens_to_view_and_takes_what_the_human_types_i
     page.keyboard.type("lines 3")
     page.keyboard.press("Enter")
     expect(panel.locator(".xterm-rows")).to_contain_text("line 3")
-    inputs = state.home() / "agents" / session / "supervisor" / "inputs.jsonl"
+    inputs = agent_helpers.fake_logs(session, "supervisor") / "inputs.jsonl"
     assert '"lines 3"' in inputs.read_text().splitlines()
     shot(page)
 
@@ -75,7 +75,7 @@ def test_an_agents_terminal_opens_to_view_with_its_history(page: Page, server, r
     view.locator(".xterm").click()
     page.keyboard.type("lines 5\n")
     page.wait_for_timeout(500)
-    inputs = (state.home() / "agents" / session / "w1" / "inputs.jsonl").read_text()
+    inputs = (agent_helpers.fake_logs(session, "w1") / "inputs.jsonl").read_text()
     assert "lines 5" not in inputs
 
     view.get_by_role("button", name="Take control").click()
@@ -141,7 +141,7 @@ def test_expand_shows_the_terminal_over_the_page_with_the_same_socket(
     page.keyboard.type("after esc")
     page.keyboard.press("Enter")
     expect(panel).to_have_class("terminals expanded")
-    inputs = state.home() / "agents" / session / "supervisor" / "inputs.jsonl"
+    inputs = agent_helpers.fake_logs(session, "supervisor") / "inputs.jsonl"
     agent_helpers.wait_for(
         lambda: inputs.exists() and '"\\u001bafter esc"' in inputs.read_text(),
         "Esc at the agent",

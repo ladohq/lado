@@ -17,6 +17,12 @@ import pytest
 from lado import log, loop, state, tmux
 
 
+def fake_logs(session: str, agent: str) -> Path:
+    """Where the fake agent keeps its inputs.jsonl and seen.json (fake_provider.py):
+    outside its config folder, which LADO removes when the agent stops."""
+    return state.home() / "fake-agents" / session / agent
+
+
 def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
     """The environment and the command of an agent's window, from a recorded
     `tmux.new_session` or `tmux.new_window` call (the `fake_tmux` fixture)."""

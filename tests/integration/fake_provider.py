@@ -58,6 +58,10 @@ class FakeProvider(base.Provider):
         first_message: str | None = None,
     ) -> base.Launch:
         config_dir = base.config_dir(agent)
+        # Its own logs outlive it, for the tests (agent_helpers.fake_logs): LADO removes
+        # the config folder when the agent stops.
+        logs = state.home() / "fake-agents" / agent.session / agent.name
+        logs.mkdir(parents=True, exist_ok=True)
         hook = ["--session", agent.session, "--agent", agent.name, "--instance", agent.instance]
         # The LADO MCP server has to know the fake providers too.
         lado = base.McpServer(lado_command("mcp"), spec.mcp["lado"].env)
@@ -71,8 +75,8 @@ class FakeProvider(base.Provider):
             },
             "continue_on_turn_end": self.capabilities.deliver_on_turn_end,
             "says_continued": self.says_continued,
-            "inputs": str(config_dir / "inputs.jsonl"),
-            "seen": str(config_dir / "seen.json"),
+            "inputs": str(logs / "inputs.jsonl"),
+            "seen": str(logs / "seen.json"),
         }
         config_file = config_dir / "fake.json"
         config_file.write_text(json.dumps(config, indent=2))

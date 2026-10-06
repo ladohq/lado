@@ -16,7 +16,7 @@ SESSION = "envtest"
 
 def environ(agent: str) -> dict[str, str]:
     """The environment the fake agent reported at its start."""
-    path = state.home() / "agents" / SESSION / agent / "seen.json"
+    path = agent_helpers.fake_logs(SESSION, agent) / "seen.json"
     return json.loads(path.read_text()).get("environ", {}) if path.exists() else {}
 
 

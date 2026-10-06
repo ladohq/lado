@@ -24,6 +24,8 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     hold               print "holding <n>" (the n-th hold) and take the next input, with
                        no hook (logged as {"held": <text>}): the turn goes on after it
     run <skill> <file> run a file of one of its skills, e.g. "run notes scripts/hello.sh"
+    mcp <server>       start a kit's MCP server as a CLI does and wait for it to exit
+                       (logged as {"mcp_run": {server, code, stderr}})
     lines <n>          print the lines "line 1" to "line <n>"
     fullscreen         switch to the alternate screen and read the mouse, as a full-screen
                        CLI does
@@ -101,6 +103,21 @@ def run_skill_file(skill: str, file: str) -> None:
     path = os.path.join(config["skills"], skill, file)
     result = subprocess.run([path], capture_output=True, text=True)
     report(run={"file": f"{skill}/{file}", "output": result.stdout.strip()})
+
+
+def run_mcp_server(name: str) -> None:
+    """Start a kit's MCP server as an agent CLI does: its command, its env from the config
+    on top of the agent's own environment. The test's server does its work and exits."""
+    server = config["mcp"][name]
+    result = subprocess.run(
+        server["command"],
+        env={**os.environ, **server["env"]},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    report(mcp_run={"server": name, "code": result.returncode, "stderr": result.stderr})
 
 
 def lado_server() -> StdioServerParameters:
@@ -234,6 +251,8 @@ def work(text: str) -> bool:
             call_tool("ask_human", arguments)
         elif command[0] == "run":
             run_skill_file(command[1], command[2])
+        elif command[0] == "mcp":
+            run_mcp_server(command[1])
         elif command[0] == "lines":
             print("\n".join(f"line {n}" for n in range(1, int(command[1]) + 1)), flush=True)
         elif command[0] == "fullscreen":

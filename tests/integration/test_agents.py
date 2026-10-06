@@ -31,7 +31,7 @@ def wait_status(agent: str, expected: str) -> None:
 
 def inputs(agent: str) -> list[str]:
     """What the fake agent got as input, in order."""
-    log = state.home() / "agents" / SESSION / agent / "inputs.jsonl"
+    log = agent_helpers.fake_logs(SESSION, agent) / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
@@ -42,7 +42,7 @@ def got_line(agent: str, line: str, since: int = 0) -> bool:
 
 def seen(agent: str) -> dict:
     """What the fake agent wrote to its "seen" file."""
-    path = state.home() / "agents" / SESSION / agent / "seen.json"
+    path = agent_helpers.fake_logs(SESSION, agent) / "seen.json"
     return json.loads(path.read_text()) if path.exists() else {}
 
 

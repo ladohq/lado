@@ -19,7 +19,7 @@ def wide(page: Page):
 
 
 def inputs(session: str) -> list:
-    log = state.home() / "agents" / session / "supervisor" / "inputs.jsonl"
+    log = agent_helpers.fake_logs(session, "supervisor") / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 

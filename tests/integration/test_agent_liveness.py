@@ -31,13 +31,13 @@ def wait_status(agent: str, expected: str, timeout: float = agent_helpers.TIMEOU
 
 
 def inputs(agent: str) -> list:
-    log = state.home() / "agents" / SESSION / agent / "inputs.jsonl"
+    log = agent_helpers.fake_logs(SESSION, agent) / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
 def hung_up(agent: str) -> bool:
     """Whether the agent ran its session-end hook as its window was killed."""
-    path = state.home() / "agents" / SESSION / agent / "seen.json"
+    path = agent_helpers.fake_logs(SESSION, agent) / "seen.json"
     return path.exists() and "hung_up" in json.loads(path.read_text())
 
 

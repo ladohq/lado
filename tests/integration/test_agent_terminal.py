@@ -30,7 +30,7 @@ def start(repo: Path, name: str = SESSION) -> None:
 
 
 def inputs(agent: str) -> list:
-    log = state.home() / "agents" / SESSION / agent / "inputs.jsonl"
+    log = agent_helpers.fake_logs(SESSION, agent) / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 

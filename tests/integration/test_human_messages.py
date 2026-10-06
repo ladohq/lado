@@ -8,7 +8,7 @@ import sys
 
 import httpx
 import pytest
-from agent_helpers import wait_for
+from agent_helpers import fake_logs, wait_for
 from event_stream import EventStream
 
 from lado import runtime, state
@@ -58,7 +58,7 @@ def session(repo):
 
 
 def inputs(agent: str = "supervisor") -> list:
-    log = state.home() / "agents" / SESSION / agent / "inputs.jsonl"
+    log = fake_logs(SESSION, agent) / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 

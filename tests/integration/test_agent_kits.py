@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from agent_helpers import init_repo, publish
+from agent_helpers import fake_logs, init_repo, publish
 from test_agents import SESSION, wait_for, wait_status
 
 from lado import gitcache, kits, runtime, state
@@ -33,12 +33,15 @@ def kit(repo):
     write(script, "#!/bin/sh\necho hello from notes\n")
     script.chmod(0o755)
     write(kit / "skills" / "plan" / "SKILL.md", "---\nname: plan\ndescription: make a plan\n---\n")
+    # The MCP server: writes the token it got next to itself.
+    write(kit / "echo.sh", '#!/bin/sh\nprintf %s "$TOKEN" > "$(dirname "$0")/got"\n')
+    (kit / "echo.sh").chmod(0o755)
     return kit
 
 
 def seen(agent: str) -> dict:
     """What the fake agent reported it was given."""
-    path = state.home() / "agents" / SESSION / agent / "seen.json"
+    path = fake_logs(SESSION, agent) / "seen.json"
     return json.loads(path.read_text()) if path.exists() else {}
 
 
@@ -52,7 +55,7 @@ def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
     assert supervisor["skills"] == {"notes": "take notes", "plan": "make a plan"}
     assert list(supervisor["mcp"]) == ["lado"]
 
-    monkeypatch.setenv("IT_TOKEN", "t0k")
+    monkeypatch.setenv("IT_TOKEN", "s3cr3t-t0k")
     runtime.spawn_worker(SESSION, "sleep 0", role="reviewer")
     runtime.spawn_worker(SESSION, "sleep 0", role="reviewer", without=["mcp:echo", "skill:notes"])
     # Named after their role: the second one gets "-2".
@@ -62,11 +65,21 @@ def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
     assert first["prompt"].startswith("You review branches.")
     assert f'You are worker "reviewer" in LADO session "{SESSION}"' in first["prompt"]
     assert first["skills"] == {"notes": "take notes"}
-    assert first["mcp"]["echo"] == {
-        "command": [f"{kit.resolve()}/echo.sh"],
-        "env": {"TOKEN": "t0k"},
-    }
+    assert first["mcp"]["echo"]["command"][-2:] == ["--", f"{kit.resolve()}/echo.sh"]
+    assert first["mcp"]["echo"]["env"] == {}
     assert (second["skills"], list(second["mcp"])) == ({}, ["lado"])
+
+    # The server gets the token from the agent's environment, through LADO's wrapper.
+    runtime.send_message(SESSION, "human", "reviewer", "mcp echo")
+    wait_for(lambda: seen("reviewer").get("mcp_run"), "the MCP server's run")
+    assert seen("reviewer")["mcp_run"] == {"server": "echo", "code": 0, "stderr": ""}
+    assert (kit / "got").read_text() == "s3cr3t-t0k"
+    # No file under the agents' config folders holds it; the window's env.json is gone
+    # once read.
+    root = state.home() / "agents"
+    assert list(root.rglob("env.json")) == []
+    assert [p for p in root.rglob("*") if p.is_file() and b"s3cr3t" in p.read_bytes()] == []
+    wait_status("reviewer", state.IDLE)
 
     # A skill's scripts run from where the agent found the skill.
     assert (
@@ -77,6 +90,10 @@ def test_agents_get_roles_skills_and_mcp_from_kits(repo, kit, monkeypatch):
         "file": "notes/scripts/hello.sh",
         "output": "hello from notes",
     }
+
+    # Its agents' config folders go with the stop.
+    runtime.stop_session(SESSION)
+    assert not (root / SESSION).exists()
 
 
 def test_two_kits_get_two_versions_of_one_skill_pack(tmp_path, repo):

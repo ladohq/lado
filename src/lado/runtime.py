@@ -1619,8 +1619,8 @@ def _spec(
     without: list[str] | None = None,
 ) -> providers.AgentSpec:
     """What `agent` is given: its role from the kits plus LADO's instructions, its skills
-    and MCP servers, their ${ENV_VAR} from the agent's `base_env`. Fails on anything its
-    CLI cannot do."""
+    and MCP servers, each ${ENV_VAR} of theirs checked in the agent's `base_env` (the value
+    stays there: lado.mcp_exec). Fails on anything its CLI cannot do."""
     resolved = env.resolve(role, without or [])
     cannot = f'{agent_cli.title} cannot load skills, but agent "{agent.name}" ({role}) gets'
     if resolved.skills and not agent_cli.capabilities.skills:

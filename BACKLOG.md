@@ -87,6 +87,20 @@ Update (2026-10-05, feature/self-update): `lado update` stops every running sess
 old code before the new one migrates; upgrading by hand (`pip install -U`, `lado stop` of
 one session) is still exposed.
 
+## A module in the agent's repository can replace one LADO imports
+
+Size: S. Why here: security: any `base64.py`, `json.py` or `lado/` at the root of a repository an agent works in runs inside LADO's hooks, MCP server and the MCP secrets wrapper, with the user's environment and keys.
+
+LADO starts its helper processes with `python -m lado.<module>` (`lado.mcp_exec`, `lado.agent_env`,
+and `providers.lado_command` for hooks and `lado mcp`) in the agent's cwd, the repository, and
+`python -m` puts the cwd first on `sys.path`. Checked by the reviewer of feature/mcp-secrets on
+2026-10-06: a `base64.py` in the cwd and `python -m lado.mcp_exec` printed "SHADOWED base64"
+and exited 7.
+Wanted: every LADO entry point runs without the cwd on `sys.path` (`-I`, `-P` on 3.11+, or a
+tiny loader that drops `sys.path[0]` before importing), in all of them at once, with a test
+that a shadowing module in the cwd is not imported.
+Found: 2026-10-06, review of feature/mcp-secrets.
+
 # P1: next
 
 ## README says there is nothing to run yet

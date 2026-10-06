@@ -221,6 +221,10 @@ test_layout::test_a_chip_opens_its_agents_terminal…, and vitest `findBy…` wa
 Wanted: `make check` gives the same verdict under load (time bounds that hold under
 parallel load, or `-n` chosen by the machine's load), so a red run means a real failure.
 Found: 2026-10-06, review of fix/deliver-on-idle.
+Also (2026-10-06, fix/conversation-resume-roadmap, load average ~180):
+test_session_loop::test_the_loop_types_in_a_message_every_hook_missed and the UI test
+test_terminal_panel::test_dont_ask_again_takes_control_at_once_after_a_reload failed and
+passed on their own.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 

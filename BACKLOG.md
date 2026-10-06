@@ -189,6 +189,9 @@ Wanted: the retry never types into an input the human has just typed into (or th
 waits for the human's line to be submitted first); the test passes under load.
 Found: 2026-10-02, `make check` in fix/live-loop-reason (change touched only tests and
 loop.py constants).
+Again 2026-10-07, merge step of feature/turn-resume (load average about 10): the fake
+agent's input was `sleep 0` with the bracketed paste `[from w1] report` in the same line;
+green on the next `make check`.
 
 ## Flaky UI test: a gate answered with `lado answer` loses the rail's "Needs you" count
 

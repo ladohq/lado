@@ -3,12 +3,13 @@
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from lado import __version__, agent_env, providers, terminal, tmux, update
+from lado import __version__, agent_env, providers, runtime, state, terminal, tmux, update
 
 OK = "ok"
 INFO = "info"  # for the human to know; nothing to fix
@@ -132,6 +133,25 @@ def check_agent_env() -> Check:
     return check
 
 
+def check_config_folders() -> Check:
+    """An agent's config folder lives only while the agent runs; one that is left may hold
+    an older LADO's kit MCP secrets."""
+    name = "Agent config folders"
+    try:
+        stray = runtime.stray_config_dirs()
+    except (state.SchemaError, tmux.TmuxError) as exc:
+        return Check(name, INFO, f"not checked: {exc}")
+    if not stray:
+        return Check(name, OK, "only those of running agents")
+    paths = ", ".join(map(str, stray))
+    return Check(
+        name,
+        WARN,
+        f"left by agents that do not run (they may hold secrets): {paths}",
+        f"remove them: rm -rf {shlex.join(map(str, stray))}",
+    )
+
+
 def check_lado() -> Check:
     """This LADO's version and whether a newer one is out (update.check: once a day)."""
     checked = update.check()
@@ -149,6 +169,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
         check_agent_env(),
+        check_config_folders(),
         *check_providers(which),
     ]
 

@@ -176,9 +176,15 @@ def agent_env(agent: state.Agent) -> dict[str, str]:
     }
 
 
+def configs_root() -> Path:
+    """Where the agents' config folders are: one per running agent, <session>/<agent>.
+    Each launch writes its folder anew; it is removed when the agent stops (lado.runtime)."""
+    return state.home() / "agents"
+
+
 def config_path(agent: state.Agent) -> Path:
     """The agent's config folder, not made."""
-    return state.home() / "agents" / agent.session / agent.name
+    return configs_root() / agent.session / agent.name
 
 
 def config_dir(agent: state.Agent) -> Path:
@@ -188,8 +194,13 @@ def config_dir(agent: state.Agent) -> Path:
 
 
 def remove_config_dir(agent: state.Agent) -> None:
-    """Remove what launch_command wrote for an agent that never started."""
+    """Remove what launch_command wrote for an agent that does not run (any more)."""
     shutil.rmtree(config_path(agent), ignore_errors=True)
+
+
+def remove_session_config_dirs(session: str) -> None:
+    """Remove the config folders of all the session's agents, when none of them runs."""
+    shutil.rmtree(configs_root() / session, ignore_errors=True)
 
 
 def hook_argv(agent: state.Agent, event: str) -> list[str]:

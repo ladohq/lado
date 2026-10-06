@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from lado import __version__, agent_env, doctor, providers
+from lado import __version__, agent_env, doctor, providers, runtime
 from lado.providers import claude, kilo, opencode
 
 
@@ -25,7 +25,16 @@ def _versions(
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     _versions(monkeypatch)
     checks = doctor.run_checks(which=lambda cmd: cmd)
-    names = ["LADO", "Python", "tmux", "Agent environment", "Claude Code", "Kilo CLI", "OpenCode"]
+    names = [
+        "LADO",
+        "Python",
+        "tmux",
+        "Agent environment",
+        "Agent config folders",
+        "Claude Code",
+        "Kilo CLI",
+        "OpenCode",
+    ]
     assert [c.name for c in checks] == names
     assert all(c.level == doctor.OK for c in checks)
 
@@ -220,3 +229,23 @@ def test_provider_status_of_an_untested_version_warns(monkeypatch):
     status = doctor.provider_status(kilo.KiloProvider(), which=lambda cmd: cmd)
     assert (status.installed, status.version) == (True, "9.0.0")
     assert status.warning.startswith(f"LADO is tested with Kilo CLI {kilo.TESTED_VERSION}.x;")
+
+
+def test_config_folders_of_agents_that_do_not_run_warn(repo, fake_tmux, lado_home):
+    assert doctor.check_config_folders().level == doctor.OK  # no lado.db yet
+    assert not (lado_home / "lado.db").exists()
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task", name="w1")
+    assert doctor.check_config_folders() == doctor.Check(
+        "Agent config folders", doctor.OK, "only those of running agents"
+    )
+    left = [lado_home / "agents" / "s" / "gone", lado_home / "agents" / "old"]
+    for folder in left:
+        (folder / "x").mkdir(parents=True)
+    check = doctor.check_config_folders()
+    assert check.level == doctor.WARN
+    assert (
+        check.detail
+        == f"left by agents that do not run (they may hold secrets): {left[1]}, {left[0]}"
+    )
+    assert check.hint == f"remove them: rm -rf {left[1]} {left[0]}"

@@ -1531,6 +1531,47 @@ def test_stop_session_keeps_worktrees_and_history(repo, fake_tmux):
         runtime.stop_session("nope")
 
 
+def _config_folders(lado_home):
+    """The agents' config folders there are, as "<session>/<agent>"."""
+    root = lado_home / "agents"
+    return sorted(str(p.relative_to(root)) for p in root.glob("*/*")) if root.exists() else []
+
+
+def test_an_agents_config_folder_lives_only_while_it_runs(repo, fake_tmux, lado_home):
+    _session_with_worker(repo)
+    runtime.start_session(str(repo), "other", None, provider="claude")
+    assert _config_folders(lado_home) == ["other/supervisor", "s/supervisor", "s/w1"]
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
+    runtime.finish_worker("s", "w1")
+    assert _config_folders(lado_home) == ["other/supervisor", "s/supervisor"]
+    runtime.spawn_worker("s", "task", name="w2")
+    runtime.agent_ended("s", "w2", "its CLI exited")
+    assert _config_folders(lado_home) == ["other/supervisor", "s/supervisor"]
+    runtime.stop_session("s")
+    assert _config_folders(lado_home) == ["other/supervisor"]
+    # Left by an older LADO, or a launch that failed: the next start removes it.
+    (lado_home / "agents" / "s" / "old-worker").mkdir(parents=True)
+    (lado_home / "agents" / "s" / "supervisor").mkdir()
+    (lado_home / "agents" / "s" / "supervisor" / "env.json").write_text("{}")
+    runtime.start_session(str(repo), "s", None)
+    assert _config_folders(lado_home) == ["other/supervisor", "s/supervisor"]
+    assert [p.name for p in (lado_home / "agents/s/supervisor").glob("env.json")] == ["env.json"]
+    runtime.stop_session("s")
+    (lado_home / "agents" / "s" / "old-worker").mkdir(parents=True)
+    runtime.forget_session("s")
+    assert not (lado_home / "agents" / "s").exists()
+    assert _config_folders(lado_home) == ["other/supervisor"]
+
+
+def test_stop_all_removes_the_config_folders_of_each_session(repo, fake_tmux, lado_home):
+    _session_with_worker(repo)
+    runtime.start_session(str(repo), "other", None, provider="claude")
+    runtime.stop_all(lambda name, stopped: None)
+    assert _config_folders(lado_home) == []
+
+
 def _launched_with(cmd):
     """The first message a fake-tmux claude command line was started with."""
     return cmd[-1] if cmd[-2] == "--" else None

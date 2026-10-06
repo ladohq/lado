@@ -342,6 +342,8 @@ def start_session(
             # lost while it starts.
             taken = state.take_pending(session, SUPERVISOR, state.DELIVERED)
             agent.task = format_messages(taken)
+        # None of its agents runs: what an older LADO or a failed launch left goes.
+        providers.base.remove_session_config_dirs(session)
         _add_agent(agent)
         first = _first_input(agent, agent.task, "your first messages")
         # Written once the session is taken, as the provider's config: a start that lost
@@ -565,6 +567,29 @@ def session_status(sess: state.Session) -> SessionStatus:
     return SessionStatus.RUNNING
 
 
+def stray_config_dirs() -> list[Path]:
+    """The folders under the agents' config root that belong to no running agent: a
+    session's folder when none of its agents runs, else an agent's. Left by an older LADO,
+    which wrote kit MCP secrets there, or by a stop that could not kill the agents.
+    Without lado.db, every one; it is not made here."""
+    root = providers.base.configs_root()
+    if not root.is_dir():
+        return []
+    running: dict[str, set[str]] = {}
+    if (state.home() / "lado.db").exists():
+        for sess in state.list_sessions():
+            if session_status(sess) in (SessionStatus.RUNNING, SessionStatus.LOOP_DOWN):
+                agents = state.list_agents(sess.name)
+                running[sess.name] = {a.name for a in agents if a.status != state.STOPPED}
+    stray = []
+    for folder in sorted(root.iterdir()):
+        if not running.get(folder.name):
+            stray.append(folder)
+        elif folder.is_dir():
+            stray += [f for f in sorted(folder.iterdir()) if f.name not in running[folder.name]]
+    return stray
+
+
 @dataclass(frozen=True)
 class SessionTime:
     ran_seconds: int  # its closed spans
@@ -699,6 +724,7 @@ def close_worker(session: str, worker: state.Agent, how: str) -> Finished:
             f"close: {error}; close it with "
             f"`tmux -L {tmux.socket()} kill-window -t {session}:{worker.name}`"
         ) from error
+    providers.base.remove_config_dir(worker)
     return finished
 
 
@@ -1218,6 +1244,7 @@ def agent_ended(session: str, name: str, reason: str) -> bool:
     dropped = state.agent_ended(session, name, reason)
     if dropped is None:
         return False
+    providers.base.remove_config_dir(state.get_agent(session, name))
     why = f"{name} stopped ({reason})"
     for message in dropped:
         _report_failure(session, message, why)
@@ -1489,6 +1516,7 @@ def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
             f"`tmux -L {tmux.socket()} kill-session -t {session}`; `lado start` resumes the "
             "session after that"
         ) from failed
+    providers.base.remove_session_config_dirs(session)
     return Stopped([a for a in agents if a.name != SUPERVISOR], dropped)
 
 
@@ -1523,6 +1551,7 @@ def forget_session(session: str, force: bool = False) -> Forgotten:
         )
     state.delete_session(session)
     loop.forget(session)
+    providers.base.remove_session_config_dirs(session)
     return forgotten
 
 

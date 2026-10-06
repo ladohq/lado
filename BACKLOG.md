@@ -1299,3 +1299,13 @@ tmux not on the server's PATH) from `start_session` is a 500 "Internal Server Er
 the notes of a failed undo (`runtime._undo`, also on a `LadoError`) are not in the 400 either.
 Wanted: the API answers 400 with the error and its notes, as the CLI prints them.
 Found: 2026-10-06, fix/tmux-missing-rollback.
+
+## Session tabs are cut in a narrow column with no sign they scroll
+
+With the terminal column open (window 1280 px), the session's tab bar overflows: Artifacts
+shows half ("A"). `.tab-bar` of the session has `overflow-x: auto`, but no visible scrollbar
+(macOS) and no wheel scrolling as the terminal tabs have. It overflowed before
+feature/session-tabs too; Mono and the icons made it wider.
+Wanted: the session's tabs always whole, or plainly scrollable: a thin bar and the wheel as
+for the terminals, or shorter labels / icons only in a narrow column.
+Found: 2026-10-06, review of feature/session-tabs (`session-light.png`).

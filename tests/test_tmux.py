@@ -227,7 +227,9 @@ def test_list_windows_names_the_windows_and_fails_for_a_gone_session(tmp_path):
     tmux.new_session(session, "supervisor", str(tmp_path), ["sleep", "60"])
     try:
         tmux.new_window(session, "w1", str(tmp_path), ["sleep", "60"])
-        assert tmux.list_windows(session) == ["supervisor", "w1"]
+        # A window the human opened by hand, with a space: not taken for w1's.
+        tmux.run("new-window", "-d", "-t", f"{session}:", "-n", "w2 notes", "sleep", "60")
+        assert tmux.list_windows(session) == ["supervisor", "w1", "w2 notes"]
     finally:
         tmux.kill_session(session)
     # Unlike window_names: an empty list would read as every agent's window gone.

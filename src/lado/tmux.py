@@ -170,7 +170,7 @@ def list_windows(session: str) -> list[str]:
     """The names of the session's windows; a TmuxError when tmux cannot list them (also for
     a gone session), never an empty list for a failure: the session loop takes an agent
     whose window is not listed for ended (lado.runtime.check_windows)."""
-    return run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
+    return run("list-windows", "-t", f"={session}", "-F", "#{window_name}").splitlines()
 
 
 def send_text(session: str, window: str, text: str) -> None:

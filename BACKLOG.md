@@ -553,6 +553,39 @@ Wanted: find an agent's window by a label of its own (`@lado-agent=<name>`, set 
 with the window), or refuse a rename.
 Found: 2026-10-06, feature/agent-liveness.
 
+## A stopped agent's page offers Write and Open terminal
+
+Size: S. Why here: more agents end up `stopped` now (feature/agent-liveness), and both actions fail for them.
+
+On the Agents tab, an agent in `stopped` (its process ended by itself) still has "Write to
+<agent>" with its composer and "Open terminal", though a message to it is refused ("no
+running agent") and it has no window.
+Wanted: for a stopped agent the composer and Open terminal are off or hidden, with a hint
+that Finish… comes next.
+Found: 2026-10-06, review of feature/agent-liveness.
+
+## Flaky vitest: Launch's taken name of a running session
+
+Size: S. Why here: it fails `make check` under load.
+
+`web/src/Launch.test.tsx`, "a taken name of a running session of this folder offers to open
+it, not to resume it": under heavy load (load average 27) `findByRole("alert")` does not see
+the answer within its default timeout and `make check` fails; a rerun with no change passes.
+Wanted: the test does not depend on the machine's speed (an explicit timeout, or waiting
+for the mocked fetch).
+Found: 2026-10-06, review of feature/agent-liveness.
+
+## `tmux.window_names` splits window names at spaces
+
+Size: S. Why here: the same split `list_windows` had, fixed there in feature/agent-liveness.
+
+`tmux.window_names` (used by `kill_window` and the UI terminal's check) splits tmux's list
+on any whitespace, so a window the human named `w1 notes` on LADO's server reads as a window
+`w1`: `kill_window` then tries a window that is not there, and the terminal check takes a
+gone agent's window for present.
+Wanted: split by lines, as `list_windows` does.
+Found: 2026-10-06, review fix of feature/agent-liveness.
+
 ## A kit's lint problems are seen only by `lado kits check`
 
 Size: S. Why here: the user never learns of an endless loop in a flow.

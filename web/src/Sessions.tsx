@@ -19,7 +19,18 @@ import { duration } from "./ChatText";
 import { CopyButton } from "./Copy";
 import { Flows, isOpen } from "./Flows";
 import { GroupHead, type Tone } from "./GroupHead";
-import { AgentCliIcon, CollapsePanelIcon, FolderIcon, KitsIcon, LinkIcon, ProblemIcon } from "./icons";
+import {
+  ActivityIcon,
+  AgentCliIcon,
+  AgentsIcon,
+  ArtifactsIcon,
+  CollapsePanelIcon,
+  FlowsIcon,
+  FolderIcon,
+  KitsIcon,
+  LinkIcon,
+  ProblemIcon,
+} from "./icons";
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
 import { SessionActions } from "./SessionControl";
@@ -363,6 +374,13 @@ const TAB_NAMES: Record<Tab, string> = {
   artifacts: "Artifacts",
 };
 
+const TAB_ICONS: Record<Tab, typeof ActivityIcon> = {
+  activity: ActivityIcon,
+  agents: AgentsIcon,
+  flows: FlowsIcon,
+  artifacts: ArtifactsIcon,
+};
+
 const TAB_TEXT: Record<Tab, string> = {
   activity: "Messages between the agents and you, flow steps and their notes, as they happen.",
   agents: "The session's agents: their roles, status and branches.",
@@ -411,23 +429,35 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
     flows: runs && "items" in runs ? runs.items.filter(isOpen).length : 0,
     agents: agents && "items" in agents ? agents.items.length : 0,
   };
-  const tabName = (one: Tab) => (counts[one] ? `${TAB_NAMES[one]} · ${counts[one]}` : TAB_NAMES[one]);
   const stopped = session.status === "stopped";
   return (
     <section className="session" aria-label={`Session ${name}`}>
       <SessionHead session={session} />
       <StartedNotice name={name} />
-      <nav className="tabs" aria-label="Session sections">
-        {TABS.map((one) => (
-          <Link
-            key={one}
-            to={sessionPath(name, one)}
-            className="tab"
-            aria-current={one === tab ? "page" : undefined}
-          >
-            {tabName(one)}
-          </Link>
-        ))}
+      <nav className="tab-bar session-tabs" aria-label="Session sections">
+        {TABS.map((one) => {
+          const SectionIcon = TAB_ICONS[one];
+          return (
+            <Link
+              key={one}
+              to={sessionPath(name, one)}
+              className="tab-item"
+              aria-current={one === tab ? "page" : undefined}
+            >
+              <SectionIcon />
+              {TAB_NAMES[one]}
+              {counts[one] ? (
+                <>
+                  {" "}
+                  {/* Named "Agents · 3"; the dot is for the ear only. */}
+                  <span className="tab-count">
+                    <span className="visually-hidden">·</span> {counts[one]}
+                  </span>
+                </>
+              ) : null}
+            </Link>
+          );
+        })}
       </nav>
       {tab === "agents" ? (
         <Agents session={name} agent={item} stopped={stopped} />

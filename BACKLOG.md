@@ -583,7 +583,9 @@ Also on Claude Code (2.1.291, haiku; 2026-10-06, feature/delivery):
 `test_a_flow_run_moves_on_when_its_worker_reports[claude]`, the supervisor got "step step
 needs a worker" at once (it was idle) and spawned `worker` for the run besides the test's
 w1, so finishing w1 kept the worktree (`assert not os.path.exists(run.worktree)`); the
-rerun passed.
+rerun passed. In the next round (load average ~135 just before) all three failed at once
+and passed on the rerun: Kilo's supervisor spawned `worker` and cancelled the run,
+OpenCode's spawned `worker` for the flow and merged and finished w1 during the follow-up.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.

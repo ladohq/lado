@@ -825,16 +825,29 @@ def cmd_attach(args: argparse.Namespace) -> int:
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
-    stopped = runtime.stop_session(args.name)
+    if bool(args.name) == args.all:
+        raise runtime.LadoError("lado stop takes a session's name or --all")
+    if args.name:
+        _print_stopped(args.name, runtime.stop_session(args.name))
+        return 0
+    stopped = runtime.stop_all()
+    if not stopped:
+        print("No session runs.")
+    for name, each in stopped:
+        _print_stopped(name, each)
+    print(f'Only sessions on tmux socket "{tmux.socket()}" are seen.')
+    return 0
+
+
+def _print_stopped(name: str, stopped: runtime.Stopped) -> None:
     n = stopped.dropped
     dropped = f"; {n} undelivered message{'' if n == 1 else 's'} dropped" if n else ""
-    print(f'Stopped session "{args.name}"{dropped}.')
-    _kept(runtime.session_worktrees(state.get_session(args.name).repo, args.name), "kept")
+    print(f'Stopped session "{name}"{dropped}.')
+    _kept(runtime.session_worktrees(state.get_session(name).repo, name), "kept")
     print(
         "History, open runs and gates are kept: lado start resumes the session, "
-        f"lado forget {args.name} drops them."
+        f"lado forget {name} drops them."
     )
-    return 0
 
 
 def cmd_forget(args: argparse.Namespace) -> int:
@@ -1089,7 +1102,10 @@ def main(argv: list[str] | None = None) -> int:
     stop = commands.add_parser(
         "stop", help="stop a session and all its agents; lado start resumes it"
     )
-    stop.add_argument("name")
+    stop.add_argument("name", nargs="?")
+    stop.add_argument(
+        "--all", action="store_true", help="stop every session that is not stopped yet"
+    )
     stop.set_defaults(func=cmd_stop)
 
     forget = commands.add_parser(
@@ -1188,18 +1204,19 @@ def main(argv: list[str] | None = None) -> int:
 
         return hooks.main(args.event, args.session, args.agent, args.instance)
     if args.command == "loop":
-        # No check_migration: the loop checks the schema itself and ends on another one.
+        # Never migrates: on another schema state.connect refuses, and the loop ends.
         return loop.run(args.session)
     if args.command is None:
         parser.print_help()
         return 0
     try:
-        # `lado stop` is what the refusal asks for; it ends the session it migrates under.
+        # `lado stop` is what the refusal asks for: it migrates once no session runs.
         if args.command != "stop":
-            runtime.check_migration()
+            runtime.migrate_if_safe()
         return args.func(args)
     except (
         runtime.LadoError,
+        state.SchemaError,
         tmux.TmuxError,
         kits.KitError,
         marketplaces.MarketplaceError,

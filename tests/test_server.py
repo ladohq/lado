@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from lado import __version__, cli, loop, runtime, state
 from lado.server import app as server_app
-from lado.server import auth
+from lado.server import auth, feed
 from lado.server import run as server_run
 
 PORT = 8123
@@ -164,6 +164,19 @@ def test_another_schema_answers_503_and_the_database_stays_as_it_is(client, whic
     assert answer.status_code == 503
     assert "lado server" in answer.json()["detail"]
     assert schema(db_path) == before
+
+
+def test_another_schema_after_the_check_answers_503_too(client, monkeypatch):
+    """The schema changes between the dependency's check and the endpoint's read: the read's
+    own connection refuses it, and that is a 503 with its reason, not a 500."""
+    state.list_sessions()
+    monkeypatch.setattr(feed, "schema_problem", lambda: None)
+    previous_schema()
+    before = schema(state.home() / "lado.db")
+    answer = authorized(client).get("/api/sessions")
+    assert answer.status_code == 503
+    assert "LADO was upgraded under a running session" in answer.json()["detail"]
+    assert schema(state.home() / "lado.db") == before
 
 
 def test_the_committed_openapi_schema_is_the_servers():

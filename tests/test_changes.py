@@ -206,7 +206,7 @@ def test_the_journal_keeps_the_latest_changes_only(lado_home):
 def test_version_11_has_no_journal_and_migrates_to_one(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     agent_helpers.schema_before(13)
-    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert state.MIGRATIONS[11] == state.JOURNAL
     for (name,) in db.execute(
         "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'changes_%'"
@@ -218,7 +218,8 @@ def test_version_11_has_no_journal_and_migrates_to_one(lado_home):
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()
     assert "changes" not in names and not any(n.startswith("changes_") for n in names)
-    state.add_session(state.Session("t", "/r", None, provider="claude"))  # migrates
+    state.migrate()
+    state.add_session(state.Session("t", "/r", None, provider="claude"))
     assert journal() == [("sessions", "t", "", "insert")]
 
 
@@ -246,9 +247,10 @@ def test_the_step_that_made_the_journal_keeps_its_six_tables():
 def test_version_13_journals_no_events_and_migrates_to_journal_run_events(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     agent_helpers.schema_before(14)
-    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()
     assert not any(n.startswith("changes_events") for n in names)
-    state.add_event("s", "lado", state.FLOW_START, "", run="f/x")  # migrates
+    state.migrate()
+    state.add_event("s", "lado", state.FLOW_START, "", run="f/x")
     assert journal()[-1][:2] == ("events", "s")

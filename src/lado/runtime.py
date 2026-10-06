@@ -466,10 +466,11 @@ def _first_input(agent: state.Agent, text: str | None, summary: str) -> str | No
     return format_message(state.Message(message_id, lado, summary, text))
 
 
-def check_migration() -> None:
-    """Refuse when opening lado.db would migrate it while a session runs: its agents, hooks
-    and MCP servers may be an older LADO, which refuses the newer schema. The CLI calls
-    this before a command; state.py knows no tmux, so the check lives here."""
+def migrate_if_safe() -> None:
+    """Upgrade an older lado.db (state.migrate), refused while a session runs: its agents,
+    hooks and MCP servers may be an older LADO, which refuses the newer schema. The CLI
+    calls this before a command; state.py knows no tmux, so the check lives here. It sees
+    the sessions of this LADO_TMUX_SOCKET only."""
     pending = state.pending_migration()
     if pending is None:
         return
@@ -477,13 +478,13 @@ def check_migration() -> None:
     running = [s for s in sessions if tmux.has_session(s)]
     if running:
         names = ", ".join(f'"{s}"' for s in running)
-        stops = "; ".join(f"`lado stop {s}`" for s in running)
         raise LadoError(
             f"{state.home() / 'lado.db'} has schema version {version} and this LADO would "
             f"upgrade it to {state.SCHEMA_VERSION} under the running sessions: {names}. "
             f"Their agents may run an older LADO, which cannot use the upgraded database. "
-            f"Stop them first ({stops}), then run this again; nothing was changed"
+            "Stop them first (`lado stop --all`), then run this again; nothing was changed"
         )
+    state.migrate()
 
 
 def running_session(session: str) -> state.Session:
@@ -1207,12 +1208,76 @@ def stop_preview(session: str) -> StopPreview:
 
 def stop_session(session: str) -> Stopped:
     """Kill the session's agents and mark it stopped. Its history, runs and gates stay
-    until `lado start` resumes it or `lado forget` drops it; worktrees stay on disk."""
+    until `lado start` resumes it or `lado forget` drops it; worktrees stay on disk.
+
+    On an older lado.db this LADO cannot mark it without migrating first: refused while
+    another session runs (`lado stop --all` stops them all), else it kills the session,
+    migrates, then marks it."""
+    pending = state.pending_migration()
+    if pending is not None:
+        version, sessions = pending
+        others = [s for s in sessions if s != session and tmux.has_session(s)]
+        if others:
+            names = ", ".join(f'"{s}"' for s in others)
+            known = (
+                f'session "{session}" cannot be stopped alone'
+                if session in sessions
+                else f'unknown or stopped session "{session}"'
+            )
+            raise LadoError(
+                f"{known}: {state.home() / 'lado.db'} has schema version {version}, and "
+                f"this LADO upgrades it to {state.SCHEMA_VERSION} only with no session "
+                f"running, but {names} run too. Stop them all with `lado stop --all`; "
+                "nothing was changed"
+            )
+        if session in sessions:
+            alive = _kill_for_migration([session])[session]
+            state.migrate()
+            return _mark_stopped(session, gone=not alive)
+        state.migrate()  # no session runs; then refused as below
     stop_preview(session)  # refuses an unknown or stopped session
     alive = tmux.has_session(session)
     if alive:
         tmux.kill_session(session)
-    agents, dropped = state.stop_session(session, gone=not alive)
+    return _mark_stopped(session, gone=not alive)
+
+
+def stop_all() -> list[tuple[str, Stopped]]:
+    """Stop every session not stopped yet (also one whose tmux or loop is gone), by name.
+    On an older lado.db: kill them all, wait for their loops, migrate, then mark them
+    stopped, since this LADO's SQL needs the newer schema. Sees the sessions of this
+    LADO_TMUX_SOCKET only."""
+    pending = state.pending_migration()
+    if pending is None:
+        names = [s.name for s in state.list_sessions() if not s.stopped_at]
+        return [(name, stop_session(name)) for name in names]
+    names = pending[1]
+    alive = _kill_for_migration(names)
+    state.migrate()
+    return [(name, _mark_stopped(name, gone=not alive[name])) for name in names]
+
+
+def _kill_for_migration(sessions: list[str]) -> dict[str, bool]:
+    """Kill the tmux sessions of `sessions` that run, then wait for their loops, which end
+    as their tmux is gone, so no process of the older LADO is left to write into the
+    upgraded database. Whether each one was alive; a loop that does not end is refused
+    before anything is migrated or marked."""
+    alive = {s: tmux.has_session(s) for s in sessions}
+    for session in sessions:
+        if alive[session]:
+            tmux.kill_session(session)
+    for session in sessions:
+        if not loop.wait_stopped(session):
+            raise LadoError(
+                f'the loop of session "{session}" did not end (LADO_HOME/loop/{session}.lock '
+                "is held); nothing was migrated or marked stopped: run `lado stop --all` "
+                "again"
+            )
+    return alive
+
+
+def _mark_stopped(session: str, gone: bool) -> Stopped:
+    agents, dropped = state.stop_session(session, gone=gone)
     # Then the UI's viewers, which keep the agents' windows: one opened meanwhile found no
     # window to link. Their streams end as the session is marked stopped already.
     terminal.close_viewers(session)

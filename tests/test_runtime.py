@@ -1176,6 +1176,23 @@ def test_hook_errors_are_logged_not_raised(repo, fake_tmux, lado_home, monkeypat
     assert "JSONDecodeError" in (lado_home / "hooks.log").read_text()
 
 
+def test_a_hook_on_an_older_schema_says_why_and_changes_nothing(
+    repo, fake_tmux, lado_home, monkeypatch
+):
+    """LADO upgraded in place under a running session: its hooks run the new code."""
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    instance = state.get_agent("s", "supervisor").instance
+    agent_helpers.previous_schema()
+    before = agent_helpers.database()
+    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
+    assert hooks.main("Stop", "s", "supervisor", instance) == 0
+    log = (lado_home / "hooks.log").read_text()
+    assert "Stop s/supervisor: " in log
+    assert "LADO was upgraded under a running session" in log and "`lado stop --all`" in log
+    assert "Traceback" not in log
+    assert agent_helpers.database() == before
+
+
 def test_hooks_from_an_earlier_launch_are_ignored(repo, fake_tmux, monkeypatch):
     runtime.start_session(str(repo), "s", None, provider="claude")
     old = state.get_agent("s", "supervisor").instance
@@ -1796,12 +1813,12 @@ def test_no_migration_under_a_running_session(repo, fake_tmux):
     tmux.kill_session("other")  # its tmux server died without `lado stop`
     agent_helpers.previous_schema()
     with pytest.raises(runtime.LadoError) as refused:
-        runtime.check_migration()
+        runtime.migrate_if_safe()
     message = str(refused.value)
     assert f"schema version {state.SCHEMA_VERSION - 1}" in message
     assert 'running sessions: "old"' in message
     assert "other" not in message and "gone" not in message
-    assert "`lado stop old`" in message
+    assert "`lado stop --all`" in message
     assert state.pending_migration() is not None  # nothing migrated
 
 
@@ -1809,10 +1826,118 @@ def test_migration_goes_ahead_with_no_session_running(repo, fake_tmux):
     runtime.start_session(str(repo), "old", None, provider="claude")
     runtime.stop_session("old")
     agent_helpers.previous_schema()
-    runtime.check_migration()
-    runtime.check_migration()  # nothing pending: nothing to check
-    assert state.get_session("old").stopped_at
+    assert state.pending_migration() is not None
+    runtime.migrate_if_safe()
     assert state.pending_migration() is None
+    runtime.migrate_if_safe()  # nothing pending: nothing to do
+    assert state.get_session("old").stopped_at
+
+
+def _database() -> bytes:
+    """lado.db with its WAL folded in: equal bytes mean nothing was written in between."""
+    return agent_helpers.database()
+
+
+def _spy_migrate(monkeypatch, calls):
+    """Record state.migrate in the tmux calls, to see it in order with the kills."""
+    migrate = state.migrate
+    monkeypatch.setattr(state, "migrate", lambda: calls.append(("migrate",)) or migrate())
+
+
+def test_stopping_one_of_two_running_sessions_on_an_older_schema_is_refused(repo, fake_tmux):
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    runtime.start_session(str(repo), "b", None, provider="claude")
+    agent_helpers.previous_schema()
+    before, calls = _database(), len(fake_tmux)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.stop_session("a")
+    assert "`lado stop --all`" in str(refused.value)
+    assert '"b"' in str(refused.value)
+    assert fake_tmux[calls:] == []  # no session killed
+    assert _database() == before
+
+
+def test_stopping_the_only_running_session_on_an_older_schema_kills_migrates_and_marks(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    runtime.start_session(str(repo), "gone", None, provider="claude")
+    tmux.kill_session("gone")  # its tmux server died: not running
+    agent_helpers.previous_schema()
+    _spy_migrate(monkeypatch, fake_tmux)
+    calls = len(fake_tmux)
+    runtime.stop_session("a")
+    assert fake_tmux[calls:] == [("kill_session", "a"), ("migrate",), ("close_viewers", "a")]
+    assert state.pending_migration() is None
+    assert state.get_session("a").stopped_at
+    assert state.SESSION_GONE not in [e.kind for e in state.list_events("a")]
+    assert not state.get_session("gone").stopped_at  # only the one asked for
+
+
+def test_stopping_an_unknown_session_on_an_older_schema(repo, fake_tmux):
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    agent_helpers.previous_schema()
+    before = _database()
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.stop_session("typo")
+    assert 'unknown or stopped session "typo"' in str(refused.value)
+    assert "`lado stop --all`" in str(refused.value)
+    assert _database() == before
+    runtime.stop_session("a")
+    # With no session running it migrates, then refuses as a stop always does.
+    agent_helpers.previous_schema()
+    with pytest.raises(runtime.LadoError, match='unknown session "typo"'):
+        runtime.stop_session("typo")
+    assert state.pending_migration() is None
+
+
+def test_stop_all_on_an_older_schema_kills_all_then_migrates_then_marks(
+    repo, fake_tmux, monkeypatch
+):
+    for name in ("a", "b", "gone", "stopped"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    tmux.kill_session("gone")
+    runtime.stop_session("stopped")
+    agent_helpers.previous_schema()
+    _spy_migrate(monkeypatch, fake_tmux)
+    calls = len(fake_tmux)
+    stopped = runtime.stop_all()
+    assert [name for name, _ in stopped] == ["a", "b", "gone"]
+    assert fake_tmux[calls:] == [
+        ("kill_session", "a"),
+        ("kill_session", "b"),
+        ("migrate",),
+        ("close_viewers", "a"),
+        ("close_viewers", "b"),
+        ("close_viewers", "gone"),
+    ]
+    assert state.pending_migration() is None
+    assert all(state.get_session(n).stopped_at for n in ("a", "b", "gone"))
+    # A session found gone gets its session_gone; the ones it killed do not.
+    assert state.SESSION_GONE in [e.kind for e in state.list_events("gone")]
+    assert state.SESSION_GONE not in [e.kind for e in state.list_events("a")]
+
+
+def test_stop_all_stops_every_session_not_stopped(repo, fake_tmux):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    tmux.kill_session("b")
+    assert [name for name, _ in runtime.stop_all()] == ["a", "b"]
+    assert all(state.get_session(n).stopped_at for n in ("a", "b"))
+    assert runtime.stop_all() == []
+
+
+def test_stop_all_does_not_migrate_while_a_loop_runs_on(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "a", None, provider="claude")
+    agent_helpers.previous_schema()
+    monkeypatch.setattr(loop, "wait_stopped", lambda session: False)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.stop_all()
+    assert 'loop of session "a"' in str(refused.value)
+    assert "`lado stop --all`" in str(refused.value)
+    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["a"])
+    monkeypatch.setattr(loop, "wait_stopped", lambda session: True)
+    assert [name for name, _ in runtime.stop_all()] == ["a"]  # again, once it ended
 
 
 def test_session_status_tells_the_four_states(repo, fake_tmux):

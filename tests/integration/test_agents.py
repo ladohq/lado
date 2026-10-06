@@ -2,7 +2,6 @@
 
 import json
 import os
-import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -319,12 +318,7 @@ def lado_cli(*args: str) -> subprocess.CompletedProcess:
 
 
 def database() -> bytes:
-    """lado.db with its WAL folded in: equal bytes mean nothing was written in between."""
-    path = state.home() / "lado.db"
-    db = sqlite3.connect(path)  # not state.connect(): it would migrate
-    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    db.close()
-    return path.read_bytes()
+    return agent_helpers.database()
 
 
 def test_cli_refuses_to_migrate_the_database_under_a_running_session(repo):
@@ -334,9 +328,60 @@ def test_cli_refuses_to_migrate_the_database_under_a_running_session(repo):
     result = lado_cli("ls")
     assert result.returncode == 1
     assert f'under the running sessions: "{SESSION}"' in result.stderr
-    assert f"`lado stop {SESSION}`" in result.stderr
+    assert "`lado stop --all`" in result.stderr
     assert database() == before
     assert state.pending_migration() == (state.SCHEMA_VERSION - 1, [SESSION])
+    # The only running session: its stop kills it, migrates, then marks it stopped.
+    result = lado_cli("stop", SESSION)
+    assert result.returncode == 0, result.stderr
+    assert not tmux.has_session(SESSION)
+    assert state.pending_migration() is None
+    assert state.get_session(SESSION).stopped_at
+
+
+def test_stop_of_one_of_two_sessions_on_an_older_schema_is_refused_stop_all_is_not(repo):
+    start(repo)
+    runtime.start_session(str(repo), "other", None, "fake")
+    agent_helpers.wait_for(
+        lambda: state.get_agent("other", "supervisor").status == state.IDLE,
+        "other's supervisor to be idle",
+        "other",
+    )
+    agent_helpers.previous_schema()
+    before = database()
+    result = lado_cli("stop", SESSION)
+    assert result.returncode == 1
+    assert "`lado stop --all`" in result.stderr and '"other"' in result.stderr
+    assert tmux.has_session(SESSION) and tmux.has_session("other")
+    assert database() == before
+    result = lado_cli("stop", "--all")
+    assert result.returncode == 0, result.stderr
+    assert f'Stopped session "{SESSION}"' in result.stdout
+    assert 'Stopped session "other"' in result.stdout
+    assert not tmux.has_session(SESSION) and not tmux.has_session("other")
+    assert state.pending_migration() is None
+    assert all(state.get_session(s).stopped_at for s in (SESSION, "other"))
+
+
+def test_a_running_agent_on_an_older_schema_changes_nothing_and_is_told_why(repo):
+    """LADO upgraded in place under a running session: its agent's hooks, its `lado mcp`
+    and its session loop run the new code, and none of them migrates."""
+    start(repo)
+    agent_helpers.previous_schema()
+    before = database()
+    upgraded = "LADO was upgraded under a running session"
+    # The human types into the agent's window: its hooks run, and it calls a tool.
+    tmux.send_text(SESSION, "supervisor", "read")
+    wait_for(
+        lambda: upgraded in tmux.capture(SESSION, "supervisor").replace("\n", ""),
+        "the tool's error in the agent's window",
+    )
+    hooks_log = state.home() / "hooks.log"
+    wait_for(lambda: hooks_log.exists() and upgraded in hooks_log.read_text(), "hooks.log")
+    loop_log = state.home() / "loop.log"
+    wait_for(lambda: f"{SESSION}: loop ended: " in loop_log.read_text(), "the loop's end")
+    assert upgraded in loop_log.read_text().splitlines()[-1]
+    assert database() == before
 
 
 def supervisor_runs(command: str) -> None:

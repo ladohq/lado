@@ -38,11 +38,8 @@ def lock_path(session: str) -> Path:
 
 
 def why_stop(session: str) -> str | None:
-    """Why the session's loop must end now, or None while it has work."""
-    version = state.schema_version()
-    if version != state.SCHEMA_VERSION:
-        # Checked first: opening the database with another schema would migrate it.
-        return f"the database has schema version {version}, this loop knows {state.SCHEMA_VERSION}"
+    """Why the session's loop must end now, or None while it has work. Another schema of
+    the database is a state.SchemaError (run ends on it)."""
     sess = state.get_session(session)
     if sess is None:
         return "the session is gone"
@@ -134,6 +131,10 @@ def run(session: str, interval: float = INTERVAL) -> int:
                 if reason is None:
                     runtime.sweep(session)
                     errors.worked()
+            except state.SchemaError as exc:
+                # Every connection refuses another schema, so no pass migrates; this LADO
+                # is not the one the database is for now: end.
+                reason = str(exc)
             except Exception:
                 reason = None
                 errors.failed()

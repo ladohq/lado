@@ -48,6 +48,7 @@ PRAGMA user_version = 1;
 def test_version_1_database_is_migrated(lado_home):
     lado_home.mkdir()
     sqlite3.connect(lado_home / "lado.db").executescript(SCHEMA_V1)
+    assert state.migrate() == state.SCHEMA_VERSION
     assert state.get_session("s").provider == "claude"
     agent = state.get_agent("s", "supervisor")
     assert (agent.provider, agent.instance, agent.status) == ("claude", "abc", "idle")
@@ -59,11 +60,12 @@ def test_the_official_marketplace_is_in_a_new_database_and_after_the_migration(l
     official = state.Marketplace("official", None, True, None)
     assert state.list_marketplaces() == [official]
     agent_helpers.schema_before(17)
-    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()
     assert not any("marketplaces" in name for name in names)
-    assert state.list_marketplaces() == [official]  # migrates
+    state.migrate()
+    assert state.list_marketplaces() == [official]
     with state.connect() as db:
         assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION
 
@@ -71,12 +73,13 @@ def test_the_official_marketplace_is_in_a_new_database_and_after_the_migration(l
 def test_the_kits_table_is_made_by_the_migration(lado_home):
     state.add_kit(state.InstalledKit("team", folder="/dev/team"))
     agent_helpers.previous_schema()
-    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     version = db.execute("PRAGMA user_version").fetchone()[0]
     db.close()
     assert version == 17 and not any("kits" in name for name in names)
-    assert state.list_kits() == []  # migrates
+    state.migrate()
+    assert state.list_kits() == []
     with state.connect() as db:
         assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION == 18
         columns = [row["name"] for row in db.execute("PRAGMA table_info(kits)")]
@@ -154,14 +157,14 @@ def test_marketplaces_are_added_changed_and_removed(lado_home):
 def test_incompatible_database_is_reported(lado_home):
     lado_home.mkdir()
     sqlite3.connect(lado_home / "lado.db").execute("CREATE TABLE sessions (name TEXT)")
-    with pytest.raises(RuntimeError, match="incompatible schema"):
+    with pytest.raises(state.SchemaError, match="incompatible schema"):
         state.list_sessions()
 
 
 def test_newer_database_is_reported(lado_home):
     lado_home.mkdir()
     sqlite3.connect(lado_home / "lado.db").execute("PRAGMA user_version = 99")
-    with pytest.raises(RuntimeError, match="version 99") as refused:
+    with pytest.raises(state.SchemaError, match="version 99") as refused:
         state.list_sessions()
     message = str(refused.value)
     assert "newer LADO" in message
@@ -169,13 +172,28 @@ def test_newer_database_is_reported(lado_home):
     assert "delete" not in message
 
 
-def _database():
-    """The bytes of lado.db with its WAL folded in, to tell whether anything was written."""
-    path = state.home() / "lado.db"
-    db = sqlite3.connect(path)  # not state.connect(): it would migrate
-    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    db.close()
-    return path.read_bytes()
+def test_connect_refuses_an_older_schema_and_changes_nothing(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    agent_helpers.previous_schema()
+    before = agent_helpers.database()
+    with pytest.raises(state.SchemaError, match=f"schema version {state.SCHEMA_VERSION - 1}") as e:
+        state.get_session("s")
+    assert "`lado stop --all`" in str(e.value)
+    assert agent_helpers.database() == before
+
+
+def test_migrate_upgrades_an_older_schema_once(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    agent_helpers.previous_schema()
+    assert state.migrate() == state.SCHEMA_VERSION
+    assert state.get_session("s").name == "s"
+    assert state.migrate() is None  # nothing left to migrate
+    assert state.pending_migration() is None
+
+
+def test_migrate_makes_no_database(lado_home):
+    assert state.migrate() is None
+    assert not (lado_home / "lado.db").exists()
 
 
 def test_no_pending_migration_without_a_database(lado_home):
@@ -193,7 +211,7 @@ def test_pending_migration_names_the_sessions_not_stopped(lado_home):
         state.add_session(state.Session(name, "/r", None, provider="claude"))
     state.stop_session("gone")
     agent_helpers.previous_schema()
-    before = _database()
+    before = agent_helpers.database()
     assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["a", "b"])
     assert (lado_home / "lado.db").read_bytes() == before
 
@@ -213,6 +231,7 @@ def test_version_2_database_gets_kits(lado_home):
         db.execute(statement)
     db.execute("PRAGMA user_version = 2")
     db.commit()
+    state.migrate()
     sess = state.get_session("s")
     assert (sess.kits, sess.without) == (["default"], [])
 
@@ -236,6 +255,7 @@ def _schema_v3(lado_home):
 
 def test_version_3_database_gets_events(lado_home):
     _schema_v3(lado_home)
+    state.migrate()
     state.add_event("s", "supervisor", "finished", "done")
     [event] = state.list_events("s")
     assert (event.agent, event.kind, event.detail) == ("supervisor", "finished", "done")
@@ -423,6 +443,7 @@ def test_version_4_messages_keep_their_text_as_body(lado_home):
         " ('s', 'w1', 'supervisor', 'later', 'pending')"
     )
     db.commit()
+    state.migrate()
     old, queued = state.list_messages("s")
     assert (old.summary, old.body, old.state) == ("", "done\nall tests pass", state.READ)
     assert (queued.summary, queued.body, queued.state) == ("", "later", state.PENDING)
@@ -471,6 +492,7 @@ def test_version_5_database_gets_runs(lado_home):
         db.execute(statement)
     db.execute("PRAGMA user_version = 5")
     db.commit()
+    state.migrate()
     assert state.get_agent("s", "supervisor").run is None
     assert state.list_runs("s") == []
     state.add_event("s", "supervisor", "finished", "done")
@@ -548,6 +570,7 @@ def test_version_6_database_gets_gates(lado_home):
             db.execute(statement)
     db.execute("PRAGMA user_version = 6")
     db.commit()
+    state.migrate()
     assert state.open_gates() == []
     assert state.get_gate(1) is None
 
@@ -696,6 +719,7 @@ def test_version_7_database_gets_stopped_sessions(lado_home):
             db.execute(statement)
     db.execute("PRAGMA user_version = 7")
     db.commit()
+    state.migrate()
     assert state.get_session("s").stopped_at is None
 
 
@@ -711,6 +735,7 @@ def test_version_8_database_gets_the_language_of_runs(lado_home):
     )
     db.execute("PRAGMA user_version = 8")
     db.commit()
+    state.migrate()
     assert state.get_run("s", "feature/x").language == ""
 
 
@@ -725,6 +750,7 @@ def test_version_9_database_gets_message_attempts_and_when_agents_were_seen(lado
     )
     db.execute("PRAGMA user_version = 9")
     db.commit()
+    state.migrate()
     [message] = state.list_messages("s")
     assert (message.state, message.attempts, message.sent_at) == (state.SENT, 0, 5.0)
     assert state.get_agent("s", "supervisor").seen_at == 0
@@ -749,6 +775,7 @@ def test_version_10_database_keeps_the_notes_of_runs(lado_home):
     )
     db.execute("PRAGMA user_version = 10")
     db.commit()
+    state.migrate()
     # A run from before keeps its previous note; no earlier note was kept.
     assert state.get_run("s", "feature/x").note == "designed"
     assert state.latest_notes("s", "feature/x") == {}
@@ -864,11 +891,12 @@ def test_version_12_messages_become_plain_messages_in_version_13(lado_home):
     state.add_agent(_agent("supervisor"))
     state.queue_message("s", "w1", "supervisor", "hi", "body")
     agent_helpers.schema_before(13)
-    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     columns = {row[1] for row in db.execute("PRAGMA table_info(messages)")}
     db.close()
     assert "kind" not in columns and "reply_state" not in columns
-    [message] = state.list_messages("s")  # migrates
+    state.migrate()
+    [message] = state.list_messages("s")
     assert (message.kind, message.choices, message.question_state) == (state.MESSAGE, None, None)
     assert (message.reply_to, message.choice, message.reply_state) == (None, None, None)
 
@@ -878,14 +906,15 @@ def test_version_14_notes_get_an_empty_actor_outcome_and_target(lado_home):
     run = _run()
     state.add_run(run, [("supervisor", state.FLOW_START, "started")])
     agent_helpers.schema_before(15)
-    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     db.execute(
         "INSERT INTO notes (session, run, state, kind, summary) VALUES"
         " ('s', 'feature/x', 'design', 'report', 'old design')"
     )
     db.commit()
     db.close()
-    [note] = state.run_notes("s")  # migrates
+    state.migrate()
+    [note] = state.run_notes("s")
     assert (note.run, note.state, note.kind, note.summary) == (
         "feature/x",
         "design",
@@ -899,11 +928,12 @@ def test_version_15_agents_wait_for_no_key(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(_agent(status=state.WAITING))
     agent_helpers.schema_before(16)
-    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     columns = {row[1] for row in db.execute("PRAGMA table_info(agents)")}
     db.close()
     assert "waiting_for" not in columns
-    agent = state.get_agent("s", "w1")  # migrates
+    state.migrate()
+    agent = state.get_agent("s", "w1")
     assert (agent.status, agent.waiting_for) == (state.WAITING, None)
     state.resume("s", "w1", "k1")  # a wait from before has no key: any answer ends it
     assert state.get_agent("s", "w1").status == state.BUSY

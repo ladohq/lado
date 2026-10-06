@@ -248,11 +248,18 @@ fixes and docs only: no new feature, no API or schema change.
     turn's end, the forgotten-reply check (How agents talk).
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
     Schema changes: bump `SCHEMA_VERSION`, add a step to `MIGRATIONS` and update
-    `tests/agent_helpers.previous_schema` (it undoes the last step). A CLI command does
-    not migrate under a running session (not stopped, tmux session alive): it refuses,
-    names the sessions and asks for `lado stop` first (`runtime.check_migration`, called
-    by the CLI before each command but `stop`; hooks and `lado mcp` do not check). An
-    older LADO refuses a newer database and asks to upgrade. A message counts its pastes
+    `tests/agent_helpers.previous_schema` (it undoes the last step). `state.connect()`
+    never migrates: it makes a missing lado.db, and another schema version (older, newer,
+    incompatible) is a `state.SchemaError` with nothing changed, so no hook, `lado mcp`,
+    session loop or UI server can migrate under a running session. Only `state.migrate()`
+    applies `MIGRATIONS`, called by `runtime.migrate_if_safe` (the CLI before each command
+    but `doctor`, `mcp`, `hook`, `loop` and `stop`), which refuses while a session runs (not
+    stopped, tmux session alive on this socket), names them and asks for `lado stop --all`,
+    and by `runtime.stop_session` and `stop_all` (`lado stop`, below). A LADO upgraded in
+    place under a running session: that session's hooks write the SchemaError's text
+    (`lado stop --all`, then `lado start`) to `hooks.log`, its tools return it as their
+    error, its loop ends with it in `loop.log`, and the UI server answers 503. An older
+    LADO refuses a newer database and asks to upgrade; the CLI prints the SchemaError. A message counts its pastes
     (`messages.attempts`) and can end `failed` (`messages.failed_at`); an agent keeps when
     its latest hook ran
     (`agents.seen_at`). From schema 13 a message has a `kind` (`message` or `question`),
@@ -499,7 +506,8 @@ fixes and docs only: no new feature, no API or schema change.
   check by `lado ls` does not make a starting loop exit). Before each pass it ends, writing
   why to `LADO_HOME/loop.log`, when the
   session is stopped or gone, its tmux session is gone, or `lado.db` has another schema
-  version than its own (checked read-only, so it never migrates); an error in a pass is
+  version than its own (`state.SchemaError` of any connection of a pass, so it never
+  migrates); an error in a pass is
   written there too with its traceback, and the loop goes on. While the same error
   repeats, it writes one short line at most every `loop.REPEAT_NOTE` seconds (60) and the
   count when another error comes or passes work again. `lado ls` marks a running session
@@ -580,6 +588,12 @@ UI's terminals of its agents (their viewer sessions); its history,
 runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names
 are free again; `lado log` keeps what they did), and messages they never got or whose body
 they never read are dropped, with the count in the output: new agents start fresh.
+`lado stop --all` stops every session not stopped yet (also one whose tmux or loop is gone)
+and says which tmux socket it sees. On an older `lado.db` (a LADO upgraded by hand) this
+LADO cannot mark a session stopped without migrating: `lado stop <session>` is refused,
+with nothing changed, while another session runs, and points to `lado stop --all`;
+otherwise the stop kills the tmux sessions, waits for their loops (one that does not end
+stops it before the migration: run it again), migrates, then marks them stopped.
 `lado ls` shows the session as `(stopped)` with its open runs and gates; `lado log` works
 as before. `lado start` with the same name resumes it (also when
 its tmux server died without `lado stop`): the repo must be the same, and `--kit`,

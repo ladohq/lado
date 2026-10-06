@@ -7,7 +7,7 @@ into that agent's MCP config.
 import datetime
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -40,7 +40,9 @@ class _Server(MCPServer):
         tools = await super().list_tools()
         if self._lado_instance:
             session, agent = self._lado_agent
-            state.add_event(session, agent, state.MCP_READY, self._lado_instance)
+            # On another schema nothing is recorded; each tool call then says why.
+            with suppress(state.SchemaError):
+                state.add_event(session, agent, state.MCP_READY, self._lado_instance)
             self._lado_instance = ""
         return tools
 
@@ -56,7 +58,14 @@ class _Server(MCPServer):
                 raise ToolError(
                     f"{name} has no argument {unknown}; it accepts: {', '.join(accepted) or 'none'}"
                 )
-        return await super().call_tool(name, arguments, context)
+        try:
+            return await super().call_tool(name, arguments, context)
+        except ToolError as error:
+            # Every tool opens lado.db: another schema (e.g. LADO upgraded in place under
+            # the running session) is told to the agent as it is, whichever tool it was.
+            if isinstance(error.__cause__, state.SchemaError):
+                raise ToolError(str(error.__cause__)) from error.__cause__
+            raise
 
 
 def build(session: str, agent: str, instance: str = "") -> MCPServer:
@@ -166,7 +175,10 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             for m in state.read_messages(session, agent)
         ]
 
-    me = state.get_agent(session, agent)
+    try:
+        me = state.get_agent(session, agent)
+    except state.SchemaError:
+        me = None  # the shared tools only; each call says why it cannot work
     if me and me.name == runtime.SUPERVISOR:
 
         @server.tool()

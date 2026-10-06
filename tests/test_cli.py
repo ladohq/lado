@@ -1,5 +1,6 @@
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -1385,13 +1386,43 @@ def test_a_command_does_not_migrate_the_database_under_a_running_session(repo, f
     capsys.readouterr()
     assert main(["ls"]) == 1
     err = capsys.readouterr().err
-    assert err.startswith("lado: ") and "`lado stop old`" in err
+    assert err.startswith("lado: ") and "`lado stop --all`" in err
     assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["old"])
-    # Stopping is what the refusal asks for, so it goes ahead; then the database migrates.
+    # Stopping the only running session is what the refusal asks for: it kills, migrates
+    # and marks it stopped.
     assert main(["stop", "old"]) == 0
-    assert main(["ls"]) == 0
     assert state.pending_migration() is None
+    assert main(["ls"]) == 0
     assert f"old  {repo}  (stopped)" in capsys.readouterr().out
+
+
+def test_stop_all_stops_every_running_session(repo, fake_tmux, capsys):
+    for name in ("a", "b"):
+        main(["start", str(repo), "--provider", "claude", "--name", name, "--no-attach"])
+    agent_helpers.previous_schema()
+    capsys.readouterr()
+    assert main(["stop", "a"]) == 1
+    assert "`lado stop --all`" in capsys.readouterr().err
+    assert main(["stop", "--all"]) == 0
+    out = capsys.readouterr().out
+    assert 'Stopped session "a"' in out and 'Stopped session "b"' in out
+    assert 'Only sessions on tmux socket "' in out
+    assert state.pending_migration() is None
+    assert main(["stop", "--all"]) == 0
+    assert "No session runs." in capsys.readouterr().out
+
+
+def test_stop_takes_a_name_or_all(capsys):
+    assert main(["stop"]) == 1
+    assert main(["stop", "x", "--all"]) == 1
+    assert "a session's name or --all" in capsys.readouterr().err
+
+
+def test_a_newer_database_is_a_message_not_a_traceback(lado_home, capsys):
+    lado_home.mkdir()
+    sqlite3.connect(lado_home / "lado.db").execute("PRAGMA user_version = 99")
+    assert main(["ls"]) == 1
+    assert "lado: " in capsys.readouterr().err
 
 
 def test_ls_shows_a_running_session_without_its_loop(repo, fake_tmux, capsys):

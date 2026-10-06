@@ -83,7 +83,7 @@ Found: 2026-10-04, fix/agent-env (fake login shell without the Homebrew PATH).
 ### A missing tmux binary crashes the CLI with a traceback
 
 Without tmux installed, `tmux.run` raises FileNotFoundError, not TmuxError, so the CLI shows a
-traceback (now also from `check_migration` when an old database has unstopped sessions).
+traceback (now also from `migrate_if_safe` when an old database has unstopped sessions).
 Wanted: `tmux.run` turns a missing binary into TmuxError with a clear text.
 Found: 2026-10-02, review of run fix/migration-guard.
 
@@ -132,53 +132,6 @@ tmux window closes, and no SessionEnd hook runs, so `lado ls` keeps showing it `
 should detect an untrusted repo and tell the user, and the agent's status could show that it
 waits for the human.
 Found: 2026-10-01, live e2e tests.
-
-## state.connect() creates and migrates lado.db; readers have no read-only connection
-
-Size: M. Why here: the root of migrations under a running session; fixing it also fixes the flaky migration-refusal test (below).
-
-`state.connect()` creates the schema when there is no `lado.db` and migrates an older one.
-The UI server must never migrate, so each endpoint first checks the schema version
-(`feed.schema_problem`) and only then calls `state.py`; a future endpoint that forgets the
-check, or a race between the check and the call, can migrate the database under a running
-session. `loop.why_stop` relies on the same discipline.
-Wanted: a read-only connection in `state.py` for readers (the server, `loop.why_stop`) that
-refuses another schema itself. Related: "Flaky: integration test of the migration refusal
-under a running session".
-Found: 2026-10-03, architect's review of the live updates design (feature/ui-live-updates).
-
-### Flaky: integration test of the migration refusal under a running session
-
-`tests/integration/test_agents.py::test_cli_refuses_to_migrate_the_database_under_a_running_session`
-failed once in nine parallel integration runs (2026-10-02) and once in `make check`
-(2026-10-05, merge step of feature/flows-tab-redesign, after main got schema 18): `lado ls`
-exited 0 (`assert 0 == 1`) because the database was already migrated back; it passed alone
-and in the next `make check`. Two likely races after `agent_helpers.previous_schema()`
-rolls `lado.db` back: a session-loop pass that passed `why_stop` before the rollback opens
-the database through `runtime.sweep`, which migrates; or a hook or `lado mcp` of the
-session's running fake agent opens it with `state.connect` (hooks and `lado mcp` do not
-check, AGENTS.md `state.py`) before the test's `lado ls`.
-Wanted: a loop pass never migrates (the schema checked on the connection the pass uses),
-so the refusal holds while the loop runs; and a test session with no process that can open
-the database between the rollback and the check (stop the fake agent's hooks, or roll back
-with the session's tmux alive but no agent), so the assertion is deterministic.
-Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason; 2026-10-05,
-merge step of run feature/flows-tab-redesign.
-
-## Stopping one of several running sessions migrates the database under the others
-
-Size: M. Why here: it breaks running sessions on an upgrade by hand; do it together with the read-only connection above.
-
-A newer CLI refuses to migrate `lado.db` while a session runs and asks for `lado stop`
-first, but lets `lado stop` itself through: with sessions A and B running, `lado stop A`
-migrates the database while B still runs, so B's older agents break until B is stopped
-too. Also, a LADO upgraded in place (`pip install -U`) while a session runs migrates from
-that session's own hooks, which run the new code, under its older MCP servers. Wanted: a
-stop that kills the session before it opens the database, or one `lado stop --all`.
-Found: 2026-10-02, migration guard (fix/migration-guard).
-Update (2026-10-05, feature/self-update): `lado update` stops every running session with the
-old code before the new one migrates; upgrading by hand (`pip install -U`, `lado stop` of
-one session) is still exposed.
 
 ## A failed rollback hides why a start or spawn failed
 
@@ -949,6 +902,17 @@ Found: 2026-10-03, UI e2e screenshots of feature/ui-polish.
 
 # P3: maybe never
 
+## A server endpoint that writes makes lado.db when there is none
+
+Size: S. Why here: only before the first session; the file it makes is a fresh, correct one.
+
+The server never makes lado.db for a read (`database()` says there is none), but an endpoint
+whose only guard is `Depends(database)` and that calls the core goes through
+`state.connect()`, which makes the file: e.g. `POST /api/kits/plan` (`kits.plan_add` reads
+`state.get_kit`). Meant for `POST /api/sessions`; for the others not decided.
+Wanted: decide per endpoint whether it may make the database, and test it.
+Found: 2026-10-06, design of run feature/readonly-db (confirmed by reading `plan_kit`).
+
 ## "idle" while a background command runs
 
 Size: M. Why here: postponed as low impact.
@@ -967,7 +931,7 @@ Found: 2026-10-02, first flow run `fix/resume-stopped`.
 
 Size: S. Why here: an edge case.
 
-`runtime.check_migration` asks `tmux.has_session` on the current process's `LADO_TMUX_SOCKET`.
+`runtime.migrate_if_safe` asks `tmux.has_session` on the current process's `LADO_TMUX_SOCKET`.
 A session started in the same LADO_HOME with another socket counts as not running, so the
 database is migrated under it.
 Wanted: store the socket with the session and check that one (or say in the refusal and the
@@ -976,17 +940,8 @@ Found: 2026-10-02, review of run fix/migration-guard.
 Update (2026-10-05, feature/self-update): `lado update` sees only the sessions on the current
 `LADO_TMUX_SOCKET` too: it does not stop a session on another socket and the new version
 migrates the database under it. Its plan says which socket it sees.
-
-## Migration-guard leftovers (two Minor review findings)
-
-Size: S. Why here: tidying up.
-
-`state.pending_migration`'s docstring says it creates and changes nothing, but opening a WAL
-database read-only leaves `lado.db-wal` and `lado.db-shm` behind (the data is unchanged).
-`tests/test_state.py` `_database()` and `tests/integration/test_agents.py` `database()` are the
-same helper twice. Wanted: say "changes nothing in the database"; move the helper to
-`tests/agent_helpers.py` next to `previous_schema()`.
-Found: 2026-10-02, review of run fix/migration-guard.
+Update (2026-10-06, feature/readonly-db): `lado stop --all` has the same limit (it kills only the sessions
+on its socket, then migrates) and says which socket it sees.
 
 ## Skill packs written for Claude Code plugins break under LADO
 

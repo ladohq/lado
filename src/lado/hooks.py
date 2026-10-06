@@ -108,6 +108,9 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
         output = handle(provider, neutral, session, agent) if neutral else None
         if output:
             print(output)
+    except state.SchemaError as exc:
+        # E.g. LADO upgraded in place under the running session: the database stays as it is.
+        _log(f"{event} {session}/{agent}: {exc}")
     except Exception:
         _log(f"{event} {session}/{agent}\n{traceback.format_exc()}")
     return 0

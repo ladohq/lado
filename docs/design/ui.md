@@ -145,7 +145,8 @@ later desktop app and a later cloud setup; the UI is its client.
 - Data only through `lado.state` and `lado.runtime`, no SQL in the server but the journal's
   read-only reader (`feed.Journal`, The change feed below). The server never
   migrates `lado.db`: every data endpoint first reads the schema version read-only and
-  answers 503 for another one (older or newer).
+  answers 503 for another one (older or newer), and `state.connect()` refuses another one
+  itself (`state.SchemaError`, also a 503), so a change after that check migrates nothing.
 - The API's OpenAPI schema is the contract: `web/openapi.json` and the UI's TypeScript
   types (`web/src/api.gen.ts`) are made from it by `make web-types` and committed; a unit
   test and `make web` fail when they are stale.

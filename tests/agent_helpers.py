@@ -5,6 +5,7 @@ import atexit
 import json
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -107,6 +108,16 @@ def spoil_snapshot(session: str, run: str, text: str = "{not json") -> None:
         db.execute(
             "UPDATE runs SET snapshot = ? WHERE session = ? AND name = ?", (text, session, run)
         )
+
+
+def database() -> bytes:
+    """The bytes of lado.db with its WAL folded in: equal bytes mean nothing was written in
+    between. Not through state.connect(), which refuses an older schema."""
+    path = state.home() / "lado.db"
+    db = sqlite3.connect(path)
+    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    db.close()
+    return path.read_bytes()
 
 
 def previous_schema() -> None:

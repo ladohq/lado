@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal, TypeVar
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -187,6 +187,12 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     guard = Guard(token, port)
     hub = feed.Hub(feed.Journal())
     app = FastAPI(title="LADO", version=__version__)
+
+    @app.exception_handler(state.SchemaError)
+    def another_schema(request: Request, error: state.SchemaError) -> JSONResponse:
+        """lado.db changed its schema after `database` checked it: state.connect refused it
+        and changed nothing. The same 503 as the check's."""
+        return JSONResponse({"detail": str(error)}, status_code=503)
 
     @app.get("/api/health")
     def health() -> Health:

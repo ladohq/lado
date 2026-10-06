@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+import agent_helpers
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
@@ -128,6 +129,23 @@ def test_tool_errors_tell_the_agent_why(repo, fake_tmux, tool, args, reason):
     with pytest.raises(ToolError) as error:
         asyncio.run(server.call_tool(tool, args))
     assert reason in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("tool", "args"), [("list_agents", {}), ("send_message", {"to": "w1", "summary": "hi"})]
+)
+def test_a_tool_on_an_older_schema_says_why_and_changes_nothing(repo, fake_tmux, tool, args):
+    """LADO upgraded in place under a running session: `lado mcp` runs the new code."""
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    agent_helpers.previous_schema()
+    before = agent_helpers.database()
+    server = mcp_server.build("s", "supervisor", instance="abc")
+    asyncio.run(server.list_tools())  # the CLI still gets the tools
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool(tool, args))
+    assert "LADO was upgraded under a running session" in str(error.value)
+    assert "`lado stop --all`, then `lado start`" in str(error.value)
+    assert agent_helpers.database() == before
 
 
 def test_spawn_worker_refuses_a_provider_without_the_sessions_mode(repo, fake_tmux):

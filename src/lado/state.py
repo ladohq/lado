@@ -585,27 +585,46 @@ def home() -> Path:
     return path
 
 
-@contextmanager
-def connect() -> Iterator[sqlite3.Connection]:
+class SchemaError(RuntimeError):
+    """lado.db has another schema than this LADO's: older (migrate() upgrades it), newer or
+    incompatible. connect() raises it and changes nothing."""
+
+
+def _open() -> sqlite3.Connection:
     conn = sqlite3.connect(home() / "lado.db", timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    return conn
+
+
+@contextmanager
+def connect() -> Iterator[sqlite3.Connection]:
+    """lado.db, made when there is none. It never migrates: another schema version is a
+    SchemaError, so no process opening it upgrades the database under a running session
+    (only migrate() does, which the CLI calls when no session runs)."""
+    conn = _open()
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    if version in MIGRATIONS:
-        version = _migrate(conn)
     if version != SCHEMA_VERSION:
         tables = conn.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()
+        if version in MIGRATIONS:
+            conn.close()
+            raise SchemaError(
+                f"{home() / 'lado.db'} has schema version {version} and this LADO knows "
+                f"{SCHEMA_VERSION}: LADO was upgraded under a running session. Run "
+                "`lado stop --all`, then `lado start`; with no session running, any `lado` "
+                "command upgrades the database"
+            )
         if version > SCHEMA_VERSION:
             conn.close()
-            raise RuntimeError(
+            raise SchemaError(
                 f"{home() / 'lado.db'} has schema version {version}, made by a newer LADO "
                 f"(this one knows up to {SCHEMA_VERSION}); upgrade LADO, and restart a "
                 "session that runs on this version with `lado stop` and `lado start`"
             )
         if version or tables[0]:
             conn.close()
-            raise RuntimeError(
+            raise SchemaError(
                 f"{home() / 'lado.db'} has an incompatible schema (version {version}); "
                 "stop all LADO sessions and delete it"
             )
@@ -619,7 +638,7 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 def schema_version() -> int | None:
     """lado.db's schema version, None when there is no lado.db. Reads only: unlike
-    connect(), it never migrates."""
+    connect(), it never makes the database or refuses a schema."""
     path = home() / "lado.db"
     if not path.exists():
         return None
@@ -631,8 +650,9 @@ def schema_version() -> int | None:
 
 
 def pending_migration() -> tuple[int, list[str]] | None:
-    """When connect() would migrate lado.db: its schema version and the sessions it does
-    not mark stopped. Reads only: creates and changes nothing."""
+    """When migrate() would upgrade lado.db: its schema version and the sessions it does
+    not mark stopped. Reads only: changes nothing in the database (a WAL database opened
+    read-only may leave lado.db-wal and lado.db-shm behind)."""
     path = home() / "lado.db"
     if not path.exists():
         return None
@@ -650,18 +670,30 @@ def pending_migration() -> tuple[int, list[str]] | None:
     return version, [row[0] for row in rows]
 
 
-def _migrate(conn: sqlite3.Connection) -> int:
-    """Apply MIGRATIONS in one transaction. Returns the new schema version."""
-    conn.execute("BEGIN IMMEDIATE")
-    # Read the version again inside the lock: another process may have just migrated.
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
-    while version in MIGRATIONS:
-        for statement in MIGRATIONS[version]:
-            conn.execute(statement)
-        version += 1
-    conn.execute(f"PRAGMA user_version = {version}")
-    conn.execute("COMMIT")
-    return version
+def migrate() -> int | None:
+    """Upgrade an older lado.db to SCHEMA_VERSION in one transaction: the only place that
+    applies MIGRATIONS. The new version, or None when there was nothing to migrate (no
+    lado.db, or not an older schema). Its caller makes sure no session runs
+    (lado.runtime)."""
+    if not (home() / "lado.db").exists():
+        return None
+    conn = _open()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        # Read the version inside the lock: another process may have just migrated.
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version not in MIGRATIONS:
+            conn.execute("ROLLBACK")
+            return None
+        while version in MIGRATIONS:
+            for statement in MIGRATIONS[version]:
+                conn.execute(statement)
+            version += 1
+        conn.execute(f"PRAGMA user_version = {version}")
+        conn.execute("COMMIT")
+        return version
+    finally:
+        conn.close()
 
 
 def add_session(session: Session) -> bool:

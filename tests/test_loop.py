@@ -31,13 +31,33 @@ def test_the_loop_stops_for_an_unknown_session(lado_home):
     assert loop.why_stop("s") == "the session is gone"
 
 
-def test_the_loop_stops_on_another_schema_and_does_not_migrate_it(repo, fake_tmux):
+def test_the_loop_stops_on_another_schema_and_does_not_migrate_it(repo, fake_tmux, lado_home):
     _session(repo)
     previous_schema()
-    old = state.SCHEMA_VERSION - 1
-    assert loop.why_stop("s") == (
-        f"the database has schema version {old}, this loop knows {state.SCHEMA_VERSION}"
-    )
+    assert loop.run("s", interval=0) == 0
+    last = (lado_home / "loop.log").read_text().splitlines()[-1]
+    assert f"s: loop ended: {lado_home / 'lado.db'} has schema version" in last
+    assert state.pending_migration() is not None  # still the old schema
+
+
+def test_a_pass_that_meets_another_schema_ends_the_loop_and_migrates_nothing(
+    repo, fake_tmux, monkeypatch, lado_home
+):
+    """The schema changes between why_stop and the sweep: the sweep's own connection
+    refuses it, and the loop ends with the reason instead of going on."""
+    _session(repo)
+    sweep, passes = runtime.sweep, []
+
+    def schema_changes_first(session):
+        passes.append(session)
+        previous_schema()
+        sweep(session)
+
+    monkeypatch.setattr(runtime, "sweep", schema_changes_first)
+    assert loop.run("s", interval=0) == 0
+    assert passes == ["s"]
+    last = (lado_home / "loop.log").read_text().splitlines()[-1]
+    assert "s: loop ended: " in last and "LADO was upgraded under a running session" in last
     assert state.pending_migration() is not None  # still the old schema
 
 

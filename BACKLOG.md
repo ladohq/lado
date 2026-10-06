@@ -484,6 +484,25 @@ Wanted: the evidence keeps a closed agent window's last screen (e.g. tmux `remai
 in live tests, related to "Keep a crashed agent's last output"), and the cause is found.
 Found: 2026-10-06, live tests of run feature/trust-dialog.
 
+## An agent whose turn ended on a transient API error is not resumed
+
+Size: M. Why here: a worker stops mid-task on a temporary server error (529 Overloaded, rate_limit) and stays idle until someone types to it; with the agent-liveness change LADO tells the supervisor, but nothing resumes the agent.
+
+On 2026-10-06 developer-2 of run feature/mcp-secrets (session lado, LADO 0.23.1, Claude Code
+2.1.291) got `API Error: 529 Overloaded. This is a server-side issue, usually temporary — try
+again in a moment` on its first turn. The turn ended (StopFailure, which 0.23.1 does not
+register, so LADO kept it busy for hours); the human had to type "продолжай" in its window.
+Since agent-liveness (6d562b6) the turn ends as `idle` and the supervisor gets one line with
+the error type, but the worker's task is still left half done until the supervisor or the
+human acts.
+Wanted: for transient error types (Claude: overloaded, rate_limit, server_error; the
+OpenCode-family equivalents) LADO resumes the agent by itself after a backoff (e.g. types a
+neutral "continue" message from `lado`, at most N times with growing delays), tells the
+supervisor only when the retries run out; permanent errors (authentication, billing,
+invalid_request) are reported at once as now. The error types per provider live in the
+provider, the retry rule in the core.
+Found: 2026-10-06, by the human in session lado.
+
 # P2: when convenient
 
 ## Keep a crashed agent's last output

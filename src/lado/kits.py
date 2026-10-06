@@ -58,7 +58,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import __version__, flows, gitcache, marketplaces, state
+from lado import __version__, flows, gitcache, marketplaces, mcp_exec, state
 from lado.flows import Flow
 from lado.providers.base import McpServer
 
@@ -79,7 +79,7 @@ WITHOUT_KINDS = ("agent", "skill", "mcp", "flow")
 
 NAME = marketplaces.KIT_NAME
 SEMVER = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
-VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+VARIABLE = mcp_exec.VARIABLE
 # A path that only works on one machine: ~/..., or /dir/... at the start of a word.
 HARDCODED_PATH = re.compile(r"(?:^|(?<=[\s\"'`(=:,\[]))(~/|/[A-Za-z0-9._-]+/)[^\s\"'`)]*", re.M)
 
@@ -229,13 +229,24 @@ class ResolvedAgent:
     mcp: dict[str, McpDef]
 
     def mcp_servers(self, environ: Mapping[str, str] | None = None) -> dict[str, McpServer]:
-        """The agent's MCP servers with ${ENV_VAR} in their env taken from `environ`."""
+        """The agent's MCP servers. One whose env refers to ${ENV_VAR} is started by
+        lado.mcp_exec, which takes the values from the agent's environment: only their
+        names go into the config. Each must be set in `environ`, the agent's, which is
+        checked here, before the agent starts."""
         environ = os.environ if environ is None else environ
         servers = {}
         for name, mcp in self.mcp.items():
-            where = f'MCP server "{name}" of agent "{self.agent.name}" ({self.agent.path})'
-            env = {k: _env_value(v, environ, f"{where}, env {k}") for k, v in mcp.env.items()}
-            servers[name] = McpServer(list(mcp.command), env)
+            templates = {k: v for k, v in mcp.env.items() if mcp_exec.references(v)}
+            literals = {k: v for k, v in mcp.env.items() if k not in templates}
+            try:
+                mcp_exec.expand(templates, environ)
+            except mcp_exec.Unset as exc:
+                where = f'MCP server "{name}" of agent "{self.agent.name}" ({self.agent.path})'
+                raise KitError(f"{where}: {exc}") from None
+            command = list(mcp.command)
+            if templates:
+                command = mcp_exec.wrap(name, command, templates)
+            servers[name] = McpServer(command, literals)
         return servers
 
 
@@ -1744,16 +1755,6 @@ def _substitute(text: str, values: dict[str, str], where: str, keep_unknown=Fals
         raise KitError(f"{where}: unknown variable ${{{name}}}; only ${{KIT_DIR}} is set here")
 
     return VARIABLE.sub(replace, text)
-
-
-def _env_value(value: str, environ: Mapping[str, str], where: str) -> str:
-    def replace(match: re.Match) -> str:
-        name = match.group(1)
-        if name not in environ:
-            raise KitError(f"{where}: environment variable {name} is not set")
-        return environ[name]
-
-    return VARIABLE.sub(replace, value)
 
 
 def _frontmatter(text: str, path: Path, errors: list[str]) -> tuple[dict | None, str]:

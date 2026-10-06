@@ -154,6 +154,14 @@ def test_the_launch_runs_its_command_with_exactly_that_environment(tmp_path):
     assert not file.exists()  # it holds the user's keys: gone once read
 
 
+def test_an_env_file_left_readable_by_all_is_made_the_users_only(tmp_path):
+    file = tmp_path / "env.json"
+    file.write_text("{}")  # left by a launch whose window never read it
+    file.chmod(0o644)
+    agent_env.command(file, {"KEY": "k"}, ["env"])
+    assert (file.stat().st_mode & 0o777) == 0o600
+
+
 def test_the_launch_finds_its_program_on_the_resolved_path(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

@@ -7,7 +7,7 @@ import pytest
 import yaml
 from agent_helpers import init_repo, publish
 
-from lado import flows, gitcache, kits, marketplaces, state
+from lado import flows, gitcache, kits, marketplaces, mcp_exec, state
 
 
 def make_kit(base, name, agents=None, skills=(), **meta):
@@ -167,13 +167,33 @@ def test_mcp_variables(project, monkeypatch):
     mcp = {"db": {"command": ["${KIT_DIR}/srv", "--x"], "env": {"T": "${TOKEN}-${KIT_DIR}"}}}
     path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, "")})
     env = kits.resolve(None, [kits.load(path)])
-    servers = env.resolve("w").mcp_servers({"TOKEN": "secret"})
+    servers = env.resolve("w").mcp_servers({"TOKEN": "s3cr3t"})
     kit_dir = path.resolve()
-    assert servers["db"].command == [f"{kit_dir}/srv", "--x"]
-    assert servers["db"].env == {"T": f"secret-{kit_dir}"}
+    # The value stays in the agent's environment: the server is started by the wrapper.
+    assert "s3cr3t" not in repr(servers)
+    assert servers["db"].command == mcp_exec.wrap(
+        "db", [f"{kit_dir}/srv", "--x"], {"T": f"${{TOKEN}}-{kit_dir}"}
+    )
+    assert servers["db"].env == {}
     monkeypatch.delenv("TOKEN", raising=False)
     with pytest.raises(kits.KitError, match="environment variable TOKEN is not set"):
         env.resolve("w").mcp_servers()
+
+
+def test_mcp_without_references_is_not_wrapped(project):
+    mcp = {"db": {"command": ["srv"], "env": {"MODE": "${KIT_DIR}/ro"}}}
+    path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, "")})
+    servers = kits.resolve(None, [kits.load(path)]).resolve("w").mcp_servers({})
+    assert servers["db"].command == ["srv"]
+    assert servers["db"].env == {"MODE": f"{path.resolve()}/ro"}
+
+
+def test_mcp_literals_stay_beside_the_templates(project):
+    mcp = {"db": {"command": ["srv"], "env": {"MODE": "ro", "T": "${TOKEN}"}}}
+    path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, "")})
+    servers = kits.resolve(None, [kits.load(path)]).resolve("w").mcp_servers({"TOKEN": "s"})
+    assert servers["db"].env == {"MODE": "ro"}
+    assert servers["db"].command == mcp_exec.wrap("db", ["srv"], {"T": "${TOKEN}"})
 
 
 def test_lookup_order(tmp_path, repo, project, lado_home):

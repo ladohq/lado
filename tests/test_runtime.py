@@ -13,7 +13,7 @@ import agent_helpers
 import pytest
 import yaml
 
-from lado import agent_env, hooks, kits, loop, providers, runs, runtime, state, tmux
+from lado import agent_env, hooks, kits, loop, mcp_exec, providers, runs, runtime, state, tmux
 
 
 def test_slug():
@@ -1840,8 +1840,10 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
     added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
     assert sorted(p.name for p in added.iterdir()) == ["checklist"]
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
-    assert mcp["db"]["command"] == f"{team_kit.resolve()}/db.sh"
-    assert mcp["db"]["env"] == {"TOKEN": "t0k"}
+    templates = {"TOKEN": "${DB_TOKEN}"}
+    wrapped = mcp_exec.wrap("db", [f"{team_kit.resolve()}/db.sh"], templates)
+    assert [mcp["db"]["command"], *mcp["db"]["args"]] == wrapped
+    assert mcp["db"]["env"] == {}
     # The worker role gets all skills; this one without the MCP server it does not have.
     runtime.spawn_worker("s", "t", role="worker", without=["skill:style"])
     cmd = fake_tmux[-1][-1]
@@ -1858,9 +1860,32 @@ def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, tea
     path = os.environ["PATH"]
     monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": path, "DB_TOKEN": "from-shell"})
     runtime.spawn_worker("s", "review it", role="reviewer")
-    cmd = fake_tmux[-1][-1]
-    mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
-    assert mcp["db"]["env"] == {"TOKEN": "from-shell"}
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert env["DB_TOKEN"] == "from-shell"  # the wrapper's CLI gets it from there
+
+
+@pytest.mark.parametrize("provider", ["claude", "kilo", "opencode"])
+def test_kit_mcp_secrets_are_in_no_file_lado_leaves(
+    repo, fake_tmux, team_kit, monkeypatch, lado_home, provider
+):
+    monkeypatch.setenv("DB_TOKEN", "s3cr3t")
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider=provider)
+    runtime.spawn_worker("s", "review it", role="reviewer", name="r")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    for name, value in env.items():
+        if name.endswith("_CONFIG_CONTENT"):
+            assert "s3cr3t" not in value
+    found = []
+    for path in (lado_home / "agents").rglob("*"):
+        if path.is_file() and path.name != "env.json" and "s3cr3t" in path.read_text():
+            found.append(path)
+    assert found == []
+    config = providers.base.config_path(state.get_agent("s", "r"))
+    text = "\n".join(p.read_text() for p in config.glob("*.json") if p.name != "env.json")
+    assert "lado.mcp_exec" in text
+    assert "${" not in text and "{env:" not in text
+    env_files = list((lado_home / "agents").rglob("env.json"))
+    assert [f.stat().st_mode & 0o777 for f in env_files] == [0o600, 0o600]
 
 
 def test_spawn_worker_errors_leave_nothing_behind(repo, fake_tmux, team_kit, monkeypatch):

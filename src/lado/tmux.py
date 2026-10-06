@@ -163,8 +163,12 @@ def window_names(session: str) -> list[str]:
 def send_text(session: str, window: str, text: str) -> None:
     """Type `text` into the program running in the window and press Enter.
 
-    The text goes in as one bracketed paste, so newlines inside it do not submit early.
+    The text goes in as one bracketed paste, so newlines inside it do not submit early. A
+    text ending in a backslash gets a space after it: Claude Code reads a backslash before
+    Enter as a line break, not a submit.
     """
+    if text.endswith("\\"):
+        text += " "
     target = f"{session}:{window}"
     if run("display-message", "-p", "-t", target, "#{pane_in_mode}").strip() == "1":
         run("send-keys", "-t", target, "-X", "cancel")  # copy-mode swallows input

@@ -150,11 +150,22 @@ def read_input() -> str | None:
     """The next input from the terminal; None at end of input.
 
     The terminal turns pasted line breaks into separate lines; the paste markers (bracketed
-    paste mode, enabled in main) keep a pasted text in one piece.
+    paste mode, enabled in main) keep a pasted text in one piece. Like Claude Code, a
+    backslash before Enter is a line break in the input, not its end.
     """
-    line = sys.stdin.readline()
-    if not line:
-        return None
+    text = ""
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return text or None
+        text += _read_paste(line)
+        if not text.endswith("\\"):
+            return text
+        text = text[:-1] + "\n"
+
+
+def _read_paste(line: str) -> str:
+    """The input of one Enter that began with `line`: the text before it, a paste whole."""
     if PASTE_START not in line:
         return line.rstrip("\n")
     text = line.split(PASTE_START, 1)[1]
@@ -163,7 +174,8 @@ def read_input() -> str | None:
         if not more:
             break
         text += more
-    return text.split(PASTE_END, 1)[0]
+    before, _, after = text.partition(PASTE_END)
+    return before + after.rstrip("\n")
 
 
 holds = 0  # how often `hold` ran

@@ -8,20 +8,6 @@ P3 maybe never (candidates for removal); a new entry goes into its tier with a `
 
 # P0: fix now
 
-## A message ending in a backslash is not submitted
-
-Size: S. Why here: a plain human message ending in `\` is not sent and the agent stands still; tmux.py:148-160 pastes and presses Enter at once; a one-line fix.
-
-When the human's message (or any message) ends in `\`, e.g. `что требуется от меня?\`,
-the line LADO pastes into an idle agent (`[from human] <summary>`) ends in a backslash.
-`tmux.send_text` pastes it and presses Enter; Claude Code reads `\` + Enter as "continue on
-the next line", so the prompt is not submitted and the agent sits with the text in its input
-until someone presses Enter. The message stays `sent` and the sweep pastes it again later.
-Wanted: the pasted line never ends in a backslash (e.g. a trailing space or the `(#id)`
-suffix after it, or escaping per provider), checked for each provider (Kilo and OpenCode may
-treat it the same way), with a test.
-Found: 2026-10-06, by the human in session kit-creator.
-
 ## An agent whose turn ends on an API error stays busy
 
 Size: M. Why here: the agent shows busy for hours and its queue is never handed over (2 hours after the machine slept); it can happen in any session.
@@ -188,6 +174,16 @@ test_layout::test_a_chip_opens_its_agents_terminal…, and vitest `findBy…` wa
 Wanted: `make check` gives the same verdict under load (time bounds that hold under
 parallel load, or `-n` chosen by the machine's load), so a red run means a real failure.
 Found: 2026-10-06, review of fix/deliver-on-idle.
+Also (2026-10-06, fix/conversation-resume-roadmap, load average ~180):
+test_session_loop::test_the_loop_types_in_a_message_every_hook_missed and the UI test
+test_terminal_panel::test_dont_ask_again_takes_control_at_once_after_a_reload failed and
+passed on their own.
+Also (2026-10-06, merge of fix/trailing-backslash, load average ~200): the UI tests
+test_agents_tab::test_a_workers_page_shows_its_work_and_finish_discards_it,
+test_flows_tab::test_in_a_narrow_column_the_runs_take_it_and_a_run_has_the_way_back,
+test_kits_page::test_the_update_window_keeps_its_buttons_on_a_short_screen and
+test_agent_terminal::test_a_viewer_has_only_the_agents_window_and_no_tmux_keys failed in
+`make check` and passed together on a serial rerun.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 
@@ -237,6 +233,11 @@ full `make check` and passing alone or on a rerun:
   `timed out after 30s waiting for dev1 to be idle; agents: supervisor idle, dev1 busy, dev2
   starting`; the machine may have slept during that run (2026-10-05, review of
   feature/self-update). It could wait for the event it needs rather than for both workers.
+- `tests/integration/test_agent_terminal.py::test_stop_ends_open_terminals_and_leaves_no_window_viewer_or_agent`
+  (`waiting for w1 idle; agents: supervisor idle, w1 busy`) and
+  `tests/integration/test_flow_runs.py::test_the_humans_answer_moves_the_run_on_to_the_next_agent`
+  (`waiting for worker to be idle; agents: supervisor idle, worker starting`), both in one
+  `make check` of 11.5 min; both passed alone (2026-10-06, fix/trailing-backslash).
 Wanted: integration tests that wait for a worker's start share one wait helper with a margin
 for parallel runs under load, not 30 s in each test.
 Found: 2026-10-05, the kits tests above; 2026-10-06, review of fix/finish-race.
@@ -683,19 +684,6 @@ Wanted: send each provider's own exit command first, wait a bounded time, then k
 is left, and say which agents had to be killed. Seen in another orchestrator, where slow
 agents were killed too early until a delay was added.
 Found: 2026-10-04, design of feature/launch.
-
-## Agents lose their conversation at every restart of a session
-
-Size: L. Why here: a valuable feature that belongs in ROADMAP.md rather than in the backlog.
-
-`lado stop` then `lado start`, and so `lado update`, start every agent anew: the supervisor
-and the workers of open runs begin a new conversation and only get what LADO tells them
-(the open runs' state), not what they were in the middle of. A busy agent loses its turn.
-Wanted: a session that survives a restart: each provider can continue a conversation
-(Claude Code `--resume <id>`, Kilo's own way), the runtime keeps each agent's conversation
-id, and a resume starts the supervisor and the run workers with their conversations. Worth
-an item in ROADMAP.md; `lado update` would then need no change.
-Found: 2026-10-05, design of feature/self-update.
 
 ## Choose the model per agent
 

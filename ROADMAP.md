@@ -143,3 +143,8 @@ their time comes.
 - [x] Kit marketplace: find and add kits from the UI (the same `lado kits add`, later by a
   name from a public index): the UI's Kits page (installed, available from the
   marketplaces' `index.json`, updates, marketplaces); skill packs reach a session through a kit's `dependencies`
+- [ ] Conversations survive a restart: today `lado stop` + `lado start` (so also `lado update`)
+  starts the supervisor and the run workers in new conversations with only the open runs'
+  state, and a busy agent loses its turn. Wanted: the runtime keeps each agent's
+  conversation id and a resume continues it through the provider (Claude Code
+  `--resume <id>`, Kilo's own way); `lado update` then needs no change.

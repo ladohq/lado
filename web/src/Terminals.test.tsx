@@ -130,6 +130,16 @@ test("the panel shows the supervisor's terminal from the start, before any click
   expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("true");
 });
 
+test("the tabs are the UI's tabs: the tablist a tab bar, each tab's wrapper (with its ×) a tab item", async () => {
+  await open();
+  await openTerminal("w1");
+  const list = within(panel()).getByRole("tablist", { name: "Open terminals" });
+  expect(list.classList).toContain("tab-bar");
+  const items = [tab("supervisor"), tab("w1")].map((one) => one.closest(".term-tab"));
+  expect(items.map((item) => item?.classList.contains("tab-item"))).toEqual([true, true]);
+  expect(items[1]?.contains(within(panel()).getByRole("button", { name: "Close w1's terminal" }))).toBe(true);
+});
+
 test("a chip opens its agent's terminal on the right, to view", async () => {
   await open();
   const view = await openTerminal("w1");

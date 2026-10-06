@@ -337,7 +337,8 @@ Decided in the agent terminal task (2026-10-03).
   72 px (a shorter name stays whole), then the row scrolls sideways (the wheel too) under a
   thin bar; the supervisor's tab stays at the left (sticky), the tab selected here or by a
   chip scrolls into view, and Expand and Collapse at the right never move. The whole name
-  is in the tab's tooltip (below), not in a `title`.
+  is in the tab's tooltip (below), not in a `title`. The tabs look as every tab of the UI
+  (Look, Tabs).
 - **Focus** (2026-10-05, task feature/sessions-list-collapse): after **Collapse
   terminals** the focus is on the strip's **Terminals**, after Terminals on Collapse
   terminals, as for the session list's strip (`Splitter.useStripFocus`). Only those buttons
@@ -405,7 +406,7 @@ Sessions for now. The UI's texts are in English.
   open it and press Resume`; all from `SessionInfo`, no CLI commands. The **session**
   in the middle: its head in two lines (task feature/session-head, 2026-10-05), then the
   tabs **Activity | Agents | Flows |
-  Artifacts** (its gates come as cards in the feed): Activity is the
+  Artifacts** (their look: Look, Tabs; its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents the agents and what each does (Agents
   below), Flows the runs (Flows below), Artifacts a placeholder naming the task that fills
   it. The head's first line: the name, the status, how long the session ran, then on the
@@ -1043,7 +1044,8 @@ page for what `lado kits` and `lado marketplaces` do, instead of a Kits and a Ma
 page (LADO has one source of kits, git).
 
 - **Layout**: above, the time of the last check, **Check for updates** and **Add kit…**.
-  Under them the tabs **Installed | Available | Updates** (in the address, `/kits/<tab>`),
+  Under them the tabs **Installed | Available | Updates** (in the address, `/kits/<tab>`;
+  their look: Look, Tabs),
   a search by name and description and the source chips (All, each marketplace, git,
   folder, built-in; remembered in the browser, `lado.kitsSource`), which filter every tab;
   then the list. The **Marketplaces** block is on the right on every tab, under the list on
@@ -1156,3 +1158,23 @@ colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official `--done`,
 marketplace `--action`, always beside the source's text. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test
 (`web/src/tokens.test.ts`) checks it.
+
+**Tabs** (decided with the human 2026-10-06, task feature/session-tabs, mockup
+`.lado/mockups/session-tabs/index.html`, variant F "folder tabs"): every tab bar of the UI
+has one look, the terminal column's type, from one set of rules in `styles.css` (each place
+keeps its own markup: links in a `nav`, or the terminals' `tablist` with ×). `.tab-bar` is
+the band that holds and scrolls the tabs: `--raised`, from edge to edge of its column (the
+session's through `--main-pad`, the same variable as `.session-main`'s padding), a 5 px
+ground above the tabs. `.tab-item` is the framed tab: IBM Plex Mono 13 px, `--muted`
+(`--ink` on hover), an icon (14 px) or the status dot on its left, a transparent 1 px frame
+on three sides rounded 6 px at the top. The selected one, by `aria-current="page"` or
+`data-active` (one selector), is `--panel` with a `--line` frame, `--ink` 600, its icon
+`--action`, and a 2 px `--action` line along its top drawn by `::before`. The band's line
+is an inset shadow (`inset 0 -1px 0 var(--line)`), painted under the tabs, so the selected
+tab's ground covers it; no `border-bottom`, no negative margins, no band that scrolls up
+and down. A count is `.tab-count` (Mono 11 px on `--panel`), its accessible name kept
+(`Agents · 3`, `Installed 3`). Where: the session's sections (with their icons: Activity,
+Agents, Flows, Artifacts), the terminal panel (the wrapper of each tab with its × is the
+`.tab-item`; the pinned supervisor's tab is opaque and draws the line itself, its divider
+a shadow) and Kits (no icons). A new tab bar takes these classes; a UI test
+(`tests/ui/test_tabs.py`) compares the three places in both themes.

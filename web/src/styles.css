@@ -30,6 +30,16 @@ button {
   cursor: pointer;
 }
 
+/* For the ear only: read out, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -854,32 +864,87 @@ h3 {
   text-overflow: ellipsis;
 }
 
-.tabs {
+/* Tabs, one look in the whole UI (docs/design/ui.md, Look): folder tabs on a raised band.
+   .tab-bar holds the tabs and scrolls them sideways; .tab-item is the framed tab, selected
+   by aria-current (a link) or data-active (a terminal's tab). The band's line is an inset
+   shadow, painted under the tabs, so the selected tab's ground covers it. */
+.tab-bar {
   display: flex;
   flex: none;
-  gap: 4px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+  align-items: flex-end;
+  gap: 2px;
+  padding: 5px 4px 0;
+  background: var(--raised);
+  box-shadow: inset 0 -1px 0 var(--line);
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
-.tab {
-  padding: 8px 12px;
-  white-space: nowrap;
+.tab-item {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
   color: var(--muted);
+  font: 13px/18px var(--mono);
+  white-space: nowrap;
   text-decoration: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
 }
 
-.tab:hover {
+.tab-item:hover {
   color: var(--ink);
 }
 
-.tab[aria-current="page"] {
+.tab-item svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.tab-item:is([aria-current="page"], [data-active]) {
+  background: var(--panel);
+  border-color: var(--line);
   color: var(--ink);
-  border-bottom-color: var(--action);
   font-weight: 600;
+}
+
+.tab-item:is([aria-current="page"], [data-active]) svg {
+  color: var(--action);
+}
+
+/* The selected tab's mark: a line along its top, inside its frame and its rounded corners. */
+.tab-item:is([aria-current="page"], [data-active])::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 5px 5px 0 0;
+  background: var(--action);
+}
+
+.tab-count {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font: 500 11px/16px var(--mono);
+}
+
+.tab-item:is([aria-current="page"], [data-active]) .tab-count {
+  color: var(--ink);
+}
+
+/* The session's tabs: the band runs from edge to edge of the session's column. */
+.session-tabs {
+  margin: 0 calc(-1 * var(--main-pad)) 12px;
+  padding-inline: calc(var(--main-pad) - 4px);
 }
 
 .status::before {
@@ -1069,6 +1134,7 @@ h3 {
 }
 
 .session-main {
+  --main-pad: 24px;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -1076,7 +1142,7 @@ h3 {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 16px 24px;
+  padding: 16px var(--main-pad);
 }
 
 .session {
@@ -1187,17 +1253,20 @@ h3 {
   border-left: 0;
 }
 
+/* The terminals' band: their tab bar, the panel's buttons on the right, on one line under
+   them all; the tab bar reaches the band's bottom, so its selected tab covers that line. */
 .terminals-bar {
   display: flex;
-  align-items: center;
   gap: 8px;
   padding: 0 4px;
-  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+  box-shadow: inset 0 -1px 0 var(--line);
 }
 
 .term-actions {
   display: flex;
   flex: none;
+  align-self: center;
   margin-left: auto;
 }
 
@@ -1206,39 +1275,38 @@ h3 {
    sideways under a thin bar. The supervisor's tab stays at the left; the panel's buttons
    on the right never move. */
 .term-tabs {
-  display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  padding-left: 0;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
 }
 
-/* A tab shrinks down to its name's least width plus what is around it: the padding, the dot
-   and its gap (33 px), and × (26 px). */
+/* A tab shrinks down to its name's least width plus what is around it: its frame and
+   padding (22 px), the button's padding, dot and gap (23 px), and × (16 px). The button
+   reaches over the tab's padding, so the whole tab but × is the button. */
 .term-tab {
   --name: min(72px, calc(var(--chars) * 1ch));
-  display: flex;
   flex: 0 1 auto;
-  align-items: center;
-  min-width: calc(var(--name) + 59px);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  background: var(--panel);
-  font: 13px var(--mono);
+  gap: 0;
+  min-width: calc(var(--name) + 61px);
 }
 
+/* Opaque, as the tabs scroll under it, so it draws the band's line itself; its divider is
+   a shadow, apart from the selected tab's mark. */
 .term-tab.pinned {
   position: sticky;
   left: 0;
   z-index: 1;
-  min-width: calc(var(--name) + 33px);
+  min-width: calc(var(--name) + 35px);
+  background:
+    linear-gradient(var(--line), var(--line)) bottom / 100% 1px no-repeat border-box,
+    var(--raised);
   box-shadow: 1px 0 0 var(--line);
 }
 
-.term-tab[data-active] {
-  border-bottom-color: var(--action);
+.term-tab.pinned[data-active] {
+  background: var(--panel);
 }
 
 .term-tab [role="tab"] {
@@ -1247,12 +1315,17 @@ h3 {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 9px 10px 8px;
+  margin: -8px 0 -8px -10px;
+  padding: 8px 10px;
   border: 0;
   background: transparent;
-  color: var(--muted);
-  font: 13px var(--mono);
+  color: inherit;
+  font: inherit;
   white-space: nowrap;
+}
+
+.term-tab.pinned [role="tab"] {
+  margin-right: -10px;
 }
 
 .term-tab-name {
@@ -1261,21 +1334,18 @@ h3 {
   text-overflow: ellipsis;
 }
 
-.term-tab[data-active] [role="tab"] {
-  color: var(--ink);
-  font-weight: 600;
-}
-
 .term-close {
   flex: none;
   width: 22px;
   height: 22px;
-  margin-right: 4px;
+  /* No taller than the tab's line: every tab is as high as the one without ×. */
+  margin: -2px -6px -2px 0;
   padding: 0;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--muted);
+  font-weight: 400;
 }
 
 .term-close:hover {
@@ -3179,30 +3249,6 @@ h3 {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
-}
-
-.kits-tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--line);
-}
-
-.kits-tabs a {
-  padding: 7px 12px;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.kits-tabs a:hover {
-  color: var(--ink);
-}
-
-.kits-tabs a[aria-current="page"] {
-  border-color: var(--action);
-  color: var(--ink);
-  font-weight: 600;
 }
 
 .kits-bar {

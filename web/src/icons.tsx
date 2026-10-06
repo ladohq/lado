@@ -166,3 +166,35 @@ export const AgentCliIcon = () => (
     <path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3" />
   </Icon>
 );
+
+// The session's sections, on their tabs.
+// A speech bubble: Activity, the messages.
+export const ActivityIcon = () => (
+  <Icon>
+    <path d="M3.75 5.25h16.5v10.5h-9l-4.5 3.75v-3.75h-3z" />
+  </Icon>
+);
+
+// Two people: Agents.
+export const AgentsIcon = () => (
+  <Icon>
+    <circle cx="9" cy="9" r="3.45" />
+    <path d="M3 19.5c.75-3.3 3-4.95 6-4.95s5.25 1.65 6 4.95M15.75 6a3.3 3.3 0 0 1 0 6.3M18 14.85c1.5.75 2.55 2.25 3 4.65" />
+  </Icon>
+);
+
+// A path between two points: Flows.
+export const FlowsIcon = () => (
+  <Icon>
+    <circle cx="5.25" cy="6" r="2.4" />
+    <circle cx="18.75" cy="18" r="2.4" />
+    <path d="M7.65 6h6.6a3 3 0 0 1 0 6h-4.5a3 3 0 0 0 0 6h6.6" />
+  </Icon>
+);
+
+// A page with a folded corner: Artifacts.
+export const ArtifactsIcon = () => (
+  <Icon>
+    <path d="M6 3.75h7.5l4.5 4.5v12H6zM13.5 3.75v4.5H18M9 12.75h6M9 16.5h6" />
+  </Icon>
+);

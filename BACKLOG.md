@@ -57,7 +57,9 @@ Earlier single failures of the same kind, each passing alone and on the next run
 - `src/Agents.test.tsx` > "the tab without an agent opens the supervisor, and an unknown one
   is not found": `Unable to find role="region" and name "Agent supervisor"` (2026-10-04,
   feature/without-at-kit; 2026-10-05, feature/kit-marketplaces-core, the file took 26 s at
-  load average 100).
+  load average 100); 2026-10-07, merge of fix/esc-docs, with the Flows one below, twice in
+  a row at load average 74-129 while another worktree ran `uv run pytest -n auto`, which
+  takes no check lock; green when that run had ended.
 - `src/Flows.test.tsx` > "the flows tab without a run opens the first waiting run, else the
   first active one" (`… "Run feature/flows-tab"`, `… "Run fix/gate-bubble"`) and "with no
   runs both groups are there and say they are empty; with only ended ones the latest to end

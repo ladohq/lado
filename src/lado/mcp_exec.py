@@ -2,9 +2,10 @@
 
 A kit writes `${VAR}` in its MCP servers' env (kits.py). LADO does not put the values into
 the agent's config: the CLI gets the server's command as
-`python -m lado.mcp_exec --name <server> <templates> -- <command...>`, with only the
-names in the config. The CLI starts it with its own environment, the agent's, which holds
-the values; this fills the templates from it and execs the server.
+the module `lado.mcp_exec --name <server> <templates> -- <command...>`
+(`interpreter.run_module`), with only the names in the config. The CLI starts it with its
+own environment, the agent's, which holds the values; this fills the templates from it and
+execs the server.
 
 The templates are one argument, JSON in base64, so that no CLI takes them for its own
 substitution (Claude Code expands `${VAR}` in a server's args, OpenCode and Kilo
@@ -18,6 +19,8 @@ import os
 import re
 import sys
 from collections.abc import Mapping
+
+from lado import interpreter
 
 VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -48,7 +51,7 @@ def expand(templates: Mapping[str, str], environ: Mapping[str, str]) -> dict[str
 def wrap(name: str, command: list[str], templates: Mapping[str, str]) -> list[str]:
     """The command that starts MCP server `name` with `templates` filled in its env."""
     encoded = base64.b64encode(json.dumps(dict(templates)).encode()).decode()
-    return [sys.executable, "-m", "lado.mcp_exec", "--name", name, encoded, "--", *command]
+    return interpreter.run_module("lado.mcp_exec", "--name", name, encoded, "--", *command)
 
 
 def main(args: list[str]) -> None:

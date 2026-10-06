@@ -190,10 +190,18 @@ fixes and docs only: no new feature, no API or schema change.
     user's tmux.conf allows that (a human's `rename-window` still would).
   - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`,
     and `command`, the window's command that runs the agent with exactly that environment.
+  - `interpreter.py`: `run_module`, the one way LADO starts a process of its own with its
+    own Python (`providers.lado_command`: hooks, `lado mcp`, `lado loop`, the popup, the
+    UI server; the window command; the MCP secrets wrapper). LADO's own processes never
+    import from the agent's cwd, a repository LADO does not control: `python -m` would put
+    it first on `sys.path`, so a `json.py` or a `lado/` there would run inside LADO with the
+    user's keys. A loader under `-c` drops it (`''`) before importing anything but `sys`,
+    then runs the module as `-m` would. Not `-P` (3.11+ only) nor `-I`, which also drops
+    PYTHONPATH and the user site, where a user's LADO may be installed. Never `-m` for one.
   - `mcp_exec.py`: a kit's MCP server whose `env` refers to `${NAME}`: its value never goes
     on disk. `kits.ResolvedAgent.mcp_servers` checks each name is set in the agent's
     environment (else `KitError`, before the start) and gives the CLI the command
-    `python -m lado.mcp_exec --name <server> <templates> -- <command...>` (`wrap`), with
+    `lado.mcp_exec --name <server> <templates> -- <command...>` (`wrap`, `run_module`), with
     only the literals in `env`; the templates are JSON in base64, so no CLI expands them
     (Claude Code expands `${VAR}` in a server's args, OpenCode and Kilo `{env:VAR}` and
     `{file:...}`). The CLI passes its whole environment, the agent's, to a stdio server
@@ -462,7 +470,7 @@ fixes and docs only: no new feature, no API or schema change.
   (the tests set it). From either, `TMUX`, `TMUX_PANE`, the shell's own `PWD`, `OLDPWD`,
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; LADO's variables, then
   the provider's go on top. A tmux window starts with its server's environment, so the
-  window runs `python -m lado.agent_env <file> <argv>`: it reads that environment from a file
+  window runs `lado.agent_env <file> <argv>` (`interpreter.run_module`): it reads that environment from a file
   in the agent's config folder (`env.json`, mode 600 also when it was there before, removed
   once read; the one file under `LADO_HOME/agents/` that holds the values of a kit's MCP
   `env`, see `mcp_exec.py`), keeps tmux's own `TERM`,

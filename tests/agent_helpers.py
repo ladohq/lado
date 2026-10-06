@@ -7,14 +7,13 @@ import re
 import shutil
 import sqlite3
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
 
 import pytest
 
-from lado import log, loop, state, tmux
+from lado import interpreter, log, loop, state, tmux
 
 
 def fake_logs(session: str, agent: str) -> Path:
@@ -27,8 +26,10 @@ def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
     """The environment and the command of an agent's window, from a recorded
     `tmux.new_session` or `tmux.new_window` call (the `fake_tmux` fixture)."""
     cmd = call[-1]
-    assert cmd[:3] == [sys.executable, "-m", "lado.agent_env"]
-    return json.loads(Path(cmd[3]).read_text()), cmd[4:]
+    prefix = interpreter.run_module("lado.agent_env")
+    assert cmd[: len(prefix)] == prefix
+    file, *argv = cmd[len(prefix) :]
+    return json.loads(Path(file).read_text()), argv
 
 
 _template: Path | None = None  # the first repo made by this process, copied for the next ones

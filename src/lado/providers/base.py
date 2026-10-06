@@ -2,12 +2,11 @@
 
 import shlex
 import shutil
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lado import state, tmux
+from lado import interpreter, state, tmux
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
@@ -163,7 +162,7 @@ class Provider(ABC):
 
 def lado_command(*args: str) -> list[str]:
     # The same interpreter that runs this code, so agents use the same LADO install.
-    return [sys.executable, "-m", "lado.cli", *args]
+    return interpreter.run_module("lado.cli", *args)
 
 
 def agent_env(agent: state.Agent) -> dict[str, str]:

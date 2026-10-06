@@ -87,20 +87,6 @@ Update (2026-10-05, feature/self-update): `lado update` stops every running sess
 old code before the new one migrates; upgrading by hand (`pip install -U`, `lado stop` of
 one session) is still exposed.
 
-## A module in the agent's repository can replace one LADO imports
-
-Size: S. Why here: security: any `base64.py`, `json.py` or `lado/` at the root of a repository an agent works in runs inside LADO's hooks, MCP server and the MCP secrets wrapper, with the user's environment and keys.
-
-LADO starts its helper processes with `python -m lado.<module>` (`lado.mcp_exec`, `lado.agent_env`,
-and `providers.lado_command` for hooks and `lado mcp`) in the agent's cwd, the repository, and
-`python -m` puts the cwd first on `sys.path`. Checked by the reviewer of feature/mcp-secrets on
-2026-10-06: a `base64.py` in the cwd and `python -m lado.mcp_exec` printed "SHADOWED base64"
-and exited 7.
-Wanted: every LADO entry point runs without the cwd on `sys.path` (`-I`, `-P` on 3.11+, or a
-tiny loader that drops `sys.path[0]` before importing), in all of them at once, with a test
-that a shadowing module in the cwd is not imported.
-Found: 2026-10-06, review of feature/mcp-secrets.
-
 # P1: next
 
 ## README says there is nothing to run yet
@@ -527,6 +513,20 @@ provider, the retry rule in the core.
 Found: 2026-10-06, by the human in session lado.
 
 # P2: when convenient
+
+## LADO's own processes take the agent's PYTHONPATH and other PYTHON* variables
+
+Size: S. Why here: LADO's hooks, `lado mcp` and the MCP secrets wrapper run with the agent's
+environment, the user's login shell; a `PYTHONPATH` there (also a relative one such as `.`,
+made absolute against the agent's cwd at startup) or `PYTHONSTARTUP`-like variables reach
+LADO's Python, so a module on that path can still replace one LADO imports.
+
+`interpreter.run_module` keeps the cwd off `sys.path` but keeps PYTHONPATH and the user site
+on purpose (a LADO installed with `pip install --user` or found by PYTHONPATH must still run).
+Wanted: decide whether LADO's processes drop the agent's `PYTHON*` variables and pass only
+what LADO's own install needs (e.g. `-E` with the install's paths given explicitly), with a
+test.
+Found: 2026-10-07, fix/no-cwd-imports.
 
 ## Keep a crashed agent's last output
 

@@ -6,8 +6,8 @@ the UI server) and whichever started LADO's tmux server. `LADO_AGENT_ENV=inherit
 the environment of the process that starts it instead.
 
 A tmux window starts with its server's environment, so the launch does not rely on it: the
-window runs `python -m lado.agent_env <file> <argv>`, which replaces its environment with
-the one in the file and runs the agent's command.
+window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
+replaces its environment with the one in the file and runs the agent's command.
 """
 
 import contextlib
@@ -25,7 +25,7 @@ import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
-from lado import tmux
+from lado import interpreter, tmux
 
 SOURCE_VAR = "LADO_AGENT_ENV"
 SHELL, INHERIT = "shell", "inherit"
@@ -204,7 +204,7 @@ def command(file: Path, env: Mapping[str, str], argv: list[str]) -> list[str]:
     os.fchmod(fd, 0o600)  # the mode above is only for a new file
     with os.fdopen(fd, "w") as f:
         json.dump(dict(env), f)
-    return [sys.executable, "-m", "lado.agent_env", str(file), *argv]
+    return interpreter.run_module("lado.agent_env", str(file), *argv)
 
 
 def main(args: list[str]) -> None:

@@ -211,6 +211,12 @@ Also (2026-10-06, fix/conversation-resume-roadmap, load average ~180):
 test_session_loop::test_the_loop_types_in_a_message_every_hook_missed and the UI test
 test_terminal_panel::test_dont_ask_again_takes_control_at_once_after_a_reload failed and
 passed on their own.
+Also (2026-10-06, merge of fix/trailing-backslash, load average ~200): the UI tests
+test_agents_tab::test_a_workers_page_shows_its_work_and_finish_discards_it,
+test_flows_tab::test_in_a_narrow_column_the_runs_take_it_and_a_run_has_the_way_back,
+test_kits_page::test_the_update_window_keeps_its_buttons_on_a_short_screen and
+test_agent_terminal::test_a_viewer_has_only_the_agents_window_and_no_tmux_keys failed in
+`make check` and passed together on a serial rerun.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 

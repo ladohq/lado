@@ -504,6 +504,19 @@ at all gets a `status_reason` that says to look at its window (`lado attach`, th
 terminal).
 Found: 2026-10-06, architect's review of feature/trust-dialog.
 
+## Flaky: a Claude live worker's window closes before its first hook
+
+Size: S. Why here: a live-test flake whose cause is unknown; the evidence has no screen of it.
+
+`make test-live PROVIDER=claude`, `test_worker_does_a_task_reports_and_gets_a_message`: w1
+(haiku, bypassPermissions, in a worktree of the trusted live repo) was spawned at 19:51:47
+and its window closed by 19:51:51 with no hook at all (`ended: its window closed without a
+session-end hook`). The same launch by hand ran, and the rerun passed. The evidence keeps no
+screen of a window that is gone, so why the CLI exited is not known.
+Wanted: the evidence keeps a closed agent window's last screen (e.g. tmux `remain-on-exit`
+in live tests, related to "Keep a crashed agent's last output"), and the cause is found.
+Found: 2026-10-06, live tests of run feature/trust-dialog.
+
 # P2: when convenient
 
 ## Keep a crashed agent's last output
@@ -613,7 +626,9 @@ Also on OpenCode: `test_worker_does_a_task_reports_and_gets_a_message[opencode]`
 the supervisor merged w1's branch and called `finish_worker(name="w1")` before the test's
 check of the human's message ("agent w1 is gone"); the rerun passed.
 Again on Kilo (2026-10-06, feature/trust-dialog): the supervisor spawned `worker` for the
-step besides w1, so finishing w1 kept the run's worktree; the rerun passed.
+step besides w1, so finishing w1 kept the run's worktree; the rerun passed. The same day on
+Claude Code (haiku): the passive supervisor spawned `worker`, which advanced the run instead
+of w1; the rerun passed.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.

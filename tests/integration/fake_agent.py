@@ -33,6 +33,8 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     die                exit at once, with no hook, as a CLI that crashes in a turn
     fail <error>       end the turn on an error: its turn-end hook gets <error>, and its
                        output is ignored, as Claude Code's StopFailure
+    failing <error>    as fail, and every later turn ends on <error> too, as an API that
+                       stays down
     lose <seconds>     work that long, then drop what the turn-end hook prints, as a CLI that
                        does not take it
 A first message that starts with "crash at start" makes it exit before its first hook, as a
@@ -209,12 +211,13 @@ def _read_paste(line: str) -> str:
 
 holds = 0  # how often `hold` ran
 turn_error = ""  # the error the turn ends on (`fail`)
+always_error = ""  # the error every turn ends on (`failing`)
 lose_output = False  # drop what the turn-end hook prints (`lose`)
 
 
 def work(text: str) -> bool:
     """Act on the commands in `text`. Returns True for exit."""
-    global holds, turn_error, lose_output
+    global holds, turn_error, always_error, lose_output
     for line in text.splitlines():
         command = re.sub(r"^\[from [^\]]*\] ", "", line.strip()).split(" ", 2)
         if command[0] == "exit":
@@ -223,6 +226,8 @@ def work(text: str) -> bool:
             os._exit(3)
         if command[0] == "fail":
             turn_error = " ".join(command[1:])
+        elif command[0] == "failing":
+            always_error = " ".join(command[1:])
         elif command[0] == "lose":
             time.sleep(float(command[1]))
             lose_output = True
@@ -330,6 +335,7 @@ def main() -> None:
                 break
         except Exception:
             traceback.print_exc()
+        turn_error = turn_error or always_error
         if turn_error:
             hook("turn_end", error=turn_error, output_ignored=True)  # its output goes nowhere
             turn_error, text, continued = "", None, False

@@ -369,7 +369,8 @@ fixes and docs only: no new feature, no API or schema change.
     `InstalledKitInfo`; each item only its own row and files). From schema 19 a message
     keeps the channel it was handed over by, `messages.channel` (`typed`, `hook_output`;
     NULL while pending and for a first input or the human's UI; How agents talk; not in the
-    API).
+    API). From schema 20 an agent keeps its planned resume after a transient turn error,
+    `agents.resume_at` and `agents.resumes` (How agents talk; not in the API).
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -486,7 +487,23 @@ fixes and docs only: no new feature, no API or schema change.
   `Event.error` (one short line), the agent is `idle` and gets its queue as after any turn,
   a `turn_error` event keeps the error (`lado log`), and `runtime.turn_failed` tells the
   supervisor in one line from `lado` (`turn of <agent> ended on an error: <error>; it is
-  idle`), or the human when it is the supervisor's turn. Claude Code runs `StopFailure`
+  idle`), or the human when it is the supervisor's turn. An error the provider says passes
+  by itself (`Event.transient`) is told to no one at first: LADO resumes the agent.
+  `state.schedule_resume` plans the n-th resume in a row `RESUME_DELAYS[n-1]` seconds
+  later (30, 120, 480; `LADO_RESUME_DELAYS` replaces them, and their count is the number of
+  resumes) in `agents.resume_at`; when it is due and the agent is idle, `runtime.sweep`
+  (hooks or the session loop) queues one message from `lado`, `your turn ended on a
+  temporary API error (<error>); continue where you left off (resume <n> of <N>)`, and
+  drops the plan in the same transaction (`state.take_resume`); the message goes through
+  the queue as any other. Any other status drops a planned resume (`state._set_status`):
+  busy, the agent goes on anyway (a message, the human's input, its queue at the turn's
+  end); waiting or starting (a dialog, failed messages, `/clear`), the human acts on it
+  already, so dropping it is no silent drop. A transient error after the last resume goes
+  to the lead as above, with `after <N> resumes`. Every turn's end that plans no resume (as
+  usual, a permanent error, the resumes spent) sets the count back to 0. Claude Code's
+  transient types are `overloaded`, `server_error` and `unknown` (also the machine's
+  sleep; `claude.TRANSIENT`); Kilo and OpenCode mark no error transient: the plugin gives
+  only the error's class name (BACKLOG.md). Claude Code runs `StopFailure`
   instead of `Stop` then (API errors: rate_limit, overloaded, authentication_failed,
   billing_error, server_error, also the machine's sleep, max_output_tokens, unknown) and
   ignores its output (`Event.output_ignored`: the queue is typed in, not printed); read in

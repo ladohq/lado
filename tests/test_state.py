@@ -175,15 +175,50 @@ def test_newer_database_is_reported(lado_home):
 def test_the_migration_gives_messages_their_channel(lado_home):
     _session_with(_agent(status=state.IDLE))
     old = state.queue_message("s", "supervisor", "w1", "before")
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(19)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     columns = [row[1] for row in db.execute("PRAGMA table_info(messages)")]
     db.close()
     assert "channel" not in columns
-    assert state.migrate() == state.SCHEMA_VERSION == 19
+    assert state.migrate() == state.SCHEMA_VERSION
     assert state.get_message("s", old).channel is None
     state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
     assert state.get_message("s", old).channel == state.HOOK_OUTPUT
+
+
+def test_the_migration_gives_agents_their_resumes(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = [row[1] for row in db.execute("PRAGMA table_info(agents)")]
+    db.close()
+    assert "resume_at" not in columns and "resumes" not in columns
+    assert state.migrate() == state.SCHEMA_VERSION == 20
+    agent = state.get_agent("s", "w1")
+    assert (agent.resume_at, agent.resumes) == (None, 0)
+    assert state.schedule_resume("s", "w1", 100.0, (30.0,)) == 1
+    agent = state.get_agent("s", "w1")
+    assert (agent.resume_at, agent.resumes) == (130.0, 1)
+
+
+def test_a_due_resume_is_queued_once_also_while_the_agent_stays_idle(lado_home):
+    """E.g. a batch typed before is unconfirmed, so the queue is not handed over and the
+    agent stays idle: the next sweep queues no second resume."""
+    _session_with(_agent(status=state.BUSY))
+    state.add_event("s", "w1", state.TURN_ERROR, "overloaded")
+    state.schedule_resume("s", "w1", 100.0, (30.0, 60.0))
+    state.set_status("s", "w1", state.IDLE)
+    summary = lambda n, error: f"resume {n}: {error}"  # noqa: E731
+    assert state.take_resume("s", "w1", 129.0, summary) is None
+    message = state.take_resume("s", "w1", 130.0, summary)
+    assert state.take_resume("s", "w1", 130.0, summary) is None
+    queued = state.get_message("s", message)
+    assert (queued.sender, queued.summary, queued.state) == (
+        "lado",
+        "resume 1: overloaded",
+        "pending",
+    )
+    assert state.get_agent("s", "w1").resume_at is None
 
 
 def test_connect_refuses_an_older_schema_and_changes_nothing(lado_home):

@@ -27,6 +27,11 @@ EVENTS = (
 )
 
 
+# The errors of the fake agent's `fail` that pass by themselves (base.Event.transient), as
+# Claude Code's overload.
+TRANSIENT = frozenset({"overloaded"})
+
+
 def lado_command(*args: str) -> list[str]:
     return [sys.executable, str(LADO), *args]
 
@@ -88,11 +93,13 @@ class FakeProvider(base.Provider):
         if native not in EVENTS:
             return None
         data = json.loads(payload) if payload.strip() else {}
+        error = data.get("error", "")
         return base.Event(
             native,
             data.get("prompt", ""),
             data.get("key", ""),
-            error=data.get("error", ""),
+            error=error,
+            transient=error.split(":")[0] in TRANSIENT,
             output_ignored=data.get("output_ignored", False),
             continued=data.get("continued", False),
         )

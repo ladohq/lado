@@ -69,7 +69,32 @@ def test_claude_stop_failure_is_a_turn_end_on_an_error_whose_output_goes_nowhere
     """Claude Code runs StopFailure instead of Stop when an API error ended the turn, and
     ignores what the hook prints (2.1.291, read in its binary)."""
     event = providers.get("claude").parse_event("StopFailure", json.dumps(payload))
-    assert event == Event(providers.TURN_END, error=error, output_ignored=True)
+    assert event.kind == providers.TURN_END
+    assert (event.error, event.output_ignored) == (error, True)
+
+
+@pytest.mark.parametrize(
+    ("kind", "transient"),
+    [
+        ("overloaded", True),
+        ("server_error", True),
+        ("unknown", True),  # also the machine's sleep
+        ("", True),  # no type: unknown
+        ("rate_limit", False),
+        ("authentication_failed", False),
+        ("billing_error", False),
+        ("max_output_tokens", False),
+        ("invalid_request", False),  # a type LADO does not know
+    ],
+)
+def test_claude_says_which_turn_errors_pass_by_themselves(kind, transient):
+    payload = json.dumps({"error": kind} if kind else {})
+    event = providers.get("claude").parse_event("StopFailure", payload)
+    assert event.transient is transient
+
+
+def test_a_turn_that_ends_as_usual_is_no_transient_error():
+    assert providers.get("claude").parse_event("Stop", "{}").transient is False
 
 
 def test_claude_agents_report_a_failed_turn(repo, fake_tmux):
@@ -575,9 +600,11 @@ def test_opencode_family_maps_native_events(provider, native, payload, expected)
     ],
 )
 def test_opencode_family_turn_end_carries_the_error_the_plugin_saw(provider, error, expected):
+    """No error of theirs is taken for one that passes by itself: the plugin gives only the
+    error's class name (BACKLOG.md), so LADO does not resume their agents."""
     payload = json.dumps({"sessionID": "x", "error": error})
     assert providers.get(provider).parse_event("session.idle", payload) == Event(
-        providers.TURN_END, error=expected
+        providers.TURN_END, error=expected, transient=False
     )
 
 

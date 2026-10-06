@@ -108,6 +108,32 @@ def test_a_turn_that_ends_on_an_error_hands_over_the_queue(session):
     assert errors == ["rate_limit"]
 
 
+def test_a_turn_that_ends_on_a_transient_error_is_resumed_until_the_resumes_are_spent(
+    repo, monkeypatch
+):
+    """No hook comes after the turn's end: the session loop types in each resume. The lead
+    hears of the error only after the last one."""
+    monkeypatch.setenv("LADO_RESUME_DELAYS", "0.5,0.5")  # for the hooks and the loop
+    runtime.start_session(str(repo), SESSION, None, "fake")
+    wait_status("supervisor", state.IDLE)
+    runtime.spawn_worker(SESSION, "sleep 1\nfailing overloaded", name="w1")
+    spent = "turn of w1 ended on an error after 2 resumes: overloaded; it is idle"
+    wait_for(lambda: spent in from_lado("supervisor"), "the supervisor to be told")
+    resumes = [
+        f"[from lado] your turn ended on a temporary API error (overloaded); "
+        f"continue where you left off (resume {n} of 2)"
+        for n in (1, 2)
+    ]
+    assert [i for i in inputs("w1") if str(i).startswith("[from lado]")] == resumes
+    assert [m.state for m in state.list_messages(SESSION) if m.recipient == "w1"] == [
+        state.DELIVERED,
+        state.DELIVERED,
+    ]
+    assert from_lado("supervisor") == [spent]
+    errors = [e.detail for e in state.list_events(SESSION) if e.kind == state.TURN_ERROR]
+    assert errors == ["overloaded"] * 3
+
+
 def test_an_agent_that_exits_with_messages_queued_drops_them_and_tells_the_sender(session):
     runtime.spawn_worker(SESSION, "sleep 1\nexit", name="w1")
     wait_status("w1", state.BUSY)

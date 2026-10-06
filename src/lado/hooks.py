@@ -84,8 +84,12 @@ def handle(
         # The human's messages this turn got: did it write to the human? Before the inbox is
         # handed over, so what the next turn gets is checked when that one ends.
         state.check_replies(session, agent)
+        # Before the agent is idle: a resume planned for it holds while it stays idle, and
+        # is dropped when the queue makes it busy now (state.schedule_resume).
         if event.error:
-            runtime.turn_failed(session, agent, event.error)
+            runtime.turn_failed(session, agent, event.error, event.transient)
+        else:
+            state.reset_resumes(session, agent)
         return _idle(provider, session, agent, event)
     elif event.kind == providers.CONVERSATION_END:
         # Not ready while the next conversation loads: messages wait in the queue.

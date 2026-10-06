@@ -15,7 +15,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -223,6 +223,14 @@ KITS_TABLE = [KITS, *_journal_triggers("kits")]
 # NULL while it is pending, and for one handed over another way (a first input, the human's
 # UI). Each channel has its own confirmation and its own sweep rule (lado.runtime._plan).
 MESSAGES_CHANNEL = "ALTER TABLE messages ADD COLUMN channel TEXT"
+# Resuming an agent whose turn ended on an error that passes by itself (lado.hooks), from
+# version 20 on: when LADO tells it to go on (NULL for nothing planned; only while it is
+# idle, any other status drops it), and how many times it was told so since its last turn
+# that did not end on such an error.
+AGENTS_RESUME = [
+    "ALTER TABLE agents ADD COLUMN resume_at REAL",
+    "ALTER TABLE agents ADD COLUMN resumes INTEGER NOT NULL DEFAULT 0",
+]
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.
@@ -300,6 +308,7 @@ SCHEMA += (
             *MARKETPLACES_TABLE,
             *KITS_TABLE,
             MESSAGES_CHANNEL,
+            *AGENTS_RESUME,
         ]
     )
     + ";\n"
@@ -338,6 +347,7 @@ MIGRATIONS = {
     16: MARKETPLACES_TABLE,
     17: KITS_TABLE,
     18: [MESSAGES_CHANNEL],
+    19: AGENTS_RESUME,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -441,6 +451,8 @@ class Agent:
     run: str | None = None  # the flow run it works for
     seen_at: float = 0  # when its latest hook ran (time.time()); 0 for none yet
     waiting_for: str | None = None  # the request it waits for, while waiting (`wait`)
+    resume_at: float | None = None  # when LADO tells it to go on (`schedule_resume`)
+    resumes: int = 0  # how many times it was told so since its last other turn's end
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
 
 
@@ -997,10 +1009,13 @@ def set_status(session: str, name: str, status: str) -> None:
 
 def _set_status(db: sqlite3.Connection, session: str, name: str, status: str) -> None:
     # An agent that waits for nothing in particular has no key; one that stops waiting none.
+    # A planned resume holds only while the agent is idle: busy, it goes on anyway; waiting
+    # or starting, the human acts on it already (schedule_resume).
     cur = db.execute(
-        "UPDATE agents SET status = ?, waiting_for = NULL"
+        "UPDATE agents SET status = ?, waiting_for = NULL,"
+        " resume_at = CASE WHEN ? = ? THEN resume_at END"
         " WHERE session = ? AND name = ? AND status != ?",
-        (status, session, name, status),
+        (status, status, IDLE, session, name, status),
     )
     if cur.rowcount:
         _add_event(db, session, name, STATUS, status)
@@ -1061,6 +1076,78 @@ def resume(session: str, name: str, key: str) -> None:
         if cur.rowcount:
             _add_event(db, session, name, STATUS, BUSY)
         db.execute("COMMIT")
+
+
+def schedule_resume(session: str, name: str, now: float, delays: tuple[float, ...]) -> int | None:
+    """The agent's turn ended on an error that passes by itself: plan to tell it to go on
+    after the delay of its next resume, delays[resumes]. Returns that resume's number (1
+    for the first); None, with its resumes back to 0, when it had all of them already."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT resumes FROM agents WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
+        done = row["resumes"] if row else 0
+        if row is None or done >= len(delays):
+            _reset_resumes(db, session, name)
+            db.execute("COMMIT")
+            return None
+        db.execute(
+            "UPDATE agents SET resume_at = ?, resumes = ? WHERE session = ? AND name = ?",
+            (now + delays[done], done + 1, session, name),
+        )
+        db.execute("COMMIT")
+    return done + 1
+
+
+def reset_resumes(session: str, name: str) -> None:
+    """The agent's turn ended and no resume is planned for it: the next error that passes
+    by itself starts again from the first delay."""
+    with connect() as db:
+        _reset_resumes(db, session, name)
+
+
+def _reset_resumes(db: sqlite3.Connection, session: str, name: str) -> None:
+    # Only a row that changes: an update is a change of the agent for the UI's journal.
+    db.execute(
+        "UPDATE agents SET resume_at = NULL, resumes = 0 WHERE session = ? AND name = ?"
+        " AND (resumes != 0 OR resume_at IS NOT NULL)",
+        (session, name),
+    )
+
+
+def take_resume(
+    session: str, name: str, now: float, summary: Callable[[int, str], str]
+) -> int | None:
+    """If the agent is idle and its planned resume is due, queue LADO's message that tells
+    it to go on, `summary(resume number, the error its turn ended on)`, and drop the plan,
+    in one transaction: a resume is told once, and never lost between the two. Returns the
+    message's id, or None for nothing due."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT resumes FROM agents WHERE session = ? AND name = ? AND status = ?"
+            " AND resume_at <= ?",
+            (session, name, IDLE, now),
+        ).fetchone()
+        if row is None:
+            db.execute("COMMIT")
+            return None
+        error = db.execute(
+            "SELECT detail FROM events WHERE session = ? AND agent = ? AND kind = ?"
+            " ORDER BY id DESC LIMIT 1",
+            (session, name, TURN_ERROR),
+        ).fetchone()
+        db.execute(
+            "UPDATE agents SET resume_at = NULL WHERE session = ? AND name = ?", (session, name)
+        )
+        message = db.execute(
+            "INSERT INTO messages (session, sender, recipient, summary, created_at)"
+            " VALUES (?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+            (session, LADO, name, summary(row["resumes"], error["detail"] if error else "")),
+        ).lastrowid
+        db.execute("COMMIT")
+    return message
 
 
 def seen(session: str, name: str) -> None:
@@ -2009,6 +2096,8 @@ def _agent(row: sqlite3.Row) -> Agent:
         run=row["run"],
         seen_at=row["seen_at"],
         waiting_for=row["waiting_for"],
+        resume_at=row["resume_at"],
+        resumes=row["resumes"],
         created_at=row["created_at"],
     )
 

@@ -126,8 +126,8 @@ def run(session: str, interval: float = INTERVAL) -> int:
     if lock is None:
         return 0  # the session has its loop
     with lock:
-        _log(session, f"loop started, pid {os.getpid()}")
-        errors = RepeatedErrors(lambda text: _log(session, text))
+        log(session, f"loop started, pid {os.getpid()}")
+        errors = RepeatedErrors(lambda text: log(session, text))
         while True:
             try:
                 reason = why_stop(session)
@@ -139,7 +139,7 @@ def run(session: str, interval: float = INTERVAL) -> int:
                 errors.failed()
             if reason:
                 errors.flush()
-                _log(session, f"loop ended: {reason}")
+                log(session, f"loop ended: {reason}")
                 return 0
             time.sleep(interval)
 
@@ -184,6 +184,8 @@ class RepeatedErrors:
             self.unlogged = 0
 
 
-def _log(session: str, text: str) -> None:
-    with contextlib.suppress(OSError), open(state.home() / "loop.log", "a") as log:
-        log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {session}: {text.rstrip()}\n")
+def log(session: str, text: str) -> None:
+    """A line in LADO_HOME/loop.log; also what undoing a failed start or spawn could not do
+    (lado.runtime). Never raises."""
+    with contextlib.suppress(OSError), open(state.home() / "loop.log", "a") as file:
+        file.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {session}: {text.rstrip()}\n")

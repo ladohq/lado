@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -135,6 +136,36 @@ def test_spawned_worker_reports_back_to_supervisor(repo):
     assert inputs("worker")[0].startswith("send supervisor finished\n")
     wait_status("worker", state.IDLE)
     wait_status("supervisor", state.IDLE)
+
+
+def test_a_spawn_from_an_agent_without_tmux_on_its_path_leaves_no_ghost_worker(
+    repo, tmp_path, monkeypatch
+):
+    from lado import agent_env
+
+    # The supervisor's environment, and so its LADO MCP server's, has git but no tmux.
+    tools = tmp_path / "no-tmux"
+    tools.mkdir()
+    (tools / "git").symlink_to(shutil.which("git"))
+    resolve = agent_env.resolve
+    monkeypatch.setattr(agent_env, "resolve", lambda: {**resolve(), "PATH": str(tools)})
+    start(repo)
+    runtime.send_message(SESSION, "human", "supervisor", "spawn sleep 0")
+    # The tool's error, which comes once the spawn is undone, names the cause.
+    wait_for(
+        lambda: (
+            f"tmux is not installed or not on PATH ({tools})"
+            in tmux.run("capture-pane", "-p", "-J", "-t", f"={SESSION}:=supervisor")
+        ),
+        "spawn_worker's error",
+    )
+    assert [a.name for a in state.list_agents(SESSION)] == ["supervisor"]
+    assert ("worker", state.FINISHED) in [(e.agent, e.kind) for e in state.list_events(SESSION)]
+    assert runtime.session_worktrees(str(repo), SESSION) == {}
+    assert runtime.git(str(repo), "branch", "--list", f"lado/{SESSION}/*") == ""
+    # Its undo's own tmux call failed the same way, and every other step ran.
+    note = "undo of the spawn of worker: close its window failed: TmuxMissing"
+    assert note in (state.home() / "loop.log").read_text()
 
 
 def test_worker_report_is_one_line_and_its_body_is_read_once(repo):

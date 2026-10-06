@@ -139,6 +139,39 @@ def test_a_command_that_meets_an_ending_server_runs_once_more(monkeypatch):
         tmux.run("has-session")
 
 
+def test_a_missing_tmux_is_a_tmux_error_that_names_the_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(tmux.TmuxMissing) as error:
+        tmux.run("list-sessions")
+    assert str(error.value) == f"tmux is not installed or not on PATH ({tmp_path})"
+    assert isinstance(error.value, tmux.TmuxError)
+
+
+def test_a_tmux_that_cannot_run_is_a_tmux_error_that_names_the_path(monkeypatch, tmp_path):
+    (tmp_path / "tmux").write_text("not a program")  # not executable: PermissionError
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(tmux.TmuxMissing) as error:
+        tmux.run("list-sessions")
+    message = str(error.value)
+    assert message.startswith("cannot run tmux (PATH: ")
+    assert str(tmp_path) in message and "Permission denied" in message
+
+
+def test_a_missing_tmux_is_not_taken_for_a_gone_session(monkeypatch, tmp_path):
+    # A missing tmux says nothing about the session: it must not read as gone (a migration
+    # under a running session, a session shown as gone, a ghost worker left starting).
+    monkeypatch.setenv("PATH", str(tmp_path))
+    for call in (
+        lambda: tmux.has_session("s"),
+        lambda: tmux.window_names("s"),
+        lambda: tmux.kill_window("s", "w"),
+        lambda: tmux.popup("s", "t", ["true"], {}),
+        lambda: tmux.sessions_with("@x"),
+    ):
+        with pytest.raises(tmux.TmuxMissing):
+            call()
+
+
 def _windows(session):
     return tmux.run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
 

@@ -66,27 +66,6 @@ Wanted: the messages count as delivered only when the agent's prompt shows them,
 failure puts them back in the queue.
 Found: 2026-10-06, check of the Inbox architecture candidate.
 
-## A missing tmux binary gives raw errors: a CLI traceback, a ghost worker
-
-Size: S. Why here: a ghost worker is left and the spawn's own rollback fails; one fix in `tmux._run_once` (tmux.py:89-104 catches only TimeoutExpired, FileNotFoundError escapes).
-
-### No tmux on an agent's PATH breaks its LADO calls with a raw error and a ghost worker
-
-When the agent's environment has no `tmux` on PATH, its `lado mcp` fails `spawn_worker`
-with a FileNotFoundError ("Error executing tool spawn_worker"), and the cleanup in
-`runtime.spawn_worker` fails the same way on `kill_window`, so the worker stays `starting`
-in `lado ls`.
-Wanted: tmux calls raise TmuxError with "tmux not found on PATH", and the spawn cleanup
-cannot be stopped by its own tmux call failing.
-Found: 2026-10-04, fix/agent-env (fake login shell without the Homebrew PATH).
-
-### A missing tmux binary crashes the CLI with a traceback
-
-Without tmux installed, `tmux.run` raises FileNotFoundError, not TmuxError, so the CLI shows a
-traceback (now also from `check_migration` when an old database has unstopped sessions).
-Wanted: `tmux.run` turns a missing binary into TmuxError with a clear text.
-Found: 2026-10-02, review of run fix/migration-guard.
-
 ## A hook that makes an agent idle types new messages while one typed before is unconfirmed
 
 Size: S. Why here: the code departs from AGENTS.md's delivery rule (hooks.py:93 without `idle_only`); one change.
@@ -179,18 +158,6 @@ Found: 2026-10-02, migration guard (fix/migration-guard).
 Update (2026-10-05, feature/self-update): `lado update` stops every running session with the
 old code before the new one migrates; upgrading by hand (`pip install -U`, `lado stop` of
 one session) is still exposed.
-
-## A failed rollback hides why a start or spawn failed
-
-Size: S/M. Why here: the real error is hidden and the session or worker stays half undone.
-
-When `start_session` or `spawn_worker` fails, its `except` undoes what it stored
-(`state.fail_resume`, `state.delete_session`, `close_worker`, git cleanup) and re-raises. If
-that undo raises too (e.g. the database is locked), the user sees the undo's error instead of
-the cause, and the session or worker is left half undone.
-Wanted: an undo that never replaces the original error (report its own failure apart, e.g.
-in `hooks.log` or as a note on the error) and leaves no half state.
-Found: 2026-10-02, review of run fix/resume-settings.
 
 # P1: next
 
@@ -1195,3 +1162,14 @@ with `GIT_CONFIG_GLOBAL=/dev/null` and `user.useConfigOnly=true` it passes too.
 Wanted: find what the gate's popup reads from HOME, and either isolate it in the tests or
 say so in AGENTS.md.
 Found: 2026-10-06, fix/ci-git-identity, checking the tests without a global git identity.
+
+## A start or resume from the UI that tmux fails is a 500 without its cause
+
+Size: S. Why here: the UI hides the real cause (a missing tmux) the CLI now names.
+
+`POST /api/sessions` and `POST /api/sessions/{name}/resume` (server/app.py) turn only
+`LadoError` and `KitError` into a 400 with the reason; a `tmux.TmuxError` (`TmuxMissing`:
+tmux not on the server's PATH) from `start_session` is a 500 "Internal Server Error", and
+the notes of a failed undo (`runtime._undo`, also on a `LadoError`) are not in the 400 either.
+Wanted: the API answers 400 with the error and its notes, as the CLI prints them.
+Found: 2026-10-06, fix/tmux-missing-rollback.

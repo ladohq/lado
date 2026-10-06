@@ -22,7 +22,8 @@ def _reasons() -> Iterator[None]:
     try:
         yield
     except (runtime.LadoError, kits.KitError, tmux.TmuxError) as exc:
-        raise ToolError(str(exc)) from exc
+        # The notes: what undoing a failed start or spawn could not do (runtime._undo).
+        raise ToolError("\n".join([str(exc), *getattr(exc, "__notes__", [])])) from exc
 
 
 class _Server(MCPServer):

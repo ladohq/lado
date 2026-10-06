@@ -1204,7 +1204,9 @@ def main(argv: list[str] | None = None) -> int:
         kits.KitError,
         marketplaces.MarketplaceError,
     ) as exc:
-        print(f"lado: {exc}", file=sys.stderr)
+        # The notes: what undoing a failed start could not do (runtime._undo).
+        for line in [str(exc), *getattr(exc, "__notes__", [])]:
+            print(f"lado: {line}", file=sys.stderr)
         return 1
 
 

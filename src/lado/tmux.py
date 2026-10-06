@@ -38,6 +38,11 @@ class TmuxError(RuntimeError):
     pass
 
 
+class TmuxMissing(TmuxError):
+    """tmux could not be run at all. It says nothing about a session or window, so the
+    calls that read a failing command as "gone" raise it instead."""
+
+
 def clean_env() -> dict[str, str]:
     return without_agent_vars(os.environ)
 
@@ -88,6 +93,7 @@ def _run(args: list[str], input: str | None = None) -> str:
 
 def _run_once(args: list[str], input: str | None) -> str:
     cmd = ["tmux", "-L", socket(), *args]
+    env = clean_env()
     try:
         result = subprocess.run(
             cmd,
@@ -95,11 +101,16 @@ def _run_once(args: list[str], input: str | None) -> str:
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
-            env=clean_env(),
+            env=env,
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
         raise TmuxError(f"tmux timed out: {' '.join(args)}") from exc
+    except FileNotFoundError as exc:
+        # Looked up on the PATH of `env`, as subprocess does.
+        raise TmuxMissing(f"tmux is not installed or not on PATH ({env.get('PATH', '')})") from exc
+    except OSError as exc:
+        raise TmuxMissing(f"cannot run tmux (PATH: {env.get('PATH', '')}): {exc}") from exc
     if result.returncode != 0:
         raise TmuxError(result.stderr.strip() or f"tmux failed: {' '.join(args)}")
     return result.stdout
@@ -121,6 +132,8 @@ def new_window(session: str, window: str, cwd: str, cmd: list[str]) -> None:
 def has_session(session: str) -> bool:
     try:
         run("has-session", "-t", f"={session}")
+    except TmuxMissing:
+        raise
     except TmuxError:
         return False
     return True
@@ -141,6 +154,8 @@ def window_names(session: str) -> list[str]:
     """The names of the session's windows; none when the session is gone."""
     try:
         return run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
+    except TmuxMissing:
+        raise
     except TmuxError:
         return []
 
@@ -168,6 +183,8 @@ def popup(session: str, title: str, argv: list[str], env: dict[str, str]) -> int
     open one."""
     try:
         clients = run("list-clients", "-t", f"={session}", "-F", "#{client_name}").split()
+    except TmuxMissing:
+        raise
     except TmuxError:
         return 0  # the session is gone
     for client in clients:

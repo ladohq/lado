@@ -42,6 +42,14 @@ Partly done (2026-10-06, fix/check-lock): concurrent runs from separate sessions
 worktrees no longer add up, since `make check`, `make test`, `make test-integration` and
 `make test-ui` take one lock per machine (`scripts/check_lock.py`, AGENTS.md). Still open:
 one run on a machine other agents keep busy, with `-n` not chosen by the load.
+Also (2026-10-07, merge of feature/turn-resume, load average rising to 60-70 during the run
+itself, nothing else running): two of four `make check` runs on one commit failed, each on
+other timeouts: vitest Launch "the folder is checked by the server and its reason shown…";
+then the UI tests test_layout::test_a_chip_opens_its_agents_terminal… and
+test_main_screen::test_a_page_loads_without_a_console_error… (the server did not come up
+in 15 s; the fake provider's `server --port 0` timed out after 10 s) and
+test_agent_liveness::test_the_human_writes_to_a_worker_while_the_supervisor_is_stopped
+(w1 busy after 30 s; 3 of 3 green alone). So `-n auto` alone loads the machine enough.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 

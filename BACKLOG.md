@@ -8,97 +8,9 @@ P3 maybe never (candidates for removal); a new entry goes into its tier with a `
 
 # P0: fix now
 
-## A missing tmux binary gives raw errors: a CLI traceback, a ghost worker
-
-Size: S. Why here: a ghost worker is left and the spawn's own rollback fails; one fix in `tmux._run_once` (tmux.py:89-104 catches only TimeoutExpired, FileNotFoundError escapes).
-
-### No tmux on an agent's PATH breaks its LADO calls with a raw error and a ghost worker
-
-When the agent's environment has no `tmux` on PATH, its `lado mcp` fails `spawn_worker`
-with a FileNotFoundError ("Error executing tool spawn_worker"), and the cleanup in
-`runtime.spawn_worker` fails the same way on `kill_window`, so the worker stays `starting`
-in `lado ls`.
-Wanted: tmux calls raise TmuxError with "tmux not found on PATH", and the spawn cleanup
-cannot be stopped by its own tmux call failing.
-Found: 2026-10-04, fix/agent-env (fake login shell without the Homebrew PATH).
-
-### A missing tmux binary crashes the CLI with a traceback
-
-Without tmux installed, `tmux.run` raises FileNotFoundError, not TmuxError, so the CLI shows a
-traceback (now also from `migrate_if_safe` when an old database has unstopped sessions).
-Wanted: `tmux.run` turns a missing binary into TmuxError with a clear text.
-Found: 2026-10-02, review of run fix/migration-guard.
-
-## A failed rollback hides why a start or spawn failed
-
-Size: S/M. Why here: the real error is hidden and the session or worker stays half undone.
-
-When `start_session` or `spawn_worker` fails, its `except` undoes what it stored
-(`state.fail_resume`, `state.delete_session`, `close_worker`, git cleanup) and re-raises. If
-that undo raises too (e.g. the database is locked), the user sees the undo's error instead of
-the cause, and the session or worker is left half undone.
-Wanted: an undo that never replaces the original error (report its own failure apart, e.g.
-in `hooks.log` or as a note on the error) and leaves no half state.
-Found: 2026-10-02, review of run fix/resume-settings.
-## state.connect() creates and migrates lado.db; readers have no read-only connection
-
-Size: M. Why here: the root of migrations under a running session; fixing it also fixes the flaky migration-refusal test (below).
-
-`state.connect()` creates the schema when there is no `lado.db` and migrates an older one.
-The UI server must never migrate, so each endpoint first checks the schema version
-(`feed.schema_problem`) and only then calls `state.py`; a future endpoint that forgets the
-check, or a race between the check and the call, can migrate the database under a running
-session. `loop.why_stop` relies on the same discipline.
-Wanted: a read-only connection in `state.py` for readers (the server, `loop.why_stop`) that
-refuses another schema itself. Related: "Flaky: integration test of the migration refusal
-under a running session".
-Found: 2026-10-03, architect's review of the live updates design (feature/ui-live-updates).
-
-### Flaky: integration test of the migration refusal under a running session
-
-`tests/integration/test_agents.py::test_cli_refuses_to_migrate_the_database_under_a_running_session`
-failed once in nine parallel integration runs (2026-10-02) and once in `make check`
-(2026-10-05, merge step of feature/flows-tab-redesign, after main got schema 18): `lado ls`
-exited 0 (`assert 0 == 1`) because the database was already migrated back; it passed alone
-and in the next `make check`. Two likely races after `agent_helpers.previous_schema()`
-rolls `lado.db` back: a session-loop pass that passed `why_stop` before the rollback opens
-the database through `runtime.sweep`, which migrates; or a hook or `lado mcp` of the
-session's running fake agent opens it with `state.connect` (hooks and `lado mcp` do not
-check, AGENTS.md `state.py`) before the test's `lado ls`.
-Wanted: a loop pass never migrates (the schema checked on the connection the pass uses),
-so the refusal holds while the loop runs; and a test session with no process that can open
-the database between the rollback and the check (stop the fake agent's hooks, or roll back
-with the session's tmux alive but no agent), so the assertion is deterministic.
-Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason; 2026-10-05,
-merge step of run feature/flows-tab-redesign.
-
-## Stopping one of several running sessions migrates the database under the others
-
-Size: M. Why here: it breaks running sessions on an upgrade by hand; do it together with the read-only connection above.
-
-A newer CLI refuses to migrate `lado.db` while a session runs and asks for `lado stop`
-first, but lets `lado stop` itself through: with sessions A and B running, `lado stop A`
-migrates the database while B still runs, so B's older agents break until B is stopped
-too. Also, a LADO upgraded in place (`pip install -U`) while a session runs migrates from
-that session's own hooks, which run the new code, under its older MCP servers. Wanted: a
-stop that kills the session before it opens the database, or one `lado stop --all`.
-Found: 2026-10-02, migration guard (fix/migration-guard).
-Update (2026-10-05, feature/self-update): `lado update` stops every running session with the
-old code before the new one migrates; upgrading by hand (`pip install -U`, `lado stop` of
-one session) is still exposed.
+No entry is open.
 
 # P1: next
-
-## README says there is nothing to run yet
-
-Size: S. Why here: every new user reads "nothing is ready" (README.md:7, :30); almost free.
-
-`README.md`, Install, still ends with "There is nothing else to run yet" and the status
-note says "Nothing is ready to use yet", while sessions, kits, flows and the web UI work
-(the README now has a section on the web UI).
-Wanted: a README that says what runs today (start a session, the UI, kits) and links the
-docs.
-Found: 2026-10-04, feature/server-host (implement).
 
 ## `make check` fails on timeouts when the machine is under heavy load
 

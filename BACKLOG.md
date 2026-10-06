@@ -717,19 +717,6 @@ is left, and say which agents had to be killed. Seen in another orchestrator, wh
 agents were killed too early until a delay was added.
 Found: 2026-10-04, design of feature/launch.
 
-## Agents lose their conversation at every restart of a session
-
-Size: L. Why here: a valuable feature that belongs in ROADMAP.md rather than in the backlog.
-
-`lado stop` then `lado start`, and so `lado update`, start every agent anew: the supervisor
-and the workers of open runs begin a new conversation and only get what LADO tells them
-(the open runs' state), not what they were in the middle of. A busy agent loses its turn.
-Wanted: a session that survives a restart: each provider can continue a conversation
-(Claude Code `--resume <id>`, Kilo's own way), the runtime keeps each agent's conversation
-id, and a resume starts the supervisor and the run workers with their conversations. Worth
-an item in ROADMAP.md; `lado update` would then need no change.
-Found: 2026-10-05, design of feature/self-update.
-
 ## Choose the model per agent
 
 Size: M/L. Why here: savings and parity, but postponed until a scheme for model names is decided.

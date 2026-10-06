@@ -482,6 +482,18 @@ Wanted: a live check of both in mode default; if a dialog shows, give the agent 
 folders to read (`AgentSpec.read`) or copy what it reads, as the lead's lead-files are.
 Found: 2026-10-04, design and architect's review of feature/lead-skills.
 
+## A failed `_add_agent` in spawn_worker leaves the worktree and branch
+
+Size: S. Why here: a spawn that fails after `git worktree add` leaves a worktree, a branch or a `starting` row behind; the rollback added in fix/tmux-missing-rollback does not cover these steps yet.
+
+In `runtime.spawn_worker` the `git worktree add` and `_add_agent` calls stand before the
+`try` whose `_undo` rolls back. If `state.add_agent` fails (two spawns of one name racing past
+the `taken` check, a locked database), the worktree `lado/<s>/<name>` and its branch stay, and
+the next unnamed spawn picks `-2`; if `add_event` fails after `add_agent`, an agent row stays
+`starting`.
+Wanted: these steps run under the same `_undo`, so the rollback covers everything the spawn did.
+Found: 2026-10-06, review of fix/tmux-missing-rollback.
+
 # P2: when convenient
 
 ## A kit's lint problems are seen only by `lado kits check`

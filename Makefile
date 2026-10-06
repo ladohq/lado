@@ -1,8 +1,13 @@
-.PHONY: help lint fmt test test-integration test-js test-live test-ui web web-types dist browser check
+.PHONY: help lint fmt test test-integration test-js test-live test-ui web web-types dist browser check _check _test-ui
 
 # Unit and integration tests run on one pytest worker per CPU (pytest-xdist). To debug a
 # test serially, with its output in order: make test PYTEST_ARGS=-n0 (or any pytest options).
 PYTEST_ARGS ?= -n auto
+
+# check, test, test-integration and test-ui hold one lock per machine while they run, so a
+# second run (another worktree or session) waits for the first; LADO_CHECK_LOCK=0 skips it.
+# check and test-ui run their parts in a make of their own, under the one lock.
+LOCK = uv run python scripts/check_lock.py
 
 help: ## list the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
@@ -16,10 +21,10 @@ fmt: ## format and fix lint
 	uv run ruff check --fix
 
 test: ## unit tests, in parallel (PYTEST_ARGS=-n0: serially)
-	uv run pytest $(PYTEST_ARGS)
+	$(LOCK) uv run pytest $(PYTEST_ARGS)
 
 test-integration: ## integration tests: real tmux, git and processes, fake agent, no LLM; in parallel
-	uv run pytest -m integration $(PYTEST_ARGS)
+	$(LOCK) uv run pytest -m integration $(PYTEST_ARGS)
 
 test-js: ## Node tests of the OpenCode-family plugin (Kilo, OpenCode)
 	node --test tests/js/*.test.mjs
@@ -27,7 +32,10 @@ test-js: ## Node tests of the OpenCode-family plugin (Kilo, OpenCode)
 test-live: ## live e2e tests with real agent CLIs and models, serially; PROVIDER=claude|kilo|opencode picks one
 	uv run pytest -m live -n0 $(if $(PROVIDER),-k $(PROVIDER)) -v
 
-test-ui: web browser ## UI end-to-end tests: Chromium against a real lado server, fake agent
+test-ui: ## UI end-to-end tests: Chromium against a real lado server, fake agent
+	$(LOCK) $(MAKE) --no-print-directory _test-ui
+
+_test-ui: web browser
 	uv run pytest -m ui $(PYTEST_ARGS)
 
 web: ## the web UI: install, check types, unit tests, build into src/lado/server/static
@@ -53,5 +61,8 @@ dist: web ## build the sdist and the wheel into dist/ and check that both ship t
 browser: ## install Chromium for the UI tests (Playwright)
 	uv run playwright install chromium
 
-check: lint test-js web browser ## everything; run after your last change and when a merge brings new commits. Unit, integration and UI tests in one parallel run
+check: ## everything; run after your last change and when a merge brings new commits. Unit, integration and UI tests in one parallel run
+	$(LOCK) $(MAKE) --no-print-directory _check
+
+_check: lint test-js web browser
 	uv run pytest -m 'not live' $(PYTEST_ARGS)

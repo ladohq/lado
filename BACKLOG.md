@@ -136,6 +136,10 @@ test_flows_tab::test_in_a_narrow_column_the_runs_take_it_and_a_run_has_the_way_b
 test_kits_page::test_the_update_window_keeps_its_buttons_on_a_short_screen and
 test_agent_terminal::test_a_viewer_has_only_the_agents_window_and_no_tmux_keys failed in
 `make check` and passed together on a serial rerun.
+Partly done (2026-10-06, fix/check-lock): concurrent runs from separate sessions or
+worktrees no longer add up, since `make check`, `make test`, `make test-integration` and
+`make test-ui` take one lock per machine (`scripts/check_lock.py`, AGENTS.md). Still open:
+one run on a machine other agents keep busy, with `-n` not chosen by the load.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 
@@ -240,6 +244,21 @@ putting the default kit back, so a product race is not ruled out.
 Wanted: if the kits test still fails with the wait, look for a load that resets the kits
 after the human removed them.
 Found: 2026-10-05, run feature/session-head (developer, reviewer).
+
+## Test runs leave `lado server` processes behind
+
+Size: S. Why here: each leaked server keeps loading a machine whose load already makes `make check` fail on timeouts, and one ran for 29 hours.
+
+On 2026-10-06 the supervisor found 23 orphaned `tests/integration/fake_provider.py server
+--port 0` processes (parent 1, about 35 minutes old, from the feature-mcp-secrets and
+session-tabs worktrees) and a `lado.cli server --port 0` from the feature-self-update
+worktree that had run for 29 hours. Cause: the `server` fixture in tests/ui/conftest.py:44-60
+only calls `server_run.stop()` and `process.wait(timeout=10)` in its `finally`; when
+`wait_ready` times out under load (no server.json yet), `stop()` finds no server and nothing
+kills the process.
+Wanted: every test that starts a server kills its process whatever `stop()` did, and a
+check at the end of the test session that no process a test started is still alive.
+Found: 2026-10-06, supervisor; recorded in fix/check-lock.
 
 ## Flaky terminal socket test: input checked before it is written
 

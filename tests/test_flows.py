@@ -188,3 +188,187 @@ def test_a_snapshot_from_before_needs_still_works():
     # A run started by an older LADO keeps the flow as it was: no needs anywhere.
     flow = flows.from_snapshot(yaml.safe_load(FEATURE), "kit")
     assert all(state.needs == () for state in flow.states.values())
+
+
+# The shape of lado-dev's flows (v0.9.1): design and review loops bounded by max_visits and
+# gates, needs on earlier states and on the state itself on a loop.
+LADO_DEV_FEATURE = """\
+name: feature
+description: From intent to a merged branch.
+start: design
+states:
+  design:
+    agent: supervisor
+    do: Design.
+    needs: [design]
+    outcomes: {ready: architecture}
+  architecture:
+    agent: architect
+    do: Review the design.
+    max_visits: 3
+    needs: [design, architecture]
+    outcomes: {approved: design_ok, changes: design}
+  design_ok:
+    gate: approval
+    ask: Approve?
+    needs: [design]
+    outcomes: {approved: implement, rejected: design}
+  implement:
+    agent: developer
+    do: Build.
+    needs: [design]
+    outcomes: {done: review}
+  review:
+    agent: reviewer
+    do: Review.
+    max_visits: 3
+    needs: [design, review]
+    outcomes: {approved: merge_ok, changes: implement}
+  merge_ok:
+    gate: approval
+    ask: Merge?
+    outcomes: {approved: merge, rejected: implement}
+  merge:
+    agent: supervisor
+    do: Merge.
+    outcomes: {merged: done, conflict: implement, red: implement}
+  done:
+    end: true
+"""
+
+LADO_DEV_FIX = """\
+name: fix
+description: A small change.
+start: implement
+states:
+  implement:
+    agent: developer
+    do: Build.
+    outcomes: {done: review}
+  review:
+    agent: reviewer
+    do: Review.
+    max_visits: 3
+    needs: [review]
+    outcomes: {approved: merge_ok, changes: implement}
+  merge_ok:
+    gate: approval
+    ask: Merge?
+    outcomes: {approved: merge, rejected: implement}
+  merge:
+    agent: supervisor
+    do: Merge.
+    outcomes: {merged: done, conflict: implement, red: implement}
+  done:
+    end: true
+"""
+
+
+def lint(text, name="feature", change=None):
+    data = yaml.safe_load(text)
+    if change:
+        change(data)
+    flow, errors = parse(data, name)
+    assert errors == []
+    return flows.lint(flow)
+
+
+def work(do, outcomes, **more):
+    return {"agent": "developer", "do": do, "outcomes": outcomes, **more}
+
+
+def test_lint_passes_flows_shaped_like_lado_dev():
+    assert lint(FEATURE) == []
+    assert lint(LADO_DEV_FEATURE) == []
+    assert lint(LADO_DEV_FIX, "fix") == []
+
+
+def test_lint_names_a_state_no_end_can_be_reached_from():
+    def change(d):
+        # review can go to stuck, which only loops with itself: bounded, but a trap.
+        d["states"]["review"]["outcomes"]["stuck"] = "stuck"
+        d["states"]["stuck"] = work("Spin.", {"again": "spin"}, max_visits=2)
+        d["states"]["spin"] = work("Spin.", {"again": "stuck"})
+
+    assert lint(FEATURE, change=change) == [
+        'feature.yaml: state "stuck": no end state can be reached from it',
+        'feature.yaml: state "spin": no end state can be reached from it',
+    ]
+
+
+def test_lint_names_a_cycle_with_no_max_visits_and_no_gate():
+    def unbounded(d):
+        del d["states"]["review"]["max_visits"]
+
+    assert lint(FEATURE, change=unbounded) == [
+        "feature.yaml: cycle implement -> review -> implement has no state with max_visits "
+        "and no gate; agents could loop forever"
+    ]
+
+    def on_implement(d):
+        unbounded(d)
+        d["states"]["implement"]["max_visits"] = 5
+
+    assert lint(FEATURE, change=on_implement) == []
+
+    def through_a_gate(d):
+        unbounded(d)
+        d["states"]["review"]["outcomes"]["changes"] = "design_ok"
+
+    assert lint(FEATURE, change=through_a_gate) == []
+
+
+def test_lint_follows_the_first_outcome_into_the_cycle():
+    # a -> b -> c -> b and c -> a: the text starts at a, takes the first outcome into the
+    # component each time and prints the closed part.
+    def change(d):
+        d["start"] = "a"
+        d["states"]["a"] = work("A.", {"next": "b", "out": "design"})
+        d["states"]["b"] = work("B.", {"next": "c"})
+        d["states"]["c"] = work("C.", {"back": "b", "restart": "a"})
+
+    assert lint(FEATURE, change=change) == [
+        "feature.yaml: cycle b -> c -> b has no state with max_visits and no gate; "
+        "agents could loop forever"
+    ]
+
+
+def test_lint_names_an_unbounded_self_loop():
+    def change(d):
+        d["states"]["implement"]["outcomes"]["again"] = "implement"
+
+    assert lint(FEATURE, change=change) == [
+        "feature.yaml: cycle implement -> implement has no state with max_visits and no "
+        "gate; agents could loop forever"
+    ]
+
+
+def test_lint_names_needs_that_never_come_before():
+    def later(d):
+        d["states"]["implement"]["needs"] = ["design", "done"]
+
+    assert lint(FEATURE, change=later) == [
+        'feature.yaml: state "implement" needs "done", which never comes before it'
+    ]
+
+    def own_on_a_loop(d):
+        d["states"]["review"]["needs"] = ["review"]
+
+    assert lint(FEATURE, change=own_on_a_loop) == []
+
+    def own_off_a_loop(d):
+        d["states"]["design"]["outcomes"] = {"ready": "implement"}
+        del d["states"]["design_ok"]
+        d["states"]["design"]["needs"] = ["design"]
+
+    assert lint(FEATURE, change=own_off_a_loop) == [
+        'feature.yaml: state "design" needs "design", which never comes before it'
+    ]
+
+
+def test_lint_problems_do_not_stop_a_flow_from_loading_or_a_snapshot():
+    data = yaml.safe_load(FEATURE)
+    del data["states"]["review"]["max_visits"]
+    flow, errors = parse(data)
+    assert errors == []
+    assert flows.lint(flows.from_snapshot(copy.deepcopy(flow.snapshot), "kit")) != []

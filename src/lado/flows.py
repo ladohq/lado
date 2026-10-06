@@ -32,6 +32,14 @@ An approval gate has exactly the outcomes `approved` and `rejected`; the human a
 with approve or reject. A choice gate offers its outcome names. With `needs`, `lado answer`
 shows the human the latest note of each named state besides the note that led to the gate.
 
+`parse` refuses a flow whose states cannot all be reached from start or that reaches no end.
+`lint` names what a flow runs with but should not have: a state no end can be reached from
+(a trap), a cycle with no state that has max_visits and no gate on it (agents could loop
+forever), and needs naming a state that never comes before the needing state (its step
+would always get "no note yet"; a state on a cycle may need itself, its previous report).
+Only `lado kits check` fails on them (lado.kits.lint); loading a kit, `lado kits add` and a
+run's snapshot do not apply them.
+
 This module only reads and checks the format; lado.runs runs flows. Whether each `agent`
 role exists depends on the kits a session combines, so lado.kits checks that.
 """
@@ -216,6 +224,71 @@ def _check_reachable(states: dict[str, State], start: str, error) -> None:
             error(f'state "{name}" cannot be reached from start "{start}"')
     if not any(states[name].kind == END for name in reached):
         error(f'no end state can be reached from start "{start}"')
+
+
+def lint(flow: Flow) -> list[str]:
+    """Problems of a flow's graph that `parse` lets through (see the module's docstring),
+    each starting with the flow's path, in the order of the states in the file."""
+    states = flow.states
+    problems = []
+    to_end = {
+        name for name in states if any(states[n].kind == END for n in _reached(states, [name]))
+    }
+    problems += [
+        f'state "{name}": no end state can be reached from it'
+        for name in states
+        if name not in to_end
+    ]
+    loose = {n for n, s in states.items() if s.kind == WORK and s.max_visits is None}
+    for component in _cycles(states, loose):
+        cycle = " -> ".join(_cycle_path(states, component))
+        problems.append(
+            f"cycle {cycle} has no state with max_visits and no gate; agents could loop forever"
+        )
+    for name, state in states.items():
+        for needed in state.needs:
+            # Every state is reachable from start (parse), so this asks for a path from
+            # `needed` to `name` of one outcome or more.
+            if name not in _reached(states, states[needed].outcomes.values()):
+                problems.append(f'state "{name}" needs "{needed}", which never comes before it')
+    return [f"{flow.path}: {problem}" for problem in problems]
+
+
+def _reached(states: dict[str, State], start, among: set[str] | None = None) -> set[str]:
+    """The states reachable along outcomes from those in `start` (included), going only
+    through the states `among` when given."""
+    reached, todo = set(), list(start)
+    while todo:
+        name = todo.pop()
+        if name not in reached:
+            reached.add(name)
+            todo += [t for t in states[name].outcomes.values() if among is None or t in among]
+    return reached
+
+
+def _cycles(states: dict[str, State], among: set[str]) -> list[list[str]]:
+    """The strongly connected components of the states `among` that hold a cycle, each in
+    file order, ordered by their first state in the file."""
+    components, seen = [], set()
+    for name in states:
+        if name not in among or name in seen:
+            continue
+        ahead = _reached(states, [name], among)
+        component = [n for n in states if n in ahead and name in _reached(states, [n], among)]
+        seen.update(component)
+        if len(component) > 1 or name in states[name].outcomes.values():
+            components.append(component)
+    return components
+
+
+def _cycle_path(states: dict[str, State], component: list[str]) -> list[str]:
+    """A cycle in `component`: from its first state, along the first outcome into the
+    component, up to the first state met again; the closed part, that state twice."""
+    path, name = [], component[0]
+    while name not in path:
+        path.append(name)
+        name = next(t for t in states[name].outcomes.values() if t in component)
+    return [*path[path.index(name) :], name]
 
 
 def _text(value: object) -> bool:

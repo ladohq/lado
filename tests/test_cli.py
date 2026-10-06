@@ -8,7 +8,7 @@ import agent_helpers
 import pytest
 from agent_helpers import init_repo, publish
 
-from lado import __version__, cli, gitcache, marketplaces, runs, runtime, state
+from lado import __version__, cli, flows, gitcache, kits, marketplaces, runs, runtime, state
 from lado.cli import format_duration, main
 
 
@@ -1311,10 +1311,12 @@ def test_kits_check_warns_about_a_flow_role_of_another_kit(repo, capsys):
     (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: worker"))
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
     captured = capsys.readouterr()
+    ship = kit.resolve() / "flows" / "ship.yaml"
     assert (
-        'warning: flow "ship": state "build": role "worker" is not in kit "team"; '
+        f'warning: {ship}: state "build": role "worker" is not in kit "team"; '
         "a session needs a kit that has it"
     ) in captured.err
+    assert captured.err.count("is not in kit") == 1  # kits.warnings says it, the CLI prints
     assert "team: OK (1 agents, 0 skills, 0 packs and 1 flows)" in captured.out
     (kit / "flows" / "ship.yaml").write_text(SHIP)
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
@@ -1322,7 +1324,52 @@ def test_kits_check_warns_about_a_flow_role_of_another_kit(repo, capsys):
     # A step of the supervisor is the session's lead's, whichever kit leads.
     (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: supervisor"))
     assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
-    assert "warning" not in capsys.readouterr().err
+    assert "is not in kit" not in capsys.readouterr().err
+
+
+def test_kits_check_warns_about_a_role_that_acts_in_no_flow(repo, capsys):
+    kit = _kit(repo, "team")
+    (kit / "flows").mkdir()
+    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: supervisor"))
+    assert main(["kits", "--repo", str(repo), "check", "team"]) == 0
+    captured = capsys.readouterr()
+    rev = kit.resolve() / "agents" / "rev.md"
+    assert captured.err == (
+        f'warning: {rev}: role "rev" acts in no state of the kit\'s flows; '
+        "it can still be spawned outside a flow\n"
+    )
+    assert "team: OK" in captured.out
+
+
+@pytest.mark.parametrize(
+    "change, problem",
+    [
+        (
+            lambda s: s.replace(
+                "rejected: build}", "rejected: build}}\n  x: {agent: rev, do: X., outcomes: {a: x}"
+            ).replace("done: check", "done: check, side: x"),
+            'state "x": no end state can be reached from it',
+        ),
+        (
+            lambda s: s.replace("done: check", "done: check, again: build"),
+            "cycle build -> build has no state with max_visits and no gate",
+        ),
+        (
+            lambda s: s.replace("{agent: rev,", "{agent: rev, needs: [end],"),
+            'state "build" needs "end", which never comes before it',
+        ),
+    ],
+)
+def test_kits_check_fails_on_the_graph_problems_of_a_flow(repo, capsys, change, problem):
+    kit = _kit(repo, "team")
+    (kit / "flows").mkdir()
+    (kit / "flows" / "ship.yaml").write_text(change(SHIP))
+    assert main(["kits", "--repo", str(repo), "check", "team"]) == 1
+    captured = capsys.readouterr()
+    assert f"{kit.resolve() / 'flows' / 'ship.yaml'}: {problem}" in captured.err
+    assert "OK" not in captured.out
+    loaded = kits.load(kit)  # it still loads, and so does a run's snapshot of the flow
+    flows.from_snapshot(loaded.flows["ship"].snapshot, "team")
 
 
 def test_source_commands_are_not_under_kits(capsys):

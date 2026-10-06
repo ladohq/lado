@@ -665,6 +665,46 @@ def test_flow_load_errors(project, write, error):
         kits.load(kit)
 
 
+def test_lint_names_the_graph_problems_of_each_flow(project):
+    kit = make_kit(project, "k", agents={"worker": ({}, "")})
+    make_flow(kit, "ship")
+    (kit / "flows" / "loop.yaml").write_text(
+        FLOW.format(name="loop", role="worker").replace(
+            "{done: finish}", "{done: finish, again: build}"
+        )
+    )
+    loaded = kits.load(kit)  # the kit still loads
+    path = loaded.flows["loop"].path
+    assert kits.lint(loaded) == [
+        f"{path}: cycle build -> build has no state with max_visits and no gate; "
+        "agents could loop forever"
+    ]
+
+
+def test_warnings_name_a_role_that_acts_in_no_flow(project):
+    agents = {"boss": ({}, ""), "worker": ({}, ""), "idle": ({}, "")}
+    kit = make_kit(project, "k", agents=agents, supervisor="boss")
+    assert kits.warnings(kits.load(kit)) == []  # no flows: roles are spawned without them
+    make_flow(kit, "ship")
+    loaded = kits.load(kit)
+    assert kits.warnings(loaded) == [
+        f'{loaded.agents["idle"].path}: role "idle" acts in no state of the kit\'s flows; '
+        "it can still be spawned outside a flow"
+    ]
+
+
+def test_warnings_name_a_flow_role_that_is_not_in_the_kit(project):
+    kit = make_kit(project, "k", agents={"worker": ({}, "")})
+    make_flow(kit, "ship", role="worker")
+    make_flow(kit, "other", role="reviewer")
+    make_flow(kit, "lead", role=kits.LEAD)  # the session's lead's step
+    loaded = kits.load(kit)
+    assert kits.warnings(loaded) == [
+        f'{loaded.flows["other"].path}: state "build": role "reviewer" is not in kit "k"; '
+        "a session needs a kit that has it"
+    ]
+
+
 def test_flows_of_the_kits_combine_and_can_be_switched_off(repo, project):
     make_flow(make_kit(project, "base"), "ship")
     make_flow(make_kit(project, "team"), "hotfix")

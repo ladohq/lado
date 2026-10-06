@@ -225,7 +225,11 @@ fixes and docs only: no new feature, no API or schema change.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
     a work or gate state's optional `needs` lists the states whose latest notes its step
     gets or the human sees at the gate)
-    and its validator. `runs.py`: flow runs: start (own worktree and branch, shared by the
+    and its validator (`parse`), and `lint`, the graph rules a flow loads with but should
+    not break: a state no end can be reached from, a cycle with no `max_visits` state and
+    no gate on it, `needs` naming a state that never comes before (a state on a cycle may
+    need itself); only `lado kits check` fails on them (`kits.lint`), never loading a kit,
+    `lado kits add` or a run's snapshot. `runs.py`: flow runs: start (own worktree and branch, shared by the
     run's workers), step messages from `lado`, `flow_advance`, loop limits, gates (the run
     waits for the human), end (finish workers, remove the worktree if merged), cancel and
     `lado flow-set`. A run keeps a snapshot of its flow. A step whose `agent` is
@@ -537,7 +541,10 @@ in the cache. `lado kits outdated` checks each installed kit
 against its remote's tags and says why it does not check a folder or a kit whose folder is
 missing. `lado kits check <folder> --tag vX.Y.Z`
 (a kit's CI) gives the verdict add would give for that tag without installing
-(`kits.load_release`, shared with add). A tag that points to another commit
+(`kits.load_release`, shared with add), and fails on `kits.lint`'s problems (hardcoded
+paths, the graph rules of `flows.lint`); `kits.warnings` are printed as `warning:` and do
+not fail it (a flow step's role not in the kit, a role that acts in none of the kit's
+flows, a version that differs from the clone's tags). A tag that points to another commit
 than the installed one is a loud warning (outdated, update, add). `lado kits remove <name>`
 drops the row; its folder stays (one already gone is no error); it warns on stderr about
 the running and stopped sessions that use the kit (`runtime.kit_users`, the lines the UI

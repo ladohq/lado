@@ -128,7 +128,12 @@ fixes and docs only: no new feature, no API or schema change.
     stop or forget would do now, refused alike; `stop_session` and `forget_session` use
     them. So does `finish_worker` with `finish_preview`, which goes by `work_state`: where
     a worker's branch stands against the repo's current branch and what its worktree has
-    not committed (the UI's Agents tab shows both).
+    not committed (the UI's Agents tab shows both). A start or spawn that fails is undone
+    step by step (`_undo`: the session stored or the worker added, its window, config,
+    worktree and branch): every step runs, also after one that fails, the cause stays the
+    error raised, and a step that fails is noted on it (`__notes__`; the CLI and the MCP
+    tools print the notes after the error) and written to `LADO_HOME/loop.log`
+    (`loop.log`).
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code; `opencode_family.py`: the
@@ -147,7 +152,10 @@ fixes and docs only: no new feature, no API or schema change.
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
     agent's provider does not support, before anything is launched.
   - `tmux.py`: tmux calls, on a private server (`tmux -L lado`; `LADO_TMUX_SOCKET` overrides
-    the socket name and is passed on to agents).
+    the socket name and is passed on to agents). A tmux that cannot run (not on PATH, not
+    executable) is `TmuxMissing`, a `TmuxError` naming the PATH it was looked up on; the
+    calls that read a failing command as a gone session or window (`has_session`,
+    `window_names`, `popup`) raise it instead, so it never reads as "gone".
   - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`,
     and `command`, the window's command that runs the agent with exactly that environment.
   - `terminal.py`: an agent's terminal for the UI (design in
@@ -469,7 +477,9 @@ fixes and docs only: no new feature, no API or schema change.
   16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its
   one line and reads the text with `read_messages`. The worker's task is still the full text.
 - A message to an idle agent is pasted into its window and stays `sent` until the agent's
-  prompt-submit hook sees its line (then `delivered`). A busy, waiting or starting agent's
+  prompt-submit hook sees its line (then `delivered`). A paste that ends in a backslash
+  gets a space after it (`tmux.send_text`): Claude Code reads `\` + Enter as a line break
+  and would not submit it; Kilo and OpenCode submit either. A busy, waiting or starting agent's
   queue is handed over on every switch to idle (`hooks._idle`: its session start without a
   task, a conversation start, a turn's end; at a turn's end in the hook's output where the
   provider can, else typed in), and by `runtime.sweep` when the agent is idle with nothing

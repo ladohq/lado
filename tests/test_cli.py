@@ -1425,6 +1425,50 @@ def test_a_newer_database_is_a_message_not_a_traceback(lado_home, capsys):
     assert "lado: " in capsys.readouterr().err
 
 
+def test_without_tmux_a_command_says_so_without_a_traceback(
+    repo, fake_clis, loop_starts, tmp_path, monkeypatch, capsys
+):
+    tools = tmp_path / "no-tmux"
+    tools.mkdir()
+    (tools / "git").symlink_to(shutil.which("git"))
+    path = f"{fake_clis}{os.pathsep}{tools}"
+    monkeypatch.setenv("PATH", path)
+    missing = f"lado: tmux is not installed or not on PATH ({path})\n"
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 1
+    assert capsys.readouterr().err == missing
+    assert state.get_session("s") is None
+    # A session tmux cannot be asked about is not taken for gone: not by `lado ls`, and not
+    # by the check before a migration, which would otherwise migrate under it.
+    state.add_session(state.Session("s", str(repo), None, "claude", ["default"], []))
+    assert main(["ls"]) == 1
+    assert capsys.readouterr().err == missing
+    agent_helpers.previous_schema()
+    assert main(["ls"]) == 1
+    assert capsys.readouterr().err == missing
+    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["s"])
+
+
+def test_a_failed_start_shows_its_cause_then_what_its_undo_could_not_do(
+    repo, fake_tmux, monkeypatch, capsys
+):
+    from lado import tmux
+
+    def fail(*args):
+        raise tmux.TmuxError("command too long")
+
+    def locked(*args):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(tmux, "new_session", fail)
+    monkeypatch.setattr(state, "delete_session", locked)
+    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 1
+    assert capsys.readouterr().err == (
+        "lado: command too long\n"
+        "lado: undo of the start of s: forget the session failed: OperationalError: "
+        "database is locked\n"
+    )
+
+
 def test_ls_shows_a_running_session_without_its_loop(repo, fake_tmux, capsys):
     from lado import loop
 

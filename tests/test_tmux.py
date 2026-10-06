@@ -33,6 +33,37 @@ def test_send_text_pastes_multiline_text(tmp_path):
     assert not tmux.has_session(session)
 
 
+def pasted(monkeypatch, text: str) -> str:
+    """What send_text pastes for `text`, before it presses Enter."""
+    buffers = []
+
+    def run(*args, input=None):
+        if args[0] == "load-buffer":
+            buffers.append(input)
+        return ""
+
+    monkeypatch.setattr(tmux, "run", run)
+    monkeypatch.setattr(tmux.time, "sleep", lambda _: None)
+    tmux.send_text("s", "w", text)
+    return buffers[0]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["[from human] what now?\\", "[from human] two\\\\", "[from a] one\\\n[from b] two\\"],
+)
+def test_send_text_never_ends_the_paste_in_a_backslash(monkeypatch, text):
+    """Claude Code reads a backslash before Enter as a line break, not a submit."""
+    assert pasted(monkeypatch, text) == f"{text} "
+
+
+@pytest.mark.parametrize(
+    "text", ["[from human] hello", "[from human] hi (#3, 2 lines: call read_messages)"]
+)
+def test_send_text_pastes_other_text_as_it_is(monkeypatch, text):
+    assert pasted(monkeypatch, text) == text
+
+
 def _screen(session, window, text, timeout=5):
     """The window's screen once `text` shows on it."""
     deadline = time.time() + timeout
@@ -137,6 +168,39 @@ def test_a_command_that_meets_an_ending_server_runs_once_more(monkeypatch):
     )
     with pytest.raises(tmux.TmuxError, match="can't find session"):
         tmux.run("has-session")
+
+
+def test_a_missing_tmux_is_a_tmux_error_that_names_the_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(tmux.TmuxMissing) as error:
+        tmux.run("list-sessions")
+    assert str(error.value) == f"tmux is not installed or not on PATH ({tmp_path})"
+    assert isinstance(error.value, tmux.TmuxError)
+
+
+def test_a_tmux_that_cannot_run_is_a_tmux_error_that_names_the_path(monkeypatch, tmp_path):
+    (tmp_path / "tmux").write_text("not a program")  # not executable: PermissionError
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(tmux.TmuxMissing) as error:
+        tmux.run("list-sessions")
+    message = str(error.value)
+    assert message.startswith("cannot run tmux (PATH: ")
+    assert str(tmp_path) in message and "Permission denied" in message
+
+
+def test_a_missing_tmux_is_not_taken_for_a_gone_session(monkeypatch, tmp_path):
+    # A missing tmux says nothing about the session: it must not read as gone (a migration
+    # under a running session, a session shown as gone, a ghost worker left starting).
+    monkeypatch.setenv("PATH", str(tmp_path))
+    for call in (
+        lambda: tmux.has_session("s"),
+        lambda: tmux.window_names("s"),
+        lambda: tmux.kill_window("s", "w"),
+        lambda: tmux.popup("s", "t", ["true"], {}),
+        lambda: tmux.sessions_with("@x"),
+    ):
+        with pytest.raises(tmux.TmuxMissing):
+            call()
 
 
 def _windows(session):

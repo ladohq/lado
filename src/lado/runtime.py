@@ -347,15 +347,23 @@ def start_session(
         _write_lead_skills(agent, env.lead_skills())
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
         tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
-    except Exception:
-        providers.base.remove_config_dir(agent)
+    except Exception as error:
+        steps: list[tuple[str, Callable[[], object]]] = [
+            ("remove the supervisor's config", lambda: providers.base.remove_config_dir(agent))
+        ]
         if old:
             # Stopped again, with the settings it had: the supervisor never got LADO's
             # messages; the next resume writes them anew.
             restored = ", ".join(_changes(sess, old))
-            state.fail_resume(old, [m.id for m in taken], restored)
+            steps.append(
+                (
+                    "stop the session again",
+                    lambda: state.fail_resume(old, [m.id for m in taken], restored),
+                )
+            )
         else:
-            state.delete_session(session)
+            steps.append(("forget the session", lambda: state.delete_session(session)))
+        _undo(session, f"the start of {session}", error, steps)
         raise
     # It ends by itself when the tmux session is gone, so not before that exists.
     loop.start(session)
@@ -441,18 +449,43 @@ def spawn_worker(
         first = _first_input(agent, first, summary)
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
-    except Exception as exc:
+    except Exception as error:
         # The worker never ran: leave nothing that says it did, so the run's step still
-        # waits for one and the name is free again.
-        close_worker(session, agent, f"not started: {exc}")
-        providers.base.remove_config_dir(agent)
+        # waits for one and the name is free again. Its window first, apart from forgetting
+        # it: the tmux call that failed the spawn may fail again (no tmux on PATH).
+        how = f"not started: {error}"
+        steps: list[tuple[str, Callable[[], object]]] = [
+            ("close its window", lambda: tmux.kill_window(session, worker)),
+            ("forget the worker", lambda: _forget_worker(session, agent, how)),
+            ("remove its config", lambda: providers.base.remove_config_dir(agent)),
+        ]
         if not run:
-            # The original error matters more than one from this cleanup.
-            with contextlib.suppress(LadoError):
-                git(sess.repo, "worktree", "remove", "--force", str(worktree))
-                git(sess.repo, "branch", "-D", branch)
+            steps += [
+                (
+                    "remove its worktree",
+                    lambda: git(sess.repo, "worktree", "remove", "--force", str(worktree)),
+                ),
+                ("delete its branch", lambda: git(sess.repo, "branch", "-D", branch)),
+            ]
+        _undo(session, f"the spawn of {worker}", error, steps)
         raise
     return agent
+
+
+def _undo(
+    session: str, what: str, error: Exception, steps: list[tuple[str, Callable[[], object]]]
+) -> None:
+    """Undo `what`, which failed with `error`: every step runs, also after one that fails,
+    and `error`, the cause, stays the one the caller raises. A failed step is noted on the
+    error (the CLI and the MCP tools show the notes) and written to loop.log."""
+    for name, step in steps:
+        try:
+            step()
+        except Exception as failure:
+            note = f"undo of {what}: {name} failed: {type(failure).__name__}: {failure}"
+            # add_note from Python 3.11 on; the same attribute before.
+            error.__notes__ = [*getattr(error, "__notes__", []), note]
+            loop.log(session, note)
 
 
 def _first_input(agent: state.Agent, text: str | None, summary: str) -> str | None:
@@ -645,6 +678,10 @@ DISCARD_NOT_APPLIED = "discard does not apply: the run keeps its worktree"
 def close_worker(session: str, worker: state.Agent, how: str) -> Finished:
     """Close the worker's window and forget it; its worktree is left alone."""
     tmux.kill_window(session, worker.name)
+    return _forget_worker(session, worker, how)
+
+
+def _forget_worker(session: str, worker: state.Agent, how: str) -> Finished:
     state.delete_agent(session, worker.name)
     # Forgotten first, so no new message can be queued for it (the queue checks the
     # recipient in the transaction that stores the message): a later worker with the same

@@ -5,7 +5,7 @@ import agent_helpers
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from lado import mcp_server, runtime, state
+from lado import mcp_server, runtime, state, tmux
 
 
 def _tools(session, agent):
@@ -146,6 +146,27 @@ def test_a_tool_on_an_older_schema_says_why_and_changes_nothing(repo, fake_tmux,
     assert "LADO was upgraded under a running session" in str(error.value)
     assert "`lado stop --all`, then `lado start`" in str(error.value)
     assert agent_helpers.database() == before
+
+
+def test_spawn_worker_without_tmux_says_why_and_what_its_undo_could_not_do(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+
+    def no_tmux(*args):
+        raise tmux.TmuxMissing("tmux is not installed or not on PATH (/nowhere)")
+
+    monkeypatch.setattr(tmux, "new_window", no_tmux)
+    monkeypatch.setattr(tmux, "kill_window", no_tmux)
+    server = mcp_server.build("s", "supervisor")
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool("spawn_worker", {"task": "t"}))
+    assert str(error.value) == (
+        "Error executing tool spawn_worker: tmux is not installed or not on PATH (/nowhere)\n"
+        "undo of the spawn of worker: close its window failed: TmuxMissing: "
+        "tmux is not installed or not on PATH (/nowhere)"
+    )
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
 
 
 def test_spawn_worker_refuses_a_provider_without_the_sessions_mode(repo, fake_tmux):

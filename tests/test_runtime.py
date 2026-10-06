@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import threading
 import time
@@ -1335,6 +1336,86 @@ def test_a_failed_resume_keeps_the_settings_it_had(repo, fake_tmux, monkeypatch,
     started = runtime.start_session(str(repo), "s", None, "kilo")
     assert started.changes == ["provider: claude -> kilo"]
     assert state.get_session("s").provider == "kilo"
+
+
+def _no_tmux(*args, **kwargs):
+    raise tmux.TmuxMissing("tmux is not installed or not on PATH (/nowhere)")
+
+
+def _locked(*args, **kwargs):
+    raise sqlite3.OperationalError("database is locked")
+
+
+def _undo_notes(error):
+    return getattr(error, "__notes__", [])
+
+
+def test_a_spawn_without_tmux_leaves_no_ghost_worker(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_window", _no_tmux)
+        m.setattr(tmux, "kill_window", _no_tmux)  # its undo's tmux call fails the same way
+        with pytest.raises(tmux.TmuxMissing, match="tmux is not installed") as error:
+            runtime.spawn_worker("s", "task")
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert not (state.home() / "agents" / "s" / "worker").exists()
+    assert runtime.session_worktrees(str(repo), "s") == {}
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
+    last = state.list_events("s")[-1]
+    assert (last.agent, last.kind) == ("worker", state.FINISHED)
+    note = (
+        "undo of the spawn of worker: close its window failed: TmuxMissing: "
+        "tmux is not installed or not on PATH (/nowhere)"
+    )
+    assert _undo_notes(error.value) == [note]
+    assert note in (state.home() / "loop.log").read_text()
+
+
+def test_a_failed_spawn_undo_keeps_the_cause_and_runs_every_step(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_window", _fail)
+        m.setattr(state, "delete_agent", _locked)
+        with pytest.raises(tmux.TmuxError, match="command too long") as error:
+            runtime.spawn_worker("s", "task")
+    assert _undo_notes(error.value) == [
+        "undo of the spawn of worker: forget the worker failed: OperationalError: "
+        "database is locked"
+    ]
+    assert "forget the worker failed" in (state.home() / "loop.log").read_text()
+    # The steps after the failing one ran all the same.
+    assert not (state.home() / "agents" / "s" / "worker").exists()
+    assert runtime.session_worktrees(str(repo), "s") == {}
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
+
+
+def test_a_failed_start_undo_keeps_the_cause_and_runs_every_step(repo, fake_tmux, monkeypatch):
+    monkeypatch.setattr(tmux, "new_session", _fail)
+    monkeypatch.setattr(providers.base, "remove_config_dir", _locked)
+    with pytest.raises(tmux.TmuxError, match="command too long") as error:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+    assert _undo_notes(error.value) == [
+        "undo of the start of s: remove the supervisor's config failed: OperationalError: "
+        "database is locked"
+    ]
+    assert state.get_session("s") is None  # the next step ran
+
+
+@pytest.mark.parametrize("resumed", [False, True])
+def test_a_start_whose_undo_fails_raises_the_cause(repo, fake_tmux, monkeypatch, resumed):
+    if resumed:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+        runtime.stop_session("s")
+    monkeypatch.setattr(tmux, "new_session", _fail)
+    monkeypatch.setattr(state, "fail_resume" if resumed else "delete_session", _locked)
+    with pytest.raises(tmux.TmuxError, match="command too long") as error:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+    step = "stop the session again" if resumed else "forget the session"
+    assert _undo_notes(error.value) == [
+        f"undo of the start of s: {step} failed: OperationalError: database is locked"
+    ]
+    assert f"s: undo of the start of s: {step} failed" in (state.home() / "loop.log").read_text()
+    assert not (state.home() / "agents" / "s" / "supervisor").exists()
 
 
 @pytest.mark.parametrize("resumed", [False, True])

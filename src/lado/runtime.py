@@ -953,9 +953,14 @@ def _deliver(session: str, recipient: str, message: int | None = None) -> str:
     # Someone else may have handed it over since it was queued: such a hook, or the
     # session loop's sweep. The agent is busy now, with this message.
     queued = state.get_message(session, message) if message is not None else None
-    if queued is not None and queued.state != state.PENDING:
+    if queued is not None and queued.state in (state.SENT, state.DELIVERED, state.READ):
         return "sent"
-    status = state.get_agent(session, recipient).status
+    # Or the agent was finished or stopped since, and its messages dropped (or soon are).
+    agent = state.get_agent(session, recipient)
+    if agent is None or agent.status == state.STOPPED or (queued and queued.state == state.DROPPED):
+        with _to_running(session):
+            raise state.NotRunning(recipient)
+    status = agent.status
     if status != state.IDLE:
         return f"queued; {recipient} is {status} and will get it when it is idle"
     if state.has_sent(session, recipient):

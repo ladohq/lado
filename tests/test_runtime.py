@@ -500,6 +500,29 @@ def test_a_message_the_loop_types_in_while_it_is_sent_is_reported_sent(
     assert _typed(fake_tmux, "w1") == ["[from supervisor] hi"]
 
 
+@pytest.mark.parametrize("dropped", [True, False])
+def test_a_message_to_a_worker_finished_while_it_is_sent_is_refused(
+    repo, fake_tmux, monkeypatch, dropped
+):
+    """finish_worker forgets the worker, then drops its undelivered messages: either may
+    come between the sender's queue and its delivery. Nobody got the message."""
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    queue_message = state.queue_message
+
+    def queue_then_finish(*args, **kwargs):
+        queued = queue_message(*args, **kwargs)
+        state.delete_agent("s", "w1")
+        if dropped:
+            state.drop_undelivered("s", "w1")
+        return queued
+
+    monkeypatch.setattr(state, "queue_message", queue_then_finish)
+    with pytest.raises(runtime.LadoError, match='no running agent "w1"; running agents: '):
+        runtime.send_message("s", "supervisor", "w1", "hi")
+    assert _typed(fake_tmux, "w1") == []
+
+
 def test_an_agent_being_typed_into_never_looks_idle(repo, fake_tmux, monkeypatch):
     """Taken from the queue and the agent busy in one step: no one sees the agent idle
     with a message on its way in."""

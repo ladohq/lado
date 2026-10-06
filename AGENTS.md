@@ -464,8 +464,10 @@ fixes and docs only: no new feature, no API or schema change.
   within one pass what every hook missed. A sender queues first and takes the queue of an
   idle agent second (the same check as the sweep's), a hook sets idle first and takes the
   queue second: exactly one of them hands a message over, and the sender's reply says
-  `sent` also when a hook or the loop handed its message over in between. LADO types only into an idle agent, never into one that is waiting,
-  starting or stopped, and a new message waits while one typed before is unconfirmed.
+  `sent` also when a hook or the loop handed its message over in between (and refuses, as
+  for an agent not running, when the agent was finished or stopped in between). LADO types
+  only into an idle agent, never into one that is waiting, starting or stopped, and a new
+  message waits while one typed before is unconfirmed.
 - What happens to an unconfirmed message is one rule, `runtime.sweep`, run by `send_message`
   to the agent, by each of its hooks that makes it idle, and every `loop.INTERVAL`
   seconds by the session loop (below). Each paste is an attempt; after the n-th, the message is left alone for

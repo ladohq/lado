@@ -8,39 +8,6 @@ P3 maybe never (candidates for removal); a new entry goes into its tier with a `
 
 # P0: fix now
 
-## An agent whose turn ends on an API error stays busy
-
-Size: M. Why here: the agent shows busy for hours and its queue is never handed over (2 hours after the machine slept); it can happen in any session.
-
-After the computer slept, the reviewer's turn ended in Claude Code with `API Error: Your
-computer went to sleep mid-response` and its prompt was empty, but LADO kept it `busy`
-for two hours: no turn-end hook ran, so its queue was never handed over and a message to it
-would have waited forever. The supervisor typed into its window by hand to get it going.
-Wanted: the provider reports a turn that ends on an error as a turn end (Claude Code has a
-hook for a failed stop, check which; Kilo's plugin likewise), so the agent is `idle` and gets
-its queue; until then `lado ls` could flag an agent busy far longer than usual.
-Found: 2026-10-05, run feature/self-update (supervisor).
-
-## An agent whose process dies before its first hook stays `starting`, and its messages stay pending
-
-Size: M. Why here: a ghost `starting` agent, a supervisor's session that vanishes after a "successful" start, and messages lost silently; one cause and one fix.
-
-### An agent whose process dies before its first hook stays `starting` for good
-
-When an agent's window closes before any hook ran (its CLI crashed at once, a bad flag),
-nothing notices: the agent stays `starting` in `lado ls` and the UI, and a session whose
-supervisor window closed vanishes from tmux although `lado start` reported success.
-Wanted: notice the window's end (tmux `remain-on-exit` with a `pane-died` hook, or a check
-in the session loop) and mark the agent `stopped` with the reason, shown in `lado ls`/UI.
-Found: 2026-10-04, review of fix/agent-env.
-
-### Messages to an agent that died before its first hook stay pending for good
-
-`_running_agent` accepts a `starting` agent; if its process dies before any hook, nothing
-hands over or fails its queue, and `lado ls` shows it `starting`.
-Wanted: such messages fail (with a notice to the sender) when the agent is found gone.
-Found: 2026-10-06, check of the Inbox architecture candidate.
-
 ## A message handed over by the turn-end hook can be lost silently
 
 Size: M. Why here: it breaks "No silent drops" directly: hooks.py:94 marks messages delivered before the hook's output is printed.
@@ -526,7 +493,65 @@ the next unnamed spawn picks `-2`; if `add_event` fails after `add_agent`, an ag
 Wanted: these steps run under the same `_undo`, so the rollback covers everything the spawn did.
 Found: 2026-10-06, review of fix/tmux-missing-rollback.
 
+## A Claude agent whose turn the human interrupts may stay busy
+
+Size: S. Why here: the same root as a turn that ends on an error (fixed in feature/agent-liveness), which `StopFailure` does not cover.
+
+By Claude Code's hook documentation, `Stop` does not run when the human interrupts a turn
+(Esc). Not checked in LADO: the agent would stay `busy` until the human types something,
+and its queue waits.
+Wanted: check on Claude Code 2.1.29x which hook (if any) comes at an interrupt, and close
+it with the same `TURN_END`.
+Found: 2026-10-06, architect's review of feature/agent-liveness.
+
 # P2: when convenient
+
+## Keep a crashed agent's last output
+
+Size: M. Why here: decided with the human (feature/agent-liveness, 2026-10-06): the window of an agent that ended by itself closes as before.
+
+When an agent's CLI crashes, its window closes with it, so what it printed last (the
+error, a stack trace) is lost; `lado ls` only says "its window closed without a
+session-end hook".
+Wanted: keep the last screen of a window whose process ended by itself (e.g. tmux
+`remain-on-exit` with a `pane-died` hook that saves it to the agent's config folder, then
+closes the window), on top of the session loop's window check, and show it with the reason.
+Found: 2026-10-06, design of feature/agent-liveness.
+
+## An OpenCode or Kilo error with no idle after it is taken for the next turn's
+
+Size: S. Why here: a false "turn ended on an error" line, rare.
+
+The plugin keeps a `session.error` until the session's next `session.idle` (or
+`session.compacted`). Kilo 7.8.3 and OpenCode 1.18.34 also publish `session.error` without
+an idle after it, e.g. when a `promptAsync` fails (the plugin's own hand-over of the queue)
+or a subagent tool's agent is not found; the next normal turn end then carries that error.
+Wanted: an error only goes with the idle that ends the turn it happened in (e.g. dropped at
+the session's next `busy` status), checked on both CLIs.
+Found: 2026-10-06, feature/agent-liveness (read in their bundles).
+
+## A spawn's undo kills the worker's window before it forgets the worker
+
+Size: S. Why here: a spawn that fails after its window opened could tell the supervisor "w1 stopped (its CLI exited)" about a worker that never ran.
+
+`runtime.spawn_worker`'s undo closes the window first, then forgets the worker. A CLI that
+runs its session-end hook when killed (Claude Code does) then finds the agent still there
+and `agent_ended` reports it, unlike `close_worker` and `stop_session`, which now write
+their intent first.
+Wanted: the undo forgets the worker before it kills the window, as the finish does.
+Found: 2026-10-06, feature/agent-liveness.
+
+## A window renamed by hand reads as its agent's end
+
+Size: S. Why here: the session loop finds an agent's window only by its name.
+
+`allow-rename off` keeps programs from renaming an agent's window, but a human's
+`tmux rename-window` on LADO's server still does: after two loop passes the agent is
+marked stopped ("its window closed without a session-end hook") though it runs, and
+messages can no longer be typed into it.
+Wanted: find an agent's window by a label of its own (`@lado-agent=<name>`, set atomically
+with the window), or refuse a rename.
+Found: 2026-10-06, feature/agent-liveness.
 
 ## A kit's lint problems are seen only by `lado kits check`
 

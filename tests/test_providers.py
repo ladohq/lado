@@ -49,6 +49,32 @@ def test_claude_maps_native_events(native, payload, expected):
     assert providers.get("claude").parse_event(native, json.dumps(payload)) == expected
 
 
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        ({"error": "server_error"}, "server_error"),
+        (
+            {"error": "rate_limit", "error_details": "429 Too Many Requests\nretry later"},
+            "rate_limit: 429 Too Many Requests",
+        ),
+        ({"error": "unknown", "error_details": "x" * 300}, "unknown: " + "x" * 150 + "…"),
+        ({}, "unknown"),
+    ],
+)
+def test_claude_stop_failure_is_a_turn_end_on_an_error_whose_output_goes_nowhere(payload, error):
+    """Claude Code runs StopFailure instead of Stop when an API error ended the turn, and
+    ignores what the hook prints (2.1.291, read in its binary)."""
+    event = providers.get("claude").parse_event("StopFailure", json.dumps(payload))
+    assert event == Event(providers.TURN_END, error=error, output_ignored=True)
+
+
+def test_claude_agents_report_a_failed_turn(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    cmd = fake_tmux[0][-1]
+    settings = json.loads(open(cmd[cmd.index("--settings") + 1]).read())
+    assert "StopFailure" in settings["hooks"]
+
+
 # What Claude Code 2.1.289 gives its hooks (checked by hand, trimmed): PermissionRequest comes
 # before a dialog, for a question too, and has no tool_use_id; a question's answer adds to
 # its input; an elicitation and its result name only the MCP server.
@@ -400,6 +426,23 @@ def test_opencode_declares_its_permission_modes_and_version():
 )
 def test_opencode_family_maps_native_events(provider, native, payload, expected):
     assert providers.get(provider).parse_event(native, json.dumps(payload)) == expected
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        ({"name": "APIError", "message": "Overloaded\nretry"}, "APIError: Overloaded"),
+        ({"name": "ProviderAuthError"}, "ProviderAuthError"),
+        # The human pressed Esc: a turn end as any other.
+        ({"name": "MessageAbortedError"}, ""),
+    ],
+)
+def test_opencode_family_turn_end_carries_the_error_the_plugin_saw(provider, error, expected):
+    payload = json.dumps({"sessionID": "x", "error": error})
+    assert providers.get(provider).parse_event("session.idle", payload) == Event(
+        providers.TURN_END, error=expected
+    )
 
 
 def test_opencode_family_shares_one_plugin_inside_the_package():

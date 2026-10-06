@@ -355,14 +355,14 @@ def cmd_ls(args: argparse.Namespace) -> int:
         print(f"{sess.name}  {sess.repo}{alive}")
         since = state.status_since(sess.name)
         now = datetime.datetime.now(datetime.timezone.utc)
-        reasons = runtime.waiting_reasons(sess.name)
+        reasons = runtime.status_reasons(sess.name)
         for agent in state.list_agents(sess.name):
             when = since.get(agent.name)
             took = format_duration((now - when).total_seconds()) if when else "-"
             line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<9}"
             print(f"{line} {took:<6}  {agent.branch or ''}".rstrip())
             if agent.name in reasons:
-                print(f"    waiting: {reasons[agent.name]}")
+                print(f"    {agent.status}: {reasons[agent.name]}")
         run_since = state.run_since(sess.name)
         for run in state.list_runs(sess.name, open_only=True):
             when = run_since.get(run.name)

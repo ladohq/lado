@@ -220,3 +220,34 @@ def test_kill_window_closes_only_that_window(tmp_path):
     finally:
         tmux.kill_session(session)
     tmux.kill_window(session, "w10")  # the whole session is gone: fine
+
+
+def test_list_windows_names_the_windows_and_fails_for_a_gone_session(tmp_path):
+    session = f"test-{uuid.uuid4().hex[:6]}"
+    tmux.new_session(session, "supervisor", str(tmp_path), ["sleep", "60"])
+    try:
+        tmux.new_window(session, "w1", str(tmp_path), ["sleep", "60"])
+        assert tmux.list_windows(session) == ["supervisor", "w1"]
+    finally:
+        tmux.kill_session(session)
+    # Unlike window_names: an empty list would read as every agent's window gone.
+    with pytest.raises(tmux.TmuxError):
+        tmux.list_windows(session)
+
+
+def test_a_program_cannot_rename_its_window(tmp_path):
+    """A window's name is its agent's: the session loop finds the agent's window by it.
+    Also when the user's tmux.conf lets programs rename windows."""
+    helper = f"test-{uuid.uuid4().hex[:6]}"
+    tmux.new_session(helper, "main", str(tmp_path), ["sleep", "60"])
+    tmux.run("set-option", "-g", "allow-rename", "on")
+    session = f"test-{uuid.uuid4().hex[:6]}"
+    rename = r"printf '\033kother\033\\'; sleep 60"
+    try:
+        tmux.new_session(session, "supervisor", str(tmp_path), ["sh", "-c", rename])
+        tmux.new_window(session, "w1", str(tmp_path), ["sh", "-c", rename])
+        time.sleep(0.5)
+        assert tmux.list_windows(session) == ["supervisor", "w1"]
+    finally:
+        tmux.kill_session(session)
+        tmux.kill_session(helper)

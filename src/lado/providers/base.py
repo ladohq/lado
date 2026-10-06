@@ -43,6 +43,22 @@ class Event:
     # For WAITING and RESUMED: the provider's id of the request waited for or answered, so
     # that only its answer ends the wait (lado.state.resume); "" where there is none.
     key: str = ""
+    # For TURN_END: why the turn ended on an error (an API error, a rate limit), one short
+    # line; "" for a turn that ended as usual, or that the human cancelled.
+    error: str = ""
+    # The CLI ignores what the hook prints (Claude Code's StopFailure): the queue cannot go
+    # in the hook's output, so it is typed in.
+    output_ignored: bool = False
+
+
+ERROR_LIMIT = 160  # characters of an Event.error
+
+
+def error_line(kind: str, details: str = "") -> str:
+    """An Event.error: the error's kind and the first line of its details, cut short."""
+    first = (details.strip().splitlines() or [""])[0].strip()
+    text = f"{kind}: {first}" if first else kind
+    return text if len(text) <= ERROR_LIMIT else text[: ERROR_LIMIT - 1] + "…"
 
 
 @dataclass(frozen=True)

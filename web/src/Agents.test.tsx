@@ -34,7 +34,7 @@ function agent(name: string, more: Partial<AgentInfo> = {}): AgentInfo {
     status: "idle",
     run: null,
     task: name === "supervisor" ? null : `Task of ${name}`,
-    waiting_reason: null,
+    status_reason: null,
     branch: name === "supervisor" ? null : `lado/lado/${name}`,
     worktree: name === "supervisor" ? null : `/src/lado/.lado/worktrees/lado/${name}`,
     spawned_at: "2026-10-04T10:40:00.000Z",
@@ -52,7 +52,7 @@ const DEVELOPER = agent("developer", {
 });
 const WAITING = agent("developer-2", {
   status: "waiting",
-  waiting_reason: "did not take 2 messages\nWrite to it again or open its terminal",
+  status_reason: "did not take 2 messages\nWrite to it again or open its terminal",
   spawned_at: "2026-10-04T10:30:00.000Z",
 });
 
@@ -404,6 +404,24 @@ test("a waiting agent says why on its page", async () => {
   const region = await page("developer-2");
   expect(within(region).getByRole("note").textContent).toBe(
     "did not take 2 messages\nWrite to it again or open its terminal",
+  );
+});
+
+const ENDED = agent("developer-3", {
+  status: "stopped",
+  status_reason: "its window closed without a session-end hook",
+  spawned_at: "2026-10-04T10:45:00.000Z",
+});
+
+test("a stopped agent says why in its row and on its page", async () => {
+  serve({ agents: [SUPERVISOR, DEVELOPER, ENDED] });
+  open("/sessions/lado/agents/developer-3");
+  const row = within(await list()).getByRole("link", { name: /developer-3/ });
+  expect(row.textContent).toContain("stopped");
+  expect(row.textContent).toContain("its window closed without a session-end hook");
+  const region = await page("developer-3");
+  expect(within(region).getByRole("note").textContent).toBe(
+    "Stopped: its window closed without a session-end hook",
   );
 });
 

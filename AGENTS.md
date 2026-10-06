@@ -155,7 +155,11 @@ fixes and docs only: no new feature, no API or schema change.
     the socket name and is passed on to agents). A tmux that cannot run (not on PATH, not
     executable) is `TmuxMissing`, a `TmuxError` naming the PATH it was looked up on; the
     calls that read a failing command as a gone session or window (`has_session`,
-    `window_names`, `popup`) raise it instead, so it never reads as "gone".
+    `window_names`, `popup`) raise it instead, so it never reads as "gone". `list_windows`
+    (the session loop's window check) raises on any failure, also for a gone session,
+    never an empty list. A window's name is its agent's: `new_session` and `new_window` set
+    `allow-rename off` globally on LADO's server, so no program renames it, also when the
+    user's tmux.conf allows that (a human's `rename-window` still would).
   - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`,
     and `command`, the window's command that runs the agent with exactly that environment.
   - `terminal.py`: an agent's terminal for the UI (design in
@@ -275,7 +279,8 @@ fixes and docs only: no new feature, no API or schema change.
     or dismissal its `reply_to` and `choice`, and the human's message to an agent its
     `reply_state` (How agents talk). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
-    `mcp_ready`, `finished`) and what happened to each flow run (`flow_start`, `flow` transitions,
+    `mcp_ready`, `finished`, `turn_error` with the error, `ended` with why its process
+    ended by itself) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
     names the run) and the session's `session_stop`, `session_resume` and `session_gone`
     (a stop or resume found its tmux gone: written by `state.stop_session(gone=True)` in
@@ -302,7 +307,7 @@ fixes and docs only: no new feature, no API or schema change.
     writes it, and nothing else with it; keep it so, since the condition names no other
     column and a trigger stays in `lado.db` as it was made; when the agent has messages that
     failed after its previous hook, `state.seen` also writes `status = status` in its own
-    statement, a change, since why it waits, `waiting_reason`, changes with `seen_at`), and
+    statement, a change, since why it waits, `status_reason`, changes with `seen_at`), and
     each insert drops changes older than
     the latest `CHANGES_KEPT`. From schema 14 `events` is journaled too, key its id, but
     only inserts (`JOURNALED_OPS`) of a flow run's events (`RUN_EVENT`: `run IS NOT NULL`;
@@ -345,9 +350,9 @@ fixes and docs only: no new feature, no API or schema change.
     you") is `state.waiting_items`, only of sessions not stopped (`stopped_at IS NULL`, in
     its SQL), served as `GET /api/waiting` (`models.WaitingItem`) and counted from that same
     list as a session's `waiting` in `models.session_info` (`state.waiting_for_human`), so
-    the list and the count cannot differ; an agent's `waiting_reason` (`AgentInfo`, only
-    for an agent in `waiting`) is `runtime.waiting_reason`, which `waiting_reasons` uses
-    too;
+    the list and the count cannot differ; an agent's `status_reason` (`AgentInfo`, only
+    for an agent in `waiting` or `stopped`) is `runtime.status_reason`, which
+    `status_reasons` uses too (`lado ls`, `list_agents`);
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, subfolders, the
     default name and whether a session has it, and `provider`, the core's
@@ -424,6 +429,39 @@ fixes and docs only: no new feature, no API or schema change.
   for another one in the same process (Claude Code's `/clear` and `/resume`) shows it as
   `starting` until the CLI is ready again; messages to it wait in the queue meanwhile and are
   typed in when it is `idle` again.
+- A turn that ends on an error is a turn's end: the provider's `TURN_END` carries
+  `Event.error` (one short line), the agent is `idle` and gets its queue as after any turn,
+  a `turn_error` event keeps the error (`lado log`), and `runtime.turn_failed` tells the
+  supervisor in one line from `lado` (`turn of <agent> ended on an error: <error>; it is
+  idle`), or the human when it is the supervisor's turn. Claude Code runs `StopFailure`
+  instead of `Stop` then (API errors: rate_limit, overloaded, authentication_failed,
+  billing_error, server_error, also the machine's sleep, max_output_tokens, unknown) and
+  ignores its output (`Event.output_ignored`: the queue is typed in, not printed); read in
+  the binary of 2.1.291, not triggered by hand. Kilo 7.8.3 and OpenCode 1.18.34 publish
+  `session.error`, then `session.idle` of the same session (read in their bundles); the
+  plugin passes the error's name (and an `APIError`'s message) with that idle, drops it at
+  `session.compacted` (a context overflow the CLI compacts its way out of ends no turn),
+  and `MessageAbortedError` (the human's Esc) is no error. Claude Code is said to run no
+  hook when the human interrupts a turn (BACKLOG.md).
+- An agent whose process ends by itself goes through one transition, `runtime.agent_ended`
+  (`state.agent_ended`, one conditional transaction): its session-end hook (`SESSION_END`,
+  "its CLI exited") and the session loop's window check ("its window closed without a
+  session-end hook") call it, nothing else marks an agent stopped by its end. It changes
+  nothing and tells no one for an agent that is gone or stopped already; else the agent is
+  `stopped` with an `ended` event for why (`runtime.status_reason` reads it: `lado ls`,
+  `list_agents`, the UI's `AgentInfo.status_reason`), its `pending` and `sent` messages
+  are `dropped` with one line from `lado` to each sender (`message #<id> to <agent> not
+  delivered: <agent> stopped (<why>): <summary>`; LADO's own to the supervisor), its open
+  questions are `closed`, and new messages to it are refused. The supervisor gets the way
+  out for a worker: `finish_worker(name=...)` (with `discard=true` when the finish would be
+  refused), then `spawn_worker(run=...)` for a run's worker; the human, for the
+  supervisor: `lado stop <s>`, then `lado start <repo> --name <s>` (in the body). Its
+  window is gone, as before (keeping a crashed agent's output: BACKLOG.md). LADO ending an
+  agent itself writes that first and kills second, so the dying agent's session-end hook
+  finds it gone or stopped and tells no one: `close_worker` (finish, a run's end or cancel)
+  forgets the worker before it kills its window, `stop_session` (`lado stop`, `--all`,
+  `lado update`) marks the session stopped before it kills its tmux session (only the
+  migration path of an older lado.db kills first: its agents' hooks cannot write to it).
 - An agent `waiting` for the human (a dialog in its terminal) is `busy` again as soon as the
   human answers there: the neutral `WAITING` and `RESUMED` come in pairs with the same key
   (`Event.key`, the provider's id of the request), and only `RESUMED` with the key it waits
@@ -499,7 +537,7 @@ fixes and docs only: no new feature, no API or schema change.
   the queue; if hooks ran but no prompt held its line and the agent is idle, it goes back to
   the queue and is delivered as usual. After `1 + len(RETRY_DELAYS)` pastes and the last
   delay it is `failed` (`lado log`): the agent is set `waiting`, `lado ls` and
-  `list_agents` (`waiting_reason`) say why and what the human can do (until the agent's next
+  `list_agents` (`status_reason`) say why and what the human can do (until the agent's next
   hook), and nothing more is typed into it in that sweep; the messages typed together with
   it that are not back in the queue fail with it, attempts left or not; the sender of each
   (the supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
@@ -510,7 +548,13 @@ fixes and docs only: no new feature, no API or schema change.
 - The session loop is a hidden `lado loop <session>` (`loop.py`), a process of its own
   outside tmux that `lado start` (also a resume) starts once the tmux session exists. It
   sweeps the session every `loop.INTERVAL` seconds, so an unconfirmed message is typed
-  again or failed on time with no send and no hook. One per session: it holds an exclusive
+  again or failed on time with no send and no hook. Before each sweep it looks at the
+  session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen): an agent
+  not stopped whose window is missing in two passes in a row, and that was added more than
+  one interval ago, has ended (`agent_ended`), so a CLI that crashed before its first hook
+  or in a turn is `stopped` within a few seconds. A failing list changes nothing (an error
+  of the pass). The supervisor's window, when it was the last, takes the tmux session with
+  it: that stays "tmux session is gone". One per session: it holds an exclusive
   `flock` on `LADO_HOME/loop/<session>.lock` (gone with the process, no pid file); a second
   one exits when it cannot take the lock within `loop.LOCK_WAIT` (0.1 s, so a moment's lock
   check by `lado ls` does not make a starting loop exit). Before each pass it ends, writing
@@ -585,16 +629,20 @@ With `--follow` a message is printed once, with the state it had then; a later d
 is not printed again.
 
 `lado finish <session> <agent>` ends a worker whose branch is merged into the session repo's
-current branch: it closes the window, removes the worktree and branch, and drops the agent
-from `lado ls` (its messages and events stay in `lado log`, with a `finished` event).
+current branch: it removes the worktree and branch, drops the agent from `lado ls` (its
+messages and events stay in `lado log`, with a `finished` event), then closes the window (a
+window already gone is fine, as for a worker that ended by itself; one that does not close
+is an error that says the worker is finished and gives the `tmux kill-window` for it).
 Messages it never got and bodies it never read are dropped, so a later worker of the same
 name starts fresh. It refuses an unmerged branch or uncommitted changes; `--discard` ends
 the worker anyway and throws that work away. The supervisor does the same with the MCP
 tool `finish_worker`. A worker of a flow run only has its window closed while the run is
 open: the worktree and branch belong to the run.
 
-`lado stop <session>` kills the session's tmux windows and marks it stopped, then closes the
-UI's terminals of its agents (their viewer sessions); its history,
+`lado stop <session>` marks the session stopped, kills its tmux windows, then closes the
+UI's terminals of its agents (their viewer sessions). A kill that fails leaves it marked
+stopped: the error says its agents may still run and gives `tmux -L <socket> kill-session -t
+<session>`, after which `lado start` resumes it (`lado stop` refuses a stopped session). Its history,
 runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names
 are free again; `lado log` keeps what they did), and messages they never got or whose body
 they never read are dropped, with the count in the output: new agents start fresh.

@@ -836,8 +836,8 @@ export interface components {
             run: string | null;
             /** Task */
             task: string | null;
-            /** Waiting Reason */
-            waiting_reason: string | null;
+            /** Status Reason */
+            status_reason: string | null;
             /** Branch */
             branch: string | null;
             /** Worktree */

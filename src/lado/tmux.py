@@ -120,13 +120,19 @@ def _env_args(env: dict[str, str]) -> list[str]:
     return [arg for k, v in env.items() for arg in ("-e", f"{k}={v}")]
 
 
+# A window's name is its agent's, the only way LADO finds the agent's window. A name given
+# with -n is not renamed automatically; no program renames it either, also when the user's
+# tmux.conf allows that (the option is global on LADO's own server).
+NO_RENAME = ["set-option", "-g", "allow-rename", "off"]
+
+
 # A window gets the tmux server's environment; an agent's window replaces it (lado.agent_env).
 def new_session(session: str, window: str, cwd: str, cmd: list[str]) -> None:
-    run("new-session", "-d", "-s", session, "-n", window, "-c", cwd, *cmd)
+    run_chain(["new-session", "-d", "-s", session, "-n", window, "-c", cwd, *cmd], NO_RENAME)
 
 
 def new_window(session: str, window: str, cwd: str, cmd: list[str]) -> None:
-    run("new-window", "-d", "-t", f"{session}:", "-n", window, "-c", cwd, *cmd)
+    run_chain(["new-window", "-d", "-t", f"{session}:", "-n", window, "-c", cwd, *cmd], NO_RENAME)
 
 
 def has_session(session: str) -> bool:
@@ -158,6 +164,13 @@ def window_names(session: str) -> list[str]:
         raise
     except TmuxError:
         return []
+
+
+def list_windows(session: str) -> list[str]:
+    """The names of the session's windows; a TmuxError when tmux cannot list them (also for
+    a gone session), never an empty list for a failure: the session loop takes an agent
+    whose window is not listed for ended (lado.runtime.check_windows)."""
+    return run("list-windows", "-t", f"={session}", "-F", "#{window_name}").split()
 
 
 def send_text(session: str, window: str, text: str) -> None:

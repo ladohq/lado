@@ -8,7 +8,7 @@ import { messageAnchor } from "./Question";
 // An agent waiting with no reason LADO knows waits on a prompt in its terminal.
 export const IN_TERMINAL = "waits for you in its terminal";
 
-export const agentWaits = (agent: AgentInfo) => agent.waiting_reason ?? IN_TERMINAL;
+export const agentWaits = (agent: AgentInfo) => agent.status_reason ?? IN_TERMINAL;
 
 // Where the human answers it: a card in its session's chat, or the agent's terminal.
 export function waitingTarget(item: WaitingItem): string {
@@ -23,7 +23,7 @@ export function waitingText(item: WaitingItem): string {
   if (item.gate) return item.gate.question;
   if (item.question) return item.question.summary;
   if (item.agent) {
-    const why = item.agent.waiting_reason;
+    const why = item.agent.status_reason;
     return why ? `${item.agent.name} waits: ${why}` : `${item.agent.name} ${IN_TERMINAL}`;
   }
   return "";

@@ -114,7 +114,7 @@ const AGENT = {
   status: "busy",
   run: null,
   task: null,
-  waiting_reason: null,
+  status_reason: null,
   branch: "b",
   worktree: "/w",
   spawned_at: "2026-10-04T10:00:00.000Z",

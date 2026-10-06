@@ -238,6 +238,6 @@ def test_what_waits_for_the_human_is_one_list_counted_by_each_session(client, se
     assert (agent["kind"], agent["agent"]["name"]) == ("agent", "w1")
     assert agent["key"] == f"agent:s/w1@{agent['since']}"
     assert agent["since"].endswith("Z")
-    assert agent["agent"]["waiting_reason"] is None  # it waits in its terminal
+    assert agent["agent"]["status_reason"] is None  # it waits in its terminal
     [sess] = client.get("/api/sessions").json()
     assert sum(sess["waiting"].values()) == len(answer.json()) == 3

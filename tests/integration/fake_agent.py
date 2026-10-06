@@ -28,6 +28,14 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     fullscreen         switch to the alternate screen and read the mouse, as a full-screen
                        CLI does
     exit               end the session
+    die                exit at once, with no hook, as a CLI that crashes in a turn
+    fail <error>       end the turn on an error: its turn-end hook gets <error>, and its
+                       output is ignored, as Claude Code's StopFailure
+A first message that starts with "crash at start" makes it exit before its first hook, as a
+CLI that fails at once (a bad flag). With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
+its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
+Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
+else it exits at once.
 A typed "switch <seconds>" is no input but a command of the CLI itself, like Claude Code's
 /resume: the agent leaves its conversation, takes that long to pick another, and goes on in
 the same process; no prompt-submit and no turn-end hook run for it. A typed "dialog" opens a
@@ -60,9 +68,9 @@ PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
 config = json.load(open(sys.argv[1]))
 
 
-def hook(event: str, prompt: str = "", key: str = "") -> str:
+def hook(event: str, prompt: str = "", key: str = "", **more) -> str:
     """Run the agent's hook for `event`; returns what it printed."""
-    payload = json.dumps({"prompt": prompt, "key": key})
+    payload = json.dumps({"prompt": prompt, "key": key, **more})
     result = subprocess.run(config["hooks"][event], input=payload, capture_output=True, text=True)
     return result.stdout.strip()
 
@@ -179,16 +187,21 @@ def _read_paste(line: str) -> str:
 
 
 holds = 0  # how often `hold` ran
+turn_error = ""  # the error the turn ends on (`fail`)
 
 
 def work(text: str) -> bool:
     """Act on the commands in `text`. Returns True for exit."""
-    global holds
+    global holds, turn_error
     for line in text.splitlines():
         command = re.sub(r"^\[from [^\]]*\] ", "", line.strip()).split(" ", 2)
         if command[0] == "exit":
             return True
-        if command[0] == "sleep":
+        if command[0] == "die":
+            os._exit(3)
+        if command[0] == "fail":
+            turn_error = " ".join(command[1:])
+        elif command[0] == "sleep":
             time.sleep(float(command[1]))
         elif command[0] == "ask":
             hook("waiting")
@@ -238,8 +251,18 @@ def work(text: str) -> bool:
     return False
 
 
+def hung_up(*_) -> None:
+    """Its tmux window was killed: like Claude Code, it ends its session with the hook."""
+    if os.environ.get("FAKE_AGENT_HANGUP_HOOK") == "1":
+        report(hung_up=hook("session_end"))
+    os._exit(0)
+
+
 def main() -> None:
-    signal.signal(signal.SIGHUP, lambda *_: os._exit(0))  # its tmux session was killed
+    global turn_error
+    if len(sys.argv) > 2 and sys.argv[2].startswith("crash at start"):
+        os._exit(3)
+    signal.signal(signal.SIGHUP, hung_up)
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
     report(
         prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"], environ=dict(os.environ)
@@ -274,6 +297,10 @@ def main() -> None:
                 break
         except Exception:
             traceback.print_exc()
+        if turn_error:
+            hook("turn_end", error=turn_error, output_ignored=True)  # its output goes nowhere
+            turn_error, text = "", None
+            continue
         output = hook("turn_end")
         text = output if output and config["continue_on_turn_end"] else None
     hook("session_end")

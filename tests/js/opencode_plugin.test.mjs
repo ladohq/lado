@@ -81,6 +81,58 @@ test("session.idle sends nothing when the hook prints nothing", async () => {
   assert.deepEqual(client.prompts, [])
 })
 
+// A turn that ends on an error (Kilo 7.8.3, OpenCode 1.18.34): "session.error", then
+// "session.idle" of the same session. The human's Esc is a MessageAbortedError.
+const API_ERROR = { name: "APIError", data: { message: "Overloaded", statusCode: 529 } }
+
+function sessionEvent(type, sessionID, more = {}) {
+  return { event: { type, properties: { sessionID, ...more } } }
+}
+
+test("an error, then idle, give one turn end with the error", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  await plugin.event(sessionEvent("session.error", "s1", { error: API_ERROR }))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [
+    {
+      event: "session.idle",
+      payload: { sessionID: "s1", error: { name: "APIError", message: "Overloaded" } },
+    },
+    { event: "session.idle", payload: { sessionID: "s1" } },
+  ])
+})
+
+test("an error without a message is passed by its name", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  const aborted = { name: "MessageAbortedError", data: {} }
+  await plugin.event(sessionEvent("session.error", "s1", { error: aborted }))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [
+    { event: "session.idle", payload: { sessionID: "s1", error: { name: "MessageAbortedError" } } },
+  ])
+})
+
+test("an error of another session or a subagent's is not taken for the turn's", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  const info = { id: "sub", parentID: "s1" }
+  await plugin.event({ event: { type: "session.created", properties: { info } } })
+  await plugin.event(sessionEvent("session.error", "sub", { error: API_ERROR }))
+  await plugin.event(sessionEvent("session.error", "s2", { error: API_ERROR }))
+  await plugin.event(sessionEvent("session.error", undefined, { error: API_ERROR }))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1" } }])
+})
+
+test("an error the CLI compacts its way out of ends no turn", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  const overflow = { name: "ContextOverflowError", data: { message: "too long" } }
+  await plugin.event(sessionEvent("session.error", "s1", { error: overflow }))
+  await plugin.event(sessionEvent("session.compacted", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [{ event: "session.idle", payload: { sessionID: "s1" } }])
+})
+
 // Requests for the human and their answers (Kilo 7.8.3, OpenCode 1.18.34): a request has its
 // `id`, an answer names it as `requestID`. A permission refused is replied with reply "reject".
 const REQUESTS = {

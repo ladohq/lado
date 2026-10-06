@@ -207,3 +207,35 @@ def test_wait_stopped_waits_for_the_loop_to_let_go_of_its_lock(lado_home):
     threading.Timer(0.2, held.close).start()
     assert loop.wait_stopped("s", timeout=5)
     assert loop.wait_stopped("never-ran", timeout=0)
+
+
+def test_each_pass_looks_at_the_windows_with_what_the_one_before_missed(
+    repo, fake_tmux, monkeypatch
+):
+    _session(repo)
+    looks = []
+
+    def check_windows(session, missing):
+        looks.append(set(missing))
+        if len(looks) == 3:
+            runtime.stop_session(session)
+        return {f"gone-{len(looks)}"}
+
+    monkeypatch.setattr(runtime, "check_windows", check_windows)
+    assert loop.run("s", interval=0) == 0
+    assert looks == [set(), {"gone-1"}, {"gone-2"}]
+
+
+def test_the_windows_are_looked_at_before_the_sweep(repo, fake_tmux, monkeypatch):
+    """A message to an agent found ended is dropped and told, not typed into no window."""
+    _session(repo)
+    calls = []
+    monkeypatch.setattr(runtime, "check_windows", lambda s, m: calls.append("check") or set())
+
+    def sweep(session):
+        calls.append("sweep")
+        runtime.stop_session(session)
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    loop.run("s", interval=0)
+    assert calls == ["check", "sweep"]

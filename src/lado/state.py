@@ -363,6 +363,10 @@ SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
 STATUS = "status"  # detail: the new status
 FINISHED = "finished"  # a worker was ended; detail: "merged" or "discarded"
 MCP_READY = "mcp_ready"  # the agent's CLI listed LADO's MCP tools; detail: the launch (instance)
+TURN_ERROR = "turn_error"  # its turn ended on an error (lado.hooks); detail: the error
+# Its process ended by itself, not by LADO (agent_ended): its "stopped" status event follows;
+# detail: why, e.g. "its CLI exited". The one source of why a stopped agent stopped.
+ENDED = "ended"
 # Flow run events (lado.runs); their run column names the run.
 FLOW_START = "flow_start"
 FLOW = "flow"  # a transition; detail: "<from> -<outcome>-> <to>"
@@ -939,6 +943,33 @@ def _close_questions(db: sqlite3.Connection, session: str, sender: str | None = 
     )
 
 
+def agent_ended(session: str, name: str, reason: str) -> list["Message"] | None:
+    """The agent's process ended by itself: in one transaction, mark it stopped with an
+    ENDED event for `reason`, drop the messages it never got (pending, or typed and not
+    confirmed) and close its open questions. None, and nothing changed, when there is no
+    such agent or it is stopped already (LADO ending it forgets or stops it before it kills
+    its window, lado.runtime). Else the messages dropped, oldest first."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if not db.execute(
+            "SELECT 1 FROM agents WHERE session = ? AND name = ? AND status != ?",
+            (session, name, STOPPED),
+        ).fetchone():
+            db.execute("COMMIT")
+            return None
+        _add_event(db, session, name, ENDED, reason)
+        _set_status(db, session, name, STOPPED)
+        where = "session = ? AND recipient = ? AND state IN (?, ?)"
+        args = (session, name, PENDING, SENT)
+        rows = db.execute(
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE {where} ORDER BY id", args
+        ).fetchall()
+        db.execute(f"UPDATE messages SET state = ? WHERE {where}", (DROPPED, *args))
+        _close_questions(db, session, name)
+        db.execute("COMMIT")
+    return [_message(r, state=DROPPED) for r in rows]
+
+
 def set_status(session: str, name: str, status: str) -> None:
     """Set the agent's status and, if it changed, record a "status" event."""
     with connect() as db:
@@ -995,7 +1026,7 @@ def seen(session: str, name: str) -> None:
     alone: an update of it is no change for the UI (AGENTS_CHANGED). Its failed messages
     that no hook ran after (a dialog swallowed them) go back to the queue, with their
     attempts from 0. When it has messages that failed after its previous hook, why it waits
-    (runtime.waiting_reason, from failed_counts) changes with seen_at: that is recorded as a
+    (runtime.status_reason, from failed_counts) changes with seen_at: that is recorded as a
     change of the agent, which the UI then shows again."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -1037,6 +1068,19 @@ def _add_event(
         "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
         (session, agent, kind, detail, run),
     )
+
+
+def end_reasons(session: str) -> dict[str, str]:
+    """Per agent name, why its process ended last (its latest ENDED event's detail). Only an
+    agent that ended by itself is stopped and still listed (agent_ended), so for such an
+    agent this is why it stopped."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT agent, detail FROM events WHERE id IN (SELECT MAX(id) FROM events"
+            " WHERE session = ? AND kind = ? GROUP BY agent)",
+            (session, ENDED),
+        ).fetchall()
+    return {r["agent"]: r["detail"] for r in rows}
 
 
 def has_event(session: str, agent: str, kind: str, detail: str) -> bool:

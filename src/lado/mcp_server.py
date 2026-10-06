@@ -75,11 +75,11 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
     @server.tool()
     def list_agents() -> list[dict]:
         """List the agents in this session: role, provider, status (with since when and for
-        how many seconds, and why it waits when LADO could not deliver it messages), branch
-        and worktree."""
+        how many seconds; why it waits when LADO could not deliver it messages, or why it
+        stopped), branch and worktree."""
         since = state.status_since(session)
         now = datetime.datetime.now(datetime.timezone.utc)
-        reasons = runtime.waiting_reasons(session)
+        reasons = runtime.status_reasons(session)
         agents = []
         for a in state.list_agents(session):
             when = since.get(a.name)
@@ -92,7 +92,7 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                     "status": a.status,
                     "status_since": when.isoformat() if when else None,
                     "status_for_seconds": took,
-                    "waiting_reason": reasons.get(a.name),
+                    "status_reason": reasons.get(a.name),
                     "branch": a.branch,
                     "worktree": a.cwd,
                     "run": a.run,

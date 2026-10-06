@@ -256,6 +256,20 @@ def test_what_a_worker_caused_still_goes_to_the_supervisor(session):
     assert messages("supervisor")[-1].summary == "flow feature/login: step review needs a reviewer"
 
 
+def test_a_run_worker_that_ended_by_itself_is_finished_and_its_step_given_to_another(session):
+    to_implement(session)
+    runs.spawn_worker(session, "feature/login")
+    runtime.agent_ended(session, "developer", "its CLI exited")
+    assert messages("supervisor")[-1].summary == (
+        'developer stopped (its CLI exited): end it with finish_worker(name="developer"), '
+        'then spawn_worker(run="feature/login")'
+    )
+    # The way out works: the run keeps its worktree, and its step gets a new developer.
+    runtime.finish_worker(session, "developer")
+    assert runs.spawn_worker(session, "feature/login").name == "developer"
+    assert "Build it." in state.get_agent(session, "developer").task
+
+
 def test_a_worker_spawned_for_the_step_drops_the_pending_request_for_it(session):
     def asks():
         return [(m.summary, m.state) for m in messages("supervisor") if "needs a" in m.summary]

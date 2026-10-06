@@ -20,7 +20,7 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
 }
 
 function agent(name: string, role: string, status: AgentInfo["status"], more: Partial<AgentInfo> = {}): AgentInfo {
-  return { name, role, provider: "claude", status, run: null, task: null, waiting_reason: null, ...AGENT_REST, ...more };
+  return { name, role, provider: "claude", status, run: null, task: null, status_reason: null, ...AGENT_REST, ...more };
 }
 
 let sessions: SessionInfo[] = [];

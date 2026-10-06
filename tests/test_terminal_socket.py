@@ -357,7 +357,7 @@ def test_the_agents_of_a_session(client, session):
         "status": "starting",
         "run": None,
         "task": None,
-        "waiting_reason": None,
+        "status_reason": None,
         "branch": None,
         "worktree": None,
     }

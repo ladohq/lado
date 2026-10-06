@@ -35,10 +35,16 @@ TESTED_VERSION = "2.1.289"
 # (BACKLOG.md); when the human refuses with a comment, until its turn ends. Notification
 # says the same as these, about 6 s later, so it is not used. Checked by hand with Claude
 # Code 2.1.289.
+#
+# StopFailure runs instead of Stop when an API error ended the turn (rate_limit, overloaded,
+# authentication_failed, billing_error, server_error, also for "your computer went to
+# sleep", max_output_tokens, unknown, ...), with `error` and `error_details`; Claude Code
+# ignores its output and exit code (read in the binary of 2.1.291, not triggered by hand).
 EVENTS = {
     "SessionStart": base.SESSION_START,
     "UserPromptSubmit": base.PROMPT_SUBMIT,
     "Stop": base.TURN_END,
+    "StopFailure": base.TURN_END,
     "SessionEnd": base.SESSION_END,
     "PermissionRequest": base.WAITING,
     "Elicitation": base.WAITING,
@@ -157,6 +163,9 @@ class ClaudeProvider(base.Provider):
             return base.Event(base.CONVERSATION_END)
         if native == "SessionStart" and data.get("source") in SWITCHES:
             return base.Event(base.CONVERSATION_START)
+        if native == "StopFailure":
+            error = base.error_line(data.get("error") or "unknown", data.get("error_details", ""))
+            return base.Event(base.TURN_END, error=error, output_ignored=True)
         neutral = EVENTS[native]
         if neutral in (base.WAITING, base.RESUMED):
             return base.Event(neutral, key=_request_key(data))

@@ -503,7 +503,7 @@ Sessions for now. The UI's texts are in English.
   `tmux_gone` and `loop_down` count; the server and the UI apply the one rule), oldest
   first, by session, each session's name a link to its chat: open gates as the chat's
   `GateCard`, open questions as its question card (`Question.tsx`), both answered in
-  place; agents in `waiting` with their role, since when, and why (`waiting_reason`, or
+  place; agents in `waiting` with their role, since when, and why (`status_reason`, or
   "waits for you in its terminal" when LADO knows no reason), with **Open terminal**
   (`/sessions/<name>/activity?terminal=<agent>`: the panel opens that agent's tab and
   drops the parameter from the address, replaced, so Back and a reload do not open it
@@ -904,7 +904,9 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   of its own about runs.
 - **The list** (left, as Flows'): the supervisor first, then the live agents by spawn; a
   row: status dot, name, `status · since`, and the run with its state, or the first line
-  of the task; an agent in `waiting` is orange with the first line of why. Only live
+  of the task; an agent in `waiting` is orange with the first line of why, an agent in
+  `stopped` whose process ended by itself shows the first line of why it stopped
+  (`AgentInfo.status_reason`, `runtime.status_reason`: its `ended` event). Only live
   agents: what an ended worker did is in Flows (step notes and who reported them),
   Activity (messages filtered by agent) and `lado log`. The tab is **Agents · N**, N the
   live agents. A List and page (Structure): the search finds an agent by name, role, task
@@ -914,7 +916,8 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   was spawned, for which run and step with the visit, from the run in the store), Open
   terminal, **Write to <agent>** (the Activity composer with `to` fixed; the supervisor
   gets a one-line copy from LADO of what the human writes to another agent, How agents
-  talk in AGENTS.md) and **Finish…** (not for the supervisor); why it waits; Branch,
+  talk in AGENTS.md) and **Finish…** (not for the supervisor); why it waits, or why it
+  stopped ("Stopped: <reason>", its way out is Finish…); Branch,
   Work (asked when the page opens, when the agent becomes idle and with Refresh; "as of"
   its time; no polling), Worktree, Task (first lines, Show all); its latest 10 messages
   from and to it, only in its lifetime (a name is used again: one request,

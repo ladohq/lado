@@ -106,13 +106,22 @@ def test_an_agent_says_why_it_waits_only_while_it_waits(client, session, monkeyp
         asked.append(name)
         return "did not take 1 message"
 
-    monkeypatch.setattr(runtime, "waiting_reason", reason)
+    monkeypatch.setattr(runtime, "status_reason", reason)
     supervisor, worker = client.get("/api/sessions/s/agents").json()
-    assert (supervisor["waiting_reason"], worker["waiting_reason"]) == (
+    assert (supervisor["status_reason"], worker["status_reason"]) == (
         None,
         "did not take 1 message",
     )
     assert asked == ["w1"]
+
+
+def test_a_stopped_agent_says_why_it_stopped(client, session):
+    state.add_agent(state.Agent("s", "w1", "worker", "/w", "b", "task", "busy", provider="claude"))
+    state.agent_ended("s", "w1", "its window closed without a session-end hook")
+    supervisor, worker = client.get("/api/sessions/s/agents").json()
+    assert worker["status"] == "stopped"
+    assert worker["status_reason"] == "its window closed without a session-end hook"
+    assert supervisor["status_reason"] is None
 
 
 def test_an_agent_says_its_run_and_the_first_line_of_its_task(client, session):

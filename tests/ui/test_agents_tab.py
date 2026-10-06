@@ -111,3 +111,21 @@ def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
     page.get_by_role("link", name="‹ All agents").click()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents")
     expect(agents).to_be_visible()
+
+
+def test_a_worker_that_crashed_says_why_it_stopped(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    session = f"ui-{uuid.uuid4().hex[:6]}"
+    runtime.start_session(str(repo), session, None, "fake")
+    agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
+    runtime.spawn_worker(session, "crash at start", name="w1")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/agents/w1")
+    page.get_by_role("button", name="Collapse terminals").click()
+    # The session loop finds its window gone two passes in a row; the feed brings it.
+    row = page.get_by_role("navigation", name="Agents").get_by_role("link", name="w1")
+    expect(row).to_contain_text("stopped", timeout=30_000)
+    expect(row).to_contain_text(runtime.WINDOW_GONE)
+    worker = page.get_by_role("region", name="Agent w1")
+    expect(worker.get_by_role("note")).to_have_text(f"Stopped: {runtime.WINDOW_GONE}")
+    shot(page, "stopped")

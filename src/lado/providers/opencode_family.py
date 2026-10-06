@@ -35,6 +35,10 @@ EVENTS = {
     "question.rejected": base.RESUMED,
     "dispose": base.SESSION_END,
 }
+# A turn that ends on an error: the plugin passes the "session.error" before "session.idle"
+# on with it (Kilo 7.8.3 and OpenCode 1.18.34 publish one, then the other, read in their
+# bundles). The human's Esc is an error too, this one, which their TUIs do not show either.
+ABORTED = "MessageAbortedError"
 
 
 class OpenCodeFamily(base.Provider):
@@ -142,6 +146,10 @@ class OpenCodeFamily(base.Provider):
         if native not in EVENTS:
             return None
         data = json.loads(payload) if payload.strip() else {}
+        error = data.get("error") or {}
+        if error and error.get("name") != ABORTED:
+            text = base.error_line(error.get("name") or "UnknownError", error.get("message", ""))
+            return base.Event(EVENTS[native], error=text)
         return base.Event(EVENTS[native], data.get("prompt", ""), data.get("id") or "")
 
     def continue_output(self, text: str) -> str | None:

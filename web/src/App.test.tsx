@@ -28,7 +28,7 @@ const AGENTS: AgentInfo[] = [
     status: "idle",
     run: null,
     task: null,
-    waiting_reason: null,
+    status_reason: null,
     ...AGENT_REST,
   },
 ];

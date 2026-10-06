@@ -69,7 +69,7 @@ function agent(name: string, reason: string | null = null): AgentInfo {
     status: "waiting",
     run: null,
     task: null,
-    waiting_reason: reason,
+    status_reason: reason,
     ...AGENT_REST,
   };
 }

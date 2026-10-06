@@ -75,8 +75,18 @@ def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tm
     result = asyncio.run(mcp_server.build("s", "w1").call_tool("list_agents", {}))
     supervisor, worker = result.structured_content["result"]
     assert supervisor["status"] == state.WAITING
-    assert supervisor["waiting_reason"].startswith("did not take 1 message: answer the dialog")
-    assert worker["waiting_reason"] is None
+    assert supervisor["status_reason"].startswith("did not take 1 message: answer the dialog")
+    assert worker["status_reason"] is None
+
+
+def test_list_agents_says_why_an_agent_stopped(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task", name="w1")
+    runtime.agent_ended("s", "w1", "its CLI exited")
+    result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("list_agents", {}))
+    supervisor, worker = result.structured_content["result"]
+    assert (worker["status"], worker["status_reason"]) == (state.STOPPED, "its CLI exited")
+    assert supervisor["status_reason"] is None
 
 
 def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):

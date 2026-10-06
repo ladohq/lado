@@ -80,7 +80,13 @@ class FakeProvider(base.Provider):
         if native not in EVENTS:
             return None
         data = json.loads(payload) if payload.strip() else {}
-        return base.Event(native, data.get("prompt", ""), data.get("key", ""))
+        return base.Event(
+            native,
+            data.get("prompt", ""),
+            data.get("key", ""),
+            error=data.get("error", ""),
+            output_ignored=data.get("output_ignored", False),
+        )
 
     def continue_output(self, text: str) -> str | None:
         return text

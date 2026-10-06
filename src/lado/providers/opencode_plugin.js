@@ -35,10 +35,21 @@ const REQUESTS = new Set([
   "question.rejected",
 ])
 
+// What a "session.error" says, for the turn's end: the error's name, and the message an API
+// error carries (an APIError's data.message).
+function errorOf(error) {
+  const message = error?.data?.message
+  return { name: String(error?.name ?? "UnknownError"), ...(message ? { message: String(message) } : {}) }
+}
+
 export const LadoPlugin = async ({ client, directory }, options = {}) => {
   const hooks = options?.hooks ?? {}
   // Sessions of subagents (task tool): their turns are not the agent's turns.
   const subagents = new Set()
+  // A turn that ends on an error (Kilo 7.8.3, OpenCode 1.18.34): "session.error", then
+  // "session.idle" of the same session. The error goes with that idle. A context overflow
+  // the CLI compacts its way out of ("session.compacted") ends no turn.
+  const errors = new Map()
   await run(hooks["plugin.init"], { directory })
   return {
     "chat.message": async (input, output) => {
@@ -65,8 +76,17 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
           return
         }
         if (subagents.has(props.sessionID)) return
+        if (event.type === "session.error" && props.sessionID) {
+          errors.set(props.sessionID, errorOf(props.error))
+        }
+        if (event.type === "session.compacted") errors.delete(props.sessionID)
         if (event.type === "session.idle") {
-          const text = await run(hooks["session.idle"], { sessionID: props.sessionID })
+          const payload = { sessionID: props.sessionID }
+          if (errors.has(props.sessionID)) {
+            payload.error = errors.get(props.sessionID)
+            errors.delete(props.sessionID)
+          }
+          const text = await run(hooks["session.idle"], payload)
           if (text) {
             await client.session.promptAsync({
               path: { id: props.sessionID },

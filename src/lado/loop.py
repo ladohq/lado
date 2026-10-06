@@ -125,10 +125,14 @@ def run(session: str, interval: float = INTERVAL) -> int:
     with lock:
         log(session, f"loop started, pid {os.getpid()}")
         errors = RepeatedErrors(lambda text: log(session, text))
+        missing: set[str] = set()  # the agents whose window the pass before did not find
         while True:
             try:
                 reason = why_stop(session)
                 if reason is None:
+                    # First the agents that ended without a hook: what was meant for them
+                    # is dropped and told, not typed into no window.
+                    missing = runtime.check_windows(session, missing)
                     runtime.sweep(session)
                     errors.worked()
             except state.SchemaError as exc:

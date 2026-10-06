@@ -111,10 +111,10 @@ function workingOn(agent: AgentInfo, runs: RunInfo[]): string {
   return firstLine(agent.task);
 }
 
-// A live agent's row: its status, and why it waits or what it works for.
+// A live agent's row: its status, and why it waits or stopped, or what it works for.
 function liveEntry(session: string, agent: AgentInfo, runs: RunInfo[]): Entry {
   const waits = agent.status === "waiting";
-  const detail = waits && agent.waiting_reason ? firstLine(agent.waiting_reason) : workingOn(agent, runs);
+  const detail = agent.status_reason ? firstLine(agent.status_reason) : workingOn(agent, runs);
   return {
     key: `agent:${agent.name}`,
     to: agentPath(session, agent.name),
@@ -227,7 +227,12 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
       </header>
       {agent.status === "waiting" && (
         <p className="agent-waits" role="note">
-          {agent.waiting_reason ?? "Waits for you in its terminal."}
+          {agent.status_reason ?? "Waits for you in its terminal."}
+        </p>
+      )}
+      {agent.status === "stopped" && agent.status_reason && (
+        <p className="agent-waits" role="note">
+          Stopped: {agent.status_reason}
         </p>
       )}
       <dl className="agent-facts">

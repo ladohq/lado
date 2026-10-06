@@ -118,6 +118,17 @@ def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsy
     )
 
 
+def test_ls_says_why_an_agent_stopped(repo, fake_tmux, capsys):
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
+    runtime.spawn_worker("s", "task", name="w1")
+    runtime.agent_ended("s", "w1", "its CLI exited")
+    capsys.readouterr()
+    main(["ls"])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[2].split()[:4] == ["w1", "worker", "claude", "stopped"]
+    assert lines[3] == "    stopped: its CLI exited"
+
+
 def test_finish_ends_a_worker(repo, fake_tmux, capsys):
     main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     worker = runtime.spawn_worker("s", "task", name="w1")

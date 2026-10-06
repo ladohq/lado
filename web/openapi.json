@@ -2060,7 +2060,7 @@
             ],
             "title": "Task"
           },
-          "waiting_reason": {
+          "status_reason": {
             "anyOf": [
               {
                 "type": "string"
@@ -2069,7 +2069,7 @@
                 "type": "null"
               }
             ],
-            "title": "Waiting Reason"
+            "title": "Status Reason"
           },
           "branch": {
             "anyOf": [
@@ -2110,7 +2110,7 @@
           "status",
           "run",
           "task",
-          "waiting_reason",
+          "status_reason",
           "branch",
           "worktree",
           "spawned_at",

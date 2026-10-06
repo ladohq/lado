@@ -760,7 +760,7 @@ def test_a_message_typed_with_a_failed_one_fails_with_it(repo, fake_tmux):
     report, ping = state.list_messages("s")[:2]
     assert (report.state, ping.state) == (state.FAILED, state.FAILED)
     runtime.sweep("s", now=at + 1000, delays=DELAYS)  # the session loop sweeps on
-    assert runtime.waiting_reasons("s") == {
+    assert runtime.status_reasons("s") == {
         "supervisor": "did not take 2 messages: answer the dialog in its window "
         "or type any line there"
     }
@@ -788,13 +788,13 @@ def test_nothing_is_typed_into_an_agent_waiting_after_a_failure(repo, fake_tmux)
 
 def test_an_agent_waiting_after_swallowed_messages_says_what_to_do(repo, fake_tmux):
     _retry_until_failed(_swallowed_report(repo, fake_tmux))
-    assert runtime.waiting_reasons("s") == {
+    assert runtime.status_reasons("s") == {
         "supervisor": "did not take 1 message: answer the dialog in its window "
         "or type any line there"
     }
-    assert runtime.waiting_reason("s", "supervisor") == runtime.waiting_reasons("s")["supervisor"]
-    assert runtime.waiting_reason("s", "w1") is None  # not waiting
-    assert runtime.waiting_reason("s", "nobody") is None
+    assert runtime.status_reason("s", "supervisor") == runtime.status_reasons("s")["supervisor"]
+    assert runtime.status_reason("s", "w1") is None  # not waiting
+    assert runtime.status_reason("s", "nobody") is None
 
 
 def test_an_agent_waiting_after_unconfirmed_messages_says_so(repo, fake_tmux):
@@ -806,16 +806,16 @@ def test_an_agent_waiting_after_unconfirmed_messages_says_so(repo, fake_tmux):
         _hook("Stop", "supervisor")
     runtime.sweep("s", delays=no_delays)
     assert state.list_messages("s")[0].state == state.FAILED
-    assert runtime.waiting_reasons("s") == {
+    assert runtime.status_reasons("s") == {
         "supervisor": "did not confirm 1 message (the text typed did not match)"
     }
     _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
-    assert runtime.waiting_reasons("s") == {}  # busy again
+    assert runtime.status_reasons("s") == {}  # busy again
     # Later it waits for a permission: the old failure is not why.
     _hook("PermissionRequest", "supervisor", {"tool_name": "Bash", "tool_input": {}})
     assert state.get_agent("s", "supervisor").status == state.WAITING
-    assert runtime.waiting_reasons("s") == {}
-    assert runtime.waiting_reason("s", "supervisor") is None
+    assert runtime.status_reasons("s") == {}
+    assert runtime.status_reason("s", "supervisor") is None
 
 
 def test_an_agent_waiting_after_swallowed_messages_works_again_after_any_tool(repo, fake_tmux):

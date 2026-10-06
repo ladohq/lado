@@ -8,6 +8,7 @@ import contextlib
 import enum
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -676,9 +677,19 @@ DISCARD_NOT_APPLIED = "discard does not apply: the run keeps its worktree"
 
 
 def close_worker(session: str, worker: state.Agent, how: str) -> Finished:
-    """Close the worker's window and forget it; its worktree is left alone."""
-    tmux.kill_window(session, worker.name)
-    return _forget_worker(session, worker, how)
+    """Forget the worker, then close its window; its worktree is left alone. Forgotten
+    first: the session-end hook of the dying worker then finds no agent, so its end is
+    LADO's and tells no one (agent_ended)."""
+    finished = _forget_worker(session, worker, how)
+    try:
+        tmux.kill_window(session, worker.name)
+    except tmux.TmuxError as error:
+        raise LadoError(
+            f'worker "{worker.name}" is finished ({finished.detail()}), but its window did not '
+            f"close: {error}; close it with "
+            f"`tmux -L {tmux.socket()} kill-window -t {session}:{worker.name}`"
+        ) from error
+    return finished
 
 
 def _forget_worker(session: str, worker: state.Agent, how: str) -> Finished:
@@ -1077,20 +1088,35 @@ def _plan(
     return plan
 
 
-def waiting_reasons(session: str) -> dict[str, str]:
-    """Why each agent that waits after failed messages waits, and what the human can do."""
-    counts = state.failed_counts(session)
-    reasons = {agent.name: _waiting_reason(agent, counts) for agent in state.list_agents(session)}
-    return {name: reason for name, reason in reasons.items() if reason is not None}
+def status_reasons(session: str) -> dict[str, str]:
+    """Why each agent that has a reason LADO knows for its status has it (status_reason)."""
+    reasons = _Reasons(session)
+    named = {agent.name: reasons.of(agent) for agent in state.list_agents(session)}
+    return {name: reason for name, reason in named.items() if reason is not None}
 
 
-def waiting_reason(session: str, name: str) -> str | None:
-    """Why the agent waits after failed messages, and what the human can do; None when it
-    does not wait, or waits for another reason (a prompt in its terminal)."""
+def status_reason(session: str, name: str) -> str | None:
+    """Why the agent has its status, as far as LADO knows: for one waiting after failed
+    messages, why and what the human can do; for a stopped one, why its process ended (its
+    ENDED event). None for any other status, and for an agent waiting on a prompt in its
+    terminal."""
     agent = state.get_agent(session, name)
-    if agent is None or agent.status != state.WAITING:
+    if agent is None or agent.status not in (state.WAITING, state.STOPPED):
         return None
-    return _waiting_reason(agent, state.failed_counts(session))
+    return _Reasons(session).of(agent)
+
+
+class _Reasons:
+    """What status_reason reads, once for all agents of a session."""
+
+    def __init__(self, session: str):
+        self.failed = state.failed_counts(session)
+        self.ended = state.end_reasons(session)
+
+    def of(self, agent: state.Agent) -> str | None:
+        if agent.status == state.STOPPED:
+            return self.ended.get(agent.name)
+        return _waiting_reason(agent, self.failed)
 
 
 def _waiting_reason(agent: state.Agent, counts: dict[str, tuple[int, int]]) -> str | None:
@@ -1116,19 +1142,105 @@ NOT_DELIVERED = "message #{id} to {recipient} not delivered: {title}"
 NOTICE = re.compile(r"message #\d+ to \S+ not delivered: .*")
 
 
-def _report_failure(session: str, message: state.Message) -> None:
-    """Tell the sender of a failed message, in one line from LADO; the supervisor when LADO
-    sent it. A failed notice is not reported again."""
+def _report_failure(session: str, message: state.Message, why: str = "") -> None:
+    """Tell the sender of a failed or dropped message, in one line from LADO (`why` before
+    its title); the supervisor when LADO sent it. A notice of LADO's is not reported again."""
     to = SUPERVISOR if message.sender == state.LADO else message.sender
     if message.sender == state.LADO and NOTICE.fullmatch(message.summary):
         return
     if to == message.recipient:
-        return  # it is the one not taking messages; `lado ls` shows it waiting
-    summary = NOT_DELIVERED.format(id=message.id, recipient=message.recipient, title=message.title)
-    if len(summary) > state.SUMMARY_LIMIT:
-        summary = summary[: state.SUMMARY_LIMIT - 1] + "…"
+        return  # it is the one not taking messages; `lado ls` shows it waiting or stopped
+    title = f"{why}: {message.title}" if why else message.title
+    summary = NOT_DELIVERED.format(id=message.id, recipient=message.recipient, title=title)
     with contextlib.suppress(LadoError):  # its sender is gone: `lado log` shows it failed
-        post(session, state.LADO, to, summary)
+        post(session, state.LADO, to, _cut(summary))
+
+
+def _cut(summary: str) -> str:
+    """A summary of LADO's own, cut to the limit."""
+    if len(summary) > state.SUMMARY_LIMIT:
+        return summary[: state.SUMMARY_LIMIT - 1] + "…"
+    return summary
+
+
+def _tell_lead(session: str, agent: str, summary: str, body: str = "") -> None:
+    """One line from LADO about `agent` to whoever acts on it: the supervisor about a
+    worker, the human about the supervisor."""
+    to = state.HUMAN if agent == SUPERVISOR else SUPERVISOR
+    with contextlib.suppress(LadoError):  # no supervisor runs: `lado log` shows the event
+        post(session, state.LADO, to, _cut(summary), body)
+
+
+def turn_failed(session: str, agent: str, error: str) -> None:
+    """The agent's turn ended on an error (a provider's TURN_END with one): record it, and
+    tell the supervisor, or the human when it is the supervisor's. The agent is idle then
+    (lado.hooks)."""
+    state.add_event(session, agent, state.TURN_ERROR, error)
+    _tell_lead(session, agent, f"turn of {agent} ended on an error: {error}; it is idle")
+
+
+def agent_ended(session: str, name: str, reason: str) -> bool:
+    """The agent's process ended by itself (`reason`): its session-end hook, or its window
+    found gone (check_windows). The one transition for it: the agent is stopped, the
+    messages it never got are dropped with a line to each sender, its open questions are
+    closed, and the supervisor (about a worker) or the human (about the supervisor) is told
+    the way out. Whether it changed anything: an agent LADO ended itself (stop, finish) is
+    stopped or forgotten before its window is killed, so its late hook tells no one."""
+    dropped = state.agent_ended(session, name, reason)
+    if dropped is None:
+        return False
+    why = f"{name} stopped ({reason})"
+    for message in dropped:
+        _report_failure(session, message, why)
+    if name == SUPERVISOR:
+        repo = shlex.quote(state.get_session(session).repo)
+        way_out = (
+            f"lado stop {session}\nlado start {repo} --name {session}\n"
+            "The resumed session goes on with its open runs."
+        )
+        summary = f"{why}: resume the session with `lado stop {session}`, then `lado start`"
+        _tell_lead(session, name, summary, way_out)
+    else:
+        _tell_lead(session, name, f"{why}: {_finish_hint(session, name)}")
+    return True
+
+
+WINDOW_GONE = "its window closed without a session-end hook"
+
+
+def check_windows(session: str, missing: set[str], now: datetime | None = None) -> set[str]:
+    """One look of the session loop at the session's windows, the only sign that an agent
+    whose CLI died without a hook has ended (before its first hook, or in a turn). An agent
+    not stopped whose window is gone in this look and in the one before (`missing`, what the
+    one before returned) has ended (agent_ended); one added within a loop interval is left
+    alone, its window may be in the making. Returns the agents whose window is gone now.
+    A failing list of windows raises, and nothing changes."""
+    now = now or datetime.now(timezone.utc)
+    shown = set(tmux.list_windows(session))
+    gone = set()
+    for agent in state.list_agents(session):
+        if agent.status == state.STOPPED or agent.name in shown:
+            continue
+        if (now - _utc(agent.created_at)).total_seconds() < loop.INTERVAL:
+            continue
+        if agent.name in missing:
+            agent_ended(session, agent.name, WINDOW_GONE)
+        gone.add(agent.name)
+    return gone
+
+
+def _finish_hint(session: str, name: str) -> str:
+    """How the supervisor ends a stopped worker, and starts another one for its run's step."""
+    agent = state.get_agent(session, name)
+    try:
+        refused = finish_preview(session, name).refused
+    except LadoError:
+        refused = None
+    discard = ", discard=true" if refused else ""
+    hint = f'end it with finish_worker(name="{name}"{discard})'
+    if agent is not None and agent.run:
+        hint += f', then spawn_worker(run="{agent.run}")'
+    return hint
 
 
 def _check_summary(summary: str, what: str = "summary", details: str = "body") -> None:
@@ -1274,9 +1386,9 @@ def stop_session(session: str) -> Stopped:
         state.migrate()  # no session runs; then refused as below
     stop_preview(session)  # refuses an unknown or stopped session
     alive = tmux.has_session(session)
-    if alive:
-        tmux.kill_session(session)
-    return _mark_stopped(session, gone=not alive)
+    # Marked stopped first, then killed: the session-end hooks of the dying agents find no
+    # agent, so their end is LADO's and tells no one (agent_ended).
+    return _mark_stopped(session, gone=not alive, kill=alive)
 
 
 def stop_all(report: Callable[[str, Stopped], object]) -> None:
@@ -1328,11 +1440,26 @@ def _kill_for_migration(sessions: list[str]) -> dict[str, bool]:
     return alive
 
 
-def _mark_stopped(session: str, gone: bool) -> Stopped:
+def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
+    """Mark the session stopped; with `kill`, then kill its tmux session. A kill that fails
+    leaves it marked stopped, and the error says how to kill it by hand."""
     agents, dropped = state.stop_session(session, gone=gone)
+    failed = None
+    if kill:
+        try:
+            tmux.kill_session(session)
+        except tmux.TmuxError as error:
+            failed = error
     # Then the UI's viewers, which keep the agents' windows: one opened meanwhile found no
     # window to link. Their streams end as the session is marked stopped already.
     terminal.close_viewers(session)
+    if failed:
+        raise LadoError(
+            f'session "{session}" is stopped, but its tmux session could not be killed: '
+            f"{failed}; its agents may still run: kill it with "
+            f"`tmux -L {tmux.socket()} kill-session -t {session}`; `lado start` resumes the "
+            "session after that"
+        ) from failed
     return Stopped([a for a in agents if a.name != SUPERVISOR], dropped)
 
 

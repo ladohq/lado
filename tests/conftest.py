@@ -109,7 +109,23 @@ def fake_tmux(monkeypatch, loop_starts, fake_clis):
                 alive = call[0] == "new_session"
         return alive
 
+    def list_windows(session):
+        windows = []
+        for call in calls:
+            if call[0] == "new_session" and call[1] == session:
+                windows = [call[2]]
+            elif call[0] == "new_window" and call[1] == session:
+                windows.append(call[2])
+            elif call[0] == "kill_window" and call[1] == session:
+                windows = [w for w in windows if w != call[2]]
+            elif call[0] == "kill_session" and call[1] == session:
+                windows = []
+        if not has_session(session):
+            raise tmux.TmuxError(f"can't find session: {session}")
+        return windows
+
     monkeypatch.setattr(tmux, "has_session", has_session)
+    monkeypatch.setattr(tmux, "list_windows", list_windows)
     monkeypatch.setattr(tmux, "kill_session", lambda s: calls.append(("kill_session", s)))
     monkeypatch.setattr(tmux, "kill_window", lambda *a: calls.append(("kill_window", *a)))
     monkeypatch.setattr(tmux, "popup", lambda *a: calls.append(("popup", *a)))

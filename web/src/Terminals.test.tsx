@@ -36,8 +36,8 @@ const SESSION: SessionInfo = {
   stopped_at: null,
 };
 const AGENTS: AgentInfo[] = [
-  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, waiting_reason: null, ...AGENT_REST },
-  { name: "w1", role: "developer", provider: "kilo", status: "busy", run: null, task: "Build it", waiting_reason: null, ...AGENT_REST },
+  { name: "supervisor", role: "supervisor", provider: "claude", status: "idle", run: null, task: null, status_reason: null, ...AGENT_REST },
+  { name: "w1", role: "developer", provider: "kilo", status: "busy", run: null, task: "Build it", status_reason: null, ...AGENT_REST },
 ];
 const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 

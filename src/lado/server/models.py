@@ -367,9 +367,10 @@ class AgentInfo(BaseModel):
     status: AgentStatus
     run: str | None  # the flow run it works for
     task: str | None  # the first line of its task; None for none
-    # Only for an agent in `waiting`: why it waits after failed messages and what the human
-    # can do; None when it waits for the human in its terminal (a prompt).
-    waiting_reason: str | None
+    # Why it has its status, as far as LADO knows (runtime.status_reason): in `waiting`, why
+    # it waits after failed messages and what the human can do (None when it waits for the
+    # human in its terminal, a prompt); in `stopped`, why its process ended. Else None.
+    status_reason: str | None
     branch: str | None  # a worker's; None for the supervisor, which works in the repo
     worktree: str | None  # a worker's folder; None for the supervisor
     spawned_at: str  # UTC, ISO 8601: its latest spawn
@@ -639,9 +640,9 @@ def agent_info(agent: state.Agent) -> AgentInfo:
         status=agent.status,
         run=agent.run,
         task=_first_line(agent.task),
-        waiting_reason=(
-            runtime.waiting_reason(agent.session, agent.name)
-            if agent.status == state.WAITING
+        status_reason=(
+            runtime.status_reason(agent.session, agent.name)
+            if agent.status in (state.WAITING, state.STOPPED)
             else None
         ),
         branch=agent.branch,

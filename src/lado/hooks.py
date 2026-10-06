@@ -67,7 +67,10 @@ def handle(
         # The human's messages this turn got: did it write to the human? Before the inbox is
         # handed over, so what the next turn gets is checked when that one ends.
         state.check_replies(session, agent)
-        return _idle(provider, session, agent, turn_end=True)
+        if event.error:
+            runtime.turn_failed(session, agent, event.error)
+        # Where the CLI ignores the hook's output, the queue is typed in.
+        return _idle(provider, session, agent, turn_end=not event.output_ignored)
     elif event.kind == providers.CONVERSATION_END:
         # Not ready while the next conversation loads: messages wait in the queue.
         state.set_status(session, agent, state.STARTING)
@@ -75,7 +78,7 @@ def handle(
         # Ready again, as after the session's start.
         _idle(provider, session, agent)
     elif event.kind == providers.SESSION_END:
-        state.set_status(session, agent, state.STOPPED)
+        runtime.agent_ended(session, agent, "its CLI exited")
     return None
 
 

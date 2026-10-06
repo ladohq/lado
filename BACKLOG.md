@@ -973,6 +973,18 @@ Wanted: a limit for that case too (e.g. after the last delay: failed with the no
 waiting with a reason), in the one rule of `_plan`.
 Found: 2026-10-06, review of feature/delivery.
 
+## `ask_human` asks one question, so a round of several comes to the human as plain text
+
+Size: M. Why here: friction for the human at every design round; nothing is lost.
+
+A design round of six questions (feature/turn-resume) went to the human as one text message,
+since `ask_human` holds one question with its choices: six questions would be six cards in
+a row, each answered on its own. The human asked why there were no buttons.
+Wanted: one question card in the UI's chat with several questions, each with its own choices
+and free answer, answered at once (an extension of `ask_human`, one message back to the agent).
+Found: 2026-10-06, design of run feature/turn-resume, by the human.
+
+
 # P3: maybe never
 
 ## A server endpoint that writes makes lado.db when there is none

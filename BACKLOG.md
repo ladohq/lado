@@ -612,6 +612,8 @@ Also on OpenCode: `test_worker_does_a_task_reports_and_gets_a_message[opencode]`
 `opencode/nemotron-3-ultra-free` failed once in two runs (2026-10-06, feature/agent-liveness):
 the supervisor merged w1's branch and called `finish_worker(name="w1")` before the test's
 check of the human's message ("agent w1 is gone"); the rerun passed.
+Again on Kilo (2026-10-06, feature/trust-dialog): the supervisor spawned `worker` for the
+step besides w1, so finishing w1 kept the run's worktree; the rerun passed.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.

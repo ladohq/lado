@@ -205,19 +205,25 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             If the run's current step waits for a worker, the step is its task: leave out
             `task` (and `role`, which then defaults to the step's role).
             """
+            warnings: list[str] = []
             with _reasons():
                 if run:
-                    worker = runs.spawn_worker(session, run, role, task, name, provider, without)
+                    worker = runs.spawn_worker(
+                        session, run, role, task, name, provider, without, warnings
+                    )
                 elif not task or not task.strip():
                     raise runtime.LadoError("task is missing; give the worker a task")
                 else:
-                    worker = runtime.spawn_worker(session, task, name, provider, role, without)
+                    worker = runtime.spawn_worker(
+                        session, task, name, provider, role, without, warnings=warnings
+                    )
             return {
                 "name": worker.name,
                 "role": worker.role,
                 "branch": worker.branch,
                 "worktree": worker.cwd,
                 "run": worker.run,
+                "warnings": warnings,
             }
 
         @server.tool()

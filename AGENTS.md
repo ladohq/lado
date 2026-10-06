@@ -53,7 +53,10 @@ is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-
 OpenCode on `opencode/nemotron-3-ultra-free` (override with `LADO_LIVE_CLAUDE_MODEL` /
 `LADO_LIVE_KILO_MODEL` / `LADO_LIVE_OPENCODE_MODEL`). The Claude test uses a fixed
 repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
-folder for it.
+folder for it; when it shows, the test first checks that the supervisor waits with its reason
+(a run in a repo trusted already prints that it does not check that). Unit tests that start
+Claude agents get a Claude config of their own (`claude_config` in `tests/conftest.py`,
+`CLAUDE_CONFIG_DIR`), which trusts the `repo` fixture's folder, never the user's.
 
 CI runs `ruff format --check`, `ruff check`, the unit and integration tests (in parallel) on
 Python 3.10 and 3.13, the Node tests, and in one job on Python 3.13 `make dist` (the web UI
@@ -146,7 +149,13 @@ fixes and docs only: no new feature, no API or schema change.
     permission rules). OpenCode and Kilo still read the user's global config and global
     skills (`~/.claude/skills`, `~/.agents/skills`; BACKLOG.md); LADO's keys go on top. A
     provider writes the agent's config, returns its argv and env and translates its hook
-    events. The provider is chosen
+    events; `first_hook_blocker(cwd, env)` (a `Blocker`: `reason`, `warning`) says what its
+    CLI will ask the human before any hook (How agents talk). Only Claude Code asks: whether
+    to trust the folder, read from `projects[<folder>].hasTrustDialogAccepted` in its global
+    config (`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, an older
+    `<config home>/.config.json` first), by the repo's main root (a worktree's main repo) or
+    a folder from `cwd` up to its git root, each by real path; only `projects` is read,
+    nothing written; a config it cannot read is a `warning`. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
     Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
@@ -280,7 +289,7 @@ fixes and docs only: no new feature, no API or schema change.
     `reply_state` (How agents talk). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`, `turn_error` with the error, `ended` with why its process
-    ended by itself) and what happened to each flow run (`flow_start`, `flow` transitions,
+    ended by itself, `blocked` with what its CLI asks the human before any hook) and what happened to each flow run (`flow_start`, `flow` transitions,
     `flow_end`, `flow_cancel`, `flow_set`, `gate_open`, `gate_answer`; their `run` column
     names the run) and the session's `session_stop`, `session_resume` and `session_gone`
     (a stop or resume found its tmux gone: written by `state.stop_session(gone=True)` in
@@ -462,6 +471,19 @@ fixes and docs only: no new feature, no API or schema change.
   forgets the worker before it kills its window, `stop_session` (`lado stop`, `--all`,
   `lado update`) marks the session stopped before it kills its tmux session (only the
   migration path of an older lado.db kills first: its agents' hooks cannot write to it).
+- An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?" in a
+  repo it does not trust; `Provider.first_hook_blocker`) waits from its start: after
+  `launch_command` and before its window starts (`runtime._first_hook_blocker`, for start,
+  resume and spawn), `state.block` sets it `waiting` with a `blocked` event, whose detail
+  is why and what to answer. That reason holds while no `status` or `spawned` event came
+  after it (`state.block_reasons`, read by `_Reasons`: `lado ls`, `list_agents`,
+  `AgentInfo.status_reason`, Needs you), before the reason of failed messages. Its first
+  `SESSION_START` ends that wait (also only that one: a compaction's session start leaves
+  any other wait), and its queue is handed over as after any start; an answer that ends
+  the CLI ("No, exit") is an end like any other (`agent_ended`, the window check). Who
+  starts it is told the reason, or the provider's `warning` when it cannot tell: `lado
+  start` on stderr, the UI's start in `Started.warnings`, `spawn_worker` in its result's
+  `warnings` and in `loop.log`.
 - An agent `waiting` for the human (a dialog in its terminal) is `busy` again as soon as the
   human answers there: the neutral `WAITING` and `RESUMED` come in pairs with the same key
   (`Event.key`, the provider's id of the request), and only `RESUMED` with the key it waits

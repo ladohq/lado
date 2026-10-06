@@ -2,11 +2,13 @@
 error or exits with messages queued, and LADO ending agents itself with no false alarm."""
 
 import json
+import time
 
 import agent_helpers
+import fake_provider
 import pytest
 
-from lado import loop, runtime, state
+from lado import loop, runtime, state, tmux
 
 pytestmark = pytest.mark.integration
 
@@ -121,6 +123,31 @@ def test_an_agent_that_exits_with_messages_queued_drops_them_and_tells_the_sende
         ),
         "the supervisor to be told",
     )
+
+
+def test_an_agent_whose_cli_asks_first_waits_until_the_human_answers(session, monkeypatch):
+    """Like Claude Code's "trust this folder?": a question before any hook."""
+    monkeypatch.setenv("FAKE_AGENT_ASKS_FIRST", "1")
+    warnings = []
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1", warnings=warnings)
+    assert warnings == [fake_provider.ASKS_FIRST]
+    assert status("w1") == state.WAITING
+    assert runtime.status_reason(SESSION, "w1") == fake_provider.ASKS_FIRST
+    runtime.send_message(SESSION, "supervisor", "w1", "hello")
+    time.sleep(2 * loop.INTERVAL)  # the loop sweeps: nothing is typed into the question
+    assert (status("w1"), message_to("w1").state) == (state.WAITING, state.PENDING)
+    tmux.send_text(SESSION, "w1", "yes")  # the human answers
+    wait_for(lambda: "[from supervisor] hello" in inputs("w1"), "w1 to get its message")
+    assert message_to("w1").state == state.DELIVERED
+    assert runtime.status_reason(SESSION, "w1") is None
+
+
+def test_an_agent_whose_cli_asks_first_and_ends_on_no_is_found_stopped(session, monkeypatch):
+    monkeypatch.setenv("FAKE_AGENT_ASKS_FIRST", "1")
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
+    tmux.run("send-keys", "-t", f"{SESSION}:w1", "Enter")  # "no": the CLI exits, no hook
+    wait_status("w1", state.STOPPED, FOUND_GONE)
+    assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
 
 
 def test_finishing_a_worker_tells_no_one_it_stopped(session):

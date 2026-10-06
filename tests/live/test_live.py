@@ -87,6 +87,9 @@ def start_session(repo, provider: str) -> None:
     )
     assert started.lead == "lead: passive of kit live"
     assert state.get_agent(SESSION, "supervisor").role == "passive"
+    if provider == "claude" and not any("whether to trust" in w for w in started.warnings):
+        # The fixed repo path is trusted from an earlier run: no dialog to check.
+        print("Claude Code trusts the repo already: the wait for its trust dialog is not checked")
 
     def supervisor_idle() -> bool:
         if status("supervisor") == state.IDLE:
@@ -158,9 +161,19 @@ def alive(pids: set[int]) -> set[int]:
 
 
 def answer_dialogs(provider: str, session: str, window: str) -> None:
-    """Answer the dialogs a human answers once per repo, before the agent can start."""
+    """Answer the dialogs a human answers once per repo, before the agent can start. The
+    first time, the agent (named as its window) waits for the human and says why: LADO saw
+    the trust dialog coming (Provider.first_hook_blocker)."""
     if provider == "claude" and CLAUDE_TRUST in tmux.capture(session, window):
+        if (session, window) not in TRUST_ASKED:
+            TRUST_ASKED.add((session, window))
+            assert status(window) == state.WAITING
+            reason = runtime.status_reason(session, window) or ""
+            assert reason.startswith("Claude Code asks whether to trust "), reason
         tmux.run("send-keys", "-t", f"{session}:{window}", "Down", "Enter")
+
+
+TRUST_ASKED: set[tuple[str, str]] = set()  # the agents answer_dialogs checked
 
 
 def check_report() -> str:

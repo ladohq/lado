@@ -367,6 +367,10 @@ TURN_ERROR = "turn_error"  # its turn ended on an error (lado.hooks); detail: th
 # Its process ended by itself, not by LADO (agent_ended): its "stopped" status event follows;
 # detail: why, e.g. "its CLI exited". The one source of why a stopped agent stopped.
 ENDED = "ended"
+# Its CLI asks the human something before any hook runs (block): written right after its
+# "waiting" status event, before its window starts; detail: why and what the human does.
+# Why it waits until its next "status" or "spawned" event (block_reasons).
+BLOCKED = "blocked"
 # Flow run events (lado.runs); their run column names the run.
 FLOW_START = "flow_start"
 FLOW = "flow"  # a transition; detail: "<from> -<outcome>-> <to>"
@@ -1003,6 +1007,31 @@ def wait(session: str, name: str, key: str = "") -> None:
                 (key, session, name),
             )
         db.execute("COMMIT")
+
+
+def block(session: str, name: str, reason: str) -> None:
+    """The agent's CLI will ask the human something before any hook runs: in one
+    transaction the agent waits, and a BLOCKED event after its status event says why."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        _set_status(db, session, name, WAITING)
+        _add_event(db, session, name, BLOCKED, reason)
+        db.execute("COMMIT")
+
+
+def block_reasons(session: str) -> dict[str, str]:
+    """Per agent name, why its CLI holds it before its first hook: the detail of its latest
+    BLOCKED event when no "status" or "spawned" event came after it, so neither a later
+    status nor an earlier launch of that name gives the reason."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT b.agent, b.detail FROM events b WHERE b.id IN (SELECT MAX(id) FROM events"
+            " WHERE session = ? AND kind = ? GROUP BY agent) AND NOT EXISTS (SELECT 1 FROM"
+            " events s WHERE s.session = b.session AND s.agent = b.agent AND s.id > b.id"
+            " AND s.kind IN (?, ?))",
+            (session, BLOCKED, STATUS, SPAWNED),
+        ).fetchall()
+    return {r["agent"]: r["detail"] for r in rows}
 
 
 def resume(session: str, name: str, key: str) -> None:

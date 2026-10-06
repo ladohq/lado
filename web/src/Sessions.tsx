@@ -514,14 +514,15 @@ function Ran({ session }: { session: SessionInfo }) {
 }
 
 // What a start or resume from the New session window said: the settings a resume changed,
-// and open runs that cannot go on as they are, until the human closes it.
+// open runs that cannot go on as they are, and its warnings (e.g. what the supervisor's CLI
+// asks the human before it starts), until the human closes it.
 function StartedNotice({ name }: { name: string }) {
   const location = useLocation();
   const navigate = useNavigate();
   const started = (location.state as StartedState | null)?.started;
   if (!started || started.session.name !== name) return null;
-  const { changes, problems, resumed } = started;
-  if (changes.length === 0 && problems.length === 0) return null;
+  const { changes, problems, resumed, warnings } = started;
+  if (changes.length === 0 && problems.length === 0 && warnings.length === 0) return null;
   const close = () => navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   return (
     <div className="started-notice">
@@ -541,6 +542,16 @@ function StartedNotice({ name }: { name: string }) {
           <ul>
             {problems.map((problem) => (
               <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div role="alert" className="started-problems">
+          <span>Warnings:</span>
+          <ul>
+            {warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
             ))}
           </ul>
         </div>

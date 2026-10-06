@@ -251,7 +251,8 @@ class Started:
     changes: list[str] = field(default_factory=list)  # settings a resume replaced
     problems: list[str] = field(default_factory=list)  # open runs that cannot go on as they are
     lead: str = ""  # who leads the session (kits.Environment.lead_line)
-    warnings: list[str] = field(default_factory=list)  # the kits' supervisors not used
+    # The kits' supervisors not used; what holds the supervisor before its first hook.
+    warnings: list[str] = field(default_factory=list)
 
 
 def start_session(
@@ -315,7 +316,7 @@ def start_session(
     )
     instructions = _supervisor_instructions(env, session)
     spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env)
-    started = Started(sess, chosen, lead=env.lead_line(), warnings=env.warnings)
+    started = Started(sess, chosen, lead=env.lead_line(), warnings=list(env.warnings))
     if old and not old.stopped_at:
         state.stop_session(session, gone=True)  # left over from a tmux session that is gone
         terminal.close_viewers(session)  # they may keep its agents' windows alive
@@ -347,6 +348,7 @@ def start_session(
         # does not touch the running lead's files.
         _write_lead_skills(agent, env.lead_skills())
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
+        started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
     except Exception as error:
         steps: list[tuple[str, Callable[[], object]]] = [
@@ -394,12 +396,14 @@ def spawn_worker(
     without: list[str] | None = None,
     run: state.Run | None = None,
     has_step: bool = False,
+    warnings: list[str] | None = None,
 ) -> state.Agent:
     """Start a worker with `role` from the session's kits (required unless the session has
     one worker role), minus the `without` items ("skill:y", "mcp:z", each optionally @kit)
     for this worker.
     `has_step`: the task holds a step of `run`, which the worker reports with flow_advance;
-    any other task it reports with send_message.
+    any other task it reports with send_message. What holds the worker before its first
+    hook (_first_hook_blocker) is added to `warnings` and written to loop.log.
 
     A worker gets its own worktree and branch; a worker for a flow `run` works in the
     run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""
@@ -449,6 +453,7 @@ def spawn_worker(
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         first = _first_input(agent, first, summary)
         launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
+        held = _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
     except Exception as error:
         # The worker never ran: leave nothing that says it did, so the run's step still
@@ -470,6 +475,11 @@ def spawn_worker(
             ]
         _undo(session, f"the spawn of {worker}", error, steps)
         raise
+    # The spawner may be an agent: the log keeps them for the human too.
+    for line in held:
+        loop.log(session, f"{worker}: {line}")
+    if warnings is not None:
+        warnings += held
     return agent
 
 
@@ -1096,10 +1106,11 @@ def status_reasons(session: str) -> dict[str, str]:
 
 
 def status_reason(session: str, name: str) -> str | None:
-    """Why the agent has its status, as far as LADO knows: for one waiting after failed
-    messages, why and what the human can do; for a stopped one, why its process ended (its
-    ENDED event). None for any other status, and for an agent waiting on a prompt in its
-    terminal."""
+    """Why the agent has its status, as far as LADO knows: for one waiting since its CLI
+    asks the human something before any hook (its BLOCKED event, until its next status) or
+    after failed messages, why and what the human can do; for a stopped one, why its process
+    ended (its ENDED event). None for any other status, and for an agent waiting on a prompt
+    in its terminal that a hook reported."""
     agent = state.get_agent(session, name)
     if agent is None or agent.status not in (state.WAITING, state.STOPPED):
         return None
@@ -1112,18 +1123,21 @@ class _Reasons:
     def __init__(self, session: str):
         self.failed = state.failed_counts(session)
         self.ended = state.end_reasons(session)
+        self.blocked = state.block_reasons(session)
 
     def of(self, agent: state.Agent) -> str | None:
         if agent.status == state.STOPPED:
             return self.ended.get(agent.name)
-        return _waiting_reason(agent, self.failed)
+        return _waiting_reason(agent, self.failed, self.blocked.get(agent.name))
 
 
-def _waiting_reason(agent: state.Agent, counts: dict[str, tuple[int, int]]) -> str | None:
+def _waiting_reason(
+    agent: state.Agent, counts: dict[str, tuple[int, int]], blocked: str | None
+) -> str | None:
     swallowed, unconfirmed = counts.get(agent.name, (0, 0))
-    if agent.status != state.WAITING or not swallowed + unconfirmed:
+    if agent.status != state.WAITING or not (blocked or swallowed + unconfirmed):
         return None
-    why = []
+    why = [blocked] if blocked else []
     if swallowed:
         why.append(
             f"did not take {_messages(swallowed)}: answer the dialog in its window "
@@ -1647,14 +1661,38 @@ def _base_env() -> dict[str, str]:
         raise LadoError(str(exc)) from exc
 
 
+def _launch_env(
+    agent: state.Agent, base_env: dict[str, str], launch: providers.Launch
+) -> dict[str, str]:
+    """The agent CLI's environment: `base_env`, LADO's variables and its provider's, in that
+    order."""
+    return {**base_env, **providers.agent_env(agent), **launch.env}
+
+
 def _command(agent: state.Agent, base_env: dict[str, str], launch: providers.Launch) -> list[str]:
-    """The agent's window command: its CLI with `base_env`, LADO's variables and its
-    provider's, in that order, and nothing of the tmux server's environment."""
-    env = {**base_env, **providers.agent_env(agent), **launch.env}
+    """The agent's window command: its CLI with _launch_env, and nothing of the tmux
+    server's environment."""
+    env = _launch_env(agent, base_env, launch)
     try:
         return agent_env.command(providers.base.config_dir(agent) / "env.json", env, launch.argv)
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
+
+
+def _first_hook_blocker(
+    agent_cli: providers.Provider,
+    agent: state.Agent,
+    base_env: dict[str, str],
+    launch: providers.Launch,
+) -> list[str]:
+    """Ask the provider what its CLI will ask the human before any hook runs, before the
+    agent's window starts: if something will, the agent waits from now on, so its first
+    hook always comes after that. Returns the lines to tell whoever starts it: why it will
+    wait, or why the provider cannot tell."""
+    blocker = agent_cli.first_hook_blocker(agent.cwd, _launch_env(agent, base_env, launch))
+    if blocker.reason:
+        state.block(agent.session, agent.name, blocker.reason)
+    return [line for line in (blocker.reason, blocker.warning) if line]
 
 
 def _next_name(role: str, taken: set[str]) -> str:

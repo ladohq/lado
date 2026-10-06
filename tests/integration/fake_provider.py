@@ -88,8 +88,17 @@ class FakeProvider(base.Provider):
             output_ignored=data.get("output_ignored", False),
         )
 
+    def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
+        # The fake agent asks first when its environment says so (fake_agent.py).
+        if env.get("FAKE_AGENT_ASKS_FIRST") == "1":
+            return base.Blocker(reason=ASKS_FIRST)
+        return base.Blocker()
+
     def continue_output(self, text: str) -> str | None:
         return text
+
+
+ASKS_FIRST = 'Fake agent asks a question first: type "yes" in its terminal'
 
 
 # "fake" gets queued messages from its turn-end hook, like Claude Code; "fake-paste" has

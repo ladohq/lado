@@ -329,6 +329,10 @@ class Started(BaseModel):
     resumed: bool
     changes: list[str]  # the settings a resume replaced
     problems: list[str]  # open runs that cannot go on as they are
+    lead: str  # who leads the session, as `lado start` prints it
+    # What `lado start` prints as warnings: the kits' supervisors not used, what holds the
+    # supervisor before its first hook (e.g. a question of its CLI for the human).
+    warnings: list[str]
 
 
 class Worktree(BaseModel):
@@ -850,6 +854,8 @@ def started(done: runtime.Started) -> Started:
         resumed=done.resumed,
         changes=done.changes,
         problems=done.problems,
+        lead=done.lead,
+        warnings=done.warnings,
     )
 
 

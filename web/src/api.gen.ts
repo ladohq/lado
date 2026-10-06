@@ -1609,6 +1609,10 @@ export interface components {
             changes: string[];
             /** Problems */
             problems: string[];
+            /** Lead */
+            lead: string;
+            /** Warnings */
+            warnings: string[];
         };
         /** StopPreview */
         StopPreview: {

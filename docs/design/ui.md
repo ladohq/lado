@@ -744,8 +744,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   for a name in two kits, one button per item ("Switch off reviewer of kit-a", "… of
   kit-b") adds it to the Switch off field and opens Advanced; Start starts again. The
   window does not yet show who will lead the session (BACKLOG). On success the window closes and the session's Activity opens; the `Started`
-  answer's `problems` (open runs that cannot go on) and a resume's `changes` show under
-  the session's head until closed. No first message, no tmux attach.
+  answer's `problems` (open runs that cannot go on), its `warnings` (what `lado start`
+  prints on stderr: kit supervisors not used, what the supervisor's CLI asks the human
+  before its first hook, such as Claude Code's "trust this folder?") and a resume's
+  `changes` show under the session's head until closed. No first message, no tmux attach.
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
   changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).

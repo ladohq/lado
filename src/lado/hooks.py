@@ -50,7 +50,11 @@ def handle(
         # not find flow_advance or send_message. So the hook waits for LADO's server.
         if current and provider.capabilities.hold_first_turn:
             _wait_for_mcp(session, current)
-        if current and current.status == state.STARTING:
+        # An agent whose CLI asks the human first waits from its start (state.block): this
+        # hook says the human answered. Any other wait stays: a compaction starts a session
+        # too.
+        held = current and current.status == state.WAITING and agent in state.block_reasons(session)
+        if current and (current.status == state.STARTING or held):
             if current.task:
                 state.set_status(session, agent, state.BUSY)  # its first turn: the task
             else:

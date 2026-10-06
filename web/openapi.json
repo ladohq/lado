@@ -4485,6 +4485,17 @@
             },
             "type": "array",
             "title": "Problems"
+          },
+          "lead": {
+            "type": "string",
+            "title": "Lead"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
           }
         },
         "type": "object",
@@ -4492,7 +4503,9 @@
           "session",
           "resumed",
           "changes",
-          "problems"
+          "problems",
+          "lead",
+          "warnings"
         ],
         "title": "Started"
       },

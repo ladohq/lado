@@ -268,6 +268,32 @@ def test_flow_tools_start_a_run_spawn_its_worker_and_advance_it(repo, fake_tmux)
     assert cancelled["kept"] == {"worktree": run["worktree"], "branch": run["branch"]}
 
 
+@pytest.mark.parametrize("run", [False, True])
+def test_spawn_worker_says_what_holds_the_worker_before_its_first_hook(
+    repo, fake_tmux, claude_config, run
+):
+    kit = repo / ".lado" / "kits" / "k"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
+    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    claude_config.trust()  # Claude Code trusts no folder; Kilo asks nothing
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="kilo")
+    args = {"provider": "claude"}
+    if run:
+        _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
+        args["run"] = "ship/x"
+    else:
+        args["task"] = "t"
+    worker = _call("s", "supervisor", "spawn_worker", args)
+    assert worker["warnings"] == [
+        f'Claude Code asks whether to trust {repo}: in its terminal choose "Yes, I trust '
+        'this folder" (Enter alone answers "No, exit" and closes the agent)'
+    ]
+    claude_config.trust(repo)
+    worker = _call("s", "supervisor", "spawn_worker", {**args, "task": "t", "name": "w2"})
+    assert worker["warnings"] == []
+
+
 SHORT = {"run", "flow", "state", "status", "acting", "outcomes", "gate", "visits", "note"}
 
 

@@ -90,6 +90,17 @@ class Launch:
     env: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class Blocker:
+    """What holds an agent before its first hook (Provider.first_hook_blocker)."""
+
+    # Why the agent will wait for the human from its start, and what the human does about
+    # it; None when nothing is known to hold it.
+    reason: str | None = None
+    # Why the provider cannot tell whether something holds it; None when it can.
+    warning: str | None = None
+
+
 class Provider(ABC):
     name: str  # stored in the state, e.g. "claude"
     title: str  # for humans, e.g. "Claude Code"
@@ -128,6 +139,12 @@ class Provider(ABC):
     def parse_event(self, native: str, payload: str) -> Event | None:
         """Translate a native hook event and its input into a neutral event, or None to
         ignore it."""
+
+    def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> Blocker:
+        """What the CLI, started in `cwd` with `env`, will ask the human before any hook
+        runs (e.g. whether to trust the folder), read from the CLI's own files; by default
+        nothing. Called before the agent's window starts."""
+        return Blocker()
 
     def continue_output(self, text: str) -> str | None:
         """Hook output that makes the agent continue with `text` when its turn ends.

@@ -383,7 +383,7 @@ test("Start sends the window's fields, says Starting… and opens the new sessio
   const started = session("app", { repo: "/src/app" });
   answers["POST /api/sessions"] = async () => {
     await pending;
-    return json({ session: started, resumed: false, changes: [], problems: ["run x needs a rev"] });
+    return json({ session: started, resumed: false, changes: [], problems: ["run x needs a rev"], lead: "", warnings: [] });
   };
   await openLaunch();
   await ready("/src/app");
@@ -406,6 +406,28 @@ test("Start sends the window's fields, says Starting… and opens the new sessio
   expect(await screen.findByRole("region", { name: "Session app" })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull();
   expect((await screen.findByRole("alert")).textContent).toContain("run x needs a rev");
+});
+
+test("a start's warnings show on the new session's page, such as what its supervisor waits for", async () => {
+  const trust =
+    'Claude Code asks whether to trust /src/app: in its terminal choose "Yes, I trust this folder" ' +
+    '(Enter alone answers "No, exit" and closes the agent)';
+  answers["POST /api/sessions"] = () =>
+    json({
+      session: session("app", { repo: "/src/app" }),
+      resumed: false,
+      changes: [],
+      problems: [],
+      lead: "lead: supervisor of kit default",
+      warnings: [trust],
+    });
+  await openLaunch();
+  await ready("/src/app");
+  await waitFor(() => expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).disabled).toBe(false));
+  fireEvent.click(startButton());
+  expect(await screen.findByRole("region", { name: "Session app" })).toBeTruthy();
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain(trust);
 });
 
 test("a refused start shows the core's whole reason and keeps the window", async () => {
@@ -480,7 +502,14 @@ test("a taken name of a running session of this folder offers to open it, not to
 test("Resume fills the window from the session, sends only what changed and shows the changes", async () => {
   sessions = [session("lado", { status: "stopped", repo: "/src/lado", kits: ["team"], provider: "kilo", permission_mode: "plan" })];
   answers["POST /api/sessions/lado/resume"] = () =>
-    json({ session: session("lado"), resumed: true, changes: ["permission mode: plan -> default"], problems: ["run y needs a rev"] });
+    json({
+      session: session("lado"),
+      resumed: true,
+      changes: ["permission mode: plan -> default"],
+      problems: ["run y needs a rev"],
+      lead: "",
+      warnings: [],
+    });
   open("/sessions/lado");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });

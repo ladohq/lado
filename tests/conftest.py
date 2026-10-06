@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -81,7 +82,28 @@ def loop_starts(monkeypatch):
 
 
 @pytest.fixture
-def fake_clis(tmp_path, monkeypatch):
+def claude_config(tmp_path, monkeypatch):
+    """Claude Code's global config for the agents (CLAUDE_CONFIG_DIR), never the user's: it
+    trusts the folder of the `repo` fixture, as Claude Code would after the human said yes
+    there. trust(*folders) replaces what it trusts."""
+    folder = tmp_path / "claude-config"
+    folder.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(folder))
+
+    class Config:
+        path = folder / ".claude.json"
+
+        def trust(self, *folders):
+            projects = {str(f): {"hasTrustDialogAccepted": True} for f in folders}
+            self.path.write_text(json.dumps({"projects": projects}))
+
+    config = Config()
+    config.trust(tmp_path / "My Repo")
+    return config
+
+
+@pytest.fixture
+def fake_clis(tmp_path, monkeypatch, claude_config):
     """Stand-ins for the agent CLIs on PATH, which a launch looks its CLI up on; the folder."""
     folder = tmp_path / "fake-clis"
     folder.mkdir()

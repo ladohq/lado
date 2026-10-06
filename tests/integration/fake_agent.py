@@ -32,7 +32,9 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     fail <error>       end the turn on an error: its turn-end hook gets <error>, and its
                        output is ignored, as Claude Code's StopFailure
 A first message that starts with "crash at start" makes it exit before its first hook, as a
-CLI that fails at once (a bad flag). With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
+CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environment it asks
+the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
+any other input exits at once with no hook. With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
 its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
 Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
 else it exits at once.
@@ -267,6 +269,10 @@ def main() -> None:
     report(
         prompt=config["prompt"], skills=load_skills(), mcp=config["mcp"], environ=dict(os.environ)
     )
+    if os.environ.get("FAKE_AGENT_ASKS_FIRST") == "1":
+        print("Go on? Type yes; Enter alone exits", flush=True)
+        if read_input() != "yes":
+            os._exit(1)
     # Like Claude Code: the MCP server connects while the session-start hook runs.
     connect_mcp()
     hook("session_start")

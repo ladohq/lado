@@ -72,20 +72,6 @@ to the agent's env and let each CLI expand them (Claude `${VAR}` in mcp.json, Ki
 `{env:VAR}`), or start the MCP server through a LADO wrapper that reads them.
 Found: 2026-10-01, kits review.
 
-## Claude Code's "trust this folder?" dialog blocks a new session
-
-Size: M. Why here: it hits every new repository, that is onboarding; the dialog's default Enter closes the agent.
-
-In a repo Claude Code has not seen before, it asks whether to trust the folder, and no flag
-skips the question. Checked on Claude Code 2.1.287 (2026-10-02): until the human answers,
-no hook runs, so the agent stays `starting` and LADO types nothing into it (messages wait in
-the queue). The dialog's default answer is "No, exit": an Enter there ends Claude Code, its
-tmux window closes, and no SessionEnd hook runs, so `lado ls` keeps showing it `starting`
-(with "tmux session is gone" for a supervisor). `lado start` (or `lado doctor <repo>`)
-should detect an untrusted repo and tell the user, and the agent's status could show that it
-waits for the human.
-Found: 2026-10-01, live e2e tests.
-
 ## A failed rollback hides why a start or spawn failed
 
 Size: S/M. Why here: the real error is hidden and the session or worker stays half undone.
@@ -504,6 +490,20 @@ Wanted: check on Claude Code 2.1.29x which hook (if any) comes at an interrupt, 
 it with the same `TURN_END`.
 Found: 2026-10-06, architect's review of feature/agent-liveness.
 
+## An agent can stay `starting` with no hook and no reason
+
+Size: M. Why here: a dialog LADO does not foresee holds the agent silently, as the trust dialog did.
+
+LADO foresees only what a provider's `first_hook_blocker` reads (Claude Code's folder
+trust). Before its first hook Claude Code may show other dialogs too: its first run and
+login, the confirmation of bypassPermissions, the approval of the servers in a project's
+`.mcp.json` (not checked on 2.1.291). Then the agent stays `starting` with no
+`status_reason`, and messages wait.
+Wanted: a neutral check in the core: an agent `starting` longer than N seconds with no hook
+at all gets a `status_reason` that says to look at its window (`lado attach`, the UI's
+terminal).
+Found: 2026-10-06, architect's review of feature/trust-dialog.
+
 # P2: when convenient
 
 ## Keep a crashed agent's last output
@@ -699,6 +699,8 @@ is not used; the New session window shows neither before Start, so the human lea
 after the start (or not at all) that LADO's built-in supervisor leads.
 Wanted: the window shows the lead line and the warnings for the chosen kits and Switch off
 items (an endpoint over `kits.resolve`), before Start.
+The start's answer (`Started`) carries `lead` and `warnings` since feature/trust-dialog;
+the session's page shows the warnings after the start, the lead nowhere yet.
 Found: 2026-10-04, design of feature/without-at-kit.
 
 ## `lado answer` without a gate stops at a gate whose run's flow cannot be read

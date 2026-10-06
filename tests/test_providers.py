@@ -1,5 +1,6 @@
 import importlib
 import json
+import subprocess
 from pathlib import Path
 
 import agent_helpers
@@ -176,6 +177,132 @@ def test_providers_that_report_a_wait_report_its_end():
 def test_claude_continues_with_queued_messages():
     out = providers.get("claude").continue_output("[from w1] done")
     assert json.loads(out) == {"decision": "block", "reason": "[from w1] done"}
+
+
+# Claude Code's trust of a folder: projects[<folder>].hasTrustDialogAccepted in its global
+# config, $CLAUDE_CONFIG_DIR/.claude.json or ~/.claude.json (2.1.291, read in its binary).
+@pytest.fixture
+def claude_home(tmp_path):
+    """The agent's environment with an empty home for Claude Code, and a writer of its
+    config: trust(*folders) or raw(text)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {"HOME": str(home)}
+
+    class Config:
+        path = home / ".claude.json"
+
+        def trust(self, *folders, path=None):
+            projects = {str(f): {"hasTrustDialogAccepted": True} for f in folders}
+            self.raw(json.dumps({"numStartups": 3, "projects": projects}), path)
+
+        def raw(self, text, path=None):
+            (path or self.path).write_text(text)
+
+    return env, Config()
+
+
+def _blocker(cwd, env):
+    return providers.get("claude").first_hook_blocker(str(cwd), env)
+
+
+def test_claude_blocks_the_first_hook_in_a_folder_it_does_not_trust(repo, claude_home):
+    env, _ = claude_home  # no config at all: Claude Code trusts nothing yet
+    blocker = _blocker(repo, env)
+    assert blocker.warning is None
+    assert blocker.reason == (
+        f'Claude Code asks whether to trust {repo}: in its terminal choose "Yes, I trust '
+        'this folder" (Enter alone answers "No, exit" and closes the agent)'
+    )
+
+
+def test_claude_does_not_block_in_the_repo_it_trusts(repo, claude_home):
+    env, config = claude_home
+    config.trust(repo)
+    assert _blocker(repo, env) == base.Blocker()
+
+
+def test_claude_trust_is_kept_by_the_real_path(repo, tmp_path, claude_home):
+    env, config = claude_home
+    link = tmp_path / "link"
+    link.symlink_to(repo)
+    config.trust(repo.resolve())
+    assert _blocker(link, env) == base.Blocker()
+    config.trust(link)  # a path through a link is no key of Claude Code's
+    assert _blocker(repo, env).reason
+
+
+def test_claude_trusts_a_worktree_by_its_main_repo(repo, tmp_path, claude_home):
+    env, config = claude_home
+    worktree = repo / ".lado" / "worktrees" / "s" / "w1"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "w1", str(worktree)])
+    config.trust(repo)
+    assert _blocker(worktree, env) == base.Blocker()
+
+
+def test_claude_trusts_a_folder_under_a_trusted_one_inside_the_repo(repo, claude_home):
+    env, config = claude_home
+    deep = repo / "sub" / "deeper"
+    deep.mkdir(parents=True)
+    config.trust(repo / "sub")
+    assert _blocker(deep, env) == base.Blocker()
+
+
+def test_claude_trust_above_the_repo_does_not_cover_it(repo, claude_home):
+    env, config = claude_home
+    config.trust(repo.parent, "/")
+    assert _blocker(repo, env).reason
+
+
+def test_claude_trust_is_read_from_the_agents_claude_config_dir(repo, tmp_path, claude_home):
+    env, config = claude_home
+    config.trust(repo)  # in the home, which CLAUDE_CONFIG_DIR replaces
+    own = tmp_path / "claude-config"
+    own.mkdir()
+    env = {**env, "CLAUDE_CONFIG_DIR": str(own)}
+    assert _blocker(repo, env).reason
+    config.trust(repo, path=own / ".claude.json")
+    assert _blocker(repo, env) == base.Blocker()
+
+
+def test_claude_older_config_file_wins(repo, claude_home):
+    env, config = claude_home
+    config.trust(repo)
+    (Path(env["HOME"]) / ".claude").mkdir()
+    config.raw("{}", path=Path(env["HOME"]) / ".claude" / ".config.json")
+    assert _blocker(repo, env).reason
+
+
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        ("{not json", "Expecting property name enclosed in double quotes"),
+        ("[]", "not a JSON object"),
+        ('{"projects": []}', "its projects are not a JSON object"),
+    ],
+)
+def test_claude_config_it_cannot_read_is_a_warning(repo, claude_home, text, error):
+    env, config = claude_home
+    config.raw(text)
+    blocker = _blocker(repo, env)
+    assert blocker.reason is None
+    assert blocker.warning.startswith(f"cannot tell whether Claude Code trusts {repo}: ")
+    assert str(config.path) in blocker.warning and error in blocker.warning
+
+
+def test_claude_reads_only_the_projects_of_its_config(repo, claude_home):
+    env, config = claude_home
+    # Other keys may hold anything; only projects is read.
+    config.raw(json.dumps({"oauthAccount": None, "projects": {str(repo): {"x": 1}}}))
+    assert _blocker(repo, env).reason
+    before = config.path.read_text()
+    _blocker(repo, env)
+    assert config.path.read_text() == before
+
+
+def test_other_providers_never_block_the_first_hook(repo):
+    for name in ("kilo", "opencode"):
+        assert providers.get(name).first_hook_blocker(str(repo), {}) == base.Blocker()
 
 
 def test_agents_get_the_session_provider(repo, fake_tmux):

@@ -192,7 +192,12 @@ def test_a_tmux_session_that_survives_a_stop_is_told_with_the_way_out(repo, fake
     assert state.get_session("s").stopped_at
 
 
-LATER = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+def later() -> datetime.datetime:
+    """A minute from now: past a just spawned agent's first loop interval. Taken when the
+    test runs, not at import: a long parallel run starts a test minutes after that."""
+    return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)
+
+
 GONE = "its window closed without a session-end hook"
 
 
@@ -207,9 +212,9 @@ def windows(monkeypatch):
 def test_an_agent_whose_window_is_gone_two_passes_in_a_row_has_ended(repo, fake_tmux, windows):
     _session_with_worker(repo)
     windows["s"] = ["supervisor"]
-    missing = runtime.check_windows("s", set(), LATER)
+    missing = runtime.check_windows("s", set(), later())
     assert missing == {"w1"} and state.get_agent("s", "w1").status == state.STARTING
-    assert runtime.check_windows("s", missing, LATER) == {"w1"}
+    assert runtime.check_windows("s", missing, later()) == {"w1"}
     assert state.get_agent("s", "w1").status == state.STOPPED
     assert runtime.status_reason("s", "w1") == GONE
     assert _from_lado("supervisor")[-1].startswith(f"w1 stopped ({GONE})")
@@ -218,11 +223,11 @@ def test_an_agent_whose_window_is_gone_two_passes_in_a_row_has_ended(repo, fake_
 def test_a_window_back_in_the_next_pass_ends_nothing(repo, fake_tmux, windows):
     _session_with_worker(repo)
     windows["s"] = ["supervisor"]
-    missing = runtime.check_windows("s", set(), LATER)
+    missing = runtime.check_windows("s", set(), later())
     windows["s"] = ["supervisor", "w1"]
-    assert runtime.check_windows("s", missing, LATER) == set()
+    assert runtime.check_windows("s", missing, later()) == set()
     windows["s"] = ["supervisor"]
-    assert runtime.check_windows("s", set(), LATER) == {"w1"}
+    assert runtime.check_windows("s", set(), later()) == {"w1"}
     assert state.get_agent("s", "w1").status == state.STARTING
 
 
@@ -243,5 +248,5 @@ def test_a_failing_window_list_changes_nothing(repo, fake_tmux, monkeypatch):
 
     monkeypatch.setattr(tmux, "list_windows", fails)
     with pytest.raises(tmux.TmuxError):
-        runtime.check_windows("s", {"w1"}, LATER)
+        runtime.check_windows("s", {"w1"}, later())
     assert state.get_agent("s", "w1").status == state.STARTING

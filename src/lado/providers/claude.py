@@ -3,6 +3,8 @@
 import hashlib
 import json
 import shutil
+import subprocess
+from pathlib import Path
 
 from lado import state
 from lado.providers import base
@@ -175,6 +177,24 @@ class ClaudeProvider(base.Provider):
         # Blocking the stop makes Claude Code continue with `reason` as its next input.
         return json.dumps({"decision": "block", "reason": text})
 
+    def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
+        # Claude Code asks whether to trust a folder it does not trust before any hook runs,
+        # and no flag, permission mode or setting skips the question; its default answer,
+        # "No, exit", ends it. LADO only reads whether it trusts the folder: recording the
+        # trust is the human's, in Claude Code's global config (see _trusted).
+        try:
+            trusted = _trusted(Path(cwd), env)
+        except (OSError, ValueError) as error:
+            repo = _main_root(Path(cwd))
+            return base.Blocker(warning=f"cannot tell whether {self.title} trusts {repo}: {error}")
+        if trusted:
+            return base.Blocker()
+        return base.Blocker(
+            reason=f"{self.title} asks whether to trust {_main_root(Path(cwd))}: in its "
+            'terminal choose "Yes, I trust this folder" (Enter alone answers "No, exit" and '
+            "closes the agent)"
+        )
+
 
 def _request_key(data: dict) -> str:
     """The key of the dialog a hook is about: the tool call (its tool and input), or the MCP
@@ -189,3 +209,68 @@ def _request_key(data: dict) -> str:
             tool_input = {"questions": tool_input.get("questions")}
         about = ["tool", data.get("tool_name", ""), tool_input]
     return hashlib.sha256(json.dumps(about, sort_keys=True).encode()).hexdigest()[:16]
+
+
+# Where Claude Code 2.1.291 keeps whether it trusts a folder (read in its binary, not
+# triggered by hand): projects[<folder>].hasTrustDialogAccepted in its global config,
+# <config home>/.config.json of older versions if that exists, else .claude.json in
+# $CLAUDE_CONFIG_DIR or the home folder; the config home is $CLAUDE_CONFIG_DIR or
+# ~/.claude. A folder is trusted by its git repository's main root (the main repo of a
+# worktree), or by itself or a folder above it up to its git root, each by its real path.
+def _trusted(cwd: Path, env: dict[str, str]) -> bool:
+    """Whether Claude Code, started in `cwd` with `env`, trusts the folder. Reads only the
+    config's projects; ValueError, naming the file, when it cannot be read. No config:
+    none."""
+    home = Path(env.get("HOME") or Path.home())
+    config_dir = env.get("CLAUDE_CONFIG_DIR")
+    path = Path(config_dir or home / ".claude") / ".config.json"
+    if not path.exists():
+        path = Path(config_dir or home) / ".claude.json"
+    try:
+        config = json.loads(path.read_text())
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{path}: {error}") from error
+    if not isinstance(config, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    projects = config.get("projects", {})
+    if not isinstance(projects, dict):
+        raise ValueError(f"{path}: its projects are not a JSON object")
+
+    def trusts(folder: Path) -> bool:
+        project = projects.get(str(folder))
+        return isinstance(project, dict) and project.get("hasTrustDialogAccepted") is True
+
+    if trusts(_main_root(cwd)):
+        return True
+    root, folder = _git_root(cwd), cwd.resolve()
+    while True:
+        if trusts(folder):
+            return True
+        if folder == root or folder == folder.parent:
+            return False
+        folder = folder.parent
+
+
+def _git(cwd: Path, *args: str) -> str | None:
+    done = subprocess.run(
+        ["git", "-C", str(cwd), "rev-parse", "--path-format=absolute", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _git_root(cwd: Path) -> Path:
+    """The real path of `cwd`'s git work tree, or of the root folder outside git."""
+    top = _git(cwd, "--show-toplevel")
+    return Path(top).resolve() if top else Path(cwd.resolve().anchor)
+
+
+def _main_root(cwd: Path) -> Path:
+    """The real path of the main work tree of `cwd`'s repository (the main repo of a linked
+    worktree); `cwd` itself outside git."""
+    common = _git(cwd, "--git-common-dir")
+    return Path(common).resolve().parent if common else cwd.resolve()

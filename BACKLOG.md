@@ -1128,3 +1128,13 @@ test_layout::test_a_chip_opens_its_agents_terminal…, and vitest `findBy…` wa
 Wanted: `make check` gives the same verdict under load (time bounds that hold under
 parallel load, or `-n` chosen by the machine's load), so a red run means a real failure.
 Found: 2026-10-06, review of fix/deliver-on-idle.
+
+## Flaky terminal socket test: input checked before it is written
+
+`tests/test_terminal_socket.py::test_control_takes_input_and_resize` failed once in CI
+(Python 3.13, run 37426821369): `written` was `[b'ls\r']` without the `é`. The test takes
+the `done` output frame as proof that all input was handled, but output and input are
+separate tasks in the socket, so `done` can arrive before the last input is written.
+Passed on rerun and locally. Wanted: wait for the written input itself (poll `written`
+with a timeout), not for an unrelated output frame.
+Found: 2026-10-06, CI before the 0.23.0 release.

@@ -481,6 +481,25 @@ def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
     assert fake_tmux[-1][0] == "send_text"  # confirmed, so not delivered again
 
 
+def test_a_message_the_loop_types_in_while_it_is_sent_is_reported_sent(
+    repo, fake_tmux, monkeypatch
+):
+    """The session loop's sweep may hand the message over between the sender's queue and
+    its look at the agent: the agent is busy then, with this message."""
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    queue_message = state.queue_message
+
+    def queue_then_loop_pass(*args, **kwargs):
+        queued = queue_message(*args, **kwargs)
+        runtime.sweep("s")
+        return queued
+
+    monkeypatch.setattr(state, "queue_message", queue_then_loop_pass)
+    assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
+    assert _typed(fake_tmux, "w1") == ["[from supervisor] hi"]
+
+
 def test_an_agent_being_typed_into_never_looks_idle(repo, fake_tmux, monkeypatch):
     """Taken from the queue and the agent busy in one step: no one sees the agent idle
     with a message on its way in."""

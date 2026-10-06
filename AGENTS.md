@@ -461,9 +461,10 @@ fixes and docs only: no new feature, no API or schema change.
   task, a conversation start, a turn's end; at a turn's end in the hook's output where the
   provider can, else typed in), and by `runtime.sweep` when the agent is idle with nothing
   typed and unconfirmed (checked as the queue is taken), so the session loop types in
-  within one pass what every hook missed. A sender queues first and reads the status
-  second, a hook sets idle first and takes the queue second: exactly one of them hands a
-  message over. LADO types only into an idle agent, never into one that is waiting,
+  within one pass what every hook missed. A sender queues first and takes the queue of an
+  idle agent second (the same check as the sweep's), a hook sets idle first and takes the
+  queue second: exactly one of them hands a message over, and the sender's reply says
+  `sent` also when a hook or the loop handed its message over in between. LADO types only into an idle agent, never into one that is waiting,
   starting or stopped, and a new message waits while one typed before is unconfirmed.
 - What happens to an unconfirmed message is one rule, `runtime.sweep`, run by `send_message`
   to the agent, by each of its hooks that makes it idle, and every `loop.INTERVAL`

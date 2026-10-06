@@ -770,10 +770,10 @@ def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
     if to == SUPERVISOR:
         return post(session, state.HUMAN, to, summary, body)
     with _to_running(session):
-        state.queue_with_copy(
+        message = state.queue_with_copy(
             session, state.HUMAN, to, summary, body, SUPERVISOR, lambda id: _copy(to, summary, id)
         )
-    result = _deliver(session, to)
+    result = _deliver(session, to, message)
     supervisor = state.get_agent(session, SUPERVISOR)
     if supervisor is not None and supervisor.status != state.STOPPED:
         _deliver(session, SUPERVISOR)
@@ -857,7 +857,7 @@ def _reply(
     if not reply:
         now = state.get_message(session, question.id)
         raise LadoError(f"question #{question.id} is {now.question_state}")
-    return _deliver(session, question.sender)
+    return _deliver(session, question.sender, reply)
 
 
 MAX_CHOICES = 6
@@ -923,8 +923,8 @@ def post(
         state.queue_message(session, sender, recipient, summary, body, state.DELIVERED)
         return TO_HUMAN
     with _to_running(session, or_human):
-        state.queue_message(session, sender, recipient, summary, body)
-    return _deliver(session, recipient)
+        message = state.queue_message(session, sender, recipient, summary, body)
+    return _deliver(session, recipient, message)
 
 
 @contextlib.contextmanager
@@ -940,18 +940,27 @@ def _to_running(session: str, or_human: bool = False) -> Iterator[None]:
         raise LadoError(f"{refused}; running agents: {names}{human}") from None
 
 
-def _deliver(session: str, recipient: str) -> str:
-    """Deliver the recipient's queued messages now if it is idle."""
+def _deliver(session: str, recipient: str, message: int | None = None) -> str:
+    """Deliver the recipient's queued messages now if it is idle; says what became of
+    `message`, the one just queued."""
     # What was typed before and never confirmed goes first, with this one if typed again.
     _sweep_sent(session, recipient, time.time(), RETRY_DELAYS)
-    # Queue first, read the status second: a hook that makes the agent idle does the
-    # reverse, so a message is never left behind by an agent that went idle in between.
+    # Queue first, then take the queue of an idle agent: a hook that makes the agent idle
+    # does the reverse, so a message is never left behind by an agent that went idle in
+    # between.
+    if deliver_pending(session, recipient, idle_only=True):
+        return "sent"
+    # Someone else may have handed it over since it was queued: such a hook, or the
+    # session loop's sweep. The agent is busy now, with this message.
+    queued = state.get_message(session, message) if message is not None else None
+    if queued is not None and queued.state != state.PENDING:
+        return "sent"
     status = state.get_agent(session, recipient).status
     if status != state.IDLE:
         return f"queued; {recipient} is {status} and will get it when it is idle"
     if state.has_sent(session, recipient):
         return f"queued; {recipient} has not confirmed the message typed before"
-    return "sent" if deliver_pending(session, recipient) else "queued"
+    return "queued"
 
 
 def deliver_pending(session: str, recipient: str, idle_only: bool = False) -> bool:

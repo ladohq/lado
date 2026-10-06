@@ -110,6 +110,8 @@ Cursor; Claude Code and Codex through adapters).
 - [ ] ACP runtime behind the same provider interface as tmux
 - [ ] UI renders ACP sessions and permission requests
 - [ ] Dogfooding moves to the ACP runtime
+- [ ] With LADO driving the agent's input, a message pasted into the supervisor's window no
+  longer carries the human's unsent draft typed there (the UI's composer already avoids it)
 
 ## Stage 9: Task trackers
 

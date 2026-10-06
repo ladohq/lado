@@ -550,6 +550,8 @@ w1, so finishing w1 kept the worktree (`assert not os.path.exists(run.worktree)`
 rerun passed. In the next round (load average ~135 just before) all three failed at once
 and passed on the rerun: Kilo's supervisor spawned `worker` and cancelled the run,
 OpenCode's spawned `worker` for the flow and merged and finished w1 during the follow-up.
+On 2026-10-07 (run feature/turn-resume) OpenCode's supervisor merged and finished w1 during
+the follow-up in two runs in a row ("agent w1 is gone"); the third run passed.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
@@ -562,7 +564,8 @@ Size: S. Why here: a live-test flake, not in CI.
 timed out after 120 s "waiting for the supervisor to take the resume message": the
 supervisor got `session resumed: 0 open runs`, answered the human and was idle, but the
 line `[from lado] session resumed: 0 open runs` was not on its captured screen (Kilo's TUI
-had scrolled it away). Passed on the rerun with no change.
+had scrolled it away). Passed on the rerun with no change. Again on 2026-10-07 (live tests
+of run feature/turn-resume): the message was delivered, the rerun passed.
 Wanted: the test checks that the supervisor took the message by its delivery (state), not
 by the screen.
 Found: 2026-10-06, `make test-live` on main before the 0.22.0 release.

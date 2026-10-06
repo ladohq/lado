@@ -976,6 +976,21 @@ Wanted: one question card in the UI's chat with several questions, each with its
 and free answer, answered at once (an extension of `ask_human`, one message back to the agent).
 Found: 2026-10-06, design of run feature/turn-resume, by the human.
 
+## A session's history grows until `lado forget`, with no way to see or trim it
+
+Size: M. Why here: no failure yet, but lado.db only grows (session `lado` had about 5 MB of messages on 0.18.0) and the human cannot tell how much or clean it up in bulk.
+
+Messages, events and notes of a session stay in lado.db for good: `lado stop` and
+`finish_worker` only mark undelivered messages `dropped`, and only `lado forget <session>`
+deletes rows, one stopped session at a time, from the CLI. Nothing says how big lado.db or
+a session's history is. Agents are not affected: a resumed supervisor gets the open runs
+and their notes, never the chat, so this is storage only.
+Wanted: an explicit retention the human runs, never a silent age-based delete: `lado forget`
+of stopped sessions by age (e.g. `--older-than 30d`, listing what it deletes first), a
+`lado doctor` line with lado.db's size and its largest sessions, and Forget for a stopped
+session in the UI. Running sessions are never trimmed.
+Found: 2026-10-07, the human's question in session chat-history about how the chat grows.
+
 # P3: maybe never
 
 ## A server endpoint that writes makes lado.db when there is none

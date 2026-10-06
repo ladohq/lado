@@ -147,6 +147,23 @@ A kit's supervisor is no role: `--without agent:<name>` that names one is read a
 `agent:<name>@<its kit>` (so sessions of older LADOs resume as before); when several kits'
 supervisors have that name, give the kit.
 
+An agent of a kit lists its MCP servers (stdio only) in its frontmatter:
+
+```yaml
+mcp:
+  db:
+    command: ["${KIT_DIR}/bin/db-mcp", "--read-only"]
+    env: {DB_TOKEN: "${DB_TOKEN}", MODE: ro}
+```
+
+`${KIT_DIR}` is the kit's folder. `${NAME}` in `env` is a variable of the agent's
+environment (your login shell's, as a new terminal sees it): a missing one stops the agent's
+start. Its value is never written to disk: the agent's CLI starts such a server through
+LADO's wrapper (`python -m lado.mcp_exec`), whose arguments name the variables only; the
+wrapper takes the values from the environment the CLI passes on and starts the server.
+`lado doctor` warns about config folders under `LADO_HOME/agents/` that no running agent
+uses: an older LADO wrote such values there.
+
 ## The web UI
 
 ```bash

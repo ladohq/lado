@@ -29,16 +29,6 @@ traceback (now also from `migrate_if_safe` when an old database has unstopped se
 Wanted: `tmux.run` turns a missing binary into TmuxError with a clear text.
 Found: 2026-10-02, review of run fix/migration-guard.
 
-## Kit MCP secrets are written to disk
-
-Size: M. Why here: security: secrets lie in plain text under ~/.lado/agents.
-
-`${ENV_VAR}` values in a kit's MCP env are resolved by LADO and written into the per-agent
-config under `~/.lado/agents/`. Secrets should stay in the process environment: pass them
-to the agent's env and let each CLI expand them (Claude `${VAR}` in mcp.json, Kilo
-`{env:VAR}`), or start the MCP server through a LADO wrapper that reads them.
-Found: 2026-10-01, kits review.
-
 ## A failed rollback hides why a start or spawn failed
 
 Size: S/M. Why here: the real error is hidden and the session or worker stays half undone.
@@ -1280,3 +1270,17 @@ tmux not on the server's PATH) from `start_session` is a 500 "Internal Server Er
 the notes of a failed undo (`runtime._undo`, also on a `LadoError`) are not in the 400 either.
 Wanted: the API answers 400 with the error and its notes, as the CLI prints them.
 Found: 2026-10-06, fix/tmux-missing-rollback.
+
+## Live flow test fails while the passive supervisor has a kit MCP server (Kilo)
+
+Size: S. Why here: a live-test flake, not in CI.
+
+With an MCP server of its own on the passive supervisor (the token server of
+`check_mcp_token`), `test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed 3 times
+of 3 (kilo-auto/free): the supervisor spawned `worker` for the run besides w1, so finishing
+w1 kept the worktree; without that server it passed at once. Maybe chance (see the passive
+supervisors entry above), maybe the server changes what Kilo's model does. The token check
+now runs only in `test_worker_does_a_task_reports_and_gets_a_message`.
+Wanted: know whether a kit MCP server makes the passive supervisor act; then the check can
+go in both scenarios.
+Found: 2026-10-06, run feature/mcp-secrets, `make test-live PROVIDER=kilo`.

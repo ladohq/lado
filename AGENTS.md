@@ -39,7 +39,8 @@ replaces `-n auto` and takes any pytest options, e.g. `PYTEST_ARGS="-n0 -k gate 
 `uv run pytest` without `-n`. Live tests always run serially.
 
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
-instead of a real agent CLI. They use a temp `LADO_HOME` and their own tmux server
+instead of a real agent CLI; it keeps its logs (`inputs.jsonl`, `seen.json`) in
+`agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. They use a temp `LADO_HOME` and their own tmux server
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
 `LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is,
@@ -81,6 +82,9 @@ fixes and docs only: no new feature, no API or schema change.
     `[FAIL]`; exit 1 only for a `FAIL`). No provider is required: a missing one is `info`
     with its install hint, an installed one with an untested version `warn`, and only
     none installed is one `FAIL` (`Agent CLI: no agent CLI installed`, every install hint).
+    `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
+    running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
+    kit MCP secrets there.
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
     (`fetch_index`; `latest` skips pre-releases and yanked ones, `release` finds a named
     one), the one PEP 440 comparison (`newer`, `same`; not `gitcache.latest`, which sorts
@@ -149,7 +153,12 @@ fixes and docs only: no new feature, no API or schema change.
     permission rules). OpenCode and Kilo still read the user's global config and global
     skills (`~/.claude/skills`, `~/.agents/skills`; BACKLOG.md); LADO's keys go on top. A
     provider writes the agent's config, returns its argv and env and translates its hook
-    events; `first_hook_blocker(cwd, env)` (a `Blocker`: `reason`, `warning`) says what its
+    events. The config goes in the agent's config folder, `LADO_HOME/agents/<session>/<agent>/`
+    (`base.config_path`), which exists only while the agent runs: each launch writes it anew,
+    and finishing a worker, an agent's end (`agent_ended`), `lado stop` (also `--all`),
+    `lado forget` and a start or resume (what is left of the session's) remove it
+    (`base.remove_config_dir`, `remove_session_config_dirs`); nothing of the CLI's own goes
+    there. `first_hook_blocker(cwd, env)` (a `Blocker`: `reason`, `warning`) says what its
     CLI will ask the human before any hook (How agents talk). Only Claude Code asks: whether
     to trust the folder, read from `projects[<folder>].hasTrustDialogAccepted` in its global
     config (`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, an older
@@ -171,6 +180,17 @@ fixes and docs only: no new feature, no API or schema change.
     user's tmux.conf allows that (a human's `rename-window` still would).
   - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`,
     and `command`, the window's command that runs the agent with exactly that environment.
+  - `mcp_exec.py`: a kit's MCP server whose `env` refers to `${NAME}`: its value never goes
+    on disk. `kits.ResolvedAgent.mcp_servers` checks each name is set in the agent's
+    environment (else `KitError`, before the start) and gives the CLI the command
+    `python -m lado.mcp_exec --name <server> <templates> -- <command...>` (`wrap`), with
+    only the literals in `env`; the templates are JSON in base64, so no CLI expands them
+    (Claude Code expands `${VAR}` in a server's args, OpenCode and Kilo `{env:VAR}` and
+    `{file:...}`). The CLI passes its whole environment, the agent's, to a stdio server
+    (checked by hand: providers/claude.py, opencode_family.py); the wrapper fills the
+    templates from it (`expand`; an unset name is one line on stderr and exit 1) and execs
+    the server. Only the standard library; `VARIABLE`, `references` and `expand` are the
+    one parser of `${NAME}`, also kits.py's.
   - `terminal.py`: an agent's terminal for the UI (design in
     [docs/design/ui.md](docs/design/ui.md), section Terminal): `open` (a viewer tmux session
     with the agent's window linked in and a `tmux attach` on a pty), `history`, `NoTerminal`,
@@ -432,7 +452,9 @@ fixes and docs only: no new feature, no API or schema change.
   `SHLVL` and `_`, and a parent Claude Code's variables are dropped; LADO's variables, then
   the provider's go on top. A tmux window starts with its server's environment, so the
   window runs `python -m lado.agent_env <file> <argv>`: it reads that environment from a file
-  in the agent's config folder (mode 600, removed once read), keeps tmux's own `TERM`,
+  in the agent's config folder (`env.json`, mode 600 also when it was there before, removed
+  once read; the one file under `LADO_HOME/agents/` that holds the values of a kit's MCP
+  `env`, see `mcp_exec.py`), keeps tmux's own `TERM`,
   `TERM_PROGRAM(_VERSION)`, `TMUX` and `TMUX_PANE`, and execs the agent's CLI, found on the
   resolved `PATH`. `lado doctor` shows the source and how long the shell takes (a warning
   above 2 s).

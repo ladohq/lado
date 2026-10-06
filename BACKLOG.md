@@ -575,6 +575,10 @@ nothing, once called `finish_worker(name="w1", discard=true)` after the run ende
 is gone"), once spawned its own worker `worker` for the step before the test's w1 (the run's
 move was by `worker`). The third run passed. The free model does not keep to the passive
 role when LADO's messages ("step needs a worker", "run ended") reach it.
+Also on OpenCode: `test_worker_does_a_task_reports_and_gets_a_message[opencode]` on
+`opencode/nemotron-3-ultra-free` failed once in two runs (2026-10-06, feature/agent-liveness):
+the supervisor merged w1's branch and called `finish_worker(name="w1")` before the test's
+check of the human's message ("agent w1 is gone"); the rerun passed.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.

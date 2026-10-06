@@ -8,17 +8,6 @@ P3 maybe never (candidates for removal); a new entry goes into its tier with a `
 
 # P0: fix now
 
-## A message handed over by the turn-end hook can be lost silently
-
-Size: M. Why here: it breaks "No silent drops" directly: hooks.py:94 marks messages delivered before the hook's output is printed.
-
-At turn end with `deliver_on_turn_end`, the pending messages are marked `delivered` before
-the hook prints them (`hooks.py`, TURN_END). An exception after the take, or a CLI that
-ignores the output, loses them; only `hooks.log` may show it. Against "No silent drops".
-Wanted: the messages count as delivered only when the agent's prompt shows them, or a
-failure puts them back in the queue.
-Found: 2026-10-06, check of the Inbox architecture candidate.
-
 ## A missing tmux binary gives raw errors: a CLI traceback, a ghost worker
 
 Size: S. Why here: a ghost worker is left and the spawn's own rollback fails; one fix in `tmux._run_once` (tmux.py:89-104 catches only TimeoutExpired, FileNotFoundError escapes).
@@ -39,28 +28,6 @@ Without tmux installed, `tmux.run` raises FileNotFoundError, not TmuxError, so t
 traceback (now also from `migrate_if_safe` when an old database has unstopped sessions).
 Wanted: `tmux.run` turns a missing binary into TmuxError with a clear text.
 Found: 2026-10-02, review of run fix/migration-guard.
-
-## A hook that makes an agent idle types new messages while one typed before is unconfirmed
-
-Size: S. Why here: the code departs from AGENTS.md's delivery rule (hooks.py:93 without `idle_only`); one change.
-
-`hooks._idle` hands over the queue with `deliver_pending` without `idle_only`, as the
-turn-end and conversation-start hooks did before: at a turn's end or a conversation's start
-the queue is typed in even while a message typed earlier (one a dialog swallowed, say) is
-still `sent`. AGENTS.md says "a new message waits while one typed before is unconfirmed";
-the sender's path and the sweep keep that rule, the hooks do not.
-Wanted: one rule, decided and kept by code and text alike (the hooks take the queue with
-`idle_only`, or AGENTS.md says where the rule does not hold and why).
-Found: 2026-10-06, review of fix/deliver-on-idle.
-
-## The supervisor's copy of the human's message stays pending while it is stopped
-
-Size: S. Why here: a silent pending message (state.py:1470-1492 checks only the recipient); cheap.
-
-`queue_with_copy` queues the "human wrote to <agent>" copy for the supervisor in the same
-transaction; when the supervisor is stopped, the copy stays `pending` with no notice.
-Wanted: the copy is dropped or reported when the supervisor is not running.
-Found: 2026-10-06, check of the Inbox architecture candidate.
 
 ## Kit MCP secrets are written to disk
 
@@ -629,6 +596,13 @@ Again on Kilo (2026-10-06, feature/trust-dialog): the supervisor spawned `worker
 step besides w1, so finishing w1 kept the run's worktree; the rerun passed. The same day on
 Claude Code (haiku): the passive supervisor spawned `worker`, which advanced the run instead
 of w1; the rerun passed.
+Also on Claude Code (2.1.291, haiku; 2026-10-06, feature/delivery):
+`test_a_flow_run_moves_on_when_its_worker_reports[claude]`, the supervisor got "step step
+needs a worker" at once (it was idle) and spawned `worker` for the run besides the test's
+w1, so finishing w1 kept the worktree (`assert not os.path.exists(run.worktree)`); the
+rerun passed. In the next round (load average ~135 just before) all three failed at once
+and passed on the rerun: Kilo's supervisor spawned `worker` and cancelled the run,
+OpenCode's spawned `worker` for the flow and merged and finished w1 during the follow-up.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
@@ -950,27 +924,32 @@ cwd and the test's start time; the test layer asks the provider for their locati
 above providers/ learns a provider's paths.
 Found: 2026-10-02, review of run fix/live-test-keeps-logs.
 
-## Message delivery: channels not named, the rule spread over runtime, state and hooks
+## Message delivery is spread over runtime, state and hooks
 
-Size: L. Why here: one architecture task of delivery; name the channels (a document, S) before stage 8, which waits for ACP v2; the refactor after the delivery fixes of P0.
+Size: L. Why here: one architecture task of delivery; before stage 8 (ACP) adds a channel.
 
-### Delivery channels with different guarantees are not named
-
-A message reaches an agent four ways: typed into tmux (`sent`, confirmed by prompt-submit,
-retried, can fail), the turn-end hook's output (`delivered` at once, no confirmation), the
-command line (first input, resume) and the human's UI. Confirm and retry are properties of
-tmux typing, not of delivery. Wanted: for Stage 8 (ACP), name the channels and their
-guarantees, so the tmux retry rule does not become the core's rule.
-Found: 2026-10-06, check of the Inbox architecture candidate.
-
-### Message delivery is spread over runtime, state and hooks
-
-The delivery rule (How agents talk) lives in `runtime.py` (post, _deliver, sweep, _plan),
-`state.py` (take_pending, sweep, seen, confirm_sent) and `hooks.py`; its ordering against
-the turn-end hook is held by comments. It is correct (checked 2026-10-06) but hard to read
-and test as one rule. Wanted: one module for delivery, with tests through its interface.
-Low priority: no bug depends on it.
+The delivery rule (How agents talk) lives in `runtime.py` (post, _deliver, hand_over, sweep,
+_plan), `state.py` (take_pending, sweep, seen, confirm_sent, confirm_channel) and
+`hooks.py` (at a turn's end: confirm the hook-output batch, idle, hand over, sweep). Since
+feature/delivery the channels are named (`messages.channel`: `typed`, `hook_output`), every
+path takes the queue through `runtime.hand_over`, and the hook order is in `hooks._idle`'s
+docstring; the first input (start, resume) is still taken in `runtime.start_session` with
+`take_pending` as delivered. It is correct but hard to read and test as one rule. Wanted:
+one module for delivery, with tests through its interface. Low priority: no bug depends on
+it.
 Found: 2026-10-06, architecture review and its check (session improve-architecture).
+
+## The OpenCode-family plugin swallows the failures of its own hook commands
+
+Size: S. Why here: a hook command that cannot start or fails leaves no trace; the agent's status or queue then waits for the sweep or the human.
+
+`opencode_plugin.js` runs `lado hook <event>` through `run`, which resolves "" on a spawn
+error or a failing process: a `session.idle` hook that cannot run hands over nothing, a
+`chat.message` one confirms nothing, and nothing says why. Since feature/delivery a failed
+`promptAsync` is reported with `plugin.error` (hooks.log). Wanted: `run`'s failures go
+through `plugin.error` too (a spawn error, a non-zero exit with the end of its stderr),
+without a loop when `plugin.error` itself cannot run.
+Found: 2026-10-06, architect's review of feature/delivery.
 
 ## An open run's task cannot be amended
 
@@ -1026,6 +1005,19 @@ server sends an error frame and then closes with the same reason. Now that the
 supervisor's tab is always shown, every stopped session's page shows it twice.
 Wanted: one line with the reason (the notice left out when it repeats the close reason).
 Found: 2026-10-03, UI e2e screenshots of feature/ui-polish.
+
+## A sent batch of a busy agent that a hook ran after waits without a limit
+
+Size: S. Why here: no loss, but the agent shows busy with an unconfirmed batch until the human types; rare.
+
+`runtime._plan` does nothing with a sent message whose agent ran a hook after it was handed
+over (`seen_at >= sent_at`) while the agent is still `busy`: no retype, no requeue, never
+failed. It happens when a late async hook of the turn before (Claude Code's PostToolUse)
+runs after the hand-over and the CLI did not take the text: the agent stays busy with its
+batch unconfirmed until the human types in its window.
+Wanted: a limit for that case too (e.g. after the last delay: failed with the notice, or
+waiting with a reason), in the one rule of `_plan`.
+Found: 2026-10-06, review of feature/delivery.
 
 # P3: maybe never
 

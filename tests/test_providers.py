@@ -29,6 +29,9 @@ def test_registry():
         ("SessionStart", {"source": "startup"}, Event(providers.SESSION_START)),
         ("UserPromptSubmit", {"prompt": "hi"}, Event(providers.PROMPT_SUBMIT, "hi")),
         ("Stop", {}, Event(providers.TURN_END)),
+        ("Stop", {"stop_hook_active": False}, Event(providers.TURN_END)),
+        # The turn went on from what the previous Stop hook printed.
+        ("Stop", {"stop_hook_active": True}, Event(providers.TURN_END, continued=True)),
         ("SessionEnd", {}, Event(providers.SESSION_END)),
         ("SessionEnd", {"reason": "prompt_input_exit"}, Event(providers.SESSION_END)),
         ("SessionEnd", {"reason": "other"}, Event(providers.SESSION_END)),
@@ -549,6 +552,12 @@ def test_opencode_declares_its_permission_modes_and_version():
         ("question.rejected", {"id": "que_1"}, Event(providers.RESUMED, key="que_1")),
         ("dispose", {}, Event(providers.SESSION_END)),
         ("session.created", {}, None),
+        # The plugin could not hand the turn-end hook's output on.
+        (
+            "plugin.error",
+            {"sessionID": "x", "error": {"name": "promptAsync", "message": "fetch failed"}},
+            Event(providers.HOOK_ERROR, error="promptAsync: fetch failed"),
+        ),
     ],
 )
 def test_opencode_family_maps_native_events(provider, native, payload, expected):
@@ -593,6 +602,39 @@ def test_opencode_turn_end_prints_queued_messages(repo, fake_tmux):
     assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_opencode_family_confirms_the_turn_end_output_by_the_prompt_it_makes(
+    repo, fake_tmux, provider
+):
+    runtime.start_session(str(repo), "s", None, provider)
+    runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
+    cli = providers.get(provider)
+    text = hooks.handle(cli, cli.parse_event("session.idle", "{}"), "s", "supervisor")
+    [done] = state.list_messages("s")
+    assert (done.state, done.channel) == (state.SENT, state.HOOK_OUTPUT)
+    # The plugin's promptAsync makes it the next user message: "chat.message" runs for it.
+    prompt = json.dumps({"sessionID": "ses_1", "prompt": text})
+    hooks.handle(cli, cli.parse_event("chat.message", prompt), "s", "supervisor")
+    assert state.list_messages("s")[0].state == state.DELIVERED
+
+
+def test_output_the_plugin_could_not_hand_on_is_logged_and_typed_in_after_the_delay(
+    repo, fake_tmux
+):
+    runtime.start_session(str(repo), "s", None, "opencode")
+    runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
+    cli = providers.get("opencode")
+    assert hooks.handle(cli, cli.parse_event("session.idle", "{}"), "s", "supervisor")
+    payload = {"sessionID": "ses_1", "error": {"name": "promptAsync", "message": "fetch failed"}}
+    hooks.handle(cli, cli.parse_event("plugin.error", json.dumps(payload)), "s", "supervisor")
+    log = (state.home() / "hooks.log").read_text()
+    assert log == "s/supervisor: promptAsync: fetch failed\n"
+    # The CLI never took the output: as for any hand-over no hook followed, sweep types it.
+    [done] = state.list_messages("s")
+    runtime.sweep("s", now=done.sent_at + runtime.RETRY_DELAYS[0])
+    assert fake_tmux[-1] == ("send_text", "s", "supervisor", "[from w1] done")
+
+
 def test_turn_end_hands_over_queued_messages_without_an_idle_moment(repo, fake_tmux, monkeypatch):
     """No one sees the messages delivered and the agent idle, as if it were done with them
     before it got them."""
@@ -604,7 +646,8 @@ def test_turn_end_hands_over_queued_messages_without_an_idle_moment(repo, fake_t
 
     def spy(*args, **kwargs):
         taken = take_pending(*args, **kwargs)
-        status_once_delivered.append(state.get_agent("s", "supervisor").status)
+        if taken:
+            status_once_delivered.append(state.get_agent("s", "supervisor").status)
         return taken
 
     monkeypatch.setattr(state, "take_pending", spy)

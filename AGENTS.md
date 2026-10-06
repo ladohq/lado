@@ -328,7 +328,10 @@ fixes and docs only: no new feature, no API or schema change.
     with a `MarketplaceInfo`. From schema 18 the `kits` table (name, address, tag, commit, folder,
     marketplace, installed_at, updated_at; a CHECK: an address with its tag and commit, or a
     folder) holds the installed kits, journaled the same way (session `''`, an
-    `InstalledKitInfo`; each item only its own row and files).
+    `InstalledKitInfo`; each item only its own row and files). From schema 19 a message
+    keeps the channel it was handed over by, `messages.channel` (`typed`, `hook_output`;
+    NULL while pending and for a first input or the human's UI; How agents talk; not in the
+    API).
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -522,7 +525,8 @@ fixes and docs only: no new feature, no API or schema change.
   only through the server's API; to the supervisor by default) through the same queue,
   confirmation and retries, and the agent gets `[from human] ...`; when the human writes to
   another agent, the supervisor gets a one-line copy from `lado`, `human wrote to <agent>:
-  <summary> (#<id>)`, queued in the same transaction (answers and dismissals get none). An answer
+  <summary> (#<id>)`, queued in the same transaction (answers and dismissals get none), and
+  only while the supervisor runs: a stopped one would never get it, so there is none. An answer
   (`Answer to #<id>: ...`) or dismissal (`Dismissed #<id>`) comes to the agent the same way.
   No agent may be named `human` or `lado` (`state.RESERVED`). Messages to `human` are never
   dropped (stop, finish), and a forgotten agent's open questions are `closed`. LADO's
@@ -536,28 +540,60 @@ fixes and docs only: no new feature, no API or schema change.
   its command line. When it is longer than 2000 characters (tmux refuses commands over about
   16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its
   one line and reads the text with `read_messages`. The worker's task is still the full text.
-- A message to an idle agent is pasted into its window and stays `sent` until the agent's
-  prompt-submit hook sees its line (then `delivered`). A paste that ends in a backslash
-  gets a space after it (`tmux.send_text`): Claude Code reads `\` + Enter as a line break
-  and would not submit it; Kilo and OpenCode submit either. A busy, waiting or starting agent's
-  queue is handed over on every switch to idle (`hooks._idle`: its session start without a
-  task, a conversation start, a turn's end; at a turn's end in the hook's output where the
-  provider can, else typed in), and by `runtime.sweep` when the agent is idle with nothing
-  typed and unconfirmed (checked as the queue is taken), so the session loop types in
-  within one pass what every hook missed. A sender queues first and takes the queue of an
-  idle agent second (the same check as the sweep's), a hook sets idle first and takes the
-  queue second: exactly one of them hands a message over, and the sender's reply says
-  `sent` also when a hook or the loop handed its message over in between (and refuses, as
-  for an agent not running, when the agent was finished or stopped in between). LADO types
-  only into an idle agent, never into one that is waiting, starting or stopped, and a new
-  message waits while one typed before is unconfirmed.
-- What happens to an unconfirmed message is one rule, `runtime.sweep`, run by `send_message`
-  to the agent, by each of its hooks that makes it idle, and every `loop.INTERVAL`
-  seconds by the session loop (below). Each paste is an attempt; after the n-th, the message is left alone for
-  `RETRY_DELAYS[n-1]` seconds (15, 30, 60). Then: if no hook of the agent ran since the paste
-  (`agents.seen_at`; a dialog took the text) and the agent is busy, it is pasted again with
-  the queue; if hooks ran but no prompt held its line and the agent is idle, it goes back to
-  the queue and is delivered as usual. After `1 + len(RETRY_DELAYS)` pastes and the last
+- A queue is handed over by one of two channels, kept with each message
+  (`messages.channel`), and stays `sent` until the agent confirms it (then `delivered`):
+  - `typed`: pasted into the agent's window, confirmed when its prompt-submit hook sees
+    the message's line. A paste that ends in a backslash gets a space after it
+    (`tmux.send_text`): Claude Code reads `\` + Enter as a line break and would not submit
+    it; Kilo and OpenCode submit either.
+  - `hook_output`: at a turn's end, where the provider can (`deliver_on_turn_end`) and the
+    CLI does not ignore the output (`Event.output_ignored`), carried on in the turn-end
+    hook's output. Kilo and OpenCode: the plugin sends it with `promptAsync` as the next
+    user message, for which `chat.message` runs, so it is confirmed by its line as typed
+    text is (Kilo 7.8.3, OpenCode 1.18.34, read in their bundles; the live test checks it);
+    a `promptAsync` that fails is reported by the plugin as `plugin.error` (the neutral
+    `HOOK_ERROR`), one line in `hooks.log`, and is no sign of life. Claude Code runs no
+    UserPromptSubmit for a Stop hook's `block` reason; the Stop that ends the turn it went
+    on to has `stop_hook_active` true (`Event.continued`; checked by hand with 2.1.291,
+    also after two blocks in a row), which confirms the agent's `hook_output` messages, and
+    only those: another Stop hook of the user's may have made the turn go on too.
+  Every path takes the queue the same way, `runtime.hand_over`: only from an idle agent
+  with no batch sent and unconfirmed (checked as the queue is taken), which is then busy;
+  so an agent has at most one sent batch at a time, and a new message waits while one
+  handed over before is unconfirmed. A busy, waiting or starting agent's queue is handed
+  over on every switch to idle (`hooks._idle`: its session start without a task, a
+  conversation start, a turn's end), and by `runtime.sweep` when the agent is idle, so the
+  session loop types in within one pass what every hook missed. At a turn's end the order
+  is: confirm the `hook_output` batch the turn went on from, check the replies to the
+  human, set idle, hand over, sweep; so a chain of turns that go on from the hook's output
+  gets each new batch at once. A sender queues first and takes the queue of an idle agent
+  second, a hook sets idle first and takes the queue second: exactly one of them hands a
+  message over, and the sender's reply says `sent` also when a hook or the loop handed its
+  message over in between (and refuses, as for an agent not running, when the agent was
+  finished or stopped in between). A queue is taken only so; the one exception is the
+  first input (below and above), taken as `delivered` with no channel. What was handed
+  over and is unconfirmed is typed again only by the sweep's rule (below), also into a
+  busy agent whose window shows no sign of having taken it; never into one that is
+  waiting, starting or stopped.
+- What happens to an unconfirmed message is one rule, `runtime.sweep` (`_plan`), run by
+  `send_message` to the agent, by each of its hooks that makes it idle, and every
+  `loop.INTERVAL` seconds by the session loop (below). Each hand-over is an attempt; after
+  the n-th, the message is left alone for `RETRY_DELAYS[n-1]` seconds (15, 30, 60). Then,
+  by its channel:
+  - `hook_output` (its first attempt): if no hook of the agent ran since (the CLI did not
+    take the output, the hook failed after the hand-over, or the turn goes on that long
+    without a hook), it is typed in, once, with the queue, and is `typed` from then on: a
+    turn that did take it gets it twice, which is better than never (the human's
+    decision). It never fails by this channel. A batch the CLI did not take stops waiting
+    for a turn that goes on from it, so a later turn another Stop hook makes go on never
+    confirms it: a turn's end without `Event.continued`, or a hook that fails after the
+    hand-over (`hooks.main`, its own batch only), makes it `typed`
+    (`state.output_not_taken`), and the rule below takes it on: with the agent idle, it
+    goes back to the queue after the delay and is typed in by the same sweep.
+  - `typed`: if no hook of the agent ran since the paste (`agents.seen_at`; a dialog took
+    the text) and the agent is busy, it is pasted again with the queue; if hooks ran but no
+    prompt held its line and the agent is idle, it goes back to the queue and is delivered
+    as usual. After `1 + len(RETRY_DELAYS)` attempts and the last
   delay it is `failed` (`lado log`): the agent is set `waiting`, `lado ls` and
   `list_agents` (`status_reason`) say why and what the human can do (until the agent's next
   hook), and nothing more is typed into it in that sweep; the messages typed together with

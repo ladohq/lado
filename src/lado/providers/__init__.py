@@ -3,6 +3,7 @@
 from lado.providers.base import (
     CONVERSATION_END,
     CONVERSATION_START,
+    HOOK_ERROR,
     PROMPT_SUBMIT,
     RESUMED,
     SESSION_END,
@@ -25,6 +26,7 @@ from lado.providers.opencode import OpenCodeProvider
 __all__ = [
     "CONVERSATION_END",
     "CONVERSATION_START",
+    "HOOK_ERROR",
     "PROMPT_SUBMIT",
     "RESUMED",
     "SESSION_END",

@@ -138,7 +138,7 @@ def test_an_agent_whose_cli_asks_first_waits_until_the_human_answers(session, mo
     assert (status("w1"), message_to("w1").state) == (state.WAITING, state.PENDING)
     tmux.send_text(SESSION, "w1", "yes")  # the human answers
     wait_for(lambda: "[from supervisor] hello" in inputs("w1"), "w1 to get its message")
-    assert message_to("w1").state == state.DELIVERED
+    wait_for(lambda: message_to("w1").state == state.DELIVERED, "w1 to confirm its message")
     assert runtime.status_reason(SESSION, "w1") is None
 
 
@@ -148,6 +148,18 @@ def test_an_agent_whose_cli_asks_first_and_ends_on_no_is_found_stopped(session, 
     tmux.run("send-keys", "-t", f"{SESSION}:w1", "Enter")  # "no": the CLI exits, no hook
     wait_status("w1", state.STOPPED, FOUND_GONE)
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
+
+
+def test_the_human_writes_to_a_worker_while_the_supervisor_is_stopped(session):
+    """No copy is queued for a supervisor that would never get it; the worker gets the text."""
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
+    wait_status("w1", state.IDLE)
+    runtime.send_message(SESSION, "human", "supervisor", "exit")
+    wait_status("supervisor", state.STOPPED)
+    runtime.write_as_human(SESSION, "sleep 0", to="w1")
+    wait_for(lambda: message_to("w1").state == state.DELIVERED, "w1 to get it")
+    assert "[from human] sleep 0" in inputs("w1")
+    assert from_lado("supervisor") == []
 
 
 def test_finishing_a_worker_tells_no_one_it_stopped(session):

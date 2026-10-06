@@ -37,8 +37,11 @@ class FakeProvider(base.Provider):
     install_hint = "part of the LADO tests"
     permission_modes = ()  # the fake agent asks for no permissions
 
-    def __init__(self, name: str, deliver_on_turn_end: bool):
+    def __init__(self, name: str, deliver_on_turn_end: bool, says_continued: bool = False):
         self.name = name
+        # Like Claude Code: no prompt-submit hook for the turn-end hook's output, and the
+        # turn's end says the turn went on from it (Event.continued).
+        self.says_continued = says_continued
         self.capabilities = base.Capabilities(
             status_events=True,
             permission_event=False,
@@ -67,6 +70,7 @@ class FakeProvider(base.Provider):
                 for name, s in {**spec.mcp, "lado": lado}.items()
             },
             "continue_on_turn_end": self.capabilities.deliver_on_turn_end,
+            "says_continued": self.says_continued,
             "inputs": str(config_dir / "inputs.jsonl"),
             "seen": str(config_dir / "seen.json"),
         }
@@ -86,6 +90,7 @@ class FakeProvider(base.Provider):
             data.get("key", ""),
             error=data.get("error", ""),
             output_ignored=data.get("output_ignored", False),
+            continued=data.get("continued", False),
         )
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
@@ -101,9 +106,14 @@ class FakeProvider(base.Provider):
 ASKS_FIRST = 'Fake agent asks a question first: type "yes" in its terminal'
 
 
-# "fake" gets queued messages from its turn-end hook, like Claude Code; "fake-paste" has
-# them typed into its window.
-FAKES = (FakeProvider("fake", True), FakeProvider("fake-paste", False))
+# "fake" gets queued messages from its turn-end hook and confirms them by its prompt-submit
+# hook, like OpenCode and Kilo; "fake-stop" by the next turn's end, like Claude Code;
+# "fake-paste" has them typed into its window.
+FAKES = (
+    FakeProvider("fake", True),
+    FakeProvider("fake-stop", True, says_continued=True),
+    FakeProvider("fake-paste", False),
+)
 
 
 def register(registry: dict[str, base.Provider]) -> None:

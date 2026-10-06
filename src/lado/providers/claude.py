@@ -171,10 +171,17 @@ class ClaudeProvider(base.Provider):
         neutral = EVENTS[native]
         if neutral in (base.WAITING, base.RESUMED):
             return base.Event(neutral, key=_request_key(data))
+        if native == "Stop":
+            return base.Event(neutral, continued=bool(data.get("stop_hook_active")))
         return base.Event(neutral, data.get("prompt", ""))
 
     def continue_output(self, text: str) -> str | None:
-        # Blocking the stop makes Claude Code continue with `reason` as its next input.
+        # Blocking the stop makes Claude Code continue with `reason` as its next input. It
+        # runs no UserPromptSubmit for it; the Stop that ends the turn it went on to has
+        # stop_hook_active true, also after several blocks in a row (checked by hand with
+        # 2.1.291, `claude -p`). After CLAUDE_CODE_STOP_HOOK_BLOCK_CAP blocks in a row
+        # (8 by default) it ends the turn without the text (read in the binary of 2.1.291):
+        # sweep types it in then (lado.runtime._plan).
         return json.dumps({"decision": "block", "reason": text})
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:

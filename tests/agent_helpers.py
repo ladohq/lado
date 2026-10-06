@@ -129,17 +129,20 @@ def previous_schema() -> None:
 def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on."""
+    assert state.MIGRATIONS[18] == [state.MESSAGES_CHANNEL]
     assert state.MIGRATIONS[17] == state.KITS_TABLE
     assert state.MIGRATIONS[16] == state.MARKETPLACES_TABLE
     assert state.MIGRATIONS[15] == [state.AGENTS_WAITING_FOR]
     assert state.MIGRATIONS[14] == state.NOTES_STEP
     assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
     assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
-    assert 13 <= version <= state.SCHEMA_VERSION == 18
+    assert 13 <= version <= state.SCHEMA_VERSION == 19
     with state.connect() as db:
-        for op in state.ALL_OPS:
-            db.execute(f"DROP TRIGGER changes_kits_{op}")
-        db.execute("DROP TABLE kits")
+        db.execute("ALTER TABLE messages DROP COLUMN channel")
+        if version <= 18:
+            for op in state.ALL_OPS:
+                db.execute(f"DROP TRIGGER changes_kits_{op}")
+            db.execute("DROP TABLE kits")
         if version <= 17:
             for op in state.ALL_OPS:
                 db.execute(f"DROP TRIGGER changes_marketplaces_{op}")

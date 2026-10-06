@@ -6,12 +6,13 @@ module keeps statuses and the inbox. A hook must never break the agent, so error
 logged, not raised.
 """
 
+import contextlib
 import sys
 import time
 import traceback
 
 from lado import providers, runtime, state
-from lado.runtime import format_message, format_messages
+from lado.runtime import format_message
 
 # How long a session-start hook holds the agent's first turn for LADO's MCP server.
 MCP_READY_TIMEOUT = 20.0
@@ -40,6 +41,11 @@ def handle(
     provider: providers.Provider, event: providers.Event, session: str, agent: str
 ) -> str | None:
     """Update the agent's status for `event`. Returns the hook output to print, if any."""
+    if event.kind == providers.HOOK_ERROR:
+        # Not a sign that the agent took anything: no hook followed the hand-over it is
+        # about, so sweep types those messages in (runtime._plan).
+        _log(f"{session}/{agent}: {event.error}")
+        return None
     # First of all: the agent is alive, so what a dialog swallowed can go to it again.
     state.seen(session, agent)
     if event.kind == providers.SESSION_START:
@@ -68,13 +74,19 @@ def handle(
         # Busy again; its queue waits for the turn's end, as for any busy agent.
         state.resume(session, agent, event.key)
     elif event.kind == providers.TURN_END:
+        # A turn that went on from the previous turn-end hook's output got the messages in
+        # it: only those, as another Stop hook of the user's may have made it go on too. A
+        # turn's end that does not say so did not take them: they wait to be typed in.
+        if event.continued:
+            state.confirm_channel(session, agent, state.HOOK_OUTPUT)
+        else:
+            state.output_not_taken(session, agent)
         # The human's messages this turn got: did it write to the human? Before the inbox is
         # handed over, so what the next turn gets is checked when that one ends.
         state.check_replies(session, agent)
         if event.error:
             runtime.turn_failed(session, agent, event.error)
-        # Where the CLI ignores the hook's output, the queue is typed in.
-        return _idle(provider, session, agent, turn_end=not event.output_ignored)
+        return _idle(provider, session, agent, event)
     elif event.kind == providers.CONVERSATION_END:
         # Not ready while the next conversation loads: messages wait in the queue.
         state.set_status(session, agent, state.STARTING)
@@ -87,24 +99,43 @@ def handle(
 
 
 def _idle(
-    provider: providers.Provider, session: str, agent: str, turn_end: bool = False
+    provider: providers.Provider,
+    session: str,
+    agent: str,
+    turn_end: providers.Event | None = None,
 ) -> str | None:
-    """The agent is idle: hand over its queue. Every switch to idle goes through here.
+    """The agent is idle: hand over its queue. Every switch to idle goes through here, in
+    this order:
 
-    Mark idle first, then take the queue: lado.runtime.send_message does it the other way
-    round, so a message sent in between is always handed over by exactly one of us. At a
-    turn's end a provider that can carries the queue on in the hook's output (returned);
-    otherwise the messages are typed in. Then what was typed and never confirmed."""
+    1. At a turn's end (`turn_end`) that went on from the previous turn-end hook's output
+       (Event.continued), handle has confirmed the messages in that output already; at
+       one that did not, it has left them to be typed in (state.output_not_taken).
+    2. Mark idle, then 3. take the queue (runtime.hand_over): what 1 confirmed does not
+       keep the next batch back, so a chain of turns that go on from the hook's output
+       gets each new batch at once. lado.runtime.send_message queues first and takes
+       second, so a message sent in between is handed over by exactly one of us. At a
+       turn's end a provider that can carries the queue on in the hook's output (returned)
+       unless its CLI ignores that output; otherwise the messages are typed in.
+    4. Sweep what was handed over and never confirmed (runtime.sweep).
+
+    If the hook fails after 3, or the CLI does not take its output, the messages stay sent
+    and sweep deals with them (runtime._plan)."""
     state.set_status(session, agent, state.IDLE)
-    if not (turn_end and provider.capabilities.deliver_on_turn_end):
-        runtime.deliver_pending(session, agent)
-    elif pending := state.take_pending(session, agent, state.DELIVERED, state.BUSY):
-        return provider.continue_output(format_messages(pending))
+    by_output = (
+        turn_end is not None
+        and not turn_end.output_ignored
+        and provider.capabilities.deliver_on_turn_end
+    )
+    text = runtime.hand_over(session, agent, state.HOOK_OUTPUT if by_output else state.TYPED)
     runtime.sweep(session, agent)
-    return None
+    return provider.continue_output(text) if by_output and text else None
 
 
 def main(event: str, session: str, agent: str, instance: str) -> int:
+    """Run the hook for a native `event` and print its output. An error is logged and the
+    hook exits 0; messages it handed over for its output before the error are sent, not
+    delivered, and wait to be typed in by the sweep's rule (runtime._plan)."""
+    started = time.time()
     try:
         payload = sys.stdin.read()
         current = state.get_agent(session, agent)
@@ -120,4 +151,7 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
         _log(f"{event} {session}/{agent}: {exc}")
     except Exception:
         _log(f"{event} {session}/{agent}\n{traceback.format_exc()}")
+        # What it took for its output was never printed.
+        with contextlib.suppress(Exception):  # logged above; the sweep's rule still holds
+            state.output_not_taken(session, agent, since=started)
     return 0

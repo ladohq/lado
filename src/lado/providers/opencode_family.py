@@ -34,6 +34,9 @@ EVENTS = {
     "question.replied": base.RESUMED,
     "question.rejected": base.RESUMED,
     "dispose": base.SESSION_END,
+    # The plugin's own: it could not hand the turn-end hook's output on (promptAsync
+    # failed), with the error as a "session.idle"'s.
+    "plugin.error": base.HOOK_ERROR,
 }
 # A turn that ends on an error: the plugin passes the "session.error" before "session.idle"
 # on with it (Kilo 7.8.3 and OpenCode 1.18.34 publish one, then the other, read in their
@@ -153,5 +156,9 @@ class OpenCodeFamily(base.Provider):
         return base.Event(EVENTS[native], data.get("prompt", ""), data.get("id") or "")
 
     def continue_output(self, text: str) -> str | None:
-        # The plugin sends whatever the turn-end hook prints as the next user message.
+        # The plugin sends whatever the turn-end hook prints as the next user message
+        # (promptAsync), for which "chat.message" runs as for typed text, so its lines
+        # confirm the messages (Kilo 7.8.3 and OpenCode 1.18.34, read in their bundles; the
+        # live test checks it). No turn end says it went on from the output (no
+        # Event.continued).
         return text

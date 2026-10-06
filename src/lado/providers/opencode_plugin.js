@@ -4,8 +4,9 @@
 // Options, from the `plugin` entry of the agent's config (kilo.json, opencode.json):
 // { hooks: { <native event>: [argv...] } }. For each native event that has an argv, the
 // command runs with a JSON payload on stdin. When "session.idle" prints text, that text
-// becomes the session's next user message. A missing argv means "do not report this event".
-// The plugin must never break the CLI, so every failure is swallowed.
+// becomes the session's next user message; when the CLI refuses it, "plugin.error" says so
+// with the error. A missing argv means "do not report this event".
+// The plugin must never break the CLI, so every other failure is swallowed.
 import { spawn } from "node:child_process"
 
 function run(argv, payload) {
@@ -88,10 +89,17 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
           }
           const text = await run(hooks["session.idle"], payload)
           if (text) {
-            await client.session.promptAsync({
-              path: { id: props.sessionID },
-              body: { parts: [{ type: "text", text }] },
-            })
+            try {
+              await client.session.promptAsync({
+                path: { id: props.sessionID },
+                body: { parts: [{ type: "text", text }] },
+              })
+            } catch (error) {
+              // LADO keeps the messages in that text unconfirmed and types them in later;
+              // it logs why they did not go this way.
+              const failure = { name: "promptAsync", message: String(error?.message ?? error) }
+              await run(hooks["plugin.error"], { sessionID: props.sessionID, error: failure })
+            }
           }
         }
       } catch {}

@@ -984,7 +984,6 @@ Wanted: one question card in the UI's chat with several questions, each with its
 and free answer, answered at once (an extension of `ask_human`, one message back to the agent).
 Found: 2026-10-06, design of run feature/turn-resume, by the human.
 
-
 # P3: maybe never
 
 ## A server endpoint that writes makes lado.db when there is none

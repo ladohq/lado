@@ -125,6 +125,42 @@ def test_a_message_ending_in_a_backslash_is_submitted_and_confirmed(repo):
     ]
 
 
+def channels(recipient: str) -> list[str | None]:
+    with state.connect() as db:
+        rows = db.execute(
+            "SELECT channel FROM messages WHERE session = ? AND recipient = ? ORDER BY id",
+            (SESSION, recipient),
+        ).fetchall()
+    return [r["channel"] for r in rows]
+
+
+@pytest.mark.parametrize("provider", ["fake", "fake-stop"])
+def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(repo, provider):
+    """Confirmed by the prompt-submit hook of the text the output became ("fake", as
+    OpenCode and Kilo), or by the end of the turn that went on from it ("fake-stop", as
+    Claude Code); one batch at a time, each at once after the one before."""
+    start(repo, provider)
+    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    wait_for(lambda: message_states("supervisor")[1] == state.SENT, "the output")
+    runtime.send_message(SESSION, "human", "supervisor", "hello")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 3, "delivery")
+    wait_status("supervisor", state.IDLE)
+    assert inputs("supervisor") == ["[from human] sleep 1"] * 2 + ["[from human] hello"]
+    assert channels("supervisor") == [state.TYPED, state.HOOK_OUTPUT, state.HOOK_OUTPUT]
+
+
+@pytest.mark.parametrize("provider", ["fake", "fake-stop"])
+def test_a_turn_end_output_the_cli_drops_is_typed_in_once(repo, provider):
+    start(repo, provider)
+    runtime.send_message(SESSION, "human", "supervisor", "lose 1")
+    runtime.send_message(SESSION, "human", "supervisor", "hello")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
+    wait_status("supervisor", state.IDLE)
+    assert inputs("supervisor") == ["[from human] lose 1", "[from human] hello"]
+    assert channels("supervisor") == [state.TYPED, state.TYPED]
+
+
 @pytest.mark.parametrize("provider", ["fake", "fake-paste"])
 def test_message_to_busy_agent_arrives_when_its_turn_ends(repo, provider):
     start(repo, provider)

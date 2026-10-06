@@ -997,7 +997,7 @@ def _deliver(session: str, recipient: str, message: int | None = None) -> str:
     # Queue first, then take the queue of an idle agent: a hook that makes the agent idle
     # does the reverse, so a message is never left behind by an agent that went idle in
     # between.
-    if deliver_pending(session, recipient, idle_only=True):
+    if hand_over(session, recipient):
         return "sent"
     # Someone else may have handed it over since it was queued: such a hook, or the
     # session loop's sweep. The agent is busy now, with this message.
@@ -1017,15 +1017,20 @@ def _deliver(session: str, recipient: str, message: int | None = None) -> str:
     return "queued"
 
 
-def deliver_pending(session: str, recipient: str, idle_only: bool = False) -> bool:
-    """Type the recipient's pending messages into its window. They stay "sent" until its
-    prompt-submit hook confirms them. `idle_only`: only into an idle recipient with no
-    message typed and unconfirmed, checked as they are taken."""
-    pending = state.take_pending(session, recipient, state.SENT, state.BUSY, idle_only)
+def hand_over(session: str, recipient: str, channel: str = state.TYPED) -> str:
+    """Hand the recipient's pending messages over by `channel`, the one way every path takes
+    a queue: only from an idle recipient with no batch handed over and unconfirmed, checked
+    as they are taken (state.take_pending), which is then busy. Returns their lines, ''
+    for none: typed into its window (TYPED), or for its turn-end hook to print
+    (HOOK_OUTPUT). They stay "sent" until the recipient confirms them (lado.hooks), and
+    sweep deals with them until then (_plan)."""
+    pending = state.take_pending(session, recipient, state.SENT, state.BUSY, True, channel)
     if not pending:
-        return False
-    tmux.send_text(session, recipient, format_messages(pending))
-    return True
+        return ""
+    text = format_messages(pending)
+    if channel == state.TYPED:
+        tmux.send_text(session, recipient, text)
+    return text
 
 
 def sweep(
@@ -1042,15 +1047,15 @@ def sweep(
     names = [agent] if agent else [a.name for a in state.list_agents(session)]
     for name in names:
         _sweep_sent(session, name, now, delays)
-        deliver_pending(session, name, idle_only=True)
+        hand_over(session, name)
 
 
 def _sweep_sent(session: str, name: str, now: float, delays: tuple[float, ...]) -> None:
+    """Carry out _plan for the agent's unconfirmed messages. What goes back to the queue is
+    handed over by the caller, which takes the queue next (sweep, _deliver)."""
     swept = state.sweep(session, name, now, lambda a, sent: _plan(a, sent, now, delays))
     if swept.typed:
         tmux.send_text(session, name, format_messages(swept.typed))
-    if swept.requeued and not swept.failed:
-        deliver_pending(session, name)
     for message in swept.failed:
         _report_failure(session, message)
 
@@ -1059,7 +1064,16 @@ def _plan(
     agent: state.Agent, sent: list[state.Message], now: float, delays: tuple[float, ...]
 ) -> state.Plan:
     """A message is left alone until the delay of its attempt is over: delays[n - 1] after
-    the n-th time it was typed."""
+    the n-th time it was handed over. Then, by its channel (hand_over):
+
+    - TYPED: no hook ran since and the agent is busy (a dialog took the text): typed again;
+      a hook ran and the agent is idle (no prompt held its line): back to the queue; after
+      the last attempt's delay: failed.
+    - HOOK_OUTPUT (always its first attempt): no hook ran since (the CLI did not take the
+      output, or its turn goes on that long without one): typed in, once, and TYPED from
+      then on; a turn that took it meanwhile gets it twice, which is better than never. A
+      hook ran and the agent is idle (its turn ended without saying it went on from the
+      output): back to the queue. It never fails by this channel."""
     plan = state.Plan()
     for message in sent:
         attempt = max(message.attempts, 1)

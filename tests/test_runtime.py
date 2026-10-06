@@ -542,7 +542,48 @@ def test_an_agent_being_typed_into_never_looks_idle(repo, fake_tmux, monkeypatch
     assert status_once_taken == [state.BUSY]
 
 
+def test_hand_over_by_hook_output_returns_the_lines_and_types_nothing(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.queue_message("s", "supervisor", "w1", "one")
+    state.queue_message("s", "supervisor", "w1", "two")
+    state.set_status("s", "w1", state.IDLE)
+    text = runtime.hand_over("s", "w1", state.HOOK_OUTPUT)
+    assert text == "[from supervisor] one\n[from supervisor] two"
+    assert _typed(fake_tmux, "w1") == []
+    messages = state.list_messages("s")
+    assert [(m.state, m.channel, m.attempts) for m in messages] == [
+        (state.SENT, state.HOOK_OUTPUT, 1)
+    ] * 2
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_hand_over_by_typing_types_the_lines(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.queue_message("s", "supervisor", "w1", "one")
+    state.set_status("s", "w1", state.IDLE)
+    assert runtime.hand_over("s", "w1", state.TYPED) == "[from supervisor] one"
+    assert _typed(fake_tmux, "w1") == ["[from supervisor] one"]
+    assert state.list_messages("s")[0].channel == state.TYPED
+
+
+@pytest.mark.parametrize("channel", [state.TYPED, state.HOOK_OUTPUT])
+def test_hand_over_takes_nothing_while_a_batch_is_unconfirmed_or_the_agent_not_idle(
+    repo, fake_tmux, channel
+):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.BUSY)
+    state.queue_message("s", "supervisor", "w1", "one")
+    assert runtime.hand_over("s", "w1", channel) == ""
+    state.set_status("s", "w1", state.IDLE)
+    assert runtime.hand_over("s", "w1", channel)
+    state.set_status("s", "w1", state.IDLE)
+    state.queue_message("s", "supervisor", "w1", "two")
+    assert runtime.hand_over("s", "w1", channel) == ""
+    assert [m.state for m in state.list_messages("s")] == [state.SENT, state.PENDING]
+
+
 DELAYS = (15, 30, 60)
+CONTINUED = {"stop_hook_active": True}  # Claude Code's Stop of a turn its Stop hook went on
 
 
 def _typed(fake_tmux, window="supervisor"):
@@ -700,6 +741,8 @@ def test_the_first_hook_after_a_swallowed_failure_delivers_it_again(repo, fake_t
     [report, _] = state.list_messages("s")
     assert (report.state, report.attempts) == (state.PENDING, 0)
     assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
+    assert state.list_messages("s")[0].state == state.SENT
+    _hook("Stop", "supervisor", CONTINUED)
     assert state.list_messages("s")[0].state == state.DELIVERED
 
 
@@ -707,6 +750,22 @@ def test_a_new_message_waits_while_one_typed_is_unconfirmed(repo, fake_tmux):
     _mismatched_report(repo, fake_tmux)  # the supervisor is idle
     assert runtime.send_message("s", "w1", "supervisor", "ping").startswith("queued")
     assert _typed(fake_tmux) == ["[from w1] report"]
+
+
+@pytest.mark.parametrize(
+    ("event", "payload"),
+    [("SessionStart", {"source": "clear"}), ("Stop", {}), ("Stop", CONTINUED)],
+    ids=["conversation start", "turn end", "turn end that went on"],
+)
+def test_a_hook_hands_over_nothing_while_a_message_typed_is_unconfirmed(
+    repo, fake_tmux, event, payload
+):
+    _swallowed_report(repo, fake_tmux)  # the supervisor is busy, as LADO typed into it
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+    runtime.send_message("s", "w1", "supervisor", "ping")
+    assert _hook(event, "supervisor", payload) is None
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    assert [m.state for m in state.list_messages("s")] == [state.SENT, state.PENDING]
 
 
 def test_a_new_message_brings_a_swallowed_one_again_after_the_delay(repo, fake_tmux, monkeypatch):
@@ -943,6 +1002,82 @@ def test_message_to_busy_agent_arrives_via_stop_hook(repo, fake_tmux):
     assert state.get_agent("s", "supervisor").status == state.IDLE
 
 
+def test_messages_in_the_stop_hooks_output_are_delivered_when_the_turn_goes_on(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "one")
+    assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] one"}
+    [one] = state.list_messages("s")
+    assert (one.state, one.channel) == (state.SENT, state.HOOK_OUTPUT)
+    # A second block at once: the first one is confirmed before the queue is taken.
+    runtime.send_message("s", "w1", "supervisor", "two")
+    assert _hook("Stop", "supervisor", CONTINUED) == {
+        "decision": "block",
+        "reason": "[from w1] two",
+    }
+    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED, state.SENT]
+    assert _hook("Stop", "supervisor", CONTINUED) is None
+    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
+    assert state.get_agent("s", "supervisor").status == state.IDLE
+    assert _typed(fake_tmux) == []
+
+
+def test_a_turn_that_went_on_confirms_no_message_typed_in(repo, fake_tmux):
+    """Another Stop hook of the user's may have made the turn go on: what LADO typed is
+    confirmed only by its line."""
+    _swallowed_report(repo, fake_tmux)
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+    _hook("Stop", "supervisor", CONTINUED)
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel) == (state.SENT, state.TYPED)
+
+
+def _handed_over_in_the_stop_hook(repo):
+    """w1's report in the busy supervisor's Stop hook output. Returns when it was handed
+    over."""
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "report")
+    assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
+    return state.list_messages("s")[0].sent_at
+
+
+def test_a_long_turn_from_the_hook_output_gets_it_typed_in_once_and_never_fails(repo, fake_tmux):
+    sent = _handed_over_in_the_stop_hook(repo)
+    for at in range(DELAYS[0] - 1, DELAYS[0] + DELAYS[1]):  # each second, no hook
+        runtime.sweep("s", now=sent + at, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel) == (state.SENT, state.TYPED)
+    # The turn ends; the CLI takes what was typed in meanwhile as its next prompt.
+    _hook("Stop", "supervisor", CONTINUED)
+    assert state.list_messages("s")[0].state == state.SENT
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "[from w1] report"})
+    assert state.list_messages("s")[0].state == state.DELIVERED
+
+
+def test_typed_in_after_the_hook_output_it_is_retried_and_fails_as_any_typed(repo, fake_tmux):
+    sent = _handed_over_in_the_stop_hook(repo)
+    _retry_until_failed(sent)
+    assert _typed(fake_tmux) == ["[from w1] report"] * len(DELAYS)
+    assert state.list_messages("s")[0].state == state.FAILED
+    assert state.get_agent("s", "supervisor").status == state.WAITING
+    notice = state.list_messages("s")[-1]
+    assert (notice.sender, notice.recipient) == ("lado", "w1")
+    assert notice.summary == "message #1 to supervisor not delivered: report"
+
+
+def test_a_turn_that_ends_without_taking_the_hook_output_gets_it_from_the_queue(repo, fake_tmux):
+    sent = _handed_over_in_the_stop_hook(repo)
+    _hook("Stop", "supervisor")  # not stop_hook_active: the CLI did not take the output
+    runtime.sweep("s", now=sent + DELAYS[0] - 1, delays=DELAYS)
+    assert state.list_messages("s")[0].state == state.SENT
+    runtime.sweep("s", now=sent + DELAYS[0], delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel, report.attempts) == (state.SENT, state.TYPED, 2)
+
+
 def test_only_the_summary_is_typed_and_the_body_waits(repo, fake_tmux):
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
@@ -1175,6 +1310,25 @@ def test_hook_errors_are_logged_not_raised(repo, fake_tmux, lado_home, monkeypat
     monkeypatch.setattr("sys.stdin.read", lambda: "not json")
     assert hooks.main("Stop", "s", "supervisor", instance) == 0
     assert "JSONDecodeError" in (lado_home / "hooks.log").read_text()
+
+
+def test_a_stop_hook_that_fails_after_the_hand_over_loses_no_message(
+    repo, fake_tmux, lado_home, monkeypatch
+):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "report")
+    instance = state.get_agent("s", "supervisor").instance
+    claude = type(providers.get("claude"))
+    monkeypatch.setattr(claude, "continue_output", lambda self, text: 1 / 0)
+    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
+    assert hooks.main("Stop", "s", "supervisor", instance) == 0
+    assert "ZeroDivisionError" in (lado_home / "hooks.log").read_text()
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel) == (state.SENT, state.HOOK_OUTPUT)
+    # No output, so no hook follows: the sweep types it in after the first delay.
+    runtime.sweep("s", now=report.sent_at + DELAYS[0], delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
 
 
 def test_a_hook_on_an_older_schema_says_why_and_changes_nothing(
@@ -2144,6 +2298,16 @@ def test_the_supervisor_gets_a_one_line_copy_of_the_humans_text_to_a_worker(repo
     assert fake_tmux[-1] == ("send_text", "s", "supervisor", f"[from lado] {copy.summary}")
 
 
+def test_a_stopped_supervisor_gets_no_copy_and_the_worker_its_message(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    state.set_status("s", "supervisor", state.STOPPED)
+    assert runtime.write_as_human("s", "use the other port", to="w1") == "sent"
+    [mine] = state.list_messages("s")
+    assert (mine.recipient, mine.state) == ("w1", state.SENT)
+    assert fake_tmux[-1] == ("send_text", "s", "w1", "[from human] use the other port")
+
+
 def test_the_copy_of_a_long_text_stays_one_short_line(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.write_as_human("s", "x" * 250, to="w1")
@@ -2445,7 +2609,7 @@ def test_a_message_handed_over_at_the_turn_end_is_checked_at_the_next_one(repo, 
     assert _hook("Stop", "supervisor")["reason"] == "[from human] merge w1?"
     assert _reply_state(mine) is None
     runtime.send_message("s", "supervisor", "human", "merged")
-    _hook("Stop", "supervisor")
+    _hook("Stop", "supervisor", CONTINUED)
     assert _reply_state(mine) == state.REPLIED
 
 
@@ -2458,7 +2622,7 @@ def test_what_the_agent_wrote_before_it_got_the_message_is_no_reply_to_it(repo, 
     mine = state.list_messages("s")[-1]
     runtime.send_message("s", "supervisor", "human", "a report written meanwhile")
     _hook("Stop", "supervisor")  # hands the human's message over
-    _hook("Stop", "supervisor")  # that turn wrote nothing to the human
+    _hook("Stop", "supervisor", CONTINUED)  # that turn wrote nothing to the human
     assert _reply_state(mine) == state.MISSING
 
 

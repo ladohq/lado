@@ -72,7 +72,7 @@ def test_the_official_marketplace_is_in_a_new_database_and_after_the_migration(l
 
 def test_the_kits_table_is_made_by_the_migration(lado_home):
     state.add_kit(state.InstalledKit("team", folder="/dev/team"))
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(18)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -81,7 +81,7 @@ def test_the_kits_table_is_made_by_the_migration(lado_home):
     state.migrate()
     assert state.list_kits() == []
     with state.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION == 18
+        assert db.execute("PRAGMA user_version").fetchone()[0] == state.SCHEMA_VERSION
         columns = [row["name"] for row in db.execute("PRAGMA table_info(kits)")]
     assert columns == [
         "name",
@@ -170,6 +170,20 @@ def test_newer_database_is_reported(lado_home):
     assert "newer LADO" in message
     assert "upgrade LADO" in message
     assert "delete" not in message
+
+
+def test_the_migration_gives_messages_their_channel(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    old = state.queue_message("s", "supervisor", "w1", "before")
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = [row[1] for row in db.execute("PRAGMA table_info(messages)")]
+    db.close()
+    assert "channel" not in columns
+    assert state.migrate() == state.SCHEMA_VERSION == 19
+    assert state.get_message("s", old).channel is None
+    state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
+    assert state.get_message("s", old).channel == state.HOOK_OUTPUT
 
 
 def test_connect_refuses_an_older_schema_and_changes_nothing(lado_home):
@@ -1000,6 +1014,17 @@ def test_a_message_is_queued_only_for_a_running_agent(lado_home, queue, w1):
     assert [m.recipient for m in state.list_messages("s")][0] == "w1"
 
 
+@pytest.mark.parametrize("supervisor", [None, state.STOPPED, state.IDLE], ids=str)
+def test_the_copy_is_queued_only_for_a_running_agent_and_the_message_anyway(lado_home, supervisor):
+    _session_with(_agent(status=state.IDLE))
+    if supervisor:
+        state.add_agent(_agent("supervisor", status=supervisor))
+    message = state.queue_with_copy("s", "human", "w1", "hi", "", "supervisor", str)
+    queued = [(m.recipient, m.summary) for m in state.list_messages("s")]
+    copy = [("supervisor", str(message))] if supervisor == state.IDLE else []
+    assert queued == [("w1", "hi"), *copy]
+
+
 def test_messages_to_the_human_and_delivered_ones_need_no_running_agent(lado_home):
     _session_with()
     state.queue_message("s", "w1", "human", "hi", mark=state.DELIVERED)
@@ -1023,12 +1048,13 @@ def test_an_answer_goes_only_to_a_running_agent(lado_home):
     assert [m.id for m in state.list_messages("s")] == [question]
 
 
-def _typed(*summaries, status=state.IDLE):
-    """w1 with these messages typed into its window (sent), and its status."""
+def _typed(*summaries, status=state.IDLE, channel=state.TYPED):
+    """w1 with these messages typed into its window (sent; or by another `channel`), and its
+    status."""
     _session_with(_agent(status=status))
     for summary in summaries:
         state.queue_message("s", "supervisor", "w1", summary)
-    state.take_pending("s", "w1", state.SENT)
+    state.take_pending("s", "w1", state.SENT, channel=channel)
     return [m.id for m in state.list_messages("s")]
 
 
@@ -1077,6 +1103,23 @@ def test_sweep_types_the_sent_and_pending_messages_again(lado_home):
         (state.SENT, 2, 5.0),
         (state.SENT, 1, 5.0),
     ]
+
+
+def test_confirming_a_channel_delivers_only_the_messages_sent_by_it(lado_home):
+    _typed("typed")
+    state.queue_message("s", "supervisor", "w1", "output")
+    state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
+    state.confirm_channel("s", "w1", state.HOOK_OUTPUT)
+    states = {m.summary: m.state for m in state.list_messages("s")}
+    assert states == {"typed": state.SENT, "output": state.DELIVERED}
+
+
+def test_what_sweep_types_again_goes_by_the_typed_channel(lado_home):
+    _typed("one", status=state.BUSY, channel=state.HOOK_OUTPUT)
+    state.queue_message("s", "supervisor", "w1", "new")
+    swept = state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(retype=True))
+    assert [m.channel for m in swept.typed] == [state.TYPED] * 2
+    assert [m.channel for m in state.list_messages("s")] == [state.TYPED] * 2
 
 
 @pytest.mark.parametrize("status", [state.BUSY, state.IDLE])

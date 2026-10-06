@@ -31,6 +31,8 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     die                exit at once, with no hook, as a CLI that crashes in a turn
     fail <error>       end the turn on an error: its turn-end hook gets <error>, and its
                        output is ignored, as Claude Code's StopFailure
+    lose <seconds>     work that long, then drop what the turn-end hook prints, as a CLI that
+                       does not take it
 A first message that starts with "crash at start" makes it exit before its first hook, as a
 CLI that fails at once (a bad flag). With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
 its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
@@ -188,11 +190,12 @@ def _read_paste(line: str) -> str:
 
 holds = 0  # how often `hold` ran
 turn_error = ""  # the error the turn ends on (`fail`)
+lose_output = False  # drop what the turn-end hook prints (`lose`)
 
 
 def work(text: str) -> bool:
     """Act on the commands in `text`. Returns True for exit."""
-    global holds, turn_error
+    global holds, turn_error, lose_output
     for line in text.splitlines():
         command = re.sub(r"^\[from [^\]]*\] ", "", line.strip()).split(" ", 2)
         if command[0] == "exit":
@@ -201,6 +204,9 @@ def work(text: str) -> bool:
             os._exit(3)
         if command[0] == "fail":
             turn_error = " ".join(command[1:])
+        elif command[0] == "lose":
+            time.sleep(float(command[1]))
+            lose_output = True
         elif command[0] == "sleep":
             time.sleep(float(command[1]))
         elif command[0] == "ask":
@@ -259,7 +265,7 @@ def hung_up(*_) -> None:
 
 
 def main() -> None:
-    global turn_error
+    global turn_error, lose_output
     if len(sys.argv) > 2 and sys.argv[2].startswith("crash at start"):
         os._exit(3)
     signal.signal(signal.SIGHUP, hung_up)
@@ -271,6 +277,7 @@ def main() -> None:
     connect_mcp()
     hook("session_start")
     text = sys.argv[2] if len(sys.argv) > 2 else None  # the first message
+    continued = False  # this turn goes on from what the turn-end hook printed
     while True:
         if text is None:
             text = read_input()
@@ -291,7 +298,8 @@ def main() -> None:
             text = None
             continue
         log_input(text)
-        hook("prompt_submit", text)
+        if not (continued and config.get("says_continued")):
+            hook("prompt_submit", text)
         try:
             if work(text):
                 break
@@ -299,10 +307,13 @@ def main() -> None:
             traceback.print_exc()
         if turn_error:
             hook("turn_end", error=turn_error, output_ignored=True)  # its output goes nowhere
-            turn_error, text = "", None
+            turn_error, text, continued = "", None, False
             continue
-        output = hook("turn_end")
+        output = hook("turn_end", continued=continued and config.get("says_continued", False))
+        if lose_output:
+            output, lose_output = "", False
         text = output if output and config["continue_on_turn_end"] else None
+        continued = text is not None
     hook("session_end")
 
 

@@ -30,6 +30,8 @@ FOLLOW_UP = "Thanks, one last note for you"
 FOLLOW_UP_BODY = (
     "Nothing more to do. Reply with the single word ACK and do not use any other tools."
 )
+# Sent while w1 works on the follow-up: it goes in w1's turn-end hook's output.
+WHILE_BUSY = "No reply needed to this line"
 # The test merges and finishes w1 itself, so the supervisor must not: the default
 # supervisor role merges what a worker reports and may then finish the worker.
 PASSIVE_SUPERVISOR = """\
@@ -313,11 +315,13 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     # The UI's terminal on w1, open while LADO delivers to it: a viewer must not stop that.
     viewing = terminal.open(SESSION, "w1", terminal.VIEW)
     runtime.send_message(SESSION, "supervisor", "w1", FOLLOW_UP, FOLLOW_UP_BODY)
+    runtime.send_message(SESSION, "supervisor", "w1", WHILE_BUSY)
     wait_for(
         lambda: (FOLLOW_UP, state.READ) in messages("supervisor", "w1"),
         "w1 to read the follow-up with read_messages",
         120,
     )
+    check_turn_end_output()
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
     check_human()
     check_terminal(viewing)
@@ -339,6 +343,19 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider)
     if live_provider in ("kilo", "opencode"):
         assert cli_version(live_provider) == version
     print(f"{live_provider}: {time.monotonic() - started:.0f}s")
+
+
+def check_turn_end_output() -> None:
+    """The line queued while w1 was busy went in its turn-end hook's output and is delivered
+    once the CLI confirms it: the prompt the plugin's promptAsync makes (Kilo, OpenCode), or
+    the end of the turn that went on from it (Claude Code's stop_hook_active)."""
+    [line] = [m for m in state.list_messages(SESSION) if m.summary == WHILE_BUSY]
+    wait_for(
+        lambda: state.get_message(SESSION, line.id).state in RECEIVED,
+        "the line sent while w1 was busy to be delivered",
+        120,
+    )
+    assert state.get_message(SESSION, line.id).channel == state.HOOK_OUTPUT
 
 
 HUMAN_ASKS = 'From the human: reply to me with send_message(to="human", summary="ACK") only'

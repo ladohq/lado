@@ -20,6 +20,9 @@ SESSION_END = "session_end"
 # /clear and /resume): not ready until CONVERSATION_START, but not gone either.
 CONVERSATION_END = "conversation_end"
 CONVERSATION_START = "conversation_start"  # ready again, in the other conversation
+# What LADO runs inside the CLI failed (a plugin could not hand the turn-end hook's output
+# on): Event.error says what; lado.hooks writes it to hooks.log.
+HOOK_ERROR = "hook_error"
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,10 @@ class Event:
     # The CLI ignores what the hook prints (Claude Code's StopFailure): the queue cannot go
     # in the hook's output, so it is typed in.
     output_ignored: bool = False
+    # For TURN_END: this turn went on from what the previous turn-end hook printed, so the
+    # CLI took the messages in that output (lado.hooks). Set by a provider whose CLI runs no
+    # prompt-submit hook for that output and says so at the turn's end.
+    continued: bool = False
 
 
 ERROR_LIMIT = 160  # characters of an Event.error

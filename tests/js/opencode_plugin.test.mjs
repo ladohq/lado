@@ -217,6 +217,20 @@ test("a failing client never throws", async () => {
   assert.equal(calls().length, 1)
 })
 
+test("a client that cannot send the hook's output reports it with plugin.error", async () => {
+  const client = { session: { promptAsync: async () => Promise.reject(new Error("closed")) } }
+  const hooks = { "session.idle": hook("session.idle", "hi"), "plugin.error": hook("plugin.error") }
+  const { plugin } = await load(hooks, client)
+  await plugin.event({ event: { type: "session.idle", properties: { sessionID: "s1" } } })
+  assert.deepEqual(calls(), [
+    { event: "session.idle", payload: { sessionID: "s1" } },
+    {
+      event: "plugin.error",
+      payload: { sessionID: "s1", error: { name: "promptAsync", message: "closed" } },
+    },
+  ])
+})
+
 test("dispose runs its hook", async () => {
   const { plugin } = await load({ dispose: hook("dispose") })
   await plugin.dispose()

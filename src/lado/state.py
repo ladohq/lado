@@ -11,11 +11,11 @@ import sqlite3
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -218,6 +218,11 @@ JOURNAL = [
 EVENTS_JOURNAL = _journal_triggers("events")
 MARKETPLACES_TABLE = [MARKETPLACES, MARKETPLACES_OFFICIAL, *_journal_triggers("marketplaces")]
 KITS_TABLE = [KITS, *_journal_triggers("kits")]
+# How a message was handed over to its recipient, from version 19 on: typed into its window
+# or carried on in its turn-end hook's output (TYPED, HOOK_OUTPUT; lado.runtime.hand_over).
+# NULL while it is pending, and for one handed over another way (a first input, the human's
+# UI). Each channel has its own confirmation and its own sweep rule (lado.runtime._plan).
+MESSAGES_CHANNEL = "ALTER TABLE messages ADD COLUMN channel TEXT"
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.
@@ -294,6 +299,7 @@ SCHEMA += (
             AGENTS_WAITING_FOR,
             *MARKETPLACES_TABLE,
             *KITS_TABLE,
+            MESSAGES_CHANNEL,
         ]
     )
     + ";\n"
@@ -331,6 +337,7 @@ MIGRATIONS = {
     15: [AGENTS_WAITING_FOR],
     16: MARKETPLACES_TABLE,
     17: KITS_TABLE,
+    18: [MESSAGES_CHANNEL],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -352,6 +359,11 @@ DELIVERED = "delivered"
 READ = "read"  # its recipient got the body with read_messages
 DROPPED = "dropped"  # its recipient was finished or stopped before it got (or read) it
 FAILED = "failed"  # typed again and again, never confirmed (lado.runtime.sweep)
+# The channels a sent message went by (messages.channel).
+TYPED = "typed"  # typed into the window; confirmed by its line in a prompt-submit hook
+# Carried on in the turn-end hook's output; confirmed by its line in a prompt-submit hook,
+# or by the next turn's end that says the turn went on from that output (lado.hooks).
+HOOK_OUTPUT = "hook_output"
 # What an agent has not received yet: messages not delivered, and bodies not read. When the
 # agent is finished or stopped, they are dropped: a new agent of the same name starts fresh.
 # The human is no agent: their messages stay as they are.
@@ -483,6 +495,7 @@ class Message:
     reply_to: int | None = None  # an answer's or dismissal's: the question's id
     choice: str | None = None  # an answer's: the choice taken, if one was
     reply_state: str | None = None  # the human's message to an agent: REPLIED | MISSING
+    channel: str | None = None  # how it was handed over: TYPED | HOOK_OUTPUT; None for none
 
     @property
     def title(self) -> str:
@@ -1471,7 +1484,7 @@ def agent_times(
 
 MESSAGE_COLUMNS = (
     "id, sender, summary, body, recipient, state, created_at, attempts, sent_at, kind, choices,"
-    " free_answer, question_state, answered_by, reply_to, choice, reply_state"
+    " free_answer, question_state, answered_by, reply_to, choice, reply_state, channel"
 )
 
 
@@ -1488,6 +1501,7 @@ def _message(row: sqlite3.Row, **changed) -> Message:
         reply_to=row["reply_to"],
         choice=row["choice"],
         reply_state=row["reply_state"],
+        channel=row["channel"],
     )
     return replace(message, **changed) if changed else message
 
@@ -1554,7 +1568,8 @@ def queue_with_copy(
 ) -> int:
     """Queue a message and, in the same transaction, a copy from LADO to `copy_to` whose
     summary is `copy_summary(id of the message)`, without a body. Returns the message's id;
-    NotRunning, with nothing queued, when the recipient does not run."""
+    NotRunning, with nothing queued, when the recipient does not run. When `copy_to` does
+    not run, there is no copy: it would never be delivered."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         _check_running(db, session, recipient)
@@ -1563,7 +1578,9 @@ def queue_with_copy(
             " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))"
         )
         message = db.execute(insert, (session, sender, recipient, summary, body)).lastrowid
-        db.execute(insert, (session, LADO, copy_to, copy_summary(message), ""))
+        with suppress(NotRunning):
+            _check_running(db, session, copy_to)
+            db.execute(insert, (session, LADO, copy_to, copy_summary(message), ""))
         db.execute("COMMIT")
     return message
 
@@ -1757,11 +1774,18 @@ def read_messages(session: str, recipient: str) -> list[Message]:
 
 
 def take_pending(
-    session: str, recipient: str, mark: str, status: str | None = None, idle_only: bool = False
+    session: str,
+    recipient: str,
+    mark: str,
+    status: str | None = None,
+    idle_only: bool = False,
+    channel: str | None = None,
 ) -> list[Message]:
-    """Move all pending messages for `recipient` to `mark` and return them, oldest first;
-    when there are any and `status` is given, set the recipient's status too. `idle_only`:
-    take none unless the recipient is idle and no message typed into it is unconfirmed.
+    """Move all pending messages for `recipient` to `mark`, by `channel`, and return them,
+    oldest first; when there are any and `status` is given, set the recipient's status too.
+    `idle_only`: take none unless the recipient is idle and no message handed over to it is
+    unconfirmed. Every hand-over to an agent takes them so (lado.runtime.hand_over): an
+    agent never has more than one batch of sent messages at a time.
 
     Runs in one write transaction, so two concurrent callers never get the same message,
     and no one sees the messages moved without the status that goes with them.
@@ -1784,24 +1808,26 @@ def take_pending(
             " WHERE session = ? AND recipient = ? AND state = ? ORDER BY id",
             (session, recipient, PENDING),
         ).fetchall()
-        # Typed into the window, it is an attempt (lado.runtime.sweep); handed over another
-        # way, it is delivered and needs none.
+        # Sent, it is an attempt (lado.runtime.sweep); handed over another way, it is
+        # delivered and needs none.
         attempt = 1 if mark == SENT else 0
         db.executemany(
-            "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + ? WHERE id = ?",
-            [(mark, time.time(), attempt, r["id"]) for r in rows],
+            "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + ?, channel = ?"
+            " WHERE id = ?",
+            [(mark, time.time(), attempt, channel, r["id"]) for r in rows],
         )
         if rows and status:
             _set_status(db, session, recipient, status)
         db.execute("COMMIT")
-    return [_message(r, state=mark) for r in rows]
+    return [_message(r, state=mark, channel=channel) for r in rows]
 
 
 @dataclass
 class Plan:
     """What to do with an agent's unconfirmed messages (lado.runtime.sweep decides)."""
 
-    retype: bool = False  # type its sent and pending messages again, as one text
+    # Type its sent and pending messages (again), as one text: by the TYPED channel.
+    retype: bool = False
     requeue: list[int] = field(default_factory=list)  # back to pending
     fail: list[int] = field(default_factory=list)
     wait: bool = False  # set the agent waiting
@@ -1845,10 +1871,11 @@ def sweep(
         if plan.retype:
             rows = db.execute(query.format("?, ?"), (session, name, SENT, PENDING)).fetchall()
             db.executemany(
-                "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + 1 WHERE id = ?",
-                [(SENT, now, r["id"]) for r in rows],
+                "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + 1,"
+                " channel = ? WHERE id = ?",
+                [(SENT, now, TYPED, r["id"]) for r in rows],
             )
-            typed = [_message(r, state=SENT) for r in rows]
+            typed = [_message(r, state=SENT, channel=TYPED) for r in rows]
         db.execute("COMMIT")
     return Swept(typed, [replace(m, state=FAILED) for m in failed], len(plan.requeue))
 
@@ -1866,6 +1893,18 @@ def confirm_sent(
         ).fetchall()
         confirmed = [(DELIVERED, r["id"]) for r in rows if typed(_message(r)) in prompt]
         db.executemany("UPDATE messages SET state = ? WHERE id = ?", confirmed)
+
+
+def confirm_channel(session: str, recipient: str, channel: str) -> None:
+    """Mark the recipient's sent messages that went by `channel` delivered: its CLI says it
+    took them, without their lines (lado.hooks: a turn that went on from the hook's
+    output)."""
+    with connect() as db:
+        db.execute(
+            "UPDATE messages SET state = ? WHERE session = ? AND recipient = ? AND state = ?"
+            " AND channel = ?",
+            (DELIVERED, session, recipient, SENT, channel),
+        )
 
 
 def drop_undelivered(session: str, recipient: str) -> int:

@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import json
 import os
@@ -817,6 +818,24 @@ def test_finish_drops_the_failed_messages_of_the_worker(repo, fake_tmux):
     _retry_until_failed(state.list_messages("s")[0].sent_at)
     assert runtime.finish_worker("s", "w1", discard=True).dropped == 1
     assert state.list_messages("s")[0].state == state.DROPPED
+
+
+@pytest.mark.parametrize(
+    ("status", "wait"),
+    [
+        (state.BUSY, True),
+        (state.IDLE, True),
+        (state.WAITING, False),
+        (state.STARTING, False),
+    ],
+)
+def test_a_failure_plans_a_busy_or_idle_agent_waiting(status, wait):
+    agent = state.Agent("s", "w1", "worker", "/r", None, None, status, provider="claude")
+    last = state.Message(7, "supervisor", "hi", "", "w1", state.SENT, attempts=len(DELAYS) + 1)
+    plan = runtime._plan(agent, [last], 100.0, DELAYS)
+    assert (plan.fail, plan.retype, plan.wait) == ([7], False, wait)
+    young = dataclasses.replace(last, attempts=1, sent_at=100.0)
+    assert runtime._plan(agent, [young], 100.0, DELAYS) == state.Plan()
 
 
 def _retry_until_failed(sent, start=0):
@@ -1668,6 +1687,37 @@ def test_finish_worker_drops_its_undelivered_messages(repo, fake_tmux, monkeypat
     assert _hook("Stop", "w1") is None  # nothing meant for the old w1
     assert fake_tmux[-1][0] != "send_text"
     assert [m.state for m in state.list_messages("s")] == [state.DROPPED, state.DROPPED]
+
+
+@pytest.mark.parametrize(
+    ("queue", "send"),
+    [
+        ("queue_message", lambda question: runtime.send_message("s", "supervisor", "w1", "late")),
+        ("queue_with_copy", lambda question: runtime.write_as_human("s", "late", to="w1")),
+        ("reply_to_question", lambda question: runtime.answer_question("s", question.id, "yes")),
+    ],
+    ids=["send_message", "write_as_human", "answer_question"],
+)
+def test_a_message_queued_while_the_worker_is_finished_reaches_nobody(
+    repo, fake_tmux, monkeypatch, queue, send
+):
+    question = _asked(repo)
+    store = getattr(state, queue)
+
+    def finished_first(*args, **kwargs):
+        # finish_worker runs after the sender found w1 running, before the message is stored
+        runtime.finish_worker("s", "w1", discard=True)
+        return store(*args, **kwargs)
+
+    monkeypatch.setattr(state, queue, finished_first)
+    with pytest.raises(
+        runtime.LadoError, match='^no running agent "w1"; running agents: supervisor'
+    ):
+        send(question)
+    monkeypatch.setattr(state, queue, store)
+    runtime.spawn_worker("s", "new task", name="w1")
+    assert state.take_pending("s", "w1", state.SENT, state.BUSY) == []
+    assert state.read_messages("s", "w1") == []
 
 
 def test_finish_worker_drops_the_bodies_it_never_read(repo, fake_tmux):

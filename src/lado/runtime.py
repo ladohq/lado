@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import time
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -645,8 +645,9 @@ def close_worker(session: str, worker: state.Agent, how: str) -> Finished:
     """Close the worker's window and forget it; its worktree is left alone."""
     tmux.kill_window(session, worker.name)
     state.delete_agent(session, worker.name)
-    # Forgotten first, so no new message can be queued for it: a later worker with the
-    # same name must not get what was meant for this one.
+    # Forgotten first, so no new message can be queued for it (the queue checks the
+    # recipient in the transaction that stores the message): a later worker with the same
+    # name must not get what was meant for this one.
     dropped = state.drop_undelivered(session, worker.name)
     finished = Finished(worker, how, dropped)
     state.add_event(session, worker.name, state.FINISHED, finished.detail())
@@ -768,10 +769,10 @@ def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
     summary, body = _human_text(text)
     if to == SUPERVISOR:
         return post(session, state.HUMAN, to, summary, body)
-    _running_agent(session, to)
-    state.queue_with_copy(
-        session, state.HUMAN, to, summary, body, SUPERVISOR, lambda id: _copy(to, summary, id)
-    )
+    with _to_running(session):
+        state.queue_with_copy(
+            session, state.HUMAN, to, summary, body, SUPERVISOR, lambda id: _copy(to, summary, id)
+        )
     result = _deliver(session, to)
     supervisor = state.get_agent(session, SUPERVISOR)
     if supervisor is not None and supervisor.status != state.STOPPED:
@@ -851,8 +852,9 @@ def _open_question(session: str, question_id: int) -> state.Message:
 def _reply(
     session: str, question: state.Message, summary: str, body: str, choice: str | None, outcome: str
 ) -> str:
-    _running_agent(session, question.sender)
-    if not state.reply_to_question(session, question.id, summary, body, choice, outcome):
+    with _to_running(session):
+        reply = state.reply_to_question(session, question.id, summary, body, choice, outcome)
+    if not reply:
         now = state.get_message(session, question.id)
         raise LadoError(f"question #{question.id} is {now.question_state}")
     return _deliver(session, question.sender)
@@ -920,17 +922,22 @@ def post(
     if recipient == state.HUMAN:
         state.queue_message(session, sender, recipient, summary, body, state.DELIVERED)
         return TO_HUMAN
-    _running_agent(session, recipient, or_human)
-    state.queue_message(session, sender, recipient, summary, body)
+    with _to_running(session, or_human):
+        state.queue_message(session, sender, recipient, summary, body)
     return _deliver(session, recipient)
 
 
-def _running_agent(session: str, name: str, or_human: bool = False) -> None:
-    agent = state.get_agent(session, name)
-    if agent is None or agent.status == state.STOPPED:
+@contextlib.contextmanager
+def _to_running(session: str, or_human: bool = False) -> Iterator[None]:
+    """Turn the queue's refusal of a recipient that does not run (checked where the message
+    is stored, so it holds against a worker finished meanwhile) into LADO's error, which
+    names the running agents; with `or_human`, the human too."""
+    try:
+        yield
+    except state.NotRunning as refused:
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
         human = f'; or "{state.HUMAN}"' if or_human else ""
-        raise LadoError(f'no running agent "{name}"; running agents: {names}{human}')
+        raise LadoError(f"{refused}; running agents: {names}{human}") from None
 
 
 def _deliver(session: str, recipient: str) -> str:
@@ -1007,12 +1014,14 @@ def _plan(
         # usual. Its attempts count on.
         elif agent.status == state.IDLE:
             plan.requeue.append(message.id)
-    # A failure sets the agent waiting: nothing more is typed into it. What was typed
+    # A failure sets a busy or idle agent waiting: it took or confirmed nothing for so long
+    # that typing more would not help, so nothing more is typed into it. What was typed
     # together with the failed message and is not back in the queue fails with it, though
     # it has attempts left: the same window did not take it either.
     if plan.fail:
         plan.retype = False
         plan.fail = [m.id for m in sent if m.id not in plan.requeue]
+        plan.wait = agent.status in (state.BUSY, state.IDLE)
     return plan
 
 

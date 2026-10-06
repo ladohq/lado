@@ -440,6 +440,8 @@ def test_old_message_gets_a_summary_from_its_first_line():
 
 def test_read_messages_returns_unread_bodies_once(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(_agent("supervisor"))
+    state.add_agent(_agent("w2"))
     one = state.queue_message("s", "w1", "supervisor", "done", "the report")
     state.queue_message("s", "w1", "supervisor", "no body")
     later = state.queue_message("s", "w2", "supervisor", "blocked", "why")
@@ -859,6 +861,7 @@ def test_a_resumed_session_gets_its_new_settings(lado_home):
 
 def test_version_12_messages_become_plain_messages_in_version_13(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(_agent("supervisor"))
     state.queue_message("s", "w1", "supervisor", "hi", "body")
     agent_helpers.schema_before(13)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it would migrate
@@ -936,3 +939,119 @@ def test_a_session_and_an_agent_need_their_provider():
         state.Session("s", "/repo", None)
     with pytest.raises(TypeError, match="provider"):
         state.Agent("s", "w1", "worker", "/repo", None, None, state.IDLE)
+
+
+def _session_with(*agents):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    for agent in agents:
+        state.add_agent(agent)
+
+
+@pytest.mark.parametrize(
+    "queue",
+    [
+        lambda: state.queue_message("s", "supervisor", "w1", "hi"),
+        lambda: state.queue_with_copy("s", "human", "w1", "hi", "", "supervisor", str),
+    ],
+    ids=["queue_message", "queue_with_copy"],
+)
+@pytest.mark.parametrize("w1", [None, _agent(status=state.STOPPED)], ids=["gone", "stopped"])
+def test_a_message_is_queued_only_for_a_running_agent(lado_home, queue, w1):
+    _session_with(*([w1] if w1 else []))
+    with pytest.raises(state.NotRunning) as refused:
+        queue()
+    assert refused.value.name == "w1"
+    assert state.list_messages("s") == []
+    if w1 is None:
+        state.add_agent(_agent(status=state.IDLE))
+    else:
+        state.set_status("s", "w1", state.IDLE)
+    queue()
+    assert [m.recipient for m in state.list_messages("s")][0] == "w1"
+
+
+def test_messages_to_the_human_and_delivered_ones_need_no_running_agent(lado_home):
+    _session_with()
+    state.queue_message("s", "w1", "human", "hi", mark=state.DELIVERED)
+    state.queue_message("s", "lado", "w1", "first input", "long", state.DELIVERED)
+    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
+
+
+def test_messages_for_a_supervisor_about_to_start_need_no_running_agent(lado_home):
+    _session_with()
+    state.queue_message("s", "lado", "supervisor", "session resumed", before_start=True)
+    assert [m.state for m in state.list_messages("s")] == [state.PENDING]
+
+
+def test_an_answer_goes_only_to_a_running_agent(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    question = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
+    state.set_status("s", "w1", state.STOPPED)
+    with pytest.raises(state.NotRunning):
+        state.reply_to_question("s", question, "yes", "", "yes", state.ANSWERED)
+    assert state.get_message("s", question).question_state == state.OPEN_QUESTION
+    assert [m.id for m in state.list_messages("s")] == [question]
+
+
+def _typed(*summaries, status=state.IDLE):
+    """w1 with these messages typed into its window (sent), and its status."""
+    _session_with(_agent(status=status))
+    for summary in summaries:
+        state.queue_message("s", "supervisor", "w1", summary)
+    state.take_pending("s", "w1", state.SENT)
+    return [m.id for m in state.list_messages("s")]
+
+
+def test_sweep_gives_the_plan_the_agent_and_its_sent_messages(lado_home):
+    one, two = _typed("one", "two")
+    state.queue_message("s", "supervisor", "w1", "pending")
+    seen = []
+    swept = state.sweep("s", "w1", 5.0, lambda a, sent: seen.append((a, sent)) or state.Plan())
+    [(agent, sent)] = seen
+    assert (agent.name, [m.id for m in sent]) == ("w1", [one, two])
+    assert swept == state.Swept([], [], 0)
+    assert [m.state for m in state.list_messages("s")] == [state.SENT] * 2 + [state.PENDING]
+
+
+def test_sweep_of_an_agent_that_is_gone_plans_nothing(lado_home):
+    _session_with()
+    swept = state.sweep("s", "w1", 5.0, lambda a, sent: pytest.fail("no plan for nobody"))
+    assert swept == state.Swept([], [], 0)
+
+
+def test_sweep_fails_and_requeues_what_the_plan_says(lado_home):
+    one, two, three = _typed("one", "two", "three")
+    swept = state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(requeue=[two], fail=[one]))
+    assert [m.id for m in swept.failed] == [one]
+    assert swept.failed[0].state == state.FAILED
+    assert (swept.typed, swept.requeued) == ([], 1)
+    states = [m.state for m in state.list_messages("s")]
+    assert states == [state.FAILED, state.PENDING, state.SENT]
+    with state.connect() as db:
+        failed_at = [r[0] for r in db.execute("SELECT failed_at FROM messages ORDER BY id")]
+    assert failed_at == [5.0, None, None]
+    # Not told to: the agent's status stays.
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert _status_events() == []
+
+
+def test_sweep_types_the_sent_and_pending_messages_again(lado_home):
+    one, two = _typed("one", "two", status=state.BUSY)
+    state.queue_message("s", "supervisor", "w1", "new")
+    swept = state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(retype=True))
+    assert [m.summary for m in swept.typed] == ["one", "two", "new"]
+    assert all(m.state == state.SENT for m in swept.typed)
+    messages = state.list_messages("s")
+    assert [(m.state, m.attempts, m.sent_at) for m in messages] == [
+        (state.SENT, 2, 5.0),
+        (state.SENT, 2, 5.0),
+        (state.SENT, 1, 5.0),
+    ]
+
+
+@pytest.mark.parametrize("status", [state.BUSY, state.IDLE])
+def test_sweep_sets_the_agent_waiting_when_the_plan_says_so(lado_home, status):
+    [one] = _typed("one", status=status)
+    state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(fail=[one], wait=True))
+    assert state.get_agent("s", "w1").status == state.WAITING
+    assert _status_events() == [state.WAITING]

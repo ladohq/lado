@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import shutil
 import subprocess
@@ -66,6 +67,7 @@ def failed_session(lado_home, monkeypatch):
         provider="claude",
     )
     state.add_agent(w1)
+    state.add_agent(dataclasses.replace(w1, name="supervisor", cwd="/r", status=state.IDLE))
     state.add_event("s", "w1", state.STATUS, state.BUSY)
     state.queue_message("s", "w1", "supervisor", "done", "details")
     (lado_home / "hooks.log").write_text("hook error\n")

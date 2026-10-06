@@ -1416,19 +1416,54 @@ def _message(row: sqlite3.Row, **changed) -> Message:
     return replace(message, **changed) if changed else message
 
 
+class NotRunning(Exception):
+    """The recipient of a message is not a running agent: no agent of that name, or a
+    stopped one."""
+
+    def __init__(self, name: str):
+        super().__init__(f'no running agent "{name}"')
+        self.name = name
+
+
+def _check_running(db: sqlite3.Connection, session: str, name: str) -> None:
+    """Raise NotRunning unless `name` is a running agent. Called in the transaction that
+    queues a message for it: an agent finished in between (deleted, its undelivered
+    messages dropped) must not leave one for a later agent of the same name."""
+    row = db.execute(
+        "SELECT 1 FROM agents WHERE session = ? AND name = ? AND status != ?",
+        (session, name, STOPPED),
+    ).fetchone()
+    if row is None:
+        raise NotRunning(name)
+
+
 def queue_message(
-    session: str, sender: str, recipient: str, summary: str, body: str = "", mark: str = PENDING
+    session: str,
+    sender: str,
+    recipient: str,
+    summary: str,
+    body: str = "",
+    mark: str = PENDING,
+    before_start: bool = False,
 ) -> int:
     """Store a message in state `mark`: pending, or delivered when its line goes to the
     recipient another way (its first input, or the human's UI): then it is handed over
-    now (sent_at). Returns its id."""
+    now (sent_at). Returns its id.
+
+    A pending message to an agent needs it running (NotRunning), but with `before_start`:
+    the supervisor of a session being started, not stored yet, takes it as its first
+    input."""
     sent_at = None if mark == PENDING else time.time()
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if mark == PENDING and recipient != HUMAN and not before_start:
+            _check_running(db, session, recipient)
         cur = db.execute(
             "INSERT INTO messages (session, sender, recipient, summary, body, state, sent_at,"
             " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (session, sender, recipient, summary, body, mark, sent_at),
         )
+        db.execute("COMMIT")
         return cur.lastrowid or 0
 
 
@@ -1442,9 +1477,11 @@ def queue_with_copy(
     copy_summary: Callable[[int], str],
 ) -> int:
     """Queue a message and, in the same transaction, a copy from LADO to `copy_to` whose
-    summary is `copy_summary(id of the message)`, without a body. Returns the message's id."""
+    summary is `copy_summary(id of the message)`, without a body. Returns the message's id;
+    NotRunning, with nothing queued, when the recipient does not run."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        _check_running(db, session, recipient)
         insert = (
             "INSERT INTO messages (session, sender, recipient, summary, body, created_at)"
             " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))"
@@ -1492,15 +1529,18 @@ def reply_to_question(
 ) -> int | None:
     """Queue the human's answer or dismissal of an open question to the agent that asked,
     and set the question's outcome (ANSWERED or DISMISSED), in one transaction. Returns the
-    reply's id; None, with nothing changed, when the question is not open."""
+    reply's id; None, with nothing changed, when the question is not open; NotRunning, with
+    nothing changed, when the agent that asked does not run."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
-            "SELECT sender FROM messages WHERE session = ? AND id = ? AND kind = ?"
-            " AND question_state = ?",
-            (session, question, QUESTION, OPEN_QUESTION),
+            "SELECT sender, question_state FROM messages WHERE session = ? AND id = ? AND kind = ?",
+            (session, question, QUESTION),
         ).fetchone()
-        if row is None:
+        if row is not None:
+            # First, as the asker's question is closed when it is finished.
+            _check_running(db, session, row["sender"])
+        if row is None or row["question_state"] != OPEN_QUESTION:
             db.execute("ROLLBACK")
             return None
         reply = db.execute(
@@ -1688,6 +1728,7 @@ class Plan:
     retype: bool = False  # type its sent and pending messages again, as one text
     requeue: list[int] = field(default_factory=list)  # back to pending
     fail: list[int] = field(default_factory=list)
+    wait: bool = False  # set the agent waiting
 
 
 @dataclass
@@ -1701,8 +1742,7 @@ def sweep(
     session: str, name: str, now: float, decide: Callable[[Agent, list[Message]], Plan]
 ) -> Swept:
     """Carry out `decide(agent, its sent messages)` in one write transaction, so two
-    sweeps never type the same message twice. A failure puts a busy or idle agent in
-    waiting: it took or confirmed nothing for so long that typing more would not help."""
+    sweeps never type the same message twice."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
@@ -1723,12 +1763,8 @@ def sweep(
             "UPDATE messages SET state = ?, failed_at = ? WHERE id = ?",
             [(FAILED, now, i) for i in plan.fail] + [(PENDING, None, i) for i in plan.requeue],
         )
-        if failed and agent.status in (BUSY, IDLE):
-            db.execute(
-                "UPDATE agents SET status = ? WHERE session = ? AND name = ?",
-                (WAITING, session, name),
-            )
-            _add_event(db, session, name, STATUS, WAITING)
+        if plan.wait:
+            _set_status(db, session, name, WAITING)
         typed = []
         if plan.retype:
             rows = db.execute(query.format("?, ?"), (session, name, SENT, PENDING)).fetchall()

@@ -1982,8 +1982,7 @@ def test_stop_all_on_an_older_schema_kills_all_then_migrates_then_marks(
     agent_helpers.previous_schema()
     _spy_migrate(monkeypatch, fake_tmux)
     calls = len(fake_tmux)
-    stopped = runtime.stop_all()
-    assert [name for name, _ in stopped] == ["a", "b", "gone"]
+    assert _stop_all() == ["a", "b", "gone"]
     assert fake_tmux[calls:] == [
         ("kill_session", "a"),
         ("kill_session", "b"),
@@ -2003,9 +2002,9 @@ def test_stop_all_stops_every_session_not_stopped(repo, fake_tmux):
     for name in ("a", "b"):
         runtime.start_session(str(repo), name, None, provider="claude")
     tmux.kill_session("b")
-    assert [name for name, _ in runtime.stop_all()] == ["a", "b"]
+    assert _stop_all() == ["a", "b"]
     assert all(state.get_session(n).stopped_at for n in ("a", "b"))
-    assert runtime.stop_all() == []
+    assert _stop_all() == []
 
 
 def test_stop_all_does_not_migrate_while_a_loop_runs_on(repo, fake_tmux, monkeypatch):
@@ -2013,12 +2012,45 @@ def test_stop_all_does_not_migrate_while_a_loop_runs_on(repo, fake_tmux, monkeyp
     agent_helpers.previous_schema()
     monkeypatch.setattr(loop, "wait_stopped", lambda session: False)
     with pytest.raises(runtime.LadoError) as refused:
-        runtime.stop_all()
+        _stop_all()
     assert 'loop of session "a"' in str(refused.value)
     assert "`lado stop --all`" in str(refused.value)
     assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["a"])
     monkeypatch.setattr(loop, "wait_stopped", lambda session: True)
-    assert [name for name, _ in runtime.stop_all()] == ["a"]  # again, once it ended
+    assert _stop_all() == ["a"]  # again, once it ended
+
+
+@pytest.mark.parametrize("older", [False, True])
+def test_stop_all_goes_on_past_a_session_it_cannot_stop_and_names_it(
+    repo, fake_tmux, monkeypatch, older
+):
+    for name in ("a", "b", "c"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    if older:
+        agent_helpers.previous_schema()
+    mark = state.stop_session
+
+    def locked(session, gone=False):
+        if session == "b":
+            raise sqlite3.OperationalError("database is locked")
+        return mark(session, gone)
+
+    monkeypatch.setattr(state, "stop_session", locked)
+    reported = []
+    with pytest.raises(runtime.LadoError) as failed:
+        runtime.stop_all(lambda name, stopped: reported.append(name))
+    assert reported == ["a", "c"]  # each one as soon as it is stopped
+    assert str(failed.value) == (
+        'could not stop session "b": OperationalError: database is locked; stopped: "a", "c"'
+    )
+    assert [bool(state.get_session(n).stopped_at) for n in "abc"] == [True, False, True]
+
+
+def _stop_all() -> list[str]:
+    """The sessions stop_all stopped, in the order it reported them."""
+    reported = []
+    runtime.stop_all(lambda name, stopped: reported.append(name))
+    return reported
 
 
 def test_session_status_tells_the_four_states(repo, fake_tmux):

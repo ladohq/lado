@@ -1412,6 +1412,28 @@ def test_stop_all_stops_every_running_session(repo, fake_tmux, capsys):
     assert "No session runs." in capsys.readouterr().out
 
 
+def test_stop_all_prints_each_session_stopped_before_a_failure(
+    repo, fake_tmux, monkeypatch, capsys
+):
+    for name in ("a", "b"):
+        main(["start", str(repo), "--provider", "claude", "--name", name, "--no-attach"])
+    mark = state.stop_session
+
+    def locked(session, gone=False):
+        if session == "b":
+            raise sqlite3.OperationalError("database is locked")
+        return mark(session, gone)
+
+    monkeypatch.setattr(state, "stop_session", locked)
+    capsys.readouterr()
+    assert main(["stop", "--all"]) == 1
+    captured = capsys.readouterr()
+    assert 'Stopped session "a".' in captured.out
+    assert captured.err == (
+        'lado: could not stop session "b": OperationalError: database is locked; stopped: "a"\n'
+    )
+
+
 def test_stop_takes_a_name_or_all(capsys):
     assert main(["stop"]) == 1
     assert main(["stop", "x", "--all"]) == 1

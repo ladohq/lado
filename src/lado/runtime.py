@@ -1279,19 +1279,34 @@ def stop_session(session: str) -> Stopped:
     return _mark_stopped(session, gone=not alive)
 
 
-def stop_all() -> list[tuple[str, Stopped]]:
-    """Stop every session not stopped yet (also one whose tmux or loop is gone), by name.
-    On an older lado.db: kill them all, wait for their loops, migrate, then mark them
-    stopped, since this LADO's SQL needs the newer schema. Sees the sessions of this
-    LADO_TMUX_SOCKET only."""
+def stop_all(report: Callable[[str, Stopped], object]) -> None:
+    """Stop every session not stopped yet (also one whose tmux or loop is gone), by name,
+    and `report` each one as soon as it is stopped. On an older lado.db: kill them all,
+    wait for their loops, migrate, then mark them stopped, since this LADO's SQL needs the
+    newer schema. A session that cannot be stopped does not keep the others running: the
+    rest are stopped, then a LadoError names each failure and the sessions stopped. Sees
+    the sessions of this LADO_TMUX_SOCKET only."""
     pending = state.pending_migration()
     if pending is None:
         names = [s.name for s in state.list_sessions() if not s.stopped_at]
-        return [(name, stop_session(name)) for name in names]
-    names = pending[1]
-    alive = _kill_for_migration(names)
-    state.migrate()
-    return [(name, _mark_stopped(name, gone=not alive[name])) for name in names]
+        stop = stop_session
+    else:
+        names = pending[1]
+        alive = _kill_for_migration(names)
+        state.migrate()
+
+        def stop(name: str) -> Stopped:
+            return _mark_stopped(name, gone=not alive[name])
+
+    stopped, failed = [], []
+    for name in names:
+        try:
+            report(name, stop(name))
+            stopped.append(f'"{name}"')
+        except Exception as error:
+            failed.append(f'could not stop session "{name}": {type(error).__name__}: {error}')
+    if failed:
+        raise LadoError("; ".join([*failed, f"stopped: {', '.join(stopped) or 'none'}"]))
 
 
 def _kill_for_migration(sessions: list[str]) -> dict[str, bool]:

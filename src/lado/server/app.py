@@ -76,8 +76,10 @@ class Health(BaseModel):
 
 
 def database() -> bool:
-    """A dependency of every endpoint that reads lado.db: whether there is one. Reads its
-    schema version without opening it for writing, so the server never migrates it."""
+    """A dependency of every endpoint that reads lado.db: whether there is one, so a read
+    makes none; another schema is a 503 with its reason. The server never migrates it:
+    state.connect refuses another schema itself (`another_schema`, also a 503), so this
+    check only gives the reason early."""
     problem = feed.schema_problem()
     if problem:
         raise HTTPException(503, problem)

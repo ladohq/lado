@@ -830,12 +830,11 @@ def cmd_stop(args: argparse.Namespace) -> int:
     if args.name:
         _print_stopped(args.name, runtime.stop_session(args.name))
         return 0
-    stopped = runtime.stop_all()
+    print(f'Only sessions on tmux socket "{tmux.socket()}" are seen.')
+    stopped = []
+    runtime.stop_all(lambda name, each: stopped.append(_print_stopped(name, each)))
     if not stopped:
         print("No session runs.")
-    for name, each in stopped:
-        _print_stopped(name, each)
-    print(f'Only sessions on tmux socket "{tmux.socket()}" are seen.')
     return 0
 
 

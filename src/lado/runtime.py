@@ -1072,8 +1072,9 @@ def _plan(
     - HOOK_OUTPUT (always its first attempt): no hook ran since (the CLI did not take the
       output, or its turn goes on that long without one): typed in, once, and TYPED from
       then on; a turn that took it meanwhile gets it twice, which is better than never. A
-      hook ran and the agent is idle (its turn ended without saying it went on from the
-      output): back to the queue. It never fails by this channel."""
+      turn's end that does not say it went on from the output, or a hook that failed
+      before printing it, has made it TYPED already (lado.hooks). It never fails by this
+      channel."""
     plan = state.Plan()
     for message in sent:
         attempt = max(message.attempts, 1)

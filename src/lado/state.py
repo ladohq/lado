@@ -1837,7 +1837,6 @@ class Plan:
 class Swept:
     typed: list[Message]  # marked typed again: type them into the window, as one text
     failed: list[Message]
-    requeued: int
 
 
 def sweep(
@@ -1852,7 +1851,7 @@ def sweep(
         ).fetchone()
         if row is None:
             db.execute("ROLLBACK")
-            return Swept([], [], 0)
+            return Swept([], [])
         agent = _agent(row)
         query = (
             f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND recipient = ?"
@@ -1877,7 +1876,7 @@ def sweep(
             )
             typed = [_message(r, state=SENT, channel=TYPED) for r in rows]
         db.execute("COMMIT")
-    return Swept(typed, [replace(m, state=FAILED) for m in failed], len(plan.requeue))
+    return Swept(typed, [replace(m, state=FAILED) for m in failed])
 
 
 def confirm_sent(
@@ -1904,6 +1903,19 @@ def confirm_channel(session: str, recipient: str, channel: str) -> None:
             "UPDATE messages SET state = ? WHERE session = ? AND recipient = ? AND state = ?"
             " AND channel = ?",
             (DELIVERED, session, recipient, SENT, channel),
+        )
+
+
+def output_not_taken(session: str, recipient: str, since: float = 0) -> None:
+    """The recipient's sent messages that went in a turn-end hook's output (since `since`)
+    did not reach its CLI: the turn ended without going on from them, or the hook failed
+    before it printed them. They go by the TYPED channel from now on, so only their lines
+    confirm them, never a later turn that went on from another Stop hook's output."""
+    with connect() as db:
+        db.execute(
+            "UPDATE messages SET channel = ? WHERE session = ? AND recipient = ? AND state = ?"
+            " AND channel = ? AND sent_at >= ?",
+            (TYPED, session, recipient, SENT, HOOK_OUTPUT, since),
         )
 
 

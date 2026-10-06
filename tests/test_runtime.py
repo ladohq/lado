@@ -1078,6 +1078,17 @@ def test_a_turn_that_ends_without_taking_the_hook_output_gets_it_from_the_queue(
     assert (report.state, report.channel, report.attempts) == (state.SENT, state.TYPED, 2)
 
 
+def test_output_a_turn_ended_without_is_not_confirmed_by_a_later_turn_that_goes_on(repo, fake_tmux):
+    """E.g. Claude Code's 8th block in a row is overridden: the turn ends without the text.
+    A later turn that another Stop hook made go on must not confirm it."""
+    _handed_over_in_the_stop_hook(repo)
+    _hook("Stop", "supervisor")  # not stop_hook_active: the CLI did not take the output
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
+    _hook("Stop", "supervisor", CONTINUED)
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel) == (state.SENT, state.TYPED)
+
+
 def test_only_the_summary_is_typed_and_the_body_waits(repo, fake_tmux):
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
@@ -1324,11 +1335,29 @@ def test_a_stop_hook_that_fails_after_the_hand_over_loses_no_message(
     monkeypatch.setattr("sys.stdin.read", lambda: "{}")
     assert hooks.main("Stop", "s", "supervisor", instance) == 0
     assert "ZeroDivisionError" in (lado_home / "hooks.log").read_text()
+    # Never printed: it waits to be typed in, and no turn that goes on confirms it.
     [report] = state.list_messages("s")
-    assert (report.state, report.channel) == (state.SENT, state.HOOK_OUTPUT)
+    assert (report.state, report.channel) == (state.SENT, state.TYPED)
     # No output, so no hook follows: the sweep types it in after the first delay.
     runtime.sweep("s", now=report.sent_at + DELAYS[0], delays=DELAYS)
     assert _typed(fake_tmux) == ["[from w1] report"]
+
+
+def test_a_turn_another_stop_hook_went_on_with_confirms_no_output_never_printed(
+    repo, fake_tmux, monkeypatch
+):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "report")
+    instance = state.get_agent("s", "supervisor").instance
+    with monkeypatch.context() as patched:
+        claude = type(providers.get("claude"))
+        patched.setattr(claude, "continue_output", lambda self, text: 1 / 0)
+        patched.setattr("sys.stdin.read", lambda: "{}")
+        hooks.main("Stop", "s", "supervisor", instance)
+    # The user's own Stop hook made the turn go on.
+    _hook("Stop", "supervisor", CONTINUED)
+    assert state.list_messages("s")[0].state == state.SENT
 
 
 def test_a_hook_on_an_older_schema_says_why_and_changes_nothing(

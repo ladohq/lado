@@ -6,6 +6,7 @@ module keeps statuses and the inbox. A hook must never break the agent, so error
 logged, not raised.
 """
 
+import contextlib
 import sys
 import time
 import traceback
@@ -70,9 +71,12 @@ def handle(
         state.resume(session, agent, event.key)
     elif event.kind == providers.TURN_END:
         # A turn that went on from the previous turn-end hook's output got the messages in
-        # it: only those, as another Stop hook of the user's may have made it go on too.
+        # it: only those, as another Stop hook of the user's may have made it go on too. A
+        # turn's end that does not say so did not take them: they wait to be typed in.
         if event.continued:
             state.confirm_channel(session, agent, state.HOOK_OUTPUT)
+        else:
+            state.output_not_taken(session, agent)
         # The human's messages this turn got: did it write to the human? Before the inbox is
         # handed over, so what the next turn gets is checked when that one ends.
         state.check_replies(session, agent)
@@ -100,7 +104,8 @@ def _idle(
     this order:
 
     1. At a turn's end (`turn_end`) that went on from the previous turn-end hook's output
-       (Event.continued), handle has confirmed the messages in that output already.
+       (Event.continued), handle has confirmed the messages in that output already; at
+       one that did not, it has left them to be typed in (state.output_not_taken).
     2. Mark idle, then 3. take the queue (runtime.hand_over): what 1 confirmed does not
        keep the next batch back, so a chain of turns that go on from the hook's output
        gets each new batch at once. lado.runtime.send_message queues first and takes
@@ -124,8 +129,9 @@ def _idle(
 
 def main(event: str, session: str, agent: str, instance: str) -> int:
     """Run the hook for a native `event` and print its output. An error is logged and the
-    hook exits 0; messages it handed over before the error are sent, not delivered, and
-    come again by the sweep's rule (runtime._plan)."""
+    hook exits 0; messages it handed over for its output before the error are sent, not
+    delivered, and wait to be typed in by the sweep's rule (runtime._plan)."""
+    started = time.time()
     try:
         payload = sys.stdin.read()
         current = state.get_agent(session, agent)
@@ -141,4 +147,7 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
         _log(f"{event} {session}/{agent}: {exc}")
     except Exception:
         _log(f"{event} {session}/{agent}\n{traceback.format_exc()}")
+        # What it took for its output was never printed.
+        with contextlib.suppress(Exception):  # logged above; the sweep's rule still holds
+            state.output_not_taken(session, agent, since=started)
     return 0

@@ -548,9 +548,11 @@ fixes and docs only: no new feature, no API or schema change.
   second, a hook sets idle first and takes the queue second: exactly one of them hands a
   message over, and the sender's reply says `sent` also when a hook or the loop handed its
   message over in between (and refuses, as for an agent not running, when the agent was
-  finished or stopped in between). LADO types only into an idle agent, never into one that
-  is waiting, starting or stopped. The one exception is the first input (below and above):
-  it is taken as `delivered` with no channel.
+  finished or stopped in between). A queue is taken only so; the one exception is the
+  first input (below and above), taken as `delivered` with no channel. What was handed
+  over and is unconfirmed is typed again only by the sweep's rule (below), also into a
+  busy agent whose window shows no sign of having taken it; never into one that is
+  waiting, starting or stopped.
 - What happens to an unconfirmed message is one rule, `runtime.sweep` (`_plan`), run by
   `send_message` to the agent, by each of its hooks that makes it idle, and every
   `loop.INTERVAL` seconds by the session loop (below). Each hand-over is an attempt; after
@@ -560,9 +562,12 @@ fixes and docs only: no new feature, no API or schema change.
     take the output, the hook failed after the hand-over, or the turn goes on that long
     without a hook), it is typed in, once, with the queue, and is `typed` from then on: a
     turn that did take it gets it twice, which is better than never (the human's
-    decision). If hooks ran and the agent is idle without confirming it (its turn ended
-    without going on from the output), it goes back to the queue, typed in at once by the
-    same sweep. It never fails by this channel.
+    decision). It never fails by this channel. A batch the CLI did not take stops waiting
+    for a turn that goes on from it, so a later turn another Stop hook makes go on never
+    confirms it: a turn's end without `Event.continued`, or a hook that fails after the
+    hand-over (`hooks.main`, its own batch only), makes it `typed`
+    (`state.output_not_taken`), and the rule below takes it on: with the agent idle, it
+    goes back to the queue after the delay and is typed in by the same sweep.
   - `typed`: if no hook of the agent ran since the paste (`agents.seen_at`; a dialog took
     the text) and the agent is busy, it is pasted again with the queue; if hooks ran but no
     prompt held its line and the agent is idle, it goes back to the queue and is delivered

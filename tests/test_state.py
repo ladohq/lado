@@ -1065,14 +1065,14 @@ def test_sweep_gives_the_plan_the_agent_and_its_sent_messages(lado_home):
     swept = state.sweep("s", "w1", 5.0, lambda a, sent: seen.append((a, sent)) or state.Plan())
     [(agent, sent)] = seen
     assert (agent.name, [m.id for m in sent]) == ("w1", [one, two])
-    assert swept == state.Swept([], [], 0)
+    assert swept == state.Swept([], [])
     assert [m.state for m in state.list_messages("s")] == [state.SENT] * 2 + [state.PENDING]
 
 
 def test_sweep_of_an_agent_that_is_gone_plans_nothing(lado_home):
     _session_with()
     swept = state.sweep("s", "w1", 5.0, lambda a, sent: pytest.fail("no plan for nobody"))
-    assert swept == state.Swept([], [], 0)
+    assert swept == state.Swept([], [])
 
 
 def test_sweep_fails_and_requeues_what_the_plan_says(lado_home):
@@ -1080,7 +1080,7 @@ def test_sweep_fails_and_requeues_what_the_plan_says(lado_home):
     swept = state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(requeue=[two], fail=[one]))
     assert [m.id for m in swept.failed] == [one]
     assert swept.failed[0].state == state.FAILED
-    assert (swept.typed, swept.requeued) == ([], 1)
+    assert swept.typed == []
     states = [m.state for m in state.list_messages("s")]
     assert states == [state.FAILED, state.PENDING, state.SENT]
     with state.connect() as db:

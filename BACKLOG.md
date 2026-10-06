@@ -985,6 +985,19 @@ supervisor's tab is always shown, every stopped session's page shows it twice.
 Wanted: one line with the reason (the notice left out when it repeats the close reason).
 Found: 2026-10-03, UI e2e screenshots of feature/ui-polish.
 
+## A sent batch of a busy agent that a hook ran after waits without a limit
+
+Size: S. Why here: no loss, but the agent shows busy with an unconfirmed batch until the human types; rare.
+
+`runtime._plan` does nothing with a sent message whose agent ran a hook after it was handed
+over (`seen_at >= sent_at`) while the agent is still `busy`: no retype, no requeue, never
+failed. It happens when a late async hook of the turn before (Claude Code's PostToolUse)
+runs after the hand-over and the CLI did not take the text: the agent stays busy with its
+batch unconfirmed until the human types in its window.
+Wanted: a limit for that case too (e.g. after the last delay: failed with the notice, or
+waiting with a reason), in the one rule of `_plan`.
+Found: 2026-10-06, review of feature/delivery.
+
 # P3: maybe never
 
 ## A server endpoint that writes makes lado.db when there is none

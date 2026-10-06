@@ -57,7 +57,9 @@ Earlier single failures of the same kind, each passing alone and on the next run
 - `src/Agents.test.tsx` > "the tab without an agent opens the supervisor, and an unknown one
   is not found": `Unable to find role="region" and name "Agent supervisor"` (2026-10-04,
   feature/without-at-kit; 2026-10-05, feature/kit-marketplaces-core, the file took 26 s at
-  load average 100).
+  load average 100); 2026-10-07, merge of fix/esc-docs, with the Flows one below, twice in
+  a row at load average 74-129 while another worktree ran `uv run pytest -n auto`, which
+  takes no check lock; green when that run had ended.
 - `src/Flows.test.tsx` > "the flows tab without a run opens the first waiting run, else the
   first active one" (`… "Run feature/flows-tab"`, `… "Run fix/gate-bubble"`) and "with no
   runs both groups are there and say they are empty; with only ended ones the latest to end
@@ -248,6 +250,7 @@ PostToolUse, PermissionDenied or Stop (checked with 2.1.289). The agent stays `w
 LADO types nothing into it and its queue waits, until the human types a line.
 Wanted: the agent idle once the turn is interrupted, its queue handed over; needs a sign
 of the interruption from Claude Code (none found in its hooks).
+An Esc on the dialog runs no hook either (checked with 2.1.292; see the interrupt entry in P3).
 Found: 2026-10-04, feature/waiting-ends (implement, manual check).
 
 ## One key per waiting agent, though Kilo can have several requests open
@@ -366,17 +369,6 @@ the next unnamed spawn picks `-2`; if `add_event` fails after `add_agent`, an ag
 `starting`.
 Wanted: these steps run under the same `_undo`, so the rollback covers everything the spawn did.
 Found: 2026-10-06, review of fix/tmux-missing-rollback.
-
-## A Claude agent whose turn the human interrupts may stay busy
-
-Size: S. Why here: the same root as a turn that ends on an error (fixed in feature/agent-liveness), which `StopFailure` does not cover.
-
-By Claude Code's hook documentation, `Stop` does not run when the human interrupts a turn
-(Esc). Not checked in LADO: the agent would stay `busy` until the human types something,
-and its queue waits.
-Wanted: check on Claude Code 2.1.29x which hook (if any) comes at an interrupt, and close
-it with the same `TURN_END`.
-Found: 2026-10-06, architect's review of feature/agent-liveness.
 
 ## An agent can stay `starting` with no hook and no reason
 
@@ -1264,3 +1256,23 @@ feature/session-tabs too; Mono and the icons made it wider.
 Wanted: the session's tabs always whole, or plainly scrollable: a thin bar and the wheel as
 for the terminals, or shorter labels / icons only in a narrow column.
 Found: 2026-10-06, review of feature/session-tabs (`session-light.png`).
+
+## A Claude agent whose turn the human interrupts stays busy
+
+Size: S. Why here: checked, Claude Code has no hook for it; recheck on a new Claude Code.
+
+Claude Code runs no hook when the human interrupts a turn with Esc (checked by hand with
+2.1.292, model haiku, every hook event of the binary registered): while text streams,
+nothing after `UserPromptSubmit` (no `Stop`, `StopFailure` or `Notification`); while a tool
+runs, no `PostToolUse`, `PostToolUseFailure` or `Stop` (`PostToolUseFailure`'s
+`is_interrupt` never reaches a hook: its hooks run under the turn's abort signal, which Esc
+aborts); on a permission dialog, nothing after `PermissionRequest` (and `Notification`
+permission_prompt), no `PermissionDenied`. So the agent stays `busy`, or `waiting` after a
+`PermissionRequest`, and its queue waits until the human's next prompt in its window, whose
+`Stop` ends the turn and hands the queue over. Kilo and OpenCode report the Esc
+(`MessageAbortedError` with `session.idle`) as a turn's end.
+Rejected (the human's decision): reading the transcript's "[Request interrupted by user]"
+marker, an undocumented text format that cannot tell whether the human goes on typing.
+Wanted: when a Claude Code release adds a hook for an interrupt, close the turn with
+`TURN_END` as for any other.
+Found: 2026-10-06, architect's review of feature/agent-liveness; checked 2026-10-06.

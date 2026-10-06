@@ -511,8 +511,11 @@ fixes and docs only: no new feature, no API or schema change.
   `session.error`, then `session.idle` of the same session (read in their bundles); the
   plugin passes the error's name (and an `APIError`'s message) with that idle, drops it at
   `session.compacted` (a context overflow the CLI compacts its way out of ends no turn),
-  and `MessageAbortedError` (the human's Esc) is no error. Claude Code is said to run no
-  hook when the human interrupts a turn (BACKLOG.md).
+  and `MessageAbortedError` (the human's Esc) is no error. Claude Code runs no hook when
+  the human interrupts a turn with Esc, while text streams, while a tool runs or on a
+  permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
+  after a `PermissionRequest`, until the human's next prompt in its window, whose `Stop`
+  ends the turn and hands over the queue (BACKLOG.md).
 - An agent whose process ends by itself goes through one transition, `runtime.agent_ended`
   (`state.agent_ended`, one conditional transaction): its session-end hook (`SESSION_END`,
   "its CLI exited") and the session loop's window check ("its window closed without a

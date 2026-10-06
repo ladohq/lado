@@ -8,20 +8,6 @@ P3 maybe never (candidates for removal); a new entry goes into its tier with a `
 
 # P0: fix now
 
-## A message ending in a backslash is not submitted
-
-Size: S. Why here: a plain human message ending in `\` is not sent and the agent stands still; tmux.py:148-160 pastes and presses Enter at once; a one-line fix.
-
-When the human's message (or any message) ends in `\`, e.g. `что требуется от меня?\`,
-the line LADO pastes into an idle agent (`[from human] <summary>`) ends in a backslash.
-`tmux.send_text` pastes it and presses Enter; Claude Code reads `\` + Enter as "continue on
-the next line", so the prompt is not submitted and the agent sits with the text in its input
-until someone presses Enter. The message stays `sent` and the sweep pastes it again later.
-Wanted: the pasted line never ends in a backslash (e.g. a trailing space or the `(#id)`
-suffix after it, or escaping per provider), checked for each provider (Kilo and OpenCode may
-treat it the same way), with a test.
-Found: 2026-10-06, by the human in session kit-creator.
-
 ## An agent whose turn ends on an API error stays busy
 
 Size: M. Why here: the agent shows busy for hours and its queue is never handed over (2 hours after the machine slept); it can happen in any session.
@@ -270,6 +256,11 @@ full `make check` and passing alone or on a rerun:
   `timed out after 30s waiting for dev1 to be idle; agents: supervisor idle, dev1 busy, dev2
   starting`; the machine may have slept during that run (2026-10-05, review of
   feature/self-update). It could wait for the event it needs rather than for both workers.
+- `tests/integration/test_agent_terminal.py::test_stop_ends_open_terminals_and_leaves_no_window_viewer_or_agent`
+  (`waiting for w1 idle; agents: supervisor idle, w1 busy`) and
+  `tests/integration/test_flow_runs.py::test_the_humans_answer_moves_the_run_on_to_the_next_agent`
+  (`waiting for worker to be idle; agents: supervisor idle, worker starting`), both in one
+  `make check` of 11.5 min; both passed alone (2026-10-06, fix/trailing-backslash).
 Wanted: integration tests that wait for a worker's start share one wait helper with a margin
 for parallel runs under load, not 30 s in each test.
 Found: 2026-10-05, the kits tests above; 2026-10-06, review of fix/finish-race.

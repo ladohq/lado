@@ -107,6 +107,24 @@ def test_message_to_idle_agent_is_pasted_and_confirmed(repo):
     assert inputs("supervisor") == ["[from human] hello (#1, 2 lines: call read_messages)"]
 
 
+def test_a_message_ending_in_a_backslash_is_submitted_and_confirmed(repo):
+    """The fake agent, like Claude Code, reads a backslash before Enter as a line break."""
+    start(repo, "fake-paste")
+    runtime.send_message(SESSION, "human", "supervisor", "what now?\\")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
+    wait_status("supervisor", state.IDLE)
+    # Queued while it is busy and typed in at its turn's end: the last line ends in `\\`.
+    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    runtime.send_message(SESSION, "human", "supervisor", "hello", "the body")
+    runtime.send_message(SESSION, "human", "supervisor", "two\\\\")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 4, "delivery")
+    assert inputs("supervisor") == [
+        "[from human] what now?\\ ",
+        "[from human] sleep 1",
+        "[from human] hello (#3, 1 line: call read_messages)\n[from human] two\\\\ ",
+    ]
+
+
 @pytest.mark.parametrize("provider", ["fake", "fake-paste"])
 def test_message_to_busy_agent_arrives_when_its_turn_ends(repo, provider):
     start(repo, provider)

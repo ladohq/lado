@@ -462,7 +462,9 @@ fixes and docs only: no new feature, no API or schema change.
   16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its
   one line and reads the text with `read_messages`. The worker's task is still the full text.
 - A message to an idle agent is pasted into its window and stays `sent` until the agent's
-  prompt-submit hook sees its line (then `delivered`). A busy, waiting or starting agent's
+  prompt-submit hook sees its line (then `delivered`). A paste that ends in a backslash
+  gets a space after it (`tmux.send_text`): Claude Code reads `\` + Enter as a line break
+  and would not submit it; Kilo and OpenCode submit either. A busy, waiting or starting agent's
   queue is handed over on every switch to idle (`hooks._idle`: its session start without a
   task, a conversation start, a turn's end; at a turn's end in the hook's output where the
   provider can, else typed in), and by `runtime.sweep` when the agent is idle with nothing

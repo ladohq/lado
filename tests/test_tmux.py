@@ -33,6 +33,37 @@ def test_send_text_pastes_multiline_text(tmp_path):
     assert not tmux.has_session(session)
 
 
+def pasted(monkeypatch, text: str) -> str:
+    """What send_text pastes for `text`, before it presses Enter."""
+    buffers = []
+
+    def run(*args, input=None):
+        if args[0] == "load-buffer":
+            buffers.append(input)
+        return ""
+
+    monkeypatch.setattr(tmux, "run", run)
+    monkeypatch.setattr(tmux.time, "sleep", lambda _: None)
+    tmux.send_text("s", "w", text)
+    return buffers[0]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["[from human] what now?\\", "[from human] two\\\\", "[from a] one\\\n[from b] two\\"],
+)
+def test_send_text_never_ends_the_paste_in_a_backslash(monkeypatch, text):
+    """Claude Code reads a backslash before Enter as a line break, not a submit."""
+    assert pasted(monkeypatch, text) == f"{text} "
+
+
+@pytest.mark.parametrize(
+    "text", ["[from human] hello", "[from human] hi (#3, 2 lines: call read_messages)"]
+)
+def test_send_text_pastes_other_text_as_it_is(monkeypatch, text):
+    assert pasted(monkeypatch, text) == text
+
+
 def _screen(session, window, text, timeout=5):
     """The window's screen once `text` shows on it."""
     deadline = time.time() + timeout

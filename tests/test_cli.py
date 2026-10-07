@@ -962,19 +962,19 @@ name: plan
 description: plan, build and ship
 start: plan
 states:
-  plan: {agent: supervisor, do: Plan it., outcomes: {ready: build}}
+  plan: {agent: supervisor, do: Plan it., produces: [plan], outcomes: {ready: build}}
   build: {agent: rev, do: Build it., outcomes: {done: check, polish: polish}}
-  polish: {agent: rev, do: Polish it., outcomes: {done: check}}
+  polish: {agent: rev, do: Polish it., produces: [polish], outcomes: {done: check}}
   check:
     gate: approval
     ask: Ship it?
-    needs: [plan, polish]
+    reads: [plan, polish]
     outcomes: {approved: end, rejected: build}
   end: {end: true}
 """
 
 
-def _at_gate_with_needs(repo, capsys):
+def _at_gate_with_reads(repo, capsys):
     kit = _kit(repo, "team")
     (kit / "flows").mkdir()
     (kit / "flows" / "plan.yaml").write_text(PLAN)
@@ -994,84 +994,128 @@ def _at_gate_with_needs(repo, capsys):
         ]
     )
     runs.start("s", "plan", "Add x", name="x")
-    runs.advance("s", "supervisor", "plan/x", "ready", "the plan", "step 1\nstep 2")
+    artifacts.write(
+        "s",
+        "supervisor",
+        "plan/x/plan",
+        content="step 1\nstep 2",
+        title="The plan",
+        summary="the plan",
+    )
+    runs.advance("s", "supervisor", "plan/x", "ready", "planned")
     runs.spawn_worker("s", "plan/x")
     runs.advance("s", "rev", "plan/x", "done", "built it", "all\ntests pass")
     capsys.readouterr()
 
 
-def test_answer_shows_the_summaries_of_the_notes_a_gate_needs(repo, fake_tmux, capsys, monkeypatch):
-    _at_gate_with_needs(repo, capsys)
+READS = (
+    "Ship it?\n"
+    "Note: built it (v: the full note, 2 more lines)\n"
+    "Artifacts it reads:\n"
+    "  plan/x/plan: The plan — {}\n"
+    "  plan/x/polish: no record yet\n"
+    "Options:\n"
+)
+
+
+def test_answer_shows_the_note_then_the_artifacts_the_gate_reads(
+    repo, fake_tmux, capsys, monkeypatch
+):
+    _at_gate_with_reads(repo, capsys)
     _typing(monkeypatch, "")
     assert main(["answer"]) == 0
     out = capsys.readouterr().out
-    assert (
-        "Ship it?\n"
-        "Note: built it (v: the full note, 2 more lines)\n"
-        "Note from plan: the plan\n"
-        "Note from polish: no note yet\n"
-        "Options:\n"
-    ) in out
+    assert READS.format("the plan") in out
     assert "step 1" not in out
     assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
 
 
-def _at_gate_from_a_needed_state(repo, capsys):
-    """At gate check, reached from polish, which it needs: polish's note is the one before
-    the gate."""
-    _at_gate_with_needs(repo, capsys)
+def test_answer_shows_the_latest_record_again_after_v(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate_with_reads(repo, capsys)
+    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
+    asked = iter(["v", ""])
+
+    def typing(prompt=""):
+        print(prompt, end="")
+        # The supervisor writes the plan again while the human reads the gate.
+        artifacts.write("s", "supervisor", "plan/x/plan", content="step 1", summary="new plan")
+        return next(asked)
+
+    monkeypatch.setattr("builtins.input", typing)
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert READS.format("the plan") in out
+    assert "plan/x/plan: The plan — new plan\n\nstep 1\n" in out  # v: the latest one
+    assert READS.format("new plan") in out  # and the gate after it
+
+
+def _at_gate_from_polish(repo, capsys):
+    """At gate check, reached from polish, whose note has the artifact polish attached."""
+    _at_gate_with_reads(repo, capsys)
     runs.answer("s", "1", "reject", "polish it")
     runs.advance("s", "rev", "plan/x", "polish", "to polish")
-    runs.advance("s", "rev", "plan/x", "done", "polished", "shiny\nnow")
+    artifacts.write("s", "rev", "polish", content="shiny\nnow", summary="polished up")
+    runs.advance("s", "rev", "plan/x", "done", "polished", "all\nshiny")
     capsys.readouterr()
 
 
-def test_a_needed_note_that_is_the_note_before_the_gate_is_marked_by_the_core(
-    repo, fake_tmux, capsys
-):
-    _at_gate_from_a_needed_state(repo, capsys)
-    [gate] = state.open_gates("s")
-    needed = runs.gate_notes(gate)
-    assert [(n.state, n.note.summary, n.is_gate_note) for n in needed] == [
-        ("plan", "the plan", False),
-        ("polish", "polished", True),
-    ]
-
-
-def test_answer_shows_a_needed_note_that_is_the_note_before_the_gate_once(
+def test_an_artifact_attached_to_the_note_before_the_gate_is_shown_once(
     repo, fake_tmux, capsys, monkeypatch
 ):
-    _at_gate_from_a_needed_state(repo, capsys)
+    _at_gate_from_polish(repo, capsys)
+    [gate] = state.open_gates("s")
+    assert runs.gate_reads(gate) == ["plan"]
     monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
     _typing(monkeypatch, "v")
     assert main(["answer"]) == 0
     out = capsys.readouterr().out
     assert (
         "Ship it?\n"
-        "Note from plan: the plan\n"
-        "Note from polish (also the note before the gate): polished"
-        " (v: the full note, 2 more lines)\n"
+        "Note: polished (v: the full note, 2 more lines)\n"
+        "Artifacts: plan/x/polish\n"
+        "Artifacts it reads:\n"
+        "  plan/x/plan: The plan — the plan\n"
         "Options:\n"
     ) in out
+    # v: the note in full with its artifacts as attached, then those the gate reads.
     assert (
-        "Note from plan: the plan\nstep 1\nstep 2\n\n"
-        "Note from polish (also the note before the gate): polished\nshiny\nnow\n"
+        "Note: polished\n\nall\nshiny\n\n"
+        "plan/x/polish: polished up\n\nshiny\nnow\n\n"
+        "plan/x/plan: The plan — the plan\n\nstep 1\nstep 2\n"
     ) in out
-    assert "Note: polished" not in out
+    assert out.count("shiny\nnow") == 1
 
 
-def test_v_shows_the_needed_notes_then_the_note_before_the_gate(
-    repo, fake_tmux, capsys, monkeypatch
-):
-    _at_gate_with_needs(repo, capsys)
+def test_v_names_an_artifact_that_is_not_text(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate_with_reads(repo, capsys)
+    (repo / "shot.png").write_bytes(b"\x89PNG not really")
+    artifacts.write("s", "supervisor", "plan/x/plan", file="shot.png", summary="a picture")
     monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
     _typing(monkeypatch, "v")
     assert main(["answer"]) == 0
-    assert (
-        "Note from plan: the plan\nstep 1\nstep 2\n\n"
-        "Note from polish: no note yet\n\n"
-        "Note: built it\n\nall\ntests pass\n"
-    ) in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "plan/x/plan: The plan — a picture\n\n(image/png, 15 bytes: not text)\n" in out
+    assert "plan/x/polish: no record yet\n" in out
+    assert "PNG not really" not in out
+
+
+def test_answer_shows_a_gate_whose_flow_cannot_be_read_and_goes_on(
+    repo, fake_tmux, capsys, monkeypatch
+):
+    _at_gate_with_reads(repo, capsys)
+    runs.start("s", "plan", "Add y", name="y")
+    runs.force("s", "plan/y", "check", "built by hand")
+    agent_helpers.spoil_snapshot("s", "plan/x")
+    capsys.readouterr()
+    _typing(monkeypatch, "1", "reject", "")
+    assert main(["answer", "s"]) == 0
+    out = capsys.readouterr().out
+    assert "Gate #1, session s, run plan/x at check:\nShip it?\nNote: built it" in out
+    assert 'Gate #1 cannot be answered: run "plan/x": its flow snapshot is not JSON' in out
+    assert "the supervisor can cancel the run with flow_cancel" in out
+    assert "gate #2: reject. plan/y: check -> build" in out
+    assert out.endswith("No more open gates.\n")
+    assert state.open_gate("s", "plan/x").answer is None
 
 
 def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, monkeypatch):
@@ -1438,8 +1482,12 @@ def test_kits_check_warns_about_a_role_that_acts_in_no_flow(repo, capsys):
             "cycle build -> build has no state with max_visits and no gate",
         ),
         (
-            lambda s: s.replace("{agent: rev,", "{agent: rev, needs: [end],"),
-            'state "build" needs "end", which never comes before it',
+            lambda s: s.replace("{agent: rev,", "{agent: rev, reads: [late],").replace(
+                "approved: end, rejected: build}}",
+                "approved: x, rejected: build}}\n"
+                "  x: {agent: rev, do: X., produces: [late], outcomes: {a: end}}",
+            ),
+            'state "build" reads "late", which no state before it produces',
         ),
     ],
 )

@@ -20,12 +20,10 @@ states:
   implement:
     agent: developer
     do: Build it.
-    needs: [design]
     outcomes: {done: review}
   review:
     agent: reviewer
     do: Review it.
-    needs: [implement]
     max_visits: 2
     outcomes: {approved: merge, changes: implement, again: review}
   merge:
@@ -301,7 +299,7 @@ def test_a_worker_for_a_run_works_in_its_worktree_and_gets_the_step(session, fak
     first = fake_tmux[-1][-1][-1]
     assert first.startswith("Run feature/login (flow feature), step implement.")
     assert "Build it." in first
-    assert "Note from design (also the previous step's note): design agreed\na\nb" in first
+    assert "Note from the previous step: design agreed\na\nb" in first
     assert "- done -> review" in first
     assert runs.acting(state.get_run(session, "feature/login")) == "developer"
     # The step has its worker now: another one needs a task of its own.
@@ -347,95 +345,50 @@ def advance_to_review(session):
     return runs.advance(session, "developer", "feature/login", "done", "built")
 
 
-def test_a_step_gets_the_latest_notes_of_the_states_it_needs(session):
-    advance_to_review(session)
-    runs.advance(session, "reviewer", "feature/login", "changes", "fix the form")
-    step = messages("developer")[-1].body
-    needed = "Note from design: design agreed\na\nb"
-    assert needed in step
-    # After the task and the step, before the previous step's note.
-    assert step.index("Build it.") < step.index(needed)
-    assert step.index(needed) < step.index("Note from the previous step: fix the form")
-
-
-def test_a_needed_note_that_is_the_previous_steps_note_comes_once(session):
+def test_a_step_gets_the_previous_steps_note_after_the_step(session):
     to_implement(session)
     runs.spawn_worker(session, "feature/login")
     step = state.get_agent(session, "developer").task
     assert step.count("design agreed") == 1
-    assert "Note from design (also the previous step's note): design agreed\na\nb" in step
-    assert "Note from the previous step" not in step
-
-
-def test_a_needed_note_with_the_same_text_as_the_previous_note_is_another_note(session):
-    advance_to_review(session)
-    # The reviewer's note has the design note's text, but it is a note of its own.
-    runs.advance(session, "reviewer", "feature/login", "changes", "design agreed", "a\nb")
-    step = messages("developer")[-1].body
-    assert "Note from design: design agreed\na\nb" in step
     assert "Note from the previous step: design agreed\na\nb" in step
+    assert step.index("Build it.") < step.index("Note from the previous step")
 
 
-def test_a_needed_state_with_no_note_yet_is_named(session):
-    runs.start(session, "feature", "Add a login page", name="login")
-    runs.spawn_worker(session, "feature/login", role="reviewer", task="Wait for the review.")
-    runs.force(session, "feature/login", "review", "the code is there already")
-    step = messages("reviewer")[-1]
-    assert step.summary == "flow feature/login: step review"
-    assert "Note from implement: no note yet" in step.body
-
-
-def test_flow_set_keeps_the_notes_a_step_needs(session):
+def test_flow_set_gives_its_reason_as_the_previous_steps_note(session):
     advance_to_review(session)
     runs.force(session, "feature/login", "implement", "rework the form")
     step = messages("developer")[-1]
     assert step.summary == "flow feature/login: step implement"
-    assert "Note from design: design agreed\na\nb" in step.body
     assert "Note from the previous step: set by the human: rework the form" in step.body
+    assert "built" not in step.body
 
 
-def test_flow_set_from_a_needed_state_keeps_its_report(session):
-    advance_to_review(session)  # implement reported "built"
-    runs.advance(session, "reviewer", "feature/login", "changes", "fix the form")
-    # The run is at implement again; the human skips it before the developer reports.
-    runs.force(session, "feature/login", "review", "the form is fine")
-    step = messages("reviewer")[-1]
-    assert step.summary == "flow feature/login: step review"
-    assert "Note from implement: built" in step.body
-    assert "Note from the previous step: set by the human: the form is fine" in step.body
-
-
-def test_a_loop_limit_answer_or_flow_set_keeps_the_states_report(session):
+def test_a_loop_limit_answer_or_flow_set_is_kept_as_an_override(session):
     advance_to_review(session)
     runs.advance(session, "reviewer", "feature/login", "again", "first look")
     runs.advance(session, "reviewer", "feature/login", "again", "second look")
     [gate] = state.open_gates(session)
     runs.answer(session, str(gate.id), "continue", "one more")
-    assert state.latest_notes(session, "feature/login")["review"].summary == "second look"
     runs.advance(session, "reviewer", "feature/login", "again", "third look")
     runs.force(session, "feature/login", "implement", "enough looking")  # from the loop gate
-    assert state.latest_notes(session, "feature/login")["review"].summary == "third look"
-
-
-def test_a_loop_limit_shows_no_needed_notes(session):
-    advance_to_review(session)
-    runs.advance(session, "reviewer", "feature/login", "again", "first look")
-    runs.advance(session, "reviewer", "feature/login", "again", "second look")
-    [gate] = state.open_gates(session)
-    assert gate.kind == runs.LOOP  # kept out of review, which needs implement
-    assert runs.gate_notes(gate) == []
+    assert [(n.state, n.kind, n.summary) for n in state.run_notes(session)][-4:] == [
+        ("review", state.REPORT, "second look"),
+        ("review", state.OVERRIDE, "continue: one more"),
+        ("review", state.REPORT, "third look"),
+        ("review", state.OVERRIDE, "set by the human: enough looking"),
+    ]
 
 
 def test_a_gate_answer_is_kept_as_the_gates_note(session):
     to_gate(session)
     [gate] = state.open_gates(session)
     runs.answer(session, str(gate.id), "reject", "the form is too big")
-    notes = state.latest_notes(session, "feature/login")
-    assert notes["gated"].summary == "rejected: the form is too big"
-    assert notes["merge"].summary == "ready to ship"
+    *_, merge, gated = state.run_notes(session, "feature/login")
+    assert (gated.state, gated.summary) == ("gated", "rejected: the form is too big")
+    assert (merge.state, merge.summary) == ("merge", "ready to ship")
     step = messages("developer")[-1]
     assert step.summary == "flow feature/login: step implement"
-    assert "Note from design: design agreed\na\nb" in step.body
+    assert "Note from the previous step: rejected: the form is too big" in step.body
 
 
 def test_a_worker_step_goes_to_the_next_worker_only(session):
@@ -443,7 +396,7 @@ def test_a_worker_step_goes_to_the_next_worker_only(session):
     assert run.state == "review"
     [step] = messages("reviewer")
     assert (step.sender, step.summary) == ("lado", "flow feature/login: step review")
-    assert "Note from implement (also the previous step's note): built" in step.body
+    assert "Note from the previous step: built" in step.body
     assert [m.summary for m in messages("supervisor")] == [
         "flow feature/login: step design",
         "flow feature/login: step implement needs a developer",
@@ -1093,8 +1046,7 @@ def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_
         f"{len(step.body.splitlines())} lines: call read_messages)"
     )
     assert plan in step.body
-    # implement needs design, whose note is the previous step's: it comes once.
-    assert f"Note from design (also the previous step's note): agreed\n{plan}" in step.body
+    assert f"Note from the previous step: agreed\n{plan}" in step.body
     assert step.body.count(plan) == 1
     assert worker.task == step.body  # the task in full: lado ls, list_agents
     assert state.read_messages(session, "developer")[0].body == step.body

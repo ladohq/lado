@@ -1,5 +1,6 @@
 import dataclasses
 import datetime
+import json
 import re
 import sqlite3
 
@@ -238,15 +239,69 @@ def test_the_migration_gives_gates_the_note_before_them_as_a_new_database_has_it
             " VALUES ('s', 'f/x', 'ok', 'approval', 'Ship?', '[]')"
         )
     assert "note_id" in fresh
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(22)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert "note_id" not in db.execute(GATES_TABLE).fetchone()[0]
     db.close()
-    assert state.migrate() == state.SCHEMA_VERSION == 22
+    assert state.migrate() == state.SCHEMA_VERSION
     with state.connect() as db:
         assert db.execute(GATES_TABLE).fetchone()[0] == fresh
     [old] = state.session_gates("s")
     assert old.note_id is None
+
+
+# A flow of LADO 0.26: `needs` names states.
+WITH_NEEDS = {
+    "name": "ship",
+    "description": "d",
+    "start": "build",
+    "states": {
+        "build": {"agent": "worker", "do": "Build.", "outcomes": {"done": "ok"}},
+        "ok": {
+            "gate": "approval",
+            "ask": "Ship?",
+            "needs": ["build"],
+            "outcomes": {"approved": "end", "rejected": "build"},
+        },
+        "end": {"end": True},
+    },
+}
+
+
+def test_the_migration_drops_needs_from_the_snapshots_of_closed_runs_only(lado_home):
+    from lado import runs
+
+    _session_with()
+    agent_helpers.previous_schema()
+    assert state.MIGRATIONS[22] == [state.closed_runs_without_needs]
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    old = json.dumps(WITH_NEEDS, indent=1)
+    snapshots = {
+        "ended": old,
+        "cancelled": old,
+        "active": old,
+        "waiting": old,
+        "broken": "{not json",
+        "states": json.dumps({**WITH_NEEDS, "states": ["build"]}),
+    }
+    for name, snapshot in snapshots.items():
+        status = name if name in state.OPEN + (state.ENDED, state.CANCELLED) else state.ENDED
+        db.execute(
+            "INSERT INTO runs (session, name, flow, snapshot, kit, task, state, status,"
+            " worktree, branch) VALUES ('s', ?, 'ship', ?, '{}', 't', 'ok', ?, '/w', 'b')",
+            (f"ship/{name}", snapshot, status),
+        )
+    db.commit()
+    db.close()
+    assert state.migrate() == state.SCHEMA_VERSION
+    for name in ("ended", "cancelled"):
+        run = state.get_run("s", f"ship/{name}")
+        assert "needs" not in json.loads(run.snapshot)["states"]["ok"]
+        assert runs.flow_of(run).states["ok"].reads == ()
+    for name in ("active", "waiting", "broken", "states"):
+        assert state.get_run("s", f"ship/{name}").snapshot == snapshots[name]
+    with pytest.raises(runs.SnapshotError, match="needs was replaced by reads"):
+        runs.flow_of(state.get_run("s", "ship/waiting"))
 
 
 def test_a_due_resume_is_queued_once_also_while_the_agent_stays_idle(lado_home):
@@ -875,7 +930,7 @@ def test_version_10_database_keeps_the_notes_of_runs(lado_home):
     state.migrate()
     # A run from before keeps its previous note; no earlier note was kept.
     assert state.get_run("s", "feature/x").note == "designed"
-    assert state.latest_notes("s", "feature/x") == {}
+    assert state.run_notes("s", "feature/x") == []
 
 
 def _moved(run, to, note, body="", kind=state.REPORT):
@@ -896,15 +951,16 @@ def test_every_note_is_kept_with_the_state_it_was_reported_from(lado_home):
     stale = dataclasses.replace(run, state="other")
     lost = dataclasses.replace(run, note="lost")
     assert not state.update_run(stale, lost, [], noted=state.Noted("other", state.REPORT))
-    notes = state.latest_notes("s", "feature/x")
-    assert set(notes) == {"design", "implement"}
-    design = notes["design"]
-    assert (design.state, design.summary, design.body) == ("design", "second design", "plan B")
-    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", design.created_at)
-    assert notes["implement"].summary == "back to design"
+    notes = state.run_notes("s", "feature/x")
+    assert [(n.state, n.summary, n.body) for n in notes] == [
+        ("design", "first design", "plan A"),
+        ("implement", "back to design", ""),
+        ("design", "second design", "plan B"),
+    ]
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", notes[0].created_at)
     # The notes go with their session.
     state.delete_session("s")
-    assert state.latest_notes("s", "feature/x") == {}
+    assert state.run_notes("s", "feature/x") == []
 
 
 def test_notes_belong_to_their_run(lado_home):
@@ -912,17 +968,16 @@ def test_notes_belong_to_their_run(lado_home):
     for name in ("feature/x", "feature/y"):
         state.add_run(_run(name), [("supervisor", state.FLOW_START, "started")])
     _moved(_run("feature/x"), "implement", "x designed")
-    assert state.latest_notes("s", "feature/y") == {}
+    assert state.run_notes("s", "feature/y") == []
 
 
-def test_the_humans_override_is_kept_but_never_taken_for_a_states_report(lado_home):
+def test_the_humans_override_is_kept_apart_from_a_states_report(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     run = _run()
     state.add_run(run, [("supervisor", state.FLOW_START, "started")])
     run = _moved(run, "implement", "the design")
     run = _moved(run, "design", "back to design")
     _moved(run, "implement", "set by the human: old design is fine", kind=state.OVERRIDE)
-    assert state.latest_notes("s", "feature/x")["design"].summary == "the design"
     with state.connect() as db:
         kept = db.execute("SELECT state, kind, summary FROM notes ORDER BY id").fetchall()
     assert [tuple(row) for row in kept][-1] == (

@@ -2635,12 +2635,19 @@
             ],
             "title": "Max Visits"
           },
-          "needs": {
+          "reads": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Needs"
+            "title": "Reads"
+          },
+          "produces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Produces"
           }
         },
         "type": "object",
@@ -2652,7 +2659,8 @@
           "ask",
           "outcomes",
           "max_visits",
-          "needs"
+          "reads",
+          "produces"
         ],
         "title": "FlowStateInfo",
         "description": "A state of a run's flow, as the run's snapshot has it."
@@ -2881,11 +2889,11 @@
             "type": "array",
             "title": "Attachments"
           },
-          "needs": {
+          "reads": {
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/NeededNote"
+                  "type": "string"
                 },
                 "type": "array"
               },
@@ -2893,7 +2901,7 @@
                 "type": "null"
               }
             ],
-            "title": "Needs"
+            "title": "Reads"
           },
           "answer": {
             "anyOf": [
@@ -2959,7 +2967,7 @@
           "note",
           "note_body",
           "attachments",
-          "needs",
+          "reads",
           "answer",
           "comment",
           "answered_by",
@@ -3913,35 +3921,6 @@
         ],
         "title": "MessageText",
         "description": "The human's text from the composer."
-      },
-      "NeededNote": {
-        "properties": {
-          "state": {
-            "type": "string",
-            "title": "State"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NoteInfo"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "is_gate_note": {
-            "type": "boolean",
-            "title": "Is Gate Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "state",
-          "note",
-          "is_gate_note"
-        ],
-        "title": "NeededNote"
       },
       "NewMarketplace": {
         "properties": {

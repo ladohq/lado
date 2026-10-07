@@ -299,8 +299,9 @@ def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams,
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(
         "name: ship\ndescription: d\nstart: plan\nstates:\n"
-        "  plan: {agent: supervisor, do: Plan it., outcomes: {ready: check}}\n"
-        "  check: {gate: approval, ask: 'Ship it?', needs: [plan], outcomes:"
+        "  plan: {agent: supervisor, do: Plan it., produces: [plan], outcomes: {ready: build}}\n"
+        "  build: {agent: supervisor, do: Build it., outcomes: {done: check}}\n"
+        "  check: {gate: approval, ask: 'Ship it?', reads: [plan], outcomes:"
         " {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
@@ -308,7 +309,9 @@ def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams,
     stream = streams()
     stream.next()
     runs.start("s", "ship", "Add x", name="x")
-    runs.advance("s", "supervisor", "ship/x", "ready", "the plan", "step 1")
+    artifacts.write("s", "supervisor", "ship/x/plan", content="step 1")
+    runs.advance("s", "supervisor", "ship/x", "ready", "planned")
+    runs.advance("s", "supervisor", "ship/x", "done", "the plan", "step 1")
     opened = stream.until(is_change("gates", "s"))[-1]
     item = opened.data["item"]
     assert (opened.data["key"], item["id"], item["note"], item["answer"]) == (
@@ -317,12 +320,12 @@ def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams,
         "the plan",
         None,
     )
-    assert [(n["state"], n["note"]["summary"]) for n in item["needs"]] == [("plan", "the plan")]
+    assert item["reads"] == ["ship/x/plan"]
     runs.answer("s", "1", "reject", "replan")
     closed = stream.until(lambda e: is_change("gates", "s")(e) and e.data["item"]["answer"])[-1]
     # A closed gate is still there: its item is replaced, never null.
     item = closed.data["item"]
-    assert (closed.data["op"], item["answer"], item["comment"], item["needs"]) == (
+    assert (closed.data["op"], item["answer"], item["comment"], item["reads"]) == (
         "update",
         "reject",
         "replan",
@@ -339,7 +342,7 @@ def test_a_gate_and_a_question_change_what_waits_in_their_session(streams, repo,
     stream = streams()
     stream.next()
     run = bare_run()
-    # A loop limit: its item needs no notes.
+    # A loop limit: its item reads no artifacts.
     gate = state.Gate("s", "feature/x", "design", "loop", "Again?", ["continue", "cancel"])
     state.add_run(run, [], gate)
     stream.until(lambda e: waiting_of("s")(e) and e.data["item"]["waiting"]["gates"] == 1)
@@ -674,8 +677,7 @@ def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
     (kit / "flows" / "ship.yaml").write_text(
         "name: ship\ndescription: d\nstart: plan\nstates:\n"
         "  plan: {agent: supervisor, do: Plan it., outcomes: {ready: check}}\n"
-        "  check: {gate: approval, ask: 'Ship it?', needs: [plan], outcomes:"
-        " {approved: end, rejected: plan}}\n"
+        "  check: {gate: approval, ask: 'Ship it?', outcomes: {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
@@ -700,7 +702,7 @@ def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
     with state.connect() as db:  # a change of the gate itself
         db.execute("UPDATE gates SET comment = 'later' WHERE run = 'ship/x'")
     [*_, gate] = stream.until(is_change("gates", "s"))
-    assert (gate.data["item"]["needs"], gate.data["item"]["question"]) == (None, "Ship it?")
+    assert (gate.data["item"]["reads"], gate.data["item"]["question"]) == (None, "Ship it?")
     assert gate.data["item"]["problem"].startswith('run "ship/x"')
     assert not stream.closed.is_set()
     logged = [r.getMessage() for r in caplog.records if r.name == "lado.server"]

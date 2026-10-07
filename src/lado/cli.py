@@ -672,9 +672,10 @@ def cmd_answer(args: argparse.Namespace) -> int:
     session, answered, failed = args.session, False, 0
     # A stopped session's gates wait for its resume: its runs have no agents to go on with.
     stopped = {s.name for s in state.list_sessions() if s.stopped_at}
+    unreadable: set[int] = set()  # gates of runs whose flow cannot be read: shown once
     while True:
         gates = [first] if first else state.open_gates(session)
-        gates = [g for g in gates if g.session not in stopped]
+        gates = [g for g in gates if g.session not in stopped and g.id not in unreadable]
         first = None
         if not gates:
             print("No more open gates." if answered else "No open gates.")
@@ -682,10 +683,21 @@ def cmd_answer(args: argparse.Namespace) -> int:
         gate = gates[0] if len(gates) == 1 else _pick(gates)
         if gate is None:
             return failed
+        session = gate.session  # then the session's other open gates: a popup asks them all
+        try:
+            reads = runs.gate_reads(gate)
+        except runs.SnapshotError as exc:
+            problem = (
+                f"Gate #{gate.id} cannot be answered: {exc}. It stays open; the supervisor can"
+                " cancel the run with flow_cancel."
+            )
+            _show_gate(gate, None, problem)
+            unreadable.add(gate.id)
+            continue
         # -m is for the first gate only, also when that one is answered elsewhere.
         comment, args.comment = args.comment, None
         try:
-            option = _choose(gate)
+            option = _choose(gate, reads)
             if option is not None and comment is None:
                 comment = _input("Comment for the next step (Enter for none): ", gate)
             if option is None or comment is None:
@@ -703,8 +715,6 @@ def cmd_answer(args: argparse.Namespace) -> int:
             print(f"lado: {exc}")
             failed = 1
             first = gate if state.get_gate(gate.id).answer is None else None
-        # Then the session's other open gates: a popup asks about them all.
-        session = gate.session
 
 
 def _answer(session: str, ref: str, option: str, comment: str | None) -> None:
@@ -758,24 +768,21 @@ def _pick(gates: list[state.Gate]) -> state.Gate | None:
             return gates[int(picked) - 1]
 
 
-def _choose(gate: state.Gate) -> str | None:
+def _choose(gate: state.Gate, reads: list[str]) -> str | None:
     """The option the human picks for the gate, by number or name; None to leave it. The
-    note and the notes the gate needs show as their summaries; when there is more, "v"
-    shows all of it in a pager."""
-    needed = runs.gate_notes(gate)
-    full_note = gate.note_body.strip() != "" or bool(needed)
+    note shows as its summary with its artifacts, then a line per artifact the gate
+    `reads`; when there is more, "v" shows all of it in a pager. Each show reads the
+    artifacts' latest records anew: they may change while the gate is open."""
+    full_note = gate.note_body.strip() != "" or bool(reads) or gate.attachments > 0
     v = ", v for the full note" if full_note else ""
-    _show_gate(gate, needed)
+    _show_gate(gate, reads)
     while True:
         chosen = _input(f"Answer (number or name{v}, Enter to leave it open): ", gate)
         if not chosen:
             return None
         if full_note and chosen.lower() == "v":
-            parts = [f"Note from {_needed_label(n)}: {_note_text(n.note)}\n" for n in needed]
-            if not any(n.is_gate_note for n in needed):
-                parts.append(f"Note: {gate.note}\n\n{gate.note_body.strip()}\n")
-            _page("\n".join(parts))
-            _show_gate(gate, needed)
+            _page(_full_gate(gate, reads))
+            _show_gate(gate, reads)
             continue
         if chosen.isdigit() and 1 <= int(chosen) <= len(gate.options):
             return gate.options[int(chosen) - 1]
@@ -785,33 +792,51 @@ def _choose(gate: state.Gate) -> str | None:
             print(f"lado: {exc}")
 
 
-def _note_text(note: state.Note | None) -> str:
-    return f"{note.summary}\n{note.body.strip()}".rstrip() if note else "no note yet"
+def _full_gate(gate: state.Gate, reads: list[str]) -> str:
+    """What "v" shows: the note in full, each of its artifacts as attached, then each
+    artifact the gate reads as of its latest record; an artifact by its content when it is
+    text, else by its type and size."""
+    parts = [f"Note: {gate.note}\n\n{gate.note_body.strip()}".rstrip() + "\n"]
+    for one in runs.gate_attachments(gate):
+        parts.append(_artifact_text(one.artifact.full_name, (one.artifact, one.record)))
+    for name in reads:
+        found = artifacts.latest(gate.session, gate.run, name)
+        parts.append(_artifact_text(artifacts.full_name(gate.run, name), found))
+    return "\n".join(parts)
 
 
-def _needed_label(needed: runs.NeededNote) -> str:
-    return needed.state + (" (also the note before the gate)" if needed.is_gate_note else "")
+def _artifact_text(name: str, found: tuple | None) -> str:
+    line = artifacts.record_line(name, found)
+    if found is None:
+        return f"{line}\n"
+    record = found[1]
+    if not artifacts.is_text(record.media_type):
+        return f"{line}\n\n({record.media_type}, {record.size} bytes: not text)\n"
+    text = artifacts.content(record).decode(errors="replace").rstrip()
+    return f"{line}\n\n{text}\n"
 
 
-def _show_gate(gate: state.Gate, needed: list[runs.NeededNote]) -> None:
-    """The gate's question, the note that led to it with its artifacts, and the notes it
-    needs; a needed note that is the note before the gate is shown once, in its place."""
+def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = None) -> None:
+    """The gate's question, the note that led to it with its artifacts, and a line per
+    artifact the gate reads (none of the note's: `runs.gate_reads`); a gate whose run's
+    flow cannot be read, with its problem instead and no options."""
     print(f"\nGate #{gate.id}, session {gate.session}, run {gate.run} at {gate.state}:")
     print(gate.question)
     lines = len(gate.note_body.strip().splitlines())
     more = f" (v: the full note, {lines} more line{'' if lines == 1 else 's'})" if lines else ""
-    listed = runs.gate_artifacts(gate)
-    if gate.note and not any(n.is_gate_note for n in needed):
+    if gate.note:
         print(f"Note: {gate.note}{more}")
-    if listed and not any(n.is_gate_note for n in needed):
+    listed = runs.gate_artifacts(gate)
+    if listed:
         print(listed)
-    for one in needed:
-        if one.is_gate_note:
-            print(f"Note from {_needed_label(one)}: {gate.note}{more}")
-            if listed:
-                print(listed)
-        else:
-            print(f"Note from {one.state}: {one.note.summary if one.note else 'no note yet'}")
+    if problem:
+        print(problem)
+        return
+    if reads:
+        print("Artifacts it reads:")
+        for name in reads:
+            found = artifacts.latest(gate.session, gate.run, name)
+            print(f"  {artifacts.record_line(artifacts.full_name(gate.run, name), found)}")
     print("Options:")
     for n, option in enumerate(gate.options, 1):
         print(f"  {n}) {option}")

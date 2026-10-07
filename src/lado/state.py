@@ -18,7 +18,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -86,8 +86,8 @@ MESSAGES_ATTEMPTS = "ALTER TABLE messages ADD COLUMN attempts INTEGER NOT NULL D
 MESSAGES_FAILED = "ALTER TABLE messages ADD COLUMN failed_at REAL"  # when sweep gave it up
 # When the agent's latest hook ran (time.time()); 0 for none yet.
 AGENTS_SEEN = "ALTER TABLE agents ADD COLUMN seen_at REAL NOT NULL DEFAULT 0"
-# Every note a run's step reported, with the state it was reported from: a state's
-# `needs` (lado.flows) gets the latest reports. Kept from version 11 on.
+# Every note a run's step reported, with the state it was reported from: the run's record
+# of its steps (the UI's Flows tab). Kept from version 11 on.
 NOTES = """
 CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -381,6 +381,33 @@ SCHEMA += (
 
 SUMMARY_LIMIT = 200  # characters in a message summary
 
+
+def closed_runs_without_needs(db: sqlite3.Connection) -> None:
+    """Version 23: a flow names the artifacts a state reads (`reads`), no longer the states
+    whose notes it needs (`needs`, refused since). An ended or cancelled run's snapshot drops
+    `needs`, so its history reads again; an open run's stays as it is and shows its problem
+    (only flow_cancel moves it), and so does a snapshot that is not a flow's JSON."""
+    rows = db.execute(
+        "SELECT session, name, snapshot FROM runs WHERE status IN ('ended', 'cancelled')"
+    ).fetchall()
+    for session, name, snapshot in rows:
+        try:
+            data = json.loads(snapshot)
+        except ValueError:
+            continue
+        found = data.get("states") if isinstance(data, dict) else None
+        if not isinstance(found, dict):
+            continue
+        states = [s for s in found.values() if isinstance(s, dict) and "needs" in s]
+        for raw in states:
+            del raw["needs"]
+        if states:
+            db.execute(
+                "UPDATE runs SET snapshot = ? WHERE session = ? AND name = ?",
+                (json.dumps(data), session, name),
+            )
+
+
 # Statements that upgrade a database from the version in the key to the next one.
 MIGRATIONS = {
     1: [
@@ -415,6 +442,7 @@ MIGRATIONS = {
     19: AGENTS_RESUME,
     20: ARTIFACTS_TABLES,
     21: [GATES_NOTE],
+    22: [closed_runs_without_needs],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -820,7 +848,10 @@ def migrate() -> int | None:
             return None
         while version in MIGRATIONS:
             for statement in MIGRATIONS[version]:
-                conn.execute(statement)
+                if callable(statement):  # a step of data that SQL alone cannot change
+                    statement(conn)
+                else:
+                    conn.execute(statement)
             version += 1
         conn.execute(f"PRAGMA user_version = {version}")
         conn.execute("COMMIT")
@@ -1487,19 +1518,6 @@ def update_run(
                 _open_gate(db, opens)
         db.execute("COMMIT")
     return bool(cur.rowcount)
-
-
-def latest_notes(session: str, run: str) -> dict[str, Note]:
-    """The latest report kept from each state of the run; the human's overrides are not
-    a state's report."""
-    with connect() as db:
-        rows = db.execute(
-            f"SELECT {NOTE_COLUMNS} FROM notes WHERE id IN"
-            " (SELECT MAX(id) FROM notes WHERE session = ? AND run = ? AND kind = ?"
-            " GROUP BY state)",
-            (session, run, REPORT),
-        ).fetchall()
-    return {r["state"]: Note(*r) for r in rows}
 
 
 def last_note(session: str, run: str) -> Note | None:

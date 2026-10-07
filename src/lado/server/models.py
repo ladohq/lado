@@ -546,7 +546,8 @@ class FlowStateInfo(BaseModel):
     ask: str | None  # gate: the question for the human
     outcomes: dict[str, str]  # outcome -> the state it leads to
     max_visits: int | None
-    needs: list[str]
+    reads: list[str]  # the run's artifacts it shows, by their bare names
+    produces: list[str]  # work: the artifacts its step must write
 
 
 class RunInfo(BaseModel):
@@ -574,12 +575,6 @@ class RunInfo(BaseModel):
     problem: str | None  # why its flow snapshot cannot be read; None when it can
 
 
-class NeededNote(BaseModel):
-    state: str  # a state the gate state needs
-    note: NoteInfo | None  # its latest report; None: no note yet
-    is_gate_note: bool  # that report is the note that led to the gate: shown once
-
-
 class GateInfo(BaseModel):
     """A flow run's question to the human: open while `answer` is None."""
 
@@ -592,10 +587,12 @@ class GateInfo(BaseModel):
     note: str  # the note of the step that led to the gate
     note_body: str
     attachments: list[AttachmentInfo]  # that note's, kept with it (by its id)
-    # The notes the gate state needs, as they are now: only while it is open, since what
-    # the human saw when answering is not kept. A loop limit needs none.
-    # None too when its run's flow cannot be read (problem).
-    needs: list[NeededNote] | None
+    # The full names of the run's artifacts the gate state reads, but those attached to the
+    # note (runs.gate_reads): only while it is open, since what the human saw when
+    # answering is not kept. Names only: the UI shows each one's latest record from the
+    # feed's artifacts. A loop limit reads none; None too when its run's flow cannot be
+    # read (problem).
+    reads: list[str] | None
     answer: str | None  # an option, or how it was closed otherwise (overridden, cancelled)
     comment: str
     answered_by: str | None
@@ -890,7 +887,8 @@ def flow_state_info(found: flows.State) -> FlowStateInfo:
         ask=found.ask or None,
         outcomes=found.outcomes,
         max_visits=found.max_visits,
-        needs=list(found.needs),
+        reads=list(found.reads),
+        produces=list(found.produces),
     )
 
 
@@ -941,17 +939,10 @@ def run_info(run: state.Run) -> RunInfo:
 
 
 def gate_info(gate: state.Gate) -> GateInfo:
-    needs = problem = None
+    reads = problem = None
     if gate.answer is None:
         try:
-            needs = [
-                NeededNote(
-                    state=needed.state,
-                    note=note_info(needed.note) if needed.note else None,
-                    is_gate_note=needed.is_gate_note,
-                )
-                for needed in runs.gate_notes(gate)
-            ]
+            reads = [artifacts.full_name(gate.run, name) for name in runs.gate_reads(gate)]
         except runs.SnapshotError as error:
             problem = _unreadable(gate.session, error)
     return GateInfo(
@@ -964,7 +955,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
         note=gate.note,
         note_body=gate.note_body,
         attachments=[attachment_info(a) for a in runs.gate_attachments(gate)],
-        needs=needs,
+        reads=reads,
         answer=gate.answer,
         comment=gate.comment,
         answered_by=gate.answered_by or None,

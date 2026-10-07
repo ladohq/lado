@@ -1052,8 +1052,10 @@ export interface components {
             };
             /** Max Visits */
             max_visits: number | null;
-            /** Needs */
-            needs: string[];
+            /** Reads */
+            reads: string[];
+            /** Produces */
+            produces: string[];
         };
         /**
          * FolderInfo
@@ -1130,8 +1132,8 @@ export interface components {
             note_body: string;
             /** Attachments */
             attachments: components["schemas"]["AttachmentInfo"][];
-            /** Needs */
-            needs: components["schemas"]["NeededNote"][] | null;
+            /** Reads */
+            reads: string[] | null;
             /** Answer */
             answer: string | null;
             /** Comment */
@@ -1433,14 +1435,6 @@ export interface components {
             to: string;
             /** Text */
             text: string;
-        };
-        /** NeededNote */
-        NeededNote: {
-            /** State */
-            state: string;
-            note: components["schemas"]["NoteInfo"] | null;
-            /** Is Gate Note */
-            is_gate_note: boolean;
         };
         /** NewMarketplace */
         NewMarketplace: {

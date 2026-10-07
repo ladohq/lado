@@ -392,6 +392,22 @@ def resolve_attachments(session: str, agent: str, names: list[str] | None) -> li
     return attached
 
 
+def latest(session: str, run: str, name: str) -> tuple[Artifact, Record] | None:
+    """The artifact `name` of `run`'s scope with its latest record, None while it has none:
+    what a flow state that reads it shows (a step's text, a gate)."""
+    return store().latest(session, run, name)
+
+
+def record_line(name: str, found: tuple[Artifact, Record] | None) -> str:
+    """One line about an artifact's latest record, named `name`: its title and summary, or
+    that it has none yet. Never its content."""
+    if found is None:
+        return f"{name}: no record yet"
+    artifact, record = found
+    about = " — ".join(t for t in (artifact.title, record.summary) if t)
+    return f"{name}: {about}" if about else name
+
+
 def produced(
     session: str, run: str, state_name: str, visit: int, names: tuple[str, ...]
 ) -> tuple[list[tuple[str, str]], list[str]]:

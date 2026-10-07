@@ -5,7 +5,7 @@ import pytest
 from agent_helpers import previous_schema, spoil_snapshot
 from fastapi.testclient import TestClient
 
-from lado import runs, runtime, state
+from lado import artifacts, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -18,17 +18,17 @@ name: ship
 description: plan, build and ship
 start: plan
 states:
-  plan: {agent: supervisor, do: Plan it., outcomes: {ready: build}}
+  plan: {agent: supervisor, do: Plan it., produces: [plan], outcomes: {ready: build}}
   build:
     agent: developer
     do: Build it.
-    needs: [plan]
+    reads: [plan]
     max_visits: 2
     outcomes: {done: check, again: build}
   check:
     gate: approval
     ask: Ship it?
-    needs: [plan]
+    reads: [plan]
     outcomes: {approved: end, rejected: build}
   end: {end: true}
 """
@@ -57,6 +57,7 @@ def session(repo, fake_tmux):
 
 def at_build(name="x"):
     runs.start("s", "ship", f"Add {name}", name=name)
+    artifacts.write("s", "supervisor", f"ship/{name}/plan", content="step 1")
     return runs.advance("s", "supervisor", f"ship/{name}", "ready", "the plan", "step 1")
 
 
@@ -92,7 +93,8 @@ def test_a_run_comes_with_its_flow_in_the_order_of_the_snapshot(client, session)
                 "ask": None,
                 "outcomes": {"ready": "build"},
                 "max_visits": None,
-                "needs": [],
+                "reads": [],
+                "produces": ["plan"],
             },
             {
                 "name": "build",
@@ -102,7 +104,8 @@ def test_a_run_comes_with_its_flow_in_the_order_of_the_snapshot(client, session)
                 "ask": None,
                 "outcomes": {"done": "check", "again": "build"},
                 "max_visits": 2,
-                "needs": ["plan"],
+                "reads": ["plan"],
+                "produces": [],
             },
             {
                 "name": "check",
@@ -112,7 +115,8 @@ def test_a_run_comes_with_its_flow_in_the_order_of_the_snapshot(client, session)
                 "ask": "Ship it?",
                 "outcomes": {"approved": "end", "rejected": "build"},
                 "max_visits": None,
-                "needs": ["plan"],
+                "reads": ["plan"],
+                "produces": [],
             },
             {
                 "name": "end",
@@ -122,7 +126,8 @@ def test_a_run_comes_with_its_flow_in_the_order_of_the_snapshot(client, session)
                 "ask": None,
                 "outcomes": {},
                 "max_visits": None,
-                "needs": [],
+                "reads": [],
+                "produces": [],
             },
         ],
     }
@@ -212,6 +217,7 @@ def test_the_notes_are_the_steps_of_all_runs_oldest_first(client, session):
     assert [n["id"] for n in notes] == sorted(n["id"] for n in notes)
     for n in notes:
         del n["created_at"], n["id"]
+        n["attachments"] = [a["full_name"] for a in n["attachments"]]
     assert notes == [
         {
             "run": "ship/x",
@@ -222,7 +228,7 @@ def test_the_notes_are_the_steps_of_all_runs_oldest_first(client, session):
             "target": "build",
             "summary": "the plan",
             "body": "step 1",
-            "attachments": [],
+            "attachments": ["ship/x/plan"],
         },
         {
             "run": "ship/y",
@@ -233,7 +239,7 @@ def test_the_notes_are_the_steps_of_all_runs_oldest_first(client, session):
             "target": "build",
             "summary": "the plan",
             "body": "step 1",
-            "attachments": [],
+            "attachments": ["ship/y/plan"],
         },
         {
             "run": "ship/x",

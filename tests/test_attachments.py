@@ -171,7 +171,7 @@ start: build
 states:
   build: {agent: worker, do: Build it., outcomes: {done: check}}
   check: {agent: worker, do: Check it., outcomes: {ok: review}}
-  review: {agent: worker, do: Review it., needs: [build], outcomes: {ok: approve}}
+  review: {agent: worker, do: Review it., outcomes: {ok: approve}}
   approve: {gate: approval, ask: "Ship it?", outcomes: {approved: end, rejected: build}}
   end: {end: true}
 """
@@ -212,9 +212,7 @@ def test_a_flow_note_carries_artifacts_and_the_next_step_names_them(run):
     )
     _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "ok", "note_summary": "ok"})
     review = state.get_run("s", "ship/x")
-    text = runs.step_text(review, runs.flow_of(review))
-    assert f"Note from build: built\n{listed}" in text
-    assert text.count("Artifacts:") == 1  # the check's note has none
+    assert "Artifacts:" not in runs.step_text(review, runs.flow_of(review))  # check's has none
 
 
 def test_a_flow_advance_with_a_name_not_found_moves_nothing(run):

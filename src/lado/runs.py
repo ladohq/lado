@@ -265,26 +265,15 @@ def find_gate(session: str, ref: str) -> state.Gate:
     return gate
 
 
-@dataclasses.dataclass(frozen=True)
-class NeededNote:
-    state: str  # a state the gate state needs
-    note: state.Note | None  # its latest report; None: no note yet
-    # That report is the note that led to the gate (the same record): shown once.
-    is_gate_note: bool = False
-
-
-def gate_notes(gate: state.Gate) -> list[NeededNote]:
-    """Each state the gate state needs, with its latest report. A loop limit is no gate
-    state of the flow: it needs nothing."""
+def gate_reads(gate: state.Gate) -> list[str]:
+    """The names of the run's artifacts the gate state reads, but those attached to the note
+    that led to the gate: that note shows them already. A loop limit is no gate state of
+    the flow: it reads nothing. SnapshotError when the run's flow cannot be read."""
     if gate.kind == LOOP:
         return []
-    needs = flow_of(_run(gate.session, gate.run)).states[gate.state].needs
-    kept = state.latest_notes(gate.session, gate.run) if needs else {}
-    found = [(needed, kept.get(needed)) for needed in needs]
-    return [
-        NeededNote(needed, note, note is not None and note.id == gate.note_id)
-        for needed, note in found
-    ]
+    reads = flow_of(_run(gate.session, gate.run)).states[gate.state].reads
+    shown = {a.artifact.full_name for a in gate_attachments(gate)}
+    return [name for name in reads if artifacts.full_name(gate.run, name) not in shown]
 
 
 def canonical_option(gate: state.Gate, given: str) -> str:
@@ -536,8 +525,10 @@ def status(session: str, caller: str, run_name: str | None = None) -> list[dict]
 
 
 def step_text(run: state.Run, flow: flows.Flow) -> str:
-    """What the acting agent of a work state is told: the task, the step, the latest notes
-    of the states it needs, the previous step's note and how to report the outcome."""
+    """What the acting agent of a work state is told: the task, the step, the previous
+    step's note, the latest records of the artifacts it reads and, on a later visit, of
+    those it produces, and how to report the outcome. Each record is named once: one
+    attached to the previous step's note only there."""
     current = flow.states[run.state]
     parts = [
         f"Run {run.name} (flow {flow.name}), step {run.state}.",
@@ -550,20 +541,19 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
             f"\nThis step must write: {names} (write_artifact); they are attached to your"
             " note when you report."
         )
-    kept = state.latest_notes(run.session, run.name) if current.needs else {}
     previous = state.last_note(run.session, run.name)
-    shown = False  # the previous step's note was one of the needed ones
-    for needed in current.needs:
-        note = kept.get(needed)
-        label = needed
-        if note and previous and note.id == previous.id:
-            label, shown = f"{needed} (also the previous step's note)", True
-        text = f"{note.summary}\n{note.body}".rstrip() + _attached(note) if note else "no note yet"
-        parts.append(f"Note from {label}: {text}")
     listed = _attached(previous)
-    if (run.note or run.note_body or listed) and not shown:
+    if run.note or run.note_body or listed:
         text = f"{run.note}\n{run.note_body}".rstrip()
         parts.append(f"Note from the previous step: {text}{listed}")
+    shown = {record for _, record in state.note_attachments(previous.id)} if previous else set()
+    lines = _record_lines(run, current, current.reads, shown)
+    if lines:
+        parts.append("Artifacts this step reads (read each with read_artifact):\n" + lines)
+    if run.visits.get(run.state, 0) > 1:
+        lines = _record_lines(run, current, current.produces, shown, written_only=True)
+        if lines:
+            parts.append("Your artifacts so far (write them again if they change):\n" + lines)
     outcomes = "\n".join(f"- {o} -> {t}" for o, t in current.outcomes.items())
     parts.append(
         f'When the step is done, call flow_advance(run="{run.name}", outcome=...) with one '
@@ -575,6 +565,29 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
             f"\nWrite note_summary and note_body in {run.language}: the human reads them at gates."
         )
     return "\n\n".join(parts)
+
+
+def _record_lines(
+    run: state.Run,
+    current: flows.State,
+    names: tuple[str, ...],
+    shown: set[str],
+    written_only: bool = False,
+) -> str:
+    """A line per artifact of `names` with its latest record, named as the step's agent
+    writes it, but a record in `shown`; with `written_only`, only those that have one. The
+    store's error is said in the artifact's line: the step goes out all the same."""
+    lines = []
+    for name in names:
+        try:
+            found = artifacts.latest(run.session, run.name, name)
+        except (artifacts.ArtifactError, OSError, sqlite3.Error) as error:
+            lines.append(f"- {_as_written(run, current, name)}: cannot be read now: {error}")
+            continue
+        if (found and found[1].id in shown) or (written_only and found is None):
+            continue
+        lines.append(f"- {artifacts.record_line(_as_written(run, current, name), found)}")
+    return "\n".join(lines)
 
 
 def _attached(note: state.Note | None) -> str:

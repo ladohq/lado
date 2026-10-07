@@ -109,24 +109,51 @@ def _broken(change):
             'state "design_ok": unknown keys max_visits',
         ),
         (
-            lambda d: d["states"]["review"].update(needs=["design", "nowhere"]),
-            'state "review": needs "nowhere", which is not a state',
+            lambda d: d["states"]["review"].update(reads=["nowhere"]),
+            'state "review": reads "nowhere", which no state of the flow produces',
         ),
         (
-            lambda d: d["states"]["review"].update(needs="design"),
-            'state "review": needs must be a list of state names',
+            lambda d: d["states"]["design_ok"].update(reads=["nowhere"]),
+            'state "design_ok": reads "nowhere", which no state of the flow produces',
         ),
         (
-            lambda d: d["states"]["review"].update(needs=[["design"]]),
-            'state "review": needs must be a list of state names',
+            lambda d: d["states"]["review"].update(reads="design"),
+            'state "review": reads must be a list of artifact names',
         ),
         (
-            lambda d: d["states"]["design_ok"].update(needs=["nowhere"]),
-            'state "design_ok": needs "nowhere", which is not a state',
+            lambda d: d["states"]["review"].update(reads=[["design"]]),
+            'state "review": reads must be a list of artifact names',
         ),
         (
-            lambda d: d["states"]["design_ok"].update(needs="design"),
-            'state "design_ok": needs must be a list of state names',
+            lambda d: d["states"]["review"].update(reads=["Design"]),
+            'state "review": reads "Design" is no artifact name',
+        ),
+        (
+            lambda d: (
+                _produce(d, "design", "design")
+                or d["states"]["review"].update(reads=["design", "design"])
+            ),
+            'state "review": reads names "design" twice',
+        ),
+        (
+            lambda d: d["states"]["review"].update(produces=["review"], reads=["review"]),
+            'state "review": reads "review", which its own step produces; a step sees its own'
+            " artifacts again by itself",
+        ),
+        (
+            lambda d: (
+                _produce(d, "design", "design") or d["states"]["done"].update(reads=["design"])
+            ),
+            'state "done": unknown keys reads',
+        ),
+        (
+            lambda d: d["states"]["review"].update(needs=["design"]),
+            'state "review": needs was replaced by reads (artifact names) in LADO 0.27; name the'
+            " artifacts the step reads",
+        ),
+        (
+            lambda d: d["states"]["design_ok"].update(needs=["design"]),
+            'state "design_ok": needs was replaced by reads (artifact names) in LADO 0.27',
         ),
         (
             lambda d: d["states"]["review"].update(produces="review"),
@@ -183,12 +210,21 @@ def test_a_self_loop_is_a_valid_transition():
     assert parse(data)[1] == []
 
 
-def test_a_work_state_names_the_earlier_states_whose_notes_it_needs():
-    data = _broken(lambda d: d["states"]["review"].update(needs=["design", "design_ok"]))
-    flow, errors = parse(data)
+def _produce(data, state, *names):
+    data["states"][state]["produces"] = list(names)
+
+
+def test_a_work_state_names_the_artifacts_its_step_reads():
+    def change(d):
+        _produce(d, "design", "design", "mockup.html")
+        d["states"]["review"].update(reads=["mockup.html", "design"])
+
+    flow, errors = parse(_broken(change))
     assert errors == []
-    assert flow.states["review"].needs == ("design", "design_ok")
-    assert flow.states["implement"].needs == ()
+    assert flow.name == "feature"
+    assert flow.states["review"].reads == ("mockup.html", "design")
+    assert flow.states["implement"].reads == ()
+    assert "needs" not in flows.STATE_KEYS[flows.WORK] | flows.STATE_KEYS[flows.GATE]
 
 
 def test_a_work_state_names_the_artifacts_its_step_must_write():
@@ -212,35 +248,40 @@ def test_an_artifact_name_has_one_pattern():
     assert artifacts.NAME is flows.ARTIFACT_NAME
 
 
-def test_a_gate_names_the_states_whose_notes_the_human_sees():
-    data = _broken(lambda d: d["states"]["design_ok"].update(needs=["design"]))
-    flow, errors = parse(data)
+def test_a_gate_names_the_artifacts_the_human_sees():
+    def change(d):
+        _produce(d, "design", "design")
+        d["states"]["design_ok"].update(reads=["design"])
+
+    flow, errors = parse(_broken(change))
     assert errors == []
-    assert flow.states["design_ok"].needs == ("design",)
+    assert flow.states["design_ok"].reads == ("design",)
 
 
 def test_a_flow_round_trips_through_its_snapshot():
     def change(d):
-        d["states"]["review"].update(needs=["design"])
-        d["states"]["design_ok"].update(needs=["design"])
+        _produce(d, "design", "design")
+        d["states"]["review"].update(reads=["design"])
+        d["states"]["design_ok"].update(reads=["design"])
 
     flow, _ = parse(_broken(change))
     snapshot = copy.deepcopy(flow.snapshot)
     again = flows.from_snapshot(snapshot, "kit")
     assert again.states == flow.states
-    assert again.states["review"].needs == ("design",)
-    assert again.states["design_ok"].needs == ("design",)
+    assert again.states["review"].reads == ("design",)
+    assert again.states["design_ok"].reads == ("design",)
     assert again.start == flow.start
 
 
-def test_a_snapshot_from_before_needs_still_works():
-    # A run started by an older LADO keeps the flow as it was: no needs anywhere.
-    flow = flows.from_snapshot(yaml.safe_load(FEATURE), "kit")
-    assert all(state.needs == () for state in flow.states.values())
+def test_a_snapshot_with_needs_cannot_be_read_and_says_why():
+    # A run an older LADO started with needs: its snapshot is refused with the way out.
+    data = _broken(lambda d: d["states"]["implement"].update(needs=["design"]))
+    with pytest.raises(ValueError, match="needs was replaced by reads .* in LADO 0.27"):
+        flows.from_snapshot(data, "kit")
 
 
-# The shape of lado-dev's flows (v0.9.1): design and review loops bounded by max_visits and
-# gates, needs on earlier states and on the state itself on a loop.
+# The shape of lado-dev's flows after it reads artifacts: design and review loops bounded
+# by max_visits and gates, reads of artifacts written earlier.
 LADO_DEV_FEATURE = """\
 name: feature
 description: From intent to a merged branch.
@@ -249,29 +290,32 @@ states:
   design:
     agent: supervisor
     do: Design.
-    needs: [design]
+    produces: [design]
     outcomes: {ready: architecture}
   architecture:
     agent: architect
     do: Review the design.
     max_visits: 3
-    needs: [design, architecture]
+    reads: [design]
+    produces: [architecture-review]
     outcomes: {approved: design_ok, changes: design}
   design_ok:
     gate: approval
     ask: Approve?
-    needs: [design]
+    reads: [design]
     outcomes: {approved: implement, rejected: design}
   implement:
     agent: developer
     do: Build.
-    needs: [design]
+    reads: [design]
+    produces: [report]
     outcomes: {done: review}
   review:
     agent: reviewer
     do: Review.
     max_visits: 3
-    needs: [design, review]
+    reads: [design, report]
+    produces: [review]
     outcomes: {approved: merge_ok, changes: implement}
   merge_ok:
     gate: approval
@@ -293,12 +337,13 @@ states:
   implement:
     agent: developer
     do: Build.
+    produces: [report]
     outcomes: {done: review}
   review:
     agent: reviewer
     do: Review.
     max_visits: 3
-    needs: [review]
+    reads: [report]
     outcomes: {approved: merge_ok, changes: implement}
   merge_ok:
     gate: approval
@@ -392,26 +437,25 @@ def test_lint_names_an_unbounded_self_loop():
     ]
 
 
-def test_lint_names_needs_that_never_come_before():
+def test_lint_names_reads_no_state_before_the_step_produces():
     def later(d):
-        d["states"]["implement"]["needs"] = ["design", "done"]
+        _produce(d, "design", "design")
+        _produce(d, "review", "review")
+        d["states"]["implement"]["reads"] = ["design", "review"]
+        d["states"]["design_ok"]["reads"] = ["review"]
 
+    # review comes before implement on the review loop: it may read review's last one.
     assert lint(FEATURE, change=later) == [
-        'feature.yaml: state "implement" needs "done", which never comes before it'
+        'feature.yaml: state "design_ok" reads "review", which no state before it produces'
     ]
 
-    def own_on_a_loop(d):
-        d["states"]["review"]["needs"] = ["review"]
+    def off_a_loop(d):
+        _produce(d, "review", "review")
+        d["states"]["review"]["outcomes"] = {"approved": "done"}
+        d["states"]["implement"]["reads"] = ["review"]
 
-    assert lint(FEATURE, change=own_on_a_loop) == []
-
-    def own_off_a_loop(d):
-        d["states"]["design"]["outcomes"] = {"ready": "implement"}
-        del d["states"]["design_ok"]
-        d["states"]["design"]["needs"] = ["design"]
-
-    assert lint(FEATURE, change=own_off_a_loop) == [
-        'feature.yaml: state "design" needs "design", which never comes before it'
+    assert lint(FEATURE, change=off_a_loop) == [
+        'feature.yaml: state "implement" reads "review", which no state before it produces'
     ]
 
 

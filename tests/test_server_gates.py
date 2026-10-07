@@ -5,7 +5,7 @@ import pytest
 from agent_helpers import spoil_snapshot
 from fastapi.testclient import TestClient
 
-from lado import runs, runtime, state
+from lado import artifacts, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -18,17 +18,17 @@ name: ship
 description: plan, build and ship
 start: plan
 states:
-  plan: {agent: supervisor, do: Plan it., outcomes: {ready: build}}
+  plan: {agent: supervisor, do: Plan it., produces: [plan], outcomes: {ready: build}}
   build:
     agent: supervisor
     do: Build it.
     max_visits: 2
     outcomes: {done: check, polish: polish, again: build}
-  polish: {agent: supervisor, do: Polish it., outcomes: {done: check}}
+  polish: {agent: supervisor, do: Polish it., produces: [polish], outcomes: {done: check}}
   check:
     gate: approval
     ask: Ship it?
-    needs: [plan, polish]
+    reads: [plan, polish]
     outcomes: {approved: end, rejected: build}
   end: {end: true}
 """
@@ -52,9 +52,9 @@ def kit(repo):
 
 
 def at_gate(session="s"):
-    """A run of `session` waiting at gate "check", with a note from plan and none from
-    polish."""
+    """A run of `session` waiting at gate "check", with the artifact plan and no polish."""
     runs.start(session, "ship", "Add x", name="x")
+    artifacts.write(session, "supervisor", "ship/x/plan", content="step 1", summary="the plan")
     runs.advance(session, "supervisor", "ship/x", "ready", "the plan", "step 1\nstep 2")
     runs.advance(session, "supervisor", "ship/x", "done", "built it", "all\ntests pass")
     return state.open_gate(session, "ship/x")
@@ -66,15 +66,13 @@ def session(repo, kit, fake_tmux):
     return "s"
 
 
-def test_an_open_gate_comes_with_its_note_and_the_notes_it_needs(client, session):
+def test_an_open_gate_comes_with_its_note_and_the_artifacts_it_reads(client, session):
     gate = at_gate()
     answer = client.get(GATES)
     assert answer.status_code == 200
     [listed] = answer.json()
     assert listed["created_at"].endswith("Z")
-    plan = listed["needs"][0]["note"]
-    assert plan["created_at"].endswith("Z") and plan["id"] > 0
-    del listed["created_at"], plan["created_at"], plan["id"]
+    del listed["created_at"]
     assert listed == {
         "id": gate.id,
         "run": "ship/x",
@@ -85,24 +83,8 @@ def test_an_open_gate_comes_with_its_note_and_the_notes_it_needs(client, session
         "note": "built it",
         "note_body": "all\ntests pass",
         "attachments": [],
-        "needs": [
-            {
-                "state": "plan",
-                "note": {
-                    "run": "ship/x",
-                    "state": "plan",
-                    "kind": "report",
-                    "actor": "supervisor",
-                    "outcome": "ready",
-                    "target": "build",
-                    "summary": "the plan",
-                    "body": "step 1\nstep 2",
-                    "attachments": [],
-                },
-                "is_gate_note": False,
-            },
-            {"state": "polish", "note": None, "is_gate_note": False},
-        ],
+        # By full name only: the UI shows each one's latest record from the feed.
+        "reads": ["ship/x/plan", "ship/x/polish"],
         "answer": None,
         "comment": "",
         "answered_by": None,
@@ -111,13 +93,13 @@ def test_an_open_gate_comes_with_its_note_and_the_notes_it_needs(client, session
     }
 
 
-def test_a_gate_whose_runs_flow_cannot_be_read_comes_without_its_needs(client, session):
+def test_a_gate_whose_runs_flow_cannot_be_read_comes_without_its_reads(client, session):
     gate = at_gate()
     spoil_snapshot("s", "ship/x")
     answer = client.get(GATES)
     assert answer.status_code == 200
     [listed] = answer.json()
-    assert listed["needs"] is None
+    assert listed["reads"] is None
     assert listed["problem"].startswith('run "ship/x": its flow snapshot is not JSON')
     assert (listed["id"], listed["question"], listed["options"], listed["note"]) == (
         gate.id,
@@ -127,10 +109,11 @@ def test_a_gate_whose_runs_flow_cannot_be_read_comes_without_its_needs(client, s
     )
 
 
-def test_a_closed_gate_has_no_needs_even_after_newer_notes(client, session):
+def test_a_closed_gate_has_no_reads_and_an_open_one_not_those_of_its_note(client, session):
     at_gate()
     runs.answer("s", "1", "reject", "polish it")
     runs.advance("s", "supervisor", "ship/x", "polish", "polishing")
+    artifacts.write("s", "supervisor", "ship/x/polish", content="shiny")
     runs.advance("s", "supervisor", "ship/x", "done", "polished")
     first, second = client.get(GATES).json()
     assert (first["id"], first["answer"], first["comment"], first["answered_by"]) == (
@@ -140,21 +123,21 @@ def test_a_closed_gate_has_no_needs_even_after_newer_notes(client, session):
         "human",
     )
     assert first["answered_at"].endswith("Z")
-    assert first["needs"] is None
+    assert first["reads"] is None
     assert second["answer"] is None
-    assert [(n["state"], (n["note"] or {}).get("summary")) for n in second["needs"]] == [
-        ("plan", "the plan"),
-        ("polish", "polished"),
-    ]
+    # polish is attached to the note before the gate: shown there, once.
+    assert [a["full_name"] for a in second["attachments"]] == ["ship/x/polish"]
+    assert second["reads"] == ["ship/x/plan"]
 
 
-def test_a_loop_limit_needs_nothing(client, session):
+def test_a_loop_limit_reads_nothing(client, session):
     runs.start("s", "ship", "Add x", name="x")
+    artifacts.write("s", "supervisor", "ship/x/plan", content="step 1")
     runs.advance("s", "supervisor", "ship/x", "ready", "the plan")
     runs.advance("s", "supervisor", "ship/x", "again", "once more")
     runs.advance("s", "supervisor", "ship/x", "again", "and again")
     [gate] = client.get(GATES).json()
-    assert (gate["kind"], gate["options"], gate["needs"]) == ("loop", ["continue", "cancel"], [])
+    assert (gate["kind"], gate["options"], gate["reads"]) == ("loop", ["continue", "cancel"], [])
 
 
 def test_the_gates_need_the_token_and_a_known_session(client, session):

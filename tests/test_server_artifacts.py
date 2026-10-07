@@ -19,11 +19,11 @@ description: build and ship
 start: build
 states:
   build: {agent: supervisor, do: Build it., outcomes: {done: check, polish: polish}}
-  polish: {agent: supervisor, do: Polish it., outcomes: {done: check}}
+  polish: {agent: supervisor, do: Polish it., produces: [polish], outcomes: {done: check}}
   check:
     gate: approval
     ask: Ship it?
-    needs: [polish]
+    reads: [polish]
     outcomes: {approved: end, rejected: build}
   end: {end: true}
 """
@@ -242,32 +242,34 @@ def test_attachments_are_looked_up_only_for_the_rows_that_have_them(client, sess
 
 
 def _at_gate_from_polish():
-    """Run ship/x at gate check, led there from polish (which it needs) with an artifact."""
+    """Run ship/x at gate check, led there from polish with an artifact attached to its note
+    besides the polish it produces."""
     runs.start("s", "ship", "Add x", name="x")
     runs.advance("s", "supervisor", "ship/x", "polish", "to polish")
+    polish = artifacts.write("s", "supervisor", "ship/x/polish", content="p1")
     written = artifacts.write("s", "supervisor", "ship/x/design", content="d1")
     runs.advance("s", "supervisor", "ship/x", "done", "polished", attached=["ship/x/design"])
-    return written
+    return polish, written
 
 
-def test_a_note_and_its_gate_carry_the_notes_attachments_and_the_needed_note_is_marked(
+def test_a_note_and_its_gate_carry_the_notes_attachments_and_the_gate_reads_no_one_twice(
     client, session
 ):
-    written = _at_gate_from_polish()
+    polish, written = _at_gate_from_polish()
+    attached = [_attachment(polish), _attachment(written)]
     notes = client.get("/api/sessions/s/notes").json()
-    assert [n["attachments"] for n in notes] == [[], [_attachment(written)]]
+    assert [n["attachments"] for n in notes] == [[], attached]
     [gate] = client.get("/api/sessions/s/gates").json()
-    assert gate["attachments"] == [_attachment(written)]
-    [needed] = gate["needs"]
-    assert (needed["state"], needed["is_gate_note"]) == ("polish", True)
-    assert needed["note"]["attachments"] == [_attachment(written)]
+    assert gate["attachments"] == attached
+    assert gate["reads"] == []  # polish is attached to the note before it
 
 
 def test_a_closed_gate_keeps_its_notes_attachments_after_the_run_moved_on(client, session):
-    written = _at_gate_from_polish()
+    polish, written = _at_gate_from_polish()
     runs.answer("s", "1", "reject", "again")
     artifacts.write("s", "supervisor", "ship/x/plan", content="p")
     runs.advance("s", "supervisor", "ship/x", "done", "built", attached=["ship/x/plan"])
     first, second = client.get("/api/sessions/s/gates").json()
-    assert first["attachments"] == [_attachment(written)]
+    assert first["attachments"] == [_attachment(polish), _attachment(written)]
     assert [a["full_name"] for a in second["attachments"]] == ["ship/x/plan"]
+    assert second["reads"] == ["ship/x/polish"]

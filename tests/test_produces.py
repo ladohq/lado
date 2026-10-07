@@ -24,7 +24,7 @@ states:
   wrap:
     agent: supervisor
     do: Wrap it up.
-    needs: [build]
+    reads: [design]
     produces: [summary]
     outcomes: {done: end}
   end: {end: true}
@@ -192,17 +192,15 @@ def test_another_error_in_the_check_is_not_hidden(run, monkeypatch):
         _advance("worker", "done")
 
 
-def test_the_gate_after_the_step_and_the_step_that_needs_it_show_the_artifacts(run):
-    artifacts.write("s", "worker", "design", content="d1")
+def test_the_gate_after_the_step_and_the_step_that_reads_it_show_the_artifacts(run):
+    artifacts.write("s", "worker", "design", content="d1", summary="the plan")
     _advance("worker", "done", note="built")
     gate = state.open_gate("s", run)
     assert runs.gate_artifacts(gate) == "Artifacts: ship/x/design"
     assert [a.full_name for a in models.gate_info(gate).attachments] == ["ship/x/design"]
     runs.answer("s", str(gate.id), "approve")
     wrap = state.get_run("s", run)
-    assert "Note from build: built\nArtifacts: ship/x/design" in runs.step_text(
-        wrap, runs.flow_of(wrap)
-    )
+    assert "- ship/x/design: the plan" in runs.step_text(wrap, runs.flow_of(wrap))
 
 
 def test_the_step_names_its_artifacts_as_its_agent_writes_them(run):

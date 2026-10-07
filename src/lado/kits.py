@@ -209,6 +209,12 @@ class Found:
             )
         return dataclasses.replace(kit, origin=_origin(self.installed))
 
+    @property
+    def source(self) -> str:
+        """Kit.source of a kit found that may not load."""
+        origin = _origin(self.installed) if self.installed else None
+        return f"{self.where}{f' {origin}' if origin else ''}: {self.path}"
+
     def link(self) -> str | None:
         """Where an installed kit comes from: its address@tag, or its folder."""
         if self.installed is None:

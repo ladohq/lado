@@ -55,6 +55,7 @@ from lado.server.models import (
     RunEventInfo,
     RunInfo,
     Sent,
+    SessionAbout,
     SessionInfo,
     Started,
     Stopped,
@@ -386,6 +387,13 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
+
+    @app.get("/api/sessions/{name}/about", dependencies=[Depends(guard)])
+    def session_about(name: str, has_db: bool = Depends(database)) -> SessionAbout:
+        """What the session's head shows besides its settings: its repository's remote and
+        branch, its kits' and provider's versions as installed now. Read anew each time."""
+        known(name, has_db)
+        return launch.session_about(state.get_session(name))
 
     @app.get("/api/sessions/{name}/agents", dependencies=[Depends(guard)])
     def agents(name: str, has_db: bool = Depends(database)) -> list[AgentInfo]:

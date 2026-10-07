@@ -169,6 +169,40 @@ def git(repo: str, *args: str) -> str:
     return result.stdout.strip()
 
 
+def branch(root: str) -> str | None:
+    """The repository's current branch; None on a detached HEAD."""
+    try:
+        return git(root, "symbolic-ref", "--short", "HEAD")
+    except LadoError:
+        return None
+
+
+def remote(root: str) -> str | None:
+    """The URL of the repository's `origin`, as git has it; None without one. Show it only
+    through `public_remote`."""
+    try:
+        return git(root, "remote", "get-url", "origin")
+    except LadoError:
+        return None
+
+
+def public_remote(url: str) -> str:
+    """A remote's URL without what may be a secret: every userinfo of a URL (a token may
+    stand alone, `https://<token>@host/...`), but an ssh:// URL keeps its user, which the
+    clone needs, and loses only a password. The scp form (`git@host:path`) and a local
+    path hold no password and stay as they are."""
+    scheme, sep, rest = url.partition("://")
+    if not sep:
+        return url
+    netloc, slash, path = rest.partition("/")
+    userinfo, at, host = netloc.rpartition("@")
+    if not at:
+        return url
+    if scheme == "ssh":
+        host = f"{userinfo.partition(':')[0]}@{host}"
+    return f"{scheme}://{host}{slash}{path}"
+
+
 def repo_root(path: str) -> str:
     try:
         return git(path, "rev-parse", "--show-toplevel")

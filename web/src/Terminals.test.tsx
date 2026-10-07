@@ -64,6 +64,7 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (path: string) => {
+      if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       const body = path.endsWith("/agents")
         ? AGENTS
         : path.includes("/history")

@@ -1,10 +1,13 @@
 """A session's page in the UI server's API: its run events, all its messages, what waits for
 the human in it, and what its agents work on. In process, with FastAPI's test client."""
 
+import shutil
+import subprocess
+
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import runtime, state
+from lado import doctor, providers, runtime, state
 from lado.server import app as server_app
 from lado.server import auth
 
@@ -134,3 +137,89 @@ def test_an_agent_says_its_run_and_the_first_line_of_its_task(client, session):
     supervisor, worker = client.get("/api/sessions/s/agents").json()
     assert (supervisor["run"], supervisor["task"]) == (None, None)
     assert (worker["run"], worker["task"]) == ("feature/x", "Build the layout")
+
+
+# What the session's head shows besides its settings: GET /api/sessions/{name}/about
+
+
+@pytest.fixture
+def statuses(monkeypatch):
+    """The provider's state as doctor.provider_status would give it, by provider name."""
+    found = {
+        "claude": doctor.ProviderStatus(
+            True, "2.1.300", "2.1.300 (Claude Code)", "2.1.291", "untested"
+        )
+    }
+    monkeypatch.setattr(doctor, "provider_status", lambda p, which: found[p.name])
+    return found
+
+
+def about(client, name: str = "s") -> dict:
+    answer = client.get(f"/api/sessions/{name}/about")
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+def test_about_gives_the_repository_without_the_token_in_its_remote(
+    client, repo, session, statuses
+):
+    url = "https://user:ghp_secret@github.com/ladohq/lado.git"
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", url], check=True)
+    assert about(client)["repos"] == [
+        {"path": str(repo), "remote": "https://github.com/ladohq/lado.git", "branch": "main"}
+    ]
+
+
+def test_about_a_session_whose_folder_is_gone_has_no_remote_or_branch(
+    client, repo, session, statuses
+):
+    shutil.rmtree(repo)
+    assert about(client)["repos"] == [{"path": str(repo), "remote": None, "branch": None}]
+
+
+def test_about_gives_each_kit_in_the_sessions_order_with_its_version_and_source(
+    client, repo, fake_tmux, statuses
+):
+    kits_dir = repo / ".lado" / "kits"
+    for name in ("team", "broken", "gone"):
+        (kits_dir / name).mkdir(parents=True)
+        (kits_dir / name / "kit.yaml").write_text(f"name: {name}\nversion: 1.2.0\n")
+    runtime.start_session(
+        str(repo), "s", None, kit_names=["team", "default", "broken", "gone"], provider="claude"
+    )
+    (kits_dir / "broken" / "kit.yaml").write_text("name: broken\nnope: 1\n")
+    shutil.rmtree(kits_dir / "gone")
+    team, default, broken, gone = about(client)["kits"]
+    assert team == {
+        "name": "team",
+        "version": "1.2.0",
+        "source": f"project: {kits_dir / 'team'}",
+        "valid": True,
+        "problem": None,
+    }
+    assert (default["name"], default["valid"]) == ("default", True)
+    assert default["source"].startswith("built-in: ")
+    assert (broken["valid"], broken["version"]) == (False, "")
+    assert broken["source"] == f"project: {kits_dir / 'broken'}"
+    assert "nope" in broken["problem"]
+    assert (gone["valid"], gone["version"], gone["source"]) == (False, "", "")
+    assert gone["problem"].startswith('kit "gone" not found')
+
+
+def test_about_gives_the_sessions_provider_with_its_version_and_warning(client, session, statuses):
+    provider = about(client)["provider"]
+    assert provider == {
+        "name": "claude",
+        "title": "Claude Code",
+        "permission_modes": list(providers.get("claude").permission_modes),
+        "install_hint": providers.get("claude").install_hint,
+        "installed": True,
+        "version": "2.1.300",
+        "detail": "2.1.300 (Claude Code)",
+        "tested_version": "2.1.291",
+        "warning": "untested",
+    }
+
+
+def test_about_an_unknown_session_is_404(client, session):
+    assert client.get("/api/sessions/x/about").status_code == 404

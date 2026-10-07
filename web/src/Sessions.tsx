@@ -14,7 +14,7 @@ import {
 } from "react-router";
 
 import { Agents } from "./Agents";
-import type { SessionInfo, SessionStatus } from "./api";
+import { getSessionAbout, type ProviderInfo, type RepoInfo, type SessionAbout, type SessionKitInfo, type SessionInfo, type SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { duration } from "./ChatText";
 import { CopyButton } from "./Copy";
@@ -29,6 +29,7 @@ import {
   FindIcon,
   FlowsIcon,
   FolderIcon,
+  GitIcon,
   KitsIcon,
   LinkIcon,
   ProblemIcon,
@@ -53,6 +54,7 @@ import {
   type ColumnPrefs,
   type SessionGroup,
 } from "./prefs";
+import { shortRemote } from "./remote";
 import { useTitle } from "./Shell";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { Team } from "./Team";
@@ -555,11 +557,16 @@ function Find({ label }: { label: string }) {
   );
 }
 
-// The session's head (docs/design/ui.md, Structure): its name, status and how long it ran,
-// Copy link and its actions; below, small, its folder (Copy path on the folder's icon), its
-// kits and its agents' CLI with the permission mode.
+// The session's head (docs/design/ui.md, Structure and Session head): its name, status and
+// how long it ran, Copy link and its actions; below, small, its folder (Copy path on the
+// folder's icon), its git remote and branch (Copy URL on the git icon), its kits and its
+// agents' CLI with the permission mode; the versions in their tooltips. Until its about
+// comes, or when it fails, the line has the session's settings alone.
 function SessionHead({ session }: { session: SessionInfo }) {
   const { name, repo, kits, provider, permission_mode: mode } = session;
+  const about = useAbout(session);
+  const repository = about?.repos[0];
+  const cli = about?.provider;
   return (
     <header className="session-head">
       <div className="session-title">
@@ -591,16 +598,149 @@ function SessionHead({ session }: { session: SessionInfo }) {
             <bdi>{repo}</bdi>
           </span>
         </span>
+        {repository && <GitFact name={name} repo={repository} />}
         <span className="session-fact">
           <KitsIcon />
-          <span className="session-kits">{kits.join(", ")}</span>
+          <span className="session-kits">
+            {kits.map((kit, at) => {
+              const found = about?.kits.find((one) => one.name === kit);
+              return (
+                <span key={kit}>
+                  {at > 0 && ", "}
+                  {found ? (
+                    <Tooltip tip={<KitTip kit={found} />}>
+                      <span className="session-kit session-hint" tabIndex={0}>
+                        {kit}
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    kit
+                  )}
+                </span>
+              );
+            })}
+          </span>
         </span>
         <span className="session-fact">
           <AgentCliIcon />
-          <span className="session-agent-cli">{mode ? `${provider} · ${mode}` : provider}</span>
+          <span className="session-agent-cli">
+            {cli ? (
+              <Tooltip tip={<CliTip cli={cli} />}>
+                <span className="session-hint" tabIndex={0}>
+                  {provider}
+                </span>
+              </Tooltip>
+            ) : (
+              provider
+            )}
+            {cli?.warning && (
+              <span role="img" aria-label="untested version" className="session-warn">
+                !
+              </span>
+            )}
+            {mode && ` · ${mode}`}
+          </span>
         </span>
       </div>
     </header>
+  );
+}
+
+const NEXT_AGENT = "installed now: the next agent starts with it";
+
+// The session's about, asked when its head opens and again when what it is read from may
+// have changed: the session's folder, kits or provider, or an installed kit (the feed's
+// `kits`). No change in the feed says the CLI's version changed: it is read at the head's
+// opening only.
+function useAbout(session: SessionInfo): SessionAbout | null {
+  const kitChanges = useLive().kitChanges;
+  const [about, setAbout] = useState<SessionAbout | null>(null);
+  const { name, repo, provider } = session;
+  const kits = session.kits.join("\n");
+  useEffect(() => {
+    let current = true;
+    getSessionAbout(name).then(
+      (got) => current && setAbout(got),
+      () => current && setAbout(null),
+    );
+    return () => {
+      current = false;
+    };
+  }, [name, repo, kits, provider, kitChanges]);
+  return about;
+}
+
+// The repository's remote, short, and its branch; the remote's whole URL is copied from
+// the git icon and shown in the tooltip with the branch and the path.
+function GitFact({ name, repo }: { name: string; repo: RepoInfo }) {
+  const { remote, branch, path } = repo;
+  if (!remote && !branch) return null;
+  const text = [remote && shortRemote(remote), branch].filter(Boolean).join(" · ");
+  const where = [branch && `branch ${branch}`, path].filter(Boolean).join(" · ");
+  return (
+    <span className="session-fact session-git">
+      {remote ? (
+        <CopyButton
+          label="Copy URL"
+          copied="URL copied"
+          text={remote}
+          field={{ title: `Remote of ${name}`, label: "URL" }}
+          icon={<GitIcon />}
+        />
+      ) : (
+        <GitIcon />
+      )}
+      <Tooltip
+        tip={
+          <>
+            {remote && <div className="tooltip-line">{remote}</div>}
+            <div className="tooltip-line">{where}</div>
+          </>
+        }
+      >
+        <span className="session-hint" tabIndex={0}>
+          {text}
+        </span>
+      </Tooltip>
+    </span>
+  );
+}
+
+function KitTip({ kit }: { kit: SessionKitInfo }) {
+  if (!kit.valid) {
+    return (
+      <div className="tooltip-line">
+        <b>{kit.name}</b>: {kit.problem}
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="tooltip-line">
+        <b>{kit.name}</b> v{kit.version}
+      </div>
+      <div className="tooltip-line">{kit.source}</div>
+      <div className="tooltip-line">{NEXT_AGENT}</div>
+    </>
+  );
+}
+
+function CliTip({ cli }: { cli: ProviderInfo }) {
+  if (!cli.installed) {
+    return (
+      <div className="tooltip-line">
+        <b>{cli.title}</b> not installed: {cli.detail}
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="tooltip-line">
+        <b>{cli.title}</b> {cli.version || cli.detail}
+      </div>
+      {cli.warning && <div className="tooltip-line session-warn">tested with {cli.tested_version}</div>}
+      <div className="tooltip-line">{NEXT_AGENT}</div>
+    </>
   );
 }
 

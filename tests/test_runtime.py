@@ -3185,3 +3185,34 @@ def test_a_last_sign_of_life_before_the_resume_makes_a_span_of_nothing(repo, fak
     assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(600, None)
     runtime.stop_session("s")
     assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(600, None)
+
+
+@pytest.mark.parametrize(
+    ("url", "public"),
+    [
+        ("https://user:token@github.com/ladohq/lado.git", "https://github.com/ladohq/lado.git"),
+        ("https://ghp_secret@github.com/ladohq/lado", "https://github.com/ladohq/lado"),
+        ("ssh://git@github.com/ladohq/lado.git", "ssh://git@github.com/ladohq/lado.git"),
+        ("ssh://u:p@host:2222/lado.git", "ssh://u@host:2222/lado.git"),
+        ("git@github.com:ladohq/lado.git", "git@github.com:ladohq/lado.git"),
+        ("/srv/git/lado.git", "/srv/git/lado.git"),
+    ],
+)
+def test_public_remote_drops_what_may_be_a_secret(url, public):
+    assert runtime.public_remote(url) == public
+
+
+def test_branch_and_remote_of_a_repository_with_origin(repo):
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin", "git@github.com:ladohq/lado.git"],
+        check=True,
+    )
+    assert (runtime.branch(str(repo)), runtime.remote(str(repo))) == (
+        "main",
+        "git@github.com:ladohq/lado.git",
+    )
+
+
+def test_no_remote_without_origin_and_no_branch_on_a_detached_head(repo):
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "--detach"], check=True)
+    assert (runtime.branch(str(repo)), runtime.remote(str(repo))) == (None, None)

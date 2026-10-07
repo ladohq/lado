@@ -929,6 +929,46 @@
         }
       }
     },
+    "/api/sessions/{name}/about": {
+      "get": {
+        "summary": "Session About",
+        "description": "What the session's head shows besides its settings: its repository's remote and\nbranch, its kits' and provider's versions as installed now. Read anew each time.",
+        "operationId": "session_about_api_sessions__name__about_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionAbout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{name}/agents": {
       "get": {
         "summary": "Agents",
@@ -4115,6 +4155,44 @@
         "title": "Refused",
         "description": "The detail of a 400 to a start or resume that the session's kits refuse: why, and\nthe --without items that would each resolve it (a name in two kits), if any."
       },
+      "RepoInfo": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "remote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "remote",
+          "branch"
+        ],
+        "title": "RepoInfo",
+        "description": "A repository of a session: now its one folder; a project will have several."
+      },
       "Resume": {
         "properties": {
           "kits": {
@@ -4359,6 +4437,35 @@
         ],
         "title": "Sent"
       },
+      "SessionAbout": {
+        "properties": {
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/RepoInfo"
+            },
+            "type": "array",
+            "title": "Repos"
+          },
+          "kits": {
+            "items": {
+              "$ref": "#/components/schemas/SessionKitInfo"
+            },
+            "type": "array",
+            "title": "Kits"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ProviderInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repos",
+          "kits",
+          "provider"
+        ],
+        "title": "SessionAbout",
+        "description": "What the session's head shows besides its settings: read from git, the kits and\nthe provider's CLI when asked, never in the change feed (docs/design/ui.md, Session\nhead)."
+      },
       "SessionInfo": {
         "properties": {
           "name": {
@@ -4451,6 +4558,47 @@
           "stopped_at"
         ],
         "title": "SessionInfo"
+      },
+      "SessionKitInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "source",
+          "valid",
+          "problem"
+        ],
+        "title": "SessionKitInfo",
+        "description": "A kit of a session as the next agent would take it now (kits.find in its repo)."
       },
       "SessionStatus": {
         "type": "string",

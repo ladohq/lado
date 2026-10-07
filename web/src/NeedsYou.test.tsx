@@ -132,6 +132,7 @@ beforeEach(() => {
       if (path === "/api/sessions") return new Response(JSON.stringify(sessions));
       if (path === "/api/waiting") return new Response(JSON.stringify(waiting));
       if (path.endsWith("/agents")) return new Response(JSON.stringify(agents));
+      if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
       return new Response("[]");
     }),
@@ -252,6 +253,8 @@ test("a list that cannot load says why", async () => {
     vi.fn(async (path: string) =>
       path === "/api/waiting"
         ? new Response(JSON.stringify({ detail: "lado.db is newer" }), { status: 503 })
+        : path.endsWith("/about")
+          ? new Response("{}", { status: 404 })
         : new Response(JSON.stringify(path === "/api/sessions" ? sessions : [])),
     ),
   );

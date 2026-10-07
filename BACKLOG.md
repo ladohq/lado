@@ -1113,6 +1113,13 @@ field stays right of the current tab), covered tabs are `inert`, and ui.md (Flow
 search) states the blur rule.
 Found: 2026-10-07, review of fix/flows-search-narrow.
 
+## Session head's about is a 500 for a session whose provider is no longer registered
+
+Size: S. Why here: rare (a provider dropped from LADO, a test home's "fake"), but the head then loses its git and kit versions too.
+`GET /api/sessions/{name}/about` calls `providers.get(sess.provider)` in `launch.session_about`; an unknown name raises ValueError, the endpoint answers 500, and the UI falls back to the plain line (AC-10), losing git and kit versions that do not depend on the provider.
+Wanted: an unknown provider gives a `ProviderInfo` with `installed: false` and a `detail` saying so (or `provider` optional); the rest of the answer stays.
+Found: 2026-10-07, feature/session-head review (Minor).
+
 # P3: maybe never
 
 ## The chat's day dividers say "Today" and "Yesterday" as of their last render

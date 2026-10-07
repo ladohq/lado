@@ -802,7 +802,8 @@ h3 {
   height: 15px;
 }
 
-.session-folder .icon-button {
+.session-folder .icon-button,
+.session-git .icon-button {
   flex: none;
   width: 24px;
   height: 24px;
@@ -811,12 +812,14 @@ h3 {
   color: var(--muted);
 }
 
-.session-folder .icon-button:hover {
+.session-folder .icon-button:hover,
+.session-git .icon-button:hover {
   background: var(--raised);
   color: var(--ink);
 }
 
-.session-folder .icon {
+.session-folder .icon,
+.session-git .icon {
   width: 15px;
   height: 15px;
 }
@@ -4498,4 +4501,26 @@ del.kit-mcp-name {
   .feed-detail {
     margin-left: 6px;
   }
+}
+
+/* The session head's facts with a tooltip (Session head): a dotted line under the text. */
+.session-hint {
+  border-bottom: 1px dotted var(--muted);
+  cursor: default;
+}
+
+.session-hint:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+/* An untested CLI version: "!" in the line, "tested with" in its tooltip. */
+.session-warn,
+.tooltip .session-warn {
+  color: var(--human);
+  font-weight: 600;
+}
+
+.session-agent-cli .session-warn {
+  margin-left: 3px;
 }

@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { FolderInfo, KitInfo, ProviderInfo, RecentFolder, SessionInfo } from "./api";
+import type { FolderInfo, KitInfo, ProviderInfo, RecentFolder, SessionAbout, SessionInfo } from "./api";
 import { App } from "./App";
 import { FakeEventSource, FakeSocket, stubDialogs } from "./fakes";
 import { BUNDLE_VERSION } from "./version";
@@ -79,6 +79,7 @@ let sessions: SessionInfo[];
 let folders: Record<string, FolderInfo>;
 let recent: RecentFolder[];
 let kits: KitInfo[];
+let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: () => Promise<ProviderInfo[]>;
 let answers: Record<string, () => Response | Promise<Response>>; // "METHOD path" -> the server's answer
 let calls: Call[];
@@ -92,6 +93,7 @@ beforeEach(() => {
   folders = {};
   recent = [];
   kits = [kit("default"), kit("team")];
+  abouts = {};
   providers = async () => [provider("claude"), provider("kilo")];
   answers = {};
   calls = [];
@@ -119,6 +121,11 @@ beforeEach(() => {
       if (url.pathname === "/api/folders/recent") return json(recent);
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers());
+      const about = /^\/api\/sessions\/([^/]+)\/about$/.exec(url.pathname);
+      if (about) {
+        const found = abouts[decodeURIComponent(about[1])];
+        return found ? json(found) : json({ detail: "unknown session" }, 404);
+      }
       if (url.pathname.endsWith("/messages")) return json({ items: [], earlier: false });
       return json([]);
     }),
@@ -826,4 +833,101 @@ test("Forget lists what stays on disk and needs the open runs ticked, then leave
   fireEvent.click(forget);
   await waitFor(() => expect(screen.queryByRole("region", { name: "Session lado" })).toBeNull());
   expect(calls.find((c) => c.method === "DELETE")!.path).toBe("/api/sessions/lado?force=true");
+});
+
+// The head's facts from GET /api/sessions/{name}/about: the repository, the kits' and the
+// provider's versions (docs/design/ui.md, Session head)
+
+function about(more: Partial<SessionAbout> = {}): SessionAbout {
+  return {
+    repos: [{ path: "/src/lado", remote: "git@github.com:ladohq/lado.git", branch: "main" }],
+    kits: [
+      { name: "team", version: "1.2.0", source: "user git@github.com:me/team@v1.2.0: /k/team", valid: true, problem: null },
+      { name: "default", version: "0.25.0", source: "built-in: /lado/default", valid: true, problem: null },
+    ],
+    provider: provider("claude", { version: "2.1.300", tested_version: "2.1.300" }),
+    ...more,
+  };
+}
+
+const meta = () => head().querySelector(".session-meta") as HTMLElement;
+const tip = () => screen.getByRole("tooltip").textContent;
+const aboutCalls = () => calls.filter((call) => call.path.endsWith("/about")).length;
+
+async function openHead(given: SessionAbout) {
+  sessions = [session("lado", { kits: ["team", "default"], permission_mode: "plan" })];
+  abouts = { lado: given };
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  await waitFor(() => expect(meta().querySelector(".session-kit")).toBeTruthy());
+}
+
+test("with its about, the head's second line has the folder, the remote and branch, the kits and the CLI", async () => {
+  await openHead(about());
+  const facts = [...meta().children].map((fact) => fact.textContent);
+  expect(facts).toEqual(["/src/lado", "github.com/ladohq/lado · main", "team, default", "claude · plan"]);
+  expect(within(meta()).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+    "Copy path",
+    "Copy URL",
+  ]);
+  expect(within(meta()).queryByRole("img", { name: "untested version" })).toBeNull();
+});
+
+test("Copy URL on the git icon copies the remote's whole URL", async () => {
+  const writeText = vi.fn(async () => {});
+  clipboard(writeText);
+  await openHead(about());
+  fireEvent.click(within(meta()).getByRole("button", { name: "Copy URL" }));
+  await waitFor(() => expect(within(meta()).getByText("URL copied")).toBeTruthy());
+  expect(writeText).toHaveBeenCalledWith("git@github.com:ladohq/lado.git");
+});
+
+test("the git fact is the branch alone without a remote, and none without either", async () => {
+  await openHead(about({ repos: [{ path: "/src/lado", remote: null, branch: "trunk" }] }));
+  expect(meta().querySelector(".session-git")?.textContent).toBe("trunk");
+  expect(within(meta()).queryByRole("button", { name: "Copy URL" })).toBeNull();
+  cleanup();
+  await openHead(about({ repos: [{ path: "/src/lado", remote: null, branch: null }] }));
+  expect(meta().querySelector(".session-git")).toBeNull();
+});
+
+test("the git fact's tooltip has the whole URL, the branch and the path", async () => {
+  await openHead(about());
+  fireEvent.focus(meta().querySelector(".session-git .session-hint") as HTMLElement);
+  expect(tip()).toBe("git@github.com:ladohq/lado.gitbranch main · /src/lado");
+});
+
+test("each kit's tooltip has its version, where it is and that the next agent starts with it", async () => {
+  const broken = { name: "default", version: "", source: "", valid: false, problem: 'kit "default" not found' };
+  await openHead(about({ kits: [about().kits[0], broken] }));
+  const [team, gone] = meta().querySelectorAll<HTMLElement>(".session-kit");
+  fireEvent.focus(team);
+  expect(tip()).toBe("team v1.2.0user git@github.com:me/team@v1.2.0: /k/teaminstalled now: the next agent starts with it");
+  fireEvent.blur(team);
+  fireEvent.focus(gone);
+  expect(tip()).toBe('default: kit "default" not found');
+});
+
+test("the CLI's tooltip has its version; ! in the line only for an untested version", async () => {
+  const untested = provider("claude", { version: "2.1.300", tested_version: "2.1.291", warning: "untested version" });
+  await openHead(about({ provider: untested }));
+  expect(within(meta()).getByRole("img", { name: "untested version" }).textContent).toBe("!");
+  fireEvent.focus(meta().querySelector(".session-agent-cli .session-hint") as HTMLElement);
+  expect(tip()).toBe("Claude Code 2.1.300tested with 2.1.291installed now: the next agent starts with it");
+  cleanup();
+  await openHead(about({ provider: provider("claude", { installed: false, version: "", detail: "`claude` not found on PATH" }) }));
+  fireEvent.focus(meta().querySelector(".session-agent-cli .session-hint") as HTMLElement);
+  expect(tip()).toBe("Claude Code not installed: `claude` not found on PATH");
+});
+
+test("about is asked again when a kit changes, or the session's kits, and not for another change", async () => {
+  await openHead(about());
+  expect(aboutCalls()).toBe(1);
+  const stream = FakeEventSource.all[0];
+  const changed = (kits: string[]) => session("lado", { kits, permission_mode: "plan" });
+  stream.send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: changed(["team", "default"]) }, "11");
+  stream.send("change", { kind: "kits", session: "", key: "team", op: "update", item: null }, "12");
+  await waitFor(() => expect(aboutCalls()).toBe(2));
+  stream.send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: changed(["default"]) }, "13");
+  await waitFor(() => expect(aboutCalls()).toBe(3));
 });

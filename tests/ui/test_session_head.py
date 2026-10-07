@@ -3,12 +3,13 @@ agents' CLI, Copy link and Copy path; and the Activity chat in the middle of a w
 The fake agent's sessions."""
 
 import re
+import subprocess
 
 import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
-from lado import runtime
+from lado import kits, runtime
 
 pytestmark = pytest.mark.ui
 
@@ -144,3 +145,25 @@ def test_in_a_column_of_360_px_the_head_wraps_without_scrolling(page: Page, serv
     )
     assert outside == []
     shot(page)
+
+
+def test_the_head_shows_the_remote_and_branch_and_a_kits_version_on_hover(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    url = "https://user:secret@github.com/ladohq/lado.git"
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", url], check=True)
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    expect(head(page).locator(".session-git")).to_have_text("github.com/ladohq/lado · main")
+    expect(head(page).locator(".session-meta > *")).to_have_count(4)
+    head(page).locator(".session-kit").filter(has_text="default").hover()
+    version = kits.find("default", str(repo)).load().version
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_contain_text(f"default v{version}")
+    expect(tip).to_contain_text("installed now: the next agent starts with it")
+    shot(page, "kit-version")
+    head(page).locator(".session-git .session-hint").hover()
+    expect(tip).to_have_text("https://github.com/ladohq/lado.gitbranch main · " + str(repo))
+    shot(page, "remote")

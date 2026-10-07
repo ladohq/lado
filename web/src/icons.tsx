@@ -169,6 +169,16 @@ export const LinkIcon = () => (
 
 export const FolderIcon = ProjectsIcon;
 
+// Two commits and a branch: a session's git repository.
+export const GitIcon = () => (
+  <Icon>
+    <circle cx="7" cy="6" r="2" />
+    <circle cx="7" cy="18" r="2" />
+    <circle cx="17" cy="9" r="2" />
+    <path d="M7 8v8M17 11c0 3-4 3-8.5 5.5" />
+  </Icon>
+);
+
 export const AgentCliIcon = () => (
   <Icon>
     <rect x="6" y="6" width="12" height="12" rx="1.5" />

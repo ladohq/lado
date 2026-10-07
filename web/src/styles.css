@@ -4883,13 +4883,18 @@ del.kit-mcp-name {
   font-size: 12.5px;
 }
 
-/* The tab: its tools, then the table over the whole column, scrolling by itself. */
+/* The tab: its tools, then the table over the whole column, scrolling by itself. The tab is
+   a size container: a narrow column (the terminals open, a phone) shows cards. */
 .artifacts-tab,
 .artifacts-list {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
+}
+
+.artifacts-tab {
+  container-type: inline-size;
 }
 
 .artifacts-tools {
@@ -4917,8 +4922,13 @@ del.kit-mcp-name {
   font: 13px var(--sans);
 }
 
+.artifacts-tools .segments {
+  flex-wrap: wrap;
+}
+
 .segments button {
   padding: 3px 10px;
+  white-space: nowrap;
   border: 0;
   border-radius: 6px;
   background: none;
@@ -5015,7 +5025,7 @@ del.kit-mcp-name {
 }
 
 /* A narrow column: each row a card. */
-@media (max-width: 900px) {
+@container (max-width: 720px) {
   .artifacts-table thead {
     display: none;
   }
@@ -5043,7 +5053,7 @@ del.kit-mcp-name {
     width: auto;
   }
 
-  .artifact-cell {
+  .artifacts-table td.artifact-cell {
     display: flex;
     min-width: 0;
   }

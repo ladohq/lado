@@ -653,6 +653,9 @@ os.path.exists(run.worktree)` after finish_worker(w1): the passive supervisor (h
 spawn_worker for the run on its own, and that worker keeps the worktree; passed on rerun.
 Wanted also: the test does not depend on the supervisor not spawning (deny it spawn_worker
 in the live kit, or tolerate extra workers).
+Again on 2026-10-07 (verify of fix/merge-origin-main): OpenCode's supervisor merged w1's
+branch and called `finish_worker(name="w1")` while the test waited for w1's reply to the
+human ("agent w1 is gone", tests/live/test_live.py:162); the rerun passed.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

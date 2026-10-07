@@ -7,6 +7,7 @@ import pytest
 import yaml
 from agent_helpers import init_repo, publish
 
+import lado
 from lado import flows, gitcache, kits, marketplaces, mcp_exec, state
 
 
@@ -1160,7 +1161,7 @@ def test_the_latest_version_that_needs_a_newer_lado_is_refused(tmp_path, lado_ho
     with pytest.raises(kits.KitError) as exc:
         kits.plan_add(url)
     assert str(exc.value) == (
-        f"team 1.4.0 needs LADO 99.1, this is {kits.__version__}; upgrade LADO, or add an "
+        f"team 1.4.0 needs LADO 99.1, this is {lado.__version__}; upgrade LADO, or add an "
         f"older version: lado kits add {url}@v1.3.0"
     )
     assert rows(lado_home) == []
@@ -1194,7 +1195,7 @@ def test_a_folder_that_needs_a_newer_lado_has_the_text_of_add(tmp_path):
         with pytest.raises(kits.KitError) as exc:
             kits.load_release(root, str(root), tag)
         assert str(exc.value) == (
-            f"team 1.4.0 needs LADO 99.1, this is {kits.__version__}; upgrade LADO"
+            f"team 1.4.0 needs LADO 99.1, this is {lado.__version__}; upgrade LADO"
         )
 
 

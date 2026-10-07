@@ -1304,6 +1304,25 @@ def test_session_start_waits_until_the_lado_mcp_server_listed_its_tools(repo, fa
     assert state.get_agent("s", "w1").status == state.BUSY
 
 
+def test_session_start_looks_for_the_lado_mcp_server_every_twentieth_of_a_second(
+    repo, fake_tmux, monkeypatch
+):
+    """Each look sooner starts the agent's first turn sooner."""
+    _session_with_worker(repo)
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 2:
+            _mcp_ready("w1")
+
+    monkeypatch.setattr(hooks.time, "sleep", sleep)
+    _hook("SessionStart", "w1", mcp_ready=False)
+    assert hooks.MCP_READY_POLL == 0.02
+    assert sleeps == [hooks.MCP_READY_POLL] * 2
+    assert hooks.MCP_READY_TIMEOUT == 20.0
+
+
 def test_session_start_goes_on_without_the_lado_mcp_server_after_a_while(
     repo, fake_tmux, lado_home, monkeypatch
 ):

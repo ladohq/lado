@@ -24,7 +24,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import IO
 
-from lado import __version__, providers, state, terminal
+import lado
+from lado import providers, state, terminal
 from lado.runtime import LadoError
 
 DEFAULT_PORT = 8000
@@ -213,14 +214,14 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
             "host": listens,
             "port": bound,
             "pid": os.getpid(),
-            "version": __version__,
+            "version": lado.__version__,
         }
         written = info_path().with_suffix(".tmp")
         written.write_text(json.dumps(info))
         written.replace(info_path())
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"{stamp} LADO server {__version__} at {url}, listening on {listens}:{bound}, "
+            f"{stamp} LADO server {lado.__version__} at {url}, listening on {listens}:{bound}, "
             f"pid {os.getpid()}",
             flush=True,
         )

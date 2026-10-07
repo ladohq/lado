@@ -459,20 +459,6 @@ loaded machine whose hook takes longer than the first 15 s delay.
 Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis); outputs
 kept in .lado/briefs/integ-analysis/FLAKE-*.out (local, uncommitted).
 
-## Flaky: `test_a_killed_tmux_session_shows_as_tmux_gone` gets the journal's change first
-
-Size: S. Why here: it failed in `make check` at the verify of fix/integration-fix1, which
-replaced the test's `sleep(4)` with `past_the_first_derivation`; the sleep likely hid it.
-`tests/integration/test_event_stream.py::test_a_killed_tmux_session_shows_as_tmux_gone`
-under `-n auto`: `assert gone.id is None` got `10`: the first item with status `tmux_gone`
-was a journal change (`kind: sessions, op: update`, `ran_seconds: 3`), not the hub's derived
-item (id None). Something writes the session's row after `tmux.kill_session`, and that change
-can come before the derivation. Passed 2 of 2 reruns with `-n0`.
-Wanted: find who writes `sessions` after the kill; then either the test waits for the
-derived item (id None) or takes the first `tmux_gone` from either source, whichever states
-the product's promise.
-Found: 2026-10-07, verify of fix/integration-fix1 (checker).
-
 # P2: when convenient
 
 ## LADO's own processes take the agent's PYTHONPATH and other PYTHON* variables

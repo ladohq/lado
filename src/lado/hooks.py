@@ -16,6 +16,7 @@ from lado.runtime import format_message
 
 # How long a session-start hook holds the agent's first turn for LADO's MCP server.
 MCP_READY_TIMEOUT = 20.0
+MCP_READY_POLL = 0.02  # seconds between two looks; each look is one small query
 
 
 def _wait_for_mcp(session: str, agent: state.Agent) -> None:
@@ -29,7 +30,7 @@ def _wait_for_mcp(session: str, agent: state.Agent) -> None:
                 f"{MCP_READY_TIMEOUT}s; the first turn starts without them"
             )
             return
-        time.sleep(0.1)
+        time.sleep(MCP_READY_POLL)
 
 
 def _log(text: str) -> None:

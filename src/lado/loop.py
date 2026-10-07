@@ -56,16 +56,27 @@ def lock_path(session: str) -> Path:
 
 
 def why_stop(session: str) -> str | None:
-    """Why the session's loop must end now, or None while it has work. Another schema of
-    the database is a state.SchemaError (run ends on it)."""
+    """Why the session's loop must end now by the database, or None while it has work.
+    Whether its tmux session is gone the pass learns from its window list (tmux_gone).
+    Another schema of the database is a state.SchemaError (run ends on it)."""
     sess = state.get_session(session)
     if sess is None:
         return "the session is gone"
     if sess.stopped_at:
         return STOPPED
-    if not tmux.has_session(session):
-        return TMUX_GONE
     return None
+
+
+def tmux_gone(session: str, error: Exception) -> bool:
+    """Whether a pass failed with `error` because the session's tmux session is gone: a
+    failing tmux call says only that, so has-session tells, once, on a failure only. A tmux
+    that cannot run says nothing about the session (an error of the pass)."""
+    if not isinstance(error, tmux.TmuxError) or isinstance(error, tmux.TmuxMissing):
+        return False
+    try:
+        return not tmux.has_session(session)
+    except tmux.TmuxError:
+        return False
 
 
 def take_lock(session: str) -> IO | None:
@@ -130,7 +141,7 @@ def forget(session: str) -> None:
 
 def run(session: str, interval: float | None = None) -> int:
     """`lado loop <session>`: sweep the session every `interval` seconds (INTERVAL by
-    default) until why_stop."""
+    default) until why_stop, or until its tmux session is gone (tmux_gone)."""
     if interval is None:
         interval = INTERVAL
     # Imported here: lado.runtime starts the loop.
@@ -153,7 +164,8 @@ def run(session: str, interval: float | None = None) -> int:
                 reason = why_stop(session)
                 if reason is None:
                     # First the agents that ended without a hook: what was meant for them
-                    # is dropped and told, not typed into no window.
+                    # is dropped and told, not typed into no window. The pass's one tmux
+                    # call: a gone tmux session fails it (tmux_gone).
                     missing = runtime.check_windows(session, missing)
                     runtime.sweep(session)
                     errors.worked()
@@ -161,9 +173,10 @@ def run(session: str, interval: float | None = None) -> int:
                 # Every connection refuses another schema, so no pass migrates; this LADO
                 # is not the one the database is for now: end.
                 reason = str(exc)
-            except Exception:
-                reason = None
-                errors.failed()
+            except Exception as exc:
+                reason = TMUX_GONE if tmux_gone(session, exc) else None
+                if reason is None:
+                    errors.failed()
             if reason:
                 errors.flush()
                 log(session, f"loop ended: {reason}")

@@ -16,7 +16,8 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from lado import __version__, kits, marketplaces, runs, runtime, state, terminal, update
+import lado
+from lado import kits, marketplaces, runs, runtime, state, terminal, update
 from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
@@ -189,7 +190,7 @@ def contract() -> dict:
 def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
     guard = Guard(token, port)
     hub = feed.Hub(feed.Journal())
-    app = FastAPI(title="LADO", version=__version__)
+    app = FastAPI(title="LADO", version=lado.__version__)
 
     @app.exception_handler(state.SchemaError)
     def another_schema(request: Request, error: state.SchemaError) -> JSONResponse:
@@ -199,7 +200,7 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> Health:
-        return Health(ok=True, version=__version__)
+        return Health(ok=True, version=lado.__version__)
 
     @app.get("/api/update", dependencies=[Depends(guard)])
     def update_info() -> UpdateInfo:
@@ -207,7 +208,9 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         so the check's look at PyPI (once a day) holds up no other request."""
         checked = update.check()
         if checked is None:
-            return UpdateInfo(current=__version__, latest=None, available=None, checked_at=None)
+            return UpdateInfo(
+                current=lado.__version__, latest=None, available=None, checked_at=None
+            )
         return UpdateInfo(
             current=checked.current,
             latest=checked.latest,

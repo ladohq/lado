@@ -212,6 +212,11 @@ fixes and docs only: no new feature, no API or schema change.
     user's keys. A loader under `-c` drops it (`''`) before importing anything but `sys`,
     then runs the module as `-m` would. Not `-P` (3.11+ only) nor `-I`, which also drops
     PYTHONPATH and the user site, where a user's LADO may be installed. Never `-m` for one.
+    Each such process pays for its imports: `lado.__version__` is read from the package's
+    metadata only when asked for (`lado/__init__.py`'s `__getattr__`; use it as
+    `lado.__version__`, never `from lado import __version__` at a module's top), and
+    `cli.py` imports `doctor`, `update` and `server` only in the commands that use them
+    (`tests/test_lazy_imports.py`).
   - `mcp_exec.py`: a kit's MCP server whose `env` refers to `${NAME}`: its value never goes
     on disk. `kits.ResolvedAgent.mcp_servers` checks each name is set in the agent's
     environment (else `KitError`, before the start) and gives the CLI the command
@@ -692,17 +697,20 @@ fixes and docs only: no new feature, no API or schema change.
   also how long `check_windows` leaves a new agent alone, and `loop.wait_stopped` waits
   three of them; `loop.log` names it at the loop's start), so an unconfirmed message is
   typed again or failed on time with no send and no hook. Before each sweep it looks at the
-  session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen): an agent
+  session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen; the
+  pass's only tmux call): an agent
   not stopped whose window is missing in two passes in a row, and that was added more than
   one interval ago, has ended (`agent_ended`), so a CLI that crashed before its first hook
-  or in a turn is `stopped` within a few seconds. A failing list changes nothing (an error
-  of the pass). The supervisor's window, when it was the last, takes the tmux session with
+  or in a turn is `stopped` within a few seconds. A failing list changes nothing: only then
+  a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
+  error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's
+  window, when it was the last, takes the tmux session with
   it: that stays "tmux session is gone". One per session: it holds an exclusive
   `flock` on `LADO_HOME/loop/<session>.lock` (gone with the process, no pid file); a second
   one exits when it cannot take the lock within `loop.LOCK_WAIT` (0.1 s, so a moment's lock
-  check by `lado ls` does not make a starting loop exit). Before each pass it ends, writing
+  check by `lado ls` does not make a starting loop exit). It ends, writing
   why to `LADO_HOME/loop.log`, when the
-  session is stopped or gone, its tmux session is gone, or `lado.db` has another schema
+  session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
   migrates); an error in a pass is
   written there too with its traceback, and the loop goes on. While the same error
@@ -722,7 +730,8 @@ fixes and docs only: no new feature, no API or schema change.
   servers, and defers the tools of a server that connects later, `alwaysLoad` or not. So
   the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists
   its tools, and the session-start hook of a provider with `hold_first_turn` waits for it
-  (at most `hooks.MCP_READY_TIMEOUT`; giving up is written to `hooks.log`). Verified with
+  (looking every `hooks.MCP_READY_POLL`, 0.02 s, at most `hooks.MCP_READY_TIMEOUT`; giving
+  up is written to `hooks.log`). Verified with
   Claude Code 2.1.289 (`providers/claude.py`: `TESTED_VERSION`; `lado doctor` warns about
   others); the live test checks w1's transcript.
 

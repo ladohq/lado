@@ -25,10 +25,109 @@ def test_the_loop_stops_with_its_session(repo, fake_tmux):
     assert loop.why_stop("s") == "the session is stopped"
 
 
-def test_the_loop_stops_when_the_tmux_session_is_gone(repo, fake_tmux):
+def test_the_loop_stops_when_the_tmux_session_is_gone(repo, fake_tmux, lado_home):
     _session(repo)
     tmux.kill_session("s")
-    assert loop.why_stop("s") == "its tmux session is gone"
+    assert loop.run("s", interval=0) == 0
+    last = (lado_home / "loop.log").read_text().splitlines()[-1]
+    assert last.endswith("s: loop ended: its tmux session is gone")
+
+
+# The real ones, before fake_tmux replaces them: the tests of a pass's tmux calls.
+REAL_HAS_SESSION, REAL_LIST_WINDOWS = tmux.has_session, tmux.list_windows
+
+
+@pytest.fixture
+def tmux_server(fake_tmux, monkeypatch):
+    """A stand-in tmux server under tmux's own calls: the commands run (their names, in
+    `calls`), and what it answers (`alive`: the session is there; `fails`: why list-windows
+    fails, or None; `missing`: tmux cannot run)."""
+    monkeypatch.setattr(tmux, "has_session", REAL_HAS_SESSION)
+    monkeypatch.setattr(tmux, "list_windows", REAL_LIST_WINDOWS)
+    server = {"calls": [], "alive": True, "fails": None, "missing": False}
+
+    def run_once(args, input):
+        server["calls"].append(args[0])
+        if server["missing"]:
+            raise tmux.TmuxMissing("tmux is not installed or not on PATH ()")
+        if not server["alive"]:
+            raise tmux.TmuxError("can't find session: s")
+        if args[0] == "list-windows":
+            if server["fails"]:
+                raise tmux.TmuxError(server["fails"])
+            return "supervisor\n"
+        assert args[0] == "has-session", args
+        return ""
+
+    monkeypatch.setattr(tmux, "_run_once", run_once)
+    return server
+
+
+def _stop_after(passes, monkeypatch, count):
+    """Stop the session (in the database only) after `count` passes, counted by the loop's
+    sleeps; each pass's tmux calls go to `passes`."""
+
+    def sleep(seconds):
+        passes.append(seconds)
+        if len(passes) == count:
+            state.stop_session("s")
+
+    monkeypatch.setattr(loop.time, "sleep", sleep)
+
+
+def test_a_pass_makes_one_tmux_call(repo, tmux_server, monkeypatch):
+    _session(repo)
+    swept = []
+    monkeypatch.setattr(runtime, "sweep", swept.append)
+    _stop_after([], monkeypatch, 2)
+    assert loop.run("s", interval=0) == 0
+    assert swept == ["s", "s"]
+    assert tmux_server["calls"] == ["list-windows", "list-windows"]
+
+
+def test_a_gone_tmux_session_ends_the_loop_with_its_reason(
+    repo, tmux_server, monkeypatch, lado_home
+):
+    _session(repo)
+    swept = []
+    monkeypatch.setattr(runtime, "sweep", swept.append)
+    tmux_server["alive"] = False
+    assert loop.run("s", interval=0) == 0
+    assert tmux_server["calls"] == ["list-windows", "has-session"]  # asked only on failure
+    assert swept == []
+    log = (lado_home / "loop.log").read_text()
+    assert log.splitlines()[-1].endswith("s: loop ended: its tmux session is gone")
+    assert "error in a pass" not in log
+
+
+def test_a_failing_window_list_of_a_live_session_is_an_error_of_the_pass(
+    repo, tmux_server, monkeypatch, lado_home
+):
+    _session(repo)
+    swept = []
+    monkeypatch.setattr(runtime, "sweep", swept.append)
+    monkeypatch.setattr(loop, "INTERVAL", 0)  # the supervisor is no new agent: it may be found gone
+    tmux_server["fails"] = "server busy"
+    _stop_after([], monkeypatch, 3)
+    assert loop.run("s", interval=0) == 0
+    assert tmux_server["calls"] == ["list-windows", "has-session"] * 3
+    assert swept == []
+    log = (lado_home / "loop.log").read_text()
+    assert "TmuxError: server busy" in log
+    assert log.splitlines()[-1].endswith("s: loop ended: the session is stopped")
+    assert {a.name for a in state.list_agents("s") if a.status == state.STOPPED} == set()
+    assert not [e for e in state.list_events("s") if e.kind == "ended"]
+
+
+def test_a_missing_tmux_is_an_error_of_the_pass(repo, tmux_server, monkeypatch, lado_home):
+    _session(repo)
+    tmux_server["missing"] = True
+    _stop_after([], monkeypatch, 2)
+    assert loop.run("s", interval=0) == 0
+    log = (lado_home / "loop.log").read_text()
+    assert tmux_server["calls"] == ["list-windows", "list-windows"]
+    assert "TmuxMissing: tmux is not installed or not on PATH" in log
+    assert log.splitlines()[-1].endswith("s: loop ended: the session is stopped")
 
 
 def test_the_loop_stops_for_an_unknown_session(lado_home):

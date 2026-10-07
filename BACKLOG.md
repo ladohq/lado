@@ -180,6 +180,11 @@ kills the process.
 Wanted: every test that starts a server kills its process whatever `stop()` did, and a
 check at the end of the test session that no process a test started is still alive.
 Found: 2026-10-06, supervisor; recorded in fix/check-lock.
+Seen again 2026-10-07: two `lado.cli server --port 0` from the feature-turn-resume (13 h)
+and feature-mcp-secrets (16 h) worktrees, and three test tmux servers (`tmux -L
+lado-test-*`, sessions `ui-*`, from UI tests of fix-server-stop-streams, 1.5 h old, parent
+1) with their fake agents still alive: the tmux servers a UI test starts leak too. All idle
+(0% CPU); killed by hand.
 
 ## Flaky terminal socket test: input checked before it is written
 

@@ -67,7 +67,8 @@ agent.
 - [x] Work runs through an installed release of LADO; agents edit the working copy
 - [ ] Agent CLIs are used directly only when LADO is too broken to fix itself
 
-Task trackers moved to stage 9: BACKLOG.md serves until it gets too small.
+Task trackers moved to stage 9: LADO's own backlog stays in BACKLOG.md until it moves to a
+tracker decided later.
 
 ## Stage 7: Desktop app
 
@@ -119,13 +120,14 @@ Cursor; Claude Code and Codex through adapters).
 
 ## Stage 9: Task trackers
 
-Trackers stay outside LADO: each is a kit (skills and an MCP server), and the core knows
-nothing about trackers. Open question: how a flow or role works with "the active tracker"
-without depending on one, e.g. one shared skill interface (file a task, update its status)
-that each tracker kit implements.
+Trackers stay outside LADO, and the core knows nothing about them: a tracker kit provides a
+skill named `tracker`, a session combines a process kit with a tracker kit, and a project's
+settings for its tracker are in its `.lado/tracker.yaml`, read only by that skill. Plan:
+[docs/design/trackers.md](docs/design/trackers.md).
 
-- [ ] Task trackers (YouGile, Jira) as kits with skills; the active tracker is chosen in config
-- [ ] Every bug or friction found is filed in the task tracker; BACKLOG.md goes away
+- [ ] The tracker-jira kit (skill and script, no MCP), in the official marketplace
+- [ ] The first project that uses it: its `.lado/tracker.yaml` and its process kit's roles
+- [ ] LADO's own backlog stays in BACKLOG.md for now; it moves to a tracker decided later
 
 ## Later (after stage 7)
 

@@ -354,7 +354,7 @@ test("an agent's page has its head with the run and step, its branch, work, work
   expect(within(region).queryByRole("note")).toBeNull();
 });
 
-test("the task shows its first lines with Show all", async () => {
+test("the task shows its first lines with Show more", async () => {
   serve({ details: { developer: WORK } });
   open("/sessions/lado/agents/developer");
   const region = await page("developer");
@@ -364,8 +364,9 @@ test("the task shows its first lines with Show all", async () => {
     return found!;
   });
   expect(task.textContent).not.toContain("line 5");
-  fireEvent.click(within(task as HTMLElement).getByRole("button", { name: "Show all" }));
+  fireEvent.click(within(task as HTMLElement).getByRole("button", { name: "Show more" }));
   expect(task.textContent).toContain("line 5");
+  expect(within(task as HTMLElement).getByRole("button", { name: "Show less" })).toBeTruthy();
 });
 
 test("the work is asked again on Refresh and when the agent becomes idle, never by itself", async () => {

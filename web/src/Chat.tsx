@@ -8,7 +8,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { Link, useLocation } from "react-router";
 
 import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
-import { Body, clock, day, dayName, Preview } from "./ChatText";
+import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
+import { ChevronIcon } from "./icons";
 import { FeedRow } from "./FeedRow";
 import { Gate, GateAnswer, gateAnchor } from "./GateCard";
 import {
@@ -423,10 +424,41 @@ function Answer({
   );
 }
 
+// A message's text (docs/design/ui.md, Message text). The human's: one text, the body when
+// there is one (the core's body is the whole text, its summary the first line), as typed.
+// An agent's to the human: the summary in bold over the whole body, unless the body's first
+// line says it already. Between agents: one muted line of the summary, the body on a click.
+function MessageText({ message }: { message: MessageInfo }) {
+  const { summary, body } = message;
+  if (message.from === HUMAN) {
+    return <Preview text={body || summary} lines={MESSAGE_LINES} over={MESSAGE_OVER} breaks />;
+  }
+  if (!withHuman(message)) {
+    const line = <h4 className="chat-summary">{summary}</h4>;
+    if (!body) return line;
+    return (
+      <details className="chat-fold">
+        <summary>
+          <span className="chevron" aria-hidden="true">
+            <ChevronIcon />
+          </span>
+          {line}
+        </summary>
+        <Body text={body} />
+      </details>
+    );
+  }
+  return (
+    <>
+      {!repeatsSummary(summary, body) && <h4 className={`chat-summary${body ? " lead" : ""}`}>{summary}</h4>}
+      {body && <Preview text={body} lines={MESSAGE_LINES} over={MESSAGE_OVER} />}
+    </>
+  );
+}
+
 function Message({ message, continued }: { message: MessageInfo; continued: boolean }) {
   const mine = message.from === HUMAN;
   const between = !withHuman(message);
-  const summary = <h4 className={`chat-summary${message.body ? " lead" : ""}`}>{message.summary}</h4>;
   const label = between ? `Message from ${message.from} to ${message.to}` : `Message from ${mine ? "you" : message.from}`;
   return (
     <FeedRow
@@ -439,19 +471,7 @@ function Message({ message, continued }: { message: MessageInfo; continued: bool
       id={messageAnchor(message.id)}
       className={`chat-message${between ? " between" : ""}`}
     >
-      {message.body && message.to === HUMAN ? (
-        <>
-          {summary}
-          <Preview text={message.body} />
-        </>
-      ) : message.body ? (
-        <details>
-          <summary>{summary}</summary>
-          <Body text={message.body} />
-        </details>
-      ) : (
-        summary
-      )}
+      <MessageText message={message} />
       {message.state === "failed" && <p className="chat-note">not delivered</p>}
       {message.reply_state === "missing" && <p className="chat-note">{message.to} replied only in its terminal</p>}
     </FeedRow>

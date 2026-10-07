@@ -10,7 +10,7 @@ import { answerGate, ApiError, type GateInfo } from "./api";
 import { Body, clock, Preview } from "./ChatText";
 import { FeedRow } from "./FeedRow";
 
-const NOTE_LINES = 20; // the lines of the note before the gate shown before Show all
+const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
 
 // How a button names an option, by the gate's kind; a choice gate's options are its own.
 const LABELS: Record<string, Record<string, string>> = {

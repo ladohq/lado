@@ -2172,14 +2172,68 @@ h3 {
   font-weight: 600;
 }
 
-.chat-message details > summary {
-  cursor: pointer;
-  list-style-position: outside;
-  margin-left: 16px;
+/* A message's own text (Chat.tsx, MessageText; docs/design/ui.md, Message text): larger
+   than the cards' text and no wider than a line reads well. */
+.chat-message .chat-summary,
+.chat-message .chat-body {
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 22px;
 }
 
-.chat-message details > summary .chat-summary {
-  display: inline;
+/* The human's text has no summary over it. */
+.chat-message.mine .feed-main > .chat-body {
+  margin-top: 0;
+}
+
+/* An agents' message to each other: one line of its summary, cut with an ellipsis; with a
+   body, a chevron before it that turns when the body opens under it. */
+.chat-message.between .chat-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-fold > summary {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--muted);
+  list-style: none;
+  cursor: pointer;
+}
+
+.chat-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-fold .chevron {
+  display: grid;
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+.chat-fold .chevron .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-fold[open] .chevron {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-fold .chevron {
+    transition: none;
+  }
+}
+
+.chat-fold > .chat-body {
+  margin-left: 7px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+  font-size: 14px;
 }
 
 .chat-body {

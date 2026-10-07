@@ -28,7 +28,7 @@ import { StatusDot, SUPERVISOR } from "./Team";
 import { useOpenTerminal } from "./Terminals";
 
 const MESSAGES = 10; // the latest messages of an agent its page shows
-const TASK_LINES = 3; // the lines of a task shown before Show all
+const TASK_LINES = 3; // the lines of a task shown before Show more
 
 const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
 

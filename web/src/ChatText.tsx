@@ -1,10 +1,15 @@
-// Text in the session's feed, shared by its messages and its gate cards: an agent's body as
-// Markdown, a long one behind Show all, and a time of day.
+// Text in the session's feed, shared by its messages and its gate cards: a body as Markdown,
+// a long one cut behind Show more, and a time of day.
 import { useState } from "react";
 import Markdown from "react-markdown";
 
-export const BODY_LINES = 8; // the lines of a body to the human shown before Show all
-const BODY_CHARS = 1500; // and at most these characters of them
+// The characters a line that is not blank counts for: a text of n such lines may have
+// n * CHARS_PER_LINE characters before it is long, and a cut one shows as many.
+const CHARS_PER_LINE = 200;
+// A message's text in the chat shows whole up to MESSAGE_OVER lines that are not blank
+// (and their characters); a longer one shows its first MESSAGE_LINES, then Show more.
+export const MESSAGE_OVER = 30;
+export const MESSAGE_LINES = 12;
 
 // A time of day in 24 hours ("19:53"), whatever the browser's locale says.
 export function clock(iso: string): string {
@@ -49,34 +54,81 @@ export function since(iso: string): string {
   return duration((Date.now() - new Date(iso).getTime()) / 1000);
 }
 
-// The body is the agent's text: Markdown, with any HTML in it left out.
-export function Body({ text }: { text: string }) {
+// Whether an agent's summary only repeats its body, so the body alone says it: the body's
+// first line that is not blank is the summary, or the summary is that line cut with "…".
+export function repeatsSummary(summary: string, body: string): boolean {
+  const first = body.split("\n").find((line) => line.trim())?.trim();
+  if (first === undefined) return false;
+  if (first === summary.trim()) return true;
+  const cut = summary.trim();
+  return cut.endsWith("…") && first.startsWith(cut.slice(0, -1));
+}
+
+// Markdown's single line breaks as breaks (<br>), as the human typed them: the text nodes of
+// the tree split at each "\n". Code keeps its own nodes and is not touched.
+type Node = { type: string; value?: string; children?: Node[] };
+function lineBreaks() {
+  const split = (node: Node) => {
+    if (!node.children) return;
+    node.children = node.children.flatMap((child) => {
+      if (child.type !== "text" || !child.value?.includes("\n")) {
+        split(child);
+        return [child];
+      }
+      return child.value.split(/\r?\n/).flatMap((part, i): Node[] => [
+        ...(i > 0 ? [{ type: "break" }] : []),
+        ...(part ? [{ type: "text", value: part }] : []),
+      ]);
+    });
+  };
+  return split;
+}
+
+// A text as Markdown, with any HTML in it left out. `breaks`: the human's text, whose single
+// line breaks are breaks; an agent's body is CommonMark (agents wrap lines by width).
+export function Body({ text, breaks = false }: { text: string; breaks?: boolean }) {
   return (
     <div className="chat-body">
-      <Markdown skipHtml>{text}</Markdown>
+      <Markdown skipHtml remarkPlugins={breaks ? [lineBreaks] : []}>
+        {text}
+      </Markdown>
     </div>
   );
 }
 
-// A body shown at once: its first `lines` lines, the rest behind Show all.
-export function Preview({ text, lines = BODY_LINES }: { text: string; lines?: number }) {
+// A text shown at once: whole when it has no more than `over` lines that are not blank (and
+// their characters), else its first `lines` lines and the rest behind Show more.
+export function Preview({
+  text,
+  lines,
+  over = lines,
+  breaks = false,
+}: {
+  text: string;
+  lines: number;
+  over?: number;
+  breaks?: boolean;
+}) {
   const [all, setAll] = useState(false);
-  const short = preview(text, lines);
-  if (short === text) return <Body text={text} />;
+  const short = clamp(text, lines, over);
+  if (short === null) return <Body text={text} breaks={breaks} />;
   return (
     <>
-      <Body text={all ? text : short} />
+      <Body text={all ? text : short} breaks={breaks} />
       <button type="button" className="link-button" aria-expanded={all} onClick={() => setAll(!all)}>
-        {all ? "Show less" : "Show all"}
+        {all ? "Show less" : "Show more"}
       </button>
     </>
   );
 }
 
-// The text up to its `lines`-th line that is not blank, and at most BODY_CHARS of it (more
-// for more lines).
-function preview(text: string, lines: number): string {
-  const all = text.split("\n");
+// The text cut to its first `lines` lines that are not blank and at most their characters
+// (CHARS_PER_LINE each), or null when it is no longer than `over` such lines and their
+// characters and shows whole.
+export function clamp(text: string, lines: number, over = lines): string | null {
+  const all = text.trimEnd().split("\n");
+  const filled = all.filter((line) => line.trim()).length;
+  if (filled <= over && all.join("\n").length <= over * CHARS_PER_LINE) return null;
   let seen = 0;
   let end = all.length;
   for (let i = 0; i < all.length; i++) {
@@ -85,8 +137,7 @@ function preview(text: string, lines: number): string {
       break;
     }
   }
-  const chars = Math.round((BODY_CHARS * lines) / BODY_LINES);
+  const chars = lines * CHARS_PER_LINE;
   const head = all.slice(0, end).join("\n");
-  const cut = head.length > chars ? `${head.slice(0, chars)}…` : head;
-  return cut.trimEnd() === text.trimEnd() ? text : cut;
+  return head.length > chars ? `${head.slice(0, chars)}…` : head;
 }

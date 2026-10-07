@@ -8,6 +8,7 @@ import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo } fr
 import { App } from "./App";
 import { clock, day, dayName } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
+import { storeAgentMessages } from "./prefs";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -236,7 +237,7 @@ test("the chat follows the feed: new and changed messages, not those between age
   stream().send("change", changed(message(1, "human", "supervisor", "merge w1", { reply_state: "missing" })), "13");
   stream().send("change", changed(message(4, "supervisor", "human", "elsewhere"), "4", "old"), "14");
   const articles = within(log).getAllByRole("article");
-  expect(articles.map((one) => within(one).getAllByRole("heading")[0].textContent)).toEqual(["merge w1", "merged"]);
+  expect(articles.map(said)).toEqual(["merge w1", "merged"]);
   expect(within(articles[0]).getByText(/replied only in its terminal/)).toBeTruthy();
 });
 
@@ -486,31 +487,111 @@ test("an empty chat says how to start", async () => {
 // The feed around the chat (the Layout task): run events, the agents' messages to each
 // other behind a switch, bodies to the human shown at once.
 
-const headings = (log: HTMLElement) =>
-  within(log)
-    .getAllByRole("article")
-    .map((one) => within(one).getAllByRole("heading")[0].textContent);
+// What each row says first: its summary's heading, or the human's text, which has none.
+const said = (row: HTMLElement) => (row.querySelector(".chat-summary") ?? row.querySelector(".chat-body"))?.textContent;
 
-test("a body to the human shows its first lines at once; a long one has Show all", async () => {
-  const lines = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join("\n\n");
-  serve([message(2, "supervisor", "human", "report", { body: lines })]);
+const headings = (log: HTMLElement) => within(log).getAllByRole("article").map(said);
+
+// The text of a message (docs/design/ui.md, Message text): the human's once, as typed; an
+// agent's to the human its summary and whole body; a very long one cut behind Show more.
+
+const paragraphs = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n\n");
+
+test("the human's message of more lines shows its text once: no heading, nothing folded", async () => {
+  // The core's summary is the first line with its tab as a space; the body the whole text.
+  const text = "first\tline of mine\nand the second";
+  serve([message(1, "human", "supervisor", "first line of mine", { body: text })]);
   open();
-  const card = await within(await chat()).findByRole("article");
-  expect(within(card).getByText("line 1")).toBeTruthy();
-  expect(within(card).getByText("line 8")).toBeTruthy();
-  expect(within(card).queryByText("line 9")).toBeNull();
-  fireEvent.click(within(card).getByRole("button", { name: "Show all" }));
-  expect(within(card).getByText("line 12")).toBeTruthy();
-  fireEvent.click(within(card).getByRole("button", { name: "Show less" }));
-  expect(within(card).queryByText("line 12")).toBeNull();
+  const row = await within(await chat()).findByRole("article", { name: "Message from you" });
+  expect(row.textContent?.match(/first.line of mine/g)).toHaveLength(1);
+  expect(row.textContent).toContain("first\tline of mine");
+  expect(row.querySelector("details")).toBeNull();
+  expect(within(row).queryByRole("heading")).toBeNull();
+  expect(within(row).getByText(/and the second/)).toBeTruthy();
 });
 
-test("a short body to the human has no Show all", async () => {
-  serve([message(2, "supervisor", "human", "report", { body: "one line" })]);
+test("the human's message without a body shows its summary as its text", async () => {
+  serve([message(1, "human", "supervisor", "merge w1, please")]);
+  open();
+  const row = await within(await chat()).findByRole("article", { name: "Message from you" });
+  expect(row.querySelector(".chat-body")?.textContent).toBe("merge w1, please");
+  expect(within(row).queryByRole("heading")).toBeNull();
+});
+
+test("the human's single line breaks are breaks; an agent's body is one paragraph", async () => {
+  serve([
+    message(1, "human", "supervisor", "a", { body: "a\nb" }),
+    message(2, "supervisor", "human", "two lines", { body: "a\nb" }),
+  ]);
+  open();
+  const [mine, theirs] = await within(await chat()).findAllByRole("article");
+  const own = mine.querySelector(".chat-body")!;
+  expect(own.querySelectorAll("p")).toHaveLength(1);
+  expect(own.querySelectorAll("br")).toHaveLength(1);
+  const body = theirs.querySelector(".chat-body")!;
+  expect(body.querySelectorAll("p")).toHaveLength(1);
+  expect(body.querySelector("br")).toBeNull();
+});
+
+test("an agent's message to the human shows its summary in bold and its whole body up to 30 lines", async () => {
+  serve([message(2, "supervisor", "human", "report", { body: paragraphs(30) })]);
   open();
   const card = await within(await chat()).findByRole("article");
-  expect(within(card).getByText("one line")).toBeTruthy();
-  expect(within(card).queryByRole("button", { name: "Show all" })).toBeNull();
+  const summary = within(card).getByRole("heading");
+  expect([summary.textContent, summary.className]).toEqual(["report", expect.stringContaining("lead")]);
+  expect(within(card).getByText("line 30")).toBeTruthy();
+  expect(within(card).queryByRole("button")).toBeNull();
+  expect(card.querySelector("details")).toBeNull();
+});
+
+test("a longer text shows its first 12 lines and Show more, which shows it all in place", async () => {
+  serve([
+    message(1, "human", "supervisor", "line 1", { body: paragraphs(31) }),
+    message(2, "supervisor", "human", "report", { body: paragraphs(31) }),
+  ]);
+  open();
+  for (const card of await within(await chat()).findAllByRole("article")) {
+    expect(within(card).getByText("line 12")).toBeTruthy();
+    expect(within(card).queryByText("line 13")).toBeNull();
+    const more = within(card).getByRole("button", { name: "Show more" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(more);
+    expect(within(card).getByText("line 31")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
+  }
+});
+
+test("an agent's summary that its body's first line repeats is not drawn", async () => {
+  serve([
+    message(1, "supervisor", "human", "merged w1", { body: "merged w1\n\nAll checks pass." }),
+    message(2, "supervisor", "human", "the plan for…", { body: "the plan for the chat\n\nmore" }),
+    message(3, "supervisor", "human", "merged w1", { body: "All checks pass." }),
+  ]);
+  open();
+  const [same, cut, other] = await within(await chat()).findAllByRole("article");
+  expect(within(same).queryByRole("heading")).toBeNull();
+  expect(same.textContent?.match(/merged w1/g)).toHaveLength(1);
+  expect(within(cut).queryByRole("heading")).toBeNull();
+  expect(within(other).getByRole("heading").textContent).toBe("merged w1");
+});
+
+test("an agents' message to each other is one muted line of its summary; its body opens on a click", async () => {
+  serve([
+    message(1, "supervisor", "w1", "please merge", { body: "the **details**" }),
+    message(2, "w1", "supervisor", "done"),
+  ]);
+  storeAgentMessages(true);
+  open();
+  const log = await chat();
+  const [long, short] = await within(log).findAllByRole("article", { name: /^Message from .* to / });
+  const folded = long.querySelector("details")!;
+  expect(folded.open).toBe(false);
+  expect(folded.querySelector("summary")?.textContent).toContain("please merge");
+  expect(folded.querySelector("summary .chevron")).toBeTruthy();
+  expect(folded.querySelector(":scope > .chat-body strong")?.textContent).toBe("details");
+  expect(short.querySelector("details")).toBeNull();
+  expect(short.querySelector(".chevron")).toBeNull();
+  expect(within(short).getByRole("heading").textContent).toBe("done");
 });
 
 test("the agents' messages to each other show behind a switch that loads the window of all messages and is remembered", async () => {
@@ -657,14 +738,14 @@ test("a gate whose run's flow cannot be read shows the problem instead of the no
   expect(approve.disabled).toBe(false);
 });
 
-test("a long note before the gate is behind Show all", async () => {
+test("a long note before the gate is behind Show more", async () => {
   const body = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n\n");
   serve([], undefined, [], [gate(1, { note_body: body })]);
   open();
   const card = await gateCard();
   expect(within(card).getByText("line 20")).toBeTruthy();
   expect(within(card).queryByText("line 21")).toBeNull();
-  fireEvent.click(within(card).getByRole("button", { name: "Show all" }));
+  fireEvent.click(within(card).getByRole("button", { name: "Show more" }));
   expect(within(card).getByText("line 30")).toBeTruthy();
 });
 

@@ -66,6 +66,6 @@ check: ## everything; run after your last change and when a merge brings new com
 
 _check: lint test-js web browser
 	uv run python scripts/check_groups.py \
-		unit "uv run pytest $(PYTEST_ARGS)" \
-		integration "uv run pytest -m integration $(PYTEST_ARGS)" \
-		ui "uv run pytest -m ui $(PYTEST_ARGS)"
+		--group unit uv run pytest $(PYTEST_ARGS) \
+		--group integration uv run pytest -m integration $(PYTEST_ARGS) \
+		--group ui uv run pytest -m ui $(PYTEST_ARGS)

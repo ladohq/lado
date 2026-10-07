@@ -6,26 +6,32 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "scripts" / "check_groups.py"
 
 
-def exits(code: int, mark: Path) -> str:
+def exits(code: int, mark: Path) -> list[str]:
     """A command that appends its mark's name to `mark`'s log, then exits with `code`."""
     program = (
         f"open({str(mark.parent / 'ran')!r}, 'a').write({mark.name!r} + '\\n'); "
         f"raise SystemExit({code})"
     )
-    return shlex.join([sys.executable, "-c", program])
+    return [sys.executable, "-c", program]
+
+
+def run_script(*argv: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *argv], capture_output=True, text=True, timeout=30
+    )
 
 
 def run_groups(tmp_path, *groups: tuple[str, int]) -> subprocess.CompletedProcess:
     argv = []
     for name, code in groups:
-        argv += [name, exits(code, tmp_path / name)]
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), *argv], capture_output=True, text=True, timeout=30
-    )
+        argv += ["--group", name, *exits(code, tmp_path / name)]
+    return run_script(*argv)
 
 
 def ran(tmp_path) -> list[str]:
@@ -65,11 +71,30 @@ def test_each_group_says_how_it_ended_and_how_long_it_took(tmp_path):
     assert any(line.startswith("check: integration failed (exit 3) in ") for line in lines)
 
 
-def test_make_check_runs_unit_integration_and_ui_with_pytest_args():
-    """`make -n` prints _check's commands without running them."""
+def test_a_command_that_cannot_start_fails_its_group_and_the_next_still_run(tmp_path):
+    missing = str(tmp_path / "no-such-command")
+    result = run_script("--group", "unit", missing, "--group", "ui", *exits(0, tmp_path / "ui"))
+
+    assert result.returncode == 1
+    assert ran(tmp_path) == ["ui"]
+    assert "check: unit failed (cannot run " in result.stdout
+    assert "Traceback" not in result.stderr
+    assert result.stdout.splitlines()[-1] == "check: failed: unit"
+
+
+@pytest.mark.parametrize(
+    "pytest_args, expected",
+    [
+        ("-n0 -k gate", ["-n0", "-k", "gate"]),
+        ('-n0 -k "gate or flow"', ["-n0", "-k", "gate or flow"]),
+        ("-n0 -k 'gate or flow'", ["-n0", "-k", "gate or flow"]),
+    ],
+)
+def test_make_check_runs_unit_integration_and_ui_with_pytest_args(pytest_args, expected):
+    """`make -n` prints _check's commands without running them; the shell parses them."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("MAKE")}
     result = subprocess.run(
-        ["make", "-n", "--no-print-directory", "_check", "PYTEST_ARGS=-n0 -k gate"],
+        ["make", "-n", "--no-print-directory", "_check", f"PYTEST_ARGS={pytest_args}"],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -84,11 +109,8 @@ def test_make_check_runs_unit_integration_and_ui_with_pytest_args():
     argv = shlex.split(groups[0])
     start = argv.index("scripts/check_groups.py") + 1
     assert argv[start:] == [
-        "unit",
-        "uv run pytest -n0 -k gate",
-        "integration",
-        "uv run pytest -m integration -n0 -k gate",
-        "ui",
-        "uv run pytest -m ui -n0 -k gate",
+        *["--group", "unit", "uv", "run", "pytest", *expected],
+        *["--group", "integration", "uv", "run", "pytest", "-m", "integration", *expected],
+        *["--group", "ui", "uv", "run", "pytest", "-m", "ui", *expected],
     ]
     assert "pytest -m 'not live'" not in result.stdout

@@ -21,6 +21,7 @@ function message(id: number, from: string, to: string, at: Date, more: Partial<M
     reply_to: null,
     choice: null,
     reply_state: null,
+    attachments: [],
     created_at: at.toISOString(),
     ...more,
   };

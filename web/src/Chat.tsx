@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { Link, useLocation } from "react-router";
 
 import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
+import { Attachments } from "./Attachments";
 import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
 import { FeedRow, MiniAvatar } from "./FeedRow";
 import { Gate, gateAnchor } from "./GateCard";
@@ -190,6 +191,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   useEffect(() => live.watchMessages(session, spec), [live, session, key]); // key: the spec's
   useEffect(() => live.watch("events", session), [live, session]);
   useEffect(() => live.watch("gates", session), [live, session]);
+  useEffect(() => live.watch("artifacts", session), [live, session]); // whether chips changed since
 
   const ready = loaded !== null && !("error" in loaded);
   const shown = ready ? entries(loaded) : [];
@@ -441,7 +443,9 @@ function Rows({
       const reply = replyOf(message);
       return <Answer key={message.id} message={message} reply={reply} continued={continued} go={go} />;
     }
-    if (message.kind !== "question") return <Message key={message.id} message={message} continued={continued} />;
+    if (message.kind !== "question") {
+      return <Message key={message.id} session={session} message={message} continued={continued} />;
+    }
     const answer = message.answered_by === null ? undefined : byId.get(message.answered_by);
     return (
       <FeedRow
@@ -584,7 +588,7 @@ function MessageText({ message }: { message: MessageInfo }) {
   );
 }
 
-function Message({ message, continued }: { message: MessageInfo; continued: boolean }) {
+function Message({ session, message, continued }: { session: string; message: MessageInfo; continued: boolean }) {
   const mine = message.from === HUMAN;
   const between = !withHuman(message);
   const label = between ? `Message from ${message.from} to ${message.to}` : `Message from ${mine ? "you" : message.from}`;
@@ -600,6 +604,7 @@ function Message({ message, continued }: { message: MessageInfo; continued: bool
       className={`chat-message${between ? " between" : ""}`}
     >
       <MessageText message={message} />
+      <Attachments session={session} attachments={message.attachments} />
       {message.state === "failed" && <p className="chat-note">not delivered</p>}
       {message.reply_state === "missing" && <p className="chat-note">{message.to} replied only in its terminal</p>}
     </FeedRow>

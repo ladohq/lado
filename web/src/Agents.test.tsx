@@ -106,6 +106,7 @@ function message(id: number, from: string, to: string, at: string, more: Partial
     reply_to: null,
     choice: null,
     reply_state: null,
+    attachments: [],
     created_at: at,
     ...more,
   } as MessageInfo;

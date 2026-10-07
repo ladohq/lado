@@ -57,7 +57,7 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     }
     // The feed's messages and run events (Chat.test.tsx), the runs and their steps (Flows.test.tsx).
     if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
-    if (["/events", "/runs", "/notes", "/gates"].some((end) => path.endsWith(end))) {
+    if (["/events", "/runs", "/notes", "/gates", "/artifacts"].some((end) => path.endsWith(end))) {
       return new Response("[]");
     }
     // The Kits page's lists (Kits.test.tsx).

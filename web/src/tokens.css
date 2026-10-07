@@ -36,6 +36,12 @@
   /* An agent's terminal: dark in both themes, as the CLIs' own colours expect. */
   --term-ground: light-dark(#1b1e24, #0d0f13);
   --term-ink: light-dark(#e8eaee, #e1e4e9);
+  /* Under the artifact panel, and under an image shown at full size; on the latter, its
+     bar's text. An HTML artifact's frame is white, as a page without a background is. */
+  --scrim: light-dark(#16181d2e, #0000005c);
+  --lightbox: #000000cc;
+  --on-lightbox: #e8eaee;
+  --frame-ground: #ffffff;
 
   /* Inter for the UI, IBM Plex Mono for code and terminals (docs/design/ui.md, Look). */
   --sans: "Inter", system-ui, sans-serif;

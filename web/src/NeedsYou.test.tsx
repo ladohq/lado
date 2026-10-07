@@ -30,6 +30,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     options: ["approve", "reject"],
     note: "design ready",
     note_body: "",
+    attachments: [],
     needs: [],
     answer: null,
     comment: "",
@@ -57,6 +58,7 @@ function question(id: number, more: Partial<MessageInfo> = {}): MessageInfo {
     reply_to: null,
     choice: null,
     reply_state: null,
+    attachments: [],
     created_at: SINCE,
     ...more,
   };

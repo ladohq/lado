@@ -224,3 +224,75 @@ export const GateIcon = () => (
     <path d="M6 21V4M6 4.5h10.5l-2.25 4 2.25 4H6" />
   </Icon>
 );
+
+// An artifact's media type (artifacts.kindOf), on its chip, row and page.
+// Markdown: a page of lines.
+export const DocumentIcon = () => (
+  <Icon>
+    <path d="M7 3.5h7l4 4v13H7z" />
+    <path d="M14 3.5v4h4M9.5 12h6M9.5 15h6M9.5 18h4" />
+  </Icon>
+);
+
+// Text and code: two angle brackets.
+export const CodeIcon = () => (
+  <Icon>
+    <path d="M8.5 7 4 12l4.5 5M15.5 7 20 12l-4.5 5" />
+  </Icon>
+);
+
+// HTML: a window with angle brackets.
+export const HtmlIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M3.5 8.5h17M9.5 12.5 7.5 14.5l2 2M14.5 12.5l2 2-2 2" />
+  </Icon>
+);
+
+// An image: a frame with a sun and hills.
+export const ImageIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="m4 18 5-5 4 4 2.5-2.5L20 19" />
+  </Icon>
+);
+
+// Anything else: a page with binary digits.
+export const BinaryIcon = () => (
+  <Icon>
+    <path d="M7 3.5h7l4 4v13H7z" />
+    <path d="M14 3.5v4h4" />
+    <rect x="9.5" y="11.5" width="2.5" height="4" rx="1" />
+    <path d="M14.5 11.5v4M14 11.5h1" />
+  </Icon>
+);
+
+// Download: an arrow down onto a line.
+export const DownloadIcon = () => (
+  <Icon>
+    <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
+  </Icon>
+);
+
+// Open in a new tab: an arrow out of a box.
+export const OpenTabIcon = () => (
+  <Icon>
+    <path d="M13.5 4.5h6v6M19.5 4.5l-8 8M17.5 13.5v6h-13v-13h6" />
+  </Icon>
+);
+
+// A shield with a check: HTML runs sandboxed.
+export const ShieldIcon = () => (
+  <Icon>
+    <path d="M12 3.5 19 6v5.5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+    <path d="m9 12 2 2 4-4" />
+  </Icon>
+);
+
+// Close: a cross.
+export const CloseIcon = () => (
+  <Icon>
+    <path d="m6 6 12 12M18 6 6 18" />
+  </Icon>
+);

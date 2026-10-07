@@ -7,6 +7,7 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import {
   ApiError,
   getAgents,
+  getArtifacts,
   getAvailableKits,
   getGates,
   getInstalledKits,
@@ -19,6 +20,7 @@ import {
   getWaiting,
   probeStream,
   type AgentInfo,
+  type ArtifactInfo,
   type GateInfo,
   type InstalledKitInfo,
   type MarketplaceInfo,
@@ -96,12 +98,13 @@ type Watched = {
   pending: Change[];
 };
 
-// agents, events, gates, runs, notes: the lists of each session a page watches (watch), by
-// session name; messages: its windows, by session and windowKey. waiting: what waits for the
-// human in all sessions, while watched.
+// agents, events, gates, runs, notes, artifacts: the lists of each session a page watches
+// (watch), by session name; messages: its windows, by session and windowKey. waiting: what
+// waits for the human in all sessions, while watched.
 export type LiveState = {
   sessions: Loaded;
   agents: Record<string, ListLoaded<AgentInfo>>;
+  artifacts: Record<string, ListLoaded<ArtifactInfo>>; // newest first, by their latest record
   messages: Record<string, Record<string, WindowLoaded>>;
   events: Record<string, ListLoaded<RunEventInfo>>; // the flow runs' events
   gates: Record<string, ListLoaded<GateInfo>>; // open and closed: a closed gate's item stays
@@ -141,7 +144,7 @@ const WAITING_KINDS = new Set(["gates", "agents", "messages"]);
 // A session whose waits count: the server's rule (state.waiting_items), the same here.
 export const isLive = (session: SessionInfo) => session.status !== "stopped";
 
-type ListName = "agents" | "events" | "gates" | "runs" | "notes";
+type ListName = "agents" | "events" | "gates" | "runs" | "notes" | "artifacts";
 
 // How a list of a session is loaded and follows the feed: the change kind that is its, an
 // item's key (the change's), which items it keeps and in what order.
@@ -158,6 +161,7 @@ const LISTS: {
   gates: ListKind<GateInfo>;
   runs: ListKind<RunInfo>;
   notes: ListKind<NoteInfo>;
+  artifacts: ListKind<ArtifactInfo>;
 } = {
   agents: { load: getAgents, key: (agent) => agent.name, keeps: () => true },
   events: { load: getRunEvents, key: (event) => String(event.id), keeps: () => true, order: (a, b) => a.id - b.id },
@@ -169,6 +173,12 @@ const LISTS: {
     order: (a, b) => b.created_at.localeCompare(a.created_at),
   },
   notes: { load: getNotes, key: (note) => String(note.id), keeps: () => true, order: (a, b) => a.id - b.id },
+  artifacts: {
+    load: getArtifacts,
+    key: (artifact) => artifact.id,
+    keeps: () => true,
+    order: (a, b) => b.latest.created_at.localeCompare(a.latest.created_at),
+  },
 };
 
 export const RETRY_MS = 3000; // the pause before a new stream when the server closed one
@@ -177,6 +187,7 @@ export class Live {
   private state: LiveState = {
     sessions: null,
     agents: {},
+    artifacts: {},
     messages: {},
     events: {},
     gates: {},
@@ -213,6 +224,7 @@ export class Live {
     gates: new Map(),
     runs: new Map(),
     notes: new Map(),
+    artifacts: new Map(),
   };
   private listLoads: Record<ListName, Map<string, Change[]>> = {
     agents: new Map(),
@@ -220,6 +232,7 @@ export class Live {
     gates: new Map(),
     runs: new Map(),
     notes: new Map(),
+    artifacts: new Map(),
   };
   private windows = new Map<string, Watched>(); // by session and windowKey
 
@@ -288,9 +301,9 @@ export class Live {
     this.retry = setTimeout(() => this.connect(), RETRY_MS);
   }
 
-  // A page that shows the session's agents, messages, run events, gates, runs or notes, what
-  // waits for the human, or the kits: they load now and follow the feed until the last page
-  // that watches them lets go (the returned function).
+  // A page that shows the session's agents, messages, run events, gates, runs, notes or
+  // artifacts, what waits for the human, or the kits: they load now and follow the feed
+  // until the last page that watches them lets go (the returned function).
   watch(list: "waiting" | "kits"): () => void;
   watch(list: ListName, session: string): () => void;
   watch(list: ListName | "waiting" | "kits", session = ""): () => void {
@@ -543,7 +556,10 @@ export class Live {
     kind
       .load(session)
       .then(
-        (items) => ({ items: items.filter(kind.keeps) }),
+        (items) => {
+          const kept = items.filter(kind.keeps);
+          return { items: kind.order ? kept.sort(kind.order) : kept };
+        },
         (error: unknown) => ({ error: message(error) }),
       )
       .then((loaded) => {

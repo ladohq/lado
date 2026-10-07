@@ -23,6 +23,7 @@ function message(id: number, from = "supervisor", to = "human", more: Partial<Me
     reply_to: null,
     choice: null,
     reply_state: null,
+    attachments: [],
     created_at: `2026-10-04T12:00:${String(id % 60).padStart(2, "0")}.000Z`,
     ...more,
   };

@@ -7,6 +7,7 @@
 import { useState } from "react";
 
 import { answerGate, ApiError, type GateInfo } from "./api";
+import { Attachments } from "./Attachments";
 import { Body, clock, Preview } from "./ChatText";
 import { FeedRow } from "./FeedRow";
 
@@ -26,7 +27,7 @@ export function Gate({ session, gate, stopped }: { session: string; gate: GateIn
   return gate.answer === null ? (
     <GateRow session={session} gate={gate} stopped={stopped} aside={`${gate.run} · ${gate.state}`} />
   ) : (
-    <GateLine gate={gate} />
+    <GateLine session={session} gate={gate} />
   );
 }
 
@@ -58,6 +59,8 @@ export function GateCard({
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // A needed note that is the note before the gate shows once, as that note (Note).
+  const others = (gate.needs ?? []).filter((need) => !need.is_gate_note);
 
   async function answer(option: string) {
     setBusy(true);
@@ -74,11 +77,11 @@ export function GateCard({
   return (
     <div className="chat-gate open">
       <p className="gate-question">{gate.question}</p>
-      {!compact && <Note gate={gate} />}
+      {!compact && <Note session={session} gate={gate} />}
       {!compact && gate.problem && <p className="problem gate-problem">Notes it needs cannot be shown: {gate.problem}</p>}
-      {!compact && gate.needs && gate.needs.length > 0 && (
+      {!compact && others.length > 0 && (
         <ul className="gate-needs" aria-label="Notes it needs">
-          {gate.needs.map((need) => (
+          {others.map((need) => (
             <Needed key={need.state} need={need} />
           ))}
         </ul>
@@ -115,17 +118,22 @@ export function GateCard({
   );
 }
 
-// The note of the step that led to the gate: its summary, then its body at once.
-function Note({ gate }: { gate: GateInfo }) {
-  if (!gate.note && !gate.note_body) return null;
+// The note of the step that led to the gate: its summary, then its body at once, and its
+// artifacts as chips with their short names (they are the run's). When the gate needs the
+// state it came from, the note says so: it is that state's note too.
+function Note({ session, gate }: { session: string; gate: GateInfo }) {
+  if (!gate.note && !gate.note_body && gate.attachments.length === 0) return null;
+  const needed = gate.needs?.find((need) => need.is_gate_note);
   return (
     <div className="gate-note">
+      {needed && <p className="gate-note-from">Note from {needed.state} (also the note before the gate)</p>}
       {gate.note && (
         <p className="gate-note-summary">
           <strong>{gate.note}</strong>
         </p>
       )}
       {gate.note_body && <Preview text={gate.note_body} lines={NOTE_LINES} />}
+      <Attachments session={session} attachments={gate.attachments} short />
     </div>
   );
 }
@@ -148,7 +156,7 @@ function Needed({ need }: { need: Need }) {
 }
 
 // A closed gate: who answered what, the comment; the question and the note on a click.
-function GateLine({ gate }: { gate: GateInfo }) {
+function GateLine({ session, gate }: { session: string; gate: GateInfo }) {
   const [shown, setShown] = useState(false);
   const when = gate.answered_at ?? gate.created_at;
   return (
@@ -163,7 +171,7 @@ function GateLine({ gate }: { gate: GateInfo }) {
       {shown && (
         <div className="gate-closed-text">
           <p className="gate-question">{gate.question}</p>
-          <Note gate={gate} />
+          <Note session={session} gate={gate} />
         </div>
       )}
     </article>

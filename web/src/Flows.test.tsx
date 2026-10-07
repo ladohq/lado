@@ -75,6 +75,7 @@ function note(id: number, more: Partial<NoteInfo> = {}): NoteInfo {
     target: "review",
     summary: `note ${id}`,
     body: "",
+    attachments: [],
     created_at: `2026-10-04T10:${String(10 + id).padStart(2, "0")}:00.000Z`,
     ...more,
   };
@@ -94,6 +95,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     options: ["approve", "reject"],
     note: "ready to merge",
     note_body: "",
+    attachments: [],
     needs: [],
     answer: null,
     comment: "",
@@ -544,7 +546,11 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
   const posted = serve({
     runs: [WAITING],
     notes: [note(1, { run: WAITING.name, summary: "the design" })],
-    gates: [gate(41, { needs: [{ state: "implement", note: note(1, { run: WAITING.name, summary: "the design" }) }] })],
+    gates: [
+      gate(41, {
+        needs: [{ state: "implement", note: note(1, { run: WAITING.name, summary: "the design" }), is_gate_note: false }],
+      }),
+    ],
   });
   open(runPath("lado", WAITING.name));
   const region = await page("feature/flows-tab");
@@ -734,7 +740,14 @@ test("while a gate is open, the notes it needs are open too", async () => {
       note(2, { run: WAITING.name, state: "implement", kind: "override", actor: "human", outcome: "", target: "review", summary: "flow-set", body: "why" }),
       note(3, { run: WAITING.name, state: "review", actor: "reviewer", outcome: "approved", target: "merge_ok", summary: "approved", body: "fine" }),
     ],
-    gates: [gate(41, { needs: [{ state: "implement", note: design }, { state: "review", note: null }] })],
+    gates: [
+      gate(41, {
+        needs: [
+          { state: "implement", note: design, is_gate_note: false },
+          { state: "review", note: null, is_gate_note: false },
+        ],
+      }),
+    ],
   });
   open(runPath("lado", WAITING.name));
   expect(opened(await feed("feature/flows-tab"))).toEqual(["approved", "the design"]);

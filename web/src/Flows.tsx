@@ -11,6 +11,7 @@ import { Link, useSearchParams } from "react-router";
 
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
 import { AgentName } from "./Agents";
+import { Attachments } from "./Attachments";
 import { Body, clock, since } from "./ChatText";
 import { GateCard, gateTitle } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
@@ -42,6 +43,7 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
   useEffect(() => live.watch("events", session), [live, session]);
   useEffect(() => live.watch("gates", session), [live, session]);
   useEffect(() => live.watch("agents", session), [live, session]); // who links to its page
+  useEffect(() => live.watch("artifacts", session), [live, session]); // whether chips changed since
 
   const loaded = [state.runs[session], state.notes[session], state.events[session], state.gates[session]] as (
     | ListLoaded<unknown>
@@ -614,6 +616,7 @@ function Row({
           <button type="button" className="feed-summary" aria-expanded={open} onClick={onToggle}>
             {note.summary}
           </button>
+          <Attachments session={session} attachments={note.attachments} short />
         </div>
         <span className="feed-chevron" aria-hidden="true">
           ▸

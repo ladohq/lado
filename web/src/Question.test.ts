@@ -21,6 +21,7 @@ function message(id: number, more: Partial<MessageInfo> = {}): MessageInfo {
     reply_to: null,
     choice: null,
     reply_state: null,
+    attachments: [],
     created_at: "2026-10-03T12:00:00.000Z",
     ...more,
   };

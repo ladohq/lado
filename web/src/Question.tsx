@@ -7,6 +7,7 @@
 import { useState, type FormEvent } from "react";
 
 import { answerQuestion, ApiError, dismissQuestion, HUMAN, type MessageInfo } from "./api";
+import { Attachments } from "./Attachments";
 import { Body, clock } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
 
@@ -80,6 +81,7 @@ export function Question({
       </p>
       <h4 className="chat-summary">{question.summary}</h4>
       {question.body && <Body text={question.body} />}
+      <Attachments session={session} attachments={question.attachments} />
       {open ? (
         <form className="answer" onSubmit={submit}>
           {question.choices && (

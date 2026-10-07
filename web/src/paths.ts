@@ -32,6 +32,19 @@ export const TERMINAL_PARAM = "terminal";
 export const terminalPath = (session: string, agent: string) =>
   `${sessionPath(session, "activity")}?${TERMINAL_PARAM}=${encodeURIComponent(agent)}`;
 
+// An artifact's page in the session's Artifacts tab: /sessions/<name>/artifacts/<id>, its
+// latest record, or with ?record= the record an attachment keeps.
+export const RECORD_PARAM = "record";
+
+export const artifactPath = (session: string, id: string, record?: string) =>
+  `${sessionPath(session, "artifacts")}/${encodeURIComponent(id)}${
+    record ? `?${RECORD_PARAM}=${encodeURIComponent(record)}` : ""
+  }`;
+
+// The address's parameter of the panel over the Activity tab that shows the record an
+// attachment keeps (a chip opens it): ?view=<record id>.
+export const VIEW_PARAM = "view";
+
 // A card in the session's chat: the chat scrolls to the element of that id.
 export const chatPath = (session: string, anchor?: string) =>
   `${sessionPath(session, "activity")}${anchor ? `#${anchor}` : ""}`;

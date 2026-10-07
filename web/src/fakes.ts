@@ -3,6 +3,8 @@
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 
+import type { ArtifactInfo, AttachmentInfo } from "./api";
+
 // A WebSocket the test drives: it opens, sends frames and closes as the server would.
 export class FakeSocket {
   static all: FakeSocket[] = [];
@@ -285,6 +287,47 @@ export const AGENT_REST = {
   spawned_at: "2026-10-04T10:00:00.000Z",
   since: "2026-10-04T10:00:00.000Z",
 };
+
+// An attachment of run feature/x's design, as attached at record r1 (hash h1).
+export function attachment(more: Partial<AttachmentInfo> = {}): AttachmentInfo {
+  return {
+    artifact: "a1",
+    record: "r1",
+    full_name: "feature/x/design",
+    name: "design",
+    scope: "feature/x",
+    title: "The design",
+    media_type: "text/markdown",
+    size: 120,
+    hash: "h1",
+    ...more,
+  };
+}
+
+// That artifact as of its latest record (r1, unchanged since the attachment by default).
+export function artifact(more: Partial<ArtifactInfo> = {}, latest: Partial<ArtifactInfo["latest"]> = {}): ArtifactInfo {
+  return {
+    id: "a1",
+    session: "lado",
+    scope: "feature/x",
+    name: "design",
+    full_name: "feature/x/design",
+    title: "The design",
+    ...more,
+    latest: {
+      id: "r1",
+      media_type: "text/markdown",
+      size: 120,
+      hash: "h1",
+      author: "architect",
+      run: "feature/x",
+      state: "design",
+      summary: null,
+      created_at: "2026-10-07T12:00:00.000Z",
+      ...latest,
+    },
+  };
+}
 
 // Whether the tab is on the screen (document.visibilityState).
 export function setVisible(visible: boolean) {

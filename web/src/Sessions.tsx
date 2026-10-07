@@ -14,6 +14,8 @@ import {
 } from "react-router";
 
 import { Agents } from "./Agents";
+import { ArtifactPanel } from "./ArtifactPanel";
+import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, type ProviderInfo, type RepoInfo, type SessionAbout, type SessionKitInfo, type SessionInfo, type SessionStatus } from "./api";
 import { Chat } from "./Chat";
 import { duration } from "./ChatText";
@@ -40,8 +42,7 @@ import { SessionActions } from "./SessionControl";
 import { SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
-import { FIND_PARAM, isTab, PLANS, sessionLink, sessionPath, TABS, type Tab } from "./paths";
-import { Placeholder } from "./Placeholder";
+import { FIND_PARAM, isTab, sessionLink, sessionPath, TABS, VIEW_PARAM, type Tab } from "./paths";
 import {
   PANEL_WIDTH,
   SESSIONS_WIDTH,
@@ -389,18 +390,12 @@ const TAB_ICONS: Record<Tab, typeof ActivityIcon> = {
   artifacts: ArtifactsIcon,
 };
 
-const TAB_TEXT: Record<Tab, string> = {
-  activity: "Messages between the agents and you, flow steps and their notes, as they happen.",
-  agents: "The session's agents: their roles, status and branches.",
-  flows: "The session's flow runs: their state, who acts and the notes of each step.",
-  artifacts: "The documents the agents write: designs, plans, reviews and reports.",
-};
-
 export function Session() {
   const { name = "", tab = "activity", item } = useParams();
   const loaded = useOutletContext<Loaded>();
-  // Only the Flows and Agents tabs have pages of their own: their runs' and agents'.
-  if (!isTab(tab) || (item !== undefined && tab !== "flows" && tab !== "agents")) return <NotFound />;
+  // Only the Flows, Agents and Artifacts tabs have pages of their own: their runs', agents'
+  // and artifacts'.
+  if (!isTab(tab) || (item !== undefined && tab === "activity")) return <NotFound />;
   return <SessionTab name={name} tab={tab} item={item} loaded={loaded} />;
 }
 
@@ -438,6 +433,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
     agents: agents && "items" in agents ? agents.items.length : 0,
   };
   const stopped = session.status === "stopped";
+  const view = useSearchParams()[0].get(VIEW_PARAM); // a chip's record, in the panel over the tab
   return (
     <section className="session" aria-label={`Session ${name}`}>
       <SessionHead session={session} />
@@ -475,10 +471,9 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       ) : tab === "flows" ? (
         <Flows session={name} run={item} stopped={stopped} />
       ) : (
-        <Placeholder title={TAB_NAMES[tab]} plan={PLANS[tab]} level={3}>
-          {TAB_TEXT[tab]}
-        </Placeholder>
+        <Artifacts session={name} artifact={item} />
       )}
+      {view && <ArtifactPanel session={name} record={view} />}
     </section>
   );
 }

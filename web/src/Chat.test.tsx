@@ -36,6 +36,7 @@ function message(id: number, from: string, to: string, summary: string, more: Pa
     reply_to: null,
     choice: null,
     reply_state: null,
+    attachments: [],
     created_at: "2026-10-03T12:00:00.000Z",
     ...more,
   };
@@ -737,6 +738,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     options: ["approve", "reject"],
     note: "built it",
     note_body: "All **tests** pass.",
+    attachments: [],
     needs: [
       {
         state: "design",
@@ -750,10 +752,12 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
           target: "build",
           summary: "the plan",
           body: "step one",
+          attachments: [],
           created_at: "2026-10-03T11:00:00Z",
         },
+        is_gate_note: false,
       },
-      { state: "polish", note: null },
+      { state: "polish", note: null, is_gate_note: false },
     ],
     answer: null,
     comment: "",

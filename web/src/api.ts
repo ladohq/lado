@@ -149,6 +149,27 @@ export const getRuns = (session: string) => get<RunInfo[]>(`${sessionPath(sessio
 // The notes of the session's flow runs, oldest first: each is a step a run took.
 export const getNotes = (session: string) => get<NoteInfo[]>(`${sessionPath(session)}/notes`);
 
+export type ArtifactInfo = components["schemas"]["ArtifactInfo"];
+export type RecordInfo = components["schemas"]["RecordInfo"];
+export type RecordView = components["schemas"]["RecordView"];
+export type AttachmentInfo = components["schemas"]["AttachmentInfo"];
+// The session's artifacts, each as of its latest record.
+export const getArtifacts = (session: string) => get<ArtifactInfo[]>(`${sessionPath(session)}/artifacts`);
+// One artifact with its latest record.
+export const getArtifact = (session: string, id: string) =>
+  get<ArtifactInfo>(`${sessionPath(session)}/artifacts/${encodeURIComponent(id)}`);
+// A record with its artifact as it is now.
+export const getRecord = (session: string, record: string) =>
+  get<RecordView>(`${sessionPath(session)}/records/${encodeURIComponent(record)}`);
+// The address of a record's content (its bytes, under the server's sandbox), or its download.
+export const contentPath = (session: string, record: string, download = false) =>
+  `${sessionPath(session)}/records/${encodeURIComponent(record)}/content${download ? "?download=1" : ""}`;
+// A record's content as an answer, for the viewer to read; a refusal is an ApiError.
+export async function getContent(session: string, record: string, signal?: AbortSignal): Promise<Response> {
+  const answer = await fetch(contentPath(session, record), { credentials: "same-origin", signal });
+  if (!answer.ok) throw await refused(answer);
+  return answer;
+}
 // The human's answer to an open gate: one of its options and a comment for the next step.
 export const answerGate = (session: string, id: number, option: string, comment: string) =>
   post<Sent>(`${sessionPath(session)}/gates/${id}/answer`, { option, comment });

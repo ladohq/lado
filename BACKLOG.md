@@ -798,7 +798,8 @@ Found: 2026-10-04, feature/kit-manifest-v2 (implement).
 
 ## A gate shows a needed note twice when it is the note before the gate
 
-Size: M. Why here: lado-dev is not affected; better done together with artifacts.
+Size: M. Why here: lado-dev is not affected; better done together with artifacts: part 2
+(UI) of docs/design/artifacts.md takes it on (the gate keeps the id of the note before it).
 
 A gate with `needs: [design]` reached right from `design` shows design's report twice in
 `lado answer` and on the gate's card in the UI's chat (`GateCard.tsx`): as `Note from
@@ -1020,7 +1021,8 @@ Found: 2026-10-06, architect's review of feature/delivery.
 
 ## An open run's task cannot be amended
 
-Size: M. Why here: artifacts (the next item of stage 7) solve it naturally; design it there.
+Size: M. Why here: artifacts (the next item of stage 7) solve it naturally: part 3 (Flows)
+of docs/design/artifacts.md takes it on.
 
 A small addition the human asks for while a run is in `implement` (feature/ui-polish:
 AC-13..15) can only go to the developer as a message. The design note that the reviewer and
@@ -1174,6 +1176,15 @@ The docstring says each pass's tmux calls go to `passes`, but `passes` collects 
 sleeps; the tmux calls are counted in `tmux_server["calls"]`.
 Wanted: the docstring says what each collects.
 Found: 2026-10-07, review of fix/integration-fix2.
+
+## The human cannot give an agent a file
+
+Size: M. Why here: on a remote LADO the human's own file (a screenshot, a spec) reaches an agent only as pasted text; left out of artifacts on purpose (docs/design/artifacts.md, Left out).
+Artifacts go from agents to the human: agents write them, the UI shows them; the UI has no
+way to add one.
+Wanted: the human uploads a file in the UI as an artifact of the session or a run, under a
+name agents then read with `read_artifact`, with the same limits as an agent's write.
+Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
 
 # P3: maybe never
 
@@ -1491,3 +1502,40 @@ marker, an undocumented text format that cannot tell whether the human goes on t
 Wanted: when a Claude Code release adds a hook for an interrupt, close the turn with
 `TURN_END` as for any other.
 Found: 2026-10-06, architect's review of feature/agent-liveness; checked 2026-10-06.
+
+## An artifact's records cannot be compared
+
+Size: M. Why here: no real need yet; the human sees only an artifact's latest record (docs/design/artifacts.md, Left out).
+Every write of an artifact is kept as a record, but neither the UI nor the agents' tools show
+the records as versions or what changed between two of them; an attachment only says that
+its artifact changed since.
+Wanted: the records of an artifact as its versions, and a diff of two text records, in the
+UI (from an attachment marked changed, at a gate) and as a tool for agents.
+Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
+
+## Artifacts end with their session
+
+Size: L. Why here: comes with projects (ROADMAP, Later); a session's artifacts are enough until then (docs/design/artifacts.md, Left out).
+`lado forget` removes a session's artifacts with it, so a design or report cannot outlive
+the session that wrote it, nor belong to a project or a tracker task.
+Wanted: a project scope for artifacts (one more scope, one migration), kept across sessions.
+Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
+
+## Artifacts have no retention policy
+
+Size: M. Why here: no failure yet; content stays until `lado forget` and `lado doctor` shows its size (docs/design/artifacts.md, Lifecycle).
+Every record's content is kept as long as its session (up to 25 MB a record), so an agent
+that rewrites a large artifact often fills `LADO_HOME/artifacts`.
+Wanted: an explicit retention the human runs (e.g. keep the latest N records of an artifact
+and the ones attachments refer to), never a silent delete; together with the history entry
+"A session's history grows until `lado forget`".
+Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
+
+## Agents read image artifacts only as metadata
+
+Size: M. Why here: no kit needs it yet; providers differ in how an MCP tool may return an image (docs/design/artifacts.md, Left out).
+`read_artifact` reads text only; for an image (a screenshot, a mockup's picture) it gives the
+metadata and says it cannot be read as text.
+Wanted: `read_artifact` returns an image as an image to providers that take one from an MCP
+tool, and says so loudly where a provider cannot.
+Found: 2026-10-07, design of feature/artifacts (the human's decision: later).

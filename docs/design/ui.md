@@ -1220,7 +1220,8 @@ works only in the browser learns of a gate from Needs you, its count and a notif
 
 ### Artifacts
 
-A session's tab: the documents the agents write (ROADMAP stage 7, Artifacts).
+A session's tab: the documents the agents write (ROADMAP stage 7, Artifacts). The contract
+the UI part is built against: [artifacts.md](artifacts.md).
 
 ### Home
 

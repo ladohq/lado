@@ -92,7 +92,11 @@ The agents still run in tmux; the app is a window onto them.
   any agent writes and reads, with or without a flow; the human's main way to get results:
   attached to messages and gates and shown in the UI. Flows can require them. Agents know an
   artifact by name only, never by path, and storage sits behind one interface, so it can
-  move to a separate service
+  move to a separate service. Design and parts: docs/design/artifacts.md
+  - [ ] Core: storage, the agents' MCP tools, attachments, CLI, `lado forget` and `lado doctor`
+  - [ ] UI: the API, the feed, the Artifacts tab and its viewer, attachments in the chat
+  - [ ] Flows: a state's `produces`
+  - [ ] Kit: the lado-dev kit's flows write their design, report and review as artifacts
 - [ ] Agent terminals in the UI (a web terminal attached to the agent's tmux window)
 - [ ] Desktop app that bundles the UI and the LADO runtime (macOS first)
 

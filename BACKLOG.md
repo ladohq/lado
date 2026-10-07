@@ -656,6 +656,9 @@ time: w1 committed `flow.txt` with "live flow test" instead of "OK"; the supervi
 `finish_worker(name="w1", discard=true)` before the human's message.
 Again on 2026-10-07 (run fix/integration-fix2): Kilo's supervisor merged w1's branch and
 called `finish_worker(name="w1")` before w1 answered the human ("agent w1 is gone").
+Again at the 0.25.0 release check (2026-10-07, f2b4c78): OpenCode's supervisor merged w1's
+branch and called `finish_worker(name="w1")` after w1 answered the human ("agent w1 is gone");
+the rerun passed.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.

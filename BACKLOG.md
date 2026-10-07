@@ -437,6 +437,24 @@ Wanted: check by hand which errors of Kilo and OpenCode end a turn, and mark the
 pass by themselves `Event.transient` in the provider (e.g. by the APIError's status code).
 Found: 2026-10-07, design of run feature/turn-resume.
 
+## Flaky integration tests: a message typed again before its hook confirms it runs twice
+
+Size: M. Why here: 13 failures in 21 parallel integration runs (1 in 11 on a quiet machine,
+7 in 8 under load), and in the product the same rule runs a non-idempotent command twice.
+Under `-n auto` the prompt-submit hook takes 0.18 s at p50 and 0.6 s at p99, longer than the
+layer's first `LADO_RETRY_DELAYS` step (0.5 s): the sweep types the message again before the
+hook confirms it, and the fake agent runs it twice. Seen as duplicated inputs
+(test_agents.py:121, :164, :178; test_agent_liveness.py:131; test_session_loop.py:96
+attempts 3 == 2), a second `flow_start` (test_flow_runs.py:299 "3 open runs", :218
+`gated/check-it-2`), a second advance opening gate #2 (test_flow_runs.py:340). Separately,
+test_agents.py:154 must send within the fake's 1 s turn (`sleep 1`) and misses it under load.
+Wanted: tests: a first retry step above hook latency under load (e.g. `2,0.5,0.5`) and
+`hold` with a release by the test instead of `sleep 1`. Product: a design note on "typed
+twice beats never" for non-idempotent tools (flow_start, flow_advance) when only the
+confirmation is late, not the delivery.
+Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis); outputs
+kept in .lado/briefs/integ-analysis/FLAKE-*.out (local, uncommitted).
+
 # P2: when convenient
 
 ## LADO's own processes take the agent's PYTHONPATH and other PYTHON* variables
@@ -1046,6 +1064,18 @@ stop waits uvicorn's full grace again, as before fix/server-stop-streams.
 Wanted: `subscribe` checks `_closed` again after the await, before it starts the task or
 adds the queue; a unit test closes the hub during that await.
 Found: 2026-10-07, review of fix/server-stop-streams (Minor finding).
+
+## Two session loops for a moment after a second `lado loop` exits
+
+Size: S. Why here: one loop per session is a rule (`flock`); a second one, even briefly,
+could sweep twice.
+`tests/integration/test_session_loop.py:59` once saw 2 loop pids right after the test's
+second `lado loop` returned 0, under `-n auto` load. Maybe the loop `start_session` started
+was still importing (before `take_lock`) while the second took and dropped the lock, or
+`pgrep -f` matched a passing process. Not explained.
+Wanted: find which with that run's loop.log; if a loop can start after another one gave up
+the lock, the test should wait for the lock holder, or the product should say so.
+Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis).
 
 # P3: maybe never
 

@@ -1018,6 +1018,20 @@ of stopped sessions by age (e.g. `--older-than 30d`, listing what it deletes fir
 session in the UI. Running sessions are never trimmed.
 Found: 2026-10-07, the human's question in session chat-history about how the chat grows.
 
+## Follow-ups of fix/test-timers: an empty LADO_RETRY_DELAYS, two weak tests
+
+Size: S. Why here: review's Minor findings, nothing wrong in production.
+1. `runtime.retry_delays_from` takes `value or "15,30,60"`, so `LADO_RETRY_DELAYS=""` now
+   silently means the production delays (before, it failed at import); `LADO_LOOP_INTERVAL=""`
+   is refused. 2. tests/integration/test_agents.py:291-292: the comment says this send's
+   sweep or the loop's types the report in, but only the loop's can, so the test no longer
+   covers "a send_message sweep types the due report in with the next message".
+3. tests/test_loop.py `test_wait_stopped_waits_three_intervals_by_default` checks only an
+   upper bound, so a timeout of 0 would pass it.
+Wanted: `"15,30,60" if value is None else value` (and "" refused, with a test); the comment
+fixed and the send path covered at the unit layer if it is not; a lower bound (>= 3 intervals).
+Found: 2026-10-07, review of fix/test-timers.
+
 # P3: maybe never
 
 ## A server endpoint that writes makes lado.db when there is none

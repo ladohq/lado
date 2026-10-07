@@ -22,6 +22,16 @@ def fake_logs(session: str, agent: str) -> Path:
     return state.home() / "fake-agents" / session / agent
 
 
+def paused(session: str, agent: str, n: int) -> bool:
+    """Whether the fake agent's n-th `pause` began (fake_agent.py)."""
+    return (fake_logs(session, agent) / f"paused-{n}").exists()
+
+
+def release(session: str, agent: str, n: int) -> None:
+    """Let the fake agent's n-th `pause` end (fake_agent.py), or end at once when it comes."""
+    (fake_logs(session, agent) / f"release-{n}").touch()
+
+
 def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
     """The environment and the command of an agent's window, from a recorded
     `tmux.new_session` or `tmux.new_window` call (the `fake_tmux` fixture)."""
@@ -184,11 +194,12 @@ def refuse_unless_isolated() -> None:
 
 # How long to wait for an agent before failing. Generous: a wait ends as soon as its check is
 # true, and the tests run in parallel, often beside other agents' checks on a loaded machine,
-# where starting an agent (two Python processes that import the MCP library) can take seconds.
+# where starting an agent (Python processes, `lado mcp` among them with the MCP library) can
+# take seconds.
 TIMEOUT = 30
 
 
-def wait_for(check, what: str, session: str, timeout: float = TIMEOUT, interval: float = 0.05):
+def wait_for(check, what: str, session: str, timeout: float = TIMEOUT, interval: float = 0.02):
     """Poll `check` until it returns something true, and return that."""
     deadline = time.monotonic() + timeout
     while not (result := check()):

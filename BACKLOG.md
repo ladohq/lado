@@ -437,21 +437,20 @@ Wanted: check by hand which errors of Kilo and OpenCode end a turn, and mark the
 pass by themselves `Event.transient` in the provider (e.g. by the APIError's status code).
 Found: 2026-10-07, design of run feature/turn-resume.
 
-## Flaky integration tests: a message typed again before its hook confirms it runs twice
+## A message typed again before its hook confirms it runs twice
 
-Size: M. Why here: 13 failures in 21 parallel integration runs (1 in 11 on a quiet machine,
-7 in 8 under load), and in the product the same rule runs a non-idempotent command twice.
-Under `-n auto` the prompt-submit hook takes 0.18 s at p50 and 0.6 s at p99, longer than the
-layer's first `LADO_RETRY_DELAYS` step (0.5 s): the sweep types the message again before the
-hook confirms it, and the fake agent runs it twice. Seen as duplicated inputs
-(test_agents.py:121, :164, :178; test_agent_liveness.py:131; test_session_loop.py:96
-attempts 3 == 2), a second `flow_start` (test_flow_runs.py:299 "3 open runs", :218
-`gated/check-it-2`), a second advance opening gate #2 (test_flow_runs.py:340). Separately,
-test_agents.py:154 must send within the fake's 1 s turn (`sleep 1`) and misses it under load.
-Wanted: tests: a first retry step above hook latency under load (e.g. `2,0.5,0.5`) and
-`hold` with a release by the test instead of `sleep 1`. Product: a design note on "typed
-twice beats never" for non-idempotent tools (flow_start, flow_advance) when only the
-confirmation is late, not the delivery.
+Size: M. Why here: in the product the retry rule runs a non-idempotent command twice when
+only the confirmation is late, not the delivery. It showed as flaky integration tests: 13
+failures in 21 parallel runs (1 in 11 on a quiet machine, 7 in 8 under load). Under
+`-n auto` the prompt-submit hook took 0.18 s at p50 and 0.6 s at p99, longer than the
+layer's first `LADO_RETRY_DELAYS` step then (0.5 s): the sweep typed the message again
+before the hook confirmed it, and the fake agent ran it twice (duplicated inputs, a second
+`flow_start`, a second advance opening gate #2).
+The test half is done (run fix/integration-fix1): the layer's first retry step is 2 s, and
+tests keep the fake agent busy with `pause` and a release by the test instead of `sleep 1`.
+Wanted (product): a design note on "typed twice beats never" for non-idempotent tools
+(flow_start, flow_advance) when only the confirmation is late, e.g. a real agent on a
+loaded machine whose hook takes longer than the first 15 s delay.
 Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis); outputs
 kept in .lado/briefs/integ-analysis/FLAKE-*.out (local, uncommitted).
 

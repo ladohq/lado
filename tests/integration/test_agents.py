@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import agent_helpers
@@ -27,6 +28,15 @@ def status(agent: str) -> str:
 
 def wait_status(agent: str, expected: str) -> None:
     wait_for(lambda: status(agent) == expected, f"{agent} to be {expected}")
+
+
+def paused(agent: str, n: int) -> None:
+    """Wait until the agent is in its n-th pause (fake agent's `pause`)."""
+    wait_for(lambda: agent_helpers.paused(SESSION, agent, n), f"{agent} paused {n}")
+
+
+def release(agent: str, n: int) -> None:
+    agent_helpers.release(SESSION, agent, n)
 
 
 def inputs(agent: str) -> list[str]:
@@ -114,13 +124,14 @@ def test_a_message_ending_in_a_backslash_is_submitted_and_confirmed(repo):
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
     # Queued while it is busy and typed in at its turn's end: the last line ends in `\\`.
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
     runtime.send_message(SESSION, "human", "supervisor", "hello", "the body")
     runtime.send_message(SESSION, "human", "supervisor", "two\\\\")
+    release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 4, "delivery")
     assert inputs("supervisor") == [
         "[from human] what now?\\ ",
-        "[from human] sleep 1",
+        "[from human] pause",
         "[from human] hello (#3, 1 line: call read_messages)\n[from human] two\\\\ ",
     ]
 
@@ -140,43 +151,47 @@ def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(
 ):
     """Confirmed by the prompt-submit hook of the text the output became ("fake", as
     OpenCode and Kilo), or by the end of the turn that went on from it ("fake-stop", as
-    Claude Code); one batch at a time, each at once after the one before. A turn of 1 s
-    with no hook is longer than the short first retry delay, after which the output would
-    be typed in once more."""
+    Claude Code); one batch at a time, each at once after the one before. A paused turn
+    has no hook for as long as the test takes, maybe longer than the short retry delays,
+    after which the output would be typed in once more."""
     start(repo, provider)
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
-    wait_for(lambda: message_states("supervisor")[1] == state.SENT, "the output")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
+    release("supervisor", 1)
+    paused("supervisor", 2)  # in the turn that goes on from the output
     runtime.send_message(SESSION, "human", "supervisor", "hello")
+    release("supervisor", 2)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 3, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] sleep 1"] * 2 + ["[from human] hello"]
+    assert inputs("supervisor") == ["[from human] pause"] * 2 + ["[from human] hello"]
     assert channels("supervisor") == [state.TYPED, state.HOOK_OUTPUT, state.HOOK_OUTPUT]
 
 
 @pytest.mark.parametrize("provider", ["fake", "fake-stop"])
 def test_a_turn_end_output_the_cli_drops_is_typed_in_once(repo, provider):
     start(repo, provider)
-    runtime.send_message(SESSION, "human", "supervisor", "lose 1")
+    runtime.send_message(SESSION, "human", "supervisor", "lose")
     runtime.send_message(SESSION, "human", "supervisor", "hello")
+    release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] lose 1", "[from human] hello"]
+    assert inputs("supervisor") == ["[from human] lose", "[from human] hello"]
     assert channels("supervisor") == [state.TYPED, state.TYPED]
 
 
 @pytest.mark.parametrize("provider", ["fake", "fake-paste"])
 def test_message_to_busy_agent_arrives_when_its_turn_ends(repo, provider):
     start(repo, provider)
-    assert runtime.send_message(SESSION, "human", "supervisor", "sleep 1") == "sent"
+    assert runtime.send_message(SESSION, "human", "supervisor", "pause") == "sent"
     reply = runtime.send_message(SESSION, "human", "supervisor", "hello")
     assert reply.startswith("queued; supervisor is busy")
     runtime.send_message(SESSION, "human", "supervisor", "there")
+    release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 3, "delivery")
     wait_status("supervisor", state.IDLE)
     # One short line per message, the queued ones in one input.
     assert inputs("supervisor") == [
-        "[from human] sleep 1",
+        "[from human] pause",
         "[from human] hello\n[from human] there",
     ]
 
@@ -249,9 +264,15 @@ def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):
     """The helper's own race: messages queued while the agent is busy are typed together,
     one line each, so the command is a line of the input, not all of it."""
     start(repo)
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
     wait_status("supervisor", state.BUSY)
     runtime.send_message(SESSION, "human", "supervisor", "sleep 0")  # queued
+
+    def release_once_queued() -> None:  # while the helper waits for its command
+        wait_for(lambda: len(message_states("supervisor")) == 3, "the helper's command")
+        release("supervisor", 1)
+
+    threading.Thread(target=release_once_queued, daemon=True).start()
     supervisor_runs("sleep 0.1")  # queued too, typed with the one before
     assert inputs("supervisor")[-1] == "[from human] sleep 0\n[from human] sleep 0.1"
 
@@ -259,9 +280,10 @@ def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):
 def test_agent_that_switches_conversation_keeps_running(repo):
     """Like Claude Code's /resume: the conversation ends, the process goes on with another."""
     start(repo)
-    tmux.send_text(SESSION, "supervisor", "switch 1")  # typed by the human
+    tmux.send_text(SESSION, "supervisor", "switch")  # typed by the human
     wait_status("supervisor", state.STARTING)
     assert runtime.send_message(SESSION, "human", "supervisor", "hello").startswith("queued")
+    release("supervisor", 1)  # it picked another conversation
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
     assert "[from human] hello" in inputs("supervisor")[-1].splitlines()

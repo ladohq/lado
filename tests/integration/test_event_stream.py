@@ -132,10 +132,26 @@ def test_a_write_between_the_streams_start_and_the_load_is_not_lost(server, stre
     assert stream.until(session_change(session, "stopped"), timeout=15)[-1].id > reset.id
 
 
+def past_the_first_derivation(stream: EventStream, session: str) -> None:
+    """Wait until the server has computed what is derived once for this stream: its hub does
+    that at the end of its first pass (feed.Hub._pass). A change written after one that came
+    in the stream comes in a later pass, so the first one is over by then."""
+    for n in (1, 2):
+        runtime.send_message(session, "human", "supervisor", f"probe {n}")
+        stream.until(
+            lambda e, n=n: (
+                e.event == "change"
+                and e.data["kind"] == "messages"
+                and (e.data["item"] or {}).get("summary") == f"probe {n}"
+            ),
+            timeout=15,
+        )
+
+
 def test_a_killed_tmux_session_shows_as_tmux_gone(streams, session):
     stream = streams()
     stream.next()
-    time.sleep(4)  # past the server's first computation of what is derived
+    past_the_first_derivation(stream, session)
     tmux.kill_session(session)
     gone = stream.until(session_change(session, "tmux_gone"), timeout=15)[-1]
     assert gone.id is None

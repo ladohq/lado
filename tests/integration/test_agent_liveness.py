@@ -34,6 +34,10 @@ def wait_status(agent: str, expected: str, timeout: float = agent_helpers.TIMEOU
     wait_for(lambda: status(agent) == expected, f"{agent} to be {expected}", timeout)
 
 
+def release(agent: str, n: int) -> None:
+    agent_helpers.release(SESSION, agent, n)
+
+
 def inputs(agent: str) -> list:
     log = agent_helpers.fake_logs(SESSION, agent) / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
@@ -92,18 +96,20 @@ def test_an_agent_that_crashes_before_its_first_hook_is_found_stopped(session):
 
 
 def test_an_agent_that_dies_in_a_turn_is_found_stopped(session):
-    runtime.spawn_worker(SESSION, "sleep 1\ndie", name="w1")
+    runtime.spawn_worker(SESSION, "pause\ndie", name="w1")
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "next")
+    release("w1", 1)
     wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
     assert message_to("w1").state == state.DROPPED
 
 
 def test_a_turn_that_ends_on_an_error_hands_over_the_queue(session):
-    runtime.spawn_worker(SESSION, "sleep 1\nfail rate_limit", name="w1")
+    runtime.spawn_worker(SESSION, "pause\nfail rate_limit", name="w1")
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "go on")
+    release("w1", 1)
     wait_for(lambda: message_to("w1").state == state.DELIVERED, "w1 to get its queue")
     assert "[from supervisor] go on" in inputs("w1")
     wait_status("w1", state.IDLE)
@@ -120,7 +126,7 @@ def test_a_turn_that_ends_on_a_transient_error_is_resumed_until_the_resumes_are_
     monkeypatch.setenv("LADO_RESUME_DELAYS", "0.5,0.5")  # for the hooks and the loop
     runtime.start_session(str(repo), SESSION, None, "fake")
     wait_status("supervisor", state.IDLE)
-    runtime.spawn_worker(SESSION, "sleep 1\nfailing overloaded", name="w1")
+    runtime.spawn_worker(SESSION, "failing overloaded", name="w1")
     spent = "turn of w1 ended on an error after 2 resumes: overloaded; it is idle"
     wait_for(lambda: spent in from_lado("supervisor"), "the supervisor to be told")
     resumes = [
@@ -139,9 +145,10 @@ def test_a_turn_that_ends_on_a_transient_error_is_resumed_until_the_resumes_are_
 
 
 def test_an_agent_that_exits_with_messages_queued_drops_them_and_tells_the_sender(session):
-    runtime.spawn_worker(SESSION, "sleep 1\nexit", name="w1")
+    runtime.spawn_worker(SESSION, "pause\nexit", name="w1")
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "one more")
+    release("w1", 1)
     wait_status("w1", state.STOPPED)
     assert runtime.status_reason(SESSION, "w1") == "its CLI exited"
     message = message_to("w1")
@@ -201,7 +208,7 @@ def test_finishing_a_worker_tells_no_one_it_stopped(session):
 
 
 def test_stopping_a_session_tells_no_one_and_counts_what_it_dropped(session):
-    runtime.spawn_worker(SESSION, "sleep 30", name="w1")
+    runtime.spawn_worker(SESSION, "pause", name="w1")  # never released: busy till the stop
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "queued")
     stopped = runtime.stop_session(SESSION)

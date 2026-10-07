@@ -56,10 +56,16 @@ directly and takes no lock. A plain `uv run pytest` takes none either.
 
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
 instead of a real agent CLI; it keeps its logs (`inputs.jsonl`, `seen.json`) in
-`agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. They use a temp `LADO_HOME` and their own tmux server
+`agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. It talks to
+`lado mcp` through its own small stdio JSON-RPC client, not the MCP SDK's (whose import
+alone took a third of a second per launch). A test keeps it busy with its `pause` command
+and ends that pause itself (`agent_helpers.release`), never with a `sleep` it must act
+within. They use a temp `LADO_HOME` and their own tmux server
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. They run LADO's timers
-short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=0.5,0.5,0.5`, set for each test in
-`tests/integration/conftest.py` (How agents talk); only tests set either. Tests never use the default
+short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each test in
+`tests/integration/conftest.py` (How agents talk; the first delay outlasts a prompt-submit
+hook's confirmation under `-n auto`, the comment there says by how much); only tests set
+either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
 `LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
@@ -673,7 +679,7 @@ fixes and docs only: no new feature, no API or schema change.
   (the supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
   reported. The agent's first hook after that puts the messages no hook ran after back in
   the queue with their attempts from 0; the ones it saw and never confirmed stay failed.
-  `LADO_RETRY_DELAYS` (`0.5,0.5,0.5`) replaces the delays in the processes started with it:
+  `LADO_RETRY_DELAYS` (`2,0.5,0.5`) replaces the delays in the processes started with it:
   only tests set it, the integration tests for each test (`tests/integration/conftest.py`,
   also `runtime.RETRY_DELAYS` in the test's own process); a test that moves time itself
   takes the `production_retry_delays` fixture.

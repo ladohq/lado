@@ -16,6 +16,10 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
     advance <run> <outcome>[ <note summary>[ | <body>]]  call the LADO MCP tool
                        flow_advance; "\\n" in the body is a line break
     sleep <seconds>    work that long
+    pause              print "paused <n>" (the n-th pause), write a file "paused-<n>" beside
+                       "inputs", and work until the test releases it: a file "release-<n>"
+                       there (agent_helpers.paused, .release); it reads no input meanwhile,
+                       as a CLI busy in a turn
     ask                ask the human for a permission: run the waiting hook, and take the
                        next input as the answer (logged as {"answer": <text>})
     wait <key>         run the waiting hook for request <key>, as a dialog for the human
@@ -35,8 +39,8 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
                        output is ignored, as Claude Code's StopFailure
     failing <error>    as fail, and every later turn ends on <error> too, as an API that
                        stays down
-    lose <seconds>     work that long, then drop what the turn-end hook prints, as a CLI that
-                       does not take it
+    lose               pause, then drop what the turn-end hook prints, as a CLI that does
+                       not take it
 A first message that starts with "crash at start" makes it exit before its first hook, as a
 CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environment it asks
 the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
@@ -44,8 +48,8 @@ any other input exits at once with no hook. With FAKE_AGENT_HANGUP_HOOK=1 in its
 its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
 Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
 else it exits at once.
-A typed "switch <seconds>" is no input but a command of the CLI itself, like Claude Code's
-/resume: the agent leaves its conversation, takes that long to pick another, and goes on in
+A typed "switch" is no input but a command of the CLI itself, like Claude Code's /resume: the
+agent leaves its conversation, picks another while it pauses (as `pause`), and goes on in
 the same process; no prompt-submit and no turn-end hook run for it. A typed "dialog" opens a
 modal dialog, like Claude Code's folder-trust dialog: it swallows the next input, and no hook
 runs for either.
@@ -54,11 +58,10 @@ of `run`, the messages from `read` and the results of `flow_start` and `advance`
 "seen" file. At start the agent writes what it was given (prompt, skills found in its
 skills folder, MCP servers, its environment) to "seen", as a real agent CLI would load them,
 and starts its LADO MCP server and lists its tools while its session-start hook runs; like a
-real CLI, it keeps that one server for all its tool calls.
+real CLI, it keeps that one server for all its tool calls. It talks to that server through
+its own small MCP client (LadoMcp), not the MCP SDK.
 """
 
-import asyncio
-import concurrent.futures
 import json
 import os
 import re
@@ -68,8 +71,6 @@ import sys
 import threading
 import time
 import traceback
-
-from mcp import Client, StdioServerParameters
 
 PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
 
@@ -122,46 +123,93 @@ def run_mcp_server(name: str) -> None:
     report(mcp_run={"server": name, "code": result.returncode, "stderr": result.stderr})
 
 
-def lado_server() -> StdioServerParameters:
-    mcp = config["mcp"]["lado"]
-    return StdioServerParameters(command=mcp["command"][0], args=mcp["command"][1:], env=mcp["env"])
+class McpError(Exception):
+    """The LADO MCP server answered a request with a JSON-RPC error, or could not serve it."""
 
 
-mcp_loop = asyncio.new_event_loop()  # runs in a daemon thread: it never holds up the exit
-mcp_client: concurrent.futures.Future = concurrent.futures.Future()  # the connected Client
+class LadoMcp:
+    """A minimal MCP client of the LADO MCP server: stdio, one JSON-RPC message per line. Not
+    the MCP SDK's client, whose import alone takes about a third of a second per launch.
 
+    Like the SDK's stdio client, the server gets only a few variables of the agent's
+    environment (INHERITED) and its config's env; its stderr goes to the agent's terminal.
+    A tool's error comes back as a result with isError; a JSON-RPC error, or a server that
+    did not start or ended, raises McpError."""
 
-def connect_mcp() -> None:
-    """Start the LADO MCP server over stdio once and keep it, as an agent CLI does: list its
-    tools at start, then serve every tool call. If it cannot start, every call fails."""
+    INHERITED = ("HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER")
+    PROTOCOL = "2025-06-18"
 
-    async def connect():
+    def __init__(self):
+        self.ready = threading.Event()  # set once connected, or once that failed
+        self.error: BaseException | None = None
+        self.server: subprocess.Popen | None = None
+        self.last_id = 0
+
+    def connect(self) -> None:
+        """Start the server, initialize the session and list the tools, in a thread (as the
+        session-start hook runs)."""
+        threading.Thread(target=self._connect, daemon=True).start()
+
+    def _connect(self) -> None:
         try:
-            async with Client(lado_server()) as client:
-                await client.list_tools()
-                mcp_client.set_result(client)
-                await asyncio.Event().wait()  # keep the connection until the process ends
-        except Exception as exc:
-            if not mcp_client.done():
-                mcp_client.set_exception(exc)
-            raise
+            lado = config["mcp"]["lado"]
+            env = {k: os.environ[k] for k in self.INHERITED if k in os.environ}
+            self.server = subprocess.Popen(
+                lado["command"],
+                env={**env, **lado["env"]},
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            client = {"name": "fake-agent", "version": "0"}
+            params = {"protocolVersion": self.PROTOCOL, "capabilities": {}, "clientInfo": client}
+            self._request("initialize", params)
+            self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+            self._request("tools/list", {})
+        except BaseException as exc:
+            self.error = exc
+        self.ready.set()
 
-    threading.Thread(target=mcp_loop.run_forever, daemon=True).start()
-    asyncio.run_coroutine_threadsafe(connect(), mcp_loop)
+    def _send(self, message: dict) -> None:
+        self.server.stdin.write(json.dumps(message) + "\n")
+        self.server.stdin.flush()
+
+    def _request(self, method: str, params: dict) -> dict:
+        """Send a request and return its result, passing over the server's notifications."""
+        self.last_id += 1
+        self._send({"jsonrpc": "2.0", "id": self.last_id, "method": method, "params": params})
+        while True:
+            line = self.server.stdout.readline()
+            if not line:
+                raise McpError(f"the LADO MCP server ended before it answered {method}")
+            message = json.loads(line)
+            if message.get("id") != self.last_id or "method" in message:
+                continue
+            if "error" in message:
+                raise McpError(f"{method}: {message['error'].get('message')}")
+            return message["result"]
+
+    def call_tool(self, name: str, arguments: dict) -> dict:
+        """The result of a tool call: {content, structuredContent?, isError?}."""
+        self.ready.wait()
+        if self.error:
+            raise McpError("the LADO MCP server did not start") from self.error
+        return self._request("tools/call", {"name": name, "arguments": arguments})
+
+
+# Started once and kept, as an agent CLI does: it lists the tools at start, then serves
+# every tool call. If it cannot start, every call fails.
+lado_mcp = LadoMcp()
 
 
 def call_tool(name: str, arguments: dict):
     """Call a tool of the LADO MCP server. Returns its structured result."""
-
-    async def call():
-        client = await asyncio.wrap_future(mcp_client)  # once connected
-        return await client.call_tool(name, arguments)
-
-    result = asyncio.run_coroutine_threadsafe(call(), mcp_loop).result()
-    print(f"{name}: {result.content}", flush=True)
-    if result.structured_content is None:  # a dict comes as JSON text
-        return json.loads(result.content[0].text) if not result.is_error else None
-    return result.structured_content.get("result")
+    result = lado_mcp.call_tool(name, arguments)
+    content = result.get("content", [])
+    print(f"{name}: {[c.get('text') for c in content]}", flush=True)
+    if result.get("structuredContent") is None:  # a dict comes as JSON text
+        return json.loads(content[0]["text"]) if not result.get("isError") else None
+    return result["structuredContent"].get("result")
 
 
 def send(to: str, text: str) -> None:
@@ -209,6 +257,23 @@ def _read_paste(line: str) -> str:
     return before + after.rstrip("\n")
 
 
+pauses = 0  # how often `pause` ran
+
+
+def pause() -> None:
+    """Work until the test releases the n-th pause: a file "release-<n>" beside "inputs"
+    (agent_helpers.release). It reads nothing meanwhile, as a CLI busy in a turn. A file
+    "paused-<n>" there says it is in it (agent_helpers.paused)."""
+    global pauses
+    pauses += 1
+    logs = os.path.dirname(config["inputs"])
+    open(os.path.join(logs, f"paused-{pauses}"), "w").close()
+    print(f"paused {pauses}", flush=True)
+    release = os.path.join(logs, f"release-{pauses}")
+    while not os.path.exists(release):
+        time.sleep(0.02)
+
+
 holds = 0  # how often `hold` ran
 turn_error = ""  # the error the turn ends on (`fail`)
 always_error = ""  # the error every turn ends on (`failing`)
@@ -229,8 +294,10 @@ def work(text: str) -> bool:
         elif command[0] == "failing":
             always_error = " ".join(command[1:])
         elif command[0] == "lose":
-            time.sleep(float(command[1]))
+            pause()
             lose_output = True
+        elif command[0] == "pause":
+            pause()
         elif command[0] == "sleep":
             time.sleep(float(command[1]))
         elif command[0] == "ask":
@@ -279,7 +346,6 @@ def work(text: str) -> bool:
             if body:
                 args["note_body"] = body.replace("\\n", "\n")
             report(advance=call_tool("flow_advance", args))
-    time.sleep(0.05)  # think
     return False
 
 
@@ -304,7 +370,7 @@ def main() -> None:
         if read_input() != "yes":
             os._exit(1)
     # Like Claude Code: the MCP server connects while the session-start hook runs.
-    connect_mcp()
+    lado_mcp.connect()
     hook("session_start")
     text = sys.argv[2] if len(sys.argv) > 2 else None  # the first message
     continued = False  # this turn goes on from what the turn-end hook printed
@@ -317,9 +383,9 @@ def main() -> None:
             text = None
             continue
         print(f"> {text!r}", flush=True)
-        if text.startswith("switch "):
+        if text == "switch":
             hook("conversation_end")
-            time.sleep(float(text.split()[1]))
+            pause()
             hook("conversation_start")
             text = None
             continue

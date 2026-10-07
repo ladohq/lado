@@ -16,9 +16,14 @@ from lado import loop, providers, runtime, state
 # LADO's timers, short: the session loop's interval and the delays before an unconfirmed
 # message is typed again, for every process a test starts (the loop, the agents' hooks and
 # lado mcp, the CLI) and for the test's own waits, which read loop.INTERVAL and
-# runtime.RETRY_DELAYS.
+# runtime.RETRY_DELAYS. The first retry delay must outlast the time from a paste to its
+# prompt-submit hook's confirmation, else the loop types a message again that the agent
+# took already, and the fake agent runs it twice: under `-n auto` that took 0.18 s at the
+# median, 0.6 s at p99 and 0.7 s at most (2026-10-07, 8 workers on 4+4 cores, load up to
+# 130). 2 s is about three times that most; the later delays, after a paste that no hook
+# took, stay short.
 LOOP_INTERVAL = "0.25"
-RETRY_DELAYS = "0.5,0.5,0.5"
+RETRY_DELAYS = "2,0.5,0.5"
 
 
 @pytest.fixture(autouse=True)
@@ -67,4 +72,4 @@ def no_loop_left() -> None:
     while left := [p.stem for p in locks if loop.running(p.stem)]:
         if time.monotonic() > deadline:
             pytest.fail(f"session loops still running {timeout:g}s after the test: {left}")
-        time.sleep(0.1)
+        time.sleep(0.02)

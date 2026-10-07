@@ -514,6 +514,21 @@ Found: 2026-10-06, by the human in session lado.
 
 # P2: when convenient
 
+## The Launch window's `.chip` rule restyles the team's chips
+
+Size: S. Why here: the team's chips do not look as designed (30 px pills); no function is
+lost.
+
+`web/src/styles.css` has two global `.chip` rules: the team's (line ~1540: 30 px high,
+radius 15 px, gap 7 px, `--panel` ground) and, later in the file, the kit chips of the
+Launch and Kits forms (line ~2351: 26 px, radius 6 px, gap 2 px, `--raised` ground, used by
+`Kits.tsx`). The later one wins for every property it sets, so the team's chips in Activity
+are 26 px, square-cornered, with the dot and name 2 px apart (`w1worker` in the screenshot of
+`test_a_runs_worker_is_a_compact_chip_in_the_runs_frame_which_links_to_flows`).
+Wanted: each kind of chip its own class or a scoped selector (e.g. `.kits-box .chip`), and
+the team's chips as `docs/design/ui.md` (Activity) and the mockups draw them.
+Found: 2026-10-07, run feature/activity-team (implement).
+
 ## LADO's own processes take the agent's PYTHONPATH and other PYTHON* variables
 
 Size: S. Why here: LADO's hooks, `lado mcp` and the MCP secrets wrapper run with the agent's

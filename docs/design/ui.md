@@ -671,7 +671,14 @@ Built in the layout task (2026-10-03, schema 14):
 - **Activity**: the team above the feed, a chip per agent, the supervisor first: a status
   dot that differs in colour and shape (busy a full circle, idle a ring, waiting an orange
   diamond, starting a dashed ring, stopped a grey square), its name and role, a tooltip;
-  the chip of the terminal the panel shows is marked. The tooltip (the UI polish, the
+  the chip of the terminal the panel shows is marked. The agents are grouped (decided
+  2026-10-07, feature/activity-team), from `AgentInfo.run` only: the supervisor and its
+  own workers (no run) come first, as the server lists them; then each run that has an
+  agent, in the order its first agent is listed, as a dashed frame (`role="group"`,
+  `run <name>`) with the run's name, a link to its page in Flows, and its agents as compact
+  chips (lower, no role: the role is in the tooltip and the accessible name), all in the
+  team's one wrapping row. The frame shows no state of the run (Flows and Agents do).
+  A compact chip's accessible name, pressed state, tooltip and click are a chip's. The tooltip (the UI polish, the
   human's decision, 2026-10-03) is the UI's own (`Tooltip.tsx`, one component for the
   chips and the terminal tabs), not the browser's `title`: compact, from `AgentInfo`
   only: `name · role · provider` (the role left out when it is the name), and
@@ -757,7 +764,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).
 - **Actions by status** (`SessionControl.tsx`; task feature/session-controls, 2026-10-05:
   a Stop in the list row was too easy to hit), only in the session's head, as icons with a
-  tooltip and the same accessible name: running and `loop_down`: Stop session…; stopped:
+  tooltip and the same accessible name (Stop a square filled with the text's colour, dark
+  in the light theme and light in the dark one; decided 2026-10-07,
+  feature/activity-team): running and `loop_down`: Stop session…; stopped:
   Resume… and Forget… (in the colour of a dangerous action); `tmux_gone`: Resume… and Stop
   session… (which marks it stopped). The head has no ⋯. Before them **Copy link** (a link
   icon) copies the session page's address as the list row's Copy link does, and on the

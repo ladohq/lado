@@ -69,7 +69,7 @@ function open(path = "/sessions/lado") {
 
 test("the team shows every agent as a chip, the supervisor first, with its status, name and role", async () => {
   agents = [
-    agent("w1", "developer", "busy", { run: "feature/ui-layout", task: "Build the layout" }),
+    agent("w1", "developer", "busy", { task: "Build the layout" }),
     agent("supervisor", "supervisor", "idle"),
     agent("w2", "reviewer", "waiting"),
     agent("w3", "developer", "starting"),
@@ -112,6 +112,43 @@ test("a chip's tooltip: name · role · provider, and its flow run on a second l
   };
   expect(await tip("w1")).toEqual(["w1 · developer · kilo", "flow feature/ui-polish"]); // no task, no status
   expect(await tip("supervisor")).toEqual(["supervisor · claude"]); // the role is its name
+});
+
+test("a run's agents are compact chips in a frame named by the run, a link to its page in Flows", async () => {
+  agents = [
+    agent("dev", "developer", "busy", { run: "feature/x" }),
+    agent("supervisor", "supervisor", "idle"),
+    agent("w1", "researcher", "idle"),
+    agent("rev", "reviewer", "waiting", { run: "feature/x" }),
+    agent("dev-2", "developer", "starting", { run: "fix/y" }),
+  ];
+  open();
+  const team = await screen.findByRole("group", { name: "Team" });
+  await within(team).findAllByRole("button");
+  const frames = within(team).getAllByRole("group");
+  expect(frames.map((frame) => frame.getAttribute("aria-label"))).toEqual(["run feature/x", "run fix/y"]);
+  const [x, y] = frames;
+  const link = within(x).getByRole("link", { name: "feature/x" });
+  expect(link.getAttribute("href")).toBe(`/sessions/lado/flows/${encodeURIComponent("feature/x")}`);
+  expect(x.textContent).toBe("feature/xdevrev"); // no state of the run, no roles
+  const inX = within(x).getAllByRole("button");
+  expect(inX.map((chip) => chip.getAttribute("aria-label"))).toEqual(["dev, developer, busy", "rev, reviewer, waiting"]);
+  expect(inX.every((chip) => chip.classList.contains("chip-compact"))).toBe(true);
+  expect(within(y).getAllByRole("button").map((chip) => chip.getAttribute("aria-label"))).toEqual([
+    "dev-2, developer, starting",
+  ]);
+  // The supervisor and its own workers: full chips first, outside every frame.
+  const chips = within(team).getAllByRole("button");
+  expect(chips.slice(0, 2).map((chip) => chip.getAttribute("aria-label"))).toEqual([
+    "supervisor, supervisor, idle",
+    "w1, researcher, idle",
+  ]);
+  expect(chips.slice(0, 2).some((chip) => chip.closest(".team-run") !== null)).toBe(false);
+  expect(within(chips[1]).getByText("researcher")).toBeTruthy();
+  // A chip in a frame opens its agent's terminal, as any chip.
+  fireEvent.click(inX[1]);
+  expect(inX[1].getAttribute("aria-pressed")).toBe("true");
+  expect(chips[0].getAttribute("aria-pressed")).toBe("false");
 });
 
 test("a chip follows its agent's changes", async () => {

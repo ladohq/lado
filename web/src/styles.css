@@ -1568,6 +1568,37 @@ h3 {
   color: var(--muted);
 }
 
+/* A flow run's agents: a dashed frame, the run's name (a link to its page in Flows), then
+   its agents as compact chips, in the team's row. */
+.team-run {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 3px 2px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+}
+
+.team-run-name {
+  color: var(--action);
+  font: 12px var(--mono);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.team-run-name:hover {
+  text-decoration: underline;
+}
+
+.chip.chip-compact {
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
+}
+
 /* An agent's status: colour and shape, so it reads without colour too. busy: a full
    circle; idle: a ring; waiting (for the human): an orange diamond; starting: a dashed
    ring; stopped: a small grey square. */

@@ -4,13 +4,14 @@ session under Needs you, from lado.db's journal to the page."""
 
 import json
 import re
+import uuid
 
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
-from lado import runtime, state
+from lado import runs, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -81,6 +82,64 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     )
     panel.get_by_role("tab", name="w1").click()
     expect(view.get_by_role("status")).to_have_text("live")
+
+
+BUILD = """\
+name: build
+description: a worker builds it
+start: build
+states:
+  build: {agent: worker, do: sleep 0, outcomes: {done: end}}
+  end: {end: true}
+"""
+
+
+def test_a_runs_worker_is_a_compact_chip_in_the_runs_frame_which_links_to_flows(
+    page: Page, server, repo, shot
+):
+    kit = repo / ".lado" / "kits" / "uibuild"
+    (kit / "flows").mkdir(parents=True, exist_ok=True)
+    (kit / "kit.yaml").write_text("name: uibuild\nversion: 1.0.0\n")
+    (kit / "flows" / "build.yaml").write_text(BUILD)
+    session = f"ui-{uuid.uuid4().hex[:6]}"
+    runtime.start_session(str(repo), session, None, "fake", ["default", "uibuild"])
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
+    )
+    runtime.spawn_worker(session, "Look around", name="w1")
+    runs.start(session, "build", "Add a login page", name="x")
+    runs.spawn_worker(session, "build/x", name="dev")
+    for name in ("w1", "dev"):
+        agent_helpers.wait_for(
+            lambda name=name: state.get_agent(session, name).status == state.IDLE,
+            f"{name} idle",
+            session,
+        )
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    team = page.get_by_role("group", name="Team")
+    expect(team.get_by_role("button")).to_have_count(3)
+    expect(team.get_by_role("button").first).to_have_accessible_name("supervisor, supervisor, idle")
+    expect(team.get_by_role("button").nth(1)).to_have_accessible_name("w1, worker, idle")
+    frame = team.get_by_role("group", name="run build/x")
+    chip = frame.get_by_role("button")
+    expect(chip).to_have_accessible_name("dev, worker, idle")
+    expect(frame).to_have_text("build/xdev")  # no state, no role
+    shot(page, "team")
+    plain = team.get_by_role("button").first.bounding_box()
+    compact = chip.bounding_box()
+    assert compact["height"] < plain["height"]
+    # In the team's own wrapping row, after the supervisor's chips.
+    assert frame.evaluate("e => e.parentElement.getAttribute('aria-label')") == "Team"
+    assert frame.bounding_box()["y"] >= plain["y"]
+
+    chip.click()
+    expect(chip).to_have_attribute("aria-pressed", "true")
+    panel = page.get_by_role("complementary", name="Terminals")
+    expect(panel.get_by_role("tabpanel", name="dev").get_by_role("status")).to_have_text("live")
+
+    frame.get_by_role("link", name="build/x").click()
+    expect(page).to_have_url(re.compile(f"/sessions/{session}/flows/build%2Fx$"))
 
 
 def test_the_panel_collapses_to_a_strip_and_opens_no_terminal_until_it_is_opened(

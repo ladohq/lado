@@ -137,10 +137,11 @@ export const ChevronIcon = () => (
   </Icon>
 );
 
-// A session's actions in its head: Stop (a square), Resume (a triangle), Forget (a bin).
+// A session's actions in its head: Stop (a square filled with the text's colour, no stroke
+// around it), Resume (a triangle), Forget (a bin).
 export const StopIcon = () => (
   <Icon>
-    <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />
+    <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />
   </Icon>
 );
 

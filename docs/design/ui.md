@@ -675,7 +675,9 @@ Built in the chat task (2026-10-03):
   avatar column, seen on hover and focus, always in a column of 520 px or less) when the
   row above is a message or question of the same sender to the same recipient, less than
   5 minutes before it; a day divider, a run event, a gate or the human's answer to a gate
-  between ends a group. One pure function, `feedRows` in `Chat.tsx`, also puts a **day
+  between ends a group. The human's reply to a question stands alone, never continuing a
+  group nor continued: an answer's head says which question it answers, a dismissal is a
+  line. One pure function, `feedRows` in `Chat.tsx`, also puts a **day
   divider** (a line with the day's name, `dayName`) between entries of different local
   days. "Start of session …" stays on top.
 - **A question**: open, an orange card (a 4 px band on its left) "Question #N · waits for

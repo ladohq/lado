@@ -289,6 +289,22 @@ test("a question further from its answer says the choice, or leads to the own an
   expect(scrolled.mock.contexts).toEqual([answers[0]]);
 });
 
+test("an answer to a question never continues a group: its head says which question it answers", async () => {
+  serve(
+    [
+      question(10, { question_state: "answered", answered_by: 13 }),
+      question(11, { question_state: "answered", answered_by: 14 }),
+      message(12, "human", "w1", "one more thing"),
+      message(13, "human", "w1", "Answer to #10: A", { reply_to: 10, choice: "A" }),
+      message(14, "human", "w1", "Answer to #11: B", { reply_to: 11, choice: "B" }),
+      message(15, "human", "w1", "thanks"),
+    ].map((one, i) => ({ ...one, created_at: `2026-10-03T12:00:0${i}.000Z` })),
+  );
+  open();
+  const rows = await within(await chat()).findAllByRole("article", { name: "Message from you" });
+  expect(rows.map((one) => head(one)[1])).toEqual(["→ w1", "→ w1 · answer to #10", "→ w1 · answer to #11", "→ w1"]);
+});
+
 test("an own answer of more lines shows its whole text once", async () => {
   serve([
     question(5, { question_state: "answered", answered_by: 6 }),

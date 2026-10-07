@@ -37,8 +37,8 @@ const gate = (id: number, at: Date): Entry => ({ at: at.getTime(), gate: { id, c
 const at = (hour: number, minute: number, second = 0, date = 4) => new Date(2026, 9, date, hour, minute, second);
 
 // Each row as a word: a message's id with `+` when it continues a group, `day`, `events`, `gate`.
-const shape = (list: Entry[], quiet?: (one: MessageInfo) => boolean) =>
-  feedRows(list, quiet).map((row) =>
+const shape = (list: Entry[], alone?: (one: MessageInfo) => boolean) =>
+  feedRows(list, alone).map((row) =>
     "day" in row
       ? "day"
       : "events" in row
@@ -99,7 +99,7 @@ test("a run event or a gate between two messages ends the group; consecutive eve
   expect(shape(list)).toEqual(["1", "events 2", "2", "gate", "3"]);
 });
 
-test("a quiet message (a dismissal) neither continues a group nor is continued", () => {
+test("a message that stands alone (the human's reply to a question) neither continues a group nor is continued", () => {
   const list = [
     message(1, "human", "w1", at(10, 0)),
     message(2, "human", "w1", at(10, 1), { reply_to: 9 }),

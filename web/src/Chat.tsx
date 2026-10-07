@@ -93,9 +93,10 @@ const parties = (message: MessageInfo) => `${message.from}\n${message.to}`;
 // The entries as rows: a divider between entries of different local days, consecutive run
 // events in one list, and a message continues the group above it (its row has no head) when
 // the row above is a message of the same sender to the same recipient less than GROUP_GAP
-// before, neither of them `quiet` (a line of its own: a dismissal). So a divider, a run
-// event, a gate or the human's answer to a gate between ends a group.
-export function feedRows(list: Entry[], quiet: (message: MessageInfo) => boolean = () => false): FeedItem[] {
+// before, neither of them `alone` (the human's reply to a question: an answer, whose head
+// names the question, or a dismissal's line). So a divider, a run event, a gate or the
+// human's answer to a gate or a question between ends a group.
+export function feedRows(list: Entry[], alone: (message: MessageInfo) => boolean = () => false): FeedItem[] {
   const out: FeedItem[] = [];
   let previous: Entry | undefined;
   for (const entry of list) {
@@ -109,8 +110,8 @@ export function feedRows(list: Entry[], quiet: (message: MessageInfo) => boolean
         previous !== undefined &&
         entry.at - previous.at < GROUP_GAP &&
         parties(last.message) === parties(message) &&
-        !quiet(last.message) &&
-        !quiet(message);
+        !alone(last.message) &&
+        !alone(message);
       out.push({ message, continued });
     } else if ("gate" in entry) out.push({ gate: entry.gate });
     else if ("answered" in entry) out.push({ answered: entry.answered });
@@ -328,11 +329,9 @@ function Rows({
   for (const one of messages) {
     if (one.from === HUMAN && one.reply_to !== null) replies.set(one.id, replyOf(one, byId.get(one.reply_to)));
   }
-  const quiet = (one: MessageInfo) => {
-    const reply = replies.get(one.id);
-    return reply !== undefined && "dismissed" in reply;
-  };
-  const rows = feedRows(entries, quiet);
+  // A reply stands alone: an answer's head says which question it answers, a dismissal is
+  // a line of its own.
+  const rows = feedRows(entries, (one) => replies.has(one.id));
   return rows.map((row, i) => {
     if ("day" in row) return <DayDivider key={`day-${row.day}`} at={row.day} />;
     if ("events" in row) return <RunEvents key={`events-${row.events[0].id}`} session={session} events={row.events} />;

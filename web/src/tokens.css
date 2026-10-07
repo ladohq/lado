@@ -32,7 +32,7 @@
   --avatar-5: light-dark(#0e7490, #5cc4e0);
   --avatar-6: light-dark(#6b6b1f, #c8c56a);
   --on-avatar: light-dark(#ffffff, #111317);
-  --shadow:light-dark(#16181d1f, #0000008c);
+  --shadow: light-dark(#16181d1f, #0000008c);
   /* An agent's terminal: dark in both themes, as the CLIs' own colours expect. */
   --term-ground: light-dark(#1b1e24, #0d0f13);
   --term-ink: light-dark(#e8eaee, #e1e4e9);

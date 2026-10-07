@@ -50,6 +50,12 @@ on one disk. Artifacts give it one: a name in a session, kept by LADO and shown 
   that is not in the agent's scope is not found, and the error says which full name was
   looked up.
 - A worker of a run cannot address the session's scope in this version (no real use yet).
+- Reading and writing are different rights (the human's decision, 2026-10-07). Any agent
+  reads any artifact of its session by its full name. A worker of a run writes only to its
+  run's scope, a worker of no run only to the session's, the supervisor to the session's
+  and to any open run's; nobody writes to a run that ended or was cancelled. A refusal names
+  the scope the agent may write to. Why: a flow's `produces` (Flows) must not count another
+  agent's write, and a right is easier to widen later than to narrow.
 
 ## Storage behind one interface
 
@@ -82,8 +88,18 @@ setting to choose it (only what is used).
 
 - Metadata in `lado.db`: tables `artifacts` (id, session, scope, name, title, created_at,
   created_by; unique `(session, scope, name)`, scope `''` for the session's) and
-  `artifact_records` (id, artifact, hash, size, media_type, author, run, state, visit,
-  summary, created_at). Schema 21. Both are journaled (`changes`), so the UI's feed sees them.
+  `artifact_records` (id, artifact, session, seq, hash, size, media_type, author, run,
+  state, visit, summary, created_at; unique `(artifact, seq)`, the latest record has the
+  highest `seq`; the session is the artifact's, kept with the record as every journaled
+  table keeps its own). Schema 21. Both are journaled (`changes`), so the UI's feed sees
+  them. Their SQL is in `state.py`, as all of LADO's; only `artifacts_local.py` calls it.
+- LADO's own table `attachments` (message or note, position, artifact, record) keeps the
+  store's ids as opaque values, with no foreign key to the store's tables; it goes with its
+  message or note. Not journaled in part 1 (part 2 decides).
+- No foreign key from `artifacts` to `sessions`: `lado forget` calls the store's
+  `remove_session` before it deletes the session's rows, as any backend needs it, so a
+  forget that fails in between can be run again and a new session of the same name never
+  sees the old one's artifacts.
 - Content in files, by hash: `LADO_HOME/artifacts/<first two hex>/<sha256>`, written to a
   temporary file in the same folder, fsynced and renamed, then the record row is written.
   Equal content is stored once: a writer that finds the file there sets its modification
@@ -110,17 +126,22 @@ installation, since a session's name is unique only in its own `LADO_HOME`. Agen
 MCP tools for every agent (`mcp_server.py`), so every provider has them:
 
 - `write_artifact(name, content | file, media_type?, summary?, title?)`: exactly one of
-  `content` (text) or `file` (a path relative to the agent's working folder, or absolute).
-  The file is read by the agent's own `lado mcp` process, which always runs on the agent's
-  machine, so the path is only how the bytes get in: it is never kept and never shown.
-  `media_type` defaults to the file's extension, else `text/markdown` for content. Returns
-  the full name, `created` or `unchanged`, size and media type.
+  `content` (text) or `file` (a path relative to the folder LADO started the agent in, its
+  worktree or the supervisor's repo, `agents.cwd`; or absolute). The file is read by the
+  agent's own `lado mcp` process, which always runs on the agent's machine, so the path is
+  only how the bytes get in: it is never kept and never shown. `media_type` is the one
+  given, else by the file's extension, else by the name's, else `text/markdown` for content
+  and `application/octet-stream` for a file; extensions map by one table in `artifacts.py`
+  (`EXTENSIONS`, no system `mimetypes`), where code and text are `text/*`. Returns `{name`
+  (full), `status` (`created` | `unchanged`), `size, media_type}`.
 - `read_artifact(name, from_line?, to_line?)`: a text artifact's latest content (media type
-  `text/*`, `application/json`, `image/svg+xml`), at most 100 000 characters, a line range
-  for a longer one; the result says the total lines when it is cut. A binary artifact gives
-  its metadata and says it cannot be read as text.
-- `list_artifacts(run?)`: the agent's scope (or a run's) with name, title, media type, size,
-  author, time and the latest summary.
+  `text/*`, `application/json`, `image/svg+xml`), UTF-8 with invalid bytes replaced, at
+  most 100 000 characters of whole lines (one longer line is cut), a line range for a
+  longer one: `{name, media_type, size, lines` (the total), `from_line, to_line, content,
+  cut}`. A binary artifact gives `{name, media_type, size, binary: true, note: "cannot be
+  read as text"}`.
+- `list_artifacts(run?)`: the scope a bare name means for the agent, or `run`'s: `{name`
+  (full), `title, media_type, size, author, time, summary}` each, as of its latest record.
 
 Limits: 25 MB per record; the limits above for names, titles and summaries; a write over a
 limit is refused with the limit in the error.
@@ -132,17 +153,27 @@ limit is refused with the limit in the error.
   that record (table `attachments`: message or note, artifact, record). A name not found
   refuses the whole call.
 - The recipient's line says how many are attached: `[from <x>] <summary> (#<id>, <n> lines,
-  <k> artifacts: call read_messages)`. `read_messages` gives each attachment's full name,
-  title, media type and whether the artifact's content changed since (its latest record's
-  hash differs from the attached one's).
+  <k> artifacts: call read_messages)`, or `(#<id>, <k> artifacts: call read_messages)` for
+  a message with no body. A message with artifacts and no body is one to read like one with
+  a body (`state.TO_READ`, the one condition): `read_messages` returns it and marks it
+  read, and `lado stop` and `finish_worker` drop it unread and count it. `read_messages`
+  gives each attachment's full name, title, media type, size and whether the artifact's
+  content `changed` since (its latest record's hash differs from the attached one's).
+- A flow step's text names the artifacts of a needed note and of the previous step's note
+  on a line below it, `Artifacts: <full name>[ (changed since)], ...`; `lado answer` prints
+  the same line under the note that led to the gate.
+- The human attaches nothing in this version (`write_as_human` takes no artifacts).
 - What the human approved at a gate is the record attached to the note before it, so a
   later rewrite of the artifact never changes what the gate showed.
 
 ## The human's side
 
-- CLI: `lado artifacts <session> [--run RUN]` lists them; `lado artifacts <session> show
-  <full-name>` prints a text artifact; `lado artifacts <session> get <full-name> [-o FILE]`
-  writes its bytes.
+- CLI, the verb first as in `lado kits`, also for a stopped session: `lado artifacts list
+  <session> [--run RUN]` lists them (full name, media type, size, author, time, title);
+  `lado artifacts show <session> <full-name>` prints a text artifact (a binary one is
+  refused with the `get` that writes it); `lado artifacts get <session> <full-name> [-o
+  FILE]` writes its bytes, to stdout without `-o` (refused for a binary artifact when stdout
+  is a terminal). `lado artifacts` alone prints its help.
 - API (under `/api`, behind the same token and `Guard` as the rest): the session's
   artifacts, one artifact with its latest record, and a record's content
   (`Content-Type` from its media type, a sanitized `Content-Disposition` name, inline for

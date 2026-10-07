@@ -207,10 +207,11 @@ limit is refused with the limit in the error.
   id, full name, name, scope, title, media type, size and the attached record's `hash`). The
   UI says an attachment changed since when its hash differs from its artifact's latest
   (`web/src/artifacts.ts`, `changed`, the UI's one comparison; `unknown` while the
-  session's artifacts are not loaded); `read_messages` gets `changed` from the core. A
-  gate's needed note that is the note before it says so (`NeededNote.is_gate_note`, from
-  `runs.gate_notes`), so the UI and `lado answer` show it once. The feed sends an
-  artifact's `ArtifactInfo` as its item, also when a new record is written.
+  session's artifacts are not loaded); `read_messages` gets `changed` from the core. An
+  open gate's `reads` are the full names of the artifacts it reads but those its note
+  carries (`runs.gate_reads`), names only: the UI takes each one's latest record from the
+  feed's artifacts (Flows, below). The feed sends an artifact's `ArtifactInfo` as its item,
+  also when a new record is written.
 - UI (docs/design/ui.md, Artifacts): the session's Artifacts tab is a table of its
   artifacts, newest first, with filters by scope and type and a search; a row opens the
   artifact's page (`/sessions/<name>/artifacts/<id>`, `?record=<id>` for a record that
@@ -248,8 +249,8 @@ bug and is not hidden. The author is not checked: a record of any agent that may
 the run's scope counts (the run's workers, the supervisor; Names and scopes).
 
 The counted records are attached to the step's note by themselves, first, then the
-`artifacts` the agent named, each artifact once; so the gate after the step shows them and
-a step that `needs` that state lists them. The step's text names them as its agent writes
+`artifacts` the agent named, each artifact once; so the gate after the step and the next
+step show them with the note. The step's text names them as its agent writes
 them (`This step must write: ...`); `flow_status` names them by their full names, which
 work for any agent. `lado flow-set`, a gate's answer and a loop limit's `continue` report
 no step and check nothing; since every entry into a state counts a visit, a record of an
@@ -258,6 +259,39 @@ earlier visit never counts after them.
 Gate and end states take no `produces`. `flows.parse` checks the names' grammar
 (`flows.ARTIFACT_NAME`, which `artifacts.NAME` is) and that each is named once: a flow
 that breaks it does not load.
+
+A step's inputs are artifacts too, in the same names (the human's decision, 2026-10-08): a
+work or gate state may name the run's artifacts it reads, `reads: [design]`. A step's text
+gives, after the previous step's note, a line per name with the artifact's latest record
+as the step is told (its name as the agent writes it, title and summary, and
+`read_artifact`; `no record yet`), never its content; a record attached to the previous
+step's note is named only there. On a later visit of its state, a step is shown the records
+of its own `produces` so far; naming one of its own `produces` in `reads` does not load. A
+gate shows the human the note that led to it in full with its artifacts, then a line (a
+chip in the UI) per artifact it reads, except those that note carries. The gate shows the
+latest record in the store, also one written while it is open (writing to the run's scope
+is allowed while it waits): that is what the human approves. In the UI a write shows at
+once (the feed's artifacts), and the note's chip of an artifact written since says
+`changed since`; `lado answer` reads the records at each show. Each name of `reads` must
+be one some state of the flow produces, and `lado kits check` fails on one that no state
+before the reading one produces (`flows.lint`). That is a rule of what is used today: once
+a run has artifacts no step writes (a run's addendum, a task's context from a tracker),
+`reads` takes them as well.
+
+`needs` (LADO 0.26 and older: states whose latest notes a step got) is gone: a flow with it
+does not load, with the way out (`needs was replaced by reads (artifact names) in LADO
+0.27`); an open run whose snapshot has it shows that as its problem and only `flow_cancel`
+moves it; schema 23 drops it from the snapshots of ended and cancelled runs.
+
+Artifact or note (the human's decision, 2026-10-08): an artifact is a step's result, a
+document read later (a design, a review, a report); it is always there, so its state names
+it in `produces`, and no step writes an empty one just in case. A note is the short message
+about the step to whoever acts next: the verdict, the questions for the human, what changed;
+with no questions the note says so or says nothing. Questions are a note, not an artifact.
+What a step writes only sometimes (a mockup, a log) it attaches with `flow_advance`'s
+`artifacts` when it is there; `produces` names only what is required. A human's comment at
+a gate reaches the next step only, as its note; instructions that last a run wait for a
+run's addendum (BACKLOG.md).
 
 ## Lifecycle
 
@@ -279,13 +313,17 @@ that breaks it does not load.
 2. **UI**: the API, the feed, the Artifacts tab and its viewer, attachments on messages,
    notes and gates (with the gate keeping the id of the note before it, BACKLOG.md "A gate
    shows a needed note twice ..."), its update of docs/design/ui.md. Starts from mockups.
-3. **Flows**: `produces`. An open run's task cannot be amended (BACKLOG.md): not here, but
-   a run of its own right after part 4, an addendum `<run>/addendum` the human approves.
-4. **Kit**: the lado-dev kit's flows write their design, report and review as artifacts
-   (in the kit's repository).
+3. **Flows**: `produces`, then (run feature/flow-inputs, schema 23) `reads` in place of
+   `needs` and the rule of artifact or note (Flows). An open run's task cannot be amended
+   (BACKLOG.md): not here, but a run of its own right after part 4, an addendum
+   `<run>/addendum` the human approves.
+4. **Kit**: the lado-dev and kit-builder kits' flows write their design, report and review
+   as artifacts and read them with `reads` (in the kits' repositories), after
+   feature/flow-inputs merges and before the release of LADO 0.27.
 
 Parts 2 and 3 may start before part 1 merges, against this contract, but merge after it.
-Only one part at a time changes the schema: part 1 made schema 21, part 2 schema 22.
+Only one part at a time changes the schema: part 1 made schema 21, part 2 schema 22, part 3
+schema 23.
 
 ## Left out
 

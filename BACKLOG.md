@@ -765,17 +765,17 @@ The start's answer (`Started`) carries `lead` and `warnings` since feature/trust
 the session's page shows the warnings after the start, the lead nowhere yet.
 Found: 2026-10-04, design of feature/without-at-kit.
 
-## `lado answer` without a gate stops at a gate whose run's flow cannot be read
+## The human cannot cancel a run whose flow cannot be read
 
-Size: S. Why here: a rare case (a broken snapshot).
+Size: S. Why here: after the upgrade to 0.27 an open run of a flow with `needs` is such a run.
 
-`lado answer` (no arguments, or a session) and the gate popup show each open gate with the
-notes it needs (`cli._choose` → `runs.gate_notes` → `runs.flow_of`). A gate of a run whose
-flow snapshot cannot be read raises `runs.SnapshotError`: the command ends with that error,
-and the other open gates are not asked about.
-Wanted: such a gate is shown with its problem (it can only be left open; the run is
-cancelled with `flow_cancel`) and `lado answer` goes on with the other gates.
-Found: 2026-10-04, fix/snapshot-core (implement).
+A run whose flow snapshot cannot be read (`runs.SnapshotError`; also an open run of LADO
+0.26's `needs` after schema 23) moves only by the supervisor's `flow_cancel`: `lado
+flow-set` and `lado answer` refuse, and the UI has no cancel. The human has to ask the
+supervisor, which may itself be down.
+Wanted: the human cancels a run from the CLI (`lado cancel <session> <run>`) or the run's
+page in the UI, through the same core function as `flow_cancel`.
+Found: 2026-10-08, feature/flow-inputs (design, Q8).
 
 ## Finishing a worker in a stopped session says "no worker"
 
@@ -802,19 +802,16 @@ Found: 2026-10-04, feature/kit-manifest-v2 (implement).
 
 ## A gate's answer copies the note before the gate into its own
 
-Size: M. Why here: lado-dev is not affected (its design_ok follows architecture).
+Size: S. Why here: since `reads` replaced `needs` (feature/flow-inputs) nothing shows it
+twice; the copy is only text where a reference would do.
 
-The gate's half is done (run feature/artifacts-ui, 2026-10-07): a gate keeps the id of the
-note that led to it (`gates.note_id`, schema 22), and `lado answer` and the gate's card show
-a needed note that is that note once (`NeededNote.is_gate_note`).
-Left: the answer's note copies the note before the gate into its body ("Note before the
-gate: ..."), so a next step that needs that state gets it twice (the answer is its own
-notes record, so the id comparison does not catch it).
+A gate keeps the id of the note that led to it (`gates.note_id`, schema 22). The answer's
+note still copies that note into its body ("Note before the gate: ..."), as text: the next
+step gets it without the note's attachments.
 Wanted: the answer keeps a reference to the note before the gate (the gate's `note_id`)
-instead of a copy. Also flows.py's docstring example (`design_ok: needs: [design]` right
-after design) shows exactly this duplicating pattern; pick an example where the gate needs
-an earlier state.
-Found: 2026-10-02, run fix/gate-needs and its review.
+instead of a copy, and the next step is shown that note with its artifacts.
+Found: 2026-10-02, run fix/gate-needs and its review; narrowed 2026-10-08,
+feature/flow-inputs.
 
 ## Two starts of a session whose tmux server died can stop each other
 

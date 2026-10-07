@@ -205,7 +205,7 @@ Decided in the live updates task (2026-10-03).
   first, so that is once per session in a batch. A comment line every 15 s keeps a quiet
   stream open. An item that cannot be built in full is sent without what failed, with the
   problem named (`problem` of a run whose flow snapshot cannot be read, `runs.SnapshotError`:
-  no `states`; of its open gate: no `needs`), and the error is logged once per message, so
+  no `states`; of its open gate: no `reads`), and the error is logged once per message, so
   one bad row never stops the feed or a list endpoint.
 - **The start of a stream**: the position is the `Last-Event-ID` header (the browser's own
   reconnect) or else `?after=N`. Without a position, or with one the journal no longer has
@@ -580,15 +580,20 @@ reaches the feed. LADO takes the model and builds it on what it has:
 - **Flow gates** are cards in the same feed, answered through `runs.answer` (the flow engine
   opens them, an agent cannot forget to). Built (Gates task, gates in the chat): the server
   lists a session's gates (`GET /api/sessions/{name}/gates`, `GateInfo`: the question, the
-  options, the note that led to the gate and, only while it is open, the notes its state
-  needs as they are now, `NeededNote {state, note}`) and takes the human's answer
+  options, the note that led to the gate with its attachments and, only while it is open,
+  the full names of the artifacts its state reads but those the note carries, `reads`) and
+  takes the human's answer
   (`POST …/gates/{id}/answer {option, comment}`, guarded like the composer, through
   `runs.answer_text`, the one text `lado answer` prints too; what the core refuses is 400
   with its reason). An **open gate** is a row of the feed where it opened (the flag
   avatar, "Gate #id", muted "run · state", the time; Look of the feed below) with its card,
   which has no head of its own: the question, the note before the gate (its summary in bold, its body
-  open, more than 20 lines behind Show more), a line per needed note ("Note from design:
-  <summary>", its body on a click, or "no note yet"), an optional comment for the next
+  open, more than 20 lines behind Show more) with its chips, then under a muted "It reads"
+  a line per artifact the gate reads (a chip that opens its latest record, and its "title —
+  summary"; "<name>: no record yet"; the name alone while the session's artifacts are not
+  loaded): the latest record comes from the feed's artifacts, so a write while the gate is
+  open shows at once, and the note's chip of an artifact written since says "changed
+  since" (docs/design/artifacts.md, Flows), an optional comment for the next
   step, and a button per option (Approve / Reject, a choice gate's own options, Continue /
   Cancel run at a loop limit; the first one primary). The buttons are off while the answer
   is sent and in a stopped session (it says to resume it); a refusal shows on the card.
@@ -597,7 +602,7 @@ reaches the feed. LADO takes the model and builds it on what it has:
   column, as the run events: "Gate #id · run · state: <answer> by <who>" (one title,
   `gateTitle`, also on a run's page in Flows; also `overridden` by `lado flow-set`,
   `cancelled`), its comment and time; a click shows its question and note, read only,
-  without the needed notes, which are not kept as they were when it was answered. The
+  without the artifacts it read, which are not kept as they were when it was answered. The
   line stays where the gate opened, often far above the bottom; the **human's answer** is
   where it was given as one line, the run's move it made (a `flow` event of `human`), with
   the answer's comment under it (Flow events in Look of the feed; since
@@ -606,8 +611,7 @@ reaches the feed. LADO takes the model and builds it on what it has:
   to a new message. While a gate is open, a
   hint over the composer (an orange band, "Gate #id waits: answer on its card") scrolls to
   its card: the
-  composer does not answer gates. Known limit (BACKLOG): when a gate state needs the state
-  whose note led to it, that note shows twice.
+  composer does not answer gates.
 - **A forgotten reply is caught, not hoped for**: when the supervisor ends a turn that a
   human message started and wrote nothing to `human`, the feed says "replied only in its
   terminal" (the terminal is beside the feed).
@@ -1175,7 +1179,8 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     orange, Ended green, Cancelled grey); flow · kit, started, branch; the task's first
     line cut to one line with **more** for the whole text; then every state of the flow
     as a chip in the order the flow declares them: its name (◇ at a gate), its visits
-    (`2/3` with `max_visits`, else `×2`), who acts in its title ("you" at a gate); the
+    (`2/3` with `max_visits`, else `×2`), in its title who acts ("you" at a gate), then
+    `reads <names>` and `writes <names>` of its `reads` and `produces`; the
     current state blue, orange while the run waits for the human, entered ones solid, the
     others dashed. No ways back. A run whose flow cannot be read (its `problem`) shows
     "Flow cannot be read: <problem>" there instead, its lines kept (`.problem` is
@@ -1183,7 +1188,7 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   - **Now**, a card: an active run `Now · <how long>`, who acts as the core says it (the
     UI does not parse it; a link to the agent while it lives) · state · `visit 2 of 3`; a
     waiting run, orange, `Waits for you · <how long>` and its open gate, the chat's `Gate`
-    in its compact form (title, question, comment, buttons; no note, no needs, which are
+    in its compact form (title, question, comment, buttons; no note, no reads, which are
     in the history), answered in place through `answerGate` (disabled while the session
     is stopped), or the run's `reason` without a gate; an ended or cancelled run `Ended ·
     <time>` (green) or `Cancelled · <time>`, the end's or cancel's `detail` and how long
@@ -1202,8 +1207,7 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     ("started the run", with its detail), the end ("ended the run") and a cancel
     ("cancelled by <actor>") are one line with a blue dot, never opened; the end's or
     cancel's detail is in Now only. What is open lives in the page and starts afresh with
-    another run: at first the latest note with a body, and while a gate is open the notes
-    it needs (by the ids the core gives, `gate.needs`); a note with a body that the feed
+    another run: at first the latest note with a body; a note with a body that the feed
     brings later opens too. All of it follows the feed: an answer anywhere moves the page
     on without a reload.
 - `/sessions/<name>/flows` without a run, in a wide column, opens the first run that waits
@@ -1279,10 +1283,9 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   the focus goes back to the chip; Back closes it too (the chip's view is a step of the
   history). "Open in Artifacts tab" leads to the artifact's page with that record. Open
   latest in it shows the latest record in the same panel.
-- **A gate's note** (`GateCard.tsx`): its chips under the note before the gate; a needed
-  note that is that note (`NeededNote.is_gate_note`, from the core) is shown once, as the
-  gate's note, labelled "Note from <state> (also the note before the gate)", and is left
-  out of the gate's list of needed notes.
+- **A gate's note** (`GateCard.tsx`): its chips under the note before the gate, then the
+  artifacts the gate reads; an artifact the note carries is left out of those
+  (`runs.gate_reads`), so each shows once.
 - Not in it: syntax highlighting, a record's history and a diff, uploads by the human,
   attachments in the composer, deleting an artifact, server-side filters and pages.
 

@@ -54,13 +54,14 @@ MCP servers and flows. Kits can be combined and parts switched on or off.
 ## Stage 5: Flows
 
 A flow is optional and comes with a kit: steps, who does them, allowed outcomes, human gates,
-and which earlier notes a step needs. LADO enforces the rules; how to do each step is up to the
-agent.
+and which artifacts of the run a step reads. LADO enforces the rules; how to do each step is up
+to the agent.
 
 - [x] Flow engine with steps, outcomes and human gates
 - [x] Gates answered by the human with `lado answer` or in a tmux popup
-- [x] A step gets the latest notes of the earlier states it names (`needs`), so roles do not
-  copy a design forward; `lado flow-set` keeps them
+- [x] A step is shown the latest records of the run's artifacts it names (`reads`, in the
+  names its states `produce`; until 0.27 `needs`, the earlier states' notes), so roles do
+  not copy a design forward; `lado flow-set` keeps them
 
 ## Stage 6: Develop LADO inside LADO
 

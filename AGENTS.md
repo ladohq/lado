@@ -306,15 +306,17 @@ fixes and docs only: no new feature, no API or schema change.
     installed kits added from one (`lado marketplaces remove` names them).
     `MarketplaceError`; it does not import `kits`.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
-    a work or gate state's optional `needs` lists the states whose latest notes its step
-    gets or the human sees at the gate; a work state's optional `produces` the artifacts
-    its step must write, checked against `ARTIFACT_NAME`, the one pattern of an artifact's
-    name, which `artifacts.NAME` is)
-    and its validator (`parse`), and `lint`, the graph rules a flow loads with but should
-    not break: a state no end can be reached from, a cycle with no `max_visits` state and
-    no gate on it, `needs` naming a state that never comes before (a state on a cycle may
-    need itself); only `lado kits check` fails on them (`kits.lint`), never loading a kit,
-    `lado kits add` or a run's snapshot. `runs.py`: flow runs: start (own worktree and branch, shared by the
+    a work state's optional `produces` lists the artifacts its step must write, a work or
+    gate state's optional `reads` the run's artifacts its step or the human at the gate is
+    shown, by their latest records; both checked against `ARTIFACT_NAME`, the one pattern
+    of an artifact's name, which `artifacts.NAME` is; a name in `reads` must be one some
+    state produces and not one of its own `produces`; the docstring has the rule of
+    artifact or note) and its validator (`parse`; `needs`, the states of LADO 0.26 and
+    older, is refused with `NEEDS_REPLACED`, also in a run's snapshot), and `lint`, the
+    graph rules a flow loads with but should not break: a state no end can be reached
+    from, a cycle with no `max_visits` state and no gate on it, a name in `reads` that no
+    state before the reading one produces; only `lado kits check` fails on them
+    (`kits.lint`), never loading a kit, `lado kits add` or a run's snapshot. `runs.py`: flow runs: start (own worktree and branch, shared by the
     run's workers), step messages from `lado`, `flow_advance` (refused while a `produces`
     artifact has no latest record of the state's current visit, `artifacts.produced`, by the
     name the caller writes it with; fail closed on the store's errors; the counted records
@@ -427,8 +429,11 @@ fixes and docs only: no new feature, no API or schema change.
     so only a row that has some asks for them. From schema 22 a gate keeps the note that
     led to it, `gates.note_id` (`GATES_NOTE`): `update_run` writes the note first and the
     gate after it in the same transaction; a gate's attachments are that note's
-    (`runs.gate_attachments`, `gate_artifacts`), and `runs.gate_notes` marks a needed note
-    that is it (`NeededNote.is_gate_note`), which `lado answer` and the UI show once.
+    (`runs.gate_attachments`, `gate_artifacts`), and `runs.gate_reads` leaves the artifacts
+    that note carries out of those the gate reads, so `lado answer` and the UI show each
+    once. Schema 23 changes data only (`closed_runs_without_needs`, a callable step of
+    `MIGRATIONS`): an ended or cancelled run's snapshot drops `needs`; an open run's stays
+    and shows its problem (`runs.SnapshotError`), a snapshot that is no flow's JSON too.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -464,7 +469,7 @@ fixes and docs only: no new feature, no API or schema change.
     model is built by `models.gate_info`, a run's by
     `models.run_info` (its flow from the run's snapshot), for REST and the feed; when
     `runs.flow_of` cannot read the snapshot (`runs.SnapshotError`, the only error they
-    catch), both build the item without the flow (no `states`, no `needs`) and name it in
+    catch), both build the item without the flow (no `states`, no `reads`) and name it in
     `problem`, logged once; what
     waits for the human (open gates, open questions, agents in `waiting`: the one "needs
     you") is `state.waiting_items`, only of sessions not stopped (`stopped_at IS NULL`, in
@@ -917,25 +922,31 @@ follows in the body; when a worker gets the next step, the supervisor gets one l
 
 A step's text (`runs.step_text`) has the task, the step's `do` (with `This step must
 write: ...`, the `produces` names as its agent writes them, bare for a run's worker and
-`<run>/<name>` for the lead), then for each state in its
-`needs` the latest report kept from that state (`Note from <state>: ...`, or `no note yet`),
-then the previous step's note and the outcomes. The needed notes come from the `notes`
-table, so `lado flow-set` keeps them: a run set to `implement` with `needs: [design]` gets
-the latest design note, and the flow-set reason is the previous step's note. A needed
-state whose latest report is the previous step's note itself (the same `notes` record,
-compared by id, not by text) is printed once, as `Note from <state> (also the previous
-step's note): ...`, and the separate previous-step note is left out.
+`<run>/<name>` for the lead), then the previous step's note with its artifacts, then
+`Artifacts this step reads (read each with read_artifact):`, a line per name in its `reads`
+with the artifact's latest record (`- <name>: <title> — <summary>`, named as its agent
+writes it; `no record yet`; never the content), then on a later visit of the state
+`Your artifacts so far` of its own `produces` that have a record, then the outcomes. A
+record attached to the previous step's note is named only there. The records are read when
+the step is told, so `lado flow-set` keeps them: a run set to `implement` with
+`reads: [design]` is shown the latest design, and the flow-set reason is the previous
+step's note. A human's comment at a gate reaches the next step only (its note).
 
 `lado answer <session> <gate-id|run> <option> [-m COMMENT]` answers a gate. Without the
 option it asks: with no arguments about the open gates of all sessions (a list to pick from
 when there are several), and after each answer it goes on with the open gates of that session
 until none is left or the human presses Enter on an empty line. It shows the question, the
-one-line summary of the note that led to the gate, for a gate state with `needs` one line
-per needed state (`Note from <state>: <summary>` of its latest report, or `no note yet`),
-and the numbered options; when the note has a body or the gate has `needs`, `v` shows the
-whole text in `less -R` (printed when there is no `less`): each needed note, then the note
-that led to the gate; then it asks again. The needed notes are read from the `notes` table
-when asked, not kept in the gate; a loop limit shows none. When a gate opens, LADO opens a tmux popup (`display-popup -E`, titled
+one-line summary of the note that led to the gate with its artifacts, then under
+`Artifacts it reads:` a line per artifact of the gate state's `reads` but those the note
+carries (`runs.gate_reads`: `<run>/<name>: <title> — <summary>` of its latest record, or
+`no record yet`), and the numbered options; when the note has a body or an artifact, or the
+gate reads one, `v` shows the whole text in `less -R` (printed when there is no `less`): the
+note, each of its artifacts as attached, then each artifact the gate reads as of its latest
+record (a text one's content, else its type and size); then it asks again. The records are
+read at each show, also after `v`: a write while the gate is open shows, and the human
+approves the latest. A loop limit reads none. A gate whose run's flow cannot be read is
+shown with its problem and left open (the supervisor's `flow_cancel` moves it), and
+`lado answer` goes on with the other gates. When a gate opens, LADO opens a tmux popup (`display-popup -E`, titled
 `LADO: waiting for you (session <name>)`, a rounded soft orange border around the
 terminal's own colours from tmux 3.3 on, tmux's plain border on 3.2, none before 3.2;
 `lado doctor` warns about both) running `lado answer <session> <gate-id>` on each client

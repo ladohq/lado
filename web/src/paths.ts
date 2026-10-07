@@ -23,6 +23,9 @@ export const runPath = (session: string, run: string) => `${sessionPath(session,
 export const agentPath = (session: string, agent: string) =>
   `${sessionPath(session, "agents")}/${encodeURIComponent(agent)}`;
 
+// The address's parameter of a tab's search (the tab bar's Find, Sessions.tsx: FINDS).
+export const FIND_PARAM = "find";
+
 // The address's parameter that opens an agent's terminal on its session's page.
 export const TERMINAL_PARAM = "terminal";
 

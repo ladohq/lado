@@ -2609,10 +2609,11 @@ h3 {
   }
 }
 
-/* A tab's list and page (ListPage.tsx: Flows, Agents): the list on the left, in groups as
-   the session list's, the page on the right; each scrolls by itself. In a column narrower
-   than NARROW (900 px) one of them takes the column. Orange marks only what waits for the
-   human. The page is a size container: its own layout goes by its width (@container). */
+/* A tab's list and page (ListPage.tsx: Agents): the list on the left, in groups as the
+   session list's, the page on the right; each scrolls by itself. In a column narrower than
+   NARROW (900 px) one of them takes the column. Orange marks only what waits for the
+   human. The page (.list-main, also a flow run's page) is a size container: its own layout
+   goes by its width (@container). */
 .list-page {
   display: flex;
   flex: 1;
@@ -2757,6 +2758,136 @@ h3 {
   display: inline-block;
   margin-bottom: 12px;
   font-size: 13px;
+}
+
+/* The Flows tab (Flows.tsx): the overview of its runs across the whole column, or a run's
+   page in its place; either scrolls by itself, the window does not. */
+.flows-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.runs-overview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.runs-overview ul {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.runs-overview .list-group + .list-group {
+  margin-top: 18px;
+}
+
+/* An open run's card: its name, the pill when it waits, its flow, kit and start on the
+   right; the line of what goes on now; its flow's states, the run head's chips. */
+.list-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.list-card:hover {
+  border-color: color-mix(in srgb, var(--muted) 50%, var(--line));
+}
+
+.list-card.waits {
+  border-color: color-mix(in srgb, var(--human) 35%, transparent);
+  background: var(--human-ground);
+}
+
+.list-card.waits .run-about {
+  color: var(--human);
+}
+
+.list-card .flow-states {
+  margin: 6px 0 0;
+}
+
+/* On a waiting card's orange ground the chips' lines take its border, and the state it
+   waits at stands on the panel. */
+.list-card.waits .flow-state {
+  border-color: color-mix(in srgb, var(--human) 35%, transparent);
+}
+
+.list-card.waits .flow-state + .flow-state::before {
+  background: color-mix(in srgb, var(--human) 35%, transparent);
+}
+
+.list-card.waits .flow-state.waiting {
+  border-color: var(--human);
+  background: var(--panel);
+}
+
+.list-card .problem {
+  margin: 6px 0 0;
+}
+
+.run-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.run-card-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* A tab's search at the right end of the tab bar (Sessions.tsx: Find). */
+/* The field gives way first in a narrow bar: the tabs keep their width. */
+.tab-find {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  align-self: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-bottom: 5px;
+}
+
+.tab-find .search {
+  flex: 0 1 220px;
+  width: 220px;
+  min-width: 100px;
+  height: 28px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.tab-find .icon-button {
+  flex: none;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tab-find .icon-button:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.tab-find .icon {
+  width: 16px;
+  height: 16px;
 }
 
 /* An agent's page: its head with the actions, the facts as a two-column grid, its latest

@@ -1,5 +1,6 @@
 // A tab's list and the page of the item it picks (docs/design/ui.md, Structure: List and
-// page), one component for every such tab (Flows, Agents). In a column of NARROW px and
+// page), one component for every such tab (Agents; the Flows tab has an overview of its
+// own, which shares ListGroup and filterGroups). In a column of NARROW px and
 // wider the list is on the left and the page on the right, each scrolling by itself, and an
 // address without an item goes to the tab's default one. In a narrower column (the terminals
 // open) either the list takes the column (the address without an item) or the page does,
@@ -13,7 +14,7 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router";
 
 import { dayName } from "./ChatText";
-import { GroupHead, type Tone } from "./GroupHead";
+import { GroupHead, type Fold, type Tone } from "./GroupHead";
 import { useWidth } from "./Splitter";
 
 // Narrower than this, a tab's list and page take the column in turn.
@@ -32,6 +33,7 @@ export type Group = {
   name: string;
   entries: Entry[];
   tone?: Tone; // its heading's (GroupHead): neutral by default
+  look?: "row" | "card"; // its rows': a list's narrow row (by default) or an overview's card
   heading?: boolean; // its name and count above its rows (by default)
   days?: boolean; // its rows under the local day of their `at`
   empty?: string; // what it says without rows ("No match" while searching); none: not drawn
@@ -72,13 +74,8 @@ export function ListPage({
     body = notice;
   } else if (width !== null) {
     const find = `Find ${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun}`;
-    const wanted = query.trim().toLowerCase();
-    const shown = groups.map((group) => ({
-      group,
-      entries: wanted
-        ? group.entries.filter((entry) => entry.search.some((text) => text.toLowerCase().includes(wanted)))
-        : group.entries,
-    }));
+    const wanted = query.trim();
+    const shown = filterGroups(groups, query);
     const list = (
       <div className="list-side">
         <input
@@ -137,26 +134,43 @@ export function ListPage({
   );
 }
 
+// Each group with its entries the search finds: those with a text that has the query, in
+// any case; with no query, all of them.
+export function filterGroups(groups: Group[], query: string): { group: Group; entries: Entry[] }[] {
+  const wanted = query.trim().toLowerCase();
+  return groups.map((group) => ({
+    group,
+    entries: wanted
+      ? group.entries.filter((entry) => entry.search.some((text) => text.toLowerCase().includes(wanted)))
+      : group.entries,
+  }));
+}
+
 const slug = (name: string) => name.toLowerCase().replace(/\s+/g, "-");
 
-// One group of the list: its heading (name and how many rows it has now), then its rows,
-// or its `empty` text; while the search has text, every match.
-function ListGroup({
+// One group of a list: its heading (name and how many rows it has now), then its rows, or
+// its `empty` text; while the search has text, every match. With `fold` its heading folds
+// it: folded, its body stays in the page, hidden (the heading's aria-controls); while the
+// search has text it shows open.
+export function ListGroup({
   group,
   entries,
   selected,
   searching,
+  fold,
 }: {
   group: Group;
   entries: Entry[];
   selected?: string;
   searching: boolean;
+  fold?: Omit<Fold, "controls">;
 }) {
   const [all, setAll] = useState(false);
   if (entries.length === 0 && group.empty === undefined) return null;
   const id = `list-group-${slug(group.name)}`;
   const tone = group.tone ?? "neutral";
   const className = `list-group tone-${tone}`;
+  const look = group.look === "card" ? "list-card" : "list-row";
   const at = entries.findIndex((entry) => entry.key === selected);
   let rows = entries;
   if (group.first !== undefined && !searching && !all) rows = entries.slice(0, Math.max(group.first, at + 1));
@@ -174,7 +188,7 @@ function ListGroup({
                 <li key={entry.key}>
                   <Link
                     to={entry.to}
-                    className={`list-row${entry.tone ? ` ${entry.tone}` : ""}`}
+                    className={`${look}${entry.tone ? ` ${entry.tone}` : ""}`}
                     aria-current={entry.key === selected ? "page" : undefined}
                   >
                     {entry.row}
@@ -198,10 +212,27 @@ function ListGroup({
       </section>
     );
   }
+  if (fold === undefined) {
+    return (
+      <section className={className} aria-labelledby={`${id}-name`}>
+        <GroupHead nameId={`${id}-name`} name={group.name} count={entries.length} tone={tone} />
+        {items}
+      </section>
+    );
+  }
+  const open = searching || fold.open;
   return (
     <section className={className} aria-labelledby={`${id}-name`}>
-      <GroupHead nameId={`${id}-name`} name={group.name} count={entries.length} tone={tone} />
-      {items}
+      <GroupHead
+        nameId={`${id}-name`}
+        name={group.name}
+        count={entries.length}
+        tone={tone}
+        fold={{ ...fold, open, controls: id }}
+      />
+      <div id={id} hidden={!open}>
+        {open && items}
+      </div>
     </section>
   );
 }

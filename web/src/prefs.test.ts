@@ -8,7 +8,9 @@ import {
   storedPanel,
   storeColumn,
   storedColumn,
+  storedFlowsGroups,
   storedSessionGroups,
+  storeFlowsGroups,
   storedSessionsList,
   storePanel,
   storeSessionGroups,
@@ -102,6 +104,17 @@ test("each session group is remembered open or folded by its id; Stopped is fold
   expect(storedSessionGroups()).toEqual({ "needs-you": "folded", running: "open", stopped: "open" });
   localStorage.setItem("lado.sessionGroups", JSON.stringify({ running: "folded", stopped: "sideways" }));
   expect(storedSessionGroups()).toEqual({ "needs-you": "open", running: "folded", stopped: "folded" });
+});
+
+test("the Flows tab's groups are remembered in lado.flowsGroups: Active open, History folded by default", () => {
+  expect(storedFlowsGroups()).toEqual({ active: "open", history: "folded" });
+  storeFlowsGroups({ active: "folded", history: "open" });
+  expect(JSON.parse(localStorage.getItem("lado.flowsGroups")!)).toEqual({ active: "folded", history: "open" });
+  expect(storedFlowsGroups()).toEqual({ active: "folded", history: "open" });
+  localStorage.setItem("lado.flowsGroups", JSON.stringify({ active: "sideways" }));
+  expect(storedFlowsGroups()).toEqual({ active: "open", history: "folded" });
+  localStorage.setItem("lado.flowsGroups", "not json");
+  expect(storedFlowsGroups()).toEqual({ active: "open", history: "folded" });
 });
 
 test("the older key of the stopped sessions is only where Stopped starts, until the groups are stored", () => {

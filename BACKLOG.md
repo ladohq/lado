@@ -528,6 +528,18 @@ what LADO's own install needs (e.g. `-E` with the install's paths given explicit
 test.
 Found: 2026-10-07, fix/no-cwd-imports.
 
+## One search for every tab of a session
+
+Size: M. Why here: the human's wish (2026-10-07); today only the Flows overview has a search
+in the tab bar, and Agents keeps its own search above its list.
+
+The session's tab bar has a magnifier at its right end (`Find` in Sessions.tsx), shown for
+the tabs in `FINDS`, now only the Flows overview, writing the address's `?find=`.
+Wanted: one search for Flows, Agents, Activity and Artifacts in that same place and
+parameter: each tab gets an entry in `FINDS` and reads `?find=`, and Agents' ListPage drops
+its own search field.
+Found: 2026-10-07, feature/flows-list-states (design).
+
 ## Keep a crashed agent's last output
 
 Size: M. Why here: decided with the human (feature/agent-liveness, 2026-10-06): the window of an agent that ended by itself closes as before.

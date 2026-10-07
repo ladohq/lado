@@ -1,12 +1,12 @@
 // The session's Flows tab: its runs in two groups, a run's page with its head, what goes on
 // now (its gate, answered there) and the history of its events, live from the feed.
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { clock, dayName } from "./ChatText";
+import { clock, dayName, since } from "./ChatText";
 import { FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
 import styles from "./styles.css?raw";
 
@@ -146,14 +146,31 @@ function serve({ runs = [], notes = [], events = [], gates = [], agents = [] }: 
 
 const runPath = (session: string, name: string) => `/sessions/${session}/flows/${encodeURIComponent(name)}`;
 
-function open(path: string) {
+// The address, and the browser's Back.
+function Where() {
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output aria-label="Address">{pathname + search}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Browser back
+      </button>
+    </>
+  );
+}
+
+function open(path: string | string[]) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={typeof path === "string" ? [path] : path}>
       <App />
+      <Where />
     </MemoryRouter>,
   );
 }
 
+const address = () => screen.getByRole("status", { name: "Address" }).textContent;
+const back = () => fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
 const runs = () => screen.findByRole("navigation", { name: "Flow runs" });
 const page = (name: string) => screen.findByRole("region", { name: `Run ${name}` });
 
@@ -208,26 +225,92 @@ const rowNames = (region: HTMLElement) =>
     .queryAllByRole("link")
     .map((one) => one.querySelector(".run-name")?.textContent);
 
-// The list
+// The overview
 
-test("the runs come in two groups, never folded: Active with the waiting ones first, then History by the latest end", async () => {
+const FLOWS = "/sessions/lado/flows";
+const group = (list: HTMLElement, name: string) => within(list).getByRole("region", { name });
+const fold = (name: RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
+const HISTORY_OPEN = () => localStorage.setItem("lado.flowsGroups", JSON.stringify({ history: "open" }));
+
+test("the tab opens on the overview, also in a wide column: Active in green, the waiting runs first, as cards", async () => {
   serve({ runs: [ACTIVE, ENDED, WAITING, CANCELLED] });
-  open(runPath("lado", ACTIVE.name));
+  open(FLOWS);
   const list = await runs();
   expect((await screen.findByRole("link", { name: "Flows · 2" })).getAttribute("aria-current")).toBe("page");
-  expect(within(list).queryByRole("region", { name: "Waiting for you" })).toBeNull();
-  expect(within(list).queryByRole("button", { name: /History|Ended/ })).toBeNull();
-  const active = within(list).getByRole("region", { name: "Active" });
+  expect(address()).toBe(FLOWS);
+  expect(screen.queryByRole("region", { name: /^Run / })).toBeNull();
+  const active = group(list, "Active");
+  expect(active.className).toContain("tone-done");
   expect(rowNames(active)).toEqual(["feature/flows-tab", "fix/gate-bubble"]);
   const [waiting, acting] = within(active).getAllByRole("link");
-  expect(waiting.className).toContain("waits");
-  expect(waiting.textContent).toContain("merge_ok · gate #41");
-  expect(acting.textContent).toContain("review · → reviewer");
-  expect(acting.getAttribute("aria-current")).toBe("page");
-  const history = within(list).getByRole("region", { name: "History" });
+  expect(waiting.getAttribute("href")).toBe(runPath("lado", WAITING.name));
+  expect(waiting.className).toBe("list-card waits");
+  expect(acting.className).toBe("list-card");
+  expect(waiting.querySelector(".pill")?.textContent).toBe("Waits for you");
+  expect(acting.querySelector(".pill")).toBeNull();
+  expect(waiting.querySelector(".run-about")?.textContent).toBe(`merge_ok · gate #41 · ${since(WAITING.since)}`);
+  expect(acting.querySelector(".run-about")?.textContent).toBe(`review · → reviewer · ${since(ACTIVE.since)}`);
+  expect(acting.querySelector(".run-card-meta")?.textContent).toBe(`fix · lado-dev 0.7.0 · started ${clock(ACTIVE.created_at)}`);
+  expect(acting.textContent).not.toContain(ACTIVE.task.split("\n")[0]);
+});
+
+test("a card's states are the run head's: the same chips, the current one marked, orange while it waits", async () => {
+  serve({ runs: [ACTIVE, WAITING] });
+  open(FLOWS);
+  const [waiting, acting] = within(group(await runs(), "Active")).getAllByRole("link");
+  const chips = within(acting).getAllByRole("listitem", { name: /^State / });
+  expect(chips.map((one) => one.textContent)).toEqual(["implement×2", "review2/3", "◇ merge_ok", "done"]);
+  expect(chips[1].getAttribute("aria-current")).toBe("step");
+  expect(chips[1].className).toBe("flow-state visited current");
+  const gate = within(waiting).getByRole("listitem", { name: "State merge_ok" });
+  expect(gate.className).toBe("flow-state visited current waiting");
+});
+
+test("a card of a run whose flow cannot be read has the problem in place of its states", async () => {
+  serve({ runs: [run("fix/gate-bubble", { states: [], problem: "not JSON" })] });
+  open(FLOWS);
+  const card = within(group(await runs(), "Active")).getByRole("link");
+  expect(within(card).queryByRole("list", { name: "States" })).toBeNull();
+  expect(card.querySelector(".problem")?.textContent).toBe("Flow cannot be read: not JSON");
+});
+
+test("in a column narrower than 900 px the overview is the same, and no run opens by itself", async () => {
+  narrowColumn();
+  serve({ runs: [ACTIVE, WAITING, ENDED] });
+  open(FLOWS);
+  const list = await runs();
+  expect(address()).toBe(FLOWS);
+  expect(rowNames(group(list, "Active"))).toEqual(["feature/flows-tab", "fix/gate-bubble"]);
+  expect(screen.queryByRole("region", { name: /^Run / })).toBeNull();
+});
+
+test("History is folded by default; each group folds by its heading and is remembered", async () => {
+  serve({ runs: [ACTIVE, ENDED, CANCELLED] });
+  open(FLOWS);
+  const list = await runs();
+  expect(fold(/^History/).getAttribute("aria-expanded")).toBe("false");
+  expect(within(group(list, "History")).queryAllByRole("link")).toHaveLength(0);
+  fireEvent.click(fold(/^History/));
+  const history = group(list, "History");
+  expect(history.className).toContain("tone-neutral");
   expect(rowNames(history)).toEqual(["fix/older", "fix/old"]);
-  expect(within(history).getAllByRole("link")[0].textContent).toContain("cancelled");
-  expect(localStorage.length).toBe(0);
+  fireEvent.click(fold(/^Active/));
+  expect(within(group(list, "Active")).queryAllByRole("link")).toHaveLength(0);
+  expect(JSON.parse(localStorage.getItem("lado.flowsGroups")!)).toEqual({ active: "folded", history: "open" });
+  cleanup();
+  open(FLOWS);
+  await runs();
+  expect(fold(/^Active/).getAttribute("aria-expanded")).toBe("false");
+  expect(fold(/^History/).getAttribute("aria-expanded")).toBe("true");
+});
+
+test("with no runs both groups say they are empty", async () => {
+  HISTORY_OPEN();
+  serve({ runs: [] });
+  open(FLOWS);
+  const list = await runs();
+  expect(within(group(list, "Active")).getByText("No active runs")).toBeTruthy();
+  expect(within(group(list, "History")).getByText("No ended runs yet")).toBeTruthy();
 });
 
 test("without open runs the tab is just Flows", async () => {
@@ -236,97 +319,164 @@ test("without open runs the tab is just Flows", async () => {
   expect(await screen.findByRole("link", { name: "Flows" })).toBeTruthy();
 });
 
-test("the flows tab without a run opens the first waiting run, else the first active one", async () => {
-  serve({ runs: [ACTIVE, WAITING] });
-  open("/sessions/lado/flows");
-  expect(await page("feature/flows-tab")).toBeTruthy();
-  cleanup();
-  serve({ runs: [ENDED, ACTIVE] });
-  open("/sessions/lado/flows");
-  expect(await page("fix/gate-bubble")).toBeTruthy();
-});
-
-test("with no runs both groups are there and say they are empty; with only ended ones the latest to end opens", async () => {
-  serve({ runs: [] });
-  open("/sessions/lado/flows");
-  const list = await runs();
-  expect(within(within(list).getByRole("region", { name: "Active" })).getByText("No active runs")).toBeTruthy();
-  expect(within(within(list).getByRole("region", { name: "History" })).getByText("No ended runs yet")).toBeTruthy();
-  expect(screen.queryByText("No flow runs yet")).toBeNull();
-  expect(screen.queryByRole("region", { name: /^Run / })).toBeNull();
-  cleanup();
-  serve({ runs: [ENDED, CANCELLED] });
-  open("/sessions/lado/flows");
-  expect(await page("fix/older")).toBeTruthy();
-  const list2 = await runs();
-  expect(within(within(list2).getByRole("region", { name: "Active" })).getByText("No active runs")).toBeTruthy();
-  expect(within(list2).getByRole("link", { name: /fix\/older/ }).getAttribute("aria-current")).toBe("page");
-});
-
-test("an unknown run is not found, and the address stays", async () => {
-  serve({ runs: [ACTIVE] });
-  open(runPath("lado", "fix/nope"));
-  expect(await screen.findByText("Run fix/nope not found")).toBeTruthy();
-  expect(within(await runs()).getByRole("link").textContent).toContain("fix/gate-bubble");
-});
-
-test("in a column narrower than 900 px the list takes it, a run's page has the way back, and no select", async () => {
-  narrowColumn();
-  serve({ runs: [ACTIVE, WAITING, ENDED, CANCELLED] });
-  open("/sessions/lado/flows");
-  const list = await runs();
-  expect(screen.queryByRole("combobox")).toBeNull();
-  expect(screen.queryByRole("region", { name: /^Run / })).toBeNull();
-  fireEvent.click(within(list).getByRole("link", { name: /fix\/gate-bubble/ }));
-  expect(await page("fix/gate-bubble")).toBeTruthy();
-  expect(screen.queryByRole("navigation", { name: "Flow runs" })).toBeNull();
-  fireEvent.click(screen.getByRole("link", { name: "‹ All runs (2 open, 2 ended)" }));
-  expect(await runs()).toBeTruthy();
-});
-
-test("the search finds a run by its task, flow or state in both groups at once", async () => {
-  serve({ runs: [ACTIVE, WAITING, run("fix/login", { status: "ended", task: "Add a LOGIN page", ended_at: "2026-10-03T11:00:00.000Z" })] });
-  open(runPath("lado", ACTIVE.name));
-  const list = await runs();
-  const search = screen.getByRole("searchbox", { name: "Find a run" });
-  fireEvent.change(search, { target: { value: "login" } });
-  expect(rowNames(list)).toEqual(["fix/login"]);
-  expect(within(within(list).getByRole("region", { name: "Active" })).getByText("No match")).toBeTruthy();
-  fireEvent.change(search, { target: { value: "merge_ok" } });
-  expect(rowNames(list)).toEqual(["feature/flows-tab"]);
-  expect(within(within(list).getByRole("region", { name: "History" })).getByText("No match")).toBeTruthy();
-  fireEvent.change(search, { target: { value: "nothing like it" } });
-  expect(within(list).getByText("No run matches “nothing like it”")).toBeTruthy();
-});
-
-test("History shows its first 10 by days, then Show N more; the selected run is seen past them", async () => {
+test("History shows its first 10 by days, then Show N more", async () => {
+  HISTORY_OPEN();
   const ended = Array.from({ length: 12 }, (_, at) =>
     // One local day, 20:00 back to 09:00.
     run(`fix/e${at + 1}`, { status: "ended", acting: "", ended_at: new Date(2026, 9, 3, 20 - at).toISOString() }),
   );
   serve({ runs: [ACTIVE, ...ended] });
-  open(runPath("lado", ACTIVE.name));
-  let history = within(await runs()).getByRole("region", { name: "History" });
+  open(FLOWS);
+  const history = group(await runs(), "History");
   expect(rowNames(history)).toEqual(ended.slice(0, 10).map((one) => one.name));
   expect(within(history).getAllByRole("heading", { level: 4 }).map((one) => one.textContent)).toEqual([
     dayName(ended[0].ended_at!),
   ]);
   fireEvent.click(within(history).getByRole("button", { name: "Show 2 more" }));
   expect(rowNames(history)).toHaveLength(12);
-  cleanup();
-  open(runPath("lado", "fix/e12"));
-  history = within(await runs()).getByRole("region", { name: "History" });
-  expect(rowNames(history)).toHaveLength(12);
-  expect(within(history).getByRole("link", { name: /fix\/e12/ }).getAttribute("aria-current")).toBe("page");
 });
 
-test("an ended run's row has its status and time; its day heads its rows", async () => {
+test("an ended run's row has its name, status and time, no states, no task; its day heads its rows", async () => {
+  HISTORY_OPEN();
   serve({ runs: [ACTIVE, ENDED] });
-  open(runPath("lado", ENDED.name));
-  const history = within(await runs()).getByRole("region", { name: "History" });
+  open(FLOWS);
+  const history = group(await runs(), "History");
   const row = within(history).getByRole("link");
-  expect(row.textContent).toContain(`ended · ${clock(ENDED.ended_at!)}`);
+  expect(row.className).toBe("list-row dim");
+  expect(row.textContent).toBe(`fix/old${`ended · ${clock(ENDED.ended_at!)}`}`);
   expect(within(history).getByRole("heading", { level: 4 }).textContent).toBe(dayName(ENDED.ended_at!));
+});
+
+// A run's page in place of the overview
+
+test("a run's page replaces the overview in a wide column, with the way back to it", async () => {
+  serve({ runs: [ACTIVE, WAITING, ENDED, CANCELLED] });
+  open(FLOWS);
+  fireEvent.click(within(group(await runs(), "Active")).getByRole("link", { name: /fix\/gate-bubble/ }));
+  const region = await page("fix/gate-bubble");
+  expect(screen.queryByRole("navigation", { name: "Flow runs" })).toBeNull();
+  // The page is in a size container: its @container rules hold.
+  expect(region.closest(".list-main")).toBeTruthy();
+  expect(styles).toMatch(/\.list-main\s*\{[^}]*container-type:\s*inline-size/);
+  fireEvent.click(screen.getByRole("link", { name: "‹ All runs (2 open, 2 ended)" }));
+  expect(await runs()).toBeTruthy();
+  expect(address()).toBe(FLOWS);
+});
+
+test("an unknown run is not found, with the way back, and the address stays", async () => {
+  serve({ runs: [ACTIVE] });
+  open(runPath("lado", "fix/nope"));
+  expect(await screen.findByText("Run fix/nope not found")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "‹ All runs (1 open, 0 ended)" })).toBeTruthy();
+  expect(address()).toBe(runPath("lado", "fix/nope"));
+});
+
+// The search, in the session's tab bar
+
+const LOGIN = run("fix/login", { status: "ended", task: "Add a LOGIN page", ended_at: "2026-10-03T11:00:00.000Z" });
+const finder = () => screen.queryByRole("button", { name: "Find a run" });
+const field = () => screen.queryByRole("searchbox", { name: "Find a run" }) as HTMLInputElement | null;
+
+test("the search finds a run by its name, task, flow or state in both groups at once, from ?find=", async () => {
+  serve({ runs: [ACTIVE, WAITING, LOGIN] });
+  open(`${FLOWS}?find=login`);
+  const list = await runs();
+  expect(rowNames(list)).toEqual(["fix/login"]);
+  expect(within(group(list, "Active")).getByText("No match")).toBeTruthy();
+  // Searching, every group shows open and its heading is off; what is remembered stays.
+  expect(fold(/^History/).disabled).toBe(true);
+  expect(fold(/^History/).getAttribute("aria-expanded")).toBe("true");
+  expect(localStorage.getItem("lado.flowsGroups")).toBeNull();
+  // With text, the field is open in the tab bar.
+  expect(field()!.value).toBe("login");
+  fireEvent.change(field()!, { target: { value: "merge_ok" } });
+  expect(rowNames(list)).toEqual(["feature/flows-tab"]);
+  expect(within(group(list, "History")).getByText("No match")).toBeTruthy();
+  fireEvent.change(field()!, { target: { value: "FIX" } });
+  expect(rowNames(list)).toEqual(["fix/gate-bubble", "fix/login"]);
+  fireEvent.change(field()!, { target: { value: "nothing like it" } });
+  expect(within(list).getByText("No run matches “nothing like it”")).toBeTruthy();
+});
+
+test("the field writes ?find= in place, keeps the other parameters, and an empty one drops it", async () => {
+  serve({ runs: [ACTIVE, LOGIN] });
+  open(["/sessions/lado/activity", `${FLOWS}?x=1`]);
+  await runs();
+  fireEvent.click(finder()!);
+  fireEvent.change(field()!, { target: { value: "lo" } });
+  fireEvent.change(field()!, { target: { value: "log in" } });
+  expect(address()).toBe(`${FLOWS}?x=1&find=log+in`);
+  fireEvent.change(field()!, { target: { value: "" } });
+  expect(address()).toBe(`${FLOWS}?x=1`);
+  // Typing added no step to the history: Back leaves the tab.
+  back();
+  expect(address()).toBe("/sessions/lado/activity");
+});
+
+test("the find button is only on the Flows overview: a click or / opens the field, Esc clears and closes it", async () => {
+  serve({ runs: [ACTIVE, LOGIN] });
+  open(FLOWS);
+  const list = await runs();
+  expect(field()).toBeNull();
+  fireEvent.click(finder()!);
+  expect(document.activeElement).toBe(field());
+  // Left empty, it closes.
+  fireEvent.blur(field()!);
+  expect(field()).toBeNull();
+  fireEvent.keyDown(document.body, { key: "/" });
+  expect(document.activeElement).toBe(field());
+  fireEvent.change(field()!, { target: { value: "login" } });
+  // Left with text, it stays.
+  fireEvent.blur(field()!);
+  expect(field()).toBeTruthy();
+  fireEvent.keyDown(field()!, { key: "Escape" });
+  expect(field()).toBeNull();
+  expect(address()).toBe(FLOWS);
+  expect(rowNames(list)).toEqual(["fix/gate-bubble"]);
+  // A "/" typed in a field is the field's.
+  const other = document.createElement("textarea");
+  document.body.append(other);
+  fireEvent.keyDown(other, { key: "/" });
+  expect(field()).toBeNull();
+  other.remove();
+  // Not on a run's page, not on another tab.
+  fireEvent.click(within(list).getByRole("link", { name: /fix\/gate-bubble/ }));
+  await page("fix/gate-bubble");
+  expect(finder()).toBeNull();
+  fireEvent.keyDown(document.body, { key: "/" });
+  expect(field()).toBeNull();
+  fireEvent.click(screen.getByRole("link", { name: "Agents" }));
+  expect(finder()).toBeNull();
+});
+
+test("back from a run's page, by its link or the browser's, the overview has its search and its scroll", async () => {
+  // jsdom keeps no scroll position: the elements keep what is set.
+  const scrolled = new WeakMap<Element, number>();
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(function (this: HTMLElement) {
+    return scrolled.get(this) ?? 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "set").mockImplementation(function (this: HTMLElement, value: number) {
+    scrolled.set(this, value);
+  });
+  serve({ runs: [ACTIVE, WAITING, LOGIN] });
+  open(`${FLOWS}?find=fix`);
+  let list = await runs();
+  list.scrollTop = 140;
+  fireEvent.scroll(list);
+  fireEvent.click(within(list).getByRole("link", { name: /fix\/gate-bubble/ }));
+  await page("fix/gate-bubble");
+  expect(address()).toBe(runPath("lado", ACTIVE.name));
+  fireEvent.click(screen.getByRole("link", { name: "‹ All runs (2 open, 1 ended)" }));
+  list = await runs();
+  expect(address()).toBe(`${FLOWS}?find=fix`);
+  expect(list.scrollTop).toBe(140);
+  expect(rowNames(list)).toEqual(["fix/gate-bubble", "fix/login"]);
+  fireEvent.click(within(list).getByRole("link", { name: /fix\/login/ }));
+  await page("fix/login");
+  back();
+  list = await runs();
+  expect(address()).toBe(`${FLOWS}?find=fix`);
+  expect(list.scrollTop).toBe(140);
 });
 
 // A run's page: the head
@@ -568,6 +718,7 @@ test("a new event with a body from the feed opens; another run's page starts afr
   expect(opened(list)).toEqual(["looks good", "2 findings"]);
   stream().send("change", { kind: "notes", session: "lado", key: "6", op: "insert", item: note(6, { summary: "no body" }) }, "12");
   expect(opened(list)).toEqual(["looks good", "2 findings"]);
+  fireEvent.click(screen.getByRole("link", { name: /^‹ All runs/ }));
   fireEvent.click(within(await runs()).getByRole("link", { name: /feature\/flows-tab/ }));
   expect(opened(await feed("feature/flows-tab"))).toEqual(["another run's note"]);
 });

@@ -1,7 +1,7 @@
 // Sessions: the list on the left (from /api/sessions, searched by name here), the selected
 // session on the right with its tabs. The list's width is dragged on its edge and remembered;
 // the list collapses to a strip of the sessions' icons (remembered too).
-import { useEffect, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import {
   Link,
   NavLink,
@@ -10,6 +10,7 @@ import {
   useNavigate,
   useOutletContext,
   useParams,
+  useSearchParams,
 } from "react-router";
 
 import { Agents } from "./Agents";
@@ -25,6 +26,7 @@ import {
   AgentsIcon,
   ArtifactsIcon,
   CollapsePanelIcon,
+  FindIcon,
   FlowsIcon,
   FolderIcon,
   KitsIcon,
@@ -37,7 +39,7 @@ import { SessionActions } from "./SessionControl";
 import { SessionRowMenu } from "./SessionRowMenu";
 import { MAIN_MIN, TerminalPanel } from "./Terminals";
 import { NotFound } from "./pages";
-import { isTab, PLANS, sessionLink, sessionPath, TABS, type Tab } from "./paths";
+import { FIND_PARAM, isTab, PLANS, sessionLink, sessionPath, TABS, type Tab } from "./paths";
 import { Placeholder } from "./Placeholder";
 import {
   PANEL_WIDTH,
@@ -374,6 +376,10 @@ const TAB_NAMES: Record<Tab, string> = {
   artifacts: "Artifacts",
 };
 
+// The tabs whose page without an item has a search in the tab bar, by its name; the search
+// is the address's ?find=, which the tab reads.
+const FINDS: Partial<Record<Tab, string>> = { flows: "Find a run" };
+
 const TAB_ICONS: Record<Tab, typeof ActivityIcon> = {
   activity: ActivityIcon,
   agents: AgentsIcon,
@@ -458,6 +464,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
             </Link>
           );
         })}
+        {FINDS[tab] !== undefined && item === undefined && <Find key={tab} label={FINDS[tab]} />}
       </nav>
       {tab === "agents" ? (
         <Agents session={name} agent={item} stopped={stopped} />
@@ -471,6 +478,80 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
         </Placeholder>
       )}
     </section>
+  );
+}
+
+// A tab's search at the right end of the tab bar: a magnifier that opens a field on a click
+// or "/" (not while typing in another field: an input, a textarea, a select, an editable
+// element, xterm's own textarea too). The field writes the address's ?find= in place, so
+// typing adds no step to the browser's history; the other parameters stay, and an empty
+// search drops it. Esc clears and closes it; left empty, it closes; with text, it stays.
+function Find({ label }: { label: string }) {
+  const [params, setParams] = useSearchParams();
+  const query = params.get(FIND_PARAM) ?? "";
+  const [opened, setOpened] = useState(false);
+  const [focus, setFocus] = useState(0); // bumped to focus the field once it is drawn
+  const field = useRef<HTMLInputElement>(null);
+  const shown = opened || query !== "";
+
+  useEffect(() => {
+    if (focus > 0) field.current?.focus();
+  }, [focus]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("input, textarea, select") || target?.isContentEditable) return;
+      event.preventDefault();
+      setOpened(true);
+      setFocus((one) => one + 1);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const write = (value: string) =>
+    setParams(
+      (now) => {
+        const next = new URLSearchParams(now);
+        if (value === "") next.delete(FIND_PARAM);
+        else next.set(FIND_PARAM, value);
+        return next;
+      },
+      { replace: true, preventScrollReset: true },
+    );
+  return (
+    <div className="tab-find">
+      {shown && (
+        <input
+          ref={field}
+          type="search"
+          className="search"
+          placeholder={label}
+          aria-label={label}
+          value={query}
+          onChange={(event) => write(event.target.value)}
+          onBlur={(event) => event.currentTarget.value === "" && setOpened(false)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            write("");
+            setOpened(false);
+          }}
+        />
+      )}
+      <button
+        type="button"
+        className="icon-button"
+        aria-label={label}
+        title={`${label} (/)`}
+        onClick={() => {
+          setOpened(true);
+          setFocus((one) => one + 1);
+        }}
+      >
+        <FindIcon />
+      </button>
+    </div>
   );
 }
 

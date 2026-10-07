@@ -461,7 +461,9 @@ Sessions for now. The UI's texts are in English.
   focus is on Sessions, after Sessions on Collapse sessions, only after those buttons (not
   when a page opens collapsed).
 - **List and page** (task feature/flows-list, 2026-10-04, boards 14–15 of the canvas; one
-  component, `ListPage.tsx`, for every tab with a list: Flows, Agents, later Artifacts):
+  component, `ListPage.tsx`, for every tab with a list: Agents, later Artifacts; since task
+  feature/flows-list-states, 2026-10-07, Flows has an overview of its own, Flows below,
+  which shares the list's group, `ListGroup`, and its search's filter, `filterGroups`):
   the tab's list of items and the page of the one its address names. In a column of 900 px
   or wider the list is on the left (240–300 px) and the page on the right, each scrolling
   by itself; an address without an item goes (replaced) to the tab's default item. In a
@@ -474,9 +476,10 @@ Sessions for now. The UI's texts are in English.
   none anywhere it says `No run matches “…”`. No group folds (decided 2026-10-05, task
   feature/flows-tab-redesign): each is open under its heading, the one of every list
   (`GroupHead.tsx`, since task feature/session-list-groups): a band of the group's tone
-  (`Group.tone`: `human`, `done` or `neutral`, the default; Flows' Active and History are
-  neutral), its name in small capitals and how many rows it has now, no chevron; the
-  session list's groups use it with folding (Sessions, above). The groups are apart by a
+  (`Group.tone`: `human`, `done` or `neutral`, the default), its name in small capitals
+  and how many rows it has now, no chevron; the session list's groups and the Flows
+  overview's use it with folding (`ListGroup`'s `fold`). A group's rows are list rows or,
+  in an overview, cards (`Group.look`: `row`, the default, or `card`). The groups are apart by a
   gap. A group may say why it is empty (`empty`: "No active runs"; without it an empty
   group is not drawn, as Agents' one group without a heading, `heading: false`), show its
   rows under their local day (`days`: Today, Yesterday, a date; a row has the time) and
@@ -905,7 +908,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   {discard}` (`runtime.finish_worker`, under `Guard.changes`; a refusal is 400 with the
   core's reason). Finish and the UI's dialog go by the same preview: the UI has no rules
   of its own about runs.
-- **The list** (left, as Flows'): the supervisor first, then the live agents by spawn; a
+- **The list** (left): the supervisor first, then the live agents by spawn; a
   row: status dot, name, `status · since`, and the run with its state, or the first line
   of the task; an agent in `waiting` is orange with the first line of why, an agent in
   `stopped` whose process ended by itself shows the first line of why it stopped
@@ -969,14 +972,44 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   mockup https://claude.ai/artifact/5G2wDV6kx6uyWNZTbyHo4S, version 2, variant "Feed"):
   all runs always seen in two groups, and a run's page that shows first where the run is
   and what it waits for, its history behind one line per event.
-- **The list** (left, 240–300 px), two groups, never folded: **Active**, the runs that
-  wait for the human first (their rows orange), then the active ones ("No active runs"
-  when there is none), and **History**, ended and cancelled runs by when they ended, the
-  latest first, under their day, the first 10 and then Show N more ("No ended runs yet").
-  A row: the run's name (mono), its state and who acts or the gate it waits at, how long
-  it has been so; an ended one its status and time. The tab is **Flows · N**, N the open
-  runs (none: Flows). A List and page (Structure): the search finds a run by name, task,
-  flow and state in both groups.
+- **The overview** (decided with the human 2026-10-07, task feature/flows-list-states;
+  mockup `.lado/mockups/flows-list-states/overview.html`): the human sees where each
+  active run stands without opening it. A flow's states do not fit a 240–300 px list, so
+  the tab is no List and page any more: `/sessions/<name>/flows` shows the overview across
+  the whole column at any width, never redirected to a run, in a region that scrolls by
+  itself (the window does not). Two groups, each folded and opened by its heading
+  (`GroupHead` with `fold`), remembered in the browser (`lado.flowsGroups`, `{ active,
+  history }`, each `open` or `folded`; `prefs.storedGroups`, the one rule of every list's
+  groups: a value not one of the two is the default), Active open and History folded by
+  default:
+  - **Active** (green, `done`, as the session list's Running), the runs that wait for the
+    human first, then the active ones ("No active runs" when there is none), each a card,
+    a link to its page: the name (mono), "Waits for you" only when it waits (the card
+    orange), on the right flow · kit · `started <time>`; the line of what goes on now
+    (state · `→ <who acts>` or `gate #N` or its reason · how long); then its flow's states,
+    the run head's chips (the same component, `States`), or "Flow cannot be read: …" for a
+    run with a `problem`. No task on the card.
+  - **History** (neutral), ended and cancelled runs by when they ended, the latest first,
+    under their day, the first 10 and then Show N more ("No ended runs yet"): a compact
+    row, the name, its status and time; no states, no task.
+  The tab is **Flows · N**, N the open runs (none: Flows).
+- **The search** of the overview is in the session's tab bar, not above the list: a
+  magnifier at its right end, shown when the tab has an entry in `FINDS` (Sessions.tsx;
+  now only Flows, `Find a run`) and the address names no item. A click or `/` (the UI's
+  first global key; not while typing in an input, a textarea, a select or an editable
+  element, xterm's own textarea too) opens a field there; Esc clears and closes it, left
+  empty it closes, with text it stays open. The search is the address's `?find=`: the field
+  writes it in place (replaced, so typing adds no step to the browser's history), keeps the
+  other parameters and drops it when empty; a click on a run is a usual step, so Back
+  comes back to the overview with the same search. It finds a run by name, task, flow and
+  state in both groups; while it has text both groups show open, every match, their
+  headings off, what is remembered unchanged; a group with no match says "No match", and
+  with none anywhere `No run matches “…”`. One search for every tab later takes the same
+  place and parameter (BACKLOG.md).
+- **A run's page** replaces the overview at any width, under the link back
+  `‹ All runs (N open, M ended)`, which comes back with the overview's last search (the tab
+  keeps it, and its scroll, while the run's page is shown; a reload of the run's page
+  forgets it). The page stays a size container (`@container`).
 - **A run's page** (`/sessions/<name>/flows/<run>`), keyed by the run:
   - **The head**: the name (mono) and a pill of its status (Active blue, Waits for you
     orange, Ended green, Cancelled grey); flow · kit, started, branch; the task's first
@@ -1152,8 +1185,8 @@ The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8E
 Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242C), and
 (Flows, 2026-10-05) green for work that went well, a run that ended and a step of its
 history (#1E7A46 on #E7F4EC / #5CC98A on #18301F); since task feature/session-list-groups
-green (`--done`) also means what works now, the session list's Running group, while the
-Flows tab's active runs stay neutral. (Kits, 2026-10-05) A quiet ground for the action
+green (`--done`) also means what works now, the session list's Running group, and since
+task feature/flows-list-states (2026-10-07) the Flows overview's Active group. (Kits, 2026-10-05) A quiet ground for the action
 colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official `--done`, another
 marketplace `--action`, always beside the source's text. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test

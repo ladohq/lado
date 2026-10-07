@@ -1,6 +1,7 @@
-"""The session's Flows tab in a browser: the runs in two groups, a run's page with its
-states, what goes on now (its gate, answered there) and its history of events, the page
-following the feed without a reload."""
+"""The session's Flows tab in a browser: the overview of its runs in two foldable groups,
+the open ones as cards with their flow's states, searched from the tab bar; a run's page in
+its place with its states, what goes on now (its gate, answered there) and its history of
+events, the page following the feed without a reload."""
 
 import re
 import uuid
@@ -71,22 +72,42 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     # page side by side.
     page.get_by_role("button", name="Collapse terminals").click()
     page.get_by_role("link", name="Flows · 2").click()
-    # The first run that waits for the human opens.
-    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
-    expect(page.get_by_role("link", name="Flows · 2")).to_be_visible()
+    # The overview across the whole column, also when it is wide: no run opens by itself.
     runs_list = page.get_by_role("navigation", name="Flow runs")
-    # Two groups, both open: Active, the waiting run first; History, empty yet.
+    expect(runs_list).to_be_visible()
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows")
+    expect(page.get_by_role("region", name=re.compile("^Run "))).to_have_count(0)
+    # Active (green), the waiting run first, each a card with its flow's states.
     active = runs_list.get_by_role("region", name="Active")
-    expect(active.get_by_role("link")).to_have_count(2)
-    expect(active.get_by_role("link").first).to_contain_text("check · gate #1")
-    expect(active.get_by_role("link").first).to_have_class(re.compile(r"\bwaits\b"))
-    expect(active.get_by_role("link").last).to_contain_text("ship/y")
+    expect(active.get_by_role("heading", level=3)).to_have_class(re.compile(r"\btone-done\b"))
+    cards = active.get_by_role("link")
+    expect(cards).to_have_count(2)
+    waiting, acting = cards.first, cards.last
+    expect(waiting).to_contain_text("check · gate #1")
+    expect(waiting).to_have_class(re.compile(r"\bwaits\b"))
+    expect(waiting.locator(".pill")).to_have_text("Waits for you")
+    expect(waiting.get_by_role("listitem", name="State check")).to_have_class(
+        re.compile(r"\bwaiting\b")
+    )
+    expect(waiting.get_by_role("listitem", name="State build")).to_have_text("build1/3")
+    expect(acting).to_contain_text("ship/y")
+    expect(acting.locator(".pill")).to_have_count(0)
+    expect(acting.get_by_role("listitem", name="State plan")).to_have_attribute(
+        "aria-current", "step"
+    )
     expect(active.locator(".group-count")).to_have_text("2")
-    history = runs_list.get_by_role("region", name="History")
-    expect(history).to_contain_text("No ended runs yet")
-    expect(runs_list.get_by_role("region", name="Waiting for you")).to_have_count(0)
-    expect(runs_list.get_by_role("button")).to_have_count(0)  # nothing folds
+    # History is folded by default.
+    expect(runs_list.get_by_role("button", name=re.compile("^History"))).to_have_attribute(
+        "aria-expanded", "false"
+    )
+    shot(page, "overview")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "overview-dark")
+    page.emulate_media(color_scheme="light")
 
+    waiting.click()
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
+    expect(runs_list).to_have_count(0)
     run = page.get_by_role("region", name="Run ship/x")
     expect(run.get_by_role("heading", name="ship/x", exact=True)).to_be_visible()
     expect(run.locator(".run-head .pill")).to_have_text("Waits for you")
@@ -144,7 +165,6 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     expect(now).to_contain_text("at end")
     expect(run.get_by_role("listitem", name="State end")).to_have_attribute("aria-current", "step")
     expect(page.get_by_role("link", name="Flows · 1")).to_be_visible()
-    expect(history.get_by_role("link")).to_contain_text("ended")
     assert state.get_run(session, "ship/x").status == state.ENDED
     # The order turns, and the start comes first.
     run.get_by_role("button", name="Newest first ↓").click()
@@ -152,9 +172,15 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     expect(tops.last).to_have_text("ended the run")
     run.get_by_role("button", name="Oldest first ↑").click()
     shot(page, "ended")
+    # Back on the overview, the ended run is a row of History, opened by its heading.
+    page.get_by_role("link", name="‹ All runs (1 open, 1 ended)").click()
+    runs_list.get_by_role("button", name=re.compile("^History")).click()
+    history = runs_list.get_by_role("region", name="History")
+    expect(history.get_by_role("link")).to_contain_text("ended")
+    expect(history.get_by_role("list", name="States")).to_have_count(0)
 
 
-def test_in_a_narrow_column_the_runs_take_it_and_a_run_has_the_way_back(
+def test_in_a_narrow_column_the_overview_is_searched_from_the_tab_bar_and_a_run_has_the_way_back(
     page: Page, server, repo, shot
 ):
     page.set_viewport_size({"width": 1440, "height": 900})
@@ -163,22 +189,38 @@ def test_in_a_narrow_column_the_runs_take_it_and_a_run_has_the_way_back(
     page.goto(f"{server['url']}/sessions/{session}/activity")
     # The terminals are open: the session's column is narrower than 900 px.
     expect(page.get_by_role("button", name="Collapse terminals")).to_be_visible()
+    expect(page.get_by_role("button", name="Find a run")).to_have_count(0)
     page.get_by_role("link", name="Flows · 2").click()
     runs_list = page.get_by_role("navigation", name="Flow runs")
     expect(runs_list).to_be_visible()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows")
-    expect(page.get_by_role("combobox")).to_have_count(0)
+    expect(runs_list.get_by_role("region", name="Active").get_by_role("link")).to_have_count(2)
+    expect(runs_list.get_by_role("list", name="States")).to_have_count(2)
     expect(page.get_by_role("region", name=re.compile("^Run "))).to_have_count(0)
-    shot(page, "list")
-    page.get_by_role("searchbox", name="Find a run").fill("logout")
+    shot(page, "overview")
+    # The search is in the tab bar: "/" opens it; it is the address's ?find=.
+    expect(page.get_by_role("searchbox", name="Find a run")).to_have_count(0)
+    page.keyboard.press("/")  # the focus is on the Flows tab, a link
+    search = page.get_by_role("searchbox", name="Find a run")
+    expect(search).to_be_focused()
+    search.fill("logout")
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows?find=logout")
     expect(runs_list.get_by_role("link")).to_have_count(1)
+    shot(page, "search")
     runs_list.get_by_role("link", name="ship/y").click()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows/ship%2Fy")
     run = page.get_by_role("region", name="Run ship/y")
     expect(run.get_by_role("region", name="Now")).to_contain_text("supervisor · plan · visit 1")
     expect(runs_list).to_have_count(0)
+    expect(page.get_by_role("button", name="Find a run")).to_have_count(0)
     shot(page, "run")
     page.get_by_role("link", name="‹ All runs (2 open, 0 ended)").click()
-    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows")
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows?find=logout")
     expect(page.get_by_role("searchbox", name="Find a run")).to_have_value("logout")
+    expect(runs_list.get_by_role("link")).to_have_count(1)
+    # The browser's Back from a run's page comes back the same way.
+    runs_list.get_by_role("link", name="ship/y").click()
+    expect(run).to_be_visible()
+    page.go_back()
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows?find=logout")
     expect(runs_list.get_by_role("link")).to_have_count(1)

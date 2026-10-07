@@ -169,25 +169,54 @@ export function storeKitsSource(source: string): void {
   write(KITS_SOURCE, source);
 }
 
-// Each group of the session list open or folded, by the group's id: Needs you and Running
-// open, Stopped folded by default. An older LADO kept only Stopped's, under STOPPED: it is
-// where Stopped starts until the groups are stored, and never read after that.
+// A list's foldable groups, each open or folded by its id, stored as JSON under `key`: a
+// group with no value of the two (nothing stored, not JSON, another value) is as `defaults`
+// says. `defaults` may look at what is stored, all of it or null.
+export type Folds<G extends string> = Record<G, "open" | "folded">;
+
+export function storedGroups<G extends string>(
+  key: string,
+  defaults: Folds<G> | ((stored: Record<string, unknown> | null) => Folds<G>),
+): Folds<G> {
+  const stored = readJson(key);
+  const fallback = typeof defaults === "function" ? defaults(stored) : defaults;
+  const groups = { ...fallback };
+  for (const group of Object.keys(fallback) as G[]) {
+    const value = stored?.[group];
+    if (value === "open" || value === "folded") groups[group] = value;
+  }
+  return groups;
+}
+
+export function storeGroups<G extends string>(key: string, groups: Folds<G>): void {
+  write(key, JSON.stringify(groups));
+}
+
+// Each group of the session list: Needs you and Running open, Stopped folded by default. An
+// older LADO kept only Stopped's, under STOPPED: it is where Stopped starts until the groups
+// are stored, and never read after that.
 export type SessionGroup = "needs-you" | "running" | "stopped";
-export type SessionGroups = Record<SessionGroup, "open" | "folded">;
+export type SessionGroups = Folds<SessionGroup>;
 
 const SESSION_GROUPS = "lado.sessionGroups";
 const STOPPED = "lado.stoppedSessions";
 
-export function storedSessionGroups(): SessionGroups {
-  const stored = readJson(SESSION_GROUPS);
-  const first = stored === null && read(STOPPED) === "open" ? "open" : "folded";
-  const fold = (group: SessionGroup, fallback: "open" | "folded") => {
-    const value = stored?.[group];
-    return value === "open" || value === "folded" ? value : fallback;
-  };
-  return { "needs-you": fold("needs-you", "open"), running: fold("running", "open"), stopped: fold("stopped", first) };
-}
+export const storedSessionGroups = (): SessionGroups =>
+  storedGroups<SessionGroup>(SESSION_GROUPS, (stored) => ({
+    "needs-you": "open",
+    running: "open",
+    stopped: stored === null && read(STOPPED) === "open" ? "open" : "folded",
+  }));
 
-export function storeSessionGroups(groups: SessionGroups): void {
-  write(SESSION_GROUPS, JSON.stringify(groups));
-}
+export const storeSessionGroups = (groups: SessionGroups): void => storeGroups(SESSION_GROUPS, groups);
+
+// The Flows tab's groups: Active open, History folded by default.
+export type FlowsGroup = "active" | "history";
+export type FlowsGroups = Folds<FlowsGroup>;
+
+const FLOWS_GROUPS = "lado.flowsGroups";
+
+export const storedFlowsGroups = (): FlowsGroups =>
+  storedGroups<FlowsGroup>(FLOWS_GROUPS, { active: "open", history: "folded" });
+
+export const storeFlowsGroups = (groups: FlowsGroups): void => storeGroups(FLOWS_GROUPS, groups);

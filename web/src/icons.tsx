@@ -30,6 +30,14 @@ export const HomeIcon = () => (
   </Icon>
 );
 
+// A magnifier: a tab's search.
+export const FindIcon = () => (
+  <Icon>
+    <circle cx="10.5" cy="10.5" r="6" />
+    <path d="m15 15 5 5" />
+  </Icon>
+);
+
 // A plus in a square: a new session.
 export const LaunchIcon = () => (
   <Icon>

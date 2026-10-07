@@ -1,11 +1,12 @@
-// A tab's list and the page of the item it picks (Flows, Agents): side by side in a wide
-// column; in a narrow one either the list or the page.
+// A tab's list and the page of the item it picks (Agents): side by side in a wide column; in
+// a narrow one either the list or the page.
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { Link, MemoryRouter, Route, Routes, useLocation, useParams } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { columnWidth, FakeResizeObserver, narrowColumn, wideColumn } from "./fakes";
-import { ListPage, type Entry, type Group } from "./ListPage";
+import { filterGroups, ListGroup, ListPage, type Entry, type Group } from "./ListPage";
 
 const HOUR = 3600 * 1000;
 
@@ -251,4 +252,66 @@ test("the search finds by any of an item's texts, any case, in every group, and 
   expect(within(nav()!).getByText("No thing matches “nope”")).toBeTruthy();
   fireEvent.change(search, { target: { value: "" } });
   expect(names(nav()!)).toHaveLength(13);
+});
+
+// The shared parts: one group and the search's filter, also for a tab's own overview (Flows)
+
+test("filterGroups keeps each group with the entries any of whose texts has the query, any case; none: all", () => {
+  const list = groups({ old: 12 });
+  expect(filterGroups(list, "  ").map(({ entries }) => entries.length)).toEqual([1, 2, 12]);
+  const found = filterGroups(list, " beta ");
+  expect(found.map(({ group }) => group.name)).toEqual(["Waiting", "Active", "Ended"]);
+  expect(found.map(({ entries }) => entries.map((one) => one.key))).toEqual([[], ["b"], []]);
+});
+
+function Folding({ open: initial, look, searching = false }: { open: boolean; look?: Group["look"]; searching?: boolean }) {
+  const [open, setOpen] = useState(initial);
+  const group: Group = { name: "Active Runs", tone: "done", look, entries: [entry("b", { tone: "waits" }), entry("c")] };
+  return (
+    <ListGroup
+      group={group}
+      entries={group.entries}
+      searching={searching}
+      fold={{ open, onToggle: () => setOpen(!open), disabled: searching }}
+    />
+  );
+}
+
+function folding(props: Parameters<typeof Folding>[0]) {
+  return render(
+    <MemoryRouter>
+      <Folding {...props} />
+    </MemoryRouter>,
+  );
+}
+
+test("a group with `fold` folds and opens by its heading; folded, its body stays in the page, hidden", () => {
+  folding({ open: false });
+  const button = screen.getByRole("button", { name: "Active Runs 2" });
+  expect(button.getAttribute("aria-expanded")).toBe("false");
+  const body = document.getElementById(button.getAttribute("aria-controls")!)!;
+  expect(body.id).toBe("list-group-active-runs");
+  expect(body.hidden).toBe(true);
+  expect(screen.queryByRole("link")).toBeNull();
+  fireEvent.click(button);
+  expect(button.getAttribute("aria-expanded")).toBe("true");
+  expect(body.hidden).toBe(false);
+  expect(names(body)).toEqual(["b", "c"]);
+  expect(screen.getByRole("region", { name: "Active Runs" }).className).toContain("tone-done");
+});
+
+test("while searching a folded group shows open and its heading is off", () => {
+  folding({ open: false, searching: true });
+  const button = screen.getByRole("button", { name: "Active Runs 2" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  expect(button.getAttribute("aria-expanded")).toBe("true");
+  expect(names(document.getElementById("list-group-active-runs")!)).toEqual(["b", "c"]);
+});
+
+test("a group's look sets its rows' class: list rows by default, cards with `card`; the tone either way", () => {
+  folding({ open: true });
+  expect(screen.getAllByRole("link").map((one) => one.className)).toEqual(["list-row waits", "list-row"]);
+  cleanup();
+  folding({ open: true, look: "card" });
+  expect(screen.getAllByRole("link").map((one) => one.className)).toEqual(["list-card waits", "list-card"]);
 });

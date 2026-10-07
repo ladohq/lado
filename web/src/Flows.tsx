@@ -1,20 +1,29 @@
-// The session's Flows tab (docs/design/ui.md, Flows): its runs on the left, Active (the
-// waiting ones first) and History, and the selected run's page on the right: its head
-// (status, task, its flow's states), what goes on now (who acts, its gate answered in
-// place, or how it ended) and its history, one feed of events that open to their details.
-// A step is a note (NoteInfo: who reported it, the outcome and where it leads); the run's
-// start, end and cancel are its events. All of it live from the feed (live.ts); the list and
-// the page are a ListPage.
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+// The session's Flows tab (docs/design/ui.md, Flows): the overview of its runs across the
+// whole column, Active (the waiting ones first, as cards with their flow's states) and
+// History, both foldable and found by the tab bar's search (?find=); or, in its place at any
+// width, a run's page with the way back: its head (status, task, its flow's states), what
+// goes on now (who acts, its gate answered in place, or how it ended) and its history, one
+// feed of events that open to their details. A step is a note (NoteInfo: who reported it,
+// the outcome and where it leads); the run's start, end and cancel are its events. All of
+// it live from the feed (live.ts); the groups are ListPage's ListGroup.
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { Link, useSearchParams } from "react-router";
 
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
 import { AgentName } from "./Agents";
 import { Body, clock, since } from "./ChatText";
 import { Gate } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
-import { ListPage, type Entry as ListEntry } from "./ListPage";
-import { runPath, sessionPath } from "./paths";
-import { storedFlowsOrder, storeFlowsOrder, type FlowsOrder } from "./prefs";
+import { filterGroups, ListGroup, type Entry as ListEntry } from "./ListPage";
+import { FIND_PARAM, runPath, sessionPath } from "./paths";
+import {
+  storedFlowsGroups,
+  storedFlowsOrder,
+  storeFlowsGroups,
+  storeFlowsOrder,
+  type FlowsGroup,
+  type FlowsOrder,
+} from "./prefs";
 
 const HISTORY_FIRST = 10; // the ended runs shown before Show N more
 
@@ -57,37 +66,103 @@ export function Flows({ session, run, stopped }: { session: string; run?: string
   } else if (!ready) {
     notice = <p className="muted">Loading…</p>;
   }
+  // What the overview had when a run's page replaced it, for the way back: its search and
+  // its scroll. Flows stays mounted from the overview to a run's page and back.
+  const [params] = useSearchParams();
+  const find = params.get(FIND_PARAM) ?? "";
+  const lastFind = useRef(find);
+  const scroll = useRef(0);
+  useEffect(() => {
+    if (run === undefined) lastFind.current = find;
+  }, [run, find]);
+
+  if (notice) return <div className="flows-tab">{notice}</div>;
   const groups = grouped(lists.runs);
+  if (run === undefined) return <RunsOverview session={session} groups={groups} query={find} scroll={scroll} />;
   const selected = lists.runs.find((one) => one.name === run);
-  const first = groups.active[0] ?? groups.ended[0];
-  const open = groups.active.length;
+  const query = lastFind.current ? `?${new URLSearchParams({ [FIND_PARAM]: lastFind.current })}` : "";
   return (
-    <ListPage
-      label="Flow runs"
-      noun="run"
-      groups={[
-        { name: "Active", entries: groups.active.map((one) => entry(session, one)), empty: "No active runs" },
-        {
-          name: "History",
-          entries: groups.ended.map((one) => entry(session, one)),
-          days: true,
-          first: HISTORY_FIRST,
-          empty: "No ended runs yet",
-        },
-      ]}
-      selected={run}
-      page={
-        selected === undefined ? (
+    <div className="flows-tab">
+      <div className="list-main">
+        <Link className="list-back" to={sessionPath(session, "flows") + query}>
+          ‹ All runs ({groups.active.length} open, {groups.ended.length} ended)
+        </Link>
+        {selected === undefined ? (
           <p className="empty">Run {run} not found</p>
         ) : (
           <RunPage key={selected.name} session={session} run={selected} stopped={stopped} lists={lists} />
-        )
-      }
-      listPath={sessionPath(session, "flows")}
-      back={`All runs (${open} open, ${groups.ended.length} ended)`}
-      fallback={first && runPath(session, first.name)}
-      notice={notice}
-    />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The tab's overview across its whole column: Active, the open runs as cards with their
+// flow's states, and History, the ended ones as rows by days; each group folds (remembered),
+// and the search of the tab bar (?find=) finds runs in both.
+function RunsOverview({
+  session,
+  groups,
+  query,
+  scroll,
+}: {
+  session: string;
+  groups: { active: RunInfo[]; ended: RunInfo[] };
+  query: string;
+  scroll: RefObject<number>;
+}) {
+  const [folds, setFolds] = useState(storedFlowsGroups);
+  const restore = useCallback((list: HTMLElement | null) => {
+    if (list) list.scrollTop = scroll.current;
+  }, [scroll]);
+  const searching = query.trim() !== "";
+  const toggle = (group: FlowsGroup) => {
+    const next = { ...folds, [group]: folds[group] === "open" ? "folded" : "open" } as const;
+    setFolds(next);
+    storeFlowsGroups(next);
+  };
+  const shown = filterGroups(
+    [
+      {
+        name: "Active",
+        tone: "done",
+        look: "card",
+        entries: groups.active.map((one) => card(session, one)),
+        empty: "No active runs",
+      },
+      {
+        name: "History",
+        entries: groups.ended.map((one) => entry(session, one)),
+        days: true,
+        first: HISTORY_FIRST,
+        empty: "No ended runs yet",
+      },
+    ],
+    query,
+  );
+  const ids: FlowsGroup[] = ["active", "history"];
+  return (
+    <div className="flows-tab">
+      <nav
+        ref={restore}
+        className="runs-overview"
+        aria-label="Flow runs"
+        onScroll={(event) => (scroll.current = event.currentTarget.scrollTop)}
+      >
+        {shown.map(({ group, entries }, at) => (
+          <ListGroup
+            key={group.name}
+            group={group}
+            entries={entries}
+            searching={searching}
+            fold={{ open: folds[ids[at]] === "open", onToggle: () => toggle(ids[at]), disabled: searching }}
+          />
+        ))}
+        {searching && shown.every(({ entries }) => entries.length === 0) && (
+          <p className="muted list-none">No run matches “{query.trim()}”</p>
+        )}
+      </nav>
+    </div>
   );
 }
 
@@ -99,6 +174,28 @@ function grouped(runs: RunInfo[]) {
   return {
     active: [...runs.filter((one) => one.status === "waiting"), ...runs.filter((one) => one.status === "active")],
     ended,
+  };
+}
+
+// An open run's card: its name, "Waits for you" when it does, its flow and kit and when it
+// started; the line of what goes on now; its flow's states, as on its page. Found as a row.
+function card(session: string, run: RunInfo): ListEntry {
+  const kit = [run.kit.name, run.kit.version].filter(Boolean).join(" ");
+  return {
+    ...entry(session, run),
+    row: (
+      <>
+        <span className="run-card-top">
+          <span className="run-name">{run.name}</span>
+          {run.status === "waiting" && <span className="pill waits">Waits for you</span>}
+          <span className="run-card-meta">
+            {[run.flow, kit, `started ${clock(run.created_at)}`].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+        <span className="run-about">{about(run)}</span>
+        <States run={run} />
+      </>
+    ),
   };
 }
 

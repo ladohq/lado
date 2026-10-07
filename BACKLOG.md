@@ -514,6 +514,18 @@ Found: 2026-10-06, by the human in session lado.
 
 # P2: when convenient
 
+## A message keeps no run: the chat cannot say which run an agent writes for
+
+Size: M. Why here: the chat's rows show only the agent's name; with several runs at once the
+human cannot tell which run a message belongs to (the mockup of feature/chat-look had it).
+
+`MessageInfo` has no run, and the run cannot be taken from `AgentInfo.run`: agent names are
+used again (a finished worker's name is free for the next one), so today's agent may not be
+the one that wrote an old message.
+Wanted: the run of the sender stored with each message when it is queued (a column), served
+in `MessageInfo`, and shown muted in the row's head (`FeedRow`'s `aside`).
+Found: 2026-10-07, run feature/chat-look (design, architect's review).
+
 ## The Launch window's `.chip` rule restyles the team's chips
 
 Size: S. Why here: the team's chips do not look as designed (30 px pills); no function is
@@ -1102,6 +1114,18 @@ search) states the blur rule.
 Found: 2026-10-07, review of fix/flows-search-narrow.
 
 # P3: maybe never
+
+## The chat's day dividers say "Today" and "Yesterday" as of their last render
+
+Size: S. Why here: only a tab left open across midnight shows it, until its next render.
+
+`dayName()` (`web/src/ChatText.tsx`) names a day by the time it is called. The chat's day
+dividers (`Chat.tsx`, `DayDivider`) and the Flows History headings call it while rendering,
+so in a tab open across midnight "Today" stays on yesterday's entries until the feed brings
+something that renders the chat again.
+Wanted: a render at local midnight (a timer, or a clock in the live store), if it ever
+matters.
+Found: 2026-10-07, run feature/chat-look (design).
 
 ## A server endpoint that writes makes lado.db when there is none
 

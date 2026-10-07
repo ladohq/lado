@@ -427,7 +427,7 @@ function Answer({
 function Message({ message, continued }: { message: MessageInfo; continued: boolean }) {
   const mine = message.from === HUMAN;
   const between = !withHuman(message);
-  const summary = <h4 className="chat-summary">{message.summary}</h4>;
+  const summary = <h4 className={`chat-summary${message.body ? " lead" : ""}`}>{message.summary}</h4>;
   const label = between ? `Message from ${message.from} to ${message.to}` : `Message from ${mine ? "you" : message.from}`;
   return (
     <FeedRow

@@ -979,6 +979,7 @@ h3 {
   flex-direction: column;
   gap: 24px;
   max-width: 760px;
+  container-type: inline-size;
 }
 
 .notify-offer {
@@ -1022,15 +1023,16 @@ h3 {
   font-size: 13px;
 }
 
+/* A waiting agent's card in its row: why it waits and its terminal. */
 .waits-agent {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 6px;
   padding: 10px 14px;
-  border: 1px solid var(--human);
-  border-radius: 8px;
-  box-shadow: inset 3px 0 0 var(--human);
-  background: var(--human-ground);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
 }
 
 .waits-reason {
@@ -1653,19 +1655,21 @@ h3 {
   cursor: pointer;
 }
 
+/* The chat and Needs you are size containers: their rows go by their width (@container). */
 .chat {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
+  container-type: inline-size;
 }
 
 .chat-feed {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: 2px;
   min-height: 160px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1681,7 +1685,7 @@ h3 {
 /* In a column wider than that (the terminals folded), the Activity chat stands in its
    middle: as much room on each side, a percentage of the column; an agent's composer
    (Agents) stays at its page's left edge. Above the `margin: 0` of the feed's items
-   (.chat-start, .run-events); a human's message (.mine) adds its indent to its side. */
+   (.chat-start, .run-events). */
 .chat > .chat-feed > *,
 .chat > .composer {
   --chat-side: max(0px, (100% - 860px) / 2);
@@ -1711,17 +1715,212 @@ h3 {
   border-bottom: 1px solid var(--line);
 }
 
-/* A flow run's events between the messages: quiet lines, centred. */
-.run-events {
+/* A row of the feed (FeedRow.tsx): the avatar's column, then the head and what the row
+   holds, the whole width. No frame; the human's rows on their own ground. A row that
+   continues a group has no head and no letter: its time stands in the avatar's column, seen
+   on hover and focus, always in a narrow column. Quiet lines (run events, a closed gate, a
+   dismissal) start at the text's column. */
+.chat,
+.needs-you {
+  --row-pad: 10px;
+  --avatar: 32px;
+  --row-gap: 12px;
+  --text-start: calc(var(--row-pad) + var(--avatar) + var(--row-gap));
+}
+
+.feed-row {
+  display: flex;
+  gap: var(--row-gap);
+  margin-top: 6px;
+  padding: 8px var(--row-pad);
+  border-radius: 8px;
+}
+
+.feed-row:hover {
+  background: var(--raised);
+}
+
+.feed-row.mine,
+.feed-row.mine:hover {
+  background: var(--action-ground);
+}
+
+.feed-row.continued {
+  margin-top: 0;
+  padding-top: 2px;
+}
+
+.feed-side {
+  flex: none;
+  width: var(--avatar);
+}
+
+.feed-side > time {
+  display: block;
+  padding-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+  opacity: 0;
+}
+
+.feed-row:hover .feed-side > time,
+.feed-row:focus-within .feed-side > time {
+  opacity: 1;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: var(--avatar);
+  height: var(--avatar);
+  border-radius: 8px;
+  color: var(--on-avatar);
+  font: 600 13px var(--sans);
+}
+
+.avatar-1 {
+  background: var(--avatar-1);
+}
+
+.avatar-2 {
+  background: var(--avatar-2);
+}
+
+.avatar-3 {
+  background: var(--avatar-3);
+}
+
+.avatar-4 {
+  background: var(--avatar-4);
+}
+
+.avatar-5 {
+  background: var(--avatar-5);
+}
+
+.avatar-6 {
+  background: var(--avatar-6);
+}
+
+.avatar-human {
+  background: var(--action);
+  color: var(--on-action);
+}
+
+.avatar-gate {
+  background: var(--raised);
+  color: var(--muted);
+}
+
+.avatar .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.feed-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-bottom: 2px;
+}
+
+.feed-who {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.feed-aside {
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.feed-aside a {
+  color: var(--action);
+  text-decoration: none;
+}
+
+.feed-aside a:hover {
+  text-decoration: underline;
+}
+
+.feed-head > time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Between two local days: the later day's name on a line. */
+.chat-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chat-day::before,
+.chat-day::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* A narrow column: smaller avatars, the continued rows' times always seen. */
+@container (max-width: 520px) {
+  .chat-feed,
+  .waits-session {
+    --avatar: 24px;
+    --row-gap: 8px;
+    --text-start: calc(var(--row-pad) + var(--avatar) + var(--row-gap));
+  }
+
+  .feed-side > time {
+    font-size: 10px;
+    opacity: 1;
+  }
+
+  .avatar {
+    border-radius: 6px;
+    font-size: 11px;
+  }
+
+  .avatar .icon {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* A flow run's events between the messages, and the human's dismissal of a question: quiet
+   lines at the text's column. */
+.run-events,
+.chat-quiet {
   display: flex;
   flex-direction: column;
   gap: 2px;
   margin: 0;
-  padding: 0;
+  padding: 2px var(--row-pad) 2px var(--text-start);
   color: var(--muted);
-  font-size: 13px;
+  font: 12.5px/1.5 var(--mono);
   list-style: none;
-  text-align: center;
+}
+
+.chat-quiet {
+  display: block;
+}
+
+.chat-quiet time {
+  margin-left: 4px;
 }
 
 .run-kind {
@@ -1750,13 +1949,8 @@ h3 {
 }
 
 /* The agents' messages to each other: plainer than those with the human. */
-.chat-message.between {
-  padding: 6px 12px;
-  border-style: dashed;
-  background: transparent;
-}
-
 .chat-message.between .chat-summary {
+  color: var(--muted);
   font-size: 14px;
 }
 
@@ -1764,34 +1958,83 @@ h3 {
   padding: 32px 0;
 }
 
-.chat-message,
-.chat-question {
+/* A question's card in its agent's row: neutral once closed; open, orange with a band on
+   its left, as an open gate's. */
+.chat-question,
+.chat-gate.open {
+  margin-top: 6px;
   padding: 10px 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--panel);
 }
 
-.chat-message.mine {
-  margin-left: calc(var(--chat-side, 0px) + 48px);
-  background: var(--raised);
-  border-color: transparent;
-}
-
-.chat-question.open {
-  border-color: var(--human);
-  box-shadow: inset 3px 0 0 var(--human);
-  background: var(--human-ground);
-}
-
-/* A flow gate: open, a card that waits for the human, as an open question; closed, a quiet
-   line that opens read only. */
+.chat-question.open,
 .chat-gate.open {
-  padding: 10px 14px;
-  border: 1px solid var(--human);
-  border-radius: 8px;
-  box-shadow: inset 3px 0 0 var(--human);
+  border-color: var(--human);
+  border-left-width: 4px;
   background: var(--human-ground);
+}
+
+.question-label {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chat-question.open .question-label {
+  color: var(--human);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A closed question's choices, faded; the one the human chose, marked. */
+.choices.closed {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.choices.closed li {
+  padding: 2px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.choices.closed li.chosen {
+  border-color: var(--done);
+  background: var(--done-ground);
+  color: var(--done);
+  font-weight: 600;
+}
+
+/* The human's answer: the text as written, the comment under a choice. */
+.chat-answer,
+.chat-comment {
+  white-space: pre-wrap;
+}
+
+.chat-comment {
+  margin: 2px 0 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+/* A flow gate's title and time on a run's page (Flows), which has no feed row. */
+.gate-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gate-head time {
+  margin-left: auto;
 }
 
 .gate-title {
@@ -1844,8 +2087,9 @@ h3 {
   color: var(--muted);
 }
 
+/* A closed gate: a quiet line at the text's column that opens read only. */
 .chat-gate.closed {
-  padding: 2px 14px;
+  padding: 2px var(--row-pad) 2px var(--text-start);
   color: var(--muted);
   font-size: 13px;
 }
@@ -1886,8 +2130,8 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-/* The human's answer as the human's own bubble: the comment under the answer. */
-.chat-message .gate-comment {
+/* The human's answer to a gate as the human's own row: the comment under its head. */
+.feed-row .gate-comment {
   margin-left: 0;
 }
 
@@ -1896,32 +2140,20 @@ h3 {
   color: var(--ink);
 }
 
+/* Over the composer while a gate is open: an orange band. */
 .gate-hint {
   margin: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--human-ground);
   color: var(--human);
   font-size: 13px;
 }
 
 .gate-hint .link-button {
   margin: 0;
-}
-
-.chat-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 10px;
-  margin-bottom: 2px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.chat-from {
-  color: var(--ink);
-  font: 600 13px var(--mono);
-}
-
-.chat-meta time {
-  margin-left: auto;
+  color: var(--human);
+  text-decoration: underline;
 }
 
 .chat-summary {
@@ -1931,6 +2163,8 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+/* A summary with a body under it, and a question's, stand out. */
+.chat-summary.lead,
 .chat-question .chat-summary {
   font-weight: 600;
 }
@@ -1974,8 +2208,17 @@ h3 {
 }
 
 .chat-outcome {
-  color: var(--ink);
-  font-weight: 600;
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+
+.chat-outcome a {
+  color: var(--action);
+  text-decoration: none;
+}
+
+.chat-outcome a:hover {
+  text-decoration: underline;
 }
 
 .answer {
@@ -1992,8 +2235,7 @@ h3 {
   gap: 8px;
 }
 
-.answer textarea,
-.composer textarea {
+.answer textarea {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -2005,15 +2247,79 @@ h3 {
   resize: vertical;
 }
 
+/* The composer: one frame with the field, as tall as its text (Chat.tsx, grow), and Send
+   inside at its bottom right; under it to whom, and how to send. */
 .composer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.composer textarea:disabled {
+.composer-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.composer-box:focus-within {
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px var(--action-ground);
+}
+
+.composer-box:has(textarea:disabled) {
   background: var(--ground);
+}
+
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.composer .send {
+  flex: none;
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--action);
+  color: var(--on-action);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.composer .send:disabled {
+  background: var(--raised);
+  color: var(--muted);
+  cursor: default;
+}
+
+.composer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.composer-name {
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .primary:disabled,
@@ -2032,10 +2338,6 @@ h3 {
 }
 
 @media (max-width: 760px) {
-  .chat-message.mine {
-    margin-left: calc(var(--chat-side, 0px) + 16px);
-  }
-
   .content {
     padding: 20px 16px;
   }
@@ -3025,9 +3327,8 @@ h3 {
     margin-top: 8px;
   }
 
-  .agent-composer .composer {
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: end;
+  .agent-composer .composer-keys {
+    display: none;
   }
 }
 
@@ -3257,9 +3558,9 @@ h3 {
 }
 
 .run-now.waits .chat-gate.open {
+  margin: 0;
   padding: 0;
   border: 0;
-  box-shadow: none;
 }
 
 .run-now.done {

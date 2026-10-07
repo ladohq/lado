@@ -577,25 +577,28 @@ reaches the feed. LADO takes the model and builds it on what it has:
   needs as they are now, `NeededNote {state, note}`) and takes the human's answer
   (`POST …/gates/{id}/answer {option, comment}`, guarded like the composer, through
   `runs.answer_text`, the one text `lado answer` prints too; what the core refuses is 400
-  with its reason). An **open gate** is a card where it opened in the feed: "Gate #id ·
-  run · state", the question, the note before the gate (its summary in bold, its body
+  with its reason). An **open gate** is a row of the feed where it opened (the flag
+  avatar, "Gate #id", muted "run · state", the time; Look of the feed below) with its card,
+  which has no head of its own: the question, the note before the gate (its summary in bold, its body
   open, more than 20 lines behind Show all), a line per needed note ("Note from design:
   <summary>", its body on a click, or "no note yet"), an optional comment for the next
   step, and a button per option (Approve / Reject, a choice gate's own options, Continue /
   Cancel run at a loop limit; the first one primary). The buttons are off while the answer
   is sent and in a stopped session (it says to resume it); a refusal shows on the card.
   The card changes only when the feed brings the closed gate, wherever it was answered
-  (the popup, `lado answer`, another tab). A **closed gate** is a line, "Gate #id · run ·
-  state: <answer> by <who>" (also `overridden` by `lado flow-set`, `cancelled`), its
-  comment and time; a click shows its question and note, read only, without the needed
-  notes, which are not kept as they were when it was answered. The line stays where the
-  gate opened, often far above the bottom, so the **human's answer** is also the human's
-  own bubble (right side, as their messages) placed by its `answered_at`: "Gate #id ·
-  <answer>" (also `overridden`), the comment on a line below, a link to the gate's line
-  (`#gate-<id>`, scrolled into view). Only a gate whose `answered_by` is `human` has one; on
+  (the popup, `lado answer`, another tab). A **closed gate** is a quiet line at the text's
+  column, as the run events: "Gate #id · run · state: <answer> by <who>" (one title,
+  `gateTitle`, also on a run's page in Flows; also `overridden` by `lado flow-set`,
+  `cancelled`), its comment and time; a click shows its question and note, read only,
+  without the needed notes, which are not kept as they were when it was answered. The
+  line stays where the gate opened, often far above the bottom, so the **human's answer**
+  is also a row of the human's (no bubble on the right) placed by its `answered_at`: "You",
+  muted "gate #id: <answer>" (also `overridden`), a link to the gate's line (`#gate-<id>`,
+  scrolled into view), the comment under it. Only a gate whose `answered_by` is `human` has one; on
   the open page it shows at the bottom as soon as the feed brings the closed gate, and the
   feed scrolls to it as to a new message. While a gate is open, a
-  hint over the composer ("Gate #id waits: answer on its card") scrolls to its card: the
+  hint over the composer (an orange band, "Gate #id waits: answer on its card") scrolls to
+  its card: the
   composer does not answer gates. Known limit (BACKLOG): when a gate state needs the state
   whose note led to it, that note shows twice.
 - **A forgotten reply is caught, not hoped for**: when the supervisor ends a turn that a
@@ -649,13 +652,53 @@ Built in the chat task (2026-10-03):
   schema, 404 for an unknown session and 400 with the core's reason for what it refuses
   (a stopped session, an agent that is not running, a question not open). They return
   `{result}`; the UI shows a message only when the feed brings it.
-- **UI**: Activity is the chat: the messages from and to the human (who, to whom, time,
-  the summary, the body behind it as Markdown with any HTML left out), "not delivered" on
-  a failed one, "<agent> replied only in its terminal" on a `missing` one, and each
-  question as a card: open (orange: it waits for the human) with its choices, a field for
-  an own answer and Submit when `free_answer`, and Dismiss; then its outcome. The composer
-  under it: Enter sends, Shift+Enter is a new line; a refusal shows at the field and the
-  text stays.
+- **UI**: Activity is the chat: the messages from and to the human (the summary, the body
+  as Markdown with any HTML left out), "not delivered" on a failed one, "<agent> replied
+  only in its terminal" on a `missing` one, and each question as a card in its agent's
+  row; the composer under it. Its look is Look of the feed, below.
+
+**Look of the feed** (decided with the human 2026-10-07, task feature/chat-look, mockup
+`/Users/kao/Projects/lado/.lado/mockups/chat-look/index.html`, variant B "feed"):
+
+- **A row** (`FeedRow.tsx`, the one place that draws who wrote an entry, in the chat and on
+  Needs you): a 32 px avatar column, then the head and the content, the chat's whole width
+  (at most 860 px). The head: the name (Plex Sans 600; the human's is "You"), a muted part,
+  the time on the right (24 hours, a `<time>`). The muted part: "→ <to>" for the human's
+  messages and the agents' messages to each other, also "· answer to #N" (a link to
+  `#message-N`) for an answer; nothing for an agent's message to the human (a message
+  keeps no run: BACKLOG). No frame on a message; a row's ground is `--raised` on hover;
+  the human's rows lie on `--action-ground`, the whole width, not moved to the right. The
+  row's kind (agent, human, gate) is its own prop, so an agent named `gate` is an agent.
+  The cards in rows (a question's, a gate's, a waiting agent's on Needs you) have no head
+  of their own.
+- **Groups**: an entry continues the group above it (no head, no letter; its time in the
+  avatar column, seen on hover and focus, always in a column of 520 px or less) when the
+  row above is a message or question of the same sender to the same recipient, less than
+  5 minutes before it; a day divider, a run event, a gate or the human's answer to a gate
+  between ends a group. One pure function, `feedRows` in `Chat.tsx`, also puts a **day
+  divider** (a line with the day's name, `dayName`) between entries of different local
+  days. "Start of session …" stays on top.
+- **A question**: open, an orange card (a 4 px band on its left) "Question #N · waits for
+  you", its choices, field and Dismiss as before; closed, a neutral card "Question #N",
+  its choices faded, the chosen one marked in `--done`, and its outcome: "✓ Answered" when
+  the answer is the next row, else "✓ You chose X", or "✓ You answered in your own words ·
+  go to answer" (a link to the answer); "Dismissed", "Closed: the agent left". The
+  **human's answer** is their row whose text comes from the answer's fields, never from
+  parsing the core's line: the `choice` with the body under it as a comment; else a body
+  that is not empty (the whole text, `runtime._human_text`); else the summary without
+  `Answer to #N: ` (as `runtime.answer_question` writes it). A dismissal (told by its
+  question: `dismissed` and `answered_by` this message; with no question in the window, by
+  the summary `Dismissed #N` of `runtime.dismiss_question`) is one quiet line "You
+  dismissed question #N".
+- **Quiet lines** (run events, a closed gate, a dismissal) start at the text's column.
+- **The composer** (shared with an agent's page in Agents): one frame, the field without a
+  resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
+  scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
+  an `--action` frame and an `--action-ground` ring. Under it "to <agent>" and "Enter to
+  send · Shift+Enter for a new line". Enter sends, Shift+Enter is a new line; a refusal
+  shows at the field and the text stays; a stopped session's composer is off and says so.
+- **Narrow** (a column of 520 px or less): 24 px avatars, the continued rows' times shown,
+  no sideways scroll.
 
 Built in the layout task (2026-10-03, schema 14):
 
@@ -1203,6 +1246,19 @@ colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official `--done`,
 marketplace `--action`, always beside the source's text. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test
 (`web/src/tokens.test.ts`) checks it.
+
+**Avatars** (task feature/chat-look, 2026-10-07; Look of the feed): six colours,
+`--avatar-1` … `--avatar-6` (indigo, green, violet, magenta, teal, olive; light #4F5BD5,
+#1F7A5C, #8A4FC7, #B23A78, #0E7490, #6B6B1F with a white letter, dark #9AA6FF, #5CC9A0,
+#C49AF0, #F08CC0, #5CC4E0, #C8C56A with a #111317 letter, `--on-avatar`), one chosen from
+the agent's name by a hash, so an agent keeps its colour; none is orange or the action's
+blue. The human's avatar is "Y" on `--action` (`--on-action`), a gate's a flag in
+`--muted` on `--raised`. A known limit: roles with the same first letter (`developer`,
+`designer`) differ only by colour, and with six colours that may be the same; the full name
+stands beside it. Orange stays only for open questions and gates and the gate hint.
+
+**Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
+"h23"`), whatever the browser's locale.
 
 **Tabs** (decided with the human 2026-10-06, task feature/session-tabs, mockup
 `.lado/mockups/session-tabs/index.html`, variant F "folder tabs"): every tab bar of the UI

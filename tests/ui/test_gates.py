@@ -64,7 +64,7 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = page.get_by_role("article", name="Gate #1", exact=True)
-    expect(card.get_by_role("heading", name="Gate #1 · ship/x · check")).to_be_visible()
+    expect(card.locator(".feed-head")).to_contain_text("Gate #1ship/x · check")
     expect(card).to_contain_text("Build it as planned?")
     expect(card.locator("strong").first).to_have_text("the plan is reviewed")
     expect(card).to_contain_text("Split it in two, then ship.")
@@ -100,7 +100,7 @@ def test_the_humans_answer_is_their_bubble_at_the_bottom_and_leads_to_the_gate(
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it")
     card.get_by_role("button", name="Approve", exact=True).click()
     bubble = feed.get_by_role("article", name="Your answer to gate #1")
-    expect(bubble).to_contain_text("Gate #1 · approve")
+    expect(bubble).to_contain_text("gate #1: approve")
     expect(bubble).to_contain_text("ship it")
     # The run's events after the answer (the run moved on) may follow it as lines.
     expect(feed.locator(":scope > article").last).to_have_attribute(
@@ -108,7 +108,7 @@ def test_the_humans_answer_is_their_bubble_at_the_bottom_and_leads_to_the_gate(
     )
     expect(bubble).to_be_in_viewport()
     shot(page, "bubble")
-    bubble.get_by_role("link", name="Gate #1 · approve").click()
+    bubble.get_by_role("link", name="gate #1: approve").click()
     expect(card).to_be_in_viewport()
     expect(card).to_contain_text("Gate #1 · ship/x · check: approve by human")
 

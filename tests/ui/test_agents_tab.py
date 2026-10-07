@@ -105,7 +105,10 @@ def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
         value = term.locator("xpath=following-sibling::dd[1]").bounding_box()
         assert value["y"] >= label["y"] + label["height"] - 1, name
         assert value["width"] > page_box["width"] * 0.9, name
-    write = worker.get_by_role("textbox", name="Write to w1…")
+    # The composer's frame (the field and Send in it) has the page's width.
+    write = worker.locator(".composer-box").filter(
+        has=page.get_by_role("textbox", name="Write to w1…")
+    )
     assert write.bounding_box()["width"] > page_box["width"] * 0.9
     shot(page, "worker")
     page.get_by_role("link", name="‹ All agents").click()

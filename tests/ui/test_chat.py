@@ -1,11 +1,14 @@
 """The chat in a session's Activity tab, in a browser: the human writes to the supervisor
 (the fake agent), and answers its question."""
 
+import functools
 import json
+import re
 
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_gates import gated_session
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -54,14 +57,62 @@ def test_the_supervisor_asks_and_the_human_answers_in_a_card(page: Page, server,
     expect(card.get_by_role("button", name="later")).to_be_visible()
     shot(page, "open")
     card.get_by_role("button", name="yes").click()
-    expect(card).to_contain_text("Answered: yes")
+    expect(card.locator(".chat-outcome")).to_have_text("✓ Answered")  # the answer is next
+    expect(card.locator(".chosen")).to_have_text("yes")
     question = next(m for m in state.list_messages(session) if m.kind == state.QUESTION)
     line = f"[from human] Answer to #{question.id}: yes"
-    expect(page.get_by_role("article", name="Message from you").last).to_contain_text(
-        f"Answer to #{question.id}: yes"
-    )
+    answer = page.get_by_role("article", name="Message from you").last
+    expect(answer.locator(".feed-aside")).to_have_text(f"→ supervisor · answer to #{question.id}")
+    expect(answer.get_by_role("heading")).to_have_text("yes")
     agent_helpers.wait_for(lambda: line in inputs(session), "the answer", session)
     shot(page, "answered")
+
+
+def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, shot):
+    """A group of the supervisor's messages, a closed question and the human's answer, an
+    open gate and the composer, in both themes and in a narrow column."""
+    session = gated_session(repo)
+    say = functools.partial(state.queue_message, session, mark=state.DELIVERED)
+    say("human", "supervisor", "Make the chat more presentable, please")
+    say("supervisor", "human", "Looking at the page myself", "I took **screenshots** of the UI.")
+    say("supervisor", "human", "Started the run; working out what to improve")
+    runtime.ask_human(session, "supervisor", "Which look?", "- A: messenger\n- B: feed", ["A", "B"])
+    [question] = [m for m in state.list_messages(session) if m.kind == state.QUESTION]
+    runtime.answer_question(session, question.id, text="Show me all three\nside by side")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    rows = chat.get_by_role("article", name="Message from supervisor")
+    expect(rows).to_have_count(2)
+    expect(rows.nth(0).locator(".feed-who")).to_have_text("supervisor")
+    expect(rows.nth(1)).to_have_class(re.compile(r"\bcontinued\b"))
+    expect(rows.nth(1).locator(".feed-head")).to_have_count(0)
+    asked = chat.get_by_role("article", name="Question from supervisor")
+    expect(asked.locator(".chat-outcome")).to_have_text("✓ Answered")
+    answer = chat.get_by_role("article", name="Message from you").last
+    expect(answer.get_by_role("heading")).to_have_text("Show me all three\nside by side")
+    gate = chat.get_by_role("article", name="Gate #1", exact=True)
+    expect(gate.locator(".avatar-gate")).to_be_visible()
+    field = page.get_by_role("textbox", name="Write to the supervisor…")
+    expect(page.locator(".composer-box").get_by_role("button", name="Send")).to_be_disabled()
+    one_line = field.bounding_box()["height"]
+    field.fill("one\ntwo\nthree")
+    assert field.bounding_box()["height"] > one_line  # the field grows with its text
+    field.fill("")
+    assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")  # no sideways scroll
+    page.emulate_media(color_scheme="light")
+    shot(page, "light")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "dark")
+    gate.scroll_into_view_if_needed()
+    shot(page, "dark-gate")
+    page.emulate_media(color_scheme="light")
+    shot(page, "light-gate")
+    page.emulate_media(color_scheme="light")
+    page.set_viewport_size({"width": 480, "height": 900})
+    expect(rows.nth(1).locator(".feed-side time")).to_have_css("opacity", "1")
+    assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")
+    shot(page, "narrow")
 
 
 def long_session(repo) -> tuple[str, int]:

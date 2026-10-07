@@ -89,7 +89,7 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
     shot(page, "answered")
 
 
-def test_the_humans_answer_is_their_bubble_at_the_bottom_and_leads_to_the_gate(
+def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     page: Page, server, repo, shot
 ):
     session = gated_session(repo)
@@ -97,20 +97,20 @@ def test_the_humans_answer_is_their_bubble_at_the_bottom_and_leads_to_the_gate(
     page.goto(f"{server['url']}/sessions/{session}")
     feed = page.get_by_role("log", name="Chat with the session")
     card = feed.get_by_role("article", name="Gate #1", exact=True)
-    card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it")
+    card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it\nnow")
     card.get_by_role("button", name="Approve", exact=True).click()
-    bubble = feed.get_by_role("article", name="Your answer to gate #1")
-    expect(bubble).to_contain_text("gate #1: approve")
-    expect(bubble).to_contain_text("ship it")
-    # The run's events after the answer (the run moved on) may follow it as lines.
-    expect(feed.locator(":scope > article").last).to_have_attribute(
-        "aria-label", "Your answer to gate #1"
-    )
-    expect(bubble).to_be_in_viewport()
-    shot(page, "bubble")
-    bubble.get_by_role("link", name="gate #1: approve").click()
-    expect(card).to_be_in_viewport()
+    # One line: the run's move from You, the comment under it; the run's end may follow it.
+    move = feed.locator(":scope > .run-group").last.get_by_role("listitem").filter(has_text="You")
+    expect(move.locator(".run-state")).to_have_text(["check", "end"])
+    expect(move.locator(".run-outcome")).to_have_text("approved")
+    expect(move.locator(".run-comment")).to_contain_text("ship it")
+    expect(move.locator(".run-comment br")).to_have_count(1)
+    expect(feed.get_by_role("article", name="Your answer to gate #1")).to_have_count(0)
+    expect(move).to_be_in_viewport()
+    shot(page, "move")
     expect(card).to_contain_text("Gate #1 · ship/x · check: approve by human")
+    link = feed.locator(":scope > .run-group").last.get_by_role("link", name="ship/x")
+    expect(link).to_have_attribute("href", f"/sessions/{session}/flows/ship%2Fx")
 
 
 def test_a_gate_answered_with_lado_answer_folds_on_the_open_page(page: Page, server, repo, shot):

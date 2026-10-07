@@ -419,7 +419,9 @@ def flow_detail(from_state: str, outcome: str, to_state: str) -> str:
     return f"{from_state} -{outcome}-> {to_state}"
 
 
-_TRANSITION = re.compile(rf"({IDENTIFIER.pattern}) -({IDENTIFIER.pattern})-> ({IDENTIFIER.pattern})")
+_TRANSITION = re.compile(
+    rf"({IDENTIFIER.pattern}) -({IDENTIFIER.pattern})-> ({IDENTIFIER.pattern})"
+)
 
 
 def transition(detail: str) -> tuple[str, str, str] | None:

@@ -1169,12 +1169,23 @@ def test_a_transition_s_detail_reads_back_as_it_was_written():
     detail = state.flow_detail("design", "ready", "architecture")
     assert detail == "design -ready-> architecture"
     assert state.transition(detail) == ("design", "ready", "architecture")
-    assert state.transition(state.flow_detail("review", "changes", "review")) == ("review", "changes", "review")
+    assert state.transition(state.flow_detail("review", "changes", "review")) == (
+        "review",
+        "changes",
+        "review",
+    )
 
 
 @pytest.mark.parametrize(
     "detail",
-    ["at design", "", "design -ready->", "design -ready-> architecture extra", "a b -x-> c", "design -re-ady-> x"],
+    [
+        "at design",
+        "",
+        "design -ready->",
+        "design -ready-> architecture extra",
+        "a b -x-> c",
+        "design -re-ady-> x",
+    ],
 )
 def test_a_detail_not_in_the_transition_s_form_is_no_transition(detail):
     assert state.transition(detail) is None

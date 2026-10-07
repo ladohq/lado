@@ -57,13 +57,13 @@ def test_the_supervisor_asks_and_the_human_answers_in_a_card(page: Page, server,
     expect(card.get_by_role("button", name="later")).to_be_visible()
     shot(page, "open")
     card.get_by_role("button", name="yes").click()
-    expect(card.locator(".chat-outcome")).to_have_text("✓ Answered")  # the answer is next
-    expect(card.locator(".chosen")).to_have_text("yes")
+    # The answer is in the card: the choice marked, who answered; no row of its own.
+    expect(card.locator(".chosen")).to_have_text("✓ yes")
+    expect(card.locator(".question-answer .answer-head")).to_have_text("You · answered")
+    expect(card.locator(".answer-choice")).to_have_text("✓ yes")
+    expect(page.get_by_role("article", name="Message from you")).to_have_count(1)  # the ask
     question = next(m for m in state.list_messages(session) if m.kind == state.QUESTION)
     line = f"[from human] Answer to #{question.id}: yes"
-    answer = page.get_by_role("article", name="Message from you").last
-    expect(answer.locator(".feed-aside")).to_have_text(f"→ supervisor · answer to #{question.id}")
-    expect(answer.get_by_role("heading")).to_have_text("yes")
     agent_helpers.wait_for(lambda: line in inputs(session), "the answer", session)
     shot(page, "answered")
 
@@ -88,9 +88,9 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     expect(rows.nth(1)).to_have_class(re.compile(r"\bcontinued\b"))
     expect(rows.nth(1).locator(".feed-head")).to_have_count(0)
     asked = chat.get_by_role("article", name="Question from supervisor")
-    expect(asked.locator(".chat-outcome")).to_have_text("✓ Answered")
-    answer = chat.get_by_role("article", name="Message from you").last
-    expect(answer.get_by_role("heading")).to_have_text("Show me all three\nside by side")
+    given = asked.locator(".question-answer")
+    expect(given).to_contain_text("Show me all three")
+    expect(given.locator("br")).to_have_count(1)  # the human's line break, as typed
     gate = chat.get_by_role("article", name="Gate #1", exact=True)
     expect(gate.locator(".avatar-gate")).to_be_visible()
     field = page.get_by_role("textbox", name="Write to the supervisor…")
@@ -113,6 +113,66 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     expect(rows.nth(1).locator(".feed-side time")).to_have_css("opacity", "1")
     assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")
     shot(page, "narrow")
+
+
+def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_card(
+    page: Page, server, repo, shot
+):
+    """The human's long text with its line breaks, an agent's long report cut and opened, an
+    agents' message to each other, a run's events as a group, a question answered in its
+    card and one answered late, in both themes (docs/design/ui.md, Message text)."""
+    session = gated_session(repo)
+    say = functools.partial(state.queue_message, session, mark=state.DELIVERED)
+    first = "I think we should fix how the chat shows the human's messages."
+    text = f"{first}\nNow a long one shows twice.\n\n- once as a heading\n- once folded"
+    say("human", "supervisor", first, text)  # as runtime._human_text splits it
+    report = "\n\n".join(f"line {n} of the report" for n in range(1, 41))
+    say("supervisor", "human", "Decisions of the day", report)
+    say("supervisor", "w1", "please review the branch", "the **diff** is small")
+    runtime.ask_human(session, "supervisor", "Font of the chat?", None, ["Plex", "Inter"])
+    say("supervisor", "human", "While you think: making the mockups")
+    runtime.ask_human(session, "supervisor", "Ship today?", None, ["yes", "no"])
+    first_q, second_q = [m for m in state.list_messages(session) if m.kind == state.QUESTION]
+    runtime.answer_question(session, second_q.id, choice="yes")  # right under it: in the card
+    runtime.answer_question(session, first_q.id, choice="Inter", text="closest to Slack")  # late
+    page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    mine = chat.get_by_role("article", name="Message from you")
+    expect(mine.locator("br")).to_have_count(1)
+    assert mine.inner_text().count(first) == 1
+    expect(mine.get_by_role("heading")).to_have_count(0)
+    long = chat.get_by_role("article", name="Message from supervisor").first
+    expect(long).to_contain_text("line 12 of")
+    expect(long).not_to_contain_text("line 13 of")
+    group = chat.get_by_role("list", name="Flow run ship/x")
+    expect(group.get_by_role("listitem").last).to_contain_text("waits for you")
+    late = chat.get_by_role("article", name=f"You answered question #{first_q.id}")
+    expect(late).to_contain_text("Inter · closest to Slack")
+    cards = chat.get_by_role("article", name="Question from supervisor")
+    expect(cards.nth(0).locator(".answer-choice")).to_have_text("✓ Inter")
+    expect(cards.nth(1).locator(".answer-choice")).to_have_text("✓ yes")
+    page.get_by_role("checkbox", name="Show agent messages").check()
+    between = chat.get_by_role("article", name="Message from supervisor to w1")
+    expect(between.locator("summary")).to_contain_text("please review the branch")
+    assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")  # no sideways scroll
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        chat.evaluate("feed => { feed.scrollTop = 0 }")
+        shot(page, f"{theme}-top")
+        chat.evaluate("feed => { feed.scrollTop = feed.scrollHeight }")
+        shot(page, f"{theme}-bottom")
+    page.emulate_media(color_scheme="light")
+    mine.evaluate("row => row.scrollIntoView({ block: 'start' })")
+    shot(page, "texts")
+    between.locator("summary").click()
+    expect(between.locator("strong")).to_have_text("diff")
+    long.get_by_role("button", name="Show more").click()
+    expect(long).to_contain_text("line 40 of")
+    expect(long.get_by_role("button", name="Show less")).to_have_attribute("aria-expanded", "true")
+    long.scroll_into_view_if_needed()
+    shot(page, "opened")
 
 
 def long_session(repo) -> tuple[str, int]:

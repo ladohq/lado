@@ -583,7 +583,7 @@ reaches the feed. LADO takes the model and builds it on what it has:
   with its reason). An **open gate** is a row of the feed where it opened (the flag
   avatar, "Gate #id", muted "run · state", the time; Look of the feed below) with its card,
   which has no head of its own: the question, the note before the gate (its summary in bold, its body
-  open, more than 20 lines behind Show all), a line per needed note ("Note from design:
+  open, more than 20 lines behind Show more), a line per needed note ("Note from design:
   <summary>", its body on a click, or "no note yet"), an optional comment for the next
   step, and a button per option (Approve / Reject, a choice gate's own options, Continue /
   Cancel run at a loop limit; the first one primary). The buttons are off while the answer
@@ -594,12 +594,12 @@ reaches the feed. LADO takes the model and builds it on what it has:
   `gateTitle`, also on a run's page in Flows; also `overridden` by `lado flow-set`,
   `cancelled`), its comment and time; a click shows its question and note, read only,
   without the needed notes, which are not kept as they were when it was answered. The
-  line stays where the gate opened, often far above the bottom, so the **human's answer**
-  is also a row of the human's (no bubble on the right) placed by its `answered_at`: "You",
-  muted "gate #id: <answer>" (also `overridden`), a link to the gate's line (`#gate-<id>`,
-  scrolled into view), the comment under it. Only a gate whose `answered_by` is `human` has one; on
-  the open page it shows at the bottom as soon as the feed brings the closed gate, and the
-  feed scrolls to it as to a new message. While a gate is open, a
+  line stays where the gate opened, often far above the bottom; the **human's answer** is
+  where it was given as one line, the run's move it made (a `flow` event of `human`), with
+  the answer's comment under it (Flow events in Look of the feed; since
+  feature/chat-message-text, 2026-10-07: no row of its own besides). On the open page it
+  shows at the bottom as soon as the feed brings the event, and the feed scrolls to it as
+  to a new message. While a gate is open, a
   hint over the composer (an orange band, "Gate #id waits: answer on its card") scrolls to
   its card: the
   composer does not answer gates. Known limit (BACKLOG): when a gate state needs the state
@@ -655,20 +655,20 @@ Built in the chat task (2026-10-03):
   schema, 404 for an unknown session and 400 with the core's reason for what it refuses
   (a stopped session, an agent that is not running, a question not open). They return
   `{result}`; the UI shows a message only when the feed brings it.
-- **UI**: Activity is the chat: the messages from and to the human (the summary, the body
-  as Markdown with any HTML left out), "not delivered" on a failed one, "<agent> replied
-  only in its terminal" on a `missing` one, and each question as a card in its agent's
-  row; the composer under it. Its look is Look of the feed, below.
+- **UI**: Activity is the chat: the messages from and to the human (their text as Message
+  text in Look of the feed says, Markdown with any HTML left out), "not delivered" on a
+  failed one, "<agent> replied only in its terminal" on a `missing` one, and each question
+  as a card in its agent's row; the composer under it. Its look is Look of the feed, below.
 
 **Look of the feed** (decided with the human 2026-10-07, task feature/chat-look, mockup
 `/Users/kao/Projects/lado/.lado/mockups/chat-look/index.html`, variant B "feed"):
 
 - **A row** (`FeedRow.tsx`, the one place that draws who wrote an entry, in the chat and on
   Needs you): a 32 px avatar column, then the head and the content, the chat's whole width
-  (at most 860 px). The head: the name (Plex Sans 600; the human's is "You"), a muted part,
+  (at most 860 px). The head: the name (Inter 600; the human's is "You"), a muted part,
   the time on the right (24 hours, a `<time>`). The muted part: "→ <to>" for the human's
   messages and the agents' messages to each other, also "· answer to #N" (a link to
-  `#message-N`) for an answer; nothing for an agent's message to the human (a message
+  `#message-N`) for an answer to a question not in the window; nothing for an agent's message to the human (a message
   keeps no run: BACKLOG). No frame on a message; a row's ground is `--raised` on hover;
   the human's rows lie on `--action-ground`, the whole width, not moved to the right. The
   row's kind (agent, human, gate) is its own prop, so an agent named `gate` is an agent.
@@ -677,25 +677,88 @@ Built in the chat task (2026-10-03):
 - **Groups**: an entry continues the group above it (no head, no letter; its time in the
   avatar column, seen on hover and focus, always in a column of 520 px or less) when the
   row above is a message or question of the same sender to the same recipient, less than
-  5 minutes before it; a day divider, a run event, a gate or the human's answer to a gate
-  between ends a group. The human's reply to a question stands alone, never continuing a
-  group nor continued: an answer's head says which question it answers, a dismissal is a
-  line. One pure function, `feedRows` in `Chat.tsx`, also puts a **day
-  divider** (a line with the day's name, `dayName`) between entries of different local
-  days. "Start of session …" stays on top.
+  5 minutes before it; a day divider, a run's events, a gate or a late reply's line between
+  ends a group. The human's reply to a question in the window is no row (Answer in the
+  question card, below), so it ends no group; a reply to a question not in the window
+  stands alone, never continuing a group nor continued: an answer's head says which
+  question it answers, a dismissal is a line. One pure function, `feedRows` in `Chat.tsx`,
+  makes the rows: also a **day divider** (a line with the day's name, `dayName`) between
+  entries of different local days, and a run's events in groups (Flow events). "Start of
+  session …" stays on top.
+- **Message text** (decided with the human 2026-10-07, task feature/chat-message-text,
+  mockups `/Users/kao/Projects/lado/.lado/mockups/chat-message-text/index.html`, right
+  column, and `fonts.html`, column B): each message shows its text once, as in Slack;
+  drawn in `MessageText` (`Chat.tsx`) by who wrote it, never by changing the core's
+  summary and body.
+  - The **human's message** (not a reply to a question): one text, the body when there is
+    one (the core's body is the whole text, its summary the first line:
+    `runtime._human_text`), else the summary; no heading, nothing folded. Markdown with
+    the human's single line breaks kept as breaks (`Body` with `breaks`, a small remark
+    plugin of `ChatText.tsx`).
+  - An **agent's message to the human**: the summary in Inter 600, the whole body under
+    it (CommonMark: agents wrap lines by width, so no `breaks`). The summary is not drawn
+    when it only repeats the body (`repeatsSummary`, only for agents' messages): the
+    body's first line that is not blank, trimmed, is the summary, or the summary ends in
+    "…" and that line starts with the rest of it.
+  - **Long text** (`Preview`, `clamp`): a line that is not blank counts for 200
+    characters (`CHARS_PER_LINE`). A message's text shows whole up to 30 such lines and
+    6000 characters; a longer one shows its first 12 (at most 2400 characters), then
+    **Show more** / **Show less** (`aria-expanded`), which opens it in place. Every
+    `Preview` says Show more: the note before a gate cuts at 20 lines, an agent's task in
+    Agents at 3, each at its own number of lines.
+  - The **agents' messages to each other**: one muted line of the summary (14 px, cut with
+    an ellipsis), a chevron before it when there is a body, which opens under it on a click
+    or the keyboard (a native `<details>`) with a muted rule on its left.
+  - Size: a message's summary and text are 15/22 px and at most 720 px wide, only in the
+    chat's messages (`.chat-message`); the shared `.chat-body` of a gate's card, Flows and
+    an agent's task keeps its size; code 13 px mono.
 - **A question**: open, an orange card (a 4 px band on its left) "Question #N · waits for
   you", its choices, field and Dismiss as before; closed, a neutral card "Question #N",
-  its choices faded, the chosen one marked in `--done`, and its outcome: "✓ Answered" when
-  the answer is the next row, else "✓ You chose X", or "✓ You answered in your own words ·
-  go to answer" (a link to the answer); "Dismissed", "Closed: the agent left". The
-  **human's answer** is their row whose text comes from the answer's fields, never from
-  parsing the core's line: the `choice` with the body under it as a comment; else a body
+  its choices faded, the chosen one marked "✓" in `--done`, and the human's reply in the
+  card (Answer in the question card); "Closed: the agent left" when its agent was
+  forgotten. The reply's text comes from the answer's fields, never from parsing the
+  core's line (`replyOf`): the `choice` with the body under it as a comment; else a body
   that is not empty (the whole text, `runtime._human_text`); else the summary without
-  `Answer to #N: ` (as `runtime.answer_question` writes it). A dismissal (told by its
-  question: `dismissed` and `answered_by` this message; with no question in the window, by
-  the summary `Dismissed #N` of `runtime.dismiss_question`) is one quiet line "You
-  dismissed question #N".
-- **Quiet lines** (run events, a closed gate, a dismissal) start at the text's column.
+  `Answer to #N: ` (as `runtime.answer_question` writes it). A dismissal is told by its
+  question (`dismissed` and `answered_by` this message; with no question in the window, by
+  the summary `Dismissed #N` of `runtime.dismiss_question`).
+- **Answer in the question card** (decided 2026-10-07, feature/chat-message-text, mockup
+  `question-answer.html`): with its question in the window, the reply is drawn in the
+  question's card under the choices, on the human's ground: a small "Y", "You ·
+  answered" (or "You · dismissed", quieter), its time, and the answer (the choice in
+  bold "✓", the comment under it; else the own words) as Markdown with `breaks`. Without
+  the reply in the window, the block says only "You · answered" or "You · dismissed".
+  When the reply is the row right under its question, it is no row; when other rows came
+  between, one quiet line stands where it was given (it ends a group): "Y", "You answered
+  question #N ↑" (a link up to the card, `#message-N`) and the answer's start on one line
+  cut with an ellipsis, or "You dismissed question #N ↑". A reply whose question is not in
+  the window (pages not loaded) is the human's row "answer to #N" as before, a dismissal
+  the line "You dismissed question #N". The reply's anchor `#message-<id>` is its late
+  line when there is one, else its block in the card.
+- **Flow events** (decided 2026-10-07, feature/chat-message-text, mockup
+  `flow-events-a.html`): a run's events in a row, with no other row between (whatever the
+  time), are one group (`<ol aria-label="Flow run <run>">`): the flow icon and the run's
+  name once on top, a link to its page in Flows; no link in the lines. A line (Inter
+  13 px, at the text's column): a small avatar of the actor (an agent's colour, "Y" for
+  `human`, a grey "L" for `lado`), its name muted ("You" for the human), then by kind: a
+  `flow` move as chips, the state it left (mono, muted) → the state it entered (mono) and
+  the outcome, green (`--done`) forward and orange (`--human`) back; `flow_start`
+  "started", `gate_open` "waits for you" (orange; the gate's card is the row under it),
+  `flow_end` "ended" (green), `flow_cancel` "cancelled", `flow_set` "set by you", each with
+  the core's `detail` as it is, cut by CSS on one line (the UI parses no detail); a
+  `flow` event whose detail is no move shows its detail. The time on the right, always
+  seen. `gate_answer` is no line: the human's answer is their move. A move goes back when
+  it stays in its state or enters a state its run left earlier **in the loaded window**
+  (`goesBack`): when earlier pages load, a move's colour may turn from green to orange;
+  its outcome is always written. The **human's answer to a gate** is one line: their
+  `flow` move (only the human's answers write a `flow` event as `human`; `lado flow-set`
+  writes `flow_set`), with the answer's comment under it (Markdown with `breaks`), from the
+  `GateInfo` of its run answered by `human` in the state the run left or entered (a loop
+  limit's `continue` enters the gate's state), closed nearest to the event (`gateOf`; the
+  answer and the move are one transaction). Without that gate loaded, the move alone. The
+  closed gate's line stays where it opened.
+- **Quiet lines** (run events, a closed gate, a late reply, a dismissal) start at the
+  text's column.
 - **The composer** (shared with an agent's page in Agents): one frame, the field without a
   resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
   scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
@@ -709,8 +772,10 @@ Built in the layout task (2026-10-03, schema 14):
 
 - **Run events in the journal**: the flow runs' events reach the UI through the `events`
   triggers (The change feed above); `GET /api/sessions/{name}/events` lists them
-  (`RunEventInfo {id, run, kind, actor, detail, created_at}`, oldest first); the server
-  does not parse `detail`.
+  (`RunEventInfo {id, run, kind, actor, detail, transition, created_at}`, oldest first);
+  the server does not parse `detail`, but for a move: `transition {from_state, outcome,
+  to_state}` of a `flow` event, read by `state.transition` next to its one writer
+  `state.flow_detail` (since feature/chat-message-text), else null.
 - **API**: `GET …/messages` without `with` gives all the session's messages (`with=human`
   stays; pages since feature/chat-paging: The change feed, Message windows); `SessionInfo.waiting {gates, questions, agents}` counts what waits for the human
   (open gates, open questions, agents in `waiting`), computed in `models.session_info` from
@@ -736,16 +801,15 @@ Built in the layout task (2026-10-03, schema 14):
   Esc; `role="tooltip"`, the trigger's `aria-describedby` while it shows, no pointer
   events, kept inside the window. A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
-  gates as cards or lines and the human's answers to them (Flow gates above); their other events as quiet lines
-  (`<kind> <run>: <detail>`, a link to the run's page in Flows), the kinds shown as lines named in one list
-  in the UI (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_open` and `gate_answer` are not in it,
-  the gate stands for them); and behind the switch **Show agent
+  gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
+  (Flow events in Look of the feed), the kinds shown as lines named in one list in the UI
+  (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_answer` is not in it, the human's move stands for
+  it); and behind the switch **Show agent
   messages** (off by default, remembered in the browser) the agents' messages to each
   other. The chat shows a window of messages (Message windows above): the latest 50 with
   the human, with the switch on the latest 50 of all; the switch changes the window.
-  A body to the human shows at once: its first 8 lines that are not blank (at most 1500
-  characters), the rest behind **Show all**. The feed takes the page's height and scrolls
-  by itself, the composer under it.
+  A message's text shows as Message text in Look of the feed says. The feed takes the
+  page's height and scrolls by itself, the composer under it.
 - **Pages of the chat** (feature/chat-paging, the human's choice 2026-10-04: loaded by
   themselves on scroll, not with a button): gates and run events come whole, but while
   earlier messages are not loaded only those from the window's `from` on show. An unseen
@@ -757,8 +821,8 @@ Built in the layout task (2026-10-03, schema 14):
   its window, and when an entry comes at the bottom while the human is there (within
   40 px); entries put in front keep what the human sees in place (the height added is
   added to the scroll; the feed has `overflow-anchor: none`). A link to a card
-  (`#message-<id>`, `#gate-<id>`: Needs you, the human's answer to a gate, the hint over
-  the composer) scrolls to it; a card before the window is loaded up to in one request (a
+  (`#message-<id>`, `#gate-<id>`: Needs you, a late reply's line, the hint over the
+  composer) scrolls to it; a card before the window is loaded up to in one request (a
   message by its id, a gate by its time), then scrolled to; one that is still not there
   (a message the chat does not show) scrolls nowhere.
 
@@ -1014,7 +1078,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   talk in AGENTS.md) and **Finish…** (not for the supervisor); why it waits, or why it
   stopped ("Stopped: <reason>", its way out is Finish…); Branch,
   Work (asked when the page opens, when the agent becomes idle and with Refresh; "as of"
-  its time; no polling), Worktree, Task (first lines, Show all); its latest 10 messages
+  its time; no polling), Worktree, Task (first lines, Show more); its latest 10 messages
   from and to it, only in its lifetime (a name is used again: one request,
   `agent=<name>&since=<spawned_at>&limit=10`; the server and the feed's rule filter, the
   page does not), and
@@ -1271,6 +1335,13 @@ colours were: a light, calm ground (#F6F7F9, panels #FFFFFF, lines #E3E6EB, ink 
 muted #5B6270), blue for actions and links (#1F5FD6), and orange only for what waits for the
 human (#B4530F on #FDF1E6); IBM Plex Sans and IBM Plex Mono. Each section's mockups are made
 and approved in its own task; this file keeps what was decided from them.
+
+Fonts (decided with the human 2026-10-07, task feature/chat-message-text, mockups
+`/Users/kao/Projects/lado/.lado/mockups/chat-message-text/fonts.html`, column B, and
+`ui-font.html`, variant 1): **Inter** for the whole UI (`--sans`; `@fontsource/inter`, 400
+and 600, every subset, Cyrillic too) instead of IBM Plex Sans; **IBM Plex Mono** for code
+and terminals (`--mono`). Both are bundled, no font from the network; `make dist` checks
+that the wheel has Inter's 400.
 
 The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8EAEE, muted
 #9AA1AD, actions #6FA0FF (labels on them #111317), waiting for the human #F0A25A on #3A2A1C.

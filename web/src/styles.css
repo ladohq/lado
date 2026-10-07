@@ -1936,25 +1936,25 @@ h3 {
   align-items: center;
 }
 
-.run-head {
+.run-group-head {
   display: flex;
   gap: 6px;
   align-items: center;
   margin: 4px 0 2px;
 }
 
-.run-head .icon {
+.run-group-head .icon {
   width: 14px;
   height: 14px;
 }
 
-.run-head a {
+.run-group-head a {
   color: var(--action);
   font-weight: 600;
   text-decoration: none;
 }
 
-.run-head a:hover {
+.run-group-head a:hover {
   text-decoration: underline;
 }
 
@@ -1967,9 +1967,11 @@ h3 {
   list-style: none;
 }
 
+/* A narrow chat wraps a line's chips rather than scroll sideways. */
 .run-line {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
   align-items: center;
   min-width: 0;
 }

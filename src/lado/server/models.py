@@ -757,7 +757,9 @@ def run_event_info(event: state.Event) -> RunEventInfo:
         kind=event.kind,
         actor=event.agent,
         detail=event.detail,
-        transition=None if move is None else Transition(from_state=move[0], outcome=move[1], to_state=move[2]),
+        transition=None
+        if move is None
+        else Transition(from_state=move[0], outcome=move[1], to_state=move[2]),
         created_at=_utc(event.created_at),
     )
 

@@ -352,7 +352,7 @@ function RunEvents({
 }) {
   return (
     <div className="run-group">
-      <p className="run-head">
+      <p className="run-group-head">
         <FlowsIcon />
         <Link to={runPath(session, run)}>{run}</Link>
       </p>

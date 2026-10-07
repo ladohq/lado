@@ -7,9 +7,12 @@
 import { useState } from "react";
 
 import { answerGate, ApiError, type GateInfo } from "./api";
-import { Attachments } from "./Attachments";
-import { Body, clock, Preview } from "./ChatText";
+import { size } from "./artifacts";
+import { KindIcon } from "./ArtifactView";
+import { Attachments, useView } from "./Attachments";
+import { clock, Preview } from "./ChatText";
 import { FeedRow } from "./FeedRow";
+import { useLive } from "./live";
 
 const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
 
@@ -20,21 +23,52 @@ const LABELS: Record<string, Record<string, string>> = {
 };
 
 // How a gate is named wherever one title stands for it (a closed gate's line, a run's page).
-export const gateTitle = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
+export const gateTitle = (gate: GateInfo) =>
+  `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
 
 // A gate in the chat: open, its row with the card; closed, its line.
-export function Gate({ session, gate, stopped }: { session: string; gate: GateInfo; stopped: boolean }) {
+export function Gate({
+  session,
+  gate,
+  stopped,
+}: {
+  session: string;
+  gate: GateInfo;
+  stopped: boolean;
+}) {
   return gate.answer === null ? (
-    <GateRow session={session} gate={gate} stopped={stopped} aside={`${gate.run} · ${gate.state}`} />
+    <GateRow
+      session={session}
+      gate={gate}
+      stopped={stopped}
+      aside={`${gate.run} · ${gate.state}`}
+    />
   ) : (
     <GateLine session={session} gate={gate} />
   );
 }
 
 // An open gate's row: the flag, "Gate #id", `aside`, when it opened, and its card.
-export function GateRow({ session, gate, stopped, aside }: { session: string; gate: GateInfo; stopped: boolean; aside: string }) {
+export function GateRow({
+  session,
+  gate,
+  stopped,
+  aside,
+}: {
+  session: string;
+  gate: GateInfo;
+  stopped: boolean;
+  aside: string;
+}) {
   return (
-    <FeedRow kind="gate" who={`Gate #${gate.id}`} aside={aside} at={gate.created_at} label={`Gate #${gate.id}`} id={gateAnchor(gate.id)}>
+    <FeedRow
+      kind="gate"
+      who={`Gate #${gate.id}`}
+      aside={aside}
+      at={gate.created_at}
+      label={`Gate #${gate.id}`}
+      id={gateAnchor(gate.id)}
+    >
       <GateCard session={session} gate={gate} stopped={stopped} />
     </FeedRow>
   );
@@ -43,8 +77,9 @@ export function GateRow({ session, gate, stopped, aside }: { session: string; ga
 // The DOM id of a gate's place in the feed, for the hint over the composer and the answer.
 export const gateAnchor = (id: number) => `gate-${id}`;
 
-// The card of an open gate, no head. `compact` (a run's page in Flows, where the notes are
-// in the run's history): without the note that led to it and the notes it needs.
+// The card of an open gate, no head: the question, the note that led to it in full with its
+// chips, then the artifacts it reads. `compact` (a run's page in Flows, where the notes are
+// in the run's history): without the note and the artifacts.
 export function GateCard({
   session,
   gate,
@@ -59,8 +94,6 @@ export function GateCard({
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  // A needed note that is the note before the gate shows once, as that note (Note).
-  const others = (gate.needs ?? []).filter((need) => !need.is_gate_note);
 
   async function answer(option: string) {
     setBusy(true);
@@ -78,14 +111,12 @@ export function GateCard({
     <div className="chat-gate open">
       <p className="gate-question">{gate.question}</p>
       {!compact && <Note session={session} gate={gate} />}
-      {!compact && gate.problem && <p className="problem gate-problem">Notes it needs cannot be shown: {gate.problem}</p>}
-      {!compact && others.length > 0 && (
-        <ul className="gate-needs" aria-label="Notes it needs">
-          {others.map((need) => (
-            <Needed key={need.state} need={need} />
-          ))}
-        </ul>
+      {!compact && gate.problem && (
+        <p className="problem gate-problem">
+          Artifacts it reads cannot be shown: {gate.problem}
+        </p>
       )}
+      {!compact && <Reads session={session} names={gate.reads ?? []} />}
       <form className="answer" onSubmit={(event) => event.preventDefault()}>
         <textarea
           aria-label="Comment for the next step (optional)"
@@ -107,7 +138,11 @@ export function GateCard({
             </button>
           ))}
         </div>
-        {stopped && <p className="chat-note">The session is stopped: resume it to answer.</p>}
+        {stopped && (
+          <p className="chat-note">
+            The session is stopped: resume it to answer.
+          </p>
+        )}
         {problem && (
           <p className="field-problem" role="alert">
             {problem}
@@ -119,14 +154,12 @@ export function GateCard({
 }
 
 // The note of the step that led to the gate: its summary, then its body at once, and its
-// artifacts as chips with their short names (they are the run's). When the gate needs the
-// state it came from, the note says so: it is that state's note too.
+// artifacts as chips with their short names (they are the run's).
 function Note({ session, gate }: { session: string; gate: GateInfo }) {
-  if (!gate.note && !gate.note_body && gate.attachments.length === 0) return null;
-  const needed = gate.needs?.find((need) => need.is_gate_note);
+  if (!gate.note && !gate.note_body && gate.attachments.length === 0)
+    return null;
   return (
     <div className="gate-note">
-      {needed && <p className="gate-note-from">Note from {needed.state} (also the note before the gate)</p>}
       {gate.note && (
         <p className="gate-note-summary">
           <strong>{gate.note}</strong>
@@ -138,20 +171,60 @@ function Note({ session, gate }: { session: string; gate: GateInfo }) {
   );
 }
 
-type Need = NonNullable<GateInfo["needs"]>[number];
-
-// A note the gate state needs: one line, its body behind a click; or that there is none yet.
-function Needed({ need }: { need: Need }) {
-  const [shown, setShown] = useState(false);
-  const { note } = need;
-  if (note === null) return <li className="gate-need muted">Note from {need.state}: no note yet</li>;
+// The artifacts the gate reads, by their full names (the core leaves out those its note
+// carries): each as of its latest record among the feed's artifacts, so a write while the
+// gate is open shows at once. A chip opens that record; before the session's artifacts are
+// loaded, a name alone.
+function Reads({ session, names }: { session: string; names: string[] }) {
+  const artifacts = useLive().artifacts[session];
+  const view = useView(session);
+  if (names.length === 0) return null;
+  const items = artifacts && "items" in artifacts ? artifacts.items : undefined;
   return (
-    <li className="gate-need">
-      <button type="button" className="link-button" aria-expanded={shown} onClick={() => setShown(!shown)}>
-        Note from {need.state}: {note.summary}
-      </button>
-      {shown && note.body && <Body text={note.body} />}
-    </li>
+    <>
+      <p className="gate-reads-label" aria-hidden="true">
+        It reads
+      </p>
+      <ul className="gate-reads" aria-label="Artifacts it reads">
+        {names.map((name) => {
+          const found = items?.find((one) => one.full_name === name);
+          const short = name.slice(name.lastIndexOf("/") + 1);
+          if (!found) {
+            return (
+              <li key={name} className="gate-read muted">
+                {short}
+                {items && ": no record yet"}
+              </li>
+            );
+          }
+          const about = [found.title, found.latest.summary]
+            .filter(Boolean)
+            .join(" — ");
+          return (
+            <li key={name} className="gate-read">
+              <button
+                type="button"
+                className="chip"
+                aria-label={`Open artifact ${found.full_name}`}
+                title={
+                  found.title
+                    ? `${found.full_name} · ${found.title}`
+                    : found.full_name
+                }
+                onClick={() => view(found.latest.id)}
+              >
+                <KindIcon mediaType={found.latest.media_type} />
+                <span className="chip-name">
+                  <span className="full-name">{found.name}</span>
+                </span>
+                <span className="chip-size">{size(found.latest.size)}</span>
+              </button>
+              {about && <span className="gate-read-about">{about}</span>}
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 
@@ -160,9 +233,18 @@ function GateLine({ session, gate }: { session: string; gate: GateInfo }) {
   const [shown, setShown] = useState(false);
   const when = gate.answered_at ?? gate.created_at;
   return (
-    <article className="chat-gate closed" id={gateAnchor(gate.id)} aria-label={`Gate #${gate.id}`}>
+    <article
+      className="chat-gate closed"
+      id={gateAnchor(gate.id)}
+      aria-label={`Gate #${gate.id}`}
+    >
       <div className="gate-line">
-        <button type="button" className="gate-toggle" aria-expanded={shown} onClick={() => setShown(!shown)}>
+        <button
+          type="button"
+          className="gate-toggle"
+          aria-expanded={shown}
+          onClick={() => setShown(!shown)}
+        >
           {gateTitle(gate)}: {gate.answer} by {gate.answered_by}
         </button>
         <time dateTime={when}>{clock(when)}</time>

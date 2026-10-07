@@ -249,7 +249,7 @@ function RunPage({ session, run, stopped, lists }: { session: string; run: RunIn
     <section className="run-page" aria-label={`Run ${run.name}`}>
       <RunHead run={run} />
       <Now session={session} run={run} gate={open} stopped={stopped} lists={lists} />
-      <History session={session} run={run} gate={open} lists={lists} />
+      <History session={session} run={run} lists={lists} />
     </section>
   );
 }
@@ -304,7 +304,8 @@ function Task({ text }: { text: string }) {
 }
 
 // Every state of the flow, in the order it declares them, as a chip: its name (◇ at a gate),
-// its visits, who acts in its title; the current one marked (orange while it waits for the
+// its visits, who acts, the artifacts it reads and those it writes in its title; the current
+// one marked (orange while it waits for the
 // human), the ones entered solid, the others dashed. A run whose flow the server cannot
 // read has none: the problem stands in their place.
 function States({ run }: { run: RunInfo }) {
@@ -321,7 +322,13 @@ function States({ run }: { run: RunInfo }) {
       {run.states.map((one) => {
         const visits = run.visits[one.name] ?? 0;
         const count = one.max_visits !== null ? `${visits}/${one.max_visits}` : visits > 0 ? `×${visits}` : "";
-        const who = one.kind === "gate" ? "you" : (one.agent ?? undefined);
+        const who = [
+          one.kind === "gate" ? "you" : one.agent,
+          one.reads.length > 0 && `reads ${one.reads.join(", ")}`,
+          one.produces.length > 0 && `writes ${one.produces.join(", ")}`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
         const classes = [
           "flow-state",
           visits > 0 ? "visited" : "",
@@ -431,30 +438,22 @@ function entries(run: RunInfo, lists: Lists): Entry[] {
   return [...notes, ...events].sort((a, b) => a.rank - b.rank || a.at.localeCompare(b.at));
 }
 
-// What the history opens by itself: when the page opens, the latest note with a body; while
-// a gate is open, the notes it needs (by their ids, as the core chose them).
+// What the history opens by itself when the page opens: the latest note with a body.
 const latestWithBody = (all: Entry[]) => all.filter((one) => one.note?.body).at(-1)?.key;
-const needed = (gate?: GateInfo) =>
-  (gate?.needs ?? []).flatMap((need) => (need.note === null ? [] : [`note-${need.note.id}`]));
 
 // The run's history: every event in one feed, the newest first or the oldest (remembered);
 // a step opens to its facts and its note's body. A note that comes later with a body opens
 // too.
-function History({ session, run, gate, lists }: { session: string; run: RunInfo; gate?: GateInfo; lists: Lists }) {
+function History({ session, run, lists }: { session: string; run: RunInfo; lists: Lists }) {
   const all = entries(run, lists);
   const [order, setOrder] = useState<FlowsOrder>(storedFlowsOrder);
-  const [opened, setOpened] = useState(
-    () => new Set([latestWithBody(all), ...needed(gate)].filter((key): key is string => key !== undefined)),
-  );
+  const [opened, setOpened] = useState(() => new Set([latestWithBody(all)].filter((key): key is string => key !== undefined)));
   const [seen, setSeen] = useState(() => new Set(all.map((one) => one.key)));
-  const [gateSeen, setGateSeen] = useState(gate?.id);
   const fresh = all.filter((one) => !seen.has(one.key));
-  if (fresh.length > 0 || gate?.id !== gateSeen) {
+  if (fresh.length > 0) {
     const next = new Set(opened);
     for (const one of fresh) if (one.note?.body) next.add(one.key);
-    if (gate?.id !== gateSeen) for (const key of needed(gate)) next.add(key);
     setSeen(new Set(all.map((one) => one.key)));
-    setGateSeen(gate?.id);
     setOpened(next);
   }
 

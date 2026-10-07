@@ -30,13 +30,21 @@ const work = (name: string, agent: string, outcomes: Record<string, string>, max
   ask: null,
   outcomes,
   max_visits,
-  needs: [],
+  reads: [],
+  produces: [],
 });
 
 const STATES: State[] = [
-  work("implement", "developer", { done: "review" }),
-  work("review", "reviewer", { approved: "merge_ok", changes: "implement", again: "review" }, 3),
-  { ...work("merge_ok", "", { approved: "done", rejected: "implement" }), kind: "gate", agent: null, gate: "approval", ask: "Merge it?" },
+  { ...work("implement", "developer", { done: "review" }), produces: ["report"] },
+  { ...work("review", "reviewer", { approved: "merge_ok", changes: "implement", again: "review" }, 3), reads: ["report"], produces: ["review"] },
+  {
+    ...work("merge_ok", "", { approved: "done", rejected: "implement" }),
+    kind: "gate",
+    agent: null,
+    gate: "approval",
+    ask: "Merge it?",
+    reads: ["report", "review"],
+  },
   { ...work("done", "", {}), kind: "end", agent: null },
 ];
 
@@ -96,7 +104,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     note: "ready to merge",
     note_body: "",
     attachments: [],
-    needs: [],
+    reads: [],
     answer: null,
     comment: "",
     answered_by: null,
@@ -501,7 +509,13 @@ test("a run's head: name, status, meta, the task's first line with more, and eve
   expect(head.textContent).not.toContain("more lines of the task");
   const states = within(region).getAllByRole("listitem", { name: /^State / });
   expect(states.map((one) => one.textContent)).toEqual(["implement×2", "review2/3", "◇ merge_ok", "done"]);
-  expect(states.map((one) => one.getAttribute("title"))).toEqual(["developer", "reviewer", "you", null]);
+  // Who acts, then the artifacts it reads and those it must write.
+  expect(states.map((one) => one.getAttribute("title"))).toEqual([
+    "developer · writes report",
+    "reviewer · reads report · writes review",
+    "you · reads report, review",
+    null,
+  ]);
   expect(states[1].getAttribute("aria-current")).toBe("step");
   expect(states[1].className).toContain("current");
   expect(states[0].className).toContain("visited");
@@ -546,11 +560,7 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
   const posted = serve({
     runs: [WAITING],
     notes: [note(1, { run: WAITING.name, summary: "the design" })],
-    gates: [
-      gate(41, {
-        needs: [{ state: "implement", note: note(1, { run: WAITING.name, summary: "the design" }), is_gate_note: false }],
-      }),
-    ],
+    gates: [gate(41, { reads: ["feature/flows-tab/report"] })],
   });
   open(runPath("lado", WAITING.name));
   const region = await page("feature/flows-tab");
@@ -563,7 +573,7 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
   expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(gate(41).created_at);
   expect(within(card).getByText("Merge it?")).toBeTruthy();
   expect(card.textContent).not.toContain("ready to merge");
-  expect(within(card).queryByRole("list", { name: "Notes it needs" })).toBeNull();
+  expect(within(card).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
   fireEvent.change(within(card).getByRole("textbox"), { target: { value: "ship it" } });
   fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
   await vi.waitFor(() =>
@@ -729,28 +739,6 @@ test("a new event with a body from the feed opens; another run's page starts afr
   fireEvent.click(screen.getByRole("link", { name: /^‹ All runs/ }));
   fireEvent.click(within(await runs()).getByRole("link", { name: /feature\/flows-tab/ }));
   expect(opened(await feed("feature/flows-tab"))).toEqual(["another run's note"]);
-});
-
-test("while a gate is open, the notes it needs are open too", async () => {
-  const design = note(1, { run: WAITING.name, state: "implement", summary: "the design", body: "design text" });
-  serve({
-    runs: [WAITING],
-    notes: [
-      design,
-      note(2, { run: WAITING.name, state: "implement", kind: "override", actor: "human", outcome: "", target: "review", summary: "flow-set", body: "why" }),
-      note(3, { run: WAITING.name, state: "review", actor: "reviewer", outcome: "approved", target: "merge_ok", summary: "approved", body: "fine" }),
-    ],
-    gates: [
-      gate(41, {
-        needs: [
-          { state: "implement", note: design, is_gate_note: false },
-          { state: "review", note: null, is_gate_note: false },
-        ],
-      }),
-    ],
-  });
-  open(runPath("lado", WAITING.name));
-  expect(opened(await feed("feature/flows-tab"))).toEqual(["approved", "the design"]);
 });
 
 test("the start, end and cancel are one line, never opened, without the end's detail", async () => {

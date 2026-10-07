@@ -10,20 +10,21 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in
 
-from lado import loop, runs, runtime, state
+from lado import artifacts, loop, runs, runtime, state
 
 pytestmark = pytest.mark.ui
 
 SHIP = """\
 name: ship
-description: the supervisor plans it, the human approves it
+description: the supervisor plans and reviews it, the human approves it
 start: plan
 states:
-  plan: {agent: supervisor, do: sleep 0, outcomes: {ready: check}}
+  plan: {agent: supervisor, do: sleep 0, produces: [plan], outcomes: {ready: review}}
+  review: {agent: supervisor, do: sleep 0, outcomes: {done: check}}
   check:
     gate: approval
     ask: Build it as planned?
-    needs: [plan]
+    reads: [plan]
     outcomes: {approved: end, rejected: plan}
   end: {end: true}
 """
@@ -43,7 +44,8 @@ def wide(page: Page):
 
 
 def gated_session(repo) -> str:
-    """A running session of the fake agent whose run ship/x waits at gate "check"."""
+    """A running session of the fake agent whose run ship/x waits at gate "check": review's
+    note before it carries the artifact review, and the gate reads plan."""
     kit = repo / ".lado" / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
@@ -55,7 +57,21 @@ def gated_session(repo) -> str:
     )
     agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
     runs.start(session, "ship", "Add a login page", name="x")
-    runs.advance(session, "supervisor", "ship/x", "ready", "the plan is reviewed", REVIEW)
+    plan = "# The plan\n\nTwo steps."
+    artifacts.write(
+        session, "supervisor", "ship/x/plan", plan, title="The plan", summary="two steps"
+    )
+    runs.advance(session, "supervisor", "ship/x", "ready", "planned")
+    artifacts.write(session, "supervisor", "ship/x/review", REVIEW, summary="split it")
+    runs.advance(
+        session,
+        "supervisor",
+        "ship/x",
+        "done",
+        "the plan is reviewed",
+        REVIEW,
+        attached=["ship/x/review"],
+    )
     return session
 
 
@@ -69,10 +85,19 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
     expect(card.locator("strong").first).to_have_text("the plan is reviewed")
     expect(card).to_contain_text("Split it in two, then ship.")
     expect(page.get_by_text("Gate #1 waits:")).to_be_visible()
-    # The gate needs plan and comes right from it: plan's note is shown once, as its note.
-    expect(card).to_contain_text("Note from plan (also the note before the gate)")
-    expect(card.get_by_role("button", name="Note from plan: the plan is reviewed")).to_have_count(0)
+    # The note in full with its artifact, then the artifact the gate reads, under it.
+    note = card.locator(".gate-note")
+    expect(note.get_by_role("button", name="Open artifact ship/x/review")).to_be_visible()
+    reads = card.get_by_role("list", name="Artifacts it reads")
+    expect(reads.get_by_role("listitem")).to_have_count(1)
+    expect(reads).to_contain_text("The plan — two steps")
     shot(page, "card")
+    reads.get_by_role("button", name="Open artifact ship/x/plan").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/plan")
+    expect(panel).to_contain_text("Two steps.")
+    shot(page, "read")
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill(
         "split the form first"
     )

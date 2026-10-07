@@ -77,9 +77,9 @@ name: designed
 description: the supervisor designs it, the human approves, a worker builds it
 start: design
 states:
-  design: {agent: supervisor, do: sleep 0, outcomes: {ready: approve}}
+  design: {agent: supervisor, do: sleep 0, produces: [design], outcomes: {ready: approve}}
   approve: {gate: approval, ask: 'Build it?', outcomes: {approved: build, rejected: design}}
-  build: {agent: worker, do: sleep 0, needs: [design], outcomes: {done: end}}
+  build: {agent: worker, do: sleep 0, reads: [design], outcomes: {done: end}}
   end: {end: true}
 """
 
@@ -289,19 +289,23 @@ def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):
     assert f"human: flow {name} (check -rejected-> build)" in log
 
 
-def test_a_step_gets_the_note_it_needs_after_a_gate_and_after_flow_set(repo, flow_kit):
+def test_a_step_gets_the_artifact_it_reads_after_a_gate_and_after_flow_set(repo, flow_kit):
     name = "designed/build-it"
     supervisor_runs("flow_start designed build it")
-    supervisor_runs(f"advance {name} ready the design | use a form\\nno captcha")
+    (repo / "design.md").write_text("# Design\n\nuse a form, no captcha\n")
+    supervisor_runs(f"artifact_write {name}/design design.md")
+    supervisor_runs(f"advance {name} ready the design")
     assert run_state(name).status == state.WAITING
     result = lado_cli("answer", SESSION, "1", "approve", "-m", "go")
     assert result.returncode == 0, result.stderr
     supervisor_runs(f"spawnrun {name}")
     wait_status("worker", state.IDLE)
-    design = "Note from design: the design\nuse a form\nno captcha"
+    # The worker's run's scope: the bare name, never the content.
+    design = "Artifacts this step reads (read each with read_artifact):\n- design"
     [first] = inputs("worker")
     assert first.startswith(f"Run {name} (flow designed), step build.")
     assert design in first
+    assert "no captcha" not in first
     assert "Note from the previous step: approved: go" in first
 
     # Set back to build by the human: the previous note is the reason, the design stays.

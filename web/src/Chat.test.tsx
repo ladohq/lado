@@ -739,26 +739,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     note: "built it",
     note_body: "All **tests** pass.",
     attachments: [],
-    needs: [
-      {
-        state: "design",
-        note: {
-          id: 3,
-          run: "feature/x",
-          state: "design",
-          kind: "report",
-          actor: "supervisor",
-          outcome: "ready",
-          target: "build",
-          summary: "the plan",
-          body: "step one",
-          attachments: [],
-          created_at: "2026-10-03T11:00:00Z",
-        },
-        is_gate_note: false,
-      },
-      { state: "polish", note: null, is_gate_note: false },
-    ],
+    reads: ["feature/x/plan"],
     answer: null,
     comment: "",
     answered_by: null,
@@ -770,7 +751,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
 }
 
 const closed = (id: number, answer: string, more: Partial<GateInfo> = {}) =>
-  gate(id, { answer, answered_by: "human", answered_at: "2026-10-03T12:05:00Z", needs: null, ...more });
+  gate(id, { answer, answered_by: "human", answered_at: "2026-10-03T12:05:00Z", reads: null, ...more });
 
 const gateCard = async (id = 1) => within(await chat()).findByRole("article", { name: `Gate #${id}` });
 
@@ -778,7 +759,7 @@ function gateChanged(item: GateInfo) {
   return { kind: "gates", session: "lado", key: String(item.id), op: "update", item };
 }
 
-test("an open gate is a card: its question, the note that led to it and the notes it needs", async () => {
+test("an open gate is a card: its question, the note that led to it and the artifacts it reads", async () => {
   serve([], undefined, [], [gate(1)]);
   open();
   const card = await gateCard();
@@ -788,22 +769,19 @@ test("an open gate is a card: its question, the note that led to it and the note
   expect(within(card).getByText("Ship it?")).toBeTruthy();
   expect(within(card).getByText("built it").tagName).toBe("STRONG");
   expect(within(card).getByText("tests").tagName).toBe("STRONG"); // the body, open, as Markdown
-  const design = within(card).getByRole("button", { name: "Note from design: the plan" });
-  expect(design.getAttribute("aria-expanded")).toBe("false");
-  expect(within(card).queryByText("step one")).toBeNull();
-  fireEvent.click(design);
-  expect(within(card).getByText("step one")).toBeTruthy();
-  expect(within(card).getByText("Note from polish: no note yet")).toBeTruthy();
+  // The session's artifacts are not loaded here: the name alone (ArtifactsTable.test.tsx).
+  const reads = within(card).getByRole("list", { name: "Artifacts it reads" });
+  expect(within(reads).getAllByRole("listitem").map((one) => one.textContent)).toEqual(["plan"]);
   expect(within(card).getByRole("textbox", { name: "Comment for the next step (optional)" })).toBeTruthy();
 });
 
-test("a gate whose run's flow cannot be read shows the problem instead of the notes it needs", async () => {
+test("a gate whose run's flow cannot be read shows the problem instead of the artifacts it reads", async () => {
   const problem = 'run "feature/x": its flow snapshot is not JSON: line 1';
-  serve([], undefined, [], [gate(1, { needs: null, problem })]);
+  serve([], undefined, [], [gate(1, { reads: null, problem })]);
   open();
   const card = await gateCard();
-  expect(within(card).getByText(`Notes it needs cannot be shown: ${problem}`)).toBeTruthy();
-  expect(within(card).queryByRole("list", { name: "Notes it needs" })).toBeNull();
+  expect(within(card).getByText(`Artifacts it reads cannot be shown: ${problem}`)).toBeTruthy();
+  expect(within(card).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
   expect(within(card).getByText("Ship it?")).toBeTruthy();
   // Whether it can be answered is the core's to say.
   const approve = within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement;
@@ -824,7 +802,7 @@ test("a long note before the gate is behind Show more", async () => {
 test.each([
   [gate(1), ["Approve", "Reject"]],
   [gate(1, { kind: "choice", options: ["left", "right"] }), ["left", "right"]],
-  [gate(1, { kind: "loop", options: ["continue", "cancel"], needs: [] }), ["Continue", "Cancel run"]],
+  [gate(1, { kind: "loop", options: ["continue", "cancel"], reads: [] }), ["Continue", "Cancel run"]],
 ])("a gate's buttons are its options", async (one, labels) => {
   serve([], undefined, [], [one]);
   open();
@@ -874,7 +852,7 @@ test("an answer the server refuses says why on the gate's card", async () => {
   expect(within(card).getByRole("button", { name: "Approve" })).toBeTruthy();
 });
 
-test("a closed gate is a line with its answer and comment; it opens read only, without needs", async () => {
+test("a closed gate is a line with its answer and comment; it opens read only, without reads", async () => {
   serve([], undefined, [], [closed(1, "approve", { comment: "ship it" })]);
   open();
   const line = await gateCard();
@@ -884,7 +862,7 @@ test("a closed gate is a line with its answer and comment; it opens read only, w
   fireEvent.click(toggle);
   expect(within(line).getByText("Ship it?")).toBeTruthy();
   expect(within(line).getByText("built it")).toBeTruthy();
-  expect(within(line).queryByText(/Note from/)).toBeNull();
+  expect(within(line).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
   expect(within(line).queryByRole("textbox")).toBeNull();
   expect(within(line).getAllByRole("button")).toHaveLength(1);
 });

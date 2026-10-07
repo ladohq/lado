@@ -11,7 +11,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in
 
-from lado import loop, runs, runtime, state
+from lado import artifacts, loop, runs, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -20,7 +20,7 @@ name: ship
 description: the supervisor plans and builds it, the human approves it
 start: plan
 states:
-  plan: {agent: supervisor, do: sleep 0, outcomes: {ready: build}}
+  plan: {agent: supervisor, do: sleep 0, produces: [plan], outcomes: {ready: build}}
   build:
     agent: supervisor
     do: sleep 0
@@ -29,7 +29,7 @@ states:
   check:
     gate: approval
     ask: Ship it?
-    needs: [build]
+    reads: [plan]
     outcomes: {approved: end, rejected: build}
   end: {end: true}
 """
@@ -55,6 +55,7 @@ def flows_session(repo) -> str:
     )
     agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
     runs.start(session, "ship", "Add a login page", name="x")
+    artifacts.write(session, "supervisor", "ship/x/plan", "a form in two steps")
     runs.advance(session, "supervisor", "ship/x", "ready", "the plan: a form in two steps")
     runs.advance(session, "supervisor", "ship/x", "done", "built the form", BUILT)
     runs.start(session, "ship", "Add a logout button", name="y")
@@ -152,13 +153,18 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     )
     expect(run.get_by_role("listitem", name="State build")).to_have_text("build1/3")
     expect(run.get_by_role("listitem", name="State build")).to_have_attribute("title", "supervisor")
+    plan = run.get_by_role("listitem", name="State plan")
+    expect(plan).to_have_attribute("title", "supervisor · writes plan")
+    expect(run.get_by_role("listitem", name="State check")).to_have_attribute(
+        "title", "you · reads plan"
+    )
     expect(run.get_by_role("list", name="Ways back")).to_have_count(0)
-    # Now: the gate, compact, without the notes it needs (they are in the history).
+    # Now: the gate, compact, without its note and what it reads (they are in the history).
     now = run.get_by_role("region", name="Now")
     expect(now).to_contain_text("Waits for you")
     card = now.get_by_role("article", name="Gate #1", exact=True)
     expect(card).to_contain_text("Ship it?")
-    expect(card.get_by_role("list", name="Notes it needs")).to_have_count(0)
+    expect(card.get_by_role("list", name="Artifacts it reads")).to_have_count(0)
     # The history, the newest first; the latest step with a note is open.
     events = run.get_by_role("list", name="Events")
     tops = events.locator(".feed-top")

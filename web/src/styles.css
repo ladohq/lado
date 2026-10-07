@@ -2225,24 +2225,37 @@ h3 {
   margin-top: 8px;
 }
 
-.gate-needs {
+/* The artifacts a gate reads, under its note: a chip and its title — summary per line. */
+.gate-reads-label {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.gate-reads {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 8px 0 0;
+  gap: 4px;
+  margin: 4px 0 0;
   padding: 0;
   list-style: none;
   font-size: 13px;
 }
 
-.gate-need .link-button {
-  margin: 0;
-  text-align: left;
+.gate-read {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   overflow-wrap: anywhere;
 }
 
-.gate-need.muted {
+.gate-read.muted {
   color: var(--muted);
+}
+
+.gate-read-about {
+  min-width: 0;
 }
 
 /* A closed gate: a quiet line at the text's column that opens read only. */
@@ -4875,12 +4888,6 @@ del.kit-mcp-name {
     border-left: 1px solid var(--line);
     border-radius: 0 0 8px 8px;
   }
-}
-
-.gate-note-from {
-  margin: 0 0 2px;
-  color: var(--muted);
-  font-size: 12.5px;
 }
 
 /* The tab: its tools, then the table over the whole column, scrolling by itself. The tab is

@@ -31,7 +31,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     note: "design ready",
     note_body: "",
     attachments: [],
-    needs: [],
+    reads: [],
     answer: null,
     comment: "",
     answered_by: null,

@@ -253,7 +253,7 @@ def test_a_runs_events_show_in_the_feed_and_its_gate_puts_the_session_under_need
     run = state.Run(
         session, "feature/demo", "feature", json.dumps(DEMO), {}, "demo", "design", "/w", "b"
     )
-    # A loop limit: its card needs no notes.
+    # A loop limit: its card reads no artifacts.
     gate = state.Gate(session, "feature/demo", "design", "loop", "Again?", ["continue", "cancel"])
     state.add_run(run, [("supervisor", state.FLOW_START, "at design")], gate)
     chat = page.get_by_role("log", name="Chat with the session")

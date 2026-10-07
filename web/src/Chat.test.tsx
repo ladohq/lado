@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { day } from "./ChatText";
+import { clock, day, dayName } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -120,6 +120,10 @@ function open(path = "/sessions/lado/activity") {
 
 const chat = () => screen.findByRole("log", { name: "Chat with the session" });
 
+// A row's head: who, and the muted part (undefined when there is none).
+const head = (row: HTMLElement) =>
+  ["feed-who", "feed-aside"].map((one) => row.querySelector(`.feed-head .${one}`)?.textContent);
+
 function changed(item: MessageInfo | null, key = String(item?.id), session = "lado") {
   return { kind: "messages", session, key, op: "update", item };
 }
@@ -153,10 +157,13 @@ test("the chat shows who wrote each message, its summary and its body as Markdow
   open();
   const log = await chat();
   const [mine, reply] = await within(log).findAllByRole("article");
-  expect(within(mine).getByText("you")).toBeTruthy();
-  expect(within(mine).getByText("to supervisor")).toBeTruthy();
+  expect(head(mine)).toEqual(["You", "→ supervisor"]);
+  expect(mine.className).toContain("mine");
+  expect(mine.querySelector(".avatar")?.textContent).toBe("Y");
   expect(within(mine).getByText("merge w1, please")).toBeTruthy();
-  expect(within(reply).getByText("supervisor")).toBeTruthy();
+  expect(head(reply)).toEqual(["supervisor", undefined]);
+  expect(reply.querySelector(".avatar")?.textContent).toBe("S");
+  expect(reply.querySelector(".feed-head time")?.textContent).toBe(clock(reply.querySelector("time")!.dateTime));
   expect(within(reply).getByText("All").tagName).toBe("STRONG"); // a body to the human shows at once
   expect(reply.querySelector("img")).toBeNull();
 });
@@ -172,6 +179,51 @@ test("a failed message and a reply only in the terminal are marked", async () =>
   expect(within(failed).getByText("not delivered")).toBeTruthy();
   expect(within(missing).getByText("supervisor replied only in its terminal")).toBeTruthy();
   expect(within(replied).queryByText(/replied only/)).toBeNull();
+});
+
+test("a message that continues its sender's group has no head; its time stays in a <time>", async () => {
+  serve([
+    message(1, "supervisor", "human", "first", { created_at: "2026-10-03T12:00:00.000Z" }),
+    message(2, "supervisor", "human", "second", { created_at: "2026-10-03T12:02:00.000Z" }),
+    question(3, { from: "supervisor", created_at: "2026-10-03T12:03:00.000Z" }),
+  ]);
+  open();
+  const [first, second, asked] = await within(await chat()).findAllByRole("article");
+  expect(first.className).not.toContain("continued");
+  expect(head(first)).toEqual(["supervisor", undefined]);
+  expect(second.className).toContain("continued");
+  expect(second.querySelector(".feed-head")).toBeNull();
+  expect(second.getAttribute("aria-label")).toBe("Message from supervisor");
+  expect(second.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-03T12:02:00.000Z");
+  expect(asked.className).toContain("continued");
+  expect(asked.getAttribute("aria-label")).toBe("Question from supervisor");
+});
+
+test("a divider with the day's name stands between entries of different local days", async () => {
+  const days = [new Date(2026, 9, 2, 23, 50), new Date(2026, 9, 3, 0, 10)].map((one) => one.toISOString());
+  serve([
+    message(1, "supervisor", "human", "late", { created_at: days[0] }),
+    message(2, "supervisor", "human", "early", { created_at: days[1] }),
+  ]);
+  open();
+  const log = await chat();
+  await within(log).findByText("early");
+  const dividers = within(log).getAllByRole("separator");
+  expect(dividers.map((one) => one.textContent)).toEqual([dayName(days[1])]);
+  expect(within(log).getAllByRole("article")[1].className).not.toContain("continued");
+});
+
+test("no card in the chat draws a head of its own", async () => {
+  serve(
+    [message(1, "human", "supervisor", "go"), question(5), question(6, { question_state: "answered", answered_by: 9 })],
+    undefined,
+    [],
+    [gate(1), closed(2, "approve")],
+  );
+  open();
+  const log = await chat();
+  await within(log).findAllByRole("article", { name: "Question from w1" });
+  expect(log.querySelector(".chat-meta, .chat-from")).toBeNull();
 });
 
 test("the chat follows the feed: new and changed messages, not those between agents", async () => {
@@ -200,7 +252,73 @@ test("a question is answered with a choice; the card waits for the feed to say s
   stream().send("change", changed(message(6, "human", "w1", "Answer to #5: yes", { reply_to: 5, choice: "yes" })), "12");
   const answered = within(await chat()).getByRole("article", { name: "Question from w1" });
   expect(within(answered).queryByRole("button")).toBeNull();
-  expect(within(answered).getByText("Answered: yes")).toBeTruthy();
+  // The answer is the next row: the card says only that, the row says the rest.
+  expect(answered.querySelector(".chat-outcome")?.textContent).toBe("✓ Answered");
+  expect(answered.querySelector(".choices .chosen")?.textContent).toBe("yes");
+  const reply = within(await chat()).getByRole("article", { name: "Message from you" });
+  expect(head(reply)).toEqual(["You", "→ w1 · answer to #5"]);
+  expect(within(reply).getByRole("link", { name: "#5" }).getAttribute("href")).toBe("#message-5");
+  expect(within(reply).getByRole("heading").textContent).toBe("yes");
+  expect((await chat()).textContent).not.toContain("Answered: yes");
+  expect((await chat()).textContent).not.toContain("Answer to #5");
+});
+
+test("a question further from its answer says the choice, or leads to the own answer", async () => {
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  serve(
+    [
+      question(5, { question_state: "answered", answered_by: 7 }),
+      message(6, "supervisor", "human", "in between"),
+      message(7, "human", "w1", "Answer to #5: after the release", { reply_to: 5 }),
+      question(8, { question_state: "answered", answered_by: 10 }),
+      message(9, "supervisor", "human", "in between too"),
+      message(10, "human", "w1", "Answer to #8: later", { reply_to: 8, choice: "later", body: "after the tag" }),
+    ].map((one, i) => ({ ...one, created_at: `2026-10-03T12:0${i}:00.000Z` })),
+  );
+  open();
+  const [own, chose] = within(await chat()).getAllByRole("article", { name: "Question from w1" });
+  expect(own.querySelector(".chat-outcome")?.textContent).toBe("✓ You answered in your own words · go to answer");
+  expect(chose.querySelector(".chat-outcome")?.textContent).toBe("✓ You chose later");
+  const answers = within(await chat()).getAllByRole("article", { name: "Message from you" });
+  expect(within(answers[0]).getByRole("heading").textContent).toBe("after the release");
+  expect(within(answers[1]).getByRole("heading").textContent).toBe("later");
+  expect(within(answers[1]).getByText("after the tag")).toBeTruthy(); // the comment, under the choice
+  scrolled.mockClear();
+  fireEvent.click(within(own).getByRole("link", { name: "go to answer" }));
+  expect(scrolled.mock.contexts).toEqual([answers[0]]);
+});
+
+test("an own answer of more lines shows its whole text once", async () => {
+  serve([
+    question(5, { question_state: "answered", answered_by: 6 }),
+    message(6, "human", "w1", "Answer to #5: after the release", { reply_to: 5, body: "after the release\nand the tag" }),
+  ]);
+  open();
+  const reply = await within(await chat()).findByRole("article", { name: "Message from you" });
+  expect(reply.textContent?.match(/after the release/g)).toHaveLength(1);
+  expect(within(reply).getByText(/and the tag/)).toBeTruthy();
+});
+
+test("a dismissal is one quiet line, also when its question is not in the window", async () => {
+  serve([
+    question(5, { question_state: "dismissed", answered_by: 6 }),
+    message(6, "human", "w1", "Dismissed #5", { reply_to: 5 }),
+    message(7, "human", "w1", "Dismissed #4", { reply_to: 4 }),
+    message(8, "human", "w1", "Answer to #3: no", { reply_to: 3 }),
+  ]);
+  open();
+  const log = await chat();
+  const lines = await within(log).findAllByRole("article", { name: /^You dismissed question/ });
+  expect(lines.map((one) => one.textContent)).toEqual([
+    expect.stringContaining("You dismissed question #5"),
+    expect.stringContaining("You dismissed question #4"),
+  ]);
+  expect(lines[0].id).toBe("message-6");
+  expect(lines[0].querySelector(".avatar")).toBeNull();
+  // A one-line own answer whose question is not in the window is an answer.
+  const answer = within(log).getByRole("article", { name: "Message from you" });
+  expect(within(answer).getByRole("heading").textContent).toBe("no");
 });
 
 test("a question takes an own answer, or is dismissed", async () => {
@@ -240,13 +358,14 @@ test("a question with only choices has no field for an own answer", async () => 
 
 test.each([
   [{ question_state: "dismissed" as const }, "Dismissed"],
-  [{ question_state: "closed" as const }, "Question closed: the agent left"],
-  [{ question_state: "answered" as const, answered_by: 9 }, "Answered"],
+  [{ question_state: "closed" as const }, "Closed: the agent left"],
+  [{ question_state: "answered" as const, answered_by: 9 }, "✓ Answered · go to answer"],
 ])("a question no longer open says what became of it", async (state, outcome) => {
   serve([question(5, state)]);
   open();
   const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
-  expect(within(card).getByText(outcome)).toBeTruthy();
+  expect(card.querySelector(".chat-outcome")?.textContent).toBe(outcome);
+  expect(within(card).getByText("Question #5")).toBeTruthy();
   expect(within(card).queryByRole("button")).toBeNull();
 });
 
@@ -271,6 +390,46 @@ test("the composer sends with Enter, keeps Shift+Enter for a new line and shows 
   await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/lado/messages", body: { text: "merge w1\nthen tag it" } }]));
   await waitFor(() => expect((field as HTMLTextAreaElement).value).toBe(""));
   expect(within(await chat()).queryByRole("article")).toBeNull();
+});
+
+test("the composer is one frame with Send inside, says to whom and how to send", async () => {
+  serve([]);
+  open();
+  await chat();
+  const field = screen.getByRole("textbox", { name: "Write to the supervisor…" }) as HTMLTextAreaElement;
+  const frame = field.closest(".composer-box")!;
+  expect(within(frame as HTMLElement).getByRole("button", { name: "Send" })).toBeTruthy();
+  expect(field.rows).toBe(1);
+  const form = field.closest("form")!;
+  expect(form.querySelector(".composer-to")?.textContent).toBe("to supervisor");
+  expect(form.querySelector(".composer-keys")?.textContent).toBe("Enter to send · Shift+Enter for a new line");
+});
+
+test("in a stopped session the composer is off and says why", async () => {
+  serve([]);
+  open("/sessions/old/activity");
+  await chat();
+  const field = screen.getByRole("textbox", { name: "Write to the supervisor…" }) as HTMLTextAreaElement;
+  expect(field.disabled).toBe(true);
+  expect(field.placeholder).toBe("The session is stopped: resume it to write");
+  expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("the composer's field grows with its text up to 8 lines, then scrolls", async () => {
+  serve([]);
+  open();
+  await chat();
+  const field = screen.getByRole("textbox", { name: "Write to the supervisor…" }) as HTMLTextAreaElement;
+  let height = 44;
+  Object.defineProperty(field, "scrollHeight", { configurable: true, get: () => height });
+  field.style.lineHeight = "20px";
+  fireEvent.change(field, { target: { value: "one\ntwo" } });
+  expect(field.style.height).toBe("44px");
+  expect(field.style.overflowY).toBe("hidden");
+  height = 400;
+  fireEvent.change(field, { target: { value: "many\nlines\n".repeat(10) } });
+  expect(field.style.height).toBe("160px"); // 8 lines of 20 pixels
+  expect(field.style.overflowY).toBe("auto");
 });
 
 test("a message the server refuses keeps its text and says why at the field", async () => {
@@ -356,7 +515,8 @@ test("the agents' messages to each other show behind a switch that loads the win
   expect(headings(log)).toEqual(["merge w1", "please merge", "merged"]);
   expect(queries.at(-1)).toEqual({ limit: "50" });
   const between = within(log).getByRole("article", { name: "Message from supervisor to w1" });
-  expect(within(between).getByText("to w1")).toBeTruthy();
+  expect(head(between)).toEqual(["supervisor", "→ w1"]);
+  expect(between.className).toContain("between");
   stream().send("change", changed(message(4, "w1", "supervisor", "done")), "11");
   expect(headings(log)).toContain("done");
   fireEvent.click(toggle);
@@ -453,7 +613,9 @@ test("an open gate is a card: its question, the note that led to it and the note
   serve([], undefined, [], [gate(1)]);
   open();
   const card = await gateCard();
-  expect(within(card).getByRole("heading", { name: "Gate #1 · feature/x · check" })).toBeTruthy();
+  expect(head(card)).toEqual(["Gate #1", "feature/x · check"]);
+  expect(card.querySelector(".avatar-gate")).toBeTruthy();
+  expect(card.id).toBe("gate-1");
   expect(within(card).getByText("Ship it?")).toBeTruthy();
   expect(within(card).getByText("built it").tagName).toBe("STRONG");
   expect(within(card).getByText("tests").tagName).toBe("STRONG"); // the body, open, as Markdown
@@ -620,7 +782,7 @@ test("the human's answer to a gate is a bubble of theirs at its time; the gate's
     "Message from supervisor",
   ]);
   expect(bubble.className).toContain("mine");
-  expect(within(bubble).getByRole("heading").textContent).toBe("Gate #1 · approve");
+  expect(head(bubble)).toEqual(["You", "gate #1: approve"]);
   expect(within(bubble).queryByText("ship it")).toBeNull();
   expect(bubble.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-03T12:05:00Z");
 });
@@ -638,13 +800,13 @@ test("the human's answer comes before the run's events of the same moment, which
 });
 
 test.each([
-  [closed(1, "reject", { comment: "add a test" }), "Gate #1 · reject", "add a test"],
-  [closed(1, "overridden", { comment: "built by hand" }), "Gate #1 · overridden", "built by hand"],
-])("the bubble says the answer, and the comment on a line of its own", async (one, heading, comment) => {
+  [closed(1, "reject", { comment: "add a test" }), "gate #1: reject", "add a test"],
+  [closed(1, "overridden", { comment: "built by hand" }), "gate #1: overridden", "built by hand"],
+])("the human's row says the answer in its head, and the comment under it", async (one, answer, comment) => {
   serve([], undefined, [], [one]);
   open();
   const bubble = await answerBubble();
-  expect(within(bubble).getByRole("heading").textContent).toBe(heading);
+  expect(head(bubble)).toEqual(["You", answer]);
   expect(within(bubble).getByText(comment).tagName).toBe("P");
 });
 
@@ -661,7 +823,7 @@ test("the bubble links to the gate's line and scrolls it into view", async () =>
   Element.prototype.scrollIntoView = scrolled;
   open();
   const bubble = await answerBubble();
-  const link = within(bubble).getByRole("link", { name: "Gate #1 · approve" });
+  const link = within(bubble).getByRole("link", { name: "gate #1: approve" });
   expect(link.getAttribute("href")).toBe("#gate-1");
   scrolled.mockClear();
   fireEvent.click(link);

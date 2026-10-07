@@ -553,6 +553,8 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
   const now = nowCard(region);
   expect(now.className).toContain("waits");
   const card = within(now).getByRole("article", { name: "Gate #41" });
+  expect(within(card).getByRole("heading", { name: "Gate #41 · feature/flows-tab · merge_ok" })).toBeTruthy();
+  expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(gate(41).created_at);
   expect(within(card).getByText("Merge it?")).toBeTruthy();
   expect(card.textContent).not.toContain("ready to merge");
   expect(within(card).queryByRole("list", { name: "Notes it needs" })).toBeNull();

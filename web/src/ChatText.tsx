@@ -6,9 +6,12 @@ import Markdown from "react-markdown";
 export const BODY_LINES = 8; // the lines of a body to the human shown before Show all
 const BODY_CHARS = 1500; // and at most these characters of them
 
+// A time of day in 24 hours ("19:53"), whatever the browser's locale says.
 export function clock(iso: string): string {
   const when = new Date(iso);
-  return Number.isNaN(when.getTime()) ? "" : when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return Number.isNaN(when.getTime())
+    ? ""
+    : when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }
 
 export function day(iso: string): string {

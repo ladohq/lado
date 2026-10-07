@@ -23,7 +23,16 @@
   /* What cannot be taken back or ends work: Stop and Forget. */
   --danger: light-dark(#b42318, #ff8f85);
   --on-danger: light-dark(#ffffff, #111317);
-  --shadow: light-dark(#16181d1f, #0000008c);
+  /* An agent's avatar in the feed (FeedRow.tsx): one of six by its name, the letter in
+     --on-avatar; none is orange or the action's blue (the human's avatar). */
+  --avatar-1: light-dark(#4f5bd5, #9aa6ff);
+  --avatar-2: light-dark(#1f7a5c, #5cc9a0);
+  --avatar-3: light-dark(#8a4fc7, #c49af0);
+  --avatar-4: light-dark(#b23a78, #f08cc0);
+  --avatar-5: light-dark(#0e7490, #5cc4e0);
+  --avatar-6: light-dark(#6b6b1f, #c8c56a);
+  --on-avatar: light-dark(#ffffff, #111317);
+  --shadow:light-dark(#16181d1f, #0000008c);
   /* An agent's terminal: dark in both themes, as the CLIs' own colours expect. */
   --term-ground: light-dark(#1b1e24, #0d0f13);
   --term-ink: light-dark(#e8eaee, #e1e4e9);

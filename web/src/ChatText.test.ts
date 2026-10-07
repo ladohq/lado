@@ -1,7 +1,13 @@
 // Times and days as the UI writes them.
 import { expect, test } from "vitest";
 
-import { day, dayName, duration, since } from "./ChatText";
+import { clock, day, dayName, duration, since } from "./ChatText";
+
+test("a time of day is written in 24 hours, whatever the browser's locale", () => {
+  expect(clock(new Date(2026, 9, 4, 19, 53).toISOString())).toBe("19:53");
+  expect(clock(new Date(2026, 9, 4, 0, 5).toISOString())).toBe("00:05");
+  expect(clock("not a time")).toBe("");
+});
 
 test("a day is named by the local calendar: Today, Yesterday, else its date", () => {
   const now = new Date(2026, 9, 4, 0, 30); // just after midnight, local time

@@ -6,14 +6,17 @@ import { useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 
 import type { AgentInfo, WaitingItem } from "./api";
-import { clock } from "./ChatText";
-import { Gate, gateAnchor } from "./GateCard";
+import { FeedRow } from "./FeedRow";
+import { gateAnchor, GateRow } from "./GateCard";
 import { useLive, useLiveStore } from "./live";
 import { NotificationsOffer } from "./Notifications";
 import { chatPath, terminalPath } from "./paths";
 import { messageAnchor, Question } from "./Question";
 import { useTitle } from "./Shell";
 import { agentWaits } from "./waiting";
+
+// The muted part of each row ends so: the row's time is when it began to wait.
+const SINCE = "waiting since";
 
 // The items by session, the sessions in the order of their oldest item.
 function bySession(items: WaitingItem[]): [string, WaitingItem[]][] {
@@ -54,23 +57,26 @@ export function NeedsYou() {
   );
 }
 
+// Each in the feed's row (FeedRow), as in the chat, with since when it waits.
 function Waits({ item }: { item: WaitingItem }) {
   const { session } = item;
   if (item.gate) {
-    const { id } = item.gate;
+    const { gate } = item;
     return (
       <div className="waits-item">
-        <Gate session={session} gate={item.gate} stopped={false} />
-        <ChatLink to={chatPath(session, gateAnchor(id))} label={`Gate #${id} in the chat`} />
+        <GateRow session={session} gate={gate} stopped={false} aside={`${gate.run} · ${gate.state} · ${SINCE}`} />
+        <ChatLink to={chatPath(session, gateAnchor(gate.id))} label={`Gate #${gate.id} in the chat`} />
       </div>
     );
   }
   if (item.question) {
-    const { id } = item.question;
+    const { question } = item;
     return (
       <div className="waits-item">
-        <Question session={session} question={item.question} />
-        <ChatLink to={chatPath(session, messageAnchor(id))} label={`Question #${id} in the chat`} />
+        <FeedRow kind="agent" who={question.from} aside={SINCE} at={question.created_at} label={`Question from ${question.from}`}>
+          <Question session={session} question={question} />
+        </FeedRow>
+        <ChatLink to={chatPath(session, messageAnchor(question.id))} label={`Question #${question.id} in the chat`} />
       </div>
     );
   }
@@ -94,23 +100,20 @@ function ChatLink({ to, label }: { to: string; label: string }) {
 function WaitingAgent({ session, agent, since }: { session: string; agent: AgentInfo; since: string }) {
   const navigate = useNavigate();
   return (
-    <article className="waits-agent" aria-label={`${agent.name} waits`}>
-      <header className="chat-meta">
-        <span className="chat-from">{agent.name}</span>
-        <span>{agent.role}</span>
-        <time dateTime={since}>waiting since {clock(since)}</time>
-      </header>
-      <p className="waits-reason">{agentWaits(agent)}</p>
-      <div className="answer-actions">
-        <button
-          type="button"
-          className="primary"
-          aria-label={`Open ${agent.name}'s terminal`}
-          onClick={() => navigate(terminalPath(session, agent.name))}
-        >
-          Open terminal
-        </button>
+    <FeedRow kind="agent" who={agent.name} aside={`${agent.role} · ${SINCE}`} at={since} label={`${agent.name} waits`}>
+      <div className="waits-agent">
+        <p className="waits-reason">{agentWaits(agent)}</p>
+        <div className="answer-actions">
+          <button
+            type="button"
+            className="primary"
+            aria-label={`Open ${agent.name}'s terminal`}
+            onClick={() => navigate(terminalPath(session, agent.name))}
+          >
+            Open terminal
+          </button>
+        </div>
       </div>
-    </article>
+    </FeedRow>
   );
 }

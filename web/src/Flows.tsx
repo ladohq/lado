@@ -12,7 +12,7 @@ import { Link, useSearchParams } from "react-router";
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
 import { AgentName } from "./Agents";
 import { Body, clock, since } from "./ChatText";
-import { Gate } from "./GateCard";
+import { GateCard, gateTitle } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { filterGroups, ListGroup, type Entry as ListEntry } from "./ListPage";
 import { FIND_PARAM, runPath, sessionPath } from "./paths";
@@ -365,7 +365,13 @@ function Now({
       <section className="run-now waits" aria-label="Now">
         <span className="now-head">Waits for you · {since(run.since)}</span>
         {gate ? (
-          <Gate session={session} gate={gate} stopped={stopped} compact />
+          <article className="run-gate" aria-label={`Gate #${gate.id}`}>
+            <header className="gate-head">
+              <h4 className="gate-title">{gateTitle(gate)}</h4>
+              <time dateTime={gate.created_at}>{clock(gate.created_at)}</time>
+            </header>
+            <GateCard session={session} gate={gate} stopped={stopped} compact />
+          </article>
         ) : (
           <span className="now-text">{run.reason}</span>
         )}

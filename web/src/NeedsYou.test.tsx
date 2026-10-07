@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { AgentInfo, GateInfo, MessageInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
+import { clock } from "./ChatText";
 import { AGENT_REST, FakeEventSource, FakeNotification, FakeSocket, setVisible, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -174,18 +175,30 @@ test("what waits shows by session: a gate's card, a question's card and a waitin
   const lado = await group("lado");
   const api = await group("api");
   expect(within(lado).getByRole("link", { name: "lado" }).getAttribute("href")).toBe("/sessions/lado/activity");
+  // Each one in the feed's row: who, the muted part, the time.
+  const head = (row: HTMLElement) =>
+    ["feed-who", "feed-aside"].map((one) => row.querySelector(`.feed-head .${one}`)?.textContent);
   const card = within(lado).getByRole("article", { name: "Gate #1" });
+  expect(card.className).toContain("feed-row");
+  expect(card.querySelector(".avatar-gate")).toBeTruthy();
+  expect(head(card)).toEqual(["Gate #1", "feature/x · design_ok · waiting since"]);
+  expect(card.querySelector(".feed-head time")?.textContent).toBe(clock(SINCE));
   expect(within(card).getByText("Approve the design?")).toBeTruthy();
   expect(within(lado).getByRole("link", { name: "Gate #1 in the chat" }).getAttribute("href")).toBe(
     "/sessions/lado/activity#gate-1",
   );
-  expect(within(api).getByRole("article", { name: "Question from w1" })).toBeTruthy();
+  const asked = within(api).getByRole("article", { name: "Question from w1" });
+  expect(head(asked)).toEqual(["w1", "waiting since"]);
+  expect(asked.querySelector(".avatar")?.textContent).toBe("W");
+  expect(within(asked).getByText("Question #5 · waits for you")).toBeTruthy();
   expect(within(api).getByRole("link", { name: "Question #5 in the chat" }).getAttribute("href")).toBe(
     "/sessions/api/activity#message-5",
   );
   const w2 = within(lado).getByRole("article", { name: "w2 waits" });
-  expect(within(w2).getByText("developer")).toBeTruthy();
-  expect(within(w2).getByText(/waiting since/)).toBeTruthy();
+  expect(head(w2)).toEqual(["w2", "developer · waiting since"]);
+  expect(w2.querySelector(".feed-head time")?.textContent).toBe(clock(SINCE));
+  // No card draws a head of its own.
+  expect(document.querySelector(".chat-meta")).toBeNull();
   expect(within(w2).getByText("did not take 1 message: answer the dialog in its window")).toBeTruthy();
   const w3 = within(lado).getByRole("article", { name: "w3 waits" });
   expect(within(w3).getByText("waits for you in its terminal")).toBeTruthy();

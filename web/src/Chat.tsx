@@ -1,13 +1,15 @@
 // The feed in a session's Activity tab (docs/design/ui.md, The human in the session): the
 // messages from and to the human and the agents' questions, the flow runs' gates as cards
 // and their other events as lines, and behind a switch the agents' messages to each other,
-// live from the feed (live.ts); and the composer. What the human sends shows only once the
-// feed brings it: nothing ahead of the server.
+// live from the feed (live.ts); and the composer. Each message, question and open gate is a
+// row (FeedRow), grouped by sender, with a divider between days. What the human sends shows
+// only once the feed brings it: nothing ahead of the server.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
 import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
-import { Body, clock, day, Preview } from "./ChatText";
+import { Body, clock, day, dayName, Preview } from "./ChatText";
+import { FeedRow } from "./FeedRow";
 import { Gate, GateAnswer, gateAnchor } from "./GateCard";
 import {
   messageWindow,
@@ -20,7 +22,7 @@ import {
   type WindowLoaded,
 } from "./live";
 import { runPath } from "./paths";
-import { messageAnchor, Meta, Question } from "./Question";
+import { messageAnchor, Question, replyOf, type Reply } from "./Question";
 
 // The run events the feed shows as lines, and how it names each kind: the one list. A
 // gate's events are not in it: the gate's card or line stands for them.
@@ -34,7 +36,7 @@ export const RUN_EVENT_LINES: Record<string, string> = {
 
 const withHuman = (message: MessageInfo) => message.from === HUMAN || message.to === HUMAN;
 
-type Entry =
+export type Entry =
   | { at: number; message: MessageInfo }
   | { at: number; event: RunEventInfo }
   | { at: number; gate: GateInfo }
@@ -72,19 +74,49 @@ function entryKey(entry: Entry | undefined): string | null {
   return `event-${entry.event.id}`;
 }
 
-type Item = MessageInfo | GateInfo | { answered: GateInfo } | RunEventInfo[];
+// A row of the chat: a day's divider (the time of its first entry), run events in one list,
+// a message or question and whether it continues the group above it, a gate, or the
+// human's answer to a gate.
+export type FeedItem =
+  | { day: string }
+  | { events: RunEventInfo[] }
+  | { message: MessageInfo; continued: boolean }
+  | { gate: GateInfo }
+  | { answered: GateInfo };
 
-// The messages, gates and answers, and the run events between them, consecutive ones in
-// one list.
-function grouped(list: Entry[]): Item[] {
-  const out: Item[] = [];
+// How long after the row above a message still continues its group.
+const GROUP_GAP = 5 * 60 * 1000;
+
+const localDay = (at: number) => new Date(at).toDateString();
+const parties = (message: MessageInfo) => `${message.from}\n${message.to}`;
+
+// The entries as rows: a divider between entries of different local days, consecutive run
+// events in one list, and a message continues the group above it (its row has no head) when
+// the row above is a message of the same sender to the same recipient less than GROUP_GAP
+// before, neither of them `quiet` (a line of its own: a dismissal). So a divider, a run
+// event, a gate or the human's answer to a gate between ends a group.
+export function feedRows(list: Entry[], quiet: (message: MessageInfo) => boolean = () => false): FeedItem[] {
+  const out: FeedItem[] = [];
+  let previous: Entry | undefined;
   for (const entry of list) {
+    if (previous && localDay(previous.at) !== localDay(entry.at)) out.push({ day: new Date(entry.at).toISOString() });
     const last = out[out.length - 1];
-    if ("message" in entry) out.push(entry.message);
-    else if ("gate" in entry) out.push(entry.gate);
+    if ("message" in entry) {
+      const { message } = entry;
+      const continued =
+        last !== undefined &&
+        "message" in last &&
+        previous !== undefined &&
+        entry.at - previous.at < GROUP_GAP &&
+        parties(last.message) === parties(message) &&
+        !quiet(last.message) &&
+        !quiet(message);
+      out.push({ message, continued });
+    } else if ("gate" in entry) out.push({ gate: entry.gate });
     else if ("answered" in entry) out.push({ answered: entry.answered });
-    else if (Array.isArray(last)) last.push(entry.event);
-    else out.push([entry.event]);
+    else if (last && "events" in last) last.events.push(entry.event);
+    else out.push({ events: [entry.event] });
+    previous = entry;
   }
   return out;
 }
@@ -99,9 +131,6 @@ function all(
   if (!window || !events || !gates || "error" in window || "error" in events || "error" in gates) return null;
   return { window, events: events.items, gates: gates.items };
 }
-
-const isGate = (one: Item): one is GateInfo => !Array.isArray(one) && "options" in one;
-const isAnswer = (one: Item): one is { answered: GateInfo } => !Array.isArray(one) && "answered" in one;
 
 // Where the feed's scroll stood after the last render, for the scroll rule.
 type Scroll = { window: string | null; first: string | null; last: string | null; height: number; top: number; bottom: boolean };
@@ -201,20 +230,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         )}
         {ready && <Top session={session} window={loaded.window} first={shown[0]} retry={loadEarlier} marker={top} />}
         {ready && shown.length === 0 && <p className="empty">No messages yet. Write to the supervisor below.</p>}
-        {ready &&
-          grouped(shown).map((one) =>
-            Array.isArray(one) ? (
-              <RunEvents key={`events-${one[0].id}`} session={session} events={one} />
-            ) : isGate(one) ? (
-              <Gate key={`gate-${one.id}`} session={session} gate={one} stopped={stopped} />
-            ) : isAnswer(one) ? (
-              <GateAnswer key={`answer-${one.answered.id}`} gate={one.answered} go={go} />
-            ) : one.kind === "question" ? (
-              <Question key={one.id} session={session} question={one} answer={answerOf(one, loaded.window.items)} />
-            ) : (
-              <Message key={one.id} message={one} />
-            ),
-          )}
+        {ready && <Rows session={session} entries={shown} messages={loaded.window.items} stopped={stopped} go={go} />}
       </div>
       {waiting && <GateHint gate={waiting} go={go} />}
       <Composer session={session} stopped={stopped} />
@@ -292,22 +308,138 @@ function RunEvents({ session, events }: { session: string; events: RunEventInfo[
   );
 }
 
-function answerOf(question: MessageInfo, messages: MessageInfo[]): MessageInfo | undefined {
-  return messages.find((one) => one.id === question.answered_by);
+// The chat's rows (feedRows) as they show: the human's reply to a question as their answer
+// or a quiet line, read with the question when it is in the window.
+function Rows({
+  session,
+  entries,
+  messages,
+  stopped,
+  go,
+}: {
+  session: string;
+  entries: Entry[];
+  messages: MessageInfo[];
+  stopped: boolean;
+  go: (anchor: string) => void;
+}) {
+  const byId = new Map(messages.map((one) => [one.id, one]));
+  const replies = new Map<number, Reply>();
+  for (const one of messages) {
+    if (one.from === HUMAN && one.reply_to !== null) replies.set(one.id, replyOf(one, byId.get(one.reply_to)));
+  }
+  const quiet = (one: MessageInfo) => {
+    const reply = replies.get(one.id);
+    return reply !== undefined && "dismissed" in reply;
+  };
+  const rows = feedRows(entries, quiet);
+  return rows.map((row, i) => {
+    if ("day" in row) return <DayDivider key={`day-${row.day}`} at={row.day} />;
+    if ("events" in row) return <RunEvents key={`events-${row.events[0].id}`} session={session} events={row.events} />;
+    if ("gate" in row) return <Gate key={`gate-${row.gate.id}`} session={session} gate={row.gate} stopped={stopped} />;
+    if ("answered" in row) return <GateAnswer key={`answer-${row.answered.id}`} gate={row.answered} go={go} />;
+    const { message, continued } = row;
+    const reply = replies.get(message.id);
+    if (reply !== undefined) return <Answer key={message.id} message={message} reply={reply} continued={continued} go={go} />;
+    if (message.kind !== "question") return <Message key={message.id} message={message} continued={continued} />;
+    const answer = message.answered_by === null ? undefined : byId.get(message.answered_by);
+    const below = rows[i + 1];
+    const next = answer !== undefined && below !== undefined && "message" in below && below.message.id === answer.id;
+    return (
+      <FeedRow
+        key={message.id}
+        kind="agent"
+        who={message.from}
+        at={message.created_at}
+        continued={continued}
+        label={`Question from ${message.from}`}
+        id={messageAnchor(message.id)}
+      >
+        <Question session={session} question={message} answer={answer} next={next} go={go} />
+      </FeedRow>
+    );
+  });
 }
 
-function Message({ message }: { message: MessageInfo }) {
+// Between entries of two local days: the later day's name.
+function DayDivider({ at }: { at: string }) {
+  const name = dayName(at);
+  return (
+    <div className="chat-day" role="separator" aria-label={name}>
+      <span>{name}</span>
+    </div>
+  );
+}
+
+// The human's reply to a question: a dismissal, one quiet line; an answer, the human's row
+// with the answer (the choice, else the own words) and the comment under a choice.
+function Answer({
+  message,
+  reply,
+  continued,
+  go,
+}: {
+  message: MessageInfo;
+  reply: Reply;
+  continued: boolean;
+  go: (anchor: string) => void;
+}) {
+  const asked = message.reply_to ?? 0;
+  if ("dismissed" in reply) {
+    return (
+      <article className="chat-quiet" id={messageAnchor(message.id)} aria-label={`You dismissed question #${asked}`}>
+        <span>You dismissed question #{asked}</span> <time dateTime={message.created_at}>{clock(message.created_at)}</time>
+      </article>
+    );
+  }
+  const aside = (
+    <>
+      → {message.to} · answer to{" "}
+      <a
+        href={`#${messageAnchor(asked)}`}
+        onClick={(event) => {
+          event.preventDefault();
+          go(messageAnchor(asked));
+        }}
+      >
+        #{asked}
+      </a>
+    </>
+  );
+  return (
+    <FeedRow
+      kind="human"
+      who="You"
+      aside={aside}
+      at={message.created_at}
+      continued={continued}
+      label="Message from you"
+      id={messageAnchor(message.id)}
+      className="chat-message"
+    >
+      <h4 className="chat-summary chat-answer">{reply.text}</h4>
+      {reply.comment && <p className="chat-comment">{reply.comment}</p>}
+      {message.state === "failed" && <p className="chat-note">not delivered</p>}
+    </FeedRow>
+  );
+}
+
+function Message({ message, continued }: { message: MessageInfo; continued: boolean }) {
   const mine = message.from === HUMAN;
   const between = !withHuman(message);
   const summary = <h4 className="chat-summary">{message.summary}</h4>;
   const label = between ? `Message from ${message.from} to ${message.to}` : `Message from ${mine ? "you" : message.from}`;
   return (
-    <article
-      className={`chat-message${mine ? " mine" : ""}${between ? " between" : ""}`}
+    <FeedRow
+      kind={mine ? "human" : "agent"}
+      who={mine ? "You" : message.from}
+      aside={message.to === HUMAN ? undefined : `→ ${message.to}`}
+      at={message.created_at}
+      continued={continued}
+      label={label}
       id={messageAnchor(message.id)}
-      aria-label={label}
+      className={`chat-message${between ? " between" : ""}`}
     >
-      <Meta message={message} />
       {message.body && message.to === HUMAN ? (
         <>
           {summary}
@@ -323,11 +455,28 @@ function Message({ message }: { message: MessageInfo }) {
       )}
       {message.state === "failed" && <p className="chat-note">not delivered</p>}
       {message.reply_state === "missing" && <p className="chat-note">{message.to} replied only in its terminal</p>}
-    </article>
+    </FeedRow>
   );
 }
 
-// The human's text to the supervisor, or to agent `to` (an agent's page).
+// The lines the composer's field grows to before it scrolls.
+const COMPOSER_LINES = 8;
+
+// The field as tall as its text, from 1 line to COMPOSER_LINES, then it scrolls.
+function grow(field: HTMLTextAreaElement | null) {
+  if (!field) return;
+  const style = getComputedStyle(field);
+  const line = parseFloat(style.lineHeight) || 20;
+  const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+  const most = line * COMPOSER_LINES + padding;
+  field.style.height = "auto";
+  const height = field.scrollHeight;
+  field.style.height = `${Math.min(height, most)}px`;
+  field.style.overflowY = height > most ? "auto" : "hidden";
+}
+
+// The human's text to the supervisor, or to agent `to` (an agent's page): one frame with
+// the field, which grows with the text, and Send; under it to whom and how to send.
 export function Composer({
   session,
   stopped,
@@ -342,6 +491,9 @@ export function Composer({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const own = useRef<HTMLTextAreaElement>(null);
+  const field = inputRef ?? own;
+  useLayoutEffect(() => grow(field.current), [text, field]);
 
   async function send() {
     if (!text.trim() || busy) return;
@@ -372,19 +524,27 @@ export function Composer({
         void send();
       }}
     >
-      <textarea
-        ref={inputRef}
-        aria-label={`Write to ${to ?? "the supervisor"}…`}
-        placeholder={stopped ? "The session is stopped: resume it to write" : `Write to ${to ?? "the supervisor"}…`}
-        rows={2}
-        value={text}
-        disabled={stopped}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={keyDown}
-      />
-      <button type="submit" className="primary" disabled={stopped || busy || !text.trim()}>
-        Send
-      </button>
+      <div className="composer-box">
+        <textarea
+          ref={field}
+          aria-label={`Write to ${to ?? "the supervisor"}…`}
+          placeholder={stopped ? "The session is stopped: resume it to write" : `Write to ${to ?? "the supervisor"}…`}
+          rows={1}
+          value={text}
+          disabled={stopped}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={keyDown}
+        />
+        <button type="submit" className="send" disabled={stopped || busy || !text.trim()}>
+          Send
+        </button>
+      </div>
+      <p className="composer-meta">
+        <span className="composer-to">
+          to <span className="composer-name">{to ?? "supervisor"}</span>
+        </span>
+        <span className="composer-keys">Enter to send · Shift+Enter for a new line</span>
+      </p>
       {problem && (
         <p className="field-problem" role="alert">
           {problem}

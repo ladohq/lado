@@ -63,6 +63,13 @@ const PAIRS = [
   ["danger", "ground"],
   ["on-danger", "danger"],
   ["term-ink", "term-ground"],
+  // An avatar's letter on each of its colours (FeedRow.tsx, AVATAR_COLOURS).
+  ["on-avatar", "avatar-1"],
+  ["on-avatar", "avatar-2"],
+  ["on-avatar", "avatar-3"],
+  ["on-avatar", "avatar-4"],
+  ["on-avatar", "avatar-5"],
+  ["on-avatar", "avatar-6"],
 ] as const;
 
 test.each([

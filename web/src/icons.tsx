@@ -207,3 +207,10 @@ export const ArtifactsIcon = () => (
     <path d="M6 3.75h7.5l4.5 4.5v12H6zM13.5 3.75v4.5H18M9 12.75h6M9 16.5h6" />
   </Icon>
 );
+
+// A flag on its pole: a flow gate's row in the feed.
+export const GateIcon = () => (
+  <Icon>
+    <path d="M6 21V4M6 4.5h10.5l-2.25 4 2.25 4H6" />
+  </Icon>
+);

@@ -1073,6 +1073,19 @@ Wanted: a limit for that case too (e.g. after the last delay: failed with the no
 waiting with a reason), in the one rule of `_plan`.
 Found: 2026-10-06, review of feature/delivery.
 
+## The open search field in a narrow tab bar covers tabs that stay focusable
+
+Size: S. Why here: review follow-ups of fix/flows-search-narrow, accepted as Minor.
+In a narrow session column (terminals open), the open "Find a run" field lies over the
+tabs: the current tab (Flows) is hidden and "Agents · 1" is cut; the covered tabs stay in
+the Tab order, so Shift+Tab from the field focuses Artifacts under it with no visible ring
+(WCAG 2.4.11); with text in it the field does not close on blur, so a covered tab cannot be
+clicked until Esc or ×.
+Wanted: while the field is open in a narrow bar, the tabs shrink to their icons (or the
+field stays right of the current tab), covered tabs are `inert`, and ui.md (Flows, The
+search) states the blur rule.
+Found: 2026-10-07, review of fix/flows-search-narrow.
+
 # P3: maybe never
 
 ## A server endpoint that writes makes lado.db when there is none

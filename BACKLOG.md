@@ -1001,6 +1001,17 @@ of stopped sessions by age (e.g. `--older-than 30d`, listing what it deletes fir
 session in the UI. Running sessions are never trimmed.
 Found: 2026-10-07, the human's question in session chat-history about how the chat grows.
 
+## A stream that opens while the UI server stops can keep the stop waiting
+
+Size: S. Why here: the stop is only slower, nothing is lost, and the window is narrow.
+`feed.Hub.subscribe` checks `_closed` before `await to_thread.run_sync(self.source.last)`;
+`Hub.close` does not take the lock, so when it runs during that await, the first stream
+starts its `_run` task and joins `_queues` after the None was sent: it never ends, and the
+stop waits uvicorn's full grace again, as before fix/server-stop-streams.
+Wanted: `subscribe` checks `_closed` again after the await, before it starts the task or
+adds the queue; a unit test closes the hub during that await.
+Found: 2026-10-07, review of fix/server-stop-streams (Minor finding).
+
 # P3: maybe never
 
 ## A server endpoint that writes makes lado.db when there is none

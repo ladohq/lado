@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import agent_env, kits, loop, providers, state, terminal, tmux
+from lado import agent_env, artifacts, kits, loop, providers, state, terminal, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 # In the lead's config folder: its lead skills (kits.LeadSkill), and the copies of the
@@ -73,6 +73,9 @@ does not wait: the answer or the dismissal comes as a message from human.
 and branch are removed. A worker of an open flow run only has its window closed: the \
 worktree and branch belong to the run.
 Workers report back with messages that arrive in your input as "[from <name>] ...".
+A bare artifact name is in the session's scope. A flow run's artifacts are named by their \
+full name, "<run>/<name>": in a step of your own in a run, write and attach the run's \
+artifacts by its full name, e.g. "feature/x/design", since you may lead several runs.
 Do not relay worker or reviewer reports to the human. Talk to the human only when a \
 decision is needed (the question and your recommendation) or at a milestone (one or two \
 lines). The details stay in `lado log {session}`.
@@ -130,6 +133,8 @@ flow_advance is your report; LADO passes it on, so send no second one. flow_stat
 the step and its outcomes. Use send_message(to="supervisor", ...) only for questions, or \
 when you are blocked and cannot finish the step.
 Nobody can see your screen: a report you only write as text is lost.
+A bare artifact name is one of run {run}: "design" is "{run}/design"; you write only the \
+run's artifacts, and read any other by its full name.
 """
     + WORKER_INPUT
 )
@@ -142,6 +147,12 @@ line ending in "call read_messages": call read_messages to get its full text. Ma
 reporting call (send_message, or flow_advance in a flow run) the last action of your turn. \
 Send no status-only messages: being idle tells \
 the others you are done.
+Artifacts: a result longer than a message, or one the human should see (a design, plan, \
+review, report, an image, an HTML mockup), is an artifact, not a path to a file: LADO keeps \
+it and shows it to the human, who may not reach this machine's disk. write_artifact(name, \
+content or file) writes one (a new version each time), read_artifact reads one, \
+list_artifacts lists them. Attach artifacts by name with the `artifacts` argument of \
+send_message, ask_human and flow_advance; read_messages names those attached to you.
 """
 
 WORKTREES_EXCLUDE = "/.lado/worktrees/"
@@ -866,10 +877,16 @@ def _refusal(worker: state.Agent, work: WorkState, repo: str) -> str | None:
 
 
 def send_message(
-    session: str, sender: str, recipient: str, summary: str, body: str | None = None
+    session: str,
+    sender: str,
+    recipient: str,
+    summary: str,
+    body: str | None = None,
+    attached: list[str] | None = None,
 ) -> str:
-    """Queue a message and deliver it now if the recipient is idle. Only the one-line
-    summary is typed; the recipient reads the body with read_messages.
+    """Queue a message with the artifacts named in `attached`, and deliver it now if the
+    recipient is idle. Only the one-line summary is typed; the recipient reads the body and
+    the artifacts with read_messages. A name not found refuses the message.
 
     A recipient not idle gets it from the hook that makes it idle (see lado.hooks).
     """
@@ -879,9 +896,10 @@ def send_message(
     if len(body) > MAX_MESSAGE:
         raise LadoError(
             f"body is {len(body)} characters, the limit is {MAX_MESSAGE}; "
-            "write the details to a file and send its path"
+            "write the details to an artifact (write_artifact) and attach it"
         )
-    return post(session, sender, recipient, summary, body, or_human=True)
+    attachments = artifacts.resolve_attachments(session, sender, attached)
+    return post(session, sender, recipient, summary, body, or_human=True, attachments=attachments)
 
 
 def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
@@ -1004,10 +1022,12 @@ def ask_human(
     details: str | None = None,
     choices: list[str] | None = None,
     free_answer: bool = True,
+    attached: list[str] | None = None,
 ) -> str:
-    """Ask the human a question, shown in the UI with its choices; with `free_answer` they
-    may answer in their own words too. It does not wait: the answer, or that the human
-    dismissed it, comes to `sender` as a message from human."""
+    """Ask the human a question, shown in the UI with its choices and the artifacts named
+    in `attached`; with `free_answer` they may answer in their own words too. It does not
+    wait: the answer, or that the human dismissed it, comes to `sender` as a message from
+    human."""
     question = question.strip()
     _check_summary(question, "question", "details")
     details = details or ""
@@ -1027,7 +1047,10 @@ def ask_human(
             raise LadoError(f"a choice is {len(choice)} characters, the limit is {CHOICE_LIMIT}")
         if choices.count(choice) > 1:
             raise LadoError(f'choice "{choice}" is given twice')
-    asked = state.add_question(session, sender, question, details, choices or None, free_answer)
+    attachments = artifacts.resolve_attachments(session, sender, attached)
+    asked = state.add_question(
+        session, sender, question, details, choices or None, free_answer, attachments
+    )
     return (
         f"question #{asked} asked; the human's answer or dismissal comes as a message from "
         f"{state.HUMAN}"
@@ -1044,18 +1067,24 @@ def post(
     summary: str,
     body: str = "",
     or_human: bool = False,
+    attachments: state.Attached = (),
 ) -> str:
-    """Queue a message whose summary is checked already and deliver it now if the
-    recipient is idle. LADO's own messages (lado.runs) come here directly: a step's body
-    carries the task, which may be longer than an agent's message.
+    """Queue a message whose summary is checked already, with its attachments resolved
+    already, and deliver it now if the recipient is idle. LADO's own messages (lado.runs)
+    come here directly: a step's body carries the task, which may be longer than an agent's
+    message.
 
     The human has no window: a message to them is delivered at once, and the UI shows it.
     `or_human`: an unknown recipient's error names the human too, for an agent's message."""
     if recipient == state.HUMAN:
-        state.queue_message(session, sender, recipient, summary, body, state.DELIVERED)
+        state.queue_message(
+            session, sender, recipient, summary, body, state.DELIVERED, attachments=attachments
+        )
         return TO_HUMAN
     with _to_running(session, or_human):
-        message = state.queue_message(session, sender, recipient, summary, body)
+        message = state.queue_message(
+            session, sender, recipient, summary, body, attachments=attachments
+        )
     return _deliver(session, recipient, message)
 
 
@@ -1384,12 +1413,18 @@ def _check_summary(summary: str, what: str = "summary", details: str = "body") -
 
 
 def format_message(message: state.Message) -> str:
-    """The one line typed for a message; its body is left for read_messages."""
+    """The one line typed for a message; its body and artifacts are left for read_messages."""
     line = f"[from {message.sender}] {message.title}"
-    if not message.body:
+    more = []
+    if message.body:
+        lines = len(message.body.splitlines())
+        more.append(f"{lines} line{'s' if lines != 1 else ''}")
+    if message.attachments:
+        n = message.attachments
+        more.append(f"{n} artifact{'s' if n != 1 else ''}")
+    if not more:
         return line
-    lines = len(message.body.splitlines())
-    return f"{line} (#{message.id}, {lines} line{'s' if lines != 1 else ''}: call read_messages)"
+    return f"{line} (#{message.id}, {', '.join(more)}: call read_messages)"
 
 
 def format_messages(messages: list[state.Message]) -> str:
@@ -1589,6 +1624,7 @@ def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
 class Forgotten:
     runs: list[str]  # the open runs dropped
     worktrees: dict[str, str]  # worktree -> branch, left on disk
+    artifacts: int = 0  # how many artifacts were removed
 
 
 def forget_preview(session: str) -> Forgotten:
@@ -1606,14 +1642,17 @@ def forget_preview(session: str) -> Forgotten:
 
 
 def forget_session(session: str, force: bool = False) -> Forgotten:
-    """Delete a stopped session with its history, runs and gates. With open runs only if
-    `force`. Worktrees and branches stay on disk."""
+    """Delete a stopped session with its history, runs, gates and artifacts. With open runs
+    only if `force`. Worktrees and branches stay on disk."""
     forgotten = forget_preview(session)
     if forgotten.runs and not force:
         raise LadoError(
             f'session "{session}" has open runs: {", ".join(forgotten.runs)}; forget it with '
             "--force to drop them, or resume it with lado start"
         )
+    # Before the session's rows: a forget that fails in between can be run again, and a
+    # new session of the same name never sees this one's artifacts.
+    forgotten.artifacts = artifacts.store().remove_session(session)
     state.delete_session(session)
     loop.forget(session)
     providers.base.remove_session_config_dirs(session)

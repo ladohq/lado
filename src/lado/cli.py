@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, TextIO
 
 import lado
 from lado import (
+    artifacts,
     flows,
     kits,
     log,
@@ -795,6 +796,9 @@ def _show_gate(gate: state.Gate, needed: list[tuple[str, state.Note | None]]) ->
         print(f"Note: {gate.note} (v: the full note, {lines} more line{'' if lines == 1 else 's'})")
     elif gate.note:
         print(f"Note: {gate.note}")
+    listed = runs.gate_artifacts(gate)
+    if listed:
+        print(listed)
     for name, note in needed:
         print(f"Note from {name}: {note.summary if note else 'no note yet'}")
     print("Options:")
@@ -869,9 +873,56 @@ def _print_stopped(name: str, stopped: runtime.Stopped) -> None:
 
 def cmd_forget(args: argparse.Namespace) -> int:
     forgotten = runtime.forget_session(args.session, args.force)
+    n = forgotten.artifacts
+    removed = f"; removed {n} artifact{'' if n == 1 else 's'}" if n else ""
     dropped = f"; dropped open runs: {', '.join(forgotten.runs)}" if forgotten.runs else ""
-    print(f'Forgot session "{args.session}" and its history{dropped}.')
+    print(f'Forgot session "{args.session}" and its history{removed}{dropped}.')
     _kept(forgotten.worktrees, "left on disk:")
+    return 0
+
+
+def cmd_artifacts_list(args: argparse.Namespace) -> int:
+    rows = [
+        (
+            artifact.full_name,
+            record.media_type,
+            str(record.size),
+            record.author,
+            record.created_at[:19],
+            artifact.title or "",
+        )
+        for artifact, record in artifacts.of_session(args.session, args.run)
+    ]
+    widths = [max((len(row[i]) for row in rows), default=0) for i in range(5)]
+    for *aligned, title in rows:
+        cells = [cell.ljust(width) for cell, width in zip(aligned, widths, strict=True)]
+        print("  ".join([*cells, title]).rstrip())
+    return 0
+
+
+def cmd_artifacts_show(args: argparse.Namespace) -> int:
+    artifact, record = artifacts.find(args.session, args.name)
+    if not artifacts.is_text(record.media_type):
+        raise artifacts.ArtifactError(
+            f"{artifact.full_name} is binary ({record.media_type}): write it to a file with "
+            f"lado artifacts get {args.session} {artifact.full_name} -o FILE"
+        )
+    sys.stdout.write(artifacts.content(record).decode(errors="replace"))
+    return 0
+
+
+def cmd_artifacts_get(args: argparse.Namespace) -> int:
+    artifact, record = artifacts.find(args.session, args.name)
+    if args.output:
+        Path(args.output).write_bytes(artifacts.content(record))
+        return 0
+    if sys.stdout.isatty() and not artifacts.is_text(record.media_type):
+        raise artifacts.ArtifactError(
+            f"{artifact.full_name} is binary ({record.media_type}): give -o FILE"
+        )
+    sys.stdout.flush()
+    sys.stdout.buffer.write(artifacts.content(record))
+    sys.stdout.buffer.flush()
     return 0
 
 
@@ -1149,6 +1200,26 @@ def main(argv: list[str] | None = None) -> int:
     forget.add_argument("--force", action="store_true", help="also if it has open runs")
     forget.set_defaults(func=cmd_forget)
 
+    artifacts_cmd = commands.add_parser(
+        "artifacts", help="list a session's artifacts, show or get one (also when stopped)"
+    )
+    artifacts_cmd.set_defaults(func=lambda _: artifacts_cmd.print_help() or 0)
+    artifacts_sub = artifacts_cmd.add_subparsers(metavar="<command>")
+    artifacts_list = artifacts_sub.add_parser("list", help="the session's artifacts")
+    artifacts_list.add_argument("session")
+    artifacts_list.add_argument("--run", help="only this run's artifacts")
+    artifacts_list.set_defaults(func=cmd_artifacts_list)
+    full_name = "<run>/<name> in a run's scope, <name> in the session's"
+    artifacts_show = artifacts_sub.add_parser("show", help="print a text artifact")
+    artifacts_show.add_argument("session")
+    artifacts_show.add_argument("name", metavar="full-name", help=full_name)
+    artifacts_show.set_defaults(func=cmd_artifacts_show)
+    artifacts_get = artifacts_sub.add_parser("get", help="write an artifact's bytes")
+    artifacts_get.add_argument("session")
+    artifacts_get.add_argument("name", metavar="full-name", help=full_name)
+    artifacts_get.add_argument("-o", dest="output", metavar="FILE", help="default: stdout")
+    artifacts_get.set_defaults(func=cmd_artifacts_get)
+
     finish = commands.add_parser(
         "finish", help="end a worker whose branch is merged: its window, worktree and branch"
     )
@@ -1252,6 +1323,7 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except (
         runtime.LadoError,
+        artifacts.ArtifactError,
         state.SchemaError,
         tmux.TmuxError,
         kits.KitError,

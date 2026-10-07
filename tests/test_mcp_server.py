@@ -1,5 +1,7 @@
 import asyncio
 import json
+import re
+from pathlib import Path
 
 import agent_helpers
 import pytest
@@ -24,9 +26,12 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
         "flow_start",
         "flow_status",
         "list_agents",
+        "list_artifacts",
+        "read_artifact",
         "read_messages",
         "send_message",
         "spawn_worker",
+        "write_artifact",
     ]
     assert _tools("s", "supervisor") == supervisor_tools
     assert _tools("s", "w1") == [
@@ -34,8 +39,11 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
         "flow_advance",
         "flow_status",
         "list_agents",
+        "list_artifacts",
+        "read_artifact",
         "read_messages",
         "send_message",
+        "write_artifact",
     ]
 
 
@@ -105,6 +113,7 @@ def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
         "from": "w1",
         "summary": "DONE: x added",
         "body": "Files: x.py\nChecks: ok",
+        "artifacts": [],
     }
     again = asyncio.run(supervisor.call_tool("read_messages", {}))
     assert again.structured_content == {"result": []}
@@ -189,11 +198,14 @@ def test_spawn_worker_refuses_a_provider_without_the_sessions_mode(repo, fake_tm
 
 ACCEPTED = {
     "list_agents": "none",
-    "flow_advance": "run, outcome, note_summary, note_body",
+    "flow_advance": "run, outcome, note_summary, note_body, artifacts",
     "flow_status": "run",
-    "send_message": "to, summary, body",
-    "ask_human": "question, details, choices, free_answer",
+    "send_message": "to, summary, body, artifacts",
+    "ask_human": "question, details, choices, free_answer, artifacts",
     "read_messages": "none",
+    "write_artifact": "name, content, file, media_type, summary, title",
+    "read_artifact": "name, from_line, to_line",
+    "list_artifacts": "run",
     "spawn_worker": "task, name, provider, role, without, run",
     "flow_start": "flow, task, name, human_language",
     "flow_cancel": "run, reason",
@@ -391,3 +403,74 @@ def test_the_tools_tell_agents_about_the_human(repo, fake_tmux):
     tools = {t.name: t for t in asyncio.run(mcp_server.build("s", "supervisor").list_tools())}
     assert 'to="human"' in tools["send_message"].description
     assert "message from human" in tools["ask_human"].description
+
+
+def test_a_worker_writes_a_file_of_its_worktree_as_an_artifact_and_others_read_it(
+    repo, fake_tmux, tmp_path, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    worker = runtime.spawn_worker("s", "task", name="w1")
+    (Path(worker.cwd) / "report.md").write_text("# Report\nall green\n")
+    monkeypatch.chdir(tmp_path)  # `lado mcp` runs elsewhere: the path is the agent's
+    args = {"name": "report", "file": "report.md", "summary": "first", "title": "Report"}
+    written = _call("s", "w1", "write_artifact", args)
+    assert written == {
+        "name": "report",
+        "status": "created",
+        "size": 19,
+        "media_type": "text/markdown",
+    }
+    assert _call("s", "w1", "write_artifact", args)["status"] == "unchanged"
+    read = _call("s", "supervisor", "read_artifact", {"name": "report", "from_line": 2})
+    assert (read["content"], read["lines"], read["from_line"], read["to_line"]) == (
+        "all green\n",
+        2,
+        2,
+        2,
+    )
+    [listed] = _call("s", "supervisor", "list_artifacts")
+    assert {k: v for k, v in listed.items() if k != "time"} == {
+        "name": "report",
+        "title": "Report",
+        "media_type": "text/markdown",
+        "size": 19,
+        "author": "w1",
+        "summary": "first",
+    }
+    assert listed["time"].endswith(" UTC")
+
+
+def test_list_artifacts_lists_the_agents_scope_or_a_runs(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    state.add_run(
+        state.Run("s", "ship/x", "ship", "{}", {}, "t", "build", "/w", "lado/s/x", {"build": 1}),
+        [],
+    )
+    _call("s", "supervisor", "write_artifact", {"name": "plan", "content": "x"})
+    _call("s", "supervisor", "write_artifact", {"name": "ship/x/design", "content": "x"})
+    assert [a["name"] for a in _call("s", "supervisor", "list_artifacts")] == ["plan"]
+    listed = _call("s", "supervisor", "list_artifacts", {"run": "ship/x"})
+    assert [a["name"] for a in listed] == ["ship/x/design"]
+
+
+@pytest.mark.parametrize(
+    ("tool", "args", "reason"),
+    [
+        ("write_artifact", {"name": "plan"}, "give exactly one of content and file"),
+        ("write_artifact", {"name": "Plan", "content": "x"}, "a name is 1-64 characters"),
+        ("read_artifact", {"name": "nothing"}, 'no artifact "nothing" in session s'),
+        ("list_artifacts", {"run": "ship/none"}, 'no run "ship/none" in session s'),
+    ],
+)
+def test_artifact_tools_tell_the_agent_why(repo, fake_tmux, tool, args, reason):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    with pytest.raises(ToolError, match=re.escape(reason)):
+        _call("s", "supervisor", tool, args)
+
+
+def test_read_artifact_of_a_binary_gives_its_metadata(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    (repo / "logo.png").write_bytes(b"\x89PNG")
+    _call("s", "supervisor", "write_artifact", {"name": "logo", "file": "logo.png"})
+    read = _call("s", "supervisor", "read_artifact", {"name": "logo"})
+    assert (read["binary"], read["note"], read["size"]) == (True, "cannot be read as text", 4)

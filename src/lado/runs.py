@@ -19,7 +19,7 @@ import dataclasses
 import json
 from pathlib import Path
 
-from lado import flows, kits, providers, runtime, state, tmux
+from lado import artifacts, flows, kits, providers, runtime, state, tmux
 from lado.runtime import SUPERVISOR, LadoError
 
 LADO = state.LADO
@@ -100,10 +100,12 @@ def advance(
     note: str | None = None,
     note_body: str | None = None,
     notices: list[str] | None = None,
+    attached: list[str] | None = None,
 ) -> state.Run:
     """Move the run on by `outcome` of its current step, reported by the agent acting in
-    it. The note goes to the next step. If the caller is the supervisor, what it would be
-    told about the move goes to `notices` instead, if given."""
+    it. The note, with the artifacts named in `attached`, goes to the next step; a name not
+    found moves nothing. If the caller is the supervisor, what it would be told about the
+    move goes to `notices` instead, if given."""
     runtime.running_session(session)
     run = _run(session, run_name)
     if run.status == state.WAITING:
@@ -126,6 +128,7 @@ def advance(
             f"note_summary must be one line of at most {NOTE_LIMIT} characters; "
             "put the details in note_body"
         )
+    attachments = artifacts.resolve_attachments(session, caller, attached)
     target = current.outcomes[outcome]
     noted = dataclasses.replace(run, note=note, note_body=note_body or "")
     after, events, gate = _enter(noted, flow, target)
@@ -140,6 +143,7 @@ def advance(
         gate,
         notices=own,
         noted=state.Noted(run.state, state.REPORT, caller, outcome, target),
+        attachments=attachments,
     )
 
 
@@ -492,17 +496,19 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
         f"Step:\n{current.do}",
     ]
     kept = state.latest_notes(run.session, run.name) if current.needs else {}
-    previous = state.last_note(run.session, run.name) if current.needs else None
+    previous = state.last_note(run.session, run.name)
     shown = False  # the previous step's note was one of the needed ones
     for needed in current.needs:
         note = kept.get(needed)
         label = needed
         if note and previous and note.id == previous.id:
             label, shown = f"{needed} (also the previous step's note)", True
-        text = f"{note.summary}\n{note.body}".rstrip() if note else "no note yet"
+        text = f"{note.summary}\n{note.body}".rstrip() + _attached(note) if note else "no note yet"
         parts.append(f"Note from {label}: {text}")
-    if (run.note or run.note_body) and not shown:
-        parts.append(f"Note from the previous step: {run.note}\n{run.note_body}".rstrip())
+    listed = _attached(previous)
+    if (run.note or run.note_body or listed) and not shown:
+        text = f"{run.note}\n{run.note_body}".rstrip()
+        parts.append(f"Note from the previous step: {text}{listed}")
     outcomes = "\n".join(f"- {o} -> {t}" for o, t in current.outcomes.items())
     parts.append(
         f'When the step is done, call flow_advance(run="{run.name}", outcome=...) with one '
@@ -514,6 +520,18 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
             f"\nWrite note_summary and note_body in {run.language}: the human reads them at gates."
         )
     return "\n\n".join(parts)
+
+
+def _attached(note: state.Note | None) -> str:
+    """The line naming a note's artifacts, after a line break; '' for none."""
+    line = artifacts.attached_line(state.note_attachments(note.id)) if note else ""
+    return f"\n{line}" if line else ""
+
+
+def gate_artifacts(gate: state.Gate) -> str:
+    """The line naming the artifacts of the note that led to the open gate; '' for none.
+    While the gate is open, that note is the run's latest."""
+    return _attached(state.last_note(gate.session, gate.run)).lstrip("\n")
 
 
 def _enter(
@@ -561,10 +579,11 @@ def _commit(
     closes: state.Close | None = None,
     notices: list[str] | None = None,
     noted: state.Noted | None = None,
+    attachments: state.Attached = (),
 ) -> state.Run:
-    """Store the move from `before` to `after`, keeping `after`'s note as `noted` says
-    (state.update_run), and tell whoever acts now."""
-    if not state.update_run(before, after, events, opens, closes, noted):
+    """Store the move from `before` to `after`, keeping `after`'s note as `noted` says with
+    its attachments (state.update_run), and tell whoever acts now."""
+    if not state.update_run(before, after, events, opens, closes, noted, attachments):
         raise _changed(before, closes)
     _arrived(after, flow, caller, notices)
     return after

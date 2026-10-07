@@ -5,8 +5,11 @@ The first message is on the command line, as real agent CLIs take it.
 
 It reports its lifecycle through the hooks in the config and works on each input typed or
 pasted into its terminal. Every input line is a command, after an optional "[from <name>] ":
-    send <to> <summary>[ | <body>]  call the LADO MCP tool send_message; "\\n" in the body
-                       is a line break
+    send <to> <summary>[ | <body>][ --artifacts <name>,<name>...]  call the LADO MCP tool
+                       send_message; "\\n" in the body is a line break
+    artifact_write <name> <path>  call the LADO MCP tool write_artifact with the file at
+                       <path> (relative: to the agent's folder, as an agent passes it)
+    artifact_read <name>  call the LADO MCP tool read_artifact
     read               call the LADO MCP tool read_messages
     askhuman <question>[ | <choice>, <choice>...]  call the LADO MCP tool ask_human
     spawn <task>       call the LADO MCP tool spawn_worker
@@ -213,10 +216,13 @@ def call_tool(name: str, arguments: dict):
 
 
 def send(to: str, text: str) -> None:
+    text, _, attached = text.partition(" --artifacts ")
     summary, _, body = text.partition(" | ")
     arguments = {"to": to, "summary": summary}
     if body:
         arguments["body"] = body.replace("\\n", "\n")
+    if attached:
+        arguments["artifacts"] = attached.split(",")
     call_tool("send_message", arguments)
 
 
@@ -315,6 +321,11 @@ def work(text: str) -> bool:
             send(command[1], command[2])
         elif command[0] == "read":
             report(read=call_tool("read_messages", {}))
+        elif command[0] == "artifact_write":
+            written = call_tool("write_artifact", {"name": command[1], "file": command[2]})
+            report(artifact_write=written)
+        elif command[0] == "artifact_read":
+            report(artifact_read=call_tool("read_artifact", {"name": command[1]}))
         elif command[0] == "askhuman":
             question, _, choices = " ".join(command[1:]).partition(" | ")
             arguments = {"question": question}

@@ -323,8 +323,21 @@ fixes and docs only: no new feature, no API or schema change.
     `lado answer` and the UI server's API, never from an MCP tool; the answering surface
     (popup, CLI, UI) stays outside that core.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
-    `list_agents`, `flow_advance`, `flow_status`; the supervisor also gets `spawn_worker`,
-    `finish_worker`, `flow_start` and `flow_cancel`). No tool answers a gate or a question.
+    `list_agents`, `flow_advance`, `flow_status`, `write_artifact`, `read_artifact`,
+    `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to
+    attach; the supervisor also gets `spawn_worker`, `finish_worker`, `flow_start` and
+    `flow_cancel`). No tool answers a gate or a question.
+  - `artifacts.py`: artifacts, named documents of a session (contract:
+    [docs/design/artifacts.md](docs/design/artifacts.md)); the only module the rest of LADO
+    calls for them (MCP tools, CLI, runs, runtime, doctor): names (`NAME`, full names parsed
+    by the last `/`), scopes and the rights to write (`_writable`), limits, media types by
+    one extension table (`EXTENSIONS`, `is_text`), reading (`read`, `listed`, `find`,
+    `of_session`), attachments (`resolve_attachments`, `attached`, `attached_line`) and the
+    `Store` protocol, whose backend `store()` chooses. `artifacts_local.py`: `LocalStore`,
+    the one backend: rows through `state.py`'s artifact functions, content in files by hash
+    under `LADO_HOME/artifacts/<hh>/<sha256>` (a temporary file, fsync, rename; a file no
+    record refers to is removed by `remove_session` only after `ORPHAN_AGE`, an hour).
+    Nothing else touches the artifact tables or that folder.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
     turn's end, the forgotten-reply check (How agents talk).
   - `state.py`: SQLite state in `~/.lado/lado.db` (`LADO_HOME` overrides the directory).
@@ -392,7 +405,16 @@ fixes and docs only: no new feature, no API or schema change.
     keeps the channel it was handed over by, `messages.channel` (`typed`, `hook_output`;
     NULL while pending and for a first input or the human's UI; How agents talk; not in the
     API). From schema 20 an agent keeps its planned resume after a transient turn error,
-    `agents.resume_at` and `agents.resumes` (How agents talk; not in the API).
+    `agents.resume_at` and `agents.resumes` (How agents talk; not in the API). From schema
+    21 the local artifact store's tables `artifacts` and `artifact_records` (each with its
+    session, journaled with it; no foreign key to `sessions`: `lado forget` removes them
+    through the store first), used only by `artifacts_local.py` through `state.py`'s
+    artifact functions, and LADO's `attachments` (a message's or a note's, by position: the
+    store's artifact and record ids, no foreign key to them; not journaled), written in the
+    transaction of their message (`queue_message`, `add_question`) or note (`update_run`).
+    `TO_READ` is the one condition of a message with something to read (a body or an
+    attachment), for `read_messages` and `UNRECEIVED`; a `Message` counts its
+    `attachments`.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -605,8 +627,12 @@ fixes and docs only: no new feature, no API or schema change.
 - A message is a one-line `summary` (at most 200 characters; a longer or multi-line one is
   refused) and an optional `body` with the details. Only one short line per message reaches
   the recipient: `[from <sender>] <summary>`, plus ` (#<id>, <n> lines: call read_messages)`
-  when there is a body. `read_messages` returns the caller's delivered, unread bodies and
-  marks them `read`. The supervisor stays quiet with the human: it does not relay reports,
+  when there is a body, ` (#<id>, <n> lines, <k> artifacts: call read_messages)` with
+  artifacts attached too, ` (#<id>, <k> artifacts: call read_messages)` with only those. A
+  message with a body or an attachment is one to read (`state.TO_READ`): `read_messages`
+  returns the caller's delivered, unread ones (with each attachment's full name, title,
+  media type, size and whether it `changed` since) and marks them `read`; a stop or finish
+  drops such a message unread. The supervisor stays quiet with the human: it does not relay reports,
   and the details are in `lado log`.
 - The human is a participant of messages, `human` (design in
   [docs/design/ui.md](docs/design/ui.md), The human in the session): agents write to it with
@@ -845,9 +871,16 @@ or `developer-2`, `developer-3`… when that is taken. A name is taken by a runn
 that name or a branch `lado/<session>/<name>` still there (from a stopped launch or a
 worker not finished); `human`, `lado` and `supervisor` are never chosen. A given name wins
 and is checked as before.
-`lado forget <session>` deletes a stopped session with its history; it refuses a running
-one, and one with open runs unless `--force`; worktrees and branches stay on disk and are
-listed.
+`lado forget <session>` deletes a stopped session with its history and its artifacts (the
+store's `remove_session` first, which also removes content files no record refers to that
+are more than an hour old; the output counts the artifacts); it refuses a running one, and
+one with open runs unless `--force`; worktrees and branches stay on disk and are listed.
+
+`lado artifacts list <session> [--run RUN]`, `lado artifacts show <session> <full-name>`
+and `lado artifacts get <session> <full-name> [-o FILE]` list a session's artifacts, print
+a text one and write one's bytes, also for a stopped session (docs/design/artifacts.md, The
+human's side). `lado doctor` shows the store's size and warns about content no record
+refers to that is older than an hour (the next `lado forget` removes it).
 
 Gates: a run that enters a gate state, or would enter a state more often than its
 `max_visits`, waits for the human with an open gate (`lado ls`: `gate #<id> waiting:

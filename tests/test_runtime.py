@@ -430,6 +430,21 @@ def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
     assert "lado log" in supervisor
 
 
+def test_agents_are_told_to_keep_results_as_artifacts_and_attach_them(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task")
+    for _, _, window, _, cmd in fake_tmux:
+        prompt = " ".join(_prompt(cmd).split())
+        for tool in ("write_artifact", "read_artifact", "list_artifacts"):
+            assert tool in prompt, window
+        assert "`artifacts`" in prompt and "flow_advance" in prompt, window
+        assert "is an artifact, not a path to a file" in prompt, window
+    supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
+    assert "A bare artifact name is in the session's scope" in supervisor
+    assert 'named by their full name, "<run>/<name>"' in supervisor
+    assert "in a step of your own in a run, write and attach the run's artifacts" in supervisor
+
+
 def test_the_supervisor_is_told_to_answer_the_human_where_they_asked(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
@@ -1255,7 +1270,7 @@ def test_message_errors(repo, fake_tmux):
     _session_with_worker(repo)
     with pytest.raises(runtime.LadoError, match="running agents: supervisor, w1"):
         runtime.send_message("s", "w1", "nobody", "hi")
-    with pytest.raises(runtime.LadoError, match="write the details to a file"):
+    with pytest.raises(runtime.LadoError, match=r"write the details to an artifact \(write_"):
         runtime.send_message("s", "w1", "supervisor", "done", "x" * 9000)
 
 

@@ -11,7 +11,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import runtime, state, tmux
+from lado import artifacts, runtime, state, tmux
 
 pytestmark = pytest.mark.integration
 
@@ -269,6 +269,44 @@ def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     assert "w1: busy" in lines
     assert "w1: idle" in lines
     assert "supervisor → w1 [delivered] hello w1" in lines
+
+
+def test_a_worker_keeps_a_file_of_its_worktree_as_an_artifact_and_attaches_it(repo):
+    """Its `lado mcp` reads the relative path in the worker's folder, and the supervisor
+    gets the artifact with the report."""
+    start(repo)
+    worker = runtime.spawn_worker(SESSION, "sleep 0", name="w1")
+    wait_status("w1", state.IDLE)
+    Path(worker.cwd, "out").mkdir()
+    Path(worker.cwd, "out", "report.md").write_text("# Report\nall green\n")
+    runtime.send_message(SESSION, "supervisor", "w1", "artifact_write report out/report.md")
+    wait_for(lambda: "artifact_write" in seen("w1"), "the artifact written")
+    assert seen("w1")["artifact_write"] == {
+        "name": "report",
+        "status": "created",
+        "size": 19,
+        "media_type": "text/markdown",
+    }
+    wait_status("w1", state.IDLE)
+    runtime.send_message(SESSION, "supervisor", "w1", "send supervisor done --artifacts report")
+    line = "[from w1] done (#3, 1 artifact: call read_messages)"
+    wait_for(lambda: got_line("supervisor", line), "the report with its artifact")
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
+    supervisor_runs("read")
+    [message] = seen("supervisor")["read"]
+    assert message["artifacts"] == [
+        {
+            "name": "report",
+            "title": None,
+            "media_type": "text/markdown",
+            "size": 19,
+            "changed": False,
+        }
+    ]
+    supervisor_runs("artifact_read report")
+    assert seen("supervisor")["artifact_read"]["content"] == "# Report\nall green\n"
+    [(_, record)] = artifacts.store().list(SESSION)
+    assert artifacts.content(record) == b"# Report\nall green\n"
 
 
 def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):

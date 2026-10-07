@@ -13,15 +13,17 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import loop, providers, runs, runtime, state, terminal, tmux
+from lado import artifacts, loop, providers, runs, runtime, state, terminal, tmux
 from lado.providers import base
 
 pytestmark = pytest.mark.live
 
 SESSION = "live"
 TASK = (
-    "Create a file hello.txt containing exactly OK, commit it on your branch, "
-    "then report to the supervisor with send_message. Do nothing else."
+    "Create a file hello.txt containing exactly OK and a file report.md containing exactly "
+    "REPORT, and commit both on your branch. Keep report.md as an artifact with "
+    'write_artifact(name="report", file="report.md"). Then report to the supervisor with '
+    'send_message, attaching it with artifacts=["report"]. Do nothing else.'
 )
 RECEIVED = (state.DELIVERED, state.READ)
 CLAUDE_TRUST = "Yes, I trust this folder"
@@ -231,6 +233,18 @@ def check_report() -> str:
     return report.summary
 
 
+def check_artifact() -> None:
+    """w1 kept report.md as the artifact "report" by its path relative to its worktree (read
+    by its own `lado mcp`), and attached it to its report."""
+    artifact, record = artifacts.find(SESSION, "report")
+    content = artifacts.content(record)
+    print(f"artifact: {artifact.full_name}, {record.media_type}, {content!r}")
+    assert (record.author, record.media_type) == ("w1", "text/markdown")
+    assert content.decode().strip() == "REPORT"
+    report = next(m for m in state.list_messages(SESSION) if m.sender == "w1")
+    assert [a for a, _ in state.message_attachments(report.id)] == [artifact.id]
+
+
 def check_log(provider: str, summary: str) -> None:
     """`lado log` shows w1's spawn, its statuses and its report, in that order."""
     result = subprocess.run(
@@ -362,6 +376,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider,
         60,
     )
     summary = check_report()
+    check_artifact()
 
     hello = runtime.git(str(repo), "show", f"{worker.branch}:hello.txt")
     assert hello.strip() == "OK"

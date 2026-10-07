@@ -50,6 +50,15 @@ test_main_screen::test_a_page_loads_without_a_console_error… (the server did n
 in 15 s; the fake provider's `server --port 0` timed out after 10 s) and
 test_agent_liveness::test_the_human_writes_to_a_worker_while_the_supervisor_is_stopped
 (w1 busy after 30 s; 3 of 3 green alone). So `-n auto` alone loads the machine enough.
+Also (2026-10-07, fix/test-timers, the integration tests now with `LADO_LOOP_INTERVAL=0.25`
+and `LADO_RETRY_DELAYS=0.5,0.5,0.5`, load average 54 from other sessions): one parallel
+`make test-integration` run (164 s instead of about 80) failed
+test_session_loop::test_the_loop_types_a_swallowed_message_again and
+test_flow_runs::test_runs_and_gates_survive_stop_and_start; their lines were not kept, and
+both passed 5 of 5 alone and in the six parallel runs after it (five `make
+test-integration`, one `make check`). A short retry delay is
+exceeded by a hook that takes over 0.5 s to start under such load (the message is then
+typed once more), so these may be timing-sensitive under load.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 
@@ -199,7 +208,10 @@ Found: 2026-10-02, `make check` in fix/live-loop-reason (change touched only tes
 loop.py constants).
 Again 2026-10-07, merge step of feature/turn-resume (load average about 10): the fake
 agent's input was `sleep 0` with the bracketed paste `[from w1] report` in the same line;
-green on the next `make check`.
+green on the next `make check`. Again 2026-10-07 in fix/test-timers (a 0.25 s loop interval,
+load average 54), which changed the test: the report is due only after the human's
+`sleep 0` was submitted and its hooks ran, so no sweep pastes while the human types. The
+product side (a retry pasted into a line the human has started) is still open.
 
 ## Flaky UI test: a gate answered with `lado answer` loses the rail's "Needs you" count
 
@@ -558,6 +570,11 @@ and passed on the rerun: Kilo's supervisor spawned `worker` and cancelled the ru
 OpenCode's spawned `worker` for the flow and merged and finished w1 during the follow-up.
 On 2026-10-07 (run feature/turn-resume) OpenCode's supervisor merged and finished w1 during
 the follow-up in two runs in a row ("agent w1 is gone"); the third run passed.
+Again on 2026-10-07 (run fix/test-timers): Kilo's supervisor finished w1 before the human's
+message (the rerun passed); OpenCode failed three runs in a row, a different way each
+time: w1 committed `flow.txt` with "live flow test" instead of "OK"; the supervisor spawned
+`worker` besides w1, so finishing w1 kept the run's worktree; the supervisor called
+`finish_worker(name="w1", discard=true)` before the human's message.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.

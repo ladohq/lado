@@ -7,6 +7,7 @@ call opens its own short-lived connection and SQLite does the locking.
 import datetime
 import json
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -14,6 +15,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
+
+from lado.flows import IDENTIFIER
 
 SCHEMA_VERSION = 20
 
@@ -395,7 +398,7 @@ ENDED = "ended"
 BLOCKED = "blocked"
 # Flow run events (lado.runs); their run column names the run.
 FLOW_START = "flow_start"
-FLOW = "flow"  # a transition; detail: "<from> -<outcome>-> <to>"
+FLOW = "flow"  # a transition; detail: flow_detail's "<from> -<outcome>-> <to>"
 FLOW_END = "flow_end"
 FLOW_CANCEL = "flow_cancel"
 FLOW_SET = "flow_set"  # the human forced the run into a state
@@ -409,6 +412,21 @@ SESSION_RESUME = "session_resume"  # detail: what changed
 SESSION_GONE = "session_gone"
 # The events that start and end the spans a session ran (runtime.session_time).
 SPAN_EVENTS = (SESSION_RESUME, SESSION_STOP, SESSION_GONE)
+
+
+def flow_detail(from_state: str, outcome: str, to_state: str) -> str:
+    """A FLOW event's detail: the one writer of its form, which transition reads."""
+    return f"{from_state} -{outcome}-> {to_state}"
+
+
+_TRANSITION = re.compile(rf"({IDENTIFIER.pattern}) -({IDENTIFIER.pattern})-> ({IDENTIFIER.pattern})")
+
+
+def transition(detail: str) -> tuple[str, str, str] | None:
+    """A FLOW event's detail as (from, outcome, to), or None for any other text."""
+    found = _TRANSITION.fullmatch(detail)
+    return None if found is None else (found[1], found[2], found[3])
+
 
 # Message kinds.
 MESSAGE = "message"

@@ -1545,6 +1545,7 @@ export interface components {
             actor: string;
             /** Detail */
             detail: string;
+            transition: components["schemas"]["Transition"] | null;
             /** Created At */
             created_at: string;
         };
@@ -1702,6 +1703,18 @@ export interface components {
             status: components["schemas"]["SessionStatus"];
             /** Repo */
             repo: string;
+        };
+        /**
+         * Transition
+         * @description A flow event's move, as state.transition reads its detail.
+         */
+        Transition: {
+            /** From State */
+            from_state: string;
+            /** Outcome */
+            outcome: string;
+            /** To State */
+            to_state: string;
         };
         /**
          * UpdateInfo

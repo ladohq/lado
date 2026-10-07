@@ -222,6 +222,7 @@ def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):
         "kind": "flow_start",
         "actor": "lado",
         "detail": "at design",
+        "transition": None,
     }
 
 

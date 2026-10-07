@@ -129,7 +129,7 @@ def advance(
     target = current.outcomes[outcome]
     noted = dataclasses.replace(run, note=note, note_body=note_body or "")
     after, events, gate = _enter(noted, flow, target)
-    transition = (caller, state.FLOW, f"{run.state} -{outcome}-> {target}")
+    transition = (caller, state.FLOW, state.flow_detail(run.state, outcome, target))
     own = notices if caller == SUPERVISOR else None
     return _commit(
         run,
@@ -168,7 +168,7 @@ def answer(
     note, note_body = _answer_note(outcome, comment, found)
     noted = dataclasses.replace(run, note=note, note_body=note_body)
     after, events, opens = _enter(noted, flow, target, limit=found.kind != LOOP)
-    transition = (by, state.FLOW, f"{run.state} -{outcome}-> {target}")
+    transition = (by, state.FLOW, state.flow_detail(run.state, outcome, target))
     # A loop limit is no state of the flow: its answer must not stand for a state's report.
     kind = state.OVERRIDE if found.kind == LOOP else state.REPORT
     noted = state.Noted(found.state, kind, by, outcome, target)

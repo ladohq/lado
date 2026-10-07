@@ -4272,6 +4272,16 @@
             "type": "string",
             "title": "Detail"
           },
+          "transition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Transition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "type": "string",
             "title": "Created At"
@@ -4284,6 +4294,7 @@
           "kind",
           "actor",
           "detail",
+          "transition",
           "created_at"
         ],
         "title": "RunEventInfo",
@@ -4729,6 +4740,30 @@
         ],
         "title": "Taken",
         "description": "The detail of a 409 to a new session: the session that has the name."
+      },
+      "Transition": {
+        "properties": {
+          "from_state": {
+            "type": "string",
+            "title": "From State"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "to_state": {
+            "type": "string",
+            "title": "To State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_state",
+          "outcome",
+          "to_state"
+        ],
+        "title": "Transition",
+        "description": "A flow event's move, as state.transition reads its detail."
       },
       "UpdateInfo": {
         "properties": {

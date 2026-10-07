@@ -447,6 +447,14 @@ class Finish(BaseModel):
     discard: bool = False
 
 
+class Transition(BaseModel):
+    """A flow event's move, as state.transition reads its detail."""
+
+    from_state: str
+    outcome: str
+    to_state: str
+
+
 class RunEventInfo(BaseModel):
     """What happened to a flow run: its start, a transition, a gate, its end."""
 
@@ -454,7 +462,10 @@ class RunEventInfo(BaseModel):
     run: str
     kind: str  # flow_start | flow | flow_end | flow_cancel | flow_set | gate_open | ...
     actor: str  # the agent that did it, or lado
-    detail: str  # as the core wrote it; the server does not parse it
+    # As the core wrote it. The server does not parse it, but for a transition: read by
+    # state.transition next to its writer, so the UI gets the move without a parser of its own.
+    detail: str
+    transition: Transition | None  # only of a flow event whose detail is one
     created_at: str  # UTC, ISO 8601
 
 
@@ -739,12 +750,14 @@ def waiting_item(waits: state.Waits) -> WaitingItem:
 
 def run_event_info(event: state.Event) -> RunEventInfo:
     assert event.run is not None, "only a run's event is a RunEventInfo"
+    move = state.transition(event.detail) if event.kind == state.FLOW else None
     return RunEventInfo(
         id=event.id,
         run=event.run,
         kind=event.kind,
         actor=event.agent,
         detail=event.detail,
+        transition=None if move is None else Transition(from_state=move[0], outcome=move[1], to_state=move[2]),
         created_at=_utc(event.created_at),
     )
 

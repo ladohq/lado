@@ -1163,3 +1163,18 @@ def test_sweep_sets_the_agent_waiting_when_the_plan_says_so(lado_home, status):
     state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(fail=[one], wait=True))
     assert state.get_agent("s", "w1").status == state.WAITING
     assert _status_events() == [state.WAITING]
+
+
+def test_a_transition_s_detail_reads_back_as_it_was_written():
+    detail = state.flow_detail("design", "ready", "architecture")
+    assert detail == "design -ready-> architecture"
+    assert state.transition(detail) == ("design", "ready", "architecture")
+    assert state.transition(state.flow_detail("review", "changes", "review")) == ("review", "changes", "review")
+
+
+@pytest.mark.parametrize(
+    "detail",
+    ["at design", "", "design -ready->", "design -ready-> architecture extra", "a b -x-> c", "design -re-ady-> x"],
+)
+def test_a_detail_not_in_the_transition_s_form_is_no_transition(detail):
+    assert state.transition(detail) is None

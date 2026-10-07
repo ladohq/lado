@@ -48,13 +48,25 @@ def test_events_are_the_run_events_oldest_first(client, session):
         "kind": "flow_start",
         "actor": "lado",
         "detail": "at design",
+        "transition": None,
     }
     assert (moved["kind"], moved["actor"], moved["detail"]) == (
         "flow",
         "w1",
         "design -done-> review",
     )
+    assert moved["transition"] == {"from_state": "design", "outcome": "done", "to_state": "review"}
     assert moved["id"] > started["id"]
+
+
+def test_a_flow_event_whose_detail_is_no_transition_has_none(client, session):
+    add_run()
+    state.add_event("s", "w1", state.FLOW, "moved somehow", run="feature/x")
+    state.add_event("s", "lado", state.FLOW_END, "a -b-> c", run="feature/x")
+    _, odd, end = client.get("/api/sessions/s/events").json()
+    assert (odd["detail"], odd["transition"]) == ("moved somehow", None)
+    # Only a FLOW event is read as a transition, whatever another one's detail says.
+    assert (end["kind"], end["transition"]) == ("flow_end", None)
 
 
 def test_the_events_of_an_unknown_session_are_404(client, session):

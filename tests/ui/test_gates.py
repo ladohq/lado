@@ -69,7 +69,9 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
     expect(card.locator("strong").first).to_have_text("the plan is reviewed")
     expect(card).to_contain_text("Split it in two, then ship.")
     expect(page.get_by_text("Gate #1 waits:")).to_be_visible()
-    card.get_by_role("button", name="Note from plan: the plan is reviewed").click()
+    # The gate needs plan and comes right from it: plan's note is shown once, as its note.
+    expect(card).to_contain_text("Note from plan (also the note before the gate)")
+    expect(card.get_by_role("button", name="Note from plan: the plan is reviewed")).to_have_count(0)
     shot(page, "card")
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill(
         "split the form first"

@@ -329,11 +329,15 @@ fixes and docs only: no new feature, no API or schema change.
     `flow_cancel`). No tool answers a gate or a question.
   - `artifacts.py`: artifacts, named documents of a session (contract:
     [docs/design/artifacts.md](docs/design/artifacts.md)); the only module the rest of LADO
-    calls for them (MCP tools, CLI, runs, runtime, doctor): names (`NAME`, full names parsed
-    by the last `/`), scopes and the rights to write (`_writable`), limits, media types by
-    one extension table (`EXTENSIONS`, `is_text`), reading (`read`, `listed`, `find`,
-    `of_session`), attachments (`resolve_attachments`, `attached`, `attached_line`) and the
-    `Store` protocol, whose backend `store()` chooses. `artifacts_local.py`: `LocalStore`,
+    calls for them (MCP tools, CLI, runs, runtime, doctor, the UI server): names (`NAME`,
+    full names parsed by the last `/`), scopes and the rights to write (`_writable`),
+    limits, media types by one extension table (`EXTENSIONS`, `is_text`;
+    `PREFERRED_EXTENSION`, one per type, for a download's `file_name`), reading (`read`,
+    `listed`, `find`, `of_session`, and by id only of the session's: `of_artifact`,
+    `of_record`), attachments (`resolve_attachments`; `attached`, the one builder of an
+    `Attachment`, its artifact and record, with `changed` only when asked,
+    `with_changed`; `read_attachments` for read_messages; `attached_line`) and the
+    `Store` protocol (with `artifact(id)`), whose backend `store()` chooses. `artifacts_local.py`: `LocalStore`,
     the one backend: rows through `state.py`'s artifact functions, content in files by hash
     under `LADO_HOME/artifacts/<hh>/<sha256>` (a temporary file, fsync, rename; a file no
     record refers to is removed by `remove_session` only after `ORPHAN_AGE`, an hour).
@@ -413,8 +417,13 @@ fixes and docs only: no new feature, no API or schema change.
     store's artifact and record ids, no foreign key to them; not journaled), written in the
     transaction of their message (`queue_message`, `add_question`) or note (`update_run`).
     `TO_READ` is the one condition of a message with something to read (a body or an
-    attachment), for `read_messages` and `UNRECEIVED`; a `Message` counts its
-    `attachments`.
+    attachment), for `read_messages` and `UNRECEIVED`; a `Message`, a `Note`
+    (`NOTE_COLUMNS`) and a `Gate` (`GATE_COLUMNS`, its note's) count their `attachments`,
+    so only a row that has some asks for them. From schema 22 a gate keeps the note that
+    led to it, `gates.note_id` (`GATES_NOTE`): `update_run` writes the note first and the
+    gate after it in the same transaction; a gate's attachments are that note's
+    (`runs.gate_attachments`, `gate_artifacts`), and `runs.gate_notes` marks a needed note
+    that is it (`NeededNote.is_gate_note`), which `lado answer` and the UI show once.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -432,7 +441,16 @@ fixes and docs only: no new feature, no API or schema change.
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes; the agents, history, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), runs and notes
-    endpoints are in `app.py`; `GET …/messages` gives a page, `MessagePage {items,
+    endpoints are in `app.py`, and the artifacts' (docs/design/artifacts.md, The human's
+    side): `GET …/artifacts`, `…/artifacts/{id}`, `…/records/{record}` and
+    `…/records/{record}/content[?download=1]`, a session's only (404 else), through
+    `artifacts.py` alone, whose content's headers are one function, `_content_headers`
+    (`Content-Security-Policy: sandbox`, `allow-scripts` only for `text/html`, nosniff,
+    inline only for `INLINE`, the file's name; `immutable` only on a 200, a missing
+    content a 500 with `no-store`); messages, notes and gates carry `attachments`
+    (`models.attachment_infos`, built by `artifacts.attached`), and the feed's
+    `artifacts` item is an `ArtifactInfo` (`feed.ITEMS`; a new record updates its
+    artifact's item by `feed.OWNER`); `GET …/messages` gives a page, `MessagePage {items,
     earlier}`, of the messages a filter takes (`with`, `agent`, the id cursors `before`
     and `after`, the times `since` and `until` by whole seconds via `models.db_second`,
     the latest `limit` or all without it), filtered in SQL (`state.MessageFilter`,

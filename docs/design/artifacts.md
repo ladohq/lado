@@ -70,6 +70,8 @@ The store is a Python protocol at the level of artifacts, not of bytes:
   title)`: the new record, and whether its content equals the previous one's
   (`unchanged`).
 - `latest(session, scope, name)`: the artifact and its latest record, or none.
+- `artifact(artifact_id)`: an artifact by its id with its latest record, or none (the UI's
+  page and feed; `artifacts.of_artifact` checks that it is the session's).
 - `record(record_id)`: a record's metadata; `content(record_id)`: its bytes.
 - `list(session, scope=None)`: the session's artifacts (or one scope's) with their latest
   records.
@@ -95,7 +97,8 @@ setting to choose it (only what is used).
   them. Their SQL is in `state.py`, as all of LADO's; only `artifacts_local.py` calls it.
 - LADO's own table `attachments` (message or note, position, artifact, record) keeps the
   store's ids as opaque values, with no foreign key to the store's tables; it goes with its
-  message or note. Not journaled in part 1 (part 2 decides).
+  message or note. Not journaled: attachments are written with their message or note and
+  never change, so the feed's item of the message or note carries them.
 - No foreign key from `artifacts` to `sessions`: `lado forget` calls the store's
   `remove_session` before it deletes the session's rows, as any backend needs it, so a
   forget that fails in between can be run again and a new session of the same name never
@@ -164,7 +167,15 @@ limit is refused with the limit in the error.
   the same line under the note that led to the gate.
 - The human attaches nothing in this version (`write_as_human` takes no artifacts).
 - What the human approved at a gate is the record attached to the note before it, so a
-  later rewrite of the artifact never changes what the gate showed.
+  later rewrite of the artifact never changes what the gate showed. A gate keeps the id of
+  that note (`gates.note_id`, schema 22, written after the note in the same transaction);
+  a gate's attachments are that note's, found only by that id, also for a closed gate
+  after its run moved on (`runs.gate_attachments`, `lado answer`, the API's `GateInfo`);
+  a gate that keeps none (one from before schema 22) has none.
+- `artifacts.attached` is the one builder of attachments (each one's artifact and record),
+  for `read_messages`, the steps' and `lado answer`'s lines and the API; whether one
+  changed since is looked up only when asked (`with_changed`: the agents' and the CLI's
+  side), since the UI compares the hashes itself.
 
 ## The human's side
 
@@ -174,17 +185,41 @@ limit is refused with the limit in the error.
   refused with the `get` that writes it); `lado artifacts get <session> <full-name> [-o
   FILE]` writes its bytes, to stdout without `-o` (refused for a binary artifact when stdout
   is a terminal). `lado artifacts` alone prints its help.
-- API (under `/api`, behind the same token and `Guard` as the rest): the session's
-  artifacts, one artifact with its latest record, and a record's content
-  (`Content-Type` from its media type, a sanitized `Content-Disposition` name, inline for
-  the allow-list below, a download otherwise). Messages, notes and gates carry their
-  attachments (artifact id, full name, title, media type, size, record id, `outdated`).
-  The feed sends artifact changes as items like the other kinds.
-- UI: the session's Artifacts tab (now a placeholder) lists the artifacts by scope; a
-  viewer shows Markdown (as the chat does, no raw HTML), text and code, images, HTML in a
-  sandboxed frame, and offers a download for every type. Attachments show as chips on
-  messages, gate cards and notes; an attachment whose artifact changed since says so and
-  opens the latest from there (changed: by hash, as above). The look is the UI part's design, from mockups.
+- API (under `/api`, behind the same token and `Guard` as the rest; a session's only, an
+  unknown one or another session's id is 404; through `artifacts.py` only:
+  `of_session`, `of_artifact`, `of_record`, `content`):
+  - `GET /api/sessions/{name}/artifacts`: the session's artifacts (`ArtifactInfo`: id,
+    session, scope, name, full name, title and `latest`, its latest record as a
+    `RecordInfo`: id, media type, size, hash, author, run, state, summary, time);
+  - `GET /api/sessions/{name}/artifacts/{id}`: one artifact with its latest record;
+  - `GET /api/sessions/{name}/records/{record}`: a record with its artifact as it is now;
+  - `GET /api/sessions/{name}/records/{record}/content[?download=1]`: its bytes,
+    `Content-Type` from its media type (`; charset=utf-8` for `text/*`), the headers of
+    one function, `server/app.py`'s `_content_headers`: the sandbox and nosniff below,
+    inline for the allow-list below, else and with `download=1` a download
+    (`Content-Disposition: attachment`), the file's name the artifact's with no `/`, `\`,
+    quote or control character, and the extension of its media type
+    (`artifacts.PREFERRED_EXTENSION`, one per type) only when its own is not that type's
+    (`mockup.html` stays). A 200 is `Cache-Control: private, max-age=31536000, immutable`
+    (a record never changes); content missing from the store is a 500 with the core's
+    error and `no-store`.
+  Messages, notes and gates carry their attachments (`AttachmentInfo`: artifact id, record
+  id, full name, name, scope, title, media type, size and the attached record's `hash`). The
+  UI says an attachment changed since when its hash differs from its artifact's latest
+  (`web/src/artifacts.ts`, `changed`, the UI's one comparison; `unknown` while the
+  session's artifacts are not loaded); `read_messages` gets `changed` from the core. A
+  gate's needed note that is the note before it says so (`NeededNote.is_gate_note`, from
+  `runs.gate_notes`), so the UI and `lado answer` show it once. The feed sends an
+  artifact's `ArtifactInfo` as its item, also when a new record is written.
+- UI (docs/design/ui.md, Artifacts): the session's Artifacts tab is a table of its
+  artifacts, newest first, with filters by scope and type and a search; a row opens the
+  artifact's page (`/sessions/<name>/artifacts/<id>`, `?record=<id>` for a record that
+  is not the latest). A viewer shows Markdown (as the chat does, no raw HTML), text and
+  code with line numbers, images, HTML in a sandboxed frame, and offers a download for
+  every type. Attachments show as chips on messages, gate cards and notes; a chip opens
+  the attached record in a panel over the page (`?view=<record>`), with Open in Artifacts
+  tab; an attachment whose artifact changed since says so and opens the latest from
+  there (changed: by hash, as above).
 - Every response with an artifact's content carries `Content-Security-Policy: sandbox`
   and `X-Content-Type-Options: nosniff`; only `text/html` gets `sandbox allow-scripts`.
   The media type is the agent's word, so content is served inline only for an allow-list:
@@ -232,7 +267,7 @@ per-outcome requirements; it changes this section when it does.)
    (in the kit's repository).
 
 Parts 2 and 3 may start before part 1 merges, against this contract, but merge after it.
-Only one part at a time changes the schema: part 1 makes schema 21, part 2 the next one.
+Only one part at a time changes the schema: part 1 made schema 21, part 2 schema 22.
 
 ## Left out
 

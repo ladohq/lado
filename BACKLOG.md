@@ -796,26 +796,20 @@ Wanted: one error type for what the core refuses (or `core()` and the endpoints 
 known one to 400), so no refusal reaches the UI as a 500.
 Found: 2026-10-04, feature/kit-manifest-v2 (implement).
 
-## A gate shows a needed note twice when it is the note before the gate
+## A gate's answer copies the note before the gate into its own
 
-Size: M. Why here: lado-dev is not affected; better done together with artifacts: part 2
-(UI) of docs/design/artifacts.md takes it on (the gate keeps the id of the note before it).
+Size: M. Why here: lado-dev is not affected (its design_ok follows architecture).
 
-A gate with `needs: [design]` reached right from `design` shows design's report twice in
-`lado answer` and on the gate's card in the UI's chat (`GateCard.tsx`): as `Note from
-design` and as the note that led to the gate. The step text
-prints such a note once (compared by note id), the gate view does not: the gate record
-keeps a copy of the note's text, not the note's id.
-Wanted: the gate keeps the id of the note that led to it (or the view finds it as the run's
-note just before the gate opened), and the view prints a needed note that is the same
-record once, as the step text does.
-The same happens after the gate: the answer's note copies the note before the gate into its
-body ("Note before the gate: ..."), so a next step that needs that state gets it twice (the
-answer is its own notes record, so the id comparison does not catch it). Wanted as well: the
-answer keeps a reference to the note before the gate instead of a copy. Also flows.py's
-docstring example (`design_ok: needs: [design]` right after design) shows exactly this
-duplicating pattern; pick an example where the gate needs an earlier state. lado-dev is not
-affected (its design_ok follows architecture).
+The gate's half is done (run feature/artifacts-ui, 2026-10-07): a gate keeps the id of the
+note that led to it (`gates.note_id`, schema 22), and `lado answer` and the gate's card show
+a needed note that is that note once (`NeededNote.is_gate_note`).
+Left: the answer's note copies the note before the gate into its body ("Note before the
+gate: ..."), so a next step that needs that state gets it twice (the answer is its own
+notes record, so the id comparison does not catch it).
+Wanted: the answer keeps a reference to the note before the gate (the gate's `note_id`)
+instead of a copy. Also flows.py's docstring example (`design_ok: needs: [design]` right
+after design) shows exactly this duplicating pattern; pick an example where the gate needs
+an earlier state.
 Found: 2026-10-02, run fix/gate-needs and its review.
 
 ## Two starts of a session whose tmux server died can stop each other
@@ -1206,6 +1200,17 @@ Wanted: the detail cut with an ellipsis on the event's line and the time kept on
 Found: 2026-10-07, review of feature/chat-message-text (Minor left open).
 
 # P3: maybe never
+
+## Code artifacts have no syntax highlighting
+
+Size: S. Why here: the human's decision (2026-10-07, run feature/artifacts-ui): text and
+code read well with line numbers; a highlighter is a dependency and a bundle of grammars.
+
+The viewer (`web/src/ArtifactView.tsx`, `Text`) shows text and code (`text/x-python`,
+`text/typescript`, `application/json`, ...) as plain lines with their numbers.
+Wanted, if it ever matters: highlighting by the media type, loaded only for a code
+artifact, in both themes' colours (tokens.css).
+Found: 2026-10-07, run feature/artifacts-ui (design).
 
 ## The chat's day dividers say "Today" and "Yesterday" as of their last render
 

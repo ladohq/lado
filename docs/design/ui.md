@@ -195,9 +195,12 @@ Decided in the live updates task (2026-10-03).
   `MessageInfo` (any message: each window of the store takes those its filter takes), a
   run event's its `RunEventInfo`, a gate's its `GateInfo` (`models.gate_info`, as
   `GET /api/sessions/{name}/gates` gives it: a closed gate's item replaces the open one's,
-  it is never null). One table in `feed.py`, `ALSO`, says which change also
+  it is never null), an artifact's its `ArtifactInfo` (`artifacts.of_artifact`, with its
+  latest record). One table in `feed.py`, `ALSO`, says which change also
   changes another item: a change of `agents`, `gates` or `messages` also sends the
-  session's (it counts its agents and what waits for the human in it, `waiting`). Each
+  session's (it counts its agents and what waits for the human in it, `waiting`); another,
+  `OWNER`, the one item a row belongs to: a new `artifact_records` row sends its
+  artifact's item (its new latest record). Each
   session item asks tmux for its status (`runtime.session_status`); a batch is collapsed
   first, so that is once per session in a batch. A comment line every 15 s keeps a quiet
   stream open. An item that cannot be built in full is sent without what failed, with the
@@ -410,8 +413,8 @@ Sessions for now. The UI's texts are in English.
   tabs **Activity | Agents | Flows |
   Artifacts** (their look: Look, Tabs; its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents the agents and what each does (Agents
-  below), Flows the runs (Flows below), Artifacts a placeholder naming the task that fills
-  it. The head's first line: the name, the status, how long the session ran, then on the
+  below), Flows the runs (Flows below), Artifacts the documents the agents write
+  (Artifacts below). The head's first line: the name, the status, how long the session ran, then on the
   right Copy link and its actions (Launch and session control, below). The run time is
   the server's (`SessionInfo.ran_seconds`, `running_since`: `runtime.session_time`, stops
   and the time after its tmux died left out); while it runs the UI adds the time since
@@ -464,7 +467,8 @@ Sessions for now. The UI's texts are in English.
   focus is on Sessions, after Sessions on Collapse sessions, only after those buttons (not
   when a page opens collapsed).
 - **List and page** (task feature/flows-list, 2026-10-04, boards 14–15 of the canvas; one
-  component, `ListPage.tsx`, for every tab with a list: Agents, later Artifacts; since task
+  component, `ListPage.tsx`, for every tab with a list: Agents (Artifacts is a table of its
+  own, Artifacts below); since task
   feature/flows-list-states, 2026-10-07, Flows has an overview of its own, Flows below,
   which shares the list's group, `ListGroup`, and its search's filter, `filterGroups`):
   the tab's list of items and the page of the one its address names. In a column of 900 px
@@ -1223,6 +1227,65 @@ works only in the browser learns of a gate from Needs you, its count and a notif
 A session's tab: the documents the agents write (ROADMAP stage 7, Artifacts). The contract
 the UI part is built against: [artifacts.md](artifacts.md).
 
+Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
+`.lado/mockups/artifacts-ui/`: `tab-b.html` the tab, `viewer-types.html` the viewer,
+`chips.html` in its mode "panel over the chat"):
+
+- **The tab** (`ArtifactsTable.tsx`): a flat table over the whole column, newest first by
+  the latest record (`live.ts`, `LISTS.artifacts`, kept by the feed's `artifacts` items: a
+  new record moves its artifact to the top). Columns: the name (the full name, its run part
+  muted, the title under it, the type's icon before it), the media type, the size, the
+  author, how long ago it was updated and the latest record's summary. Above it: a search
+  (name, title, summary, author), the scope (All scopes, Session, each run that has
+  artifacts) and the type (All types, Documents, Code and text, Images, HTML, Other: one
+  per `artifacts.kindOf`). Filters work on the loaded list; a session without artifacts
+  says "No artifacts yet", a filter that keeps none "No match". The tab is a size
+  container: below 720 px of its own width (the terminals open, a phone) each row is a
+  card. A row opens the artifact's page.
+- **The page**: `/sessions/<name>/artifacts/<id>` (`paths.artifactPath`), "← Artifacts"
+  above the viewer; it shows the latest record, or with `?record=<id>` the record an
+  attachment keeps. An unknown id says "No artifact <id> in this session".
+- **The viewer** (`ArtifactView.tsx`, one component for the page and the panel): its head
+  is the type's icon and the full name, Download (the content with `?download=1`), Copy
+  link (the page's address, with `?record=` when it is not the latest), for HTML Open in
+  new tab (the content address, under the server's sandbox); the title; the author, how
+  long ago, the run's state or "session", the media type and size; the record's summary.
+  The body by `artifacts.kindOf`: Markdown as the chat's `Body` (react-markdown, no raw
+  HTML); text and code in a table with line numbers and Wrap lines (no syntax
+  highlighting: BACKLOG.md); an image fitted to the column, a click shows it at its own
+  size until Esc or a click; HTML in `<iframe sandbox="allow-scripts">`, never
+  `allow-same-origin`, under a bar "Runs sandboxed: its scripts work, it cannot reach
+  LADO"; anything else as its facts (media type, size, SHA-256) and Download. Text is read
+  through `response.body.getReader()` up to 1 MB, then the read is cancelled and the page
+  says "Shown: the first 1.0 MB of …" with a Download. Content the store lost (the
+  server's 500) is a red block that says so and points to `lado doctor`; another failure
+  is its message. A record that is not the artifact's latest by content says
+  "<full name> changed since this record: <its summary>" with Open latest, in
+  `--action-ground`.
+- **Chips** (`Attachments.tsx`): on a message (also one without a body: its summary and
+  its chips), an agent's question, a gate card's note and a note in a run's history.
+  A chip is the type's icon, the name and the size; in the chat the full name with its run
+  part muted, on a gate and in a run's notes the short name (they are that run's). Its
+  name for the ear: "Open artifact <full name>". It opens the record that was attached.
+  When the artifact changed since (`artifacts.changed`, the one comparison: the
+  attachment's hash against the artifact's latest in the session's list), "changed since ·
+  open latest" is joined to it; while that list is not loaded the chip says nothing
+  (`unknown`), never "unchanged". The Activity tab (chat and gates), Flows and the panel
+  watch the session's artifacts for it, so a new record changes a chip without a reload.
+- **The panel** (`ArtifactPanel.tsx`): a chip opens the viewer on the right over the page
+  (`?view=<record>`, `paths.VIEW_PARAM`, on any of the session's tabs; from Needs you,
+  over the session's Activity tab), min(620 px, 100%) wide, the whole screen on a phone,
+  over a scrim; the page stays where it was. Esc, × or a click on the scrim closes it and
+  the focus goes back to the chip; Back closes it too (the chip's view is a step of the
+  history). "Open in Artifacts tab" leads to the artifact's page with that record. Open
+  latest in it shows the latest record in the same panel.
+- **A gate's note** (`GateCard.tsx`): its chips under the note before the gate; a needed
+  note that is that note (`NeededNote.is_gate_note`, from the core) is shown once, as the
+  gate's note, labelled "Note from <state> (also the note before the gate)", and is left
+  out of the gate's list of needed notes.
+- Not in it: syntax highlighting, a record's history and a diff, uploads by the human,
+  attachments in the composer, deleting an artifact, server-side filters and pages.
+
 ### Home
 
 Later: an overview of all sessions, what runs, what is stuck and what waits for the human.
@@ -1365,6 +1428,15 @@ blue. The human's avatar is "Y" on `--action` (`--on-action`), a gate's a flag i
 `--muted` on `--raised`. A known limit: roles with the same first letter (`developer`,
 `designer`) differ only by colour, and with six colours that may be the same; the full name
 stands beside it. Orange stays only for open questions and gates and the gate hint.
+
+**Artifacts** (feature/artifacts-ui, 2026-10-07): a type's icon is a 28 px tile (20 px on a
+chip) on `--raised`, coloured by kind: Markdown `--action` on `--action-ground`, HTML
+`--avatar-3`, images `--avatar-2`, text and code `--avatar-5`, anything else `--muted`. A
+chip is 30 px high, a `--line` frame on `--panel`, `--action` on hover; "changed since ·
+open latest" is joined to its right on `--raised` with a `--action` dot (below 600 px under
+it). The panel is `--panel` with a shadow (`--shadow`) over a scrim (`--scrim`); an image
+at full size over `--lightbox`; an HTML frame's ground is `--frame-ground` (white, as a
+page without a background). Orange is never an artifact's.
 
 **Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
 "h23"`), whatever the browser's locale.

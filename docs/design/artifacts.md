@@ -318,8 +318,9 @@ run's addendum (BACKLOG.md).
    (BACKLOG.md): not here, but a run of its own right after part 4, an addendum
    `<run>/addendum` the human approves.
 4. **Kit**: the lado-dev and kit-builder kits' flows write their design, report and review
-   as artifacts and read them with `reads` (in the kits' repositories), after
-   feature/flow-inputs merges and before the release of LADO 0.27.
+   as artifacts and read them with `reads` (in the kits' repositories), after the release
+   of LADO 0.27.0: lado-dev v0.12.0 and kit-builder v0.5.0 were tagged on it
+   (`dependencies.lado: ">=0.27"`).
 
 Parts 2 and 3 may start before part 1 merges, against this contract, but merge after it.
 Only one part at a time changes the schema: part 1 made schema 21, part 2 schema 22, part 3

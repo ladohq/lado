@@ -46,6 +46,7 @@ def start_agent(tmp_path, lines: list[str], mcp: dict, env: dict | None = None) 
     )
     agent.stdin.write("".join(f"{line}\n" for line in lines))
     agent.stdin.close()
+    agent.stdin = None  # else communicate() flushes the closed file: an error (seen on 3.12.13)
     return agent
 
 

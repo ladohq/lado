@@ -941,8 +941,10 @@ h3 {
   color: var(--ink);
 }
 
-/* The session's tabs: the band runs from edge to edge of the session's column. */
+/* The session's tabs: the band runs from edge to edge of the session's column; an open
+   search (.tab-find.open) lies over it. */
 .session-tabs {
+  position: relative;
   margin: 0 calc(-1 * var(--main-pad)) 12px;
   padding-inline: calc(var(--main-pad) - 4px);
 }
@@ -2851,17 +2853,28 @@ h3 {
   font-size: 12px;
 }
 
-/* A tab's search at the right end of the tab bar (Sessions.tsx: Find). */
-/* The field gives way first in a narrow bar: the tabs keep their width. */
+/* A tab's search at the right end of the session's tab bar (Sessions.tsx: Find). */
 .tab-find {
   display: flex;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: none;
   align-items: center;
   align-self: center;
   gap: 4px;
   margin-left: auto;
   padding-bottom: 5px;
+}
+
+/* Open, it lies over the tabs at the same place, so the bar never scrolls for it: in a wide
+   bar it shows beside them as before, in a narrow one it covers the last ones (its ground
+   the band's, the band's line left uncovered) and shrinks to the bar's width. */
+.tab-find.open {
+  position: absolute;
+  top: 5px;
+  right: calc(var(--main-pad) - 4px);
+  bottom: 1px;
+  max-width: calc(100% - 2 * (var(--main-pad) - 4px));
+  padding: 0 0 4px 6px;
+  background: var(--raised);
 }
 
 .tab-find .search {

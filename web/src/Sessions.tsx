@@ -521,7 +521,7 @@ function Find({ label }: { label: string }) {
       { replace: true, preventScrollReset: true },
     );
   return (
-    <div className="tab-find">
+    <div className={shown ? "tab-find open" : "tab-find"}>
       {shown && (
         <input
           ref={field}

@@ -61,6 +61,28 @@ def flows_session(repo) -> str:
     return session
 
 
+def tab_bar_fit(page: Page) -> dict:
+    """How the session's tab bar holds its open search: whether it scrolls, whether the
+    search and every tab lie inside it, and which tabs the search covers."""
+    return page.get_by_role("navigation", name="Session sections").evaluate(
+        """bar => {
+            const box = bar.getBoundingClientRect();
+            const find = bar.querySelector(".tab-find").getBoundingClientRect();
+            const inside = (r) => r.left >= box.left && r.right <= box.right;
+            const tabs = [...bar.querySelectorAll(".tab-item")];
+            return {
+                scrollLeft: bar.scrollLeft,
+                scrolls: bar.scrollWidth > bar.clientWidth,
+                find_inside: inside(find),
+                tabs_inside: tabs.every((one) => inside(one.getBoundingClientRect())),
+                tabs_covered: tabs
+                    .filter((one) => one.getBoundingClientRect().right > find.left)
+                    .map((one) => one.getAttribute("aria-label") ?? one.textContent.trim()),
+            };
+        }"""
+    )
+
+
 def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     page: Page, server, repo, shot
 ):
@@ -104,6 +126,19 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     page.emulate_media(color_scheme="dark")
     shot(page, "overview-dark")
     page.emulate_media(color_scheme="light")
+    # In the wide bar the open search sits at its right end beside the tabs, covering none.
+    page.get_by_role("button", name="Find a run").click()
+    expect(page.get_by_role("searchbox", name="Find a run")).to_be_focused()
+    assert tab_bar_fit(page) == {
+        "scrollLeft": 0,
+        "scrolls": False,
+        "find_inside": True,
+        "tabs_inside": True,
+        "tabs_covered": [],
+    }
+    shot(page, "search")
+    page.keyboard.press("Escape")
+    expect(page.get_by_role("searchbox", name="Find a run")).to_have_count(0)
 
     waiting.click()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
@@ -206,6 +241,12 @@ def test_in_a_narrow_column_the_overview_is_searched_from_the_tab_bar_and_a_run_
     search.fill("logout")
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows?find=logout")
     expect(runs_list.get_by_role("link")).to_have_count(1)
+    # The open field fits the narrow bar: nothing scrolls, it lies over the last tabs, and
+    # Activity and the magnifier show whole.
+    fit = tab_bar_fit(page)
+    covered = fit.pop("tabs_covered")
+    assert fit == {"scrollLeft": 0, "scrolls": False, "find_inside": True, "tabs_inside": True}
+    assert "Flows · 2" in covered and "Activity" not in covered
     shot(page, "search")
     runs_list.get_by_role("link", name="ship/y").click()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows/ship%2Fy")

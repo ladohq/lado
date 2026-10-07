@@ -1004,13 +1004,16 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
   comes back to the overview with the same search. It finds a run by name, task, flow and
   state in both groups; while it has text both groups show open, every match, their
   headings off, what is remembered unchanged; a group with no match says "No match", and
-  with none anywhere `No run matches “…”`. One search for every tab later takes the same
-  place and parameter (BACKLOG.md).
-- **A run's page** replaces the overview at any width, under the link back
-  `‹ All runs (N open, M ended)`, which comes back with the overview's last search (the tab
-  keeps it, and its scroll, while the run's page is shown; a reload of the run's page
-  forgets it). The page stays a size container (`@container`).
-- **A run's page** (`/sessions/<name>/flows/<run>`), keyed by the run:
+  with none anywhere `No run matches “…”`. The open field never makes the bar scroll: it
+  lies over the bar at the same right end (`.tab-find.open`, on the band's ground, the
+  band's line left uncovered), beside the tabs in a wide bar and over the last ones in a
+  narrow one, shrinking to the bar's width; closed, only the magnifier takes room. One
+  search for every tab later takes the same place and parameter (BACKLOG.md).
+- **A run's page** (`/sessions/<name>/flows/<run>`), keyed by the run, replaces the
+  overview at any width, under the link back `‹ All runs (N open, M ended)`, which comes
+  back with the overview's last search (the tab keeps it, and its scroll, while the run's
+  page is shown; a reload of the run's page forgets it). The page stays a size container
+  (`@container`).
   - **The head**: the name (mono) and a pill of its status (Active blue, Waits for you
     orange, Ended green, Cancelled grey); flow · kit, started, branch; the task's first
     line cut to one line with **more** for the whole text; then every state of the flow

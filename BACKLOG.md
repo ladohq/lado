@@ -602,6 +602,8 @@ message (the rerun passed); OpenCode failed three runs in a row, a different way
 time: w1 committed `flow.txt` with "live flow test" instead of "OK"; the supervisor spawned
 `worker` besides w1, so finishing w1 kept the run's worktree; the supervisor called
 `finish_worker(name="w1", discard=true)` before the human's message.
+Again on 2026-10-07 (run fix/integration-fix2): Kilo's supervisor merged w1's branch and
+called `finish_worker(name="w1")` before w1 answered the human ("agent w1 is gone").
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
@@ -615,7 +617,8 @@ timed out after 120 s "waiting for the supervisor to take the resume message": t
 supervisor got `session resumed: 0 open runs`, answered the human and was idle, but the
 line `[from lado] session resumed: 0 open runs` was not on its captured screen (Kilo's TUI
 had scrolled it away). Passed on the rerun with no change. Again on 2026-10-07 (live tests
-of run feature/turn-resume): the message was delivered, the rerun passed.
+of run feature/turn-resume): the message was delivered, the rerun passed. Again on
+2026-10-07 (run fix/integration-fix2): delivered, supervisor busy; the next run passed.
 Wanted: the test checks that the supervisor took the message by its delivery (state), not
 by the screen.
 Found: 2026-10-06, `make test-live` on main before the 0.22.0 release.

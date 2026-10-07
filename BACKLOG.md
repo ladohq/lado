@@ -108,13 +108,15 @@ Size: S/M: needs one shared wait helper with a margin.
 full `make check` at load average ~200: "timed out after 30s waiting for the report; agents:
 supervisor idle, worker starting". Alone it passed 3 of 3. The same pattern, each once in a
 full `make check` and passing alone or on a rerun:
-- `tests/integration/test_agent_kits.py::test_a_worker_gets_its_role_from_an_installed_kit`:
+- `tests/integration/test_agent_kits.py::test_a_worker_gets_its_role_from_an_installed_kit`
+  (since fix/integration-fix3 a unit test in tests/test_runtime.py):
   `timed out after 30s waiting for dev to be idle; agents: supervisor idle, dev starting`
   at load average near 200 (2026-10-05, after merging main into feature/kits-page-polish).
-- `tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack`:
+- `tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack`
+  (removed in fix/integration-fix3, its proof is in the unit tests):
   `timed out after 30s waiting for dev1 to be idle; agents: supervisor idle, dev1 busy, dev2
   starting`; the machine may have slept during that run (2026-10-05, review of
-  feature/self-update). It could wait for the event it needs rather than for both workers.
+  feature/self-update).
 - `tests/integration/test_agent_terminal.py::test_stop_ends_open_terminals_and_leaves_no_window_viewer_or_agent`
   (`waiting for w1 idle; agents: supervisor idle, w1 busy`) and
   `tests/integration/test_flow_runs.py::test_the_humans_answer_moves_the_run_on_to_the_next_agent`

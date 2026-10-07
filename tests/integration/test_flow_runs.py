@@ -328,8 +328,7 @@ def test_lado_answer_ends_when_its_gate_is_answered_elsewhere(repo, flow_kit):
     """The popup's `lado answer` waits for the human; the gate is answered in another
     process (the UI's server, another popup): it says so and ends, and what the human had
     typed goes nowhere."""
-    name = "reviewed/check-it"
-    to_the_gate(name)
+    name = runs.start(SESSION, "gated", "check it").name  # it starts at its gate, #1
     env = [f"LADO_HOME={state.home()}", f"LADO_TMUX_SOCKET={tmux.socket()}"]
     answer = f"{sys.executable} -m lado.cli answer {SESSION} 1; echo exited $?; sleep 600"
     tmux.new_session("asking", "a", str(repo), ["env", *env, "sh", "-c", answer])
@@ -341,7 +340,9 @@ def test_lado_answer_ends_when_its_gate_is_answered_elsewhere(repo, flow_kit):
     screen = tmux.capture("asking", "a")
     assert "Gate #1 was answered elsewhere: reject by human\nNo more open gates.\n" in screen
     assert "no option" not in screen
-    assert run_state(name).state == "build"
+    # The other process's answer, not what was typed here; "gated" ends either way.
+    assert state.get_gate(1).answer == "reject"
+    assert (run_state(name).state, run_state(name).status) == ("end", state.ENDED)
 
 
 def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):

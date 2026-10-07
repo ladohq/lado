@@ -1975,6 +1975,26 @@ def test_spawn_worker_takes_the_only_role(repo, fake_tmux):
     assert runtime.spawn_worker("s", "t").role == "worker"
 
 
+def test_a_worker_gets_its_role_from_an_installed_kit(tmp_path, repo, fake_tmux):
+    """An installed kit is a row in lado.db; a running session reads it at each spawn."""
+    work = agent_helpers.init_repo(tmp_path / "team-kit")
+    agent = "---\nname: dev\ndescription: d\n---\n{text}\n"
+    files = {"kit.yaml": "name: team\nversion: 1.0.0\n", "agents/dev.md": agent.format(text="v1")}
+    url = agent_helpers.publish(work, files, tag="v1.0.0")
+    kits.install(kits.plan_add(url))
+    assert not (state.home() / "kits").exists()
+
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
+    runtime.spawn_worker("s", "t", role="dev")
+    assert _prompt(fake_tmux[-1][-1]).startswith("v1")
+
+    files = {"kit.yaml": "name: team\nversion: 1.1.0\n", "agents/dev.md": agent.format(text="v2")}
+    agent_helpers.publish(work, files, tag="v1.1.0")
+    kits.install(kits.plan_update("team"))
+    assert runtime.spawn_worker("s", "t", role="dev").name == "dev-2"
+    assert _prompt(fake_tmux[-1][-1]).startswith("v2")
+
+
 def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
     _write(team_kit / "kit.yaml", "name: team\nversion: 1.0.0\nsupervisor: boss\n")
     _write(team_kit / "agents" / "boss.md", "---\nname: boss\ndescription: d\n---\nYou lead.\n")

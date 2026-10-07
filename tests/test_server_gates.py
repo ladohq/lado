@@ -84,6 +84,7 @@ def test_an_open_gate_comes_with_its_note_and_the_notes_it_needs(client, session
         "options": ["approve", "reject"],
         "note": "built it",
         "note_body": "all\ntests pass",
+        "attachments": [],
         "needs": [
             {
                 "state": "plan",
@@ -96,9 +97,11 @@ def test_an_open_gate_comes_with_its_note_and_the_notes_it_needs(client, session
                     "target": "build",
                     "summary": "the plan",
                     "body": "step 1\nstep 2",
+                    "attachments": [],
                 },
+                "is_gate_note": False,
             },
-            {"state": "polish", "note": None},
+            {"state": "polish", "note": None, "is_gate_note": False},
         ],
         "answer": None,
         "comment": "",

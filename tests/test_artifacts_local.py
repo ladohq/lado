@@ -136,3 +136,11 @@ def test_the_list_gives_each_artifact_with_its_latest_record_by_scope(store):
         ("feature/x/a", hashlib.sha256(b"x").hexdigest()),
     ]
     assert [a.full_name for a, _ in store.list("s", "feature/x")] == ["feature/x/a"]
+
+
+def test_an_artifact_is_found_by_its_id_with_its_latest_record(store):
+    first = _write(store, "a", b"one")
+    latest = _write(store, "a", b"two")
+    artifact, record = store.artifact(first.artifact.id)
+    assert (artifact, record) == (latest.artifact, latest.record)
+    assert store.artifact("no-such-id") is None

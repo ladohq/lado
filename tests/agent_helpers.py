@@ -146,6 +146,7 @@ def previous_schema() -> None:
 def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on."""
+    assert state.MIGRATIONS[21] == [state.GATES_NOTE]
     assert state.MIGRATIONS[20] == state.ARTIFACTS_TABLES
     assert state.MIGRATIONS[19] == state.AGENTS_RESUME
     assert state.MIGRATIONS[18] == [state.MESSAGES_CHANNEL]
@@ -155,14 +156,16 @@ def schema_before(version: int) -> None:
     assert state.MIGRATIONS[14] == state.NOTES_STEP
     assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
     assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
-    assert 13 <= version <= state.SCHEMA_VERSION == 21
+    assert 13 <= version <= state.SCHEMA_VERSION == 22
     with state.connect() as db:
-        for table in state.JOURNALED_V21:
-            for op in state.ALL_OPS:
-                db.execute(f"DROP TRIGGER changes_{table}_{op}")
-        db.execute("DROP TABLE attachments")
-        db.execute("DROP TABLE artifact_records")
-        db.execute("DROP TABLE artifacts")
+        db.execute("ALTER TABLE gates DROP COLUMN note_id")
+        if version <= 21:
+            for table in state.JOURNALED_V21:
+                for op in state.ALL_OPS:
+                    db.execute(f"DROP TRIGGER changes_{table}_{op}")
+            db.execute("DROP TABLE attachments")
+            db.execute("DROP TABLE artifact_records")
+            db.execute("DROP TABLE artifacts")
         if version <= 20:
             db.execute("ALTER TABLE agents DROP COLUMN resume_at")
             db.execute("ALTER TABLE agents DROP COLUMN resumes")

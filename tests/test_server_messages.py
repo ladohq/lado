@@ -57,6 +57,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
         "reply_to": None,
         "choice": None,
         "reply_state": None,
+        "attachments": [],
     }
     assert (asked["kind"], asked["from"], asked["choices"], asked["question_state"]) == (
         "question",

@@ -187,7 +187,7 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                     "from": m.sender,
                     "summary": m.title,
                     "body": m.body,
-                    "artifacts": artifacts.attached(state.message_attachments(m.id))
+                    "artifacts": artifacts.read_attachments(state.message_attachments(m.id))
                     if m.attachments
                     else [],
                     "time": f"{m.created_at} UTC",

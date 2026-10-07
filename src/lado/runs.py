@@ -228,14 +228,26 @@ def find_gate(session: str, ref: str) -> state.Gate:
     return gate
 
 
-def gate_notes(gate: state.Gate) -> list[tuple[str, state.Note | None]]:
-    """Each state the gate state needs, with its latest report (None: no note yet). A loop
-    limit is no gate state of the flow: it needs nothing."""
+@dataclasses.dataclass(frozen=True)
+class NeededNote:
+    state: str  # a state the gate state needs
+    note: state.Note | None  # its latest report; None: no note yet
+    # That report is the note that led to the gate (the same record): shown once.
+    is_gate_note: bool = False
+
+
+def gate_notes(gate: state.Gate) -> list[NeededNote]:
+    """Each state the gate state needs, with its latest report. A loop limit is no gate
+    state of the flow: it needs nothing."""
     if gate.kind == LOOP:
         return []
     needs = flow_of(_run(gate.session, gate.run)).states[gate.state].needs
     kept = state.latest_notes(gate.session, gate.run) if needs else {}
-    return [(needed, kept.get(needed)) for needed in needs]
+    found = [(needed, kept.get(needed)) for needed in needs]
+    return [
+        NeededNote(needed, note, note is not None and note.id == gate.note_id)
+        for needed, note in found
+    ]
 
 
 def canonical_option(gate: state.Gate, given: str) -> str:
@@ -528,10 +540,19 @@ def _attached(note: state.Note | None) -> str:
     return f"\n{line}" if line else ""
 
 
+def gate_attachments(gate: state.Gate) -> list[artifacts.Attachment]:
+    """The artifacts of the note that led to the gate, open or closed: by the note the gate
+    keeps (state.GATES_NOTE); none for a gate that keeps none."""
+    if not gate.note_id or not gate.attachments:
+        return []
+    return artifacts.attached(state.note_attachments(gate.note_id))
+
+
 def gate_artifacts(gate: state.Gate) -> str:
-    """The line naming the artifacts of the note that led to the open gate; '' for none.
-    While the gate is open, that note is the run's latest."""
-    return _attached(state.last_note(gate.session, gate.run)).lstrip("\n")
+    """The line naming the artifacts of the note that led to the gate; '' for none."""
+    if not gate.note_id or not gate.attachments:
+        return ""
+    return artifacts.attached_line(state.note_attachments(gate.note_id))
 
 
 def _enter(

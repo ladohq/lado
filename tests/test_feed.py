@@ -18,7 +18,7 @@ import uvicorn
 from agent_helpers import previous_schema, spoil_snapshot
 from event_stream import EventStream
 
-from lado import kits, loop, runs, runtime, state
+from lado import artifacts, kits, loop, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth, feed, models
 from lado.server.run import SHUTDOWN_GRACE
@@ -202,7 +202,27 @@ def test_a_notes_change_comes_with_its_item_in_the_form_of_the_rest_api(streams)
         "target": "done",
         "summary": "designed",
         "body": "",
+        "attachments": [],
     }
+
+
+def test_a_new_artifact_and_its_new_record_come_as_its_item(streams):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "supervisor", "x", "/r", None, None, "idle", "claude"))
+    stream = streams()
+    stream.next()
+    first = artifacts.write("s", "supervisor", "plan", content="v1", title="Plan")
+    added = stream.until(is_change("artifacts", "s"))[-1]
+    assert added.data["key"] == first.artifact.id
+    found = artifacts.of_artifact("s", first.artifact.id)
+    assert added.data["item"] == models.artifact_info(*found).model_dump(mode="json")
+    latest = artifacts.write("s", "supervisor", "plan", content="v2", summary="two")
+    item = stream.until(
+        lambda e: (
+            is_change("artifacts", "s")(e) and e.data["item"]["latest"]["id"] == latest.record.id
+        )
+    )[-1].data["item"]
+    assert (item["id"], item["latest"]["summary"]) == (first.artifact.id, "two")
 
 
 def test_a_run_event_comes_with_its_item_in_the_form_of_the_rest_api(streams):

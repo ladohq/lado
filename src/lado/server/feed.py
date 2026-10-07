@@ -29,7 +29,7 @@ from typing import Protocol
 
 from anyio import to_thread
 
-from lado import kits, loop, runtime, state
+from lado import artifacts, kits, loop, runtime, state
 from lado.server import models
 
 POLL = 0.25  # seconds between two reads of the source
@@ -42,7 +42,7 @@ log = logging.getLogger("lado.server")
 
 @dataclass(frozen=True)
 class Change:
-    kind: str  # sessions | agents | messages | runs | gates | notes | events | kits | marketplaces
+    kind: str  # sessions | agents | messages | runs | gates | notes | events | artifacts | ...
     session: str
     key: str  # the row in its session; '' for the session itself
     op: str  # insert | update | delete: for information, the item tells what is there
@@ -160,6 +160,11 @@ def _note_item(session: str, key: str) -> dict | None:
     return None if note is None else models.note_info(note).model_dump(mode="json")
 
 
+def _artifact_item(session: str, key: str) -> dict | None:
+    found = artifacts.of_artifact(session, key)
+    return None if found is None else models.artifact_info(*found).model_dump(mode="json")
+
+
 def _kit_item(session: str, key: str) -> dict | None:
     found = kits.installed_kit(key)
     return None if found is None else models.installed_kit_info(found).model_dump(mode="json")
@@ -179,6 +184,7 @@ ITEMS: dict[str, Callable[[str, str], dict | None]] = {
     "gates": _gate_item,
     "runs": _run_item,
     "notes": _note_item,
+    "artifacts": _artifact_item,
     "kits": _kit_item,  # session ''
     "marketplaces": _marketplace_item,  # session ''
 }
@@ -206,6 +212,19 @@ ALSO: dict[str, list[tuple[str, Callable[[str], list[str]]]]] = {
 }
 
 
+def _record_artifact(session: str, key: str) -> str | None:
+    found = artifacts.of_record(session, key)
+    return found[0].id if found else None
+
+
+# A change of kind X also changes the one item of kind Y its row belongs to, whose key the
+# function gives from the row's (None: gone with it). A new record is its artifact's new
+# latest.
+OWNER: dict[str, tuple[str, Callable[[str, str], str | None]]] = {
+    "artifact_records": ("artifacts", _record_artifact),
+}
+
+
 def _session_statuses() -> dict[Change, object]:
     return {
         Change("sessions", sess.name, "", "update"): runtime.session_status(sess)
@@ -229,7 +248,8 @@ def derived() -> dict[Change, object]:
 
 def collapse(changes: list[Change]) -> list[Change]:
     """One change per row, with its latest id, in the order of those ids; with the changes
-    ALSO adds. Reads lado.db for their keys, once per kind and session."""
+    ALSO and OWNER add. Reads lado.db for their keys: ALSO's once per kind and session,
+    OWNER's once per row."""
     latest: dict[tuple[str, str, str], Change] = {}
     keys: dict[tuple[str, str], list[str]] = {}
     for change in changes:
@@ -238,6 +258,11 @@ def collapse(changes: list[Change]) -> list[Change]:
             if (kind, change.session) not in keys:
                 keys[kind, change.session] = of(change.session)
             for key in keys[kind, change.session]:
+                ones.append(Change(kind, change.session, key, "update", change.id))
+        if change.kind in OWNER:
+            kind, owner = OWNER[change.kind]
+            key = owner(change.session, change.key)
+            if key is not None:
                 ones.append(Change(kind, change.session, key, "update", change.id))
         for one in ones:
             row = (one.kind, one.session, one.key)

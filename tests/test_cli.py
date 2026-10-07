@@ -1016,6 +1016,50 @@ def test_answer_shows_the_summaries_of_the_notes_a_gate_needs(repo, fake_tmux, c
     assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
 
 
+def _at_gate_from_a_needed_state(repo, capsys):
+    """At gate check, reached from polish, which it needs: polish's note is the one before
+    the gate."""
+    _at_gate_with_needs(repo, capsys)
+    runs.answer("s", "1", "reject", "polish it")
+    runs.advance("s", "rev", "plan/x", "polish", "to polish")
+    runs.advance("s", "rev", "plan/x", "done", "polished", "shiny\nnow")
+    capsys.readouterr()
+
+
+def test_a_needed_note_that_is_the_note_before_the_gate_is_marked_by_the_core(
+    repo, fake_tmux, capsys
+):
+    _at_gate_from_a_needed_state(repo, capsys)
+    [gate] = state.open_gates("s")
+    needed = runs.gate_notes(gate)
+    assert [(n.state, n.note.summary, n.is_gate_note) for n in needed] == [
+        ("plan", "the plan", False),
+        ("polish", "polished", True),
+    ]
+
+
+def test_answer_shows_a_needed_note_that_is_the_note_before_the_gate_once(
+    repo, fake_tmux, capsys, monkeypatch
+):
+    _at_gate_from_a_needed_state(repo, capsys)
+    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
+    _typing(monkeypatch, "v")
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Ship it?\n"
+        "Note from plan: the plan\n"
+        "Note from polish (also the note before the gate): polished"
+        " (v: the full note, 2 more lines)\n"
+        "Options:\n"
+    ) in out
+    assert (
+        "Note from plan: the plan\nstep 1\nstep 2\n\n"
+        "Note from polish (also the note before the gate): polished\nshiny\nnow\n"
+    ) in out
+    assert "Note: polished" not in out
+
+
 def test_v_shows_the_needed_notes_then_the_note_before_the_gate(
     repo, fake_tmux, capsys, monkeypatch
 ):

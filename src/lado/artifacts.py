@@ -53,6 +53,28 @@ EXTENSIONS = {
     "xml": "text/xml",
 }
 TEXT_TYPES = ("application/json", "image/svg+xml")  # text besides text/*
+# The one extension of each media type of EXTENSIONS: a downloaded file's name gets it when
+# its own extension is not the type's (the UI server's content).
+PREFERRED_EXTENSION = {
+    "text/markdown": "md",
+    "text/plain": "txt",
+    "application/json": "json",
+    "text/yaml": "yaml",
+    "text/csv": "csv",
+    "text/html": "html",
+    "image/svg+xml": "svg",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "application/pdf": "pdf",
+    "text/x-python": "py",
+    "text/typescript": "ts",
+    "text/javascript": "js",
+    "text/x-shellscript": "sh",
+    "text/x-toml": "toml",
+    "text/xml": "xml",
+}
 
 
 class ArtifactError(RuntimeError):
@@ -145,6 +167,9 @@ class Store(Protocol):
     ) -> Written: ...
 
     def latest(self, session: str, scope: str, name: str) -> tuple[Artifact, Record] | None: ...
+
+    def artifact(self, artifact_id: str) -> tuple[Artifact, Record] | None:
+        """An artifact by its id, with its latest record."""
 
     def record(self, record_id: str) -> tuple[Artifact, Record] | None:
         """A record with its artifact."""
@@ -335,6 +360,20 @@ def of_session(session: str, run: str | None = None) -> list[tuple[Artifact, Rec
     return store().list(session, run or None)
 
 
+def of_artifact(session: str, artifact_id: str) -> tuple[Artifact, Record] | None:
+    """The session's artifact of that id with its latest record; None for an unknown id or
+    another session's."""
+    found = store().artifact(artifact_id)
+    return found if found and found[0].session == session else None
+
+
+def of_record(session: str, record_id: str) -> tuple[Artifact, Record] | None:
+    """The session's record of that id with its artifact; None for an unknown id or another
+    session's."""
+    found = store().record(record_id)
+    return found if found and found[0].session == session else None
+
+
 def content(record: Record) -> bytes:
     return store().content(record.id)
 
@@ -353,27 +392,49 @@ def resolve_attachments(session: str, agent: str, names: list[str] | None) -> li
     return attached
 
 
-def attached(attachments: list[tuple[str, str]]) -> list[dict]:
-    """What read_messages says of each attachment: its full name, title, the attached
-    record's media type and size, and whether the artifact's content changed since (its
-    latest record's hash differs from the attached one's)."""
+@dataclass(frozen=True)
+class Attachment:
+    """An artifact as a message or a note has it attached: the record it was at then."""
+
+    artifact: Artifact
+    record: Record
+    # Whether the artifact's content changed since (its latest record's hash differs from
+    # the attached one's); None when not asked.
+    changed: bool | None = None
+
+
+def attached(attachments: list[tuple[str, str]], with_changed: bool = False) -> list[Attachment]:
+    """Each attachment (artifact id, record id) with its artifact and record: the one
+    builder of attachments, for read_messages, the flow steps, `lado answer` and the API.
+    Whether each changed since costs a lookup, so only `with_changed` (the API's UI
+    compares hashes itself)."""
     described = []
     for _, record_id in attachments:
         found = store().record(record_id)
         if found is None:
             continue  # its session was forgotten: so was the message
         artifact, record = found
-        _, latest = store().latest(artifact.session, artifact.scope, artifact.name)
-        described.append(
-            {
-                "name": artifact.full_name,
-                "title": artifact.title,
-                "media_type": record.media_type,
-                "size": record.size,
-                "changed": latest.hash != record.hash,
-            }
-        )
+        changed = None
+        if with_changed:
+            _, latest = store().latest(artifact.session, artifact.scope, artifact.name)
+            changed = latest.hash != record.hash
+        described.append(Attachment(artifact, record, changed))
     return described
+
+
+def read_attachments(attachments: list[tuple[str, str]]) -> list[dict]:
+    """What read_messages says of each attachment: its full name, title, the attached
+    record's media type and size, and whether the artifact's content changed since."""
+    return [
+        {
+            "name": a.artifact.full_name,
+            "title": a.artifact.title,
+            "media_type": a.record.media_type,
+            "size": a.record.size,
+            "changed": a.changed,
+        }
+        for a in attached(attachments, with_changed=True)
+    ]
 
 
 def attached_line(attachments: list[tuple[str, str]]) -> str:
@@ -382,7 +443,8 @@ def attached_line(attachments: list[tuple[str, str]]) -> str:
     if not attachments:
         return ""
     names = [
-        a["name"] + (" (changed since)" if a["changed"] else "") for a in attached(attachments)
+        a.artifact.full_name + (" (changed since)" if a.changed else "")
+        for a in attached(attachments, with_changed=True)
     ]
     return f"Artifacts: {', '.join(names)}"
 
@@ -421,6 +483,15 @@ def _read_file(path: Path) -> bytes:
     data = path.read_bytes()
     _check_size(len(data))  # it may have grown since
     return data
+
+
+def file_name(name: str, media_type: str) -> str:
+    """An artifact's name as a file's: with the extension of its media type, unless it has
+    one of that type already (`mockup.html`) or the type has none."""
+    extension = PREFERRED_EXTENSION.get(media_type)
+    if extension is None or _by_extension(name) == media_type:
+        return name
+    return f"{name}.{extension}"
 
 
 def _by_extension(name: str) -> str | None:

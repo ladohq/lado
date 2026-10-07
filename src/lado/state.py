@@ -18,7 +18,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -289,6 +289,11 @@ ARTIFACTS_TABLES = [
     ATTACHMENTS,
     *(trigger for t in JOURNALED_V21 for trigger in _journal_triggers(t)),
 ]
+# The note that led to a gate, from version 22 on: written before the gate in the same
+# transaction (update_run). The gate's note and note_body stay a copy of its text; its
+# attachments and whether a needed note is that one go by this id. NULL in older gates
+# and in those of a run whose step reported no note.
+GATES_NOTE = "ALTER TABLE gates ADD COLUMN note_id INTEGER REFERENCES notes(id)"
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.
@@ -368,6 +373,7 @@ SCHEMA += (
             MESSAGES_CHANNEL,
             *AGENTS_RESUME,
             *ARTIFACTS_TABLES,
+            GATES_NOTE,
         ]
     )
     + ";\n"
@@ -408,6 +414,7 @@ MIGRATIONS = {
     18: [MESSAGES_CHANNEL],
     19: AGENTS_RESUME,
     20: ARTIFACTS_TABLES,
+    21: [GATES_NOTE],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -656,6 +663,8 @@ class Gate:
     answered_by: str = ""
     created_at: str = ""
     answered_at: str | None = None
+    note_id: int | None = None  # the note that led here (GATES_NOTE); None for none kept
+    attachments: int = 0  # how many artifacts that note carries
 
 
 @dataclass(frozen=True)
@@ -672,6 +681,7 @@ class Note:
     actor: str = ""  # who reported it; '' before version 15
     outcome: str = ""  # '' before version 15 and for the human's flow-set
     target: str = ""  # where the outcome leads (NOTES_STEP); '' before version 15
+    attachments: int = 0  # how many artifacts it carries (note_attachments)
 
 
 @dataclass(frozen=True)
@@ -686,7 +696,12 @@ class Noted:
     target: str = ""
 
 
-NOTE_COLUMNS = "state, summary, body, created_at, id, run, kind, actor, outcome, target"
+NOTE_COLUMNS = (
+    "state, summary, body, created_at, id, run, kind, actor, outcome, target,"
+    " (SELECT count(*) FROM attachments WHERE note = notes.id) AS attachments"
+)
+# A gate's columns, with how many artifacts the note that led to it carries.
+GATE_COLUMNS = "*, (SELECT count(*) FROM attachments WHERE note = gates.note_id) AS attachments"
 
 
 # Who closes a run's open gate, the answer, a comment, and the id of the gate that must be
@@ -1423,9 +1438,9 @@ def update_run(
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
     was written. In the same transaction `closes` closes the run's open gate (nothing is
-    written if it names a gate that is not open), the gate `opens` is stored (its id
-    set), and `after`'s note is kept as `noted` says, if given, with the artifacts
-    attached."""
+    written if it names a gate that is not open), `after`'s note is kept as `noted` says,
+    if given, with the artifacts attached, and the gate `opens` is stored after it (its id
+    set), keeping that note's id."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -1452,8 +1467,7 @@ def update_run(
         if cur.rowcount:
             for actor, kind, detail in events:
                 _add_event(db, before.session, actor, kind, detail, before.name)
-            if opens:
-                _open_gate(db, opens)
+            # The note before the gate, so the gate keeps its id (GATES_NOTE).
             if noted is not None:
                 note = db.execute(
                     "INSERT INTO notes (session, run, state, kind, actor, outcome, target,"
@@ -1467,6 +1481,10 @@ def update_run(
                     ),
                 ).lastrowid
                 _attach(db, "note", note, attachments)
+                if opens:
+                    opens.note_id = note
+            if opens:
+                _open_gate(db, opens)
         db.execute("COMMIT")
     return bool(cur.rowcount)
 
@@ -1509,8 +1527,8 @@ def run_notes(session: str, run: str | None = None) -> list[Note]:
 
 def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:
     cur = db.execute(
-        "INSERT INTO gates (session, run, state, kind, question, options, note, note_body)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO gates (session, run, state, kind, question, options, note, note_body,"
+        " note_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             gate.session,
             gate.run,
@@ -1520,6 +1538,7 @@ def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:
             json.dumps(gate.options),
             gate.note,
             gate.note_body,
+            gate.note_id,
         ),
     )
     gate.id = cur.lastrowid or 0
@@ -1554,7 +1573,7 @@ def _close_gate(
 
 def get_gate(gate_id: int) -> Gate | None:
     with connect() as db:
-        row = db.execute("SELECT * FROM gates WHERE id = ?", (gate_id,)).fetchone()
+        row = db.execute(f"SELECT {GATE_COLUMNS} FROM gates WHERE id = ?", (gate_id,)).fetchone()
     return _gate(row) if row else None
 
 
@@ -1562,7 +1581,8 @@ def open_gates(session: str | None = None) -> list[Gate]:
     """The open gates of `session` (default: of all sessions), oldest first."""
     with connect() as db:
         rows = db.execute(
-            "SELECT * FROM gates WHERE answer IS NULL AND (? IS NULL OR session = ?) ORDER BY id",
+            f"SELECT {GATE_COLUMNS} FROM gates WHERE answer IS NULL"
+            " AND (? IS NULL OR session = ?) ORDER BY id",
             (session, session),
         ).fetchall()
     return [_gate(r) for r in rows]
@@ -1571,7 +1591,9 @@ def open_gates(session: str | None = None) -> list[Gate]:
 def session_gates(session: str) -> list[Gate]:
     """All gates of `session`, open and closed, oldest first."""
     with connect() as db:
-        rows = db.execute("SELECT * FROM gates WHERE session = ? ORDER BY id", (session,))
+        rows = db.execute(
+            f"SELECT {GATE_COLUMNS} FROM gates WHERE session = ? ORDER BY id", (session,)
+        )
         return [_gate(r) for r in rows.fetchall()]
 
 
@@ -1595,7 +1617,7 @@ def waiting_items(session: str | None = None) -> list[Waits]:
     only in a session not stopped, since nothing in a stopped one can be answered."""
     with connect() as db:
         gates = db.execute(
-            f"SELECT * FROM gates WHERE answer IS NULL AND session IN ({NOT_STOPPED})",
+            f"SELECT {GATE_COLUMNS} FROM gates WHERE answer IS NULL AND session IN ({NOT_STOPPED})",
             (session, session),
         ).fetchall()
         questions = db.execute(
@@ -2261,6 +2283,8 @@ def _gate(row: sqlite3.Row) -> Gate:
         answered_by=row["answered_by"],
         created_at=row["created_at"],
         answered_at=row["answered_at"],
+        note_id=row["note_id"],
+        attachments=row["attachments"],
     )
 
 
@@ -2420,6 +2444,13 @@ def latest_artifact(session: str, scope: str, name: str) -> ArtifactRows | None:
             f"WHERE a.session = ? AND a.scope = ? AND a.name = ? AND {LATEST_RECORD}",
             (session, scope, name),
         )
+    return found[0] if found else None
+
+
+def artifact_by_id(artifact_id: str) -> ArtifactRows | None:
+    """An artifact with its latest record."""
+    with connect() as db:
+        found = _artifact_rows(db, f"WHERE a.id = ? AND {LATEST_RECORD}", (artifact_id,))
     return found[0] if found else None
 
 

@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lado import flows, gitcache, kits, marketplaces, runs, runtime, state
+from lado import artifacts, flows, gitcache, kits, marketplaces, runs, runtime, state
 
 log = logging.getLogger("lado.server")
 
@@ -469,6 +469,54 @@ class RunEventInfo(BaseModel):
     created_at: str  # UTC, ISO 8601
 
 
+class RecordInfo(BaseModel):
+    """One write of an artifact's content; never changed (docs/design/artifacts.md)."""
+
+    id: str
+    media_type: str
+    size: int  # bytes
+    hash: str  # sha256 hex of the content
+    author: str
+    run: str | None  # in a run's scope: the run and its state it was written in
+    state: str | None
+    summary: str | None  # what changed, one line
+    created_at: str  # UTC, ISO 8601
+
+
+class ArtifactInfo(BaseModel):
+    """A named document of the session, as of its latest record."""
+
+    id: str
+    session: str
+    scope: str  # the run's name, '' for the session's
+    name: str
+    full_name: str  # <run>/<name>, or <name> in the session's scope
+    title: str | None
+    latest: RecordInfo
+
+
+class RecordView(BaseModel):
+    """A record with its artifact as it is now."""
+
+    artifact: ArtifactInfo
+    record: RecordInfo
+
+
+class AttachmentInfo(BaseModel):
+    """An artifact as a message or a note has it attached: the record it was at then. It
+    changed since when its artifact's latest record has another hash (the UI compares)."""
+
+    artifact: str  # the artifact's id
+    record: str  # the attached record's id
+    full_name: str
+    name: str
+    scope: str
+    title: str | None
+    media_type: str
+    size: int
+    hash: str
+
+
 class NoteInfo(BaseModel):
     """A note a run's step reported, with the state it was reported from: the record of
     the step (state.NOTES_STEP)."""
@@ -484,6 +532,7 @@ class NoteInfo(BaseModel):
     target: str
     summary: str
     body: str
+    attachments: list[AttachmentInfo]
     created_at: str  # UTC, ISO 8601
 
 
@@ -528,6 +577,7 @@ class RunInfo(BaseModel):
 class NeededNote(BaseModel):
     state: str  # a state the gate state needs
     note: NoteInfo | None  # its latest report; None: no note yet
+    is_gate_note: bool  # that report is the note that led to the gate: shown once
 
 
 class GateInfo(BaseModel):
@@ -541,6 +591,7 @@ class GateInfo(BaseModel):
     options: list[str]
     note: str  # the note of the step that led to the gate
     note_body: str
+    attachments: list[AttachmentInfo]  # that note's, kept with it (by its id)
     # The notes the gate state needs, as they are now: only while it is open, since what
     # the human saw when answering is not kept. A loop limit needs none.
     # None too when its run's flow cannot be read (problem).
@@ -582,6 +633,7 @@ class MessageInfo(BaseModel):
     reply_to: int | None  # an answer's or dismissal's: the question's id
     choice: str | None
     reply_state: Literal["replied", "missing"] | None  # missing: replied only in its terminal
+    attachments: list[AttachmentInfo]
     created_at: str  # UTC, ISO 8601
 
 
@@ -641,7 +693,56 @@ def message_info(message: state.Message) -> MessageInfo:
         reply_to=message.reply_to,
         choice=message.choice,
         reply_state=message.reply_state,
+        attachments=attachment_infos(state.message_attachments(message.id))
+        if message.attachments
+        else [],
         created_at=_utc(message.created_at),
+    )
+
+
+def record_info(record: artifacts.Record) -> RecordInfo:
+    return RecordInfo(
+        id=record.id,
+        media_type=record.media_type,
+        size=record.size,
+        hash=record.hash,
+        author=record.author,
+        run=record.run,
+        state=record.state,
+        summary=record.summary,
+        created_at=_utc(record.created_at),
+    )
+
+
+def artifact_info(artifact: artifacts.Artifact, latest: artifacts.Record) -> ArtifactInfo:
+    return ArtifactInfo(
+        id=artifact.id,
+        session=artifact.session,
+        scope=artifact.scope,
+        name=artifact.name,
+        full_name=artifact.full_name,
+        title=artifact.title,
+        latest=record_info(latest),
+    )
+
+
+def attachment_infos(rows: list[tuple[str, str]]) -> list[AttachmentInfo]:
+    """The attachments of a message or a note, by the core's one builder."""
+    return [attachment_info(a) for a in artifacts.attached(rows)]
+
+
+def attachment_info(attached: artifacts.Attachment) -> AttachmentInfo:
+    artifact, record = attached.artifact, attached.record
+    return AttachmentInfo(
+        artifact=artifact.id,
+        record=record.id,
+        full_name=artifact.full_name,
+        name=artifact.name,
+        scope=artifact.scope,
+        title=artifact.title,
+        media_type=record.media_type,
+        size=record.size,
+        hash=record.hash,
     )
 
 
@@ -775,6 +876,7 @@ def note_info(note: state.Note) -> NoteInfo:
         target=note.target,
         summary=note.summary,
         body=note.body,
+        attachments=attachment_infos(state.note_attachments(note.id)) if note.attachments else [],
         created_at=_utc(note.created_at),
     )
 
@@ -843,8 +945,12 @@ def gate_info(gate: state.Gate) -> GateInfo:
     if gate.answer is None:
         try:
             needs = [
-                NeededNote(state=name, note=note_info(note) if note else None)
-                for name, note in runs.gate_notes(gate)
+                NeededNote(
+                    state=needed.state,
+                    note=note_info(needed.note) if needed.note else None,
+                    is_gate_note=needed.is_gate_note,
+                )
+                for needed in runs.gate_notes(gate)
             ]
         except runs.SnapshotError as error:
             problem = _unreadable(gate.session, error)
@@ -857,6 +963,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
         options=gate.options,
         note=gate.note,
         note_body=gate.note_body,
+        attachments=[attachment_info(a) for a in runs.gate_attachments(gate)],
         needs=needs,
         answer=gate.answer,
         comment=gate.comment,

@@ -61,6 +61,10 @@ class LocalStore:
         rows = lado_state.latest_artifact(session, scope, name)
         return _pair(rows) if rows else None
 
+    def artifact(self, artifact_id: str) -> tuple[Artifact, Record] | None:
+        rows = lado_state.artifact_by_id(artifact_id)
+        return _pair(rows) if rows else None
+
     def record(self, record_id: str) -> tuple[Artifact, Record] | None:
         rows = lado_state.artifact_record(record_id)
         return _pair(rows) if rows else None

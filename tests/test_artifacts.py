@@ -269,3 +269,24 @@ def test_text_that_is_not_utf8_is_read_with_replacement_characters(session, tmp_
     (tmp_path / "latin.txt").write_bytes(b"caf\xe9\n")
     artifacts.write(session, "supervisor", "latin", file="latin.txt")
     assert artifacts.read(session, "w2", "latin")["content"] == "caf�\n"
+
+
+def test_an_artifact_of_the_session_is_found_by_its_id_and_another_sessions_is_not(session):
+    written = artifacts.write(session, "w1", "design", content="v1")
+    artifacts.write(session, "w1", "design", content="v2")
+    artifact, record = artifacts.of_artifact(session, written.artifact.id)
+    assert (artifact.full_name, record.size) == ("feature/x/design", 2)
+    assert artifacts.content(record) == b"v2"
+    state.add_session(state.Session("t", "/t", None, provider="claude"))
+    assert artifacts.of_artifact("t", written.artifact.id) is None
+    assert artifacts.of_artifact(session, "no-such-id") is None
+
+
+def test_a_record_of_the_session_is_found_by_its_id_and_another_sessions_is_not(session):
+    first = artifacts.write(session, "w1", "design", content="v1")
+    artifacts.write(session, "w1", "design", content="v2")
+    artifact, record = artifacts.of_record(session, first.record.id)
+    assert (artifact.full_name, record) == ("feature/x/design", first.record)
+    state.add_session(state.Session("t", "/t", None, provider="claude"))
+    assert artifacts.of_record("t", first.record.id) is None
+    assert artifacts.of_record(session, "no-such-id") is None

@@ -118,6 +118,24 @@ def test_an_attachment_keeps_the_record_of_the_call(session):
     assert state.message_attachments(message.id) == [(first.artifact.id, first.record.id)]
 
 
+def test_attached_gives_each_record_with_its_artifact_and_looks_for_changes_only_if_asked(
+    session, monkeypatch
+):
+    first = artifacts.write(session, "supervisor", "plan", content="v1", title="Plan")
+    artifacts.write(session, "supervisor", "plan", content="v2")
+    rows = [(first.artifact.id, first.record.id)]
+    [changed] = artifacts.attached(rows, with_changed=True)
+    assert (changed.artifact.full_name, changed.artifact.title) == ("plan", "Plan")
+    assert (changed.record, changed.changed) == (first.record, True)
+
+    def no_latest(*args):
+        raise AssertionError("the latest record was looked up")
+
+    monkeypatch.setattr(artifacts_local.LocalStore, "latest", no_latest)
+    [plain] = artifacts.attached(rows)
+    assert (plain.record, plain.changed) == (first.record, None)
+
+
 def test_a_question_to_the_human_carries_artifacts(session):
     written = artifacts.write(session, "supervisor", "mockup.html", content="<p>hi</p>")
     _call(
@@ -225,6 +243,27 @@ def test_the_previous_steps_note_names_its_artifacts(run):
     assert after.state == "build"
     # The answer's note has no artifacts: the step shows none for it.
     assert "Artifacts:" not in runs.step_text(after, runs.flow_of(after))
+
+
+def test_a_closed_gate_keeps_the_artifacts_of_its_note_after_the_run_moved_on(run):
+    artifacts.write("s", "worker", "design", content="v1")
+    _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "done"})
+    _call("s", "worker", "flow_advance", {"run": "ship/x", "outcome": "ok"})
+    args = {"run": "ship/x", "outcome": "ok", "note_summary": "fine", "artifacts": ["design"]}
+    _call("s", "worker", "flow_advance", args)
+    gate = state.open_gate("s", "ship/x")
+    runs.answer("s", str(gate.id), "reject", "again")
+    artifacts.write("s", "worker", "plan", content="p1")
+    args = {"run": "ship/x", "outcome": "done", "note_summary": "rebuilt", "artifacts": ["plan"]}
+    _call("s", "worker", "flow_advance", args)
+    closed = state.get_gate(gate.id)
+    assert runs.gate_artifacts(closed) == "Artifacts: ship/x/design"
+    assert [a.artifact.name for a in runs.gate_attachments(closed)] == ["design"]
+
+
+def test_a_gate_without_a_note_kept_has_no_artifacts(run):
+    gate = state.Gate("s", "ship/x", "approve", "approval", "Ship it?", ["approve", "reject"])
+    assert (runs.gate_artifacts(gate), runs.gate_attachments(gate)) == ("", [])
 
 
 def test_forget_removes_the_sessions_artifacts_records_attachments_and_content(

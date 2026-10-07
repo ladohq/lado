@@ -771,8 +771,9 @@ def _choose(gate: state.Gate) -> str | None:
         if not chosen:
             return None
         if full_note and chosen.lower() == "v":
-            parts = [f"Note from {name}: {_note_text(note)}\n" for name, note in needed]
-            parts.append(f"Note: {gate.note}\n\n{gate.note_body.strip()}\n")
+            parts = [f"Note from {_needed_label(n)}: {_note_text(n.note)}\n" for n in needed]
+            if not any(n.is_gate_note for n in needed):
+                parts.append(f"Note: {gate.note}\n\n{gate.note_body.strip()}\n")
             _page("\n".join(parts))
             _show_gate(gate, needed)
             continue
@@ -788,19 +789,29 @@ def _note_text(note: state.Note | None) -> str:
     return f"{note.summary}\n{note.body.strip()}".rstrip() if note else "no note yet"
 
 
-def _show_gate(gate: state.Gate, needed: list[tuple[str, state.Note | None]]) -> None:
+def _needed_label(needed: runs.NeededNote) -> str:
+    return needed.state + (" (also the note before the gate)" if needed.is_gate_note else "")
+
+
+def _show_gate(gate: state.Gate, needed: list[runs.NeededNote]) -> None:
+    """The gate's question, the note that led to it with its artifacts, and the notes it
+    needs; a needed note that is the note before the gate is shown once, in its place."""
     print(f"\nGate #{gate.id}, session {gate.session}, run {gate.run} at {gate.state}:")
     print(gate.question)
     lines = len(gate.note_body.strip().splitlines())
-    if lines:
-        print(f"Note: {gate.note} (v: the full note, {lines} more line{'' if lines == 1 else 's'})")
-    elif gate.note:
-        print(f"Note: {gate.note}")
+    more = f" (v: the full note, {lines} more line{'' if lines == 1 else 's'})" if lines else ""
     listed = runs.gate_artifacts(gate)
-    if listed:
+    if gate.note and not any(n.is_gate_note for n in needed):
+        print(f"Note: {gate.note}{more}")
+    if listed and not any(n.is_gate_note for n in needed):
         print(listed)
-    for name, note in needed:
-        print(f"Note from {name}: {note.summary if note else 'no note yet'}")
+    for one in needed:
+        if one.is_gate_note:
+            print(f"Note from {_needed_label(one)}: {gate.note}{more}")
+            if listed:
+                print(listed)
+        else:
+            print(f"Note from {one.state}: {one.note.summary if one.note else 'no note yet'}")
     print("Options:")
     for n, option in enumerate(gate.options, 1):
         print(f"  {n}) {option}")

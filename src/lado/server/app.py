@@ -6,24 +6,32 @@ never migrates the database: another schema version answers 503.
 """
 
 import datetime
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, TypeVar
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import lado
-from lado import kits, marketplaces, runs, runtime, state, terminal, update
+from lado import artifacts, kits, marketplaces, runs, runtime, state, terminal, update
 from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
     AgentDetails,
     AgentInfo,
     Answer,
+    ArtifactInfo,
     Finish,
     FinishPreviewInfo,
     FolderInfo,
@@ -52,6 +60,7 @@ from lado.server.models import (
     PlanUpdateAsk,
     ProviderInfo,
     RecentFolder,
+    RecordView,
     Refused,
     Resume,
     RunEventInfo,
@@ -174,6 +183,45 @@ def marketplace_updates(name: str | None) -> list[MarketplaceUpdate]:
             info = models.marketplace_info(done)
             updates.append(MarketplaceUpdate(name=market, marketplace=info, error=None))
     return updates
+
+
+# The media types whose content is shown inline (in a tab of its own, an <img>, a frame);
+# any other is a download: the media type is the agent's word (docs/design/artifacts.md,
+# The human's side). Raster images and SVG, under the same sandbox as the rest.
+INLINE = frozenset(
+    {
+        "text/plain",
+        "text/markdown",
+        "text/html",
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/svg+xml",
+    }
+)
+# A record never changes: its content is cached for good, but only as the answer it is.
+CACHED = "private, max-age=31536000, immutable"
+UNSAFE_IN_FILE_NAME = re.compile(r'[/\\"\x00-\x1f\x7f]')
+
+
+def _content_headers(media_type: str, name: str, download: bool) -> dict[str, str]:
+    """The headers of every answer with an artifact's content: a sandbox (an opaque origin,
+    so its scripts never act as the human; scripts only for HTML), no sniffing, and inline
+    only for INLINE types unless `download`, with the artifact's name as the file's."""
+    file_name = UNSAFE_IN_FILE_NAME.sub("_", artifacts.file_name(name, media_type))
+    inline = media_type in INLINE and not download
+    return {
+        "Content-Security-Policy": "sandbox allow-scripts"
+        if media_type == "text/html"
+        else "sandbox",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{file_name}"',
+    }
+
+
+def _content_type(media_type: str) -> str:
+    return f"{media_type}; charset=utf-8" if media_type.startswith("text/") else media_type
 
 
 def bundle_missing(static: Path) -> bool:
@@ -484,6 +532,60 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         """The notes of the session's flow runs, oldest first: each is a step a run took."""
         known(name, has_db)
         return [models.note_info(n) for n in state.run_notes(name)]
+
+    @app.get("/api/sessions/{name}/artifacts", dependencies=[Depends(guard)])
+    def session_artifacts(name: str, has_db: bool = Depends(database)) -> list[ArtifactInfo]:
+        """The session's artifacts, each as of its latest record."""
+        known(name, has_db)
+        return [models.artifact_info(*found) for found in artifacts.of_session(name)]
+
+    @app.get("/api/sessions/{name}/artifacts/{artifact}", dependencies=[Depends(guard)])
+    def one_artifact(name: str, artifact: str, has_db: bool = Depends(database)) -> ArtifactInfo:
+        """One artifact of the session with its latest record."""
+        known(name, has_db)
+        found = artifacts.of_artifact(name, artifact)
+        if found is None:
+            raise HTTPException(404, f"no artifact {artifact} in session {name}")
+        return models.artifact_info(*found)
+
+    def known_record(name: str, record: str, has_db: bool) -> tuple:
+        known(name, has_db)
+        found = artifacts.of_record(name, record)
+        if found is None:
+            raise HTTPException(404, f"no record {record} in session {name}")
+        return found
+
+    @app.get("/api/sessions/{name}/records/{record}", dependencies=[Depends(guard)])
+    def one_record(name: str, record: str, has_db: bool = Depends(database)) -> RecordView:
+        """A record of the session's artifacts, with its artifact as it is now."""
+        artifact, found = known_record(name, record, has_db)
+        latest = artifacts.of_artifact(name, artifact.id)
+        assert latest is not None, "a record's artifact is there"
+        return RecordView(artifact=models.artifact_info(*latest), record=models.record_info(found))
+
+    @app.get(
+        "/api/sessions/{name}/records/{record}/content",
+        dependencies=[Depends(guard)],
+        response_class=Response,
+        responses={200: {"content": {"application/octet-stream": {}}}},
+    )
+    def record_content(
+        name: str, record: str, download: bool = False, has_db: bool = Depends(database)
+    ) -> Response:
+        """A record's content, with the headers of _content_headers; `download` makes it a
+        download whatever its type."""
+        artifact, found = known_record(name, record, has_db)
+        headers = _content_headers(found.media_type, artifact.name, download)
+        try:
+            data = artifacts.content(found)
+        except artifacts.ArtifactError as missing:
+            failed = {"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"}
+            raise HTTPException(500, str(missing), headers=failed) from missing
+        return Response(
+            data,
+            media_type=_content_type(found.media_type),
+            headers={**headers, "Cache-Control": CACHED},
+        )
 
     @app.post(
         "/api/sessions",

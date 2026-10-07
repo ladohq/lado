@@ -591,6 +591,13 @@ def test_a_gate_opens_with_the_note_that_led_to_it_and_a_popup(session, fake_tmu
     }
 
 
+def test_a_gate_keeps_the_id_of_the_note_that_led_to_it(session):
+    to_gate(session)
+    [gate] = state.open_gates(session)
+    note = state.last_note(session, "feature/login")
+    assert (gate.note_id, note.summary, note.state) == (note.id, "ready to ship", "merge")
+
+
 def test_rejecting_sends_the_answer_and_the_earlier_note_to_the_next_step(session):
     to_gate(session)
     [gate] = state.open_gates(session)

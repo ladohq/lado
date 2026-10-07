@@ -1549,6 +1549,203 @@
         }
       }
     },
+    "/api/sessions/{name}/artifacts": {
+      "get": {
+        "summary": "Session Artifacts",
+        "description": "The session's artifacts, each as of its latest record.",
+        "operationId": "session_artifacts_api_sessions__name__artifacts_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ArtifactInfo"
+                  },
+                  "title": "Response Session Artifacts Api Sessions  Name  Artifacts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/artifacts/{artifact}": {
+      "get": {
+        "summary": "One Artifact",
+        "description": "One artifact of the session with its latest record.",
+        "operationId": "one_artifact_api_sessions__name__artifacts__artifact__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "artifact",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Artifact"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/records/{record}": {
+      "get": {
+        "summary": "One Record",
+        "description": "A record of the session's artifacts, with its artifact as it is now.",
+        "operationId": "one_record_api_sessions__name__records__record__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "record",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{name}/records/{record}/content": {
+      "get": {
+        "summary": "Record Content",
+        "description": "A record's content, with the headers of _content_headers; `download` makes it a\ndownload whatever its type.",
+        "operationId": "record_content_api_sessions__name__records__record__content_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "record",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Download"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{name}/resume": {
       "post": {
         "summary": "Resume",
@@ -2186,6 +2383,117 @@
         "type": "object",
         "title": "Answer"
       },
+      "ArtifactInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "session": {
+            "type": "string",
+            "title": "Session"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "latest": {
+            "$ref": "#/components/schemas/RecordInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session",
+          "scope",
+          "name",
+          "full_name",
+          "title",
+          "latest"
+        ],
+        "title": "ArtifactInfo",
+        "description": "A named document of the session, as of its latest record."
+      },
+      "AttachmentInfo": {
+        "properties": {
+          "artifact": {
+            "type": "string",
+            "title": "Artifact"
+          },
+          "record": {
+            "type": "string",
+            "title": "Record"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifact",
+          "record",
+          "full_name",
+          "name",
+          "scope",
+          "title",
+          "media_type",
+          "size",
+          "hash"
+        ],
+        "title": "AttachmentInfo",
+        "description": "An artifact as a message or a note has it attached: the record it was at then. It\nchanged since when its artifact's latest record has another hash (the UI compares)."
+      },
       "CommitInfo": {
         "properties": {
           "sha": {
@@ -2566,6 +2874,13 @@
             "type": "string",
             "title": "Note Body"
           },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInfo"
+            },
+            "type": "array",
+            "title": "Attachments"
+          },
           "needs": {
             "anyOf": [
               {
@@ -2643,6 +2958,7 @@
           "options",
           "note",
           "note_body",
+          "attachments",
           "needs",
           "answer",
           "comment",
@@ -3523,6 +3839,13 @@
             ],
             "title": "Reply State"
           },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInfo"
+            },
+            "type": "array",
+            "title": "Attachments"
+          },
           "created_at": {
             "type": "string",
             "title": "Created At"
@@ -3544,6 +3867,7 @@
           "reply_to",
           "choice",
           "reply_state",
+          "attachments",
           "created_at"
         ],
         "title": "MessageInfo",
@@ -3605,12 +3929,17 @@
                 "type": "null"
               }
             ]
+          },
+          "is_gate_note": {
+            "type": "boolean",
+            "title": "Is Gate Note"
           }
         },
         "type": "object",
         "required": [
           "state",
-          "note"
+          "note",
+          "is_gate_note"
         ],
         "title": "NeededNote"
       },
@@ -3674,6 +4003,13 @@
             "type": "string",
             "title": "Body"
           },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInfo"
+            },
+            "type": "array",
+            "title": "Attachments"
+          },
           "created_at": {
             "type": "string",
             "title": "Created At"
@@ -3690,6 +4026,7 @@
           "target",
           "summary",
           "body",
+          "attachments",
           "created_at"
         ],
         "title": "NoteInfo",
@@ -4132,6 +4469,98 @@
           "session"
         ],
         "title": "RecentFolder"
+      },
+      "RecordInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          },
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "media_type",
+          "size",
+          "hash",
+          "author",
+          "run",
+          "state",
+          "summary",
+          "created_at"
+        ],
+        "title": "RecordInfo",
+        "description": "One write of an artifact's content; never changed (docs/design/artifacts.md)."
+      },
+      "RecordView": {
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactInfo"
+          },
+          "record": {
+            "$ref": "#/components/schemas/RecordInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "artifact",
+          "record"
+        ],
+        "title": "RecordView",
+        "description": "A record with its artifact as it is now."
       },
       "Refused": {
         "properties": {

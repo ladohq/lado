@@ -217,13 +217,36 @@ def test_the_migration_makes_the_artifact_tables_as_a_new_database_has_them(lado
         "attachments",
         *(f"changes_{t}_{op}" for t in ("artifacts", "artifact_records") for op in state.ALL_OPS),
     } | {name for _, name, _ in fresh if name.startswith("sqlite_autoindex")}
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(21)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert db.execute(ARTIFACT_OBJECTS).fetchall() == []
     db.close()
-    assert state.migrate() == state.SCHEMA_VERSION == 21
+    assert state.migrate() == state.SCHEMA_VERSION
     with state.connect() as db:
         assert [tuple(row) for row in db.execute(ARTIFACT_OBJECTS)] == fresh
+
+
+GATES_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'gates'"
+
+
+def test_the_migration_gives_gates_the_note_before_them_as_a_new_database_has_it(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    with state.connect() as db:
+        fresh = db.execute(GATES_TABLE).fetchone()[0]
+        db.execute(
+            "INSERT INTO gates (session, run, state, kind, question, options)"
+            " VALUES ('s', 'f/x', 'ok', 'approval', 'Ship?', '[]')"
+        )
+    assert "note_id" in fresh
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert "note_id" not in db.execute(GATES_TABLE).fetchone()[0]
+    db.close()
+    assert state.migrate() == state.SCHEMA_VERSION == 22
+    with state.connect() as db:
+        assert db.execute(GATES_TABLE).fetchone()[0] == fresh
+    [old] = state.session_gates("s")
+    assert old.note_id is None
 
 
 def test_a_due_resume_is_queued_once_also_while_the_agent_stays_idle(lado_home):

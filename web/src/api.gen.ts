@@ -644,6 +644,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session Artifacts
+         * @description The session's artifacts, each as of its latest record.
+         */
+        get: operations["session_artifacts_api_sessions__name__artifacts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/artifacts/{artifact}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One Artifact
+         * @description One artifact of the session with its latest record.
+         */
+        get: operations["one_artifact_api_sessions__name__artifacts__artifact__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/records/{record}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One Record
+         * @description A record of the session's artifacts, with its artifact as it is now.
+         */
+        get: operations["one_record_api_sessions__name__records__record__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{name}/records/{record}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Record Content
+         * @description A record's content, with the headers of _content_headers; `download` makes it a
+         *     download whatever its type.
+         */
+        get: operations["record_content_api_sessions__name__records__record__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/resume": {
         parameters: {
             query?: never;
@@ -875,6 +956,50 @@ export interface components {
             /** Text */
             text?: string | null;
         };
+        /**
+         * ArtifactInfo
+         * @description A named document of the session, as of its latest record.
+         */
+        ArtifactInfo: {
+            /** Id */
+            id: string;
+            /** Session */
+            session: string;
+            /** Scope */
+            scope: string;
+            /** Name */
+            name: string;
+            /** Full Name */
+            full_name: string;
+            /** Title */
+            title: string | null;
+            latest: components["schemas"]["RecordInfo"];
+        };
+        /**
+         * AttachmentInfo
+         * @description An artifact as a message or a note has it attached: the record it was at then. It
+         *     changed since when its artifact's latest record has another hash (the UI compares).
+         */
+        AttachmentInfo: {
+            /** Artifact */
+            artifact: string;
+            /** Record */
+            record: string;
+            /** Full Name */
+            full_name: string;
+            /** Name */
+            name: string;
+            /** Scope */
+            scope: string;
+            /** Title */
+            title: string | null;
+            /** Media Type */
+            media_type: string;
+            /** Size */
+            size: number;
+            /** Hash */
+            hash: string;
+        };
         /** CommitInfo */
         CommitInfo: {
             /** Sha */
@@ -1003,6 +1128,8 @@ export interface components {
             note: string;
             /** Note Body */
             note_body: string;
+            /** Attachments */
+            attachments: components["schemas"]["AttachmentInfo"][];
             /** Needs */
             needs: components["schemas"]["NeededNote"][] | null;
             /** Answer */
@@ -1278,6 +1405,8 @@ export interface components {
             choice: string | null;
             /** Reply State */
             reply_state: ("replied" | "missing") | null;
+            /** Attachments */
+            attachments: components["schemas"]["AttachmentInfo"][];
             /** Created At */
             created_at: string;
         };
@@ -1310,6 +1439,8 @@ export interface components {
             /** State */
             state: string;
             note: components["schemas"]["NoteInfo"] | null;
+            /** Is Gate Note */
+            is_gate_note: boolean;
         };
         /** NewMarketplace */
         NewMarketplace: {
@@ -1345,6 +1476,8 @@ export interface components {
             summary: string;
             /** Body */
             body: string;
+            /** Attachments */
+            attachments: components["schemas"]["AttachmentInfo"][];
             /** Created At */
             created_at: string;
         };
@@ -1492,6 +1625,38 @@ export interface components {
             /** Path */
             path: string;
             session: components["schemas"]["SessionInfo"];
+        };
+        /**
+         * RecordInfo
+         * @description One write of an artifact's content; never changed (docs/design/artifacts.md).
+         */
+        RecordInfo: {
+            /** Id */
+            id: string;
+            /** Media Type */
+            media_type: string;
+            /** Size */
+            size: number;
+            /** Hash */
+            hash: string;
+            /** Author */
+            author: string;
+            /** Run */
+            run: string | null;
+            /** State */
+            state: string | null;
+            /** Summary */
+            summary: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * RecordView
+         * @description A record with its artifact as it is now.
+         */
+        RecordView: {
+            artifact: components["schemas"]["ArtifactInfo"];
+            record: components["schemas"]["RecordInfo"];
         };
         /**
          * Refused
@@ -2934,6 +3099,135 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NoteInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_artifacts_api_sessions__name__artifacts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    one_artifact_api_sessions__name__artifacts__artifact__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                artifact: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    one_record_api_sessions__name__records__record__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                record: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_content_api_sessions__name__records__record__content_get: {
+        parameters: {
+            query?: {
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                name: string;
+                record: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
                 };
             };
             /** @description Validation Error */

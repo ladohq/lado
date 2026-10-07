@@ -222,6 +222,7 @@ def test_the_notes_are_the_steps_of_all_runs_oldest_first(client, session):
             "target": "build",
             "summary": "the plan",
             "body": "step 1",
+            "attachments": [],
         },
         {
             "run": "ship/y",
@@ -232,6 +233,7 @@ def test_the_notes_are_the_steps_of_all_runs_oldest_first(client, session):
             "target": "build",
             "summary": "the plan",
             "body": "step 1",
+            "attachments": [],
         },
         {
             "run": "ship/x",
@@ -242,6 +244,7 @@ def test_the_notes_are_the_steps_of_all_runs_oldest_first(client, session):
             "target": "check",
             "summary": "set by the human: skip the build",
             "body": "",
+            "attachments": [],
         },
     ]
 

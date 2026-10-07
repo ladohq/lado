@@ -1198,6 +1198,13 @@ Wanted: `_collect` reads each file's mtime again right before its unlink and ski
 younger than `ORPHAN_AGE`, so the window shrinks to one stat and unlink.
 Found: 2026-10-07, review of feature/artifacts-core.
 
+## Flow events wrap in a narrow chat column
+
+Size: S. Why here: the chat's flow event lines are new (feature/chat-message-text) and meant to be one line each.
+In a narrow column (520 px or less) `.run-line` has `flex-wrap`, so the event's detail and its time wrap onto lines of their own.
+Wanted: the detail cut with an ellipsis on the event's line and the time kept on it, as the chat's other quiet lines do.
+Found: 2026-10-07, review of feature/chat-message-text (Minor left open).
+
 # P3: maybe never
 
 ## The chat's day dividers say "Today" and "Yesterday" as of their last render

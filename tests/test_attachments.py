@@ -3,11 +3,13 @@ Attachments)."""
 
 import asyncio
 import json
+import os
+import time
 
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from lado import artifacts, mcp_server, runs, runtime, state
+from lado import artifacts, artifacts_local, mcp_server, runs, runtime, state
 
 
 def _call(session, agent, tool, args=None):
@@ -223,3 +225,37 @@ def test_the_previous_steps_note_names_its_artifacts(run):
     assert after.state == "build"
     # The answer's note has no artifacts: the step shows none for it.
     assert "Artifacts:" not in runs.step_text(after, runs.flow_of(after))
+
+
+def test_forget_removes_the_sessions_artifacts_records_attachments_and_content(
+    session, repo, lado_home
+):
+    other = state.Session("t", str(repo), None, provider="claude")
+    state.add_session(other)
+    state.add_agent(state.Agent("t", "supervisor", "x", str(repo), None, None, "idle", "claude"))
+    artifacts.write("t", "supervisor", "shared", content="the same")
+    artifacts.write(session, "supervisor", "shared", content="the same")
+    mine = artifacts.write(session, "supervisor", "mine", content="only s")
+    _call(
+        session, "supervisor", "send_message", {"to": "w1", "summary": "x", "artifacts": ["mine"]}
+    )
+    content = lado_home / "artifacts" / mine.record.hash[:2] / mine.record.hash
+    then = time.time() - 2 * artifacts_local.ORPHAN_AGE
+    os.utime(content, (then, then))
+    runtime.stop_session(session)
+    forgotten = runtime.forget_session(session)
+    assert forgotten.artifacts == 2
+    with state.connect() as db:
+        left = [tuple(r) for r in db.execute("SELECT session, name FROM artifacts")]
+        records = db.execute("SELECT DISTINCT session FROM artifact_records").fetchall()
+        attachments = db.execute("SELECT count(*) FROM attachments").fetchone()[0]
+        deleted = {
+            (r["kind"], r["op"])
+            for r in db.execute("SELECT kind, op FROM changes WHERE session = ?", (session,))
+        }
+    assert left == [("t", "shared")] and [tuple(r) for r in records] == [("t",)]
+    assert attachments == 0
+    assert {("artifacts", "delete"), ("artifact_records", "delete")} <= deleted
+    assert not content.exists()
+    [(_, shared)] = artifacts.store().list("t")
+    assert artifacts.store().content(shared.id) == b"the same"

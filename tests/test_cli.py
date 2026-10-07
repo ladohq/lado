@@ -9,7 +9,18 @@ import agent_helpers
 import pytest
 from agent_helpers import init_repo, publish
 
-from lado import __version__, cli, flows, gitcache, kits, marketplaces, runs, runtime, state
+from lado import (
+    __version__,
+    artifacts,
+    cli,
+    flows,
+    gitcache,
+    kits,
+    marketplaces,
+    runs,
+    runtime,
+    state,
+)
 from lado.cli import format_duration, main
 
 
@@ -1548,3 +1559,89 @@ def test_attach_restarts_a_dead_loop(repo, fake_tmux, loop_starts, monkeypatch):
     assert loop_starts == ["s", "s"]
     held.close()
     assert len(attached) == 2
+
+
+def test_answer_names_the_artifacts_of_the_note_before_the_gate(
+    repo, fake_tmux, capsys, monkeypatch
+):
+    _at_gate(repo, capsys)
+    runs.answer("s", "1", "reject", "first")
+    runs.spawn_worker("s", "ship/x")
+    artifacts.write("s", "rev", "design", content="v1")
+    artifacts.write("s", "rev", "plan", content="p1")
+    runs.advance("s", "rev", "ship/x", "done", "built it", attached=["design", "plan"])
+    artifacts.write("s", "rev", "plan", content="p2")
+    capsys.readouterr()
+    _typing(monkeypatch)
+    main(["answer"])
+    out = capsys.readouterr().out
+    assert "Note: built it\nArtifacts: ship/x/design, ship/x/plan (changed since)\n" in out
+
+
+def _with_artifacts(repo):
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
+    state.add_run(
+        state.Run("s", "ship/x", "ship", "{}", {}, "t", "build", "/w", "lado/s/x", {"build": 1}),
+        [],
+    )
+    artifacts.write("s", "supervisor", "plan", content="# Plan\n", title="The plan")
+    (repo / "logo.png").write_bytes(b"\x89PNG\x00")
+    artifacts.write("s", "supervisor", "ship/x/logo", file="logo.png")
+
+
+def test_artifacts_lists_shows_and_gets_a_sessions_artifacts(repo, fake_tmux, capsys, tmp_path):
+    _with_artifacts(repo)
+    main(["stop", "s"])  # a stopped session's too
+    capsys.readouterr()
+    assert main(["artifacts", "list", "s"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [line.split()[:4] for line in lines] == [
+        ["plan", "text/markdown", "7", "supervisor"],
+        ["ship/x/logo", "image/png", "5", "supervisor"],
+    ]
+    assert lines[0].endswith("The plan")
+    assert main(["artifacts", "list", "s", "--run", "ship/x"]) == 0
+    assert [line.split()[0] for line in capsys.readouterr().out.splitlines()] == ["ship/x/logo"]
+    assert main(["artifacts", "show", "s", "plan"]) == 0
+    assert capsys.readouterr().out == "# Plan\n"
+    assert main(["artifacts", "show", "s", "ship/x/logo"]) == 1
+    assert "lado artifacts get s ship/x/logo -o FILE" in capsys.readouterr().err
+    assert main(["artifacts", "get", "s", "ship/x/logo", "-o", str(tmp_path / "out.png")]) == 0
+    assert (tmp_path / "out.png").read_bytes() == b"\x89PNG\x00"
+    assert main(["artifacts", "show", "s", "nothing"]) == 1
+    assert 'no artifact "nothing" in session s' in capsys.readouterr().err
+
+
+def test_artifacts_get_writes_to_stdout_but_no_binary_to_a_terminal(
+    repo, fake_tmux, capsysbinary, monkeypatch
+):
+    _with_artifacts(repo)
+    capsysbinary.readouterr()
+    assert main(["artifacts", "get", "s", "plan"]) == 0
+    assert capsysbinary.readouterr().out == b"# Plan\n"
+    assert main(["artifacts", "get", "s", "ship/x/logo"]) == 0
+    assert capsysbinary.readouterr().out == b"\x89PNG\x00"
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    assert main(["artifacts", "get", "s", "ship/x/logo"]) == 1
+    assert b"is binary (image/png): give -o FILE" in capsysbinary.readouterr().err
+
+
+def test_artifacts_without_a_command_prints_its_help(capsys):
+    assert main(["artifacts"]) == 0
+    out = capsys.readouterr().out
+    assert "usage: lado artifacts" in out and "list" in out and "get" in out
+
+
+def test_artifacts_of_an_unknown_session_is_an_error(capsys):
+    assert main(["artifacts", "list", "nope"]) == 1
+    assert 'unknown session "nope"' in capsys.readouterr().err
+
+
+def test_forget_says_how_many_artifacts_it_removed(repo, fake_tmux, capsys):
+    _with_artifacts(repo)
+    main(["stop", "s"])
+    capsys.readouterr()
+    assert main(["forget", "s", "--force"]) == 0
+    assert capsys.readouterr().out.startswith(
+        'Forgot session "s" and its history; removed 2 artifacts; dropped open runs: ship/x.\n'
+    )

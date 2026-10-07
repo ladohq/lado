@@ -1,8 +1,20 @@
+import os
 import re
+import time
 
+import agent_helpers
 import pytest
 
-from lado import __version__, agent_env, doctor, providers, runtime
+from lado import (
+    __version__,
+    agent_env,
+    artifacts,
+    artifacts_local,
+    doctor,
+    providers,
+    runtime,
+    state,
+)
 from lado.providers import claude, kilo, opencode
 
 
@@ -31,6 +43,7 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
         "tmux",
         "Agent environment",
         "Agent config folders",
+        "Artifacts",
         "Claude Code",
         "Kilo CLI",
         "OpenCode",
@@ -249,3 +262,34 @@ def test_config_folders_of_agents_that_do_not_run_warn(repo, fake_tmux, lado_hom
         == f"left by agents that do not run (they may hold secrets): {left[1]}, {left[0]}"
     )
     assert check.hint == f"remove them: rm -rf {left[1]} {left[0]}"
+
+
+def test_artifacts_show_the_stores_size_and_warn_only_of_old_orphans(lado_home):
+    assert doctor.check_artifacts() == doctor.Check("Artifacts", doctor.OK, "none")
+    assert not (lado_home / "lado.db").exists()  # not made by the check
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "supervisor", "x", "/r", None, None, "idle", "claude"))
+    artifacts.write("s", "supervisor", "big", content="x" * 3 * 1024 * 1024)
+    artifacts.write("s", "supervisor", "big", content="y")
+    assert doctor.check_artifacts() == doctor.Check(
+        "Artifacts", doctor.OK, "1 artifact, 2 records, 3.0 MB"
+    )
+    young = lado_home / "artifacts" / "ab" / ("ab" + "0" * 62)
+    young.parent.mkdir()
+    young.write_bytes(b"1" * 1024 * 1024)  # a write in progress, maybe
+    assert doctor.check_artifacts().level == doctor.OK
+    old = time.time() - 2 * artifacts_local.ORPHAN_AGE
+    os.utime(young, (old, old))
+    assert doctor.check_artifacts() == doctor.Check(
+        "Artifacts",
+        doctor.WARN,
+        "1 artifact, 2 records, 4.0 MB; 1 file no record refers to (1.0 MB)",
+        "removed by the next lado forget",
+    )
+
+
+def test_artifacts_are_not_checked_on_another_schema(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    agent_helpers.previous_schema()
+    check = doctor.check_artifacts()
+    assert (check.level, check.detail[:13]) == (doctor.INFO, "not checked: ")

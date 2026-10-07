@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import lado
-from lado import agent_env, providers, runtime, state, terminal, tmux, update
+from lado import agent_env, artifacts, providers, runtime, state, terminal, tmux, update
 
 OK = "ok"
 INFO = "info"  # for the human to know; nothing to fix
@@ -153,6 +153,39 @@ def check_config_folders() -> Check:
     )
 
 
+def check_artifacts() -> Check:
+    """What the artifact store holds, and its content no record refers to that a forget
+    would remove (from a crash, or a forget that could not remove it yet)."""
+    name = "Artifacts"
+    if state.schema_version() is None:
+        return Check(name, OK, "none")  # no lado.db: the check makes none
+    try:
+        usage = artifacts.store().usage()
+    except state.SchemaError as exc:
+        return Check(name, INFO, f"not checked: {exc}")
+    detail = (
+        f"{_count(usage.artifacts, 'artifact')}, {_count(usage.records, 'record')}, "
+        f"{_megabytes(usage.bytes)}"
+    )
+    if not usage.orphans:
+        return Check(name, OK, detail)
+    files = "file" if usage.orphans == 1 else "files"
+    return Check(
+        name,
+        WARN,
+        f"{detail}; {usage.orphans} {files} no record refers to ({_megabytes(usage.orphan_bytes)})",
+        "removed by the next lado forget",
+    )
+
+
+def _count(n: int, what: str) -> str:
+    return f"{n} {what}{'' if n == 1 else 's'}"
+
+
+def _megabytes(size: int) -> str:
+    return f"{size / 2**20:.1f} MB"
+
+
 def check_lado() -> Check:
     """This LADO's version and whether a newer one is out (update.check: once a day)."""
     checked = update.check()
@@ -171,6 +204,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_tmux(which),
         check_agent_env(),
         check_config_folders(),
+        check_artifacts(),
         *check_providers(which),
     ]
 

@@ -1613,6 +1613,7 @@ def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
 class Forgotten:
     runs: list[str]  # the open runs dropped
     worktrees: dict[str, str]  # worktree -> branch, left on disk
+    artifacts: int = 0  # how many artifacts were removed
 
 
 def forget_preview(session: str) -> Forgotten:
@@ -1630,14 +1631,17 @@ def forget_preview(session: str) -> Forgotten:
 
 
 def forget_session(session: str, force: bool = False) -> Forgotten:
-    """Delete a stopped session with its history, runs and gates. With open runs only if
-    `force`. Worktrees and branches stay on disk."""
+    """Delete a stopped session with its history, runs, gates and artifacts. With open runs
+    only if `force`. Worktrees and branches stay on disk."""
     forgotten = forget_preview(session)
     if forgotten.runs and not force:
         raise LadoError(
             f'session "{session}" has open runs: {", ".join(forgotten.runs)}; forget it with '
             "--force to drop them, or resume it with lado start"
         )
+    # Before the session's rows: a forget that fails in between can be run again, and a
+    # new session of the same name never sees this one's artifacts.
+    forgotten.artifacts = artifacts.store().remove_session(session)
     state.delete_session(session)
     loop.forget(session)
     providers.base.remove_session_config_dirs(session)

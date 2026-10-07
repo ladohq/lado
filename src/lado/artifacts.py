@@ -325,6 +325,20 @@ def listed(session: str, agent: str, run: str | None = None) -> list[dict]:
     ]
 
 
+def of_session(session: str, run: str | None = None) -> list[tuple[Artifact, Record]]:
+    """The human's list: every artifact of the session, or of `run`'s scope, each with its
+    latest record; also of a stopped session."""
+    if state.get_session(session) is None:
+        raise ArtifactError(f'unknown session "{session}"')
+    if run and state.get_run(session, run) is None:
+        raise ArtifactError(f'no run "{run}" in session {session}')
+    return store().list(session, run or None)
+
+
+def content(record: Record) -> bytes:
+    return store().content(record.id)
+
+
 def resolve_attachments(session: str, agent: str, names: list[str] | None) -> list[tuple[str, str]]:
     """Each name `agent` attaches (bare or full, as in `find`) as its artifact's id and its
     latest record's, once each, in order; a name not found refuses them all."""

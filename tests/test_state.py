@@ -188,17 +188,42 @@ def test_the_migration_gives_messages_their_channel(lado_home):
 
 def test_the_migration_gives_agents_their_resumes(lado_home):
     _session_with(_agent(status=state.BUSY))
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(20)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     columns = [row[1] for row in db.execute("PRAGMA table_info(agents)")]
     db.close()
     assert "resume_at" not in columns and "resumes" not in columns
-    assert state.migrate() == state.SCHEMA_VERSION == 20
+    assert state.migrate() == state.SCHEMA_VERSION
     agent = state.get_agent("s", "w1")
     assert (agent.resume_at, agent.resumes) == (None, 0)
     assert state.schedule_resume("s", "w1", 100.0, (30.0,)) == 1
     agent = state.get_agent("s", "w1")
     assert (agent.resume_at, agent.resumes) == (130.0, 1)
+
+
+ARTIFACT_OBJECTS = (
+    "SELECT type, name, sql FROM sqlite_master WHERE name LIKE '%artifact%'"
+    " OR name LIKE '%attachments%' ORDER BY name"
+)
+
+
+def test_the_migration_makes_the_artifact_tables_as_a_new_database_has_them(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    with state.connect() as db:
+        fresh = [tuple(row) for row in db.execute(ARTIFACT_OBJECTS)]
+    assert {name for _, name, _ in fresh} == {
+        "artifacts",
+        "artifact_records",
+        "attachments",
+        *(f"changes_{t}_{op}" for t in ("artifacts", "artifact_records") for op in state.ALL_OPS),
+    } | {name for _, name, _ in fresh if name.startswith("sqlite_autoindex")}
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert db.execute(ARTIFACT_OBJECTS).fetchall() == []
+    db.close()
+    assert state.migrate() == state.SCHEMA_VERSION == 21
+    with state.connect() as db:
+        assert [tuple(row) for row in db.execute(ARTIFACT_OBJECTS)] == fresh
 
 
 def test_a_due_resume_is_queued_once_also_while_the_agent_stays_idle(lado_home):

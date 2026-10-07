@@ -15,7 +15,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -170,6 +170,8 @@ JOURNALED = {
     "events": "{row}.id",  # from version 14 on: run events only (RUN_EVENT)
     "marketplaces": "{row}.name",  # from version 17 on
     "kits": "{row}.name",  # from version 18 on
+    "artifacts": "{row}.id",  # from version 21 on
+    "artifact_records": "{row}.id",  # from version 21 on
 }
 # The session of a change, where it is not the row's session column: a session is its own,
 # a marketplace or an installed kit belongs to none ('').
@@ -230,6 +232,59 @@ MESSAGES_CHANNEL = "ALTER TABLE messages ADD COLUMN channel TEXT"
 AGENTS_RESUME = [
     "ALTER TABLE agents ADD COLUMN resume_at REAL",
     "ALTER TABLE agents ADD COLUMN resumes INTEGER NOT NULL DEFAULT 0",
+]
+# Artifacts of the local store (lado.artifacts_local), from version 21 on: named documents of
+# a session, each in a scope (a run's name, '' for the session's), and their records, one per
+# write; a record's content is a file named by its hash under LADO_HOME/artifacts. Only
+# lado.artifacts_local uses these tables, through the functions below. No foreign key to
+# sessions: forgetting a session removes its artifacts through the store (remove_session),
+# as any store must do it.
+ARTIFACTS = """
+CREATE TABLE IF NOT EXISTS artifacts (
+    id TEXT PRIMARY KEY,  -- uuid4 hex
+    session TEXT NOT NULL,
+    scope TEXT NOT NULL,  -- the run's name, '' for the session's
+    name TEXT NOT NULL,
+    title TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),  -- UTC
+    created_by TEXT NOT NULL,
+    UNIQUE (session, scope, name)
+)"""
+ARTIFACT_RECORDS = """
+CREATE TABLE IF NOT EXISTS artifact_records (
+    id TEXT PRIMARY KEY,  -- uuid4 hex
+    artifact TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+    session TEXT NOT NULL,  -- the artifact's, for the journal
+    seq INTEGER NOT NULL,  -- 1, 2, ...: the latest record has the highest
+    hash TEXT NOT NULL,  -- sha256 hex of the content
+    size INTEGER NOT NULL,
+    media_type TEXT NOT NULL,
+    author TEXT NOT NULL,
+    run TEXT,  -- in a run's scope: the run, its state and that state's visit; else NULL
+    state TEXT,
+    visit INTEGER,
+    summary TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),  -- UTC
+    UNIQUE (artifact, seq)
+)"""
+# What a message or a note has attached: the artifact and the record it was at then, as the
+# store's opaque ids (no foreign key to the store's tables). Not journaled yet.
+ATTACHMENTS = """
+CREATE TABLE IF NOT EXISTS attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message INTEGER REFERENCES messages(id) ON DELETE CASCADE,
+    note INTEGER REFERENCES notes(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    artifact TEXT NOT NULL,
+    record TEXT NOT NULL,
+    CHECK ((message IS NULL) <> (note IS NULL))
+)"""
+JOURNALED_V21 = ("artifacts", "artifact_records")
+ARTIFACTS_TABLES = [
+    ARTIFACTS,
+    ARTIFACT_RECORDS,
+    ATTACHMENTS,
+    *(trigger for t in JOURNALED_V21 for trigger in _journal_triggers(t)),
 ]
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
@@ -309,6 +364,7 @@ SCHEMA += (
             *KITS_TABLE,
             MESSAGES_CHANNEL,
             *AGENTS_RESUME,
+            *ARTIFACTS_TABLES,
         ]
     )
     + ";\n"
@@ -348,6 +404,7 @@ MIGRATIONS = {
     17: KITS_TABLE,
     18: [MESSAGES_CHANNEL],
     19: AGENTS_RESUME,
+    20: ARTIFACTS_TABLES,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -2220,6 +2277,120 @@ def delete_kit(name: str) -> bool:
     """False when no kit of that name is installed."""
     with connect() as db:
         return db.execute("DELETE FROM kits WHERE name = ?", (name,)).rowcount == 1
+
+
+# The local artifact store's rows (lado.artifacts_local), as dicts of their columns: only
+# that store calls these. An artifact with its latest record is a pair (artifact, record).
+ArtifactRows = tuple[dict, dict]
+
+
+def write_artifact(
+    session: str, scope: str, name: str, title: str | None, record: dict
+) -> tuple[ArtifactRows, bool]:
+    """Add a record (its columns but id, artifact, session and seq) to the artifact, made
+    when there is none, in one transaction; a title given replaces the artifact's. The
+    artifact with the new record, and whether its hash equals the previous record's."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT id FROM artifacts WHERE session = ? AND scope = ? AND name = ?",
+            (session, scope, name),
+        ).fetchone()
+        if row is None:
+            artifact = uuid.uuid4().hex
+            db.execute(
+                "INSERT INTO artifacts (id, session, scope, name, title, created_by)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (artifact, session, scope, name, title, record["author"]),
+            )
+        else:
+            artifact = row["id"]
+            if title is not None:
+                db.execute("UPDATE artifacts SET title = ? WHERE id = ?", (title, artifact))
+        previous = db.execute(
+            "SELECT seq, hash FROM artifact_records WHERE artifact = ? ORDER BY seq DESC LIMIT 1",
+            (artifact,),
+        ).fetchone()
+        columns = {
+            **record,
+            "id": uuid.uuid4().hex,
+            "artifact": artifact,
+            "session": session,
+            "seq": previous["seq"] + 1 if previous else 1,
+        }
+        names = ", ".join(columns)
+        db.execute(
+            f"INSERT INTO artifact_records ({names}) VALUES ({', '.join('?' * len(columns))})",
+            tuple(columns.values()),
+        )
+        rows = _artifact_rows(db, "WHERE r.id = ?", (columns["id"],))[0]
+        db.execute("COMMIT")
+    return rows, previous is not None and previous["hash"] == record["hash"]
+
+
+def _artifact_rows(db: sqlite3.Connection, where: str, args: tuple) -> list[ArtifactRows]:
+    """Artifacts with a record each (the latest, or the one `where` names), by scope and name."""
+    rows = db.execute(
+        "SELECT a.id, a.session, a.scope, a.name, a.title, r.* FROM artifacts a"
+        f" JOIN artifact_records r ON r.artifact = a.id {where} ORDER BY a.scope, a.name",
+        args,
+    ).fetchall()
+    found = []
+    for row in rows:
+        artifact = dict(zip(("id", "session", "scope", "name", "title"), tuple(row)[:5]))
+        record = dict(zip(row.keys()[5:], tuple(row)[5:]))
+        found.append((artifact, record))
+    return found
+
+
+LATEST_RECORD = "r.seq = (SELECT max(seq) FROM artifact_records WHERE artifact = a.id)"
+
+
+def latest_artifact(session: str, scope: str, name: str) -> ArtifactRows | None:
+    with connect() as db:
+        found = _artifact_rows(
+            db,
+            f"WHERE a.session = ? AND a.scope = ? AND a.name = ? AND {LATEST_RECORD}",
+            (session, scope, name),
+        )
+    return found[0] if found else None
+
+
+def artifact_record(record_id: str) -> ArtifactRows | None:
+    """A record with its artifact."""
+    with connect() as db:
+        found = _artifact_rows(db, "WHERE r.id = ?", (record_id,))
+    return found[0] if found else None
+
+
+def list_artifacts(session: str, scope: str | None = None) -> list[ArtifactRows]:
+    """The session's artifacts (or one scope's) with their latest records."""
+    with connect() as db:
+        return _artifact_rows(
+            db,
+            f"WHERE a.session = ? AND (? IS NULL OR a.scope = ?) AND {LATEST_RECORD}",
+            (session, scope, scope),
+        )
+
+
+def remove_artifacts(session: str) -> int:
+    """Delete the session's artifacts with their records. Returns how many artifacts."""
+    with connect() as db:
+        return db.execute("DELETE FROM artifacts WHERE session = ?", (session,)).rowcount
+
+
+def artifact_hashes() -> set[str]:
+    """The content hashes some record refers to."""
+    with connect() as db:
+        return {row[0] for row in db.execute("SELECT DISTINCT hash FROM artifact_records")}
+
+
+def artifact_counts() -> tuple[int, int]:
+    """How many artifacts and records there are."""
+    with connect() as db:
+        return db.execute(
+            "SELECT (SELECT count(*) FROM artifacts), (SELECT count(*) FROM artifact_records)"
+        ).fetchone()
 
 
 def _marketplace(row: sqlite3.Row) -> Marketplace:

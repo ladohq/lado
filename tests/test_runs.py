@@ -970,6 +970,9 @@ def test_the_supervisor_is_told_the_flows_and_a_run_worker_how_to_report(session
     worker = fake_tmux[-1][-1]
     prompt = worker[worker.index("--append-system-prompt") + 1]
     assert 'flow_advance(run="feature/login", outcome=...)' in prompt
+    prompt = " ".join(prompt.split())
+    assert 'A bare artifact name is one of run feature/login: "design" is' in prompt
+    assert '"feature/login/design"; you write only the run\'s artifacts' in prompt
 
 
 def test_a_run_worker_reports_each_step_only_with_flow_advance(session, fake_tmux):

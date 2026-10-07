@@ -73,6 +73,9 @@ does not wait: the answer or the dismissal comes as a message from human.
 and branch are removed. A worker of an open flow run only has its window closed: the \
 worktree and branch belong to the run.
 Workers report back with messages that arrive in your input as "[from <name>] ...".
+A bare artifact name is in the session's scope. A flow run's artifacts are named by their \
+full name, "<run>/<name>": in a step of your own in a run, write and attach the run's \
+artifacts by its full name, e.g. "feature/x/design", since you may lead several runs.
 Do not relay worker or reviewer reports to the human. Talk to the human only when a \
 decision is needed (the question and your recommendation) or at a milestone (one or two \
 lines). The details stay in `lado log {session}`.
@@ -130,6 +133,8 @@ flow_advance is your report; LADO passes it on, so send no second one. flow_stat
 the step and its outcomes. Use send_message(to="supervisor", ...) only for questions, or \
 when you are blocked and cannot finish the step.
 Nobody can see your screen: a report you only write as text is lost.
+A bare artifact name is one of run {run}: "design" is "{run}/design"; you write only the \
+run's artifacts, and read any other by its full name.
 """
     + WORKER_INPUT
 )
@@ -142,6 +147,12 @@ line ending in "call read_messages": call read_messages to get its full text. Ma
 reporting call (send_message, or flow_advance in a flow run) the last action of your turn. \
 Send no status-only messages: being idle tells \
 the others you are done.
+Artifacts: a result longer than a message, or one the human should see (a design, plan, \
+review, report, an image, an HTML mockup), is an artifact, not a path to a file: LADO keeps \
+it and shows it to the human, who may not reach this machine's disk. write_artifact(name, \
+content or file) writes one (a new version each time), read_artifact reads one, \
+list_artifacts lists them. Attach artifacts by name with the `artifacts` argument of \
+send_message, ask_human and flow_advance; read_messages names those attached to you.
 """
 
 WORKTREES_EXCLUDE = "/.lado/worktrees/"

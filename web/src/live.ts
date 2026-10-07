@@ -109,6 +109,7 @@ export type LiveState = {
   notes: Record<string, ListLoaded<NoteInfo>>; // the steps of all its runs, oldest first
   waiting: ListLoaded<WaitingItem>;
   kits: KitsLoaded | null; // while the Kits page watches them
+  kitChanges: number; // how many changes of the installed kits came: the session head asks its about again
   link: Link;
   problem: string | null;
 };
@@ -183,6 +184,7 @@ export class Live {
     notes: {},
     waiting: null,
     kits: null,
+    kitChanges: 0,
     link: "connecting",
     problem: null,
   };
@@ -251,6 +253,8 @@ export class Live {
     this.source = source;
     source.onopen = () => this.set({ link: "open", problem: null });
     source.addEventListener("reset", (event) => {
+      // After a gap the kits may have changed unseen; the first reset is no change.
+      if (this.lastId) this.set({ kitChanges: this.state.kitChanges + 1 });
       this.lastId = event.lastEventId;
       this.load();
     });
@@ -615,6 +619,7 @@ export class Live {
     }
     if (WAITING_KINDS.has(change.kind)) this.loadWaiting();
     if (change.kind === "kits" || change.kind === "marketplaces") this.applyKits(change);
+    if (change.kind === "kits") this.set({ kitChanges: this.state.kitChanges + 1 });
     const loaded = this.state.sessions;
     if (change.kind !== "sessions" || loaded === null || "error" in loaded) return;
     const item = change.item as SessionInfo | null;

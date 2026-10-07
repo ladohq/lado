@@ -129,7 +129,10 @@ fixes and docs only: no new feature, no API or schema change.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: does not exist, not inside a git repository, no commits yet), asked
-    by `start_session` and the UI's folder check. `start_session(resume=...)` takes what
+    by `start_session` and the UI's folder check. A repository's current branch (`branch`,
+    None on a detached HEAD) and its origin's URL (`remote`) are read next to `git`; a
+    remote reaches the API only through `public_remote` (no userinfo but an ssh:// user;
+    the scp form and a local path as they are). `start_session(resume=...)` takes what
     the caller means: `False` a new session (`SessionExists`, with that session's status
     and folder, when the name is taken), `True` a resume (`NoSuchSession` for an unknown
     name), `None` either, as `lado start`. No provider is the default: a new session
@@ -409,7 +412,12 @@ fixes and docs only: no new feature, no API or schema change.
     `runtime.suggested_provider` with the server's `shutil.which`, a
     `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
     `/api/kits?where=` (the kit of each name the lookup takes, an invalid one
-    `valid: false`) and `/api/providers` (no provider is marked the default); `app.py` has the session control: `POST /api/sessions` (a new
+    `valid: false`) and `/api/providers` (no provider is marked the default);
+    `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
+    Session head) is what the session's head shows besides its settings, read anew: `repos`
+    (path, public remote, branch; one now), each kit by `kits.find` with its version and
+    `source` (`Found.source` when it does not load), and the provider's `ProviderInfo`
+    (`launch.provider_info`, also `/api/providers`'s), never in the feed; `app.py` has the session control: `POST /api/sessions` (a new
     session, 409 `Taken` for a taken name), `POST …/{name}/resume`, `GET …/stop-preview`,
     `POST …/stop`, `GET …/forget-preview`, `DELETE /api/sessions/{name}?force=`, all
     through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the

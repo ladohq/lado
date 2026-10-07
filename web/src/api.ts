@@ -168,6 +168,9 @@ export type FolderInfo = components["schemas"]["FolderInfo"];
 export type RecentFolder = components["schemas"]["RecentFolder"];
 export type KitInfo = components["schemas"]["KitInfo"];
 export type ProviderInfo = components["schemas"]["ProviderInfo"];
+export type SessionAbout = components["schemas"]["SessionAbout"];
+export type RepoInfo = components["schemas"]["RepoInfo"];
+export type SessionKitInfo = components["schemas"]["SessionKitInfo"];
 export type ProviderSuggestion = components["schemas"]["ProviderSuggestion"];
 export type Launch = components["schemas"]["Launch"];
 export type Resume = components["schemas"]["Resume"];
@@ -192,6 +195,10 @@ export const getKits = (where: string | null) =>
 
 // LADO's providers, each one's CLI checked anew.
 export const getProviders = () => get<ProviderInfo[]>("/api/providers");
+
+// What the session's head shows besides its settings: its repository, its kits' and its
+// provider's versions as installed now; read anew by the server each time.
+export const getSessionAbout = (session: string) => get<SessionAbout>(`${sessionPath(session)}/about`);
 
 export const startSession = (launch: Launch) => post<Started>("/api/sessions", launch);
 

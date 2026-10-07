@@ -418,8 +418,9 @@ Sessions for now. The UI's texts are in English.
   One formatter (`ChatText.duration`) says every duration: exact to the next unit here,
   roughly (its largest unit) for `since` in Agents and Flows. The second line, small and
   quiet: Copy path (a folder icon, no other copy button), the folder in mono on one line,
-  cut with "…" at its start so its end stays in view, whole in its `title`; the kits; the
-  provider · permission mode (the provider alone without a mode). In a narrow column the
+  cut with "…" at its start so its end stays in view, whole in its `title`; its git remote
+  and branch; the kits; the provider · permission mode (the provider alone without a mode);
+  versions in tooltips (Session head, below). In a narrow column the
   icons of the first line and the items of the second go to lines of their own, with no
   sideways scrolling. The Activity chat (its feed and composer) is at most 860 px wide and
   stands in the middle of a wider column (the terminals folded), as much room on each
@@ -793,6 +794,38 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   branches left on disk (`forget-preview`), and with open runs a box to tick
   ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,
   `/sessions`.
+
+### Session head (decided 2026-10-07, feature/session-head)
+
+- The head's second line, left to right: where (the folder, then its git: the origin
+  remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
+  the kits, the CLI · permission mode. The git icon is Copy URL (the whole remote, "URL
+  copied"), and its tooltip has the whole URL, the branch and the path. Without a remote
+  only the branch shows, without either no git fact.
+- Versions are in tooltips (the UI's `Tooltip`, never a `title`), on each kit's name:
+  `<name> v<version>`, where it is (`Kit.source`, as `lado kits` says it), "installed now:
+  the next agent starts with it"; a kit not found or not loading shows why. On the
+  provider's name: `<title> <version>`, with an untested version also `tested with
+  <tested>` and an orange `!` in the line (`var(--human)`, named "untested version"), as
+  `lado doctor` warns; a CLI not installed says so. The versions are the ones installed
+  now, which the next agent starts with; a version per agent is not kept.
+- They come from `GET /api/sessions/{name}/about` (`SessionAbout`), not from
+  `SessionInfo`: git, `<cli> --version` and loading kits are too dear for the change feed,
+  and no table of lado.db holds them. It is asked when the head opens, when the feed
+  changes the session's `repo`, `kits` or `provider` (a resume), on any change of kind
+  `kits` (an install, update or remove) and after a gap in the feed. No event says the
+  CLI's version changed: it is read again only when the head opens. Until the about comes,
+  or when it fails, the line has the session's settings alone, with no error.
+- The remote reaches the API only through `runtime.public_remote`: no userinfo for a URL
+  scheme but ssh (a token alone too), a password dropped from `ssh://`, the scp form and a
+  local path as they are.
+- `repos` is a list, one item now (the session's folder). A project (ROADMAP Later:
+  Projects) takes the place of the folder and git: its icon, its name and "N repositories
+  ▾", which opens the list, each with path, remote and branch in the same form; kits and
+  CLI stay where they are.
+- Known limit: the server finds the CLI on its own PATH (`shutil.which`), as
+  `/api/providers` and the folder check do; agents get their login shell's PATH, so the
+  version shown may differ from theirs.
 
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 

@@ -8,97 +8,9 @@ P3 maybe never (candidates for removal); a new entry goes into its tier with a `
 
 # P0: fix now
 
-## A missing tmux binary gives raw errors: a CLI traceback, a ghost worker
-
-Size: S. Why here: a ghost worker is left and the spawn's own rollback fails; one fix in `tmux._run_once` (tmux.py:89-104 catches only TimeoutExpired, FileNotFoundError escapes).
-
-### No tmux on an agent's PATH breaks its LADO calls with a raw error and a ghost worker
-
-When the agent's environment has no `tmux` on PATH, its `lado mcp` fails `spawn_worker`
-with a FileNotFoundError ("Error executing tool spawn_worker"), and the cleanup in
-`runtime.spawn_worker` fails the same way on `kill_window`, so the worker stays `starting`
-in `lado ls`.
-Wanted: tmux calls raise TmuxError with "tmux not found on PATH", and the spawn cleanup
-cannot be stopped by its own tmux call failing.
-Found: 2026-10-04, fix/agent-env (fake login shell without the Homebrew PATH).
-
-### A missing tmux binary crashes the CLI with a traceback
-
-Without tmux installed, `tmux.run` raises FileNotFoundError, not TmuxError, so the CLI shows a
-traceback (now also from `migrate_if_safe` when an old database has unstopped sessions).
-Wanted: `tmux.run` turns a missing binary into TmuxError with a clear text.
-Found: 2026-10-02, review of run fix/migration-guard.
-
-## A failed rollback hides why a start or spawn failed
-
-Size: S/M. Why here: the real error is hidden and the session or worker stays half undone.
-
-When `start_session` or `spawn_worker` fails, its `except` undoes what it stored
-(`state.fail_resume`, `state.delete_session`, `close_worker`, git cleanup) and re-raises. If
-that undo raises too (e.g. the database is locked), the user sees the undo's error instead of
-the cause, and the session or worker is left half undone.
-Wanted: an undo that never replaces the original error (report its own failure apart, e.g.
-in `hooks.log` or as a note on the error) and leaves no half state.
-Found: 2026-10-02, review of run fix/resume-settings.
-## state.connect() creates and migrates lado.db; readers have no read-only connection
-
-Size: M. Why here: the root of migrations under a running session; fixing it also fixes the flaky migration-refusal test (below).
-
-`state.connect()` creates the schema when there is no `lado.db` and migrates an older one.
-The UI server must never migrate, so each endpoint first checks the schema version
-(`feed.schema_problem`) and only then calls `state.py`; a future endpoint that forgets the
-check, or a race between the check and the call, can migrate the database under a running
-session. `loop.why_stop` relies on the same discipline.
-Wanted: a read-only connection in `state.py` for readers (the server, `loop.why_stop`) that
-refuses another schema itself. Related: "Flaky: integration test of the migration refusal
-under a running session".
-Found: 2026-10-03, architect's review of the live updates design (feature/ui-live-updates).
-
-### Flaky: integration test of the migration refusal under a running session
-
-`tests/integration/test_agents.py::test_cli_refuses_to_migrate_the_database_under_a_running_session`
-failed once in nine parallel integration runs (2026-10-02) and once in `make check`
-(2026-10-05, merge step of feature/flows-tab-redesign, after main got schema 18): `lado ls`
-exited 0 (`assert 0 == 1`) because the database was already migrated back; it passed alone
-and in the next `make check`. Two likely races after `agent_helpers.previous_schema()`
-rolls `lado.db` back: a session-loop pass that passed `why_stop` before the rollback opens
-the database through `runtime.sweep`, which migrates; or a hook or `lado mcp` of the
-session's running fake agent opens it with `state.connect` (hooks and `lado mcp` do not
-check, AGENTS.md `state.py`) before the test's `lado ls`.
-Wanted: a loop pass never migrates (the schema checked on the connection the pass uses),
-so the refusal holds while the loop runs; and a test session with no process that can open
-the database between the rollback and the check (stop the fake agent's hooks, or roll back
-with the session's tmux alive but no agent), so the assertion is deterministic.
-Found: 2026-10-02, repeated `make test-integration` in fix/live-loop-reason; 2026-10-05,
-merge step of run feature/flows-tab-redesign.
-
-## Stopping one of several running sessions migrates the database under the others
-
-Size: M. Why here: it breaks running sessions on an upgrade by hand; do it together with the read-only connection above.
-
-A newer CLI refuses to migrate `lado.db` while a session runs and asks for `lado stop`
-first, but lets `lado stop` itself through: with sessions A and B running, `lado stop A`
-migrates the database while B still runs, so B's older agents break until B is stopped
-too. Also, a LADO upgraded in place (`pip install -U`) while a session runs migrates from
-that session's own hooks, which run the new code, under its older MCP servers. Wanted: a
-stop that kills the session before it opens the database, or one `lado stop --all`.
-Found: 2026-10-02, migration guard (fix/migration-guard).
-Update (2026-10-05, feature/self-update): `lado update` stops every running session with the
-old code before the new one migrates; upgrading by hand (`pip install -U`, `lado stop` of
-one session) is still exposed.
+No entry is open.
 
 # P1: next
-
-## README says there is nothing to run yet
-
-Size: S. Why here: every new user reads "nothing is ready" (README.md:7, :30); almost free.
-
-`README.md`, Install, still ends with "There is nothing else to run yet" and the status
-note says "Nothing is ready to use yet", while sessions, kits, flows and the web UI work
-(the README now has a section on the web UI).
-Wanted: a README that says what runs today (start a session, the UI, kits) and links the
-docs.
-Found: 2026-10-04, feature/server-host (implement).
 
 ## `make check` fails on timeouts when the machine is under heavy load
 
@@ -130,6 +42,28 @@ Partly done (2026-10-06, fix/check-lock): concurrent runs from separate sessions
 worktrees no longer add up, since `make check`, `make test`, `make test-integration` and
 `make test-ui` take one lock per machine (`scripts/check_lock.py`, AGENTS.md). Still open:
 one run on a machine other agents keep busy, with `-n` not chosen by the load.
+Also (2026-10-07, merge of feature/turn-resume, load average rising to 60-70 during the run
+itself, nothing else running): two of four `make check` runs on one commit failed, each on
+other timeouts: vitest Launch "the folder is checked by the server and its reason shown…";
+then the UI tests test_layout::test_a_chip_opens_its_agents_terminal… and
+test_main_screen::test_a_page_loads_without_a_console_error… (the server did not come up
+in 15 s; the fake provider's `server --port 0` timed out after 10 s) and
+test_agent_liveness::test_the_human_writes_to_a_worker_while_the_supervisor_is_stopped
+(w1 busy after 30 s; 3 of 3 green alone). So `-n auto` alone loads the machine enough.
+Also (2026-10-07, fix/test-timers, the integration tests now with `LADO_LOOP_INTERVAL=0.25`
+and `LADO_RETRY_DELAYS=0.5,0.5,0.5`, load average 54 from other sessions): one parallel
+`make test-integration` run (164 s instead of about 80) failed
+test_session_loop::test_the_loop_types_a_swallowed_message_again and
+test_flow_runs::test_runs_and_gates_survive_stop_and_start; their lines were not kept, and
+both passed 5 of 5 alone and in the six parallel runs after it (five `make
+test-integration`, one `make check`). A short retry delay is
+exceeded by a hook that takes over 0.5 s to start under such load (the message is then
+typed once more), so these may be timing-sensitive under load.
+Also (2026-10-07, fix/integration-fix1, load average 90-160 from other processes): `make
+check` failed in vitest on Launch.test.tsx:197 "the folder is checked by the server…":
+`expect(startButton().disabled).toBe(false)` right after `await ready("/src/lado")` got
+true (a synchronous check of what a later render sets); `make web` and `make check` passed
+right after.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 
@@ -145,7 +79,9 @@ Earlier single failures of the same kind, each passing alone and on the next run
 - `src/Agents.test.tsx` > "the tab without an agent opens the supervisor, and an unknown one
   is not found": `Unable to find role="region" and name "Agent supervisor"` (2026-10-04,
   feature/without-at-kit; 2026-10-05, feature/kit-marketplaces-core, the file took 26 s at
-  load average 100).
+  load average 100); 2026-10-07, merge of fix/esc-docs, with the Flows one below, twice in
+  a row at load average 74-129 while another worktree ran `uv run pytest -n auto`, which
+  takes no check lock; green when that run had ended.
 - `src/Flows.test.tsx` > "the flows tab without a run opens the first waiting run, else the
   first active one" (`… "Run feature/flows-tab"`, `… "Run fix/gate-bubble"`) and "with no
   runs both groups are there and say they are empty; with only ended ones the latest to end
@@ -172,13 +108,15 @@ Size: S/M: needs one shared wait helper with a margin.
 full `make check` at load average ~200: "timed out after 30s waiting for the report; agents:
 supervisor idle, worker starting". Alone it passed 3 of 3. The same pattern, each once in a
 full `make check` and passing alone or on a rerun:
-- `tests/integration/test_agent_kits.py::test_a_worker_gets_its_role_from_an_installed_kit`:
+- `tests/integration/test_agent_kits.py::test_a_worker_gets_its_role_from_an_installed_kit`
+  (since fix/integration-fix3 a unit test in tests/test_runtime.py):
   `timed out after 30s waiting for dev to be idle; agents: supervisor idle, dev starting`
   at load average near 200 (2026-10-05, after merging main into feature/kits-page-polish).
-- `tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack`:
+- `tests/integration/test_agent_kits.py::test_two_kits_get_two_versions_of_one_skill_pack`
+  (removed in fix/integration-fix3, its proof is in the unit tests):
   `timed out after 30s waiting for dev1 to be idle; agents: supervisor idle, dev1 busy, dev2
   starting`; the machine may have slept during that run (2026-10-05, review of
-  feature/self-update). It could wait for the event it needs rather than for both workers.
+  feature/self-update).
 - `tests/integration/test_agent_terminal.py::test_stop_ends_open_terminals_and_leaves_no_window_viewer_or_agent`
   (`waiting for w1 idle; agents: supervisor idle, w1 busy`) and
   `tests/integration/test_flow_runs.py::test_the_humans_answer_moves_the_run_on_to_the_next_agent`
@@ -234,6 +172,13 @@ putting the default kit back, so a product race is not ruled out.
 Wanted: if the kits test still fails with the wait, look for a load that resets the kits
 after the human removed them.
 Found: 2026-10-05, run feature/session-head (developer, reviewer).
+Seen again 2026-10-07, verify of fix/integration-fix2, load average 75–108: 4 UI tests
+failed, all passed on rerun: test_launch::test_stop_from_the_session_head (tooltip 'Stop
+session…' not in 5 s), test_chat::test_the_human_writes_and_the_supervisor_gets_it_and_replies
+(test_chat.py:35, value ''), test_layout::test_many_tabs_stay_on_one_line… (click 'Open
+terminal' 30 s timeout), test_launch::test_a_session_starts_from_the_new_session_window
+(provider select disabled: `/api/providers` slower than 30 s, since the CLIs' `--version`
+are slow under load; failed twice, passed the third time).
 
 ## Test runs leave `lado server` processes behind
 
@@ -249,6 +194,11 @@ kills the process.
 Wanted: every test that starts a server kills its process whatever `stop()` did, and a
 check at the end of the test session that no process a test started is still alive.
 Found: 2026-10-06, supervisor; recorded in fix/check-lock.
+Seen again 2026-10-07: two `lado.cli server --port 0` from the feature-turn-resume (13 h)
+and feature-mcp-secrets (16 h) worktrees, and three test tmux servers (`tmux -L
+lado-test-*`, sessions `ui-*`, from UI tests of fix-server-stop-streams, 1.5 h old, parent
+1) with their fake agents still alive: the tmux servers a UI test starts leak too. All idle
+(0% CPU); killed by hand.
 
 ## Flaky terminal socket test: input checked before it is written
 
@@ -275,6 +225,12 @@ Wanted: the retry never types into an input the human has just typed into (or th
 waits for the human's line to be submitted first); the test passes under load.
 Found: 2026-10-02, `make check` in fix/live-loop-reason (change touched only tests and
 loop.py constants).
+Again 2026-10-07, merge step of feature/turn-resume (load average about 10): the fake
+agent's input was `sleep 0` with the bracketed paste `[from w1] report` in the same line;
+green on the next `make check`. Again 2026-10-07 in fix/test-timers (a 0.25 s loop interval,
+load average 54), which changed the test: the report is due only after the human's
+`sleep 0` was submitted and its hooks ran, so no sweep pastes while the human types. The
+product side (a retry pasted into a line the human has started) is still open.
 
 ## Flaky UI test: a gate answered with `lado answer` loses the rail's "Needs you" count
 
@@ -336,6 +292,7 @@ PostToolUse, PermissionDenied or Stop (checked with 2.1.289). The agent stays `w
 LADO types nothing into it and its queue waits, until the human types a line.
 Wanted: the agent idle once the turn is interrupted, its queue handed over; needs a sign
 of the interruption from Claude Code (none found in its hooks).
+An Esc on the dialog runs no hook either (checked with 2.1.292; see the interrupt entry in P3).
 Found: 2026-10-04, feature/waiting-ends (implement, manual check).
 
 ## One key per waiting agent, though Kilo can have several requests open
@@ -455,17 +412,6 @@ the next unnamed spawn picks `-2`; if `add_event` fails after `add_agent`, an ag
 Wanted: these steps run under the same `_undo`, so the rollback covers everything the spawn did.
 Found: 2026-10-06, review of fix/tmux-missing-rollback.
 
-## A Claude agent whose turn the human interrupts may stay busy
-
-Size: S. Why here: the same root as a turn that ends on an error (fixed in feature/agent-liveness), which `StopFailure` does not cover.
-
-By Claude Code's hook documentation, `Stop` does not run when the human interrupts a turn
-(Esc). Not checked in LADO: the agent would stay `busy` until the human types something,
-and its queue waits.
-Wanted: check on Claude Code 2.1.29x which hook (if any) comes at an interrupt, and close
-it with the same `TURN_END`.
-Found: 2026-10-06, architect's review of feature/agent-liveness.
-
 ## An agent can stay `starting` with no hook and no reason
 
 Size: M. Why here: a dialog LADO does not foresee holds the agent silently, as the trust dialog did.
@@ -493,24 +439,38 @@ Wanted: the evidence keeps a closed agent window's last screen (e.g. tmux `remai
 in live tests, related to "Keep a crashed agent's last output"), and the cause is found.
 Found: 2026-10-06, live tests of run feature/trust-dialog.
 
-## An agent whose turn ended on a transient API error is not resumed
+## Kilo and OpenCode agents are not resumed after a transient API error
 
-Size: M. Why here: a worker stops mid-task on a temporary server error (529 Overloaded, rate_limit) and stays idle until someone types to it; with the agent-liveness change LADO tells the supervisor, but nothing resumes the agent.
+Size: S/M. Why here: a Kilo or OpenCode worker whose turn ends on an overloaded API stays
+idle until the supervisor acts, where a Claude agent is resumed by LADO.
+The plugin passes only the error's class name and message (`APIError`, `UnknownError`), so
+an overloaded server and a refused key look alike, and the opencode_family provider never
+sets `Event.transient`. Which errors reach `session.error` at all is not checked: OpenCode
+may retry retryable requests itself.
+Wanted: check by hand which errors of Kilo and OpenCode end a turn, and mark the ones that
+pass by themselves `Event.transient` in the provider (e.g. by the APIError's status code).
+Found: 2026-10-07, design of run feature/turn-resume.
+Seen again 2026-10-07 in the OpenCode live test (verify of fix/integration-fix2): w1's turn
+ended twice on `UnknownError: ... [503] Upstream error from Nvidia: Service temporarily
+overloaded`, not resumed; passed the third time. The live test cannot tell a model outage
+from a LADO failure.
 
-On 2026-10-06 developer-2 of run feature/mcp-secrets (session lado, LADO 0.23.1, Claude Code
-2.1.291) got `API Error: 529 Overloaded. This is a server-side issue, usually temporary — try
-again in a moment` on its first turn. The turn ended (StopFailure, which 0.23.1 does not
-register, so LADO kept it busy for hours); the human had to type "продолжай" in its window.
-Since agent-liveness (6d562b6) the turn ends as `idle` and the supervisor gets one line with
-the error type, but the worker's task is still left half done until the supervisor or the
-human acts.
-Wanted: for transient error types (Claude: overloaded, rate_limit, server_error; the
-OpenCode-family equivalents) LADO resumes the agent by itself after a backoff (e.g. types a
-neutral "continue" message from `lado`, at most N times with growing delays), tells the
-supervisor only when the retries run out; permanent errors (authentication, billing,
-invalid_request) are reported at once as now. The error types per provider live in the
-provider, the retry rule in the core.
-Found: 2026-10-06, by the human in session lado.
+## A message typed again before its hook confirms it runs twice
+
+Size: M. Why here: in the product the retry rule runs a non-idempotent command twice when
+only the confirmation is late, not the delivery. It showed as flaky integration tests: 13
+failures in 21 parallel runs (1 in 11 on a quiet machine, 7 in 8 under load). Under
+`-n auto` the prompt-submit hook took 0.18 s at p50 and 0.6 s at p99, longer than the
+layer's first `LADO_RETRY_DELAYS` step then (0.5 s): the sweep typed the message again
+before the hook confirmed it, and the fake agent ran it twice (duplicated inputs, a second
+`flow_start`, a second advance opening gate #2).
+The test half is done (run fix/integration-fix1): the layer's first retry step is 2 s, and
+tests keep the fake agent busy with `pause` and a release by the test instead of `sleep 1`.
+Wanted (product): a design note on "typed twice beats never" for non-idempotent tools
+(flow_start, flow_advance) when only the confirmation is late, e.g. a real agent on a
+loaded machine whose hook takes longer than the first 15 s delay.
+Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis); outputs
+kept in .lado/briefs/integ-analysis/FLAKE-*.out (local, uncommitted).
 
 # P2: when convenient
 
@@ -623,6 +583,9 @@ the answer within its default timeout and `make check` fails; a rerun with no ch
 Wanted: the test does not depend on the machine's speed (an explicit timeout, or waiting
 for the mocked fetch).
 Found: 2026-10-06, review of feature/agent-liveness.
+Again 2026-10-07, fix/check-sequential, in `make web` of a `make check`: its sibling "a taken
+name is offered to resume when the session is of this folder" (`Unable to find
+role="alert"`); the rerun passed.
 
 ## `tmux.window_names` splits window names at spaces
 
@@ -672,9 +635,24 @@ w1, so finishing w1 kept the worktree (`assert not os.path.exists(run.worktree)`
 rerun passed. In the next round (load average ~135 just before) all three failed at once
 and passed on the rerun: Kilo's supervisor spawned `worker` and cancelled the run,
 OpenCode's spawned `worker` for the flow and merged and finished w1 during the follow-up.
+On 2026-10-07 (run feature/turn-resume) OpenCode's supervisor merged and finished w1 during
+the follow-up in two runs in a row ("agent w1 is gone"); the third run passed.
+Again on 2026-10-07 (run fix/test-timers): Kilo's supervisor finished w1 before the human's
+message (the rerun passed); OpenCode failed three runs in a row, a different way each
+time: w1 committed `flow.txt` with "live flow test" instead of "OK"; the supervisor spawned
+`worker` besides w1, so finishing w1 kept the run's worktree; the supervisor called
+`finish_worker(name="w1", discard=true)` before the human's message.
+Again on 2026-10-07 (run fix/integration-fix2): Kilo's supervisor merged w1's branch and
+called `finish_worker(name="w1")` before w1 answered the human ("agent w1 is gone").
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
+Seen with Claude too, 2026-10-07 (verify of fix/integration-fix2):
+test_a_flow_run_moves_on_when_its_worker_reports[claude] failed on `assert not
+os.path.exists(run.worktree)` after finish_worker(w1): the passive supervisor (haiku) called
+spawn_worker for the run on its own, and that worker keeps the worktree; passed on rerun.
+Wanted also: the test does not depend on the supervisor not spawning (deny it spawn_worker
+in the live kit, or tolerate extra workers).
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
@@ -684,7 +662,9 @@ Size: S. Why here: a live-test flake, not in CI.
 timed out after 120 s "waiting for the supervisor to take the resume message": the
 supervisor got `session resumed: 0 open runs`, answered the human and was idle, but the
 line `[from lado] session resumed: 0 open runs` was not on its captured screen (Kilo's TUI
-had scrolled it away). Passed on the rerun with no change.
+had scrolled it away). Passed on the rerun with no change. Again on 2026-10-07 (live tests
+of run feature/turn-resume): the message was delivered, the rerun passed. Again on
+2026-10-07 (run fix/integration-fix2): delivered, supervisor busy; the next run passed.
 Wanted: the test checks that the supervisor took the message by its delivery (state), not
 by the screen.
 Found: 2026-10-06, `make test-live` on main before the 0.22.0 release.
@@ -1107,6 +1087,75 @@ Size: S. Why here: rare (a provider dropped from LADO, a test home's "fake"), bu
 `GET /api/sessions/{name}/about` calls `providers.get(sess.provider)` in `launch.session_about`; an unknown name raises ValueError, the endpoint answers 500, and the UI falls back to the plain line (AC-10), losing git and kit versions that do not depend on the provider.
 Wanted: an unknown provider gives a `ProviderInfo` with `installed: false` and a `detail` saying so (or `provider` optional); the rest of the answer stays.
 Found: 2026-10-07, feature/session-head review (Minor).
+## `ask_human` asks one question, so a round of several comes to the human as plain text
+
+Size: M. Why here: friction for the human at every design round; nothing is lost.
+
+A design round of six questions (feature/turn-resume) went to the human as one text message,
+since `ask_human` holds one question with its choices: six questions would be six cards in
+a row, each answered on its own. The human asked why there were no buttons.
+Wanted: one question card in the UI's chat with several questions, each with its own choices
+and free answer, answered at once (an extension of `ask_human`, one message back to the agent).
+Found: 2026-10-06, design of run feature/turn-resume, by the human.
+
+## A session's history grows until `lado forget`, with no way to see or trim it
+
+Size: M. Why here: no failure yet, but lado.db only grows (session `lado` had about 5 MB of messages on 0.18.0) and the human cannot tell how much or clean it up in bulk.
+
+Messages, events and notes of a session stay in lado.db for good: `lado stop` and
+`finish_worker` only mark undelivered messages `dropped`, and only `lado forget <session>`
+deletes rows, one stopped session at a time, from the CLI. Nothing says how big lado.db or
+a session's history is. Agents are not affected: a resumed supervisor gets the open runs
+and their notes, never the chat, so this is storage only.
+Wanted: an explicit retention the human runs, never a silent age-based delete: `lado forget`
+of stopped sessions by age (e.g. `--older-than 30d`, listing what it deletes first), a
+`lado doctor` line with lado.db's size and its largest sessions, and Forget for a stopped
+session in the UI. Running sessions are never trimmed.
+Found: 2026-10-07, the human's question in session chat-history about how the chat grows.
+
+## Follow-ups of fix/test-timers: an empty LADO_RETRY_DELAYS, two weak tests
+
+Size: S. Why here: review's Minor findings, nothing wrong in production.
+1. `runtime.retry_delays_from` takes `value or "15,30,60"`, so `LADO_RETRY_DELAYS=""` now
+   silently means the production delays (before, it failed at import); `LADO_LOOP_INTERVAL=""`
+   is refused. 2. tests/integration/test_agents.py:291-292: the comment says this send's
+   sweep or the loop's types the report in, but only the loop's can, so the test no longer
+   covers "a send_message sweep types the due report in with the next message".
+3. tests/test_loop.py `test_wait_stopped_waits_three_intervals_by_default` checks only an
+   upper bound, so a timeout of 0 would pass it.
+Wanted: `"15,30,60" if value is None else value` (and "" refused, with a test); the comment
+fixed and the send path covered at the unit layer if it is not; a lower bound (>= 3 intervals).
+Found: 2026-10-07, review of fix/test-timers.
+## A stream that opens while the UI server stops can keep the stop waiting
+
+Size: S. Why here: the stop is only slower, nothing is lost, and the window is narrow.
+`feed.Hub.subscribe` checks `_closed` before `await to_thread.run_sync(self.source.last)`;
+`Hub.close` does not take the lock, so when it runs during that await, the first stream
+starts its `_run` task and joins `_queues` after the None was sent: it never ends, and the
+stop waits uvicorn's full grace again, as before fix/server-stop-streams.
+Wanted: `subscribe` checks `_closed` again after the await, before it starts the task or
+adds the queue; a unit test closes the hub during that await.
+Found: 2026-10-07, review of fix/server-stop-streams (Minor finding).
+
+## Two session loops for a moment after a second `lado loop` exits
+
+Size: S. Why here: one loop per session is a rule (`flock`); a second one, even briefly,
+could sweep twice.
+`tests/integration/test_session_loop.py:59` once saw 2 loop pids right after the test's
+second `lado loop` returned 0, under `-n auto` load. Maybe the loop `start_session` started
+was still importing (before `take_lock`) while the second took and dropped the lock, or
+`pgrep -f` matched a passing process. Not explained.
+Wanted: find which with that run's loop.log; if a loop can start after another one gave up
+the lock, the test should wait for the lock holder, or the product should say so.
+Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis).
+
+## tests/test_loop.py `_stop_after`: its docstring says `passes` holds tmux calls
+
+Size: S. Why here: a misleading test comment (review Minor of fix/integration-fix2).
+The docstring says each pass's tmux calls go to `passes`, but `passes` collects the loop's
+sleeps; the tmux calls are counted in `tmux_server["calls"]`.
+Wanted: the docstring says what each collects.
+Found: 2026-10-07, review of fix/integration-fix2.
 
 # P3: maybe never
 
@@ -1392,3 +1441,23 @@ feature/session-tabs too; Mono and the icons made it wider.
 Wanted: the session's tabs always whole, or plainly scrollable: a thin bar and the wheel as
 for the terminals, or shorter labels / icons only in a narrow column.
 Found: 2026-10-06, review of feature/session-tabs (`session-light.png`).
+
+## A Claude agent whose turn the human interrupts stays busy
+
+Size: S. Why here: checked, Claude Code has no hook for it; recheck on a new Claude Code.
+
+Claude Code runs no hook when the human interrupts a turn with Esc (checked by hand with
+2.1.292, model haiku, every hook event of the binary registered): while text streams,
+nothing after `UserPromptSubmit` (no `Stop`, `StopFailure` or `Notification`); while a tool
+runs, no `PostToolUse`, `PostToolUseFailure` or `Stop` (`PostToolUseFailure`'s
+`is_interrupt` never reaches a hook: its hooks run under the turn's abort signal, which Esc
+aborts); on a permission dialog, nothing after `PermissionRequest` (and `Notification`
+permission_prompt), no `PermissionDenied`. So the agent stays `busy`, or `waiting` after a
+`PermissionRequest`, and its queue waits until the human's next prompt in its window, whose
+`Stop` ends the turn and hands the queue over. Kilo and OpenCode report the Esc
+(`MessageAbortedError` with `session.idle`) as a turn's end.
+Rejected (the human's decision): reading the transcript's "[Request interrupted by user]"
+marker, an undocumented text format that cannot tell whether the human goes on typing.
+Wanted: when a Claude Code release adds a hook for an interrupt, close the turn with
+`TURN_END` as for any other.
+Found: 2026-10-06, architect's review of feature/agent-liveness; checked 2026-10-06.

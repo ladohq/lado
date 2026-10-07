@@ -13,8 +13,12 @@ from lado import loop, runtime, state, tmux
 pytestmark = pytest.mark.integration
 
 SESSION = "live"
-# Two passes of the session loop after an agent's first loop interval, and some slack.
-FOUND_GONE = 5 * loop.INTERVAL + agent_helpers.TIMEOUT
+
+
+def found_gone() -> float:
+    """Two passes of the session loop after an agent's first loop interval, and some slack:
+    loop.INTERVAL is the integration tests' (conftest) only once a test runs."""
+    return 5 * loop.INTERVAL + agent_helpers.TIMEOUT
 
 
 def wait_for(check, what: str, timeout: float = agent_helpers.TIMEOUT):
@@ -28,6 +32,10 @@ def status(agent: str) -> str | None:
 
 def wait_status(agent: str, expected: str, timeout: float = agent_helpers.TIMEOUT) -> None:
     wait_for(lambda: status(agent) == expected, f"{agent} to be {expected}", timeout)
+
+
+def release(agent: str, n: int) -> None:
+    agent_helpers.release(SESSION, agent, n)
 
 
 def inputs(agent: str) -> list:
@@ -71,7 +79,7 @@ def session(repo, monkeypatch):
 def test_an_agent_that_crashes_before_its_first_hook_is_found_stopped(session):
     runtime.spawn_worker(SESSION, "crash at start", name="w1")
     runtime.send_message(SESSION, "supervisor", "w1", "are you there?")
-    wait_status("w1", state.STOPPED, FOUND_GONE)
+    wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
     assert message_to("w1").state == state.DROPPED
     hint = f"w1 stopped ({runtime.WINDOW_GONE}): end it with"
@@ -88,18 +96,20 @@ def test_an_agent_that_crashes_before_its_first_hook_is_found_stopped(session):
 
 
 def test_an_agent_that_dies_in_a_turn_is_found_stopped(session):
-    runtime.spawn_worker(SESSION, "sleep 1\ndie", name="w1")
+    runtime.spawn_worker(SESSION, "pause\ndie", name="w1")
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "next")
-    wait_status("w1", state.STOPPED, FOUND_GONE)
+    release("w1", 1)
+    wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
     assert message_to("w1").state == state.DROPPED
 
 
 def test_a_turn_that_ends_on_an_error_hands_over_the_queue(session):
-    runtime.spawn_worker(SESSION, "sleep 1\nfail rate_limit", name="w1")
+    runtime.spawn_worker(SESSION, "pause\nfail rate_limit", name="w1")
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "go on")
+    release("w1", 1)
     wait_for(lambda: message_to("w1").state == state.DELIVERED, "w1 to get its queue")
     assert "[from supervisor] go on" in inputs("w1")
     wait_status("w1", state.IDLE)
@@ -108,10 +118,37 @@ def test_a_turn_that_ends_on_an_error_hands_over_the_queue(session):
     assert errors == ["rate_limit"]
 
 
+def test_a_turn_that_ends_on_a_transient_error_is_resumed_until_the_resumes_are_spent(
+    repo, monkeypatch
+):
+    """No hook comes after the turn's end: the session loop types in each resume. The lead
+    hears of the error only after the last one."""
+    monkeypatch.setenv("LADO_RESUME_DELAYS", "0.5,0.5")  # for the hooks and the loop
+    runtime.start_session(str(repo), SESSION, None, "fake")
+    wait_status("supervisor", state.IDLE)
+    runtime.spawn_worker(SESSION, "failing overloaded", name="w1")
+    spent = "turn of w1 ended on an error after 2 resumes: overloaded; it is idle"
+    wait_for(lambda: spent in from_lado("supervisor"), "the supervisor to be told")
+    resumes = [
+        f"[from lado] your turn ended on a temporary API error (overloaded); "
+        f"continue where you left off (resume {n} of 2)"
+        for n in (1, 2)
+    ]
+    assert [i for i in inputs("w1") if str(i).startswith("[from lado]")] == resumes
+    assert [m.state for m in state.list_messages(SESSION) if m.recipient == "w1"] == [
+        state.DELIVERED,
+        state.DELIVERED,
+    ]
+    assert from_lado("supervisor") == [spent]
+    errors = [e.detail for e in state.list_events(SESSION) if e.kind == state.TURN_ERROR]
+    assert errors == ["overloaded"] * 3
+
+
 def test_an_agent_that_exits_with_messages_queued_drops_them_and_tells_the_sender(session):
-    runtime.spawn_worker(SESSION, "sleep 1\nexit", name="w1")
+    runtime.spawn_worker(SESSION, "pause\nexit", name="w1")
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "one more")
+    release("w1", 1)
     wait_status("w1", state.STOPPED)
     assert runtime.status_reason(SESSION, "w1") == "its CLI exited"
     message = message_to("w1")
@@ -146,7 +183,7 @@ def test_an_agent_whose_cli_asks_first_and_ends_on_no_is_found_stopped(session, 
     monkeypatch.setenv("FAKE_AGENT_ASKS_FIRST", "1")
     runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     tmux.run("send-keys", "-t", f"{SESSION}:w1", "Enter")  # "no": the CLI exits, no hook
-    wait_status("w1", state.STOPPED, FOUND_GONE)
+    wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
 
 
@@ -171,7 +208,7 @@ def test_finishing_a_worker_tells_no_one_it_stopped(session):
 
 
 def test_stopping_a_session_tells_no_one_and_counts_what_it_dropped(session):
-    runtime.spawn_worker(SESSION, "sleep 30", name="w1")
+    runtime.spawn_worker(SESSION, "pause", name="w1")  # never released: busy till the stop
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "queued")
     stopped = runtime.stop_session(SESSION)

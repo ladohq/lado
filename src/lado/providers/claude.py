@@ -42,6 +42,10 @@ TESTED_VERSION = "2.1.289"
 # authentication_failed, billing_error, server_error, also for "your computer went to
 # sleep", max_output_tokens, unknown, ...), with `error` and `error_details`; Claude Code
 # ignores its output and exit code (read in the binary of 2.1.291, not triggered by hand).
+# Of these types, the ones that pass by themselves, so LADO resumes the agent after a while
+# (Event.transient): an overloaded or failing API, and unknown, which the machine's sleep
+# is too. The others need someone to act and go to the lead at once.
+TRANSIENT = frozenset({"overloaded", "server_error", "unknown"})
 EVENTS = {
     "SessionStart": base.SESSION_START,
     "UserPromptSubmit": base.PROMPT_SUBMIT,
@@ -171,8 +175,11 @@ class ClaudeProvider(base.Provider):
         if native == "SessionStart" and data.get("source") in SWITCHES:
             return base.Event(base.CONVERSATION_START)
         if native == "StopFailure":
-            error = base.error_line(data.get("error") or "unknown", data.get("error_details", ""))
-            return base.Event(base.TURN_END, error=error, output_ignored=True)
+            kind = data.get("error") or "unknown"
+            error = base.error_line(kind, data.get("error_details", ""))
+            return base.Event(
+                base.TURN_END, error=error, transient=kind in TRANSIENT, output_ignored=True
+            )
         neutral = EVENTS[native]
         if neutral in (base.WAITING, base.RESUMED):
             return base.Event(neutral, key=_request_key(data))

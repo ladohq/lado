@@ -157,8 +157,10 @@ later desktop app and a later cloud setup; the UI is its client.
 - A server started in the background writes its output and request errors to
   `LADO_HOME/server.log` (owner only; no access log, which would hold the login link's
   token). When it ends while `lado ui` waits for it, `lado ui` says so at once with its
-  exit code and last log line. A stopping server waits at most a second for open
-  requests: an event stream never ends by itself.
+  exit code and last log line. A stopping server ends every open event stream first (an
+  event stream never ends by itself; a stream opened during the shutdown ends at once),
+  then waits at most a second for the other open requests: a stop with a tab open is as
+  fast as one without, and the browser reconnects as after any end of its stream.
 
 ### The change feed
 

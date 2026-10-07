@@ -10,7 +10,6 @@ import os
 import subprocess
 import sys
 import threading
-import time
 import urllib.request
 import uuid
 
@@ -257,13 +256,21 @@ def test_the_servers_update_check_holds_up_no_other_request(tmp_path, monkeypatc
         with urllib.request.urlopen(request, timeout=30) as answer:
             checked.update(json.load(answer))
 
+    def reader() -> int | None:
+        """A writing end of the FIFO once the server opened it to read, else None."""
+        try:
+            return os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:  # ENXIO: no reader yet
+            return None
+
     asking = threading.Thread(target=ask_update)
     asking.start()
-    time.sleep(0.5)  # the update request reads the FIFO by now
+    end = agent_helpers.wait_for(reader, "the update request to read the FIFO", "none")
     with urllib.request.urlopen(f"{url}/api/health", timeout=5) as answer:
         assert json.load(answer)["ok"]
     assert asking.is_alive()
-    fifo.write_text(json.dumps(agent_helpers.pypi_index(**{NEW: "2026-10-04"})))
+    with os.fdopen(end, "w") as index:
+        index.write(json.dumps(agent_helpers.pypi_index(**{NEW: "2026-10-04"})))
     asking.join(30)
     assert checked["available"] == NEW
 

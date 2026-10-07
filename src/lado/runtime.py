@@ -31,7 +31,20 @@ MAX_MESSAGE = 8000
 # Seconds after the 1st, 2nd, ... time a message was typed into an agent's window before
 # sweep deals with it again: types it again, or gives up after the last. LADO_RETRY_DELAYS
 # ("0.5,0.5,0.5") replaces them for the processes started with it: the integration tests'.
-RETRY_DELAYS = tuple(float(d) for d in os.environ.get("LADO_RETRY_DELAYS", "15,30,60").split(","))
+
+
+def retry_delays_from(value: str | None) -> tuple[float, ...]:
+    """The retry delays: `value`, LADO_RETRY_DELAYS's, else LADO's own."""
+    return tuple(float(d) for d in (value or "15,30,60").split(","))
+
+
+RETRY_DELAYS = retry_delays_from(os.environ.get("LADO_RETRY_DELAYS"))
+# Seconds after the 1st, 2nd, ... turn in a row that ended on an error that passes by itself
+# (Event.transient) before LADO tells the agent to go on; after the last, the error goes to
+# the lead (turn_failed). LADO_RESUME_DELAYS replaces them, as LADO_RETRY_DELAYS does.
+RESUME_DELAYS = tuple(
+    float(d) for d in os.environ.get("LADO_RESUME_DELAYS", "30,120,480").split(",")
+)
 # Characters of an agent's first input that go on its command line. tmux refuses a command
 # over about 16 KB, and the system prompt is on it too; a longer input comes as a message.
 FIRST_INPUT_LIMIT = 2000
@@ -1110,14 +1123,23 @@ def sweep(
     delays: tuple[float, ...] | None = None,
 ) -> None:
     """Deal with the messages typed into the agent's window (default: each agent's) that
-    its prompt-submit hook has not confirmed (the one rule for them; see _plan), then type
-    in the queue of an idle agent, which every hook may have missed."""
+    its prompt-submit hook has not confirmed (the one rule for them; see _plan), queue the
+    resume due for an idle agent (turn_failed), then type in the queue of an idle agent,
+    which every hook may have missed."""
     now = time.time() if now is None else now
     delays = delays or RETRY_DELAYS
     names = [agent] if agent else [a.name for a in state.list_agents(session)]
     for name in names:
         _sweep_sent(session, name, now, delays)
+        state.take_resume(session, name, now, _resume_summary)
         hand_over(session, name)
+
+
+def _resume_summary(resume: int, error: str) -> str:
+    return _cut(
+        f"your turn ended on a temporary API error ({error}); continue where you left off "
+        f"(resume {resume} of {len(RESUME_DELAYS)})"
+    )
 
 
 def _sweep_sent(session: str, name: str, now: float, delays: tuple[float, ...]) -> None:
@@ -1260,12 +1282,21 @@ def _tell_lead(session: str, agent: str, summary: str, body: str = "") -> None:
         post(session, state.LADO, to, _cut(summary), body)
 
 
-def turn_failed(session: str, agent: str, error: str) -> None:
-    """The agent's turn ended on an error (a provider's TURN_END with one): record it, and
-    tell the supervisor, or the human when it is the supervisor's. The agent is idle then
-    (lado.hooks)."""
+def turn_failed(session: str, agent: str, error: str, transient: bool = False) -> None:
+    """The agent's turn ended on an error (a provider's TURN_END with one): record it. An
+    error that passes by itself (`transient`) plans a resume, RESUME_DELAYS[n] after the
+    n-th such turn in a row, which sweep carries out, and tells no one; any other error,
+    or one after the last resume, goes to the supervisor, or to the human when it is the
+    supervisor's. The agent is idle then (lado.hooks)."""
     state.add_event(session, agent, state.TURN_ERROR, error)
-    _tell_lead(session, agent, f"turn of {agent} ended on an error: {error}; it is idle")
+    if transient and state.schedule_resume(session, agent, time.time(), RESUME_DELAYS):
+        return
+    state.reset_resumes(session, agent)
+    after = ""
+    if transient:
+        count = len(RESUME_DELAYS)
+        after = f" after {count} resume{'' if count == 1 else 's'}"
+    _tell_lead(session, agent, f"turn of {agent} ended on an error{after}: {error}; it is idle")
 
 
 def agent_ended(session: str, name: str, reason: str) -> bool:

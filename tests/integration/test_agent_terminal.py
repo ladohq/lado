@@ -148,7 +148,7 @@ def test_view_leaves_the_size_alone_and_control_sets_it(repo, opened):
     size = tmux.window_size(window)
     view = opened("supervisor", "view")
     assert view.size == size
-    time.sleep(0.5)
+    time.sleep(0.5)  # nothing to wait for: the size must stay as it is a while
     assert tmux.window_size(window) == size
     assert view.follow_window() is None
     control = opened("supervisor", "control")

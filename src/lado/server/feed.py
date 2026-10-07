@@ -288,10 +288,15 @@ class Hub:
         self._derived_at = 0.0
         self._errors = loop.RepeatedErrors(log.warning)  # one traceback, then counts
         self._failures = 0  # failing reads in a row
+        self._closed = False  # the server shuts down
 
     async def subscribe(self) -> asyncio.Queue[list[Event] | None]:
         """A queue that gets each batch of events, and None when the stream must end."""
         async with self._lock:
+            if self._closed:
+                ended: asyncio.Queue[list[Event] | None] = asyncio.Queue()
+                ended.put_nowait(None)
+                return ended
             if self._task is None:
                 # Before the stream reads its start: what it starts from is not missed.
                 self._position = await to_thread.run_sync(self.source.last)
@@ -301,6 +306,16 @@ class Hub:
             queue: asyncio.Queue[list[Event] | None] = asyncio.Queue()
             self._queues.add(queue)
             return queue
+
+    def close(self) -> None:
+        """The server shuts down: every open stream ends, and so does each one opened after.
+        uvicorn would wait for them until its grace is over, then cut them; the browser
+        reconnects after either."""
+        self._closed = True
+        self._send(None)
+        if self._task is not None:
+            self._task.cancel()
+            self._task = None
 
     def unsubscribe(self, queue: asyncio.Queue) -> None:
         self._queues.discard(queue)

@@ -24,7 +24,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import IO
 
-from lado import __version__, providers, state, terminal
+import lado
+from lado import providers, state, terminal
 from lado.runtime import LadoError
 
 DEFAULT_PORT = 8000
@@ -32,7 +33,7 @@ LAST_PORT = 8020  # the last port tried when the ones before it are busy
 LOCK_WAIT = 0.1  # seconds a starting server tries to take the lock: `running()` holds it briefly
 READY_TIMEOUT = 15.0  # seconds `lado ui` waits for a server it started
 STOP_TIMEOUT = 10.0  # seconds `lado server stop` waits for the server to end
-# Seconds a stopping server waits for open requests; an event stream never ends by itself.
+# Seconds a stopping server waits for open requests; its event streams end at once (app.Server).
 SHUTDOWN_GRACE = 1
 
 
@@ -206,21 +207,21 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
             access_log=False,
             timeout_graceful_shutdown=SHUTDOWN_GRACE,
         )
-        server = uvicorn.Server(config)
+        server = app.Server(config)
         url = listening.url
         info = {
             "url": url,
             "host": listens,
             "port": bound,
             "pid": os.getpid(),
-            "version": __version__,
+            "version": lado.__version__,
         }
         written = info_path().with_suffix(".tmp")
         written.write_text(json.dumps(info))
         written.replace(info_path())
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"{stamp} LADO server {__version__} at {url}, listening on {listens}:{bound}, "
+            f"{stamp} LADO server {lado.__version__} at {url}, listening on {listens}:{bound}, "
             f"pid {os.getpid()}",
             flush=True,
         )

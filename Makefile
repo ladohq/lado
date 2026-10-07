@@ -61,8 +61,11 @@ dist: web ## build the sdist and the wheel into dist/ and check that both ship t
 browser: ## install Chromium for the UI tests (Playwright)
 	uv run playwright install chromium
 
-check: ## everything; run after your last change and when a merge brings new commits. Unit, integration and UI tests in one parallel run
+check: ## everything; run after your last change and when a merge brings new commits. Unit, integration and UI tests run one after another (in one run, xdist gives the integration tests to two workers), all of them, failing at the end
 	$(LOCK) $(MAKE) --no-print-directory _check
 
 _check: lint test-js web browser
-	uv run pytest -m 'not live' $(PYTEST_ARGS)
+	uv run python scripts/check_groups.py \
+		--group unit uv run pytest $(PYTEST_ARGS) \
+		--group integration uv run pytest -m integration $(PYTEST_ARGS) \
+		--group ui uv run pytest -m ui $(PYTEST_ARGS)

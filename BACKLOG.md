@@ -504,6 +504,9 @@ the answer within its default timeout and `make check` fails; a rerun with no ch
 Wanted: the test does not depend on the machine's speed (an explicit timeout, or waiting
 for the mocked fetch).
 Found: 2026-10-06, review of feature/agent-liveness.
+Again 2026-10-07, fix/check-sequential, in `make web` of a `make check`: its sibling "a taken
+name is offered to resume when the session is of this folder" (`Unable to find
+role="alert"`); the rerun passed.
 
 ## `tmux.window_names` splits window names at spaces
 

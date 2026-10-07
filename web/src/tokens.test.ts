@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 
+import pkg from "../package.json";
 import tokens from "./tokens.css?raw";
 
 const stylesheets = import.meta.glob<string>("./**/*.css", {
@@ -70,7 +71,15 @@ const PAIRS = [
   ["on-avatar", "avatar-4"],
   ["on-avatar", "avatar-5"],
   ["on-avatar", "avatar-6"],
+  ["on-avatar", "muted"], // LADO's own small avatar in a flow event's line
 ] as const;
+
+test("the UI's text is Inter, its code IBM Plex Mono, both bundled", () => {
+  expect(tokens).toMatch(/--sans:\s*"Inter",/);
+  expect(tokens).toMatch(/--mono:\s*"IBM Plex Mono",/);
+  expect(Object.keys(pkg.dependencies)).toEqual(expect.arrayContaining(["@fontsource/inter", "@fontsource/ibm-plex-mono"]));
+  expect(Object.keys(pkg.dependencies)).not.toContain("@fontsource/ibm-plex-sans");
+});
 
 test.each([
   ["light", 0],

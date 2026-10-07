@@ -81,7 +81,7 @@ function note(id: number, more: Partial<NoteInfo> = {}): NoteInfo {
 }
 
 function event(id: number, kind: string, detail: string, created_at: string, more: Partial<RunEventInfo> = {}): RunEventInfo {
-  return { id, run: "fix/gate-bubble", kind, actor: "lado", detail, created_at, ...more };
+  return { id, run: "fix/gate-bubble", kind, actor: "lado", detail, transition: null, created_at, ...more };
 }
 
 function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {

@@ -1688,7 +1688,7 @@ h3 {
 /* In a column wider than that (the terminals folded), the Activity chat stands in its
    middle: as much room on each side, a percentage of the column; an agent's composer
    (Agents) stays at its page's left edge. Above the `margin: 0` of the feed's items
-   (.chat-start, .run-events). */
+   (.chat-start, .run-group). */
 .chat > .chat-feed > *,
 .chat > .composer {
   --chat-side: max(0px, (100% - 860px) / 2);
@@ -1904,38 +1904,155 @@ h3 {
   }
 }
 
-/* A flow run's events between the messages, and the human's dismissal of a question: quiet
-   lines at the text's column. */
-.run-events,
+/* A small avatar in a line: a flow event's actor, the human's reply. */
+.avatar.mini {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.avatar-lado {
+  background: var(--muted);
+  color: var(--on-avatar);
+}
+
+/* A flow run's events between the messages (Chat.tsx, RunEvents; docs/design/ui.md, Flow
+   events), the human's reply to a question not in the window and the line of a late one:
+   quiet lines at the text's column. */
+.run-group,
 .chat-quiet {
+  margin: 0;
+  padding: 2px var(--row-pad) 2px var(--text-start);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.chat-quiet {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.run-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0 2px;
+}
+
+.run-head .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.run-head a {
+  color: var(--action);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.run-head a:hover {
+  text-decoration: underline;
+}
+
+.run-group ol {
   display: flex;
   flex-direction: column;
   gap: 2px;
   margin: 0;
-  padding: 2px var(--row-pad) 2px var(--text-start);
-  color: var(--muted);
-  font: 12.5px/1.5 var(--mono);
+  padding: 0;
   list-style: none;
 }
 
-.chat-quiet {
-  display: block;
+.run-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
 }
 
-.chat-quiet time {
-  margin-left: 4px;
+.run-actor {
+  flex: none;
+  min-width: 72px;
 }
 
-.run-kind {
+.run-state {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--raised);
+  font: 12px/1.6 var(--mono);
+}
+
+.run-state.now {
+  color: var(--ink);
+}
+
+.run-chip,
+.run-outcome {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--raised);
+  font-size: 12px;
   font-weight: 600;
 }
 
-.run-text {
-  overflow-wrap: anywhere;
+/* A move forward and a run's end went well; a move back and a gate's wait are orange. */
+.run-outcome.forward,
+.run-flow_end .run-chip {
+  background: var(--done-ground);
+  color: var(--done);
 }
 
-.run-event time {
-  margin: 0 4px;
+.run-outcome.back,
+.run-gate_open .run-chip {
+  background: var(--human-ground);
+  color: var(--human);
+}
+
+/* The core's detail as it is, cut at the line's end. */
+.run-detail,
+.late-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-line time,
+.chat-quiet time {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The comment of the human's answer to a gate, under the move it made. */
+.run-comment {
+  margin: 2px 0 4px 26px;
+  color: var(--ink);
+}
+
+.run-comment .chat-body {
+  margin-top: 0;
+}
+
+.late-text .run-actor {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.late-text a {
+  color: var(--action);
+  text-decoration: none;
+}
+
+.late-text a:hover {
+  text-decoration: underline;
 }
 
 .link-button {
@@ -2012,6 +2129,42 @@ h3 {
   background: var(--done-ground);
   color: var(--done);
   font-weight: 600;
+}
+
+/* The human's reply in the question's card: who, what and when, on the human's ground; a
+   dismissal, quieter. */
+.question-answer {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--action-ground);
+}
+
+.question-answer.dismissed {
+  background: var(--raised);
+}
+
+.answer-top {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.answer-top time {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.answer-choice {
+  margin: 4px 0 0;
+  color: var(--done);
+  font-weight: 600;
+}
+
+.question-answer .chat-body {
+  margin-top: 4px;
 }
 
 /* The human's answer: the text as written, the comment under a choice. */
@@ -2131,11 +2284,6 @@ h3 {
   margin: 2px 0 0 14px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-/* The human's answer to a gate as the human's own row: the comment under its head. */
-.feed-row .gate-comment {
-  margin-left: 0;
 }
 
 .gate-closed-text {
@@ -2267,15 +2415,6 @@ h3 {
 .chat-outcome {
   margin-top: 8px;
   font-size: 12.5px;
-}
-
-.chat-outcome a {
-  color: var(--action);
-  text-decoration: none;
-}
-
-.chat-outcome a:hover {
-  text-decoration: underline;
 }
 
 .answer {

@@ -1,12 +1,14 @@
 // An agent's question to the human (ask_human), in its session's chat and on Needs you: the
 // card in its agent's row (FeedRow), without a head of its own. Open, it is answered with a
 // choice, own words or both, or dismissed; closed, its choices faded, the chosen one marked,
-// and its outcome. The card changes only when the feed brings the question closed, whoever
-// answered it. Also what the chat says of the human's answer, from the answer's fields.
+// and the human's reply under them (docs/design/ui.md, Answer in the question card). The
+// card changes only when the feed brings the question closed, whoever answered it. Also what
+// the chat says of the human's answer, from the answer's fields.
 import { useState, type FormEvent } from "react";
 
-import { answerQuestion, ApiError, dismissQuestion, type MessageInfo } from "./api";
-import { Body } from "./ChatText";
+import { answerQuestion, ApiError, dismissQuestion, HUMAN, type MessageInfo } from "./api";
+import { Body, clock } from "./ChatText";
+import { MiniAvatar } from "./FeedRow";
 
 // The DOM id of a message's place in the chat: a link to it scrolls there.
 export const messageAnchor = (id: number) => `message-${id}`;
@@ -35,34 +37,18 @@ export function replyOf(reply: MessageInfo, question?: MessageInfo): Reply {
   return { text: reply.summary.startsWith(prefix) ? reply.summary.slice(prefix.length) : reply.summary, comment: "" };
 }
 
-// What became of a closed question; `link`, the human's answer to go to. `next`: the answer
-// is the entry right under the question, which says the rest.
-export function outcome(question: MessageInfo, answer: MessageInfo | undefined, next: boolean): { text: string; link?: number } {
-  switch (question.question_state) {
-    case "answered":
-      if (next) return { text: "✓ Answered" };
-      if (answer?.choice) return { text: `✓ You chose ${answer.choice}` };
-      if (answer) return { text: "✓ You answered in your own words", link: answer.id };
-      return question.answered_by === null ? { text: "✓ Answered" } : { text: "✓ Answered", link: question.answered_by };
-    case "dismissed":
-      return { text: "Dismissed" };
-    default:
-      return { text: "Closed: the agent left" };
-  }
-}
-
+// `answer`: the human's reply to it, when it is in the window; `anchored`, the reply's
+// anchor is on the card (no late line of it stands in the chat; Chat.tsx, feedRows).
 export function Question({
   session,
   question,
   answer,
-  next = false,
-  go,
+  anchored = false,
 }: {
   session: string;
   question: MessageInfo;
   answer?: MessageInfo;
-  next?: boolean;
-  go?: (anchor: string) => void;
+  anchored?: boolean;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -148,39 +134,52 @@ export function Question({
         <>
           {question.choices && (
             <ul className="choices closed" aria-label="Choices">
-              {question.choices.map((choice) => (
-                <li key={choice} className={choice === answer?.choice ? "chosen" : undefined}>
-                  {choice}
-                </li>
-              ))}
+              {question.choices.map((choice) =>
+                choice === answer?.choice ? (
+                  <li key={choice} className="chosen">
+                    ✓ {choice}
+                  </li>
+                ) : (
+                  <li key={choice}>{choice}</li>
+                ),
+              )}
             </ul>
           )}
-          <Outcome {...outcome(question, answer, next)} go={go} />
+          {question.question_state === "closed" ? (
+            <p className="chat-outcome">Closed: the agent left</p>
+          ) : (
+            <Given question={question} answer={answer} anchored={anchored} />
+          )}
         </>
       )}
     </div>
   );
 }
 
-function Outcome({ text, link, go }: { text: string; link?: number; go?: (anchor: string) => void }) {
+// The human's reply in the question's card: who and when, and the answer (the choice and
+// the comment, else the own words) as the human typed it; a dismissal, only that.
+function Given({ question, answer, anchored }: { question: MessageInfo; answer?: MessageInfo; anchored: boolean }) {
+  const dismissed = question.question_state === "dismissed";
+  const reply = answer && replyOf(answer, question);
   return (
-    <p className="chat-outcome">
-      {text}
-      {link !== undefined && (
-        <>
-          {" · "}
-          <a
-            href={`#${messageAnchor(link)}`}
-            onClick={(event) => {
-              if (!go) return;
-              event.preventDefault();
-              go(messageAnchor(link));
-            }}
-          >
-            go to answer
-          </a>
-        </>
-      )}
-    </p>
+    <div
+      className={`question-answer${dismissed ? " dismissed" : ""}`}
+      id={answer && anchored ? messageAnchor(answer.id) : undefined}
+    >
+      <div className="answer-top">
+        <MiniAvatar who={HUMAN} />
+        <span className="answer-head">You · {dismissed ? "dismissed" : "answered"}</span>
+        {answer && <time dateTime={answer.created_at}>{clock(answer.created_at)}</time>}
+      </div>
+      {reply && "text" in reply &&
+        (answer?.choice ? (
+          <>
+            <p className="answer-choice">✓ {reply.text}</p>
+            {reply.comment && <Body text={reply.comment} breaks />}
+          </>
+        ) : (
+          <Body text={reply.text} breaks />
+        ))}
+    </div>
   );
 }

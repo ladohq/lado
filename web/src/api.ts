@@ -89,6 +89,7 @@ export type MessageInfo = components["schemas"]["MessageInfo"];
 export type Sent = components["schemas"]["Sent"];
 
 export const HUMAN = "human"; // the human as a participant of LADO's messages
+export const LADO = "lado"; // LADO itself, as the sender of its notices and the actor of run events
 
 // A request that changes something: the browser sends its Origin, which the server checks.
 async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T> {

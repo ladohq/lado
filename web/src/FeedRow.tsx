@@ -5,6 +5,7 @@
 // and no letter; its time stands where the avatar would.
 import type { ReactNode } from "react";
 
+import { HUMAN, LADO } from "./api";
 import { clock } from "./ChatText";
 import { GateIcon } from "./icons";
 
@@ -40,6 +41,17 @@ function Avatar({ kind, who }: { kind: RowKind; who: string }) {
   const { letter, colour } = avatar(who);
   return (
     <span className={`avatar avatar-${colour}`} aria-hidden="true">
+      {letter}
+    </span>
+  );
+}
+
+// A small avatar in a line of the feed (a flow event's actor, the human's reply in a
+// question's card): an agent's letter and colour, the human's "Y", LADO's "L" on a quiet ground.
+export function MiniAvatar({ who }: { who: string }) {
+  const [letter, colour] = who === HUMAN ? ["Y", "human"] : who === LADO ? ["L", "lado"] : [avatar(who).letter, avatar(who).colour];
+  return (
+    <span className={`avatar mini avatar-${colour}`} aria-hidden="true">
       {letter}
     </span>
   );

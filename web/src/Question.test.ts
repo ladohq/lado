@@ -1,9 +1,9 @@
-// What the chat says of a question's outcome and of the human's answer to it, from their
-// fields (runtime.answer_question, dismiss_question write them).
+// What the chat says of the human's answer to a question, from its fields
+// (runtime.answer_question, dismiss_question write them).
 import { expect, test } from "vitest";
 
 import type { MessageInfo } from "./api";
-import { outcome, replyOf } from "./Question";
+import { replyOf } from "./Question";
 
 function message(id: number, more: Partial<MessageInfo> = {}): MessageInfo {
   return {
@@ -62,23 +62,4 @@ test("a dismissal is told by its question; without the question in the window, b
     text: "Dismissed #5",
     comment: "",
   });
-});
-
-test("an answered question says only Answered when the answer is the next entry", () => {
-  expect(outcome(answered(6), answer({ choice: "yes" }), true)).toEqual({ text: "✓ Answered" });
-});
-
-test("an answered question further from its answer says the choice, or links to the own answer", () => {
-  expect(outcome(answered(6), answer({ choice: "yes" }), false)).toEqual({ text: "✓ You chose yes" });
-  expect(outcome(answered(6), answer({ summary: "Answer to #5: soon" }), false)).toEqual({
-    text: "✓ You answered in your own words",
-    link: 6,
-  });
-  // The answer not in the window: a link to it, which loads up to it.
-  expect(outcome(answered(6), undefined, false)).toEqual({ text: "✓ Answered", link: 6 });
-});
-
-test("a dismissed or closed question says so", () => {
-  expect(outcome(question({ question_state: "dismissed", answered_by: 6 }), undefined, false)).toEqual({ text: "Dismissed" });
-  expect(outcome(question({ question_state: "closed" }), undefined, false)).toEqual({ text: "Closed: the agent left" });
 });

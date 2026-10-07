@@ -56,6 +56,8 @@ dist: web ## build the sdist and the wheel into dist/ and check that both ship t
 		|| { echo "the wheel has no lado/server/static/index.html"; exit 1; }
 	@tar tzf dist/*.tar.gz | grep -q '/src/lado/server/static/index.html$$' \
 		|| { echo "the sdist has no src/lado/server/static/index.html"; exit 1; }
+	@unzip -l dist/*.whl | grep -qE ' lado/server/static/.*inter-[a-z-]+-400-normal[^/]*\.woff2$$' \
+		|| { echo "the wheel has no Inter 400 font (lado/server/static/**/inter-*-400-normal*.woff2)"; exit 1; }
 	@echo "dist/: the sdist and the wheel ship the web UI's bundle"
 
 browser: ## install Chromium for the UI tests (Playwright)

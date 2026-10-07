@@ -37,7 +37,8 @@
   --term-ground: light-dark(#1b1e24, #0d0f13);
   --term-ink: light-dark(#e8eaee, #e1e4e9);
 
-  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  /* Inter for the UI, IBM Plex Mono for code and terminals (docs/design/ui.md, Look). */
+  --sans: "Inter", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 

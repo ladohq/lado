@@ -42,28 +42,6 @@ export function GateRow({ session, gate, stopped, aside }: { session: string; ga
 // The DOM id of a gate's place in the feed, for the hint over the composer and the answer.
 export const gateAnchor = (id: number) => `gate-${id}`;
 
-// The human's answer to a gate, also as the human's own row where it was given (the gate's
-// line stays where the gate opened): the answer, which leads to the line (`go`: the chat's
-// way to a card, which loads up to it), and the comment.
-export function GateAnswer({ gate, go }: { gate: GateInfo; go: (anchor: string) => void }) {
-  const link = (
-    <a
-      href={`#${gateAnchor(gate.id)}`}
-      onClick={(event) => {
-        event.preventDefault();
-        go(gateAnchor(gate.id));
-      }}
-    >
-      gate #{gate.id}: {gate.answer}
-    </a>
-  );
-  return (
-    <FeedRow kind="human" who="You" aside={link} at={gate.answered_at ?? gate.created_at} label={`Your answer to gate #${gate.id}`}>
-      {gate.comment && <p className="gate-comment">{gate.comment}</p>}
-    </FeedRow>
-  );
-}
-
 // The card of an open gate, no head. `compact` (a run's page in Flows, where the notes are
 // in the run's history): without the note that led to it and the notes it needs.
 export function GateCard({

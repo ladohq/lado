@@ -9,9 +9,9 @@ import { Link, useLocation } from "react-router";
 
 import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
 import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
-import { ChevronIcon } from "./icons";
-import { FeedRow } from "./FeedRow";
-import { Gate, GateAnswer, gateAnchor } from "./GateCard";
+import { FeedRow, MiniAvatar } from "./FeedRow";
+import { Gate, gateAnchor } from "./GateCard";
+import { ChevronIcon, FlowsIcon } from "./icons";
 import {
   messageWindow,
   useLive,
@@ -25,41 +25,35 @@ import {
 import { runPath } from "./paths";
 import { messageAnchor, Question, replyOf, type Reply } from "./Question";
 
-// The run events the feed shows as lines, and how it names each kind: the one list. A
-// gate's events are not in it: the gate's card or line stands for them.
+// The run events the feed shows as lines, and the word each kind's line says: the one list.
+// A flow event's line shows its move instead (a gate's answer is the human's move, so
+// gate_answer is no line); a gate's opening is a line of its run, its card a row under it.
 export const RUN_EVENT_LINES: Record<string, string> = {
   flow_start: "started",
-  flow: "moved",
-  flow_set: "set by the human",
+  flow: "",
+  gate_open: "waits for you",
+  flow_set: "set by you",
   flow_end: "ended",
   flow_cancel: "cancelled",
 };
 
 const withHuman = (message: MessageInfo) => message.from === HUMAN || message.to === HUMAN;
 
-export type Entry =
-  | { at: number; message: MessageInfo }
-  | { at: number; event: RunEventInfo }
-  | { at: number; gate: GateInfo }
-  | { at: number; answered: GateInfo };
+export type Entry = { at: number; message: MessageInfo } | { at: number; event: RunEventInfo } | { at: number; gate: GateInfo };
 
 // The window of messages the chat opens with and pages back through.
 const PAGE = 50;
 
 type Loaded = { window: MessageWindow; events: RunEventInfo[]; gates: GateInfo[] };
 
-// A gate the human answered (or overrode), whose answer is also the human's bubble.
-const answeredByHuman = (gate: GateInfo) => gate.answer !== null && gate.answered_by === HUMAN && gate.answered_at !== null;
-
-// The messages, the run events and the gates shown, in time order (a message or the
-// human's answer to a gate before an event of the same moment: the answer moves the run in
-// the same transaction); a gate where it opened, the human's answer when it was given.
-// Gates and events come whole: those before the window's messages wait until they load.
+// The messages, the run events and the gates shown, in time order (a message before an
+// event of the same moment, an event before a gate: a gate opens in its event's
+// transaction); a gate where it opened. Gates and events come whole: those before the
+// window's messages wait until they load.
 function entries({ window, events, gates }: Loaded): Entry[] {
   const from = window.from === null ? -Infinity : Date.parse(window.from);
   const all: Entry[] = [
     ...window.items.map((message) => ({ at: Date.parse(message.created_at), message })),
-    ...gates.filter(answeredByHuman).map((gate) => ({ at: Date.parse(gate.answered_at ?? ""), answered: gate })),
     ...events.filter((one) => one.kind in RUN_EVENT_LINES).map((event) => ({ at: Date.parse(event.created_at), event })),
     ...gates.map((gate) => ({ at: Date.parse(gate.created_at), gate })),
   ];
@@ -71,19 +65,18 @@ function entryKey(entry: Entry | undefined): string | null {
   if (entry === undefined) return null;
   if ("message" in entry) return `message-${entry.message.id}`;
   if ("gate" in entry) return `gate-${entry.gate.id}`;
-  if ("answered" in entry) return `answer-${entry.answered.id}`;
   return `event-${entry.event.id}`;
 }
 
-// A row of the chat: a day's divider (the time of its first entry), run events in one list,
-// a message or question and whether it continues the group above it, a gate, or the
-// human's answer to a gate.
+// A row of the chat: a day's divider (the time of its first entry), a run's events in one
+// group, a message or question and whether it continues the group above it, a gate, or the
+// line of the human's late reply to a question in the window.
 export type FeedItem =
   | { day: string }
-  | { events: RunEventInfo[] }
+  | { run: string; events: RunEventInfo[] }
   | { message: MessageInfo; continued: boolean }
   | { gate: GateInfo }
-  | { answered: GateInfo };
+  | { late: MessageInfo };
 
 // How long after the row above a message still continues its group.
 const GROUP_GAP = 5 * 60 * 1000;
@@ -91,36 +84,81 @@ const GROUP_GAP = 5 * 60 * 1000;
 const localDay = (at: number) => new Date(at).toDateString();
 const parties = (message: MessageInfo) => `${message.from}\n${message.to}`;
 
-// The entries as rows: a divider between entries of different local days, consecutive run
-// events in one list, and a message continues the group above it (its row has no head) when
-// the row above is a message of the same sender to the same recipient less than GROUP_GAP
-// before, neither of them `alone` (the human's reply to a question: an answer, whose head
-// names the question, or a dismissal's line). So a divider, a run event, a gate or the
-// human's answer to a gate or a question between ends a group.
-export function feedRows(list: Entry[], alone: (message: MessageInfo) => boolean = () => false): FeedItem[] {
+// The human's reply to a question (an answer or a dismissal).
+export const isReply = (message: MessageInfo) => message.from === HUMAN && message.reply_to !== null;
+
+// The entries as rows. A divider stands between entries of different local days. A run's
+// events follow each other in one group until another row comes between, whatever the time.
+// The human's reply to a question in the window is shown by the question's card: it is no
+// row when it comes right under its question, else a late line where it was given; a reply
+// to a question not in the window is a row of its own. A message continues the group above
+// it (its row has no head) when the row above is a message of the same sender to the same
+// recipient less than GROUP_GAP before, neither of them a reply. So a divider, a run event,
+// a gate or a late line between ends a group.
+export function feedRows(list: Entry[]): FeedItem[] {
+  const questions = new Set(list.flatMap((one) => ("message" in one ? [one.message.id] : [])));
   const out: FeedItem[] = [];
   let previous: Entry | undefined;
   for (const entry of list) {
+    const reply = "message" in entry && isReply(entry.message) && questions.has(entry.message.reply_to ?? 0);
+    const above = out[out.length - 1];
+    if (reply && above !== undefined && "message" in above && above.message.id === entry.message.reply_to) continue;
     if (previous && localDay(previous.at) !== localDay(entry.at)) out.push({ day: new Date(entry.at).toISOString() });
     const last = out[out.length - 1];
     if ("message" in entry) {
       const { message } = entry;
-      const continued =
-        last !== undefined &&
-        "message" in last &&
-        previous !== undefined &&
-        entry.at - previous.at < GROUP_GAP &&
-        parties(last.message) === parties(message) &&
-        !alone(last.message) &&
-        !alone(message);
-      out.push({ message, continued });
+      if (reply) out.push({ late: message });
+      else {
+        const continued =
+          last !== undefined &&
+          "message" in last &&
+          previous !== undefined &&
+          entry.at - previous.at < GROUP_GAP &&
+          parties(last.message) === parties(message) &&
+          !isReply(last.message) &&
+          !isReply(message);
+        out.push({ message, continued });
+      }
     } else if ("gate" in entry) out.push({ gate: entry.gate });
-    else if ("answered" in entry) out.push({ answered: entry.answered });
-    else if (last && "events" in last) last.events.push(entry.event);
-    else out.push({ events: [entry.event] });
+    else if (last && "events" in last && last.run === entry.event.run) last.events.push(entry.event);
+    else out.push({ run: entry.event.run, events: [entry.event] });
     previous = entry;
   }
   return out;
+}
+
+// The flow events, in time order, whose move goes back: it stays in its state, or enters a
+// state an earlier move of its run in these events left. Only what is loaded counts, so a
+// move may turn from forward to back when earlier pages load; its outcome says it in words.
+export function goesBack(events: RunEventInfo[]): Set<number> {
+  const left = new Map<string, Set<string>>();
+  const back = new Set<number>();
+  for (const { id, run, transition } of events) {
+    if (transition === null) continue;
+    const states = left.get(run) ?? new Set<string>();
+    if (transition.to_state === transition.from_state || states.has(transition.to_state)) back.add(id);
+    left.set(run, states.add(transition.from_state));
+  }
+  return back;
+}
+
+// The gate the human's flow event answered: of its run, answered by the human, in the state
+// the run left (an approval or a choice) or entered (a loop limit's continue), the one closed
+// nearest to the event (the answer and the move are one transaction).
+export function gateOf(event: RunEventInfo, gates: GateInfo[]): GateInfo | undefined {
+  const { transition } = event;
+  if (event.kind !== "flow" || event.actor !== HUMAN || transition === null) return undefined;
+  const at = Date.parse(event.created_at);
+  const off = (gate: GateInfo) => Math.abs(Date.parse(gate.answered_at ?? "") - at);
+  return gates
+    .filter(
+      (gate) =>
+        gate.run === event.run &&
+        gate.answered_by === HUMAN &&
+        gate.answered_at !== null &&
+        (gate.state === transition.from_state || gate.state === transition.to_state),
+    )
+    .reduce<GateInfo | undefined>((best, gate) => (best === undefined || off(gate) < off(best) ? gate : best), undefined);
 }
 
 // The three lists once all are loaded; the first one that failed; or null while loading.
@@ -232,7 +270,9 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         )}
         {ready && <Top session={session} window={loaded.window} first={shown[0]} retry={loadEarlier} marker={top} />}
         {ready && shown.length === 0 && <p className="empty">No messages yet. Write to the supervisor below.</p>}
-        {ready && <Rows session={session} entries={shown} messages={loaded.window.items} stopped={stopped} go={go} />}
+        {ready && (
+          <Rows session={session} entries={shown} messages={loaded.window.items} gates={loaded.gates} stopped={stopped} go={go} />
+        )}
       </div>
       {waiting && <GateHint gate={waiting} go={go} />}
       <Composer session={session} stopped={stopped} />
@@ -293,58 +333,116 @@ function GateHint({ gate, go }: { gate: GateInfo; go: (anchor: string) => void }
   );
 }
 
-function RunEvents({ session, events }: { session: string; events: RunEventInfo[] }) {
+// A run's events in a row (docs/design/ui.md, Flow events): the run's name once, linking to
+// the run, then a line per event: who, what (a move from state to state and its outcome,
+// green forward and orange back; else its word and the core's detail as it is) and when.
+// The human's move answered a gate: the answer's comment stands under it.
+function RunEvents({
+  session,
+  run,
+  events,
+  back,
+  gates,
+}: {
+  session: string;
+  run: string;
+  events: RunEventInfo[];
+  back: Set<number>;
+  gates: GateInfo[];
+}) {
   return (
-    <ol className="run-events" aria-label="Flow runs">
-      {events.map((event) => (
-        <li key={event.id} className={`run-event run-${event.kind}`}>
-          <span className="run-kind">{RUN_EVENT_LINES[event.kind]}</span>{" "}
-          <span className="run-text">
-            {event.run}: {event.detail}
-          </span>{" "}
-          <time dateTime={event.created_at}>{clock(event.created_at)}</time>{" "}
-          <Link to={runPath(session, event.run)}>Flows</Link>
-        </li>
-      ))}
-    </ol>
+    <div className="run-group">
+      <p className="run-head">
+        <FlowsIcon />
+        <Link to={runPath(session, run)}>{run}</Link>
+      </p>
+      <ol aria-label={`Flow run ${run}`}>
+        {events.map((event) => {
+          const comment = gateOf(event, gates)?.comment;
+          return (
+            <li key={event.id} className={`run-event run-${event.kind}`}>
+              <div className="run-line">
+                <MiniAvatar who={event.actor} />
+                <span className="run-actor">{event.actor === HUMAN ? "You" : event.actor}</span>
+                <EventText event={event} back={back.has(event.id)} />
+                <time dateTime={event.created_at}>{clock(event.created_at)}</time>
+              </div>
+              {comment && (
+                <div className="run-comment">
+                  <Body text={comment} breaks />
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
-// The chat's rows (feedRows) as they show: the human's reply to a question as their answer
-// or a quiet line, read with the question when it is in the window.
+function EventText({ event, back }: { event: RunEventInfo; back: boolean }) {
+  const { transition } = event;
+  if (event.kind === "flow" && transition !== null) {
+    return (
+      <>
+        <span className="run-state">{transition.from_state}</span>
+        <span className="run-arrow" aria-label="to">
+          →
+        </span>
+        <span className="run-state now">{transition.to_state}</span>
+        <span className={`run-outcome ${back ? "back" : "forward"}`}>{transition.outcome}</span>
+      </>
+    );
+  }
+  const word = RUN_EVENT_LINES[event.kind];
+  return (
+    <>
+      {word && <span className="run-chip">{word}</span>}
+      <span className="run-detail">{event.detail}</span>
+    </>
+  );
+}
+
+// The chat's rows (feedRows) as they show: the human's reply to a question in the
+// question's card, and a late one's line where it was given; a reply to a question not in
+// the window as their answer or a quiet line.
 function Rows({
   session,
   entries,
   messages,
+  gates,
   stopped,
   go,
 }: {
   session: string;
   entries: Entry[];
   messages: MessageInfo[];
+  gates: GateInfo[];
   stopped: boolean;
   go: (anchor: string) => void;
 }) {
   const byId = new Map(messages.map((one) => [one.id, one]));
-  const replies = new Map<number, Reply>();
-  for (const one of messages) {
-    if (one.from === HUMAN && one.reply_to !== null) replies.set(one.id, replyOf(one, byId.get(one.reply_to)));
-  }
-  // A reply stands alone: an answer's head says which question it answers, a dismissal is
-  // a line of its own.
-  const rows = feedRows(entries, (one) => replies.has(one.id));
-  return rows.map((row, i) => {
+  const rows = feedRows(entries);
+  const late = new Set(rows.flatMap((row) => ("late" in row ? [row.late.id] : [])));
+  const back = goesBack(entries.flatMap((one) => ("event" in one ? [one.event] : [])));
+  return rows.map((row) => {
     if ("day" in row) return <DayDivider key={`day-${row.day}`} at={row.day} />;
-    if ("events" in row) return <RunEvents key={`events-${row.events[0].id}`} session={session} events={row.events} />;
+    if ("events" in row) {
+      const key = `events-${row.events[0].id}`;
+      return <RunEvents key={key} session={session} run={row.run} events={row.events} back={back} gates={gates} />;
+    }
     if ("gate" in row) return <Gate key={`gate-${row.gate.id}`} session={session} gate={row.gate} stopped={stopped} />;
-    if ("answered" in row) return <GateAnswer key={`answer-${row.answered.id}`} gate={row.answered} go={go} />;
+    if ("late" in row) {
+      const reply = row.late;
+      return <LateReply key={reply.id} reply={reply} question={byId.get(reply.reply_to ?? 0)} go={go} />;
+    }
     const { message, continued } = row;
-    const reply = replies.get(message.id);
-    if (reply !== undefined) return <Answer key={message.id} message={message} reply={reply} continued={continued} go={go} />;
+    if (isReply(message)) {
+      const reply = replyOf(message);
+      return <Answer key={message.id} message={message} reply={reply} continued={continued} go={go} />;
+    }
     if (message.kind !== "question") return <Message key={message.id} message={message} continued={continued} />;
     const answer = message.answered_by === null ? undefined : byId.get(message.answered_by);
-    const below = rows[i + 1];
-    const next = answer !== undefined && below !== undefined && "message" in below && below.message.id === answer.id;
     return (
       <FeedRow
         key={message.id}
@@ -355,10 +453,39 @@ function Rows({
         label={`Question from ${message.from}`}
         id={messageAnchor(message.id)}
       >
-        <Question session={session} question={message} answer={answer} next={next} go={go} />
+        <Question session={session} question={message} answer={answer} anchored={answer !== undefined && !late.has(answer.id)} />
       </FeedRow>
     );
   });
+}
+
+// The human's reply to a question in the window given after other rows: one quiet line
+// where it was given, leading up to the question's card, with the start of the answer.
+function LateReply({ reply, question, go }: { reply: MessageInfo; question?: MessageInfo; go: (anchor: string) => void }) {
+  const asked = reply.reply_to ?? 0;
+  const said = replyOf(reply, question);
+  const verb = "dismissed" in said ? "dismissed" : "answered";
+  const link = (
+    <a
+      href={`#${messageAnchor(asked)}`}
+      onClick={(event) => {
+        event.preventDefault();
+        go(messageAnchor(asked));
+      }}
+    >
+      question #{asked} ↑
+    </a>
+  );
+  return (
+    <article className="chat-quiet late-reply" id={messageAnchor(reply.id)} aria-label={`You ${verb} question #${asked}`}>
+      <MiniAvatar who={HUMAN} />
+      <span className="late-text">
+        <span className="run-actor">You</span> {verb} {link}
+        {"text" in said && ` · ${[said.text, said.comment].filter(Boolean).join(" · ").replace(/\s+/g, " ")}`}
+      </span>
+      <time dateTime={reply.created_at}>{clock(reply.created_at)}</time>
+    </article>
+  );
 }
 
 // Between entries of two local days: the later day's name.
@@ -371,8 +498,9 @@ function DayDivider({ at }: { at: string }) {
   );
 }
 
-// The human's reply to a question: a dismissal, one quiet line; an answer, the human's row
-// with the answer (the choice, else the own words) and the comment under a choice.
+// The human's reply to a question not in the window: a dismissal, one quiet line; an answer,
+// the human's row with the answer (the choice, else the own words) and the comment under a
+// choice.
 function Answer({
   message,
   reply,

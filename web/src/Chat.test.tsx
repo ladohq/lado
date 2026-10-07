@@ -52,8 +52,17 @@ function question(id: number, more: Partial<MessageInfo> = {}): MessageInfo {
   });
 }
 
-function event(id: number, kind: string, detail: string, created_at = "2026-10-03T12:00:00.500Z"): RunEventInfo {
-  return { id, run: "feature/x", kind, actor: "w1", detail, created_at };
+// A run event as the server gives it: a flow event's transition as state.transition reads it.
+function event(
+  id: number,
+  kind: string,
+  detail: string,
+  created_at = "2026-10-03T12:00:00.500Z",
+  more: Partial<RunEventInfo> = {},
+): RunEventInfo {
+  const [, from_state, outcome, to_state] = /^(\w+) -(\w+)-> (\w+)$/.exec(detail) ?? [];
+  const transition = kind === "flow" && from_state ? { from_state, outcome, to_state } : null;
+  return { id, run: "feature/x", kind, actor: "w1", detail, transition, created_at, ...more };
 }
 
 type Posted = { path: string; body: unknown };
@@ -253,18 +262,18 @@ test("a question is answered with a choice; the card waits for the feed to say s
   stream().send("change", changed(message(6, "human", "w1", "Answer to #5: yes", { reply_to: 5, choice: "yes" })), "12");
   const answered = within(await chat()).getByRole("article", { name: "Question from w1" });
   expect(within(answered).queryByRole("button")).toBeNull();
-  // The answer is the next row: the card says only that, the row says the rest.
-  expect(answered.querySelector(".chat-outcome")?.textContent).toBe("✓ Answered");
-  expect(answered.querySelector(".choices .chosen")?.textContent).toBe("yes");
-  const reply = within(await chat()).getByRole("article", { name: "Message from you" });
-  expect(head(reply)).toEqual(["You", "→ w1 · answer to #5"]);
-  expect(within(reply).getByRole("link", { name: "#5" }).getAttribute("href")).toBe("#message-5");
-  expect(within(reply).getByRole("heading").textContent).toBe("yes");
-  expect((await chat()).textContent).not.toContain("Answered: yes");
-  expect((await chat()).textContent).not.toContain("Answer to #5");
+  // The answer is in the card: the choice marked, who answered and when; no row of its own.
+  expect(answered.querySelector(".choices .chosen")?.textContent).toBe("✓ yes");
+  const given = answered.querySelector(".question-answer") as HTMLElement;
+  expect(given.id).toBe("message-6");
+  expect(given.querySelector(".answer-head")?.textContent).toContain("You · answered");
+  expect(given.querySelector(".answer-choice")?.textContent).toBe("✓ yes");
+  expect(answered.querySelector(".chat-outcome")).toBeNull();
+  expect(within(await chat()).queryByRole("article", { name: "Message from you" })).toBeNull();
+  expect((await chat()).textContent).not.toMatch(/Answered|Answer to #5/);
 });
 
-test("a question further from its answer says the choice, or leads to the own answer", async () => {
+test("an answer given after other rows is in its question's card and one quiet line where it was given", async () => {
   const scrolled = vi.fn();
   Element.prototype.scrollIntoView = scrolled;
   serve(
@@ -278,23 +287,27 @@ test("a question further from its answer says the choice, or leads to the own an
     ].map((one, i) => ({ ...one, created_at: `2026-10-03T12:0${i}:00.000Z` })),
   );
   open();
-  const [own, chose] = within(await chat()).getAllByRole("article", { name: "Question from w1" });
-  expect(own.querySelector(".chat-outcome")?.textContent).toBe("✓ You answered in your own words · go to answer");
-  expect(chose.querySelector(".chat-outcome")?.textContent).toBe("✓ You chose later");
-  const answers = within(await chat()).getAllByRole("article", { name: "Message from you" });
-  expect(within(answers[0]).getByRole("heading").textContent).toBe("after the release");
-  expect(within(answers[1]).getByRole("heading").textContent).toBe("later");
-  expect(within(answers[1]).getByText("after the tag")).toBeTruthy(); // the comment, under the choice
+  const log = await chat();
+  const [own, chose] = within(log).getAllByRole("article", { name: "Question from w1" });
+  expect(own.querySelector(".question-answer .chat-body")?.textContent).toBe("after the release");
+  expect(chose.querySelector(".choices .chosen")?.textContent).toBe("✓ later");
+  expect(chose.querySelector(".question-answer .chat-body")?.textContent).toBe("after the tag"); // the comment
+  const lines = within(log).getAllByRole("article", { name: /^You answered question/ });
+  expect(lines.map((one) => [one.id, one.textContent])).toEqual([
+    ["message-7", expect.stringContaining("after the release")],
+    ["message-10", expect.stringMatching(/later.*after the tag/)],
+  ]);
+  // The card's answer has no anchor of its own: a link to the answer goes to its line.
+  expect(own.querySelector(".question-answer")?.id).toBe("");
   scrolled.mockClear();
-  fireEvent.click(within(own).getByRole("link", { name: "go to answer" }));
-  expect(scrolled.mock.contexts).toEqual([answers[0]]);
+  fireEvent.click(within(lines[0]).getByRole("link", { name: "question #5 ↑" }));
+  expect(scrolled.mock.contexts).toEqual([own]);
+  expect(within(log).queryByRole("article", { name: "Message from you" })).toBeNull();
 });
 
-test("an answer to a question never continues a group: its head says which question it answers", async () => {
+test("an answer to a question not in the window is a row that says which question; it never continues a group", async () => {
   serve(
     [
-      question(10, { question_state: "answered", answered_by: 13 }),
-      question(11, { question_state: "answered", answered_by: 14 }),
       message(12, "human", "w1", "one more thing"),
       message(13, "human", "w1", "Answer to #10: A", { reply_to: 10, choice: "A" }),
       message(14, "human", "w1", "Answer to #11: B", { reply_to: 11, choice: "B" }),
@@ -304,35 +317,42 @@ test("an answer to a question never continues a group: its head says which quest
   open();
   const rows = await within(await chat()).findAllByRole("article", { name: "Message from you" });
   expect(rows.map((one) => head(one)[1])).toEqual(["→ w1", "→ w1 · answer to #10", "→ w1 · answer to #11", "→ w1"]);
+  expect(rows[1].id).toBe("message-13");
 });
 
-test("an own answer of more lines shows its whole text once", async () => {
+test("an own answer of more lines shows its whole text once in the card, as typed", async () => {
   serve([
     question(5, { question_state: "answered", answered_by: 6 }),
     message(6, "human", "w1", "Answer to #5: after the release", { reply_to: 5, body: "after the release\nand the tag" }),
   ]);
   open();
-  const reply = await within(await chat()).findByRole("article", { name: "Message from you" });
-  expect(reply.textContent?.match(/after the release/g)).toHaveLength(1);
-  expect(within(reply).getByText(/and the tag/)).toBeTruthy();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  const given = card.querySelector(".question-answer") as HTMLElement;
+  expect(given.textContent?.match(/after the release/g)).toHaveLength(1);
+  expect(given.querySelectorAll("br")).toHaveLength(1);
 });
 
-test("a dismissal is one quiet line, also when its question is not in the window", async () => {
+test("a dismissal is in its question's card; a late one also a quiet line, one whose question is not in the window a line of its own", async () => {
   serve([
     question(5, { question_state: "dismissed", answered_by: 6 }),
     message(6, "human", "w1", "Dismissed #5", { reply_to: 5 }),
+    question(9, { question_state: "dismissed", answered_by: 11 }),
+    message(10, "supervisor", "human", "in between"),
+    message(11, "human", "w1", "Dismissed #9", { reply_to: 9 }),
     message(7, "human", "w1", "Dismissed #4", { reply_to: 4 }),
     message(8, "human", "w1", "Answer to #3: no", { reply_to: 3 }),
-  ]);
+  ].map((one, i) => ({ ...one, created_at: `2026-10-03T12:0${i}:00.000Z` })));
   open();
   const log = await chat();
-  const lines = await within(log).findAllByRole("article", { name: /^You dismissed question/ });
-  expect(lines.map((one) => one.textContent)).toEqual([
-    expect.stringContaining("You dismissed question #5"),
-    expect.stringContaining("You dismissed question #4"),
-  ]);
-  expect(lines[0].id).toBe("message-6");
-  expect(lines[0].querySelector(".avatar")).toBeNull();
+  const [first, second] = await within(log).findAllByRole("article", { name: "Question from w1" });
+  for (const card of [first, second]) {
+    expect(card.querySelector(".question-answer.dismissed .answer-head")?.textContent).toContain("You · dismissed");
+  }
+  expect(first.querySelector(".question-answer")?.id).toBe("message-6");
+  const late = within(log).getByRole("article", { name: "You dismissed question #9" });
+  expect([late.id, late.textContent]).toEqual(["message-11", expect.stringContaining("dismissed question #9 ↑")]);
+  const lines = within(log).getAllByRole("article", { name: /^You dismissed question/ });
+  expect(lines.map((one) => one.id)).toEqual(["message-11", "message-7"]);
   // A one-line own answer whose question is not in the window is an answer.
   const answer = within(log).getByRole("article", { name: "Message from you" });
   expect(within(answer).getByRole("heading").textContent).toBe("no");
@@ -374,14 +394,14 @@ test("a question with only choices has no field for an own answer", async () => 
 });
 
 test.each([
-  [{ question_state: "dismissed" as const }, "Dismissed"],
+  [{ question_state: "dismissed" as const, answered_by: 9 }, "You · dismissed"],
   [{ question_state: "closed" as const }, "Closed: the agent left"],
-  [{ question_state: "answered" as const, answered_by: 9 }, "✓ Answered · go to answer"],
-])("a question no longer open says what became of it", async (state, outcome) => {
+  [{ question_state: "answered" as const, answered_by: 9 }, "You · answered"],
+])("a question no longer open says what became of it, also without the reply in the window", async (state, outcome) => {
   serve([question(5, state)]);
   open();
   const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
-  expect(card.querySelector(".chat-outcome")?.textContent).toBe(outcome);
+  expect(card.querySelector(".chat-outcome, .answer-head")?.textContent).toBe(outcome);
   expect(within(card).getByText("Question #5")).toBeTruthy();
   expect(within(card).queryByRole("button")).toBeNull();
 });
@@ -627,33 +647,81 @@ test("the agents' messages to each other show behind a switch that loads the win
   expect((screen.getByRole("checkbox", { name: "Show agent messages" }) as HTMLInputElement).checked).toBe(true);
 });
 
-test("run events show as lines in time order, linking to their run in Flows; a kind not listed as a line does not", async () => {
+// Flow events (docs/design/ui.md, Flow events): a run's events in a group under its name.
+
+const runGroups = (log: HTMLElement) => within(log).getAllByRole("list", { name: /^Flow run / });
+const kept = (line: HTMLElement, name: string) => line.querySelector(`.${name}`)?.textContent;
+
+test("a run's events in a row are one group under the run's name, which links to the run; each line says who and what", async () => {
   serve(
     [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
     undefined,
     [
-      event(5, "flow_start", "at design", "2026-10-03T11:59:00.000Z"),
-      event(6, "flow", "design -done-> review", "2026-10-03T12:00:01.000Z"),
-      event(7, "something_else", "not a line", "2026-10-03T12:00:02.000Z"),
+      event(5, "flow_start", "flow feature from kit lado-dev 0.11.1: show messages once", "2026-10-03T11:59:00Z", { actor: "supervisor" }),
+      event(6, "flow", "design -ready-> architecture", "2026-10-03T11:59:30Z", { actor: "supervisor" }),
+      event(7, "flow", "architecture -changes-> design", "2026-10-03T11:59:40Z", { actor: "architect" }),
+      event(8, "something_else", "not a line", "2026-10-03T11:59:45Z"),
+      event(9, "gate_answer", "#1 approve", "2026-10-03T11:59:50Z", { actor: "human" }),
+      event(10, "flow", "moved somehow", "2026-10-03T12:00:01Z"),
+      event(11, "gate_open", "#2 approval at check: Ship it?", "2026-10-03T12:00:02Z", { actor: "lado" }),
+      event(12, "flow_set", "at review: by hand", "2026-10-03T12:00:03Z", { actor: "human" }),
+      event(13, "flow_cancel", "no longer needed", "2026-10-03T12:00:04Z", { actor: "supervisor" }),
     ],
   );
   open();
   const log = await chat();
-  const lines = await within(log).findAllByRole("listitem");
-  expect(lines.map((line) => line.textContent)).toEqual([
-    expect.stringContaining("feature/x: at design"),
-    expect.stringContaining("feature/x: design -done-> review"),
+  await within(log).findAllByRole("listitem");
+  const groups = runGroups(log);
+  expect(groups.map((one) => within(one).getAllByRole("listitem").length)).toEqual([3, 4]);
+  const group = groups[0].closest(".run-group") as HTMLElement;
+  const link = within(group).getByRole("link", { name: "feature/x" });
+  expect(link.getAttribute("href")).toBe("/sessions/lado/flows/feature%2Fx");
+  expect(within(log).queryByRole("link", { name: "Flows" })).toBeNull();
+  const [started, ready, changes, odd, waits, set, cancelled] = within(log).getAllByRole("listitem");
+  expect([kept(started, "run-actor"), kept(started, "run-chip"), kept(started, "run-detail")]).toEqual([
+    "supervisor",
+    "started",
+    "flow feature from kit lado-dev 0.11.1: show messages once",
   ]);
+  expect(started.querySelector(".avatar")?.textContent).toBe("S");
+  expect(Array.from(ready.querySelectorAll(".run-state")).map((one) => one.textContent)).toEqual(["design", "architecture"]);
+  expect([kept(ready, "run-outcome"), ready.querySelector(".run-outcome")?.className]).toEqual([
+    "ready",
+    expect.stringContaining("forward"),
+  ]);
+  expect(changes.querySelector(".run-outcome")?.className).toContain("back"); // design was left before
+  expect(kept(changes, "run-actor")).toBe("architect");
+  expect([odd.querySelector(".run-state"), kept(odd, "run-detail")]).toEqual([null, "moved somehow"]);
+  expect([kept(waits, "run-chip"), kept(waits, "run-detail"), kept(waits, "run-actor")]).toEqual([
+    "waits for you",
+    "#2 approval at check: Ship it?",
+    "lado",
+  ]);
+  expect([kept(set, "run-chip"), kept(set, "run-actor")]).toEqual(["set by you", "You"]);
+  expect([kept(cancelled, "run-chip"), kept(cancelled, "run-detail")]).toEqual(["cancelled", "no longer needed"]);
+  expect(within(ready).getByText(clock("2026-10-03T11:59:30Z")).tagName).toBe("TIME");
+  expect(within(log).queryByText(/not a line|#1 approve/)).toBeNull();
   const order = Array.from(log.querySelectorAll("li, article")).map((one) => one.tagName);
-  expect(order).toEqual(["LI", "ARTICLE", "LI"]);
-  expect(within(lines[1]).getByRole("link", { name: "Flows" }).getAttribute("href")).toBe("/sessions/lado/flows/feature%2Fx");
-  expect(within(log).queryByText(/not a line/)).toBeNull();
+  expect(order).toEqual(["LI", "LI", "LI", "ARTICLE", "LI", "LI", "LI", "LI"]);
   stream().send(
     "change",
-    { kind: "events", session: "lado", key: "8", op: "insert", item: event(8, "flow_end", "at done", "2026-10-03T12:01:00.000Z") },
+    { kind: "events", session: "lado", key: "14", op: "insert", item: event(14, "flow_end", "at done", "2026-10-03T12:01:00Z", { actor: "lado" }) },
     "11",
   );
-  expect(within(log).getAllByRole("listitem").at(-1)!.textContent).toContain("feature/x: at done");
+  const end = within(log).getAllByRole("listitem").at(-1)!;
+  expect([kept(end, "run-chip"), kept(end, "run-detail")]).toEqual(["ended", "at done"]);
+  expect(runGroups(log)).toHaveLength(2); // it joins the group above
+});
+
+test("events of two runs in a row are two groups, each under its run's name", async () => {
+  serve([], undefined, [
+    event(5, "flow_start", "a", "2026-10-03T12:00:00Z"),
+    event(6, "flow_start", "b", "2026-10-03T12:00:01Z", { run: "fix/y" }),
+  ]);
+  open();
+  const log = await chat();
+  await within(log).findAllByRole("listitem");
+  expect(runGroups(log).map((one) => one.getAttribute("aria-label"))).toEqual(["Flow run feature/x", "Flow run fix/y"]);
 });
 
 // Flow gates (the Gates task): an open gate is a card answered with its options, a closed
@@ -826,13 +894,14 @@ test.each([
   expect((await gateCard()).textContent).toContain(text);
 });
 
-test("gates are in time order among messages and run events, and a gate's events are no lines", async () => {
+test("gates are in time order among messages and run events; its waiting is a line of the run, its card under it", async () => {
   serve(
     [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
     undefined,
     [
       event(5, "flow", "build -done-> check", "2026-10-03T12:00:00.100Z"),
-      event(6, "gate_open", "#1 approval at check: Ship it?", "2026-10-03T12:00:00.250Z"),
+      // The gate's event and the gate are written in one transaction: the same moment.
+      event(6, "gate_open", "#1 approval at check: Ship it?", "2026-10-03T12:00:02Z", { actor: "lado" }),
       event(7, "gate_answer", "#1 approve", "2026-10-03T12:00:03Z"),
       event(8, "flow_end", "at end", "2026-10-03T12:00:04Z"),
     ],
@@ -841,103 +910,73 @@ test("gates are in time order among messages and run events, and a gate's events
   open();
   const log = await chat();
   await gateCard();
-  const order = Array.from(log.querySelectorAll(":scope > article, :scope > ol > li")).map(
-    (one) => one.getAttribute("aria-label") ?? one.textContent,
+  const order = Array.from(log.querySelectorAll(":scope > article, :scope > .run-group li")).map(
+    (one) => one.getAttribute("aria-label") ?? one.querySelector(".run-chip, .run-outcome")?.textContent,
   );
-  expect(order).toEqual([
-    "Message from you",
-    expect.stringContaining("build -done-> check"),
-    "Gate #1",
-    expect.stringContaining("at end"),
-  ]);
+  expect(order).toEqual(["Message from you", "done", "waits for you", "Gate #1", "ended"]);
 });
 
-// The human's answer to a gate is also the human's bubble, where it was given.
+// The human's answer to a gate is the run's move from "You", the comment under it.
 
-const answerBubble = async (id = 1) => within(await chat()).findByRole("article", { name: `Your answer to gate #${id}` });
+const moves = async () => within(await chat()).findAllByRole("listitem");
 
-test("the human's answer to a gate is a bubble of theirs at its time; the gate's line stays where it opened", async () => {
+test("the human's answer to a gate is one line, the run's move from You with the comment under it; the gate's line stays", async () => {
+  const at = "2026-10-03T12:05:00.123Z";
   serve(
     [
-      message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" }),
-      message(2, "supervisor", "human", "working on it", { created_at: "2026-10-03T12:03:00Z" }),
-      message(3, "supervisor", "human", "done", { created_at: "2026-10-03T12:07:00Z" }),
+      message(1, "supervisor", "human", "working on it", { created_at: "2026-10-03T12:03:00Z" }),
+      message(2, "supervisor", "human", "done", { created_at: "2026-10-03T12:07:00Z" }),
     ],
     undefined,
-    [],
-    [closed(1, "approve", { created_at: "2026-10-03T12:01:00Z", answered_at: "2026-10-03T12:05:00Z" })],
+    [event(5, "flow", "check -approved-> ship", at, { actor: "human" }), event(6, "gate_answer", "#1 approve: ship it", at, { actor: "human" })],
+    [closed(1, "approve", { comment: "ship **it**\nnow", created_at: "2026-10-03T12:01:00Z", answered_at: at })],
   );
   open();
   const log = await chat();
-  const bubble = await answerBubble();
-  const order = Array.from(log.querySelectorAll(":scope > article")).map((one) => one.getAttribute("aria-label"));
-  expect(order).toEqual([
-    "Message from you",
-    "Gate #1",
-    "Message from supervisor",
-    "Your answer to gate #1",
-    "Message from supervisor",
-  ]);
-  expect(bubble.className).toContain("mine");
-  expect(head(bubble)).toEqual(["You", "gate #1: approve"]);
-  expect(within(bubble).queryByText("ship it")).toBeNull();
-  expect(bubble.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-03T12:05:00Z");
-});
-
-test("the human's answer comes before the run's events of the same moment, which it caused", async () => {
-  const at = "2026-10-03T12:05:00.123Z";
-  serve([], undefined, [event(5, "flow", "check -approved-> end", at)], [closed(1, "approve", { answered_at: at })]);
-  open();
-  const log = await chat();
-  await answerBubble();
-  const order = Array.from(log.querySelectorAll(":scope > article, :scope > ol > li")).map(
-    (one) => one.getAttribute("aria-label") ?? one.textContent,
+  const [move] = await moves();
+  expect([kept(move, "run-actor"), kept(move, "run-outcome")]).toEqual(["You", "approved"]);
+  expect(move.querySelector(".avatar")?.textContent).toBe("Y");
+  const comment = move.querySelector(".run-comment")!;
+  expect(within(comment as HTMLElement).getByText("it").tagName).toBe("STRONG");
+  expect(comment.querySelectorAll("br")).toHaveLength(1); // the human's line breaks, as typed
+  const order = Array.from(log.querySelectorAll(":scope > article, :scope > .run-group li")).map(
+    (one) => one.getAttribute("aria-label") ?? kept(one as HTMLElement, "run-actor"),
   );
-  expect(order).toEqual(["Gate #1", "Your answer to gate #1", expect.stringContaining("check -approved-> end")]);
+  expect(order).toEqual(["Gate #1", "Message from supervisor", "You", "Message from supervisor"]);
+  expect(within(log).getAllByRole("listitem")).toHaveLength(1); // no second row of the answer
+  expect(within(log).queryByRole("article", { name: /Your answer to gate/ })).toBeNull();
 });
 
-test.each([
-  [closed(1, "reject", { comment: "add a test" }), "gate #1: reject", "add a test"],
-  [closed(1, "overridden", { comment: "built by hand" }), "gate #1: overridden", "built by hand"],
-])("the human's row says the answer in its head, and the comment under it", async (one, answer, comment) => {
-  serve([], undefined, [], [one]);
+test("a move of the human without its gate in the feed is the move alone; another's move has no comment", async () => {
+  serve([], undefined, [
+    event(5, "flow", "check -approved-> ship", "2026-10-03T12:05:00Z", { actor: "human" }),
+    event(6, "flow", "ship -done-> end", "2026-10-03T12:05:01Z", { actor: "w1" }),
+  ], [closed(1, "approve", { comment: "elsewhere", run: "fix/y", answered_at: "2026-10-03T12:05:00Z" })]);
   open();
-  const bubble = await answerBubble();
-  expect(head(bubble)).toEqual(["You", answer]);
-  expect(within(bubble).getByText(comment).tagName).toBe("P");
+  const [mine, theirs] = await moves();
+  expect(kept(mine, "run-actor")).toBe("You");
+  expect(mine.querySelector(".run-comment")).toBeNull();
+  expect(theirs.querySelector(".run-comment")).toBeNull();
 });
 
-test("a gate closed by someone else than the human has no bubble", async () => {
-  serve([], undefined, [], [closed(1, "cancelled", { answered_by: "supervisor" }), closed(2, "approve")]);
-  open();
-  await answerBubble(2);
-  expect(within(await chat()).queryByRole("article", { name: "Your answer to gate #1" })).toBeNull();
-});
-
-test("the bubble links to the gate's line and scrolls it into view", async () => {
-  serve([], undefined, [], [closed(1, "approve")]);
-  const scrolled = vi.fn();
-  Element.prototype.scrollIntoView = scrolled;
-  open();
-  const bubble = await answerBubble();
-  const link = within(bubble).getByRole("link", { name: "gate #1: approve" });
-  expect(link.getAttribute("href")).toBe("#gate-1");
-  scrolled.mockClear();
-  fireEvent.click(link);
-  expect(scrolled.mock.contexts).toEqual([await gateCard(1)]);
-});
-
-test("answering a gate on the open page puts the bubble at the bottom and scrolls to it", async () => {
+test("answering a gate on the open page puts the move at the bottom and scrolls to it", async () => {
   serve([message(1, "supervisor", "human", "later", { created_at: "2026-10-03T12:02:00Z" })], undefined, [], [gate(1)]);
   open();
   const feed = await chat();
   await gateCard();
-  Object.defineProperty(feed, "scrollHeight", { value: 700 });
-  feed.scrollTop = 0;
-  stream().send("change", gateChanged(closed(1, "reject", { answered_at: "2026-10-03T12:09:00Z" })), "11");
-  const bubble = await answerBubble();
-  expect(Array.from(feed.querySelectorAll(":scope > article")).at(-1)).toBe(bubble);
-  expect(feed.scrollTop).toBe(700);
+  let height = 700;
+  Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => height });
+  feed.scrollTop = 700; // the human reads at the bottom
+  fireEvent.scroll(feed);
+  const at = "2026-10-03T12:09:00Z";
+  stream().send("change", gateChanged(closed(1, "reject", { answered_at: at })), "11");
+  height = 900;
+  const moved = event(5, "flow", "check -rejected-> build", at, { actor: "human" });
+  stream().send("change", { kind: "events", session: "lado", key: "5", op: "insert", item: moved }, "12");
+  const [move] = await moves();
+  expect(kept(move, "run-actor")).toBe("You");
+  expect(feed.lastElementChild?.contains(move)).toBe(true);
+  expect(feed.scrollTop).toBe(900);
 });
 
 test("while a gate is open, a hint over the composer leads to its card; the composer does not answer it", async () => {
@@ -1113,7 +1152,6 @@ test("gates and run events before the first loaded message wait until the messag
   const log = await chat();
   await within(log).findByText("note 70");
   expect(within(log).queryByRole("article", { name: "Gate #1" })).toBeNull();
-  expect(within(log).queryByRole("article", { name: "Your answer to gate #1" })).toBeNull();
   expect(within(log).queryByText(/at design/)).toBeNull();
   FakeIntersectionObserver.show();
   await within(log).findByText("note 1");

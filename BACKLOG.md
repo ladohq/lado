@@ -1199,6 +1199,21 @@ In a narrow column (520 px or less) `.run-line` has `flex-wrap`, so the event's 
 Wanted: the detail cut with an ellipsis on the event's line and the time kept on it, as the chat's other quiet lines do.
 Found: 2026-10-07, review of feature/chat-message-text (Minor left open).
 
+## Artifacts UI: three small gaps left by feature/artifacts-ui
+
+Size: S. Why here: Minor findings of the review of feature/artifacts-ui; none misleads in normal use.
+- An artifact's page with `?record=` of another artifact (web/src/ArtifactsTable.tsx,
+  `useRecord`) shows that record's content under this artifact's head, name and Download.
+  Wanted: a record of another artifact says "not a record of this artifact" or redirects
+  to its own artifact's page.
+- Closing the artifact panel (web/src/ArtifactPanel.tsx, `close`) pushes a history step,
+  so Back opens it again, against the comment in `Attachments.useView`. Wanted: close with
+  `replace` (or go back when the panel opened this step), so Back after a close leaves it shut.
+- The content address's errors (500 for missing content, 404 from `known_record`,
+  src/lado/server/app.py) carry `nosniff` but not `Content-Security-Policy: sandbox`.
+  Wanted: every response of a content address carries the sandbox header, errors too.
+Found: 2026-10-07, review of feature/artifacts-ui.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

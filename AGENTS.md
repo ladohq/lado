@@ -388,7 +388,9 @@ fixes and docs only: no new feature, no API or schema change.
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
     that is a page of the UI (its router shows it); `feed.py`: the change feed behind
     `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
-    journal, read only), one hub per server, `reset` and resume, the derived fields;
+    journal, read only), one hub per server, `reset` and resume, the derived fields, and
+    the end of every stream when the server shuts down (`Hub.close`, called first by
+    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's);
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,

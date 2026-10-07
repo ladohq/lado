@@ -151,10 +151,13 @@ def test_a_tmux_session_killed_while_no_stream_was_open_shows_on_reconnect(strea
 
 
 def test_the_server_stops_with_a_stream_open(streams):
+    """The shutdown ends the stream (the response's end, not a cut), so the stop does not
+    wait out the server's grace for open requests."""
     stream = streams()
     stream.next()
     started = time.monotonic()
-    stopped = lado_cli("server", "stop")
-    assert stopped.returncode == 0, stopped.stderr
+    assert server_run.stop() is not None
+    took = time.monotonic() - started
     assert stream.closed.wait(5)
-    assert time.monotonic() - started < server_run.STOP_TIMEOUT / 2
+    assert stream.error is None
+    assert took < server_run.SHUTDOWN_GRACE * 0.8

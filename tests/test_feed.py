@@ -3,6 +3,7 @@ process, so the stream is read over HTTP as the browser reads it; the writers ar
 and lado.runtime in the same process. Writers in other processes are in
 tests/integration/test_server_process.py."""
 
+import asyncio
 import dataclasses
 import json
 import logging
@@ -10,6 +11,7 @@ import socket
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 
 import pytest
 import uvicorn
@@ -19,11 +21,18 @@ from event_stream import EventStream
 from lado import kits, loop, runs, runtime, state
 from lado.server import app as server_app
 from lado.server import auth, feed, models
+from lado.server.run import SHUTDOWN_GRACE
+
+
+@dataclasses.dataclass
+class Running:
+    url: str
+    stop: Callable[[], None]  # shuts the server down as SIGTERM does, and waits for its end
 
 
 @pytest.fixture
-def server(monkeypatch):
-    """The server's base URL; quick polls, so a change shows within a test's patience."""
+def running(monkeypatch):
+    """The server; quick polls, so a change shows within a test's patience."""
     monkeypatch.setattr(feed, "POLL", 0.05)
     monkeypatch.setattr(feed, "DERIVED_EVERY", 0.2)
     sock = socket.socket()
@@ -32,19 +41,29 @@ def server(monkeypatch):
     config = uvicorn.Config(
         server_app.create_app(auth.token(), port),
         log_level="warning",
-        timeout_graceful_shutdown=1,
+        timeout_graceful_shutdown=SHUTDOWN_GRACE,
     )
-    server = uvicorn.Server(config)
+    server = server_app.Server(config)
     thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
     thread.start()
     deadline = time.monotonic() + 10
     while not server.started:
         assert time.monotonic() < deadline, "the server did not start"
         time.sleep(0.01)
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(10)
+
+    def stop() -> None:
+        server.should_exit = True
+        thread.join(10)
+
+    yield Running(f"http://127.0.0.1:{port}", stop)
+    stop()
     sock.close()
+
+
+@pytest.fixture
+def server(running):
+    """The server's base URL."""
+    return running.url
 
 
 @pytest.fixture
@@ -500,6 +519,31 @@ def test_a_quiet_stream_gets_keep_alive_comments(streams, monkeypatch):
     stream = streams()
     assert stream.next().event == "reset"
     assert stream.next(comments=True).event == "comment"
+
+
+def test_the_servers_shutdown_ends_the_open_streams_at_once(running, streams):
+    """uvicorn waits for open responses up to its grace, then cuts them: a stream ends when
+    the shutdown starts, so a stop with a tab open is as fast as one without."""
+    opened = [streams(), streams()]
+    for stream in opened:
+        assert stream.next().event == "reset"
+    started = time.monotonic()
+    running.stop()
+    took = time.monotonic() - started
+    for stream in opened:
+        assert stream.closed.wait(1)
+        assert stream.error is None  # the response's end, not a cut connection
+    assert took < SHUTDOWN_GRACE / 2
+
+
+def test_a_stream_that_starts_after_the_shutdown_began_ends_at_once():
+    hub = feed.Hub(feed.Journal())
+
+    async def read() -> list[str]:
+        hub.close()
+        return [text async for text in feed.stream(hub, None)]
+
+    assert asyncio.run(asyncio.wait_for(read(), 2)) == [feed.encode("reset", {}, 0)]
 
 
 def broken_journal(monkeypatch):

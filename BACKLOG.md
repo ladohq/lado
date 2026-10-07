@@ -1031,6 +1031,16 @@ Size: S. Why here: review's Minor findings, nothing wrong in production.
 Wanted: `"15,30,60" if value is None else value` (and "" refused, with a test); the comment
 fixed and the send path covered at the unit layer if it is not; a lower bound (>= 3 intervals).
 Found: 2026-10-07, review of fix/test-timers.
+## A stream that opens while the UI server stops can keep the stop waiting
+
+Size: S. Why here: the stop is only slower, nothing is lost, and the window is narrow.
+`feed.Hub.subscribe` checks `_closed` before `await to_thread.run_sync(self.source.last)`;
+`Hub.close` does not take the lock, so when it runs during that await, the first stream
+starts its `_run` task and joins `_queues` after the None was sent: it never ends, and the
+stop waits uvicorn's full grace again, as before fix/server-stop-streams.
+Wanted: `subscribe` checks `_closed` again after the await, before it starts the task or
+adds the queue; a unit test closes the hub during that await.
+Found: 2026-10-07, review of fix/server-stop-streams (Minor finding).
 
 # P3: maybe never
 

@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, TypeVar
 
+import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -641,7 +642,18 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
             return PlainTextResponse(f"The web UI's bundle is missing: {BUILD_HINT}.", 503)
         return FileResponse(static / "index.html")
 
+    app.state.hub = hub
     return app
+
+
+class Server(uvicorn.Server):
+    """uvicorn's server for an app of `create_app`: its shutdown ends the event streams
+    first. uvicorn waits for open responses before the app's lifespan shutdown, so that
+    would come too late."""
+
+    async def shutdown(self, sockets=None) -> None:
+        self.config.app.state.hub.close()
+        await super().shutdown(sockets)
 
 
 def bundle_file(static: Path, path: str) -> Path | None:

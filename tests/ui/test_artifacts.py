@@ -84,7 +84,9 @@ def designed_session(repo, tmp_path) -> str:
     return session
 
 
-def test_the_tab_filters_finds_and_opens_an_artifacts_page(page: Page, server, repo, tmp_path, shot):
+def test_the_tab_filters_finds_and_opens_an_artifacts_page(
+    page: Page, server, repo, tmp_path, shot
+):
     session = designed_session(repo, tmp_path)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/artifacts")
@@ -123,8 +125,12 @@ def test_a_gates_chip_opens_the_attached_record_and_says_when_it_changed(
     panel = page.get_by_role("dialog", name="Artifact ship/x/design")
     expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
     shot(page, "panel")
-    artifacts.write(session, "supervisor", "ship/x/design", content="# Design v2", summary="two forms")
-    expect(panel.get_by_role("status").filter(has_text="changed since")).to_contain_text("two forms")
+    artifacts.write(
+        session, "supervisor", "ship/x/design", content="# Design v2", summary="two forms"
+    )
+    expect(panel.get_by_role("status").filter(has_text="changed since")).to_contain_text(
+        "two forms"
+    )
     expect(card.get_by_role("button", name="Open latest ship/x/design")).to_be_visible()
     shot(page, "changed")
     panel.get_by_role("button", name="Open latest").click()

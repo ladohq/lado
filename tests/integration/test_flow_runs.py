@@ -16,7 +16,7 @@ from test_agents import (
     wait_status,
 )
 
-from lado import runs, runtime, state, tmux
+from lado import artifacts, runs, runtime, state, tmux
 
 pytestmark = pytest.mark.integration
 
@@ -84,6 +84,17 @@ states:
 """
 
 
+PRODUCED = """\
+name: produced
+description: a worker writes its report, the human approves it
+start: build
+states:
+  build: {agent: worker, do: sleep 0, produces: [report], outcomes: {done: check}}
+  check: {gate: approval, ask: 'Ship it?', outcomes: {approved: end, rejected: build}}
+  end: {end: true}
+"""
+
+
 @pytest.fixture
 def flow_kit(repo):
     kit = repo / ".lado" / "kits" / "itflow"
@@ -95,6 +106,7 @@ def flow_kit(repo):
     (kit / "flows" / "planned.yaml").write_text(PLANNED)
     (kit / "flows" / "tiny.yaml").write_text(TINY)
     (kit / "flows" / "designed.yaml").write_text(DESIGNED)
+    (kit / "flows" / "produced.yaml").write_text(PRODUCED)
     runtime.start_session(str(repo), SESSION, None, "fake", ["default", "itflow"])
     wait_status("supervisor", state.IDLE)
     return kit
@@ -220,6 +232,32 @@ def test_a_run_waits_at_a_gate_until_the_human_sets_it(repo, flow_kit):
     assert (
         f"human: gate_answer {name} (#1 overridden: looks fine)" in lado_cli("log", SESSION).stdout
     )
+
+
+def test_a_step_is_refused_until_it_writes_what_it_produces(repo, flow_kit):
+    name = "produced/report-it"
+    supervisor_runs("flow_start produced report it")
+    supervisor_runs(f"spawnrun {name}")
+    wait_status("worker", state.IDLE)
+    assert "This step must write: report (write_artifact)" in inputs("worker")[0]
+
+    runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
+    refusal = "step build must write report before flow_advance"
+    # The line is wrapped between words: joined again.
+    wait_for(lambda: refusal in " ".join(tmux.capture(SESSION, "worker").split()), "the refusal")
+    assert run_state(name).state == "build"
+    assert state.run_notes(SESSION, name) == []
+
+    Path(run_state(name).worktree, "report.md").write_text("# Report\n")
+    runtime.send_message(SESSION, "human", "worker", "artifact_write report report.md")
+    wait_for(lambda: "artifact_write" in seen("worker"), "the report written")
+    runtime.send_message(SESSION, "human", "worker", f"advance {name} done reported")
+    wait_for(lambda: run_state(name).state == "check", "the gate")
+    [note] = state.run_notes(SESSION, name)
+    report = artifacts.find(SESSION, f"{name}/report")
+    assert state.note_attachments(note.id) == [(report[0].id, report[1].id)]
+    gate = state.open_gate(SESSION, name)
+    assert runs.gate_artifacts(gate) == f"Artifacts: {name}/report"
 
 
 def to_the_gate(name: str) -> None:

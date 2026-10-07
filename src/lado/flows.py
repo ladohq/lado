@@ -20,6 +20,7 @@ A flow is a file flows/<name>.yaml in a kit:
         agent: developer
         do: Build it.
         needs: [design]                   # optional: states whose latest notes it gets
+        produces: [report]                # optional: artifacts its step must write
         outcomes: {done: done}
       done:
         end: true
@@ -27,6 +28,11 @@ A flow is a file flows/<name>.yaml in a kit:
 A work state's step gets the previous step's note, and with `needs` also the latest note
 reported from each named state (lado.runs.step_text); a needed state whose latest note is
 the previous step's note is printed once.
+
+A work state's `produces` names artifacts (docs/design/artifacts.md, Flows) of the run's
+scope: any outcome of the step is refused until each was written in the state's current
+visit, and those records are attached to the step's note (lado.runs.advance). Gate and end
+states take none.
 
 An approval gate has exactly the outcomes `approved` and `rejected`; the human answers it
 with approve or reject. A choice gate offers its outcome names. With `needs`, `lado answer`
@@ -50,13 +56,15 @@ from dataclasses import dataclass, field
 FLOW_KEYS = {"name", "description", "start", "states"}
 WORK, GATE, END = "work", "gate", "end"
 STATE_KEYS = {
-    WORK: {"agent", "do", "outcomes", "max_visits", "needs"},
+    WORK: {"agent", "do", "outcomes", "max_visits", "needs", "produces"},
     GATE: {"gate", "ask", "outcomes", "needs"},
     END: {"end"},
 }
 GATES = ("approval", "choice")
 APPROVAL = ("approved", "rejected")  # the outcomes of an approval gate, exactly these
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# An artifact's name (lado.artifacts.NAME), here so that this module stays free of LADO's.
+ARTIFACT_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 
 
 @dataclass(frozen=True)
@@ -68,6 +76,7 @@ class State:
     do: str = ""  # work: the step's instruction
     max_visits: int | None = None  # work: how often the state may be entered
     needs: tuple[str, ...] = ()  # work, gate: the states whose latest notes it shows
+    produces: tuple[str, ...] = ()  # work: the artifacts its step must write
     gate: str = ""  # gate: approval or choice
     ask: str = ""  # gate: the question for the human
 
@@ -194,11 +203,38 @@ def _state(name: object, raw: object, error) -> State | None:
     if visits is not None and (type(visits) is not int or visits < 1):
         error(f"{where}: max_visits must be a whole number of 1 or more")
         ok = False
-    if not ok:
+    produces = _produces(raw.get("produces", []), where, error)
+    if not ok or produces is None:
         return None
     return State(
-        name, WORK, outcomes, agent=agent, do=do.strip(), max_visits=visits, needs=tuple(needs)
+        name,
+        WORK,
+        outcomes,
+        agent=agent,
+        do=do.strip(),
+        max_visits=visits,
+        needs=tuple(needs),
+        produces=produces,
     )
+
+
+def _produces(value: object, where: str, error) -> tuple[str, ...] | None:
+    """The artifact names a work state's step must write, each once."""
+    if not isinstance(value, list) or not all(isinstance(n, str) for n in value):
+        error(f"{where}: produces must be a list of artifact names")
+        return None
+    ok = True
+    for name in value:
+        if not ARTIFACT_NAME.fullmatch(name):
+            error(
+                f'{where}: produces "{name}" is no artifact name: 1-64 characters of a-z, 0-9,'
+                ' "-", "_" and ".", starting with a letter or a digit'
+            )
+            ok = False
+    for name in sorted({n for n in value if value.count(n) > 1}):
+        error(f'{where}: produces names "{name}" twice')
+        ok = False
+    return tuple(value) if ok else None
 
 
 def _outcomes(value: object, where: str, error) -> dict[str, str] | None:

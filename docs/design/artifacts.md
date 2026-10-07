@@ -233,14 +233,31 @@ limit is refused with the limit in the error.
 
 ## Flows
 
-A work state may name the artifacts its step must write: `produces: [design]`. An outcome
-of that state (`flow_advance`) is refused until each has a record in the run's scope with
-that state and the state's current visit number (no clocks are compared; a record written
-unchanged counts); the refusal names each missing artifact by its full name and the
-`write_artifact` call that writes it (the full name also for a lead's step, see Names and
-scopes). The check fails closed: an error in it refuses. Gate states
-take no `produces`. `flows.lint` checks the names' grammar. (Part 3 may refine this to
-per-outcome requirements; it changes this section when it does.)
+A work state may name the artifacts its step must write: `produces: [design]`. It holds
+for the state, whatever the outcome (the human's decision, 2026-10-08; one per outcome
+waits for a real case). Every outcome of that state (`flow_advance`) is refused until the
+latest record of each, in the run's scope, has that state and the state's current visit
+number (no clocks are compared; a record written unchanged counts). While the run is in a
+visit, every write to its scope is of that visit, so the latest record is the one to
+count; a writer that read the run before it entered the state writes a record of the
+state before, and the step is refused until it writes again (fail closed, no harm). The
+refusal names each missing artifact as the caller writes it, with the `write_artifact`
+call: bare for a run's worker, `<run>/<name>` for the lead (Names and scopes). The check
+fails closed: an error of the store refuses and nothing is reported; any other error is a
+bug and is not hidden. The author is not checked: a record of any agent that may write to
+the run's scope counts (the run's workers, the supervisor; Names and scopes).
+
+The counted records are attached to the step's note by themselves, first, then the
+`artifacts` the agent named, each artifact once; so the gate after the step shows them and
+a step that `needs` that state lists them. The step's text names them as its agent writes
+them (`This step must write: ...`); `flow_status` names them by their full names, which
+work for any agent. `lado flow-set`, a gate's answer and a loop limit's `continue` report
+no step and check nothing; since every entry into a state counts a visit, a record of an
+earlier visit never counts after them.
+
+Gate and end states take no `produces`. `flows.parse` checks the names' grammar
+(`flows.ARTIFACT_NAME`, which `artifacts.NAME` is) and that each is named once: a flow
+that breaks it does not load.
 
 ## Lifecycle
 
@@ -262,7 +279,8 @@ per-outcome requirements; it changes this section when it does.)
 2. **UI**: the API, the feed, the Artifacts tab and its viewer, attachments on messages,
    notes and gates (with the gate keeping the id of the note before it, BACKLOG.md "A gate
    shows a needed note twice ..."), its update of docs/design/ui.md. Starts from mockups.
-3. **Flows**: `produces`.
+3. **Flows**: `produces`. An open run's task cannot be amended (BACKLOG.md): not here, but
+   a run of its own right after part 4, an addendum `<run>/addendum` the human approves.
 4. **Kit**: the lado-dev kit's flows write their design, report and review as artifacts
    (in the kit's repository).
 

@@ -307,13 +307,18 @@ fixes and docs only: no new feature, no API or schema change.
     `MarketplaceError`; it does not import `kits`.
   - `flows.py`: the flow format (`flows/<name>.yaml` in a kit: work, gate and end states;
     a work or gate state's optional `needs` lists the states whose latest notes its step
-    gets or the human sees at the gate)
+    gets or the human sees at the gate; a work state's optional `produces` the artifacts
+    its step must write, checked against `ARTIFACT_NAME`, the one pattern of an artifact's
+    name, which `artifacts.NAME` is)
     and its validator (`parse`), and `lint`, the graph rules a flow loads with but should
     not break: a state no end can be reached from, a cycle with no `max_visits` state and
     no gate on it, `needs` naming a state that never comes before (a state on a cycle may
     need itself); only `lado kits check` fails on them (`kits.lint`), never loading a kit,
     `lado kits add` or a run's snapshot. `runs.py`: flow runs: start (own worktree and branch, shared by the
-    run's workers), step messages from `lado`, `flow_advance`, loop limits, gates (the run
+    run's workers), step messages from `lado`, `flow_advance` (refused while a `produces`
+    artifact has no latest record of the state's current visit, `artifacts.produced`, by the
+    name the caller writes it with; fail closed on the store's errors; the counted records
+    attached to the step's note first; docs/design/artifacts.md, Flows), loop limits, gates (the run
     waits for the human), end (finish workers, remove the worktree if merged), cancel and
     `lado flow-set`. A run keeps a snapshot of its flow. A step whose `agent` is
     `kits.LEAD` (`supervisor`) is the session's lead's (`runs._lead_step`, by the name in
@@ -910,7 +915,9 @@ answer and its comment become the next step's note, after which the note that le
 follows in the body; when a worker gets the next step, the supervisor gets one line
 `flow <run>: human answered <option> at <state>`.
 
-A step's text (`runs.step_text`) has the task, the step's `do`, then for each state in its
+A step's text (`runs.step_text`) has the task, the step's `do` (with `This step must
+write: ...`, the `produces` names as its agent writes them, bare for a run's worker and
+`<run>/<name>` for the lead), then for each state in its
 `needs` the latest report kept from that state (`Note from <state>: ...`, or `no note yet`),
 then the previous step's note and the outcomes. The needed notes come from the `notes`
 table, so `lado flow-set` keeps them: a run set to `implement` with `needs: [design]` gets
@@ -947,8 +954,8 @@ answered elsewhere: <answer> by <who>` and goes on with the session's open gates
 with `No more open gates.`, which closes the popup. Without a terminal (a pipe) it does not
 check.
 
-Flow tools return short results: the run, flow, state, status, who acts, outcomes, gate,
-visits, the note's summary and the run's language; `flow_status(run=...)` adds the task,
+Flow tools return short results: the run, flow, state, status, who acts, outcomes, the
+artifacts the step `produces` (full names), gate, visits, the note's summary and the run's language; `flow_status(run=...)` adds the task,
 reason, worktree and branch. What the supervisor's own `flow_start` or `flow_advance`
 causes (a step that needs a worker, a gate, the run's end) comes back in the result's
 `notices` instead of as a message; what others cause (a worker's advance, the human's

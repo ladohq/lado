@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from lado import state
+from lado import flows, state
 
 SESSION_SCOPE = ""
 SUPERVISOR = "supervisor"  # the lead's agent name (lado.runtime.SUPERVISOR)
-NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
+NAME = flows.ARTIFACT_NAME
 SUMMARY_LIMIT = state.SUMMARY_LIMIT  # characters in a title or a summary
 MAX_SIZE = 25 * 1024 * 1024  # bytes in a record
 READ_LIMIT = 100_000  # characters read_artifact gives at once
@@ -390,6 +390,23 @@ def resolve_attachments(session: str, agent: str, names: list[str] | None) -> li
         if (artifact.id, record.id) not in attached:
             attached.append((artifact.id, record.id))
     return attached
+
+
+def produced(
+    session: str, run: str, state_name: str, visit: int, names: tuple[str, ...]
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """What a flow step that must write `names` wrote (docs/design/artifacts.md, Flows):
+    each artifact of the run's scope whose latest record was written in `state_name` at its
+    `visit`, as (artifact id, record id), and the names that have none. The latest record
+    only: while the run is in that visit, every write to its scope is of it."""
+    counted, missing = [], []
+    for name in names:
+        found = store().latest(session, run, name)
+        if found and found[1].state == state_name and found[1].visit == visit:
+            counted.append((found[0].id, found[1].id))
+        else:
+            missing.append(name)
+    return counted, missing
 
 
 @dataclass(frozen=True)

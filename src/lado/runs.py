@@ -17,6 +17,7 @@ worker.
 
 import dataclasses
 import json
+import sqlite3
 from pathlib import Path
 
 from lado import artifacts, flows, kits, providers, runtime, state, tmux
@@ -103,9 +104,10 @@ def advance(
     attached: list[str] | None = None,
 ) -> state.Run:
     """Move the run on by `outcome` of its current step, reported by the agent acting in
-    it. The note, with the artifacts named in `attached`, goes to the next step; a name not
-    found moves nothing. If the caller is the supervisor, what it would be told about the
-    move goes to `notices` instead, if given."""
+    it. A step whose state `produces` artifacts is refused until it wrote each (`_produced`).
+    The note, with those artifacts and the ones named in `attached`, goes to the next step;
+    a name not found moves nothing. If the caller is the supervisor, what it would be told
+    about the move goes to `notices` instead, if given."""
     runtime.running_session(session)
     run = _run(session, run_name)
     if run.status == state.WAITING:
@@ -129,6 +131,9 @@ def advance(
             "put the details in note_body"
         )
     attachments = artifacts.resolve_attachments(session, caller, attached)
+    counted = _produced(run, current)
+    ids = {artifact for artifact, _ in counted}
+    attachments = counted + [a for a in attachments if a[0] not in ids]
     target = current.outcomes[outcome]
     noted = dataclasses.replace(run, note=note, note_body=note_body or "")
     after, events, gate = _enter(noted, flow, target)
@@ -145,6 +150,38 @@ def advance(
         noted=state.Noted(run.state, state.REPORT, caller, outcome, target),
         attachments=attachments,
     )
+
+
+def _produced(run: state.Run, current: flows.State) -> list[tuple[str, str]]:
+    """The records the step wrote of the artifacts its state `produces`, to attach to its
+    note; refused while one is missing, named as the acting agent writes it, and when they
+    cannot be checked (fail closed). Only the store's errors are told as a refusal: any
+    other is a bug of LADO's and goes up as it is."""
+    if not current.produces:
+        return []
+    try:
+        counted, missing = artifacts.produced(
+            run.session, run.name, run.state, run.visits[run.state], current.produces
+        )
+    except (artifacts.ArtifactError, OSError, sqlite3.Error) as error:
+        raise LadoError(
+            f"could not check the artifacts step {run.state} must write: {error}; "
+            "nothing was reported, call flow_advance again"
+        ) from error
+    if missing:
+        names = [_as_written(run, current, name) for name in missing]
+        calls = ", ".join(f'write_artifact(name="{name}", ...)' for name in names)
+        raise LadoError(
+            f"step {run.state} must write {', '.join(names)} before flow_advance; "
+            f"write each with {calls}"
+        )
+    return counted
+
+
+def _as_written(run: state.Run, current: flows.State, name: str) -> str:
+    """An artifact of the run's scope as the step's agent writes it: a bare name means its
+    run's scope for a run's worker; the lead writes a run's by its full name."""
+    return artifacts.full_name(run.name, name) if _lead_step(current) else name
 
 
 def answer(
@@ -507,6 +544,12 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
         f"Task:\n{run.task}",
         f"Step:\n{current.do}",
     ]
+    if current.produces:
+        names = ", ".join(_as_written(run, current, name) for name in current.produces)
+        parts[-1] += (
+            f"\nThis step must write: {names} (write_artifact); they are attached to your"
+            " note when you report."
+        )
     kept = state.latest_notes(run.session, run.name) if current.needs else {}
     previous = state.last_note(run.session, run.name)
     shown = False  # the previous step's note was one of the needed ones
@@ -789,6 +832,11 @@ def describe(run: state.Run, full: bool = False) -> dict:
         "status": run.status,
         "acting": acting_or_problem(run)[0],
         "outcomes": flow.states[run.state].outcomes if flow and active else {},
+        "produces": [
+            artifacts.full_name(run.name, name) for name in flow.states[run.state].produces
+        ]
+        if flow and active
+        else [],
         "gate": gate and {"id": gate.id, "question": gate.question, "options": gate.options},
         "visits": run.visits,
         "note": run.note,

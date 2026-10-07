@@ -306,7 +306,18 @@ def test_spawn_worker_says_what_holds_the_worker_before_its_first_hook(
     assert worker["warnings"] == []
 
 
-SHORT = {"run", "flow", "state", "status", "acting", "outcomes", "gate", "visits", "note"}
+SHORT = {
+    "run",
+    "flow",
+    "state",
+    "status",
+    "acting",
+    "outcomes",
+    "produces",
+    "gate",
+    "visits",
+    "note",
+}
 
 
 def test_flow_tools_return_short_results_and_the_supervisors_own_notices(repo, fake_tmux):

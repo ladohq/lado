@@ -1015,16 +1015,17 @@ Found: 2026-10-06, architect's review of feature/delivery.
 
 ## An open run's task cannot be amended
 
-Size: M. Why here: artifacts (the next item of stage 7) solve it naturally: part 3 (Flows)
-of docs/design/artifacts.md takes it on.
+Size: M. Why here: a run of its own right after part 4 (Kit) of docs/design/artifacts.md
+(the human's decision, 2026-10-08): it builds on artifacts, and part 3 (Flows) left it out
+to keep `produces` small.
 
 A small addition the human asks for while a run is in `implement` (feature/ui-polish:
 AC-13..15) can only go to the developer as a message. The design note that the reviewer and
 the merge gate get does not have it, and `lado log` does not tie it to the run. The only
 other way, `lado flow-set` back to `design`, repeats the architect's review and the design
 gate for a few lines.
-Wanted: an addendum to an open run (from the supervisor, approved by the human), kept in
-`notes` and shown to every later step and gate after the design note.
+Wanted: an addendum to an open run as an artifact, `<run>/addendum`: the supervisor writes
+it, the human approves it, and every later step sees it in its step's text.
 Found: 2026-10-03, feature/ui-polish.
 
 ## A step that needs a new worker is a relay through the supervisor

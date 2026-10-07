@@ -128,6 +128,34 @@ def _broken(change):
             lambda d: d["states"]["design_ok"].update(needs="design"),
             'state "design_ok": needs must be a list of state names',
         ),
+        (
+            lambda d: d["states"]["review"].update(produces="review"),
+            'state "review": produces must be a list of artifact names',
+        ),
+        (
+            lambda d: d["states"]["review"].update(produces=[["review"]]),
+            'state "review": produces must be a list of artifact names',
+        ),
+        (
+            lambda d: d["states"]["review"].update(produces=["Review"]),
+            'state "review": produces "Review" is no artifact name',
+        ),
+        (
+            lambda d: d["states"]["review"].update(produces=["ship/review"]),
+            'state "review": produces "ship/review" is no artifact name',
+        ),
+        (
+            lambda d: d["states"]["review"].update(produces=["review", "report", "review"]),
+            'state "review": produces names "review" twice',
+        ),
+        (
+            lambda d: d["states"]["design_ok"].update(produces=["design"]),
+            'state "design_ok": unknown keys produces',
+        ),
+        (
+            lambda d: d["states"]["done"].update(produces=["design"]),
+            'state "done": unknown keys produces',
+        ),
         (lambda d: d["states"]["done"].update(end=False), 'state "done": end must be true'),
         (
             lambda d: d["states"]["done"].update(outcomes={"x": "design"}),
@@ -161,6 +189,27 @@ def test_a_work_state_names_the_earlier_states_whose_notes_it_needs():
     assert errors == []
     assert flow.states["review"].needs == ("design", "design_ok")
     assert flow.states["implement"].needs == ()
+
+
+def test_a_work_state_names_the_artifacts_its_step_must_write():
+    data = _broken(lambda d: d["states"]["review"].update(produces=["review", "mockup.html"]))
+    flow, errors = parse(data)
+    assert errors == []
+    assert flow.states["review"].produces == ("review", "mockup.html")
+    assert flow.states["implement"].produces == ()
+    again = flows.from_snapshot(copy.deepcopy(flow.snapshot), "kit")
+    assert again.states["review"].produces == ("review", "mockup.html")
+
+
+def test_a_snapshot_from_before_produces_still_works():
+    flow = flows.from_snapshot(yaml.safe_load(FEATURE), "kit")
+    assert all(state.produces == () for state in flow.states.values())
+
+
+def test_an_artifact_name_has_one_pattern():
+    from lado import artifacts
+
+    assert artifacts.NAME is flows.ARTIFACT_NAME
 
 
 def test_a_gate_names_the_states_whose_notes_the_human_sees():

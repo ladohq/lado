@@ -25,7 +25,7 @@ make web                # the web UI: npm ci, stale-types check, tsc, vitest, bu
 make web-types          # web/openapi.json and web/src/api.gen.ts from the server's API (commit both)
 make test-ui            # uv run pytest -m ui: Chromium against a real lado server, fake agent
 make dist               # uv build, and check that the sdist and the wheel ship the web UI
-make check              # lint, the plugin, the web UI, unit, integration and UI tests in one run
+make check              # lint, the plugin, the web UI, then unit, integration and UI tests one after another
 make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=claude|kilo|opencode
 ```
 
@@ -37,6 +37,12 @@ its own `LADO_HOME`, tmux server and repos, so tests must not share a fixed path
 file. To debug serially, with output in order: `make test PYTEST_ARGS=-n0` (`PYTEST_ARGS`
 replaces `-n auto` and takes any pytest options, e.g. `PYTEST_ARGS="-n0 -k gate -x"`), or
 `uv run pytest` without `-n`. Live tests always run serially.
+
+`make check` runs the unit, integration and UI tests as three pytest runs, one after another
+(`scripts/check_groups.py`): in one run xdist hands the integration tests, collected first,
+to two workers while the others wait idle. Each group runs also after one that failed, a
+group that collects no tests (pytest's exit 5) is no failure, `PYTEST_ARGS` applies to each,
+and the last line names the groups that failed (`check: failed: integration, ui`).
 
 One heavy test run per machine at a time: `make check`, `make test`, `make test-integration`
 and `make test-ui` run under a lock (`scripts/check_lock.py`, an flock on
@@ -451,6 +457,7 @@ fixes and docs only: no new feature, no API or schema change.
   UI's unit tests (vitest).
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
 - `scripts/check_lock.py`: the Makefile's machine-wide test-run lock (Commands).
+  `scripts/check_groups.py`: `make check`'s test groups, one after another (Commands).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk

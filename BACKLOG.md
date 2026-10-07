@@ -59,6 +59,11 @@ both passed 5 of 5 alone and in the six parallel runs after it (five `make
 test-integration`, one `make check`). A short retry delay is
 exceeded by a hook that takes over 0.5 s to start under such load (the message is then
 typed once more), so these may be timing-sensitive under load.
+Also (2026-10-07, fix/integration-fix1, load average 90-160 from other processes): `make
+check` failed in vitest on Launch.test.tsx:197 "the folder is checked by the server…":
+`expect(startButton().disabled).toBe(false)` right after `await ready("/src/lado")` got
+true (a synchronous check of what a later render sets); `make web` and `make check` passed
+right after.
 
 ### Vitest tests time out at vitest's default 5 s under load, one entry per test
 

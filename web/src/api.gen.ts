@@ -437,6 +437,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/about": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session About
+         * @description What the session's head shows besides its settings: its repository's remote and
+         *     branch, its kits' and provider's versions as installed now. Read anew each time.
+         */
+        get: operations["session_about_api_sessions__name__about_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/agents": {
         parameters: {
             query?: never;
@@ -1484,6 +1505,18 @@ export interface components {
             switch_off: string[];
         };
         /**
+         * RepoInfo
+         * @description A repository of a session: now its one folder; a project will have several.
+         */
+        RepoInfo: {
+            /** Path */
+            path: string;
+            /** Remote */
+            remote: string | null;
+            /** Branch */
+            branch: string | null;
+        };
+        /**
          * Resume
          * @description A stopped session started again; what is given replaces its stored settings.
          */
@@ -1569,6 +1602,19 @@ export interface components {
             /** Result */
             result: string;
         };
+        /**
+         * SessionAbout
+         * @description What the session's head shows besides its settings: read from git, the kits and
+         *     the provider's CLI when asked, never in the change feed (docs/design/ui.md, Session
+         *     head).
+         */
+        SessionAbout: {
+            /** Repos */
+            repos: components["schemas"]["RepoInfo"][];
+            /** Kits */
+            kits: components["schemas"]["SessionKitInfo"][];
+            provider: components["schemas"]["ProviderInfo"];
+        };
         /** SessionInfo */
         SessionInfo: {
             /** Name */
@@ -1593,6 +1639,22 @@ export interface components {
             running_since: string | null;
             /** Stopped At */
             stopped_at: string | null;
+        };
+        /**
+         * SessionKitInfo
+         * @description A kit of a session as the next agent would take it now (kits.find in its repo).
+         */
+        SessionKitInfo: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Source */
+            source: string;
+            /** Valid */
+            valid: boolean;
+            /** Problem */
+            problem: string | null;
         };
         /**
          * SessionStatus
@@ -2499,6 +2561,37 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_about_api_sessions__name__about_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionAbout"];
                 };
             };
             /** @description Validation Error */

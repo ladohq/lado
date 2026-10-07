@@ -288,6 +288,34 @@ class ProviderInfo(BaseModel):
     warning: str  # "" unless its version is not the tested one
 
 
+class RepoInfo(BaseModel):
+    """A repository of a session: now its one folder; a project will have several."""
+
+    path: str
+    remote: str | None  # origin's URL through runtime.public_remote; None without one
+    branch: str | None  # None on a detached HEAD, or with the folder gone
+
+
+class SessionKitInfo(BaseModel):
+    """A kit of a session as the next agent would take it now (kits.find in its repo)."""
+
+    name: str
+    version: str  # "" unless valid
+    source: str  # where it is, as `lado kits` says it; "" when it is not found
+    valid: bool
+    problem: str | None  # why it is not found or does not load
+
+
+class SessionAbout(BaseModel):
+    """What the session's head shows besides its settings: read from git, the kits and
+    the provider's CLI when asked, never in the change feed (docs/design/ui.md, Session
+    head)."""
+
+    repos: list[RepoInfo]
+    kits: list[SessionKitInfo]
+    provider: ProviderInfo
+
+
 class Launch(BaseModel):
     """A new session, as `lado start` takes it."""
 

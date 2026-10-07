@@ -39,7 +39,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         ok=ok,
         problem=problem,
         root=root,
-        branch=_branch(root) if root else None,
+        branch=runtime.branch(root) if root else None,
         has_commits=has_commits,
         subfolders=_subfolders(Path(path)),
         default_name=name,
@@ -63,13 +63,6 @@ def _root_or_none(path: str) -> str | None:
         return runtime.repo_root(path)
     except runtime.LadoError:
         return None
-
-
-def _branch(root: str) -> str | None:
-    try:
-        return runtime.git(root, "symbolic-ref", "--short", "HEAD")
-    except runtime.LadoError:
-        return None  # a detached HEAD
 
 
 def _subfolders(path: Path) -> list[str]:
@@ -138,18 +131,54 @@ def provider_infos() -> list[models.ProviderInfo]:
     """Each provider of the registry, its CLI checked anew (`<cli> --version`), all at once."""
     registry = [providers.get(name) for name in providers.names()]
     with ThreadPoolExecutor(len(registry)) as pool:
-        statuses = list(pool.map(lambda p: doctor.provider_status(p, shutil.which), registry))
-    return [
-        models.ProviderInfo(
-            name=provider.name,
-            title=provider.title,
-            permission_modes=list(provider.permission_modes),
-            install_hint=provider.install_hint,
-            installed=status.installed,
-            version=status.version,
-            detail=status.detail,
-            tested_version=status.tested_version,
-            warning=status.warning,
+        return list(pool.map(provider_info, registry))
+
+
+def provider_info(provider: providers.Provider) -> models.ProviderInfo:
+    """The provider and its CLI as the server finds it, checked anew (`<cli> --version`)."""
+    status = doctor.provider_status(provider, shutil.which)
+    return models.ProviderInfo(
+        name=provider.name,
+        title=provider.title,
+        permission_modes=list(provider.permission_modes),
+        install_hint=provider.install_hint,
+        installed=status.installed,
+        version=status.version,
+        detail=status.detail,
+        tested_version=status.tested_version,
+        warning=status.warning,
+    )
+
+
+def session_about(sess: state.Session) -> models.SessionAbout:
+    """What the session's head shows besides its settings, read now: its repository's
+    remote and branch, its kits as the next agent would take them, its provider's CLI."""
+    remote = runtime.remote(sess.repo)
+    repo = models.RepoInfo(
+        path=sess.repo,
+        remote=runtime.public_remote(remote) if remote else None,
+        branch=runtime.branch(sess.repo),
+    )
+    return models.SessionAbout(
+        repos=[repo],
+        kits=[_session_kit(name, sess.repo) for name in sess.kits],
+        provider=provider_info(providers.get(sess.provider)),
+    )
+
+
+def _session_kit(name: str, repo: str) -> models.SessionKitInfo:
+    try:
+        found = kits.find(name, repo)
+    except kits.KitError as exc:
+        return models.SessionKitInfo(
+            name=name, version="", source="", valid=False, problem=str(exc)
         )
-        for provider, status in zip(registry, statuses, strict=True)
-    ]
+    try:
+        kit = found.load()
+    except kits.KitError as exc:
+        return models.SessionKitInfo(
+            name=name, version="", source=found.source, valid=False, problem=str(exc)
+        )
+    return models.SessionKitInfo(
+        name=name, version=kit.version, source=kit.source, valid=True, problem=None
+    )

@@ -257,12 +257,14 @@ def test_a_runs_events_show_in_the_feed_and_its_gate_puts_the_session_under_need
     gate = state.Gate(session, "feature/demo", "design", "loop", "Again?", ["continue", "cancel"])
     state.add_run(run, [("supervisor", state.FLOW_START, "at design")], gate)
     chat = page.get_by_role("log", name="Chat with the session")
-    lines = chat.get_by_role("listitem")
-    expect(lines.first).to_contain_text("feature/demo: at design")
+    # The run's events are a group under the run's name, which links to the run.
+    lines = chat.get_by_role("list", name="Flow run feature/demo").get_by_role("listitem")
+    expect(lines.first).to_contain_text("supervisorstartedat design")
     expect(chat.get_by_role("article", name=f"Gate #{gate.id}")).to_contain_text("Again?")
-    expect(lines.first.get_by_role("link", name="Flows")).to_have_attribute(
-        "href", f"/sessions/{session}/flows/feature%2Fdemo"
-    )
+    expect(
+        chat.locator(".run-group").first.get_by_role("link", name="feature/demo")
+    ).to_have_attribute("href", f"/sessions/{session}/flows/feature%2Fdemo")
+    expect(chat.get_by_role("link", name="Flows")).to_have_count(0)
     needs_you = sessions.get_by_role("region", name="Needs you")
     expect(needs_you).to_contain_text(session)
     expect(needs_you).to_contain_text("1 gate")

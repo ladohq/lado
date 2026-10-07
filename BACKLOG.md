@@ -1186,6 +1186,18 @@ Wanted: the human uploads a file in the UI as an artifact of the session or a ru
 name agents then read with `read_artifact`, with the same limits as an agent's write.
 Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
 
+## Artifact cleanup can remove the content of a write in progress
+
+Size: S. Why here: a narrow race (a `lado forget` of one session while another writes the
+same content, older than an hour); the review of feature/artifacts-core rated it Minor.
+`LocalStore._collect` (src/lado/artifacts_local.py) lists the orphans with their mtime
+first and unlinks them later without looking again. A write of the same content in
+between sets the file's mtime, commits its record and finds the file there; then the
+unlink takes it, and reading that record says "content ... is missing from the store".
+Wanted: `_collect` reads each file's mtime again right before its unlink and skips one
+younger than `ORPHAN_AGE`, so the window shrinks to one stat and unlink.
+Found: 2026-10-07, review of feature/artifacts-core.
+
 # P3: maybe never
 
 ## The chat's day dividers say "Today" and "Yesterday" as of their last render

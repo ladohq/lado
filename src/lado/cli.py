@@ -683,7 +683,6 @@ def cmd_answer(args: argparse.Namespace) -> int:
         gate = gates[0] if len(gates) == 1 else _pick(gates)
         if gate is None:
             return failed
-        session = gate.session  # then the session's other open gates: a popup asks them all
         try:
             reads = runs.gate_reads(gate)
         except runs.SnapshotError as exc:
@@ -693,7 +692,8 @@ def cmd_answer(args: argparse.Namespace) -> int:
             )
             _show_gate(gate, None, problem)
             unreadable.add(gate.id)
-            continue
+            continue  # with the gates asked about before it, of all sessions or of one
+        session = gate.session  # then the session's other open gates: a popup asks them all
         # -m is for the first gate only, also when that one is answered elsewhere.
         comment, args.comment = args.comment, None
         try:
@@ -797,23 +797,46 @@ def _full_gate(gate: state.Gate, reads: list[str]) -> str:
     artifact the gate reads as of its latest record; an artifact by its content when it is
     text, else by its type and size."""
     parts = [f"Note: {gate.note}\n\n{gate.note_body.strip()}".rstrip() + "\n"]
-    for one in runs.gate_attachments(gate):
-        parts.append(_artifact_text(one.artifact.full_name, (one.artifact, one.record)))
+    try:
+        attached = runs.gate_attachments(gate)
+    except artifacts.STORE_ERRORS as exc:
+        parts.append(f"Its artifacts cannot be read now: {exc}\n")
+        attached = []
+    for one in attached:
+        parts.append(
+            _artifact_text(one.artifact.full_name, lambda one=one: (one.artifact, one.record))
+        )
     for name in reads:
-        found = artifacts.latest(gate.session, gate.run, name)
-        parts.append(_artifact_text(artifacts.full_name(gate.run, name), found))
+        latest = lambda name=name: artifacts.latest(gate.session, gate.run, name)  # noqa: E731
+        parts.append(_artifact_text(artifacts.full_name(gate.run, name), latest))
     return "\n".join(parts)
 
 
-def _artifact_text(name: str, found: tuple | None) -> str:
-    line = artifacts.record_line(name, found)
-    if found is None:
-        return f"{line}\n"
-    record = found[1]
-    if not artifacts.is_text(record.media_type):
-        return f"{line}\n\n({record.media_type}, {record.size} bytes: not text)\n"
-    text = artifacts.content(record).decode(errors="replace").rstrip()
+def _artifact_text(name: str, load: Callable[[], tuple | None]) -> str:
+    """An artifact as "v" shows it: its line, then its content when it is text, else its
+    type and size; what the store cannot read is said in its line."""
+    try:
+        found = load()
+        line = artifacts.record_line(name, found)
+        if found is None:
+            return f"{line}\n"
+        record = found[1]
+        if not artifacts.is_text(record.media_type):
+            return f"{line}\n\n({record.media_type}, {record.size} bytes: not text)\n"
+        text = artifacts.content(record).decode(errors="replace").rstrip()
+    except artifacts.STORE_ERRORS as exc:
+        return f"{name}: cannot be read now: {exc}\n"
     return f"{line}\n\n{text}\n"
+
+
+def _read_line(gate: state.Gate, name: str) -> str:
+    """The line of an artifact the gate reads, as of its latest record; what the store
+    cannot read is said in it, and the gate is asked all the same."""
+    full = artifacts.full_name(gate.run, name)
+    try:
+        return artifacts.record_line(full, artifacts.latest(gate.session, gate.run, name))
+    except artifacts.STORE_ERRORS as exc:
+        return f"{full}: cannot be read now: {exc}"
 
 
 def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = None) -> None:
@@ -826,7 +849,10 @@ def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = 
     more = f" (v: the full note, {lines} more line{'' if lines == 1 else 's'})" if lines else ""
     if gate.note:
         print(f"Note: {gate.note}{more}")
-    listed = runs.gate_artifacts(gate)
+    try:
+        listed = runs.gate_artifacts(gate)
+    except artifacts.STORE_ERRORS as exc:
+        listed = f"Its artifacts cannot be read now: {exc}"
     if listed:
         print(listed)
     if problem:
@@ -835,8 +861,7 @@ def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = 
     if reads:
         print("Artifacts it reads:")
         for name in reads:
-            found = artifacts.latest(gate.session, gate.run, name)
-            print(f"  {artifacts.record_line(artifacts.full_name(gate.run, name), found)}")
+            print(f"  {_read_line(gate, name)}")
     print("Options:")
     for n, option in enumerate(gate.options, 1):
         print(f"  {n}) {option}")

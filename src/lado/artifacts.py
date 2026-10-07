@@ -9,6 +9,7 @@ full name is `<run>/<name>`, or `<name>` in the session's scope; it is parsed by
 """
 
 import re
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -79,6 +80,10 @@ PREFERRED_EXTENSION = {
 
 class ArtifactError(RuntimeError):
     """A write, read or attachment LADO refuses; the text says why and what to do."""
+
+
+# What the store raises when it cannot be read; any other error is a bug of LADO's.
+STORE_ERRORS = (ArtifactError, OSError, sqlite3.Error)
 
 
 @dataclass(frozen=True)

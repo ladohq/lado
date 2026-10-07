@@ -12,6 +12,7 @@ from agent_helpers import init_repo, publish
 from lado import (
     __version__,
     artifacts,
+    artifacts_local,
     cli,
     flows,
     gitcache,
@@ -1116,6 +1117,42 @@ def test_answer_shows_a_gate_whose_flow_cannot_be_read_and_goes_on(
     assert "gate #2: reject. plan/y: check -> build" in out
     assert out.endswith("No more open gates.\n")
     assert state.open_gate("s", "plan/x").answer is None
+
+
+@pytest.mark.parametrize("failing", ["latest", "content"])
+def test_an_error_of_the_store_is_said_in_the_artifacts_line_and_the_gate_is_asked(
+    repo, fake_tmux, capsys, monkeypatch, failing
+):
+    _at_gate_with_reads(repo, capsys)
+
+    def broken(*args):
+        raise artifacts.ArtifactError("content of plan/x/plan is missing")
+
+    monkeypatch.setattr(artifacts_local.LocalStore, failing, broken)
+    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
+    _typing(monkeypatch, "v", "approve", "")
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert "plan/x/plan: cannot be read now: content of plan/x/plan is missing" in out
+    assert "gate #1: approve. plan/x: check -> end (ended)" in out
+
+
+def test_answer_goes_on_with_other_sessions_after_a_gate_whose_flow_cannot_be_read(
+    repo, fake_tmux, capsys, monkeypatch
+):
+    _at_gate_with_reads(repo, capsys)
+    agent_helpers.spoil_snapshot("s", "plan/x")
+    runtime.start_session(str(repo), "t", None, kit_names=["default", "team"], provider="claude")
+    runs.start("t", "plan", "Add y", name="y")
+    runs.force("t", "plan/y", "check", "built by hand")
+    capsys.readouterr()
+    _typing(monkeypatch, "1", "reject", "")
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert "Gate #1 cannot be answered" in out
+    # The problem gate does not narrow the question to its session: t's gate comes next.
+    assert "gate #2: reject. plan/y: check -> build" in out
+    assert out.endswith("No more open gates.\n")
 
 
 def test_answer_lets_the_human_pick_a_gate_and_leave(repo, fake_tmux, capsys, monkeypatch):

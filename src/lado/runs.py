@@ -17,7 +17,6 @@ worker.
 
 import dataclasses
 import json
-import sqlite3
 from pathlib import Path
 
 from lado import artifacts, flows, kits, providers, runtime, state, tmux
@@ -163,7 +162,7 @@ def _produced(run: state.Run, current: flows.State) -> list[tuple[str, str]]:
         counted, missing = artifacts.produced(
             run.session, run.name, run.state, run.visits[run.state], current.produces
         )
-    except (artifacts.ArtifactError, OSError, sqlite3.Error) as error:
+    except artifacts.STORE_ERRORS as error:
         raise LadoError(
             f"could not check the artifacts step {run.state} must write: {error}; "
             "nothing was reported, call flow_advance again"
@@ -272,7 +271,10 @@ def gate_reads(gate: state.Gate) -> list[str]:
     if gate.kind == LOOP:
         return []
     reads = flow_of(_run(gate.session, gate.run)).states[gate.state].reads
-    shown = {a.artifact.full_name for a in gate_attachments(gate)}
+    try:
+        shown = {a.artifact.full_name for a in gate_attachments(gate)}
+    except artifacts.STORE_ERRORS:
+        shown = set()  # the note's artifacts cannot be read: better each one twice than none
     return [name for name in reads if artifacts.full_name(gate.run, name) not in shown]
 
 
@@ -581,7 +583,7 @@ def _record_lines(
     for name in names:
         try:
             found = artifacts.latest(run.session, run.name, name)
-        except (artifacts.ArtifactError, OSError, sqlite3.Error) as error:
+        except artifacts.STORE_ERRORS as error:
             lines.append(f"- {_as_written(run, current, name)}: cannot be read now: {error}")
             continue
         if (found and found[1].id in shown) or (written_only and found is None):

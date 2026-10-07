@@ -23,52 +23,21 @@ const LABELS: Record<string, Record<string, string>> = {
 };
 
 // How a gate is named wherever one title stands for it (a closed gate's line, a run's page).
-export const gateTitle = (gate: GateInfo) =>
-  `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
+export const gateTitle = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
 
 // A gate in the chat: open, its row with the card; closed, its line.
-export function Gate({
-  session,
-  gate,
-  stopped,
-}: {
-  session: string;
-  gate: GateInfo;
-  stopped: boolean;
-}) {
+export function Gate({ session, gate, stopped }: { session: string; gate: GateInfo; stopped: boolean }) {
   return gate.answer === null ? (
-    <GateRow
-      session={session}
-      gate={gate}
-      stopped={stopped}
-      aside={`${gate.run} · ${gate.state}`}
-    />
+    <GateRow session={session} gate={gate} stopped={stopped} aside={`${gate.run} · ${gate.state}`} />
   ) : (
     <GateLine session={session} gate={gate} />
   );
 }
 
 // An open gate's row: the flag, "Gate #id", `aside`, when it opened, and its card.
-export function GateRow({
-  session,
-  gate,
-  stopped,
-  aside,
-}: {
-  session: string;
-  gate: GateInfo;
-  stopped: boolean;
-  aside: string;
-}) {
+export function GateRow({ session, gate, stopped, aside }: { session: string; gate: GateInfo; stopped: boolean; aside: string }) {
   return (
-    <FeedRow
-      kind="gate"
-      who={`Gate #${gate.id}`}
-      aside={aside}
-      at={gate.created_at}
-      label={`Gate #${gate.id}`}
-      id={gateAnchor(gate.id)}
-    >
+    <FeedRow kind="gate" who={`Gate #${gate.id}`} aside={aside} at={gate.created_at} label={`Gate #${gate.id}`} id={gateAnchor(gate.id)}>
       <GateCard session={session} gate={gate} stopped={stopped} />
     </FeedRow>
   );
@@ -111,11 +80,7 @@ export function GateCard({
     <div className="chat-gate open">
       <p className="gate-question">{gate.question}</p>
       {!compact && <Note session={session} gate={gate} />}
-      {!compact && gate.problem && (
-        <p className="problem gate-problem">
-          Artifacts it reads cannot be shown: {gate.problem}
-        </p>
-      )}
+      {!compact && gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
       {!compact && <Reads session={session} names={gate.reads ?? []} />}
       <form className="answer" onSubmit={(event) => event.preventDefault()}>
         <textarea
@@ -138,11 +103,7 @@ export function GateCard({
             </button>
           ))}
         </div>
-        {stopped && (
-          <p className="chat-note">
-            The session is stopped: resume it to answer.
-          </p>
-        )}
+        {stopped && <p className="chat-note">The session is stopped: resume it to answer.</p>}
         {problem && (
           <p className="field-problem" role="alert">
             {problem}
@@ -156,8 +117,7 @@ export function GateCard({
 // The note of the step that led to the gate: its summary, then its body at once, and its
 // artifacts as chips with their short names (they are the run's).
 function Note({ session, gate }: { session: string; gate: GateInfo }) {
-  if (!gate.note && !gate.note_body && gate.attachments.length === 0)
-    return null;
+  if (!gate.note && !gate.note_body && gate.attachments.length === 0) return null;
   return (
     <div className="gate-note">
       {gate.note && (
@@ -172,9 +132,9 @@ function Note({ session, gate }: { session: string; gate: GateInfo }) {
 }
 
 // The artifacts the gate reads, by their full names (the core leaves out those its note
-// carries): each as of its latest record among the feed's artifacts, so a write while the
-// gate is open shows at once. A chip opens that record; before the session's artifacts are
-// loaded, a name alone.
+// carries), under a muted "It reads": each as of its latest record among the feed's
+// artifacts, so a write while the gate is open shows at once. A chip opens that record;
+// before the session's artifacts are loaded, a name alone.
 function Reads({ session, names }: { session: string; names: string[] }) {
   const artifacts = useLive().artifacts[session];
   const view = useView(session);
@@ -182,35 +142,20 @@ function Reads({ session, names }: { session: string; names: string[] }) {
   const items = artifacts && "items" in artifacts ? artifacts.items : undefined;
   return (
     <>
-      <p className="gate-reads-label" aria-hidden="true">
-        It reads
-      </p>
+      <p className="gate-reads-label" aria-hidden="true">It reads</p>
       <ul className="gate-reads" aria-label="Artifacts it reads">
         {names.map((name) => {
           const found = items?.find((one) => one.full_name === name);
           const short = name.slice(name.lastIndexOf("/") + 1);
-          if (!found) {
-            return (
-              <li key={name} className="gate-read muted">
-                {short}
-                {items && ": no record yet"}
-              </li>
-            );
-          }
-          const about = [found.title, found.latest.summary]
-            .filter(Boolean)
-            .join(" — ");
+          if (!found) return <li key={name} className="gate-read muted">{short}{items && ": no record yet"}</li>;
+          const about = [found.title, found.latest.summary].filter(Boolean).join(" — ");
           return (
             <li key={name} className="gate-read">
               <button
                 type="button"
                 className="chip"
                 aria-label={`Open artifact ${found.full_name}`}
-                title={
-                  found.title
-                    ? `${found.full_name} · ${found.title}`
-                    : found.full_name
-                }
+                title={found.title ? `${found.full_name} · ${found.title}` : found.full_name}
                 onClick={() => view(found.latest.id)}
               >
                 <KindIcon mediaType={found.latest.media_type} />
@@ -233,18 +178,9 @@ function GateLine({ session, gate }: { session: string; gate: GateInfo }) {
   const [shown, setShown] = useState(false);
   const when = gate.answered_at ?? gate.created_at;
   return (
-    <article
-      className="chat-gate closed"
-      id={gateAnchor(gate.id)}
-      aria-label={`Gate #${gate.id}`}
-    >
+    <article className="chat-gate closed" id={gateAnchor(gate.id)} aria-label={`Gate #${gate.id}`}>
       <div className="gate-line">
-        <button
-          type="button"
-          className="gate-toggle"
-          aria-expanded={shown}
-          onClick={() => setShown(!shown)}
-        >
+        <button type="button" className="gate-toggle" aria-expanded={shown} onClick={() => setShown(!shown)}>
           {gateTitle(gate)}: {gate.answer} by {gate.answered_by}
         </button>
         <time dateTime={when}>{clock(when)}</time>

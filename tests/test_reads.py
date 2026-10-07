@@ -4,7 +4,7 @@
 import pytest
 from agent_helpers import spoil_snapshot
 
-from lado import artifacts, runs, runtime, state
+from lado import artifacts, artifacts_local, runs, runtime, state
 
 SHIP = """\
 name: ship
@@ -127,6 +127,17 @@ def test_the_gate_reads_the_names_not_attached_to_the_note_before_it(run):
     _check()  # check's note has review attached
     gate = _gate()
     assert runs.gate_reads(gate) == ["design"]
+
+
+def test_the_gate_reads_every_name_when_its_notes_artifacts_cannot_be_read(run, monkeypatch):
+    _build()
+    _check()
+
+    def broken(*args):
+        raise artifacts.ArtifactError("store gone")
+
+    monkeypatch.setattr(artifacts_local.LocalStore, "record", broken)
+    assert runs.gate_reads(_gate()) == ["design", "review"]
 
 
 def test_a_loop_limit_reads_nothing(run):

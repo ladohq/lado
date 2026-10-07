@@ -431,10 +431,14 @@ TYPED = "typed"  # typed into the window; confirmed by its line in a prompt-subm
 # Carried on in the turn-end hook's output; confirmed by its line in a prompt-submit hook,
 # or by the next turn's end that says the turn went on from that output (lado.hooks).
 HOOK_OUTPUT = "hook_output"
-# What an agent has not received yet: messages not delivered, and bodies not read. When the
-# agent is finished or stopped, they are dropped: a new agent of the same name starts fresh.
-# The human is no agent: their messages stay as they are.
-UNRECEIVED = "(state IN (?, ?, ?) OR (state = ? AND body != '')) AND recipient != ?"
+# A message with more than its line, which its recipient reads with read_messages: a body,
+# or artifacts attached (from version 21 on). The one condition for both (in a statement on
+# `messages`).
+TO_READ = "(body != '' OR EXISTS (SELECT 1 FROM attachments WHERE message = messages.id))"
+# What an agent has not received yet: messages not delivered, and those to read not read.
+# When the agent is finished or stopped, they are dropped: a new agent of the same name
+# starts fresh. The human is no agent: their messages stay as they are.
+UNRECEIVED = f"(state IN (?, ?, ?) OR (state = ? AND {TO_READ})) AND recipient != ?"
 UNRECEIVED_ARGS = (PENDING, SENT, FAILED, DELIVERED, HUMAN)
 
 # Event kinds.
@@ -569,6 +573,7 @@ class Message:
     choice: str | None = None  # an answer's: the choice taken, if one was
     reply_state: str | None = None  # the human's message to an agent: REPLIED | MISSING
     channel: str | None = None  # how it was handed over: TYPED | HOOK_OUTPUT; None for none
+    attachments: int = 0  # how many artifacts it carries (message_attachments)
 
     @property
     def title(self) -> str:
@@ -667,6 +672,9 @@ NOTE_COLUMNS = "state, summary, body, created_at, id, run, kind, actor, outcome,
 # Who closes a run's open gate, the answer, a comment, and the id of the gate that must be
 # the open one (an answer), or None to close whichever is open, if any (an override).
 Close = tuple[str, str, str, int | None]
+# Artifacts attached to a message or a note: (artifact id, record id) each, in order, as the
+# store gives them (lado.artifacts.resolve_attachments).
+Attached = list[tuple[str, str]] | tuple[()]
 
 
 def home() -> Path:
@@ -1389,13 +1397,15 @@ def update_run(
     opens: Gate | None = None,
     closes: Close | None = None,
     noted: Noted | None = None,
+    attachments: Attached = (),
 ) -> bool:
     """Write `after` and the events (actor, kind, detail) in one transaction, but only if
     the run still has the state, status and visits of `before`: entering a state counts a
     visit, so even a self-loop changes what the next writer compares. Returns whether it
     was written. In the same transaction `closes` closes the run's open gate (nothing is
     written if it names a gate that is not open), the gate `opens` is stored (its id
-    set), and `after`'s note is kept as `noted` says, if given."""
+    set), and `after`'s note is kept as `noted` says, if given, with the artifacts
+    attached."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
@@ -1425,7 +1435,7 @@ def update_run(
             if opens:
                 _open_gate(db, opens)
             if noted is not None:
-                db.execute(
+                note = db.execute(
                     "INSERT INTO notes (session, run, state, kind, actor, outcome, target,"
                     " summary, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
@@ -1435,7 +1445,8 @@ def update_run(
                         after.note,
                         after.note_body,
                     ),
-                )
+                ).lastrowid
+                _attach(db, "note", note, attachments)
         db.execute("COMMIT")
     return bool(cur.rowcount)
 
@@ -1657,7 +1668,8 @@ def agent_times(
 
 MESSAGE_COLUMNS = (
     "id, sender, summary, body, recipient, state, created_at, attempts, sent_at, kind, choices,"
-    " free_answer, question_state, answered_by, reply_to, choice, reply_state, channel"
+    " free_answer, question_state, answered_by, reply_to, choice, reply_state, channel,"
+    " (SELECT count(*) FROM attachments WHERE message = messages.id) AS attachments"
 )
 
 
@@ -1675,6 +1687,7 @@ def _message(row: sqlite3.Row, **changed) -> Message:
         choice=row["choice"],
         reply_state=row["reply_state"],
         channel=row["channel"],
+        attachments=row["attachments"],
     )
     return replace(message, **changed) if changed else message
 
@@ -1708,10 +1721,11 @@ def queue_message(
     body: str = "",
     mark: str = PENDING,
     before_start: bool = False,
+    attachments: Attached = (),
 ) -> int:
     """Store a message in state `mark`: pending, or delivered when its line goes to the
     recipient another way (its first input, or the human's UI): then it is handed over
-    now (sent_at). Returns its id.
+    now (sent_at), with the artifacts attached. Returns its id.
 
     A pending message to an agent needs it running (NotRunning), but with `before_start`:
     the supervisor of a session being started, not stored yet, takes it as its first
@@ -1726,8 +1740,35 @@ def queue_message(
             " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (session, sender, recipient, summary, body, mark, sent_at),
         )
+        _attach(db, "message", cur.lastrowid, attachments)
         db.execute("COMMIT")
         return cur.lastrowid or 0
+
+
+def _attach(db: sqlite3.Connection, column: str, row_id: int, attachments: Attached) -> None:
+    db.executemany(
+        f"INSERT INTO attachments ({column}, position, artifact, record) VALUES (?, ?, ?, ?)",
+        [(row_id, n, *attached) for n, attached in enumerate(attachments)],
+    )
+
+
+def message_attachments(message_id: int) -> list[tuple[str, str]]:
+    """The artifacts attached to a message: (artifact id, record id) each, in order."""
+    return _attachments("message", message_id)
+
+
+def note_attachments(note_id: int) -> list[tuple[str, str]]:
+    """The artifacts attached to a run's note: (artifact id, record id) each, in order."""
+    return _attachments("note", note_id)
+
+
+def _attachments(column: str, row_id: int) -> list[tuple[str, str]]:
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT artifact, record FROM attachments WHERE {column} = ? ORDER BY position",
+            (row_id,),
+        ).fetchall()
+    return [tuple(row) for row in rows]
 
 
 def queue_with_copy(
@@ -1765,10 +1806,12 @@ def add_question(
     details: str,
     choices: list[str] | None,
     free_answer: bool,
+    attachments: Attached = (),
 ) -> int:
-    """Store an agent's open question to the human, delivered: the UI shows it. Returns its
-    id."""
+    """Store an agent's open question to the human, delivered, with the artifacts attached:
+    the UI shows it. Returns its id."""
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
         cur = db.execute(
             "INSERT INTO messages (session, sender, recipient, summary, body, state, kind,"
             " choices, free_answer, question_state, sent_at, created_at) VALUES"
@@ -1787,6 +1830,8 @@ def add_question(
                 time.time(),
             ),
         )
+        _attach(db, "message", cur.lastrowid, attachments)
+        db.execute("COMMIT")
         return cur.lastrowid or 0
 
 
@@ -1930,13 +1975,13 @@ def message_page(
 
 
 def read_messages(session: str, recipient: str) -> list[Message]:
-    """Mark the recipient's delivered messages that have a body read and return them, oldest
-    first. Each one is returned once."""
+    """Mark the recipient's delivered messages that have something to read (TO_READ: a body
+    or artifacts) read and return them, oldest first. Each one is returned once."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         rows = db.execute(
             f"SELECT {MESSAGE_COLUMNS} FROM messages"
-            " WHERE session = ? AND recipient = ? AND state = ? AND body != '' ORDER BY id",
+            f" WHERE session = ? AND recipient = ? AND state = ? AND {TO_READ} ORDER BY id",
             (session, recipient, DELIVERED),
         ).fetchall()
         db.executemany(
@@ -2335,12 +2380,14 @@ def _artifact_rows(db: sqlite3.Connection, where: str, args: tuple) -> list[Arti
         f" JOIN artifact_records r ON r.artifact = a.id {where} ORDER BY a.scope, a.name",
         args,
     ).fetchall()
-    found = []
-    for row in rows:
-        artifact = dict(zip(("id", "session", "scope", "name", "title"), tuple(row)[:5]))
-        record = dict(zip(row.keys()[5:], tuple(row)[5:]))
-        found.append((artifact, record))
-    return found
+    split = 5  # the artifact's columns, then the record's
+    return [
+        (
+            dict(zip(row.keys()[:split], tuple(row)[:split], strict=True)),
+            dict(zip(row.keys()[split:], tuple(row)[split:], strict=True)),
+        )
+        for row in rows
+    ]
 
 
 LATEST_RECORD = "r.seq = (SELECT max(seq) FROM artifact_records WHERE artifact = a.id)"

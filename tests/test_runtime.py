@@ -1255,7 +1255,7 @@ def test_message_errors(repo, fake_tmux):
     _session_with_worker(repo)
     with pytest.raises(runtime.LadoError, match="running agents: supervisor, w1"):
         runtime.send_message("s", "w1", "nobody", "hi")
-    with pytest.raises(runtime.LadoError, match="write the details to a file"):
+    with pytest.raises(runtime.LadoError, match=r"write the details to an artifact \(write_"):
         runtime.send_message("s", "w1", "supervisor", "done", "x" * 9000)
 
 

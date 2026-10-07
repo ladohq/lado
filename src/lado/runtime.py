@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import agent_env, kits, loop, providers, state, terminal, tmux
+from lado import agent_env, artifacts, kits, loop, providers, state, terminal, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 # In the lead's config folder: its lead skills (kits.LeadSkill), and the copies of the
@@ -866,10 +866,16 @@ def _refusal(worker: state.Agent, work: WorkState, repo: str) -> str | None:
 
 
 def send_message(
-    session: str, sender: str, recipient: str, summary: str, body: str | None = None
+    session: str,
+    sender: str,
+    recipient: str,
+    summary: str,
+    body: str | None = None,
+    attached: list[str] | None = None,
 ) -> str:
-    """Queue a message and deliver it now if the recipient is idle. Only the one-line
-    summary is typed; the recipient reads the body with read_messages.
+    """Queue a message with the artifacts named in `attached`, and deliver it now if the
+    recipient is idle. Only the one-line summary is typed; the recipient reads the body and
+    the artifacts with read_messages. A name not found refuses the message.
 
     A recipient not idle gets it from the hook that makes it idle (see lado.hooks).
     """
@@ -879,9 +885,10 @@ def send_message(
     if len(body) > MAX_MESSAGE:
         raise LadoError(
             f"body is {len(body)} characters, the limit is {MAX_MESSAGE}; "
-            "write the details to a file and send its path"
+            "write the details to an artifact (write_artifact) and attach it"
         )
-    return post(session, sender, recipient, summary, body, or_human=True)
+    attachments = artifacts.resolve_attachments(session, sender, attached)
+    return post(session, sender, recipient, summary, body, or_human=True, attachments=attachments)
 
 
 def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
@@ -1004,10 +1011,12 @@ def ask_human(
     details: str | None = None,
     choices: list[str] | None = None,
     free_answer: bool = True,
+    attached: list[str] | None = None,
 ) -> str:
-    """Ask the human a question, shown in the UI with its choices; with `free_answer` they
-    may answer in their own words too. It does not wait: the answer, or that the human
-    dismissed it, comes to `sender` as a message from human."""
+    """Ask the human a question, shown in the UI with its choices and the artifacts named
+    in `attached`; with `free_answer` they may answer in their own words too. It does not
+    wait: the answer, or that the human dismissed it, comes to `sender` as a message from
+    human."""
     question = question.strip()
     _check_summary(question, "question", "details")
     details = details or ""
@@ -1027,7 +1036,10 @@ def ask_human(
             raise LadoError(f"a choice is {len(choice)} characters, the limit is {CHOICE_LIMIT}")
         if choices.count(choice) > 1:
             raise LadoError(f'choice "{choice}" is given twice')
-    asked = state.add_question(session, sender, question, details, choices or None, free_answer)
+    attachments = artifacts.resolve_attachments(session, sender, attached)
+    asked = state.add_question(
+        session, sender, question, details, choices or None, free_answer, attachments
+    )
     return (
         f"question #{asked} asked; the human's answer or dismissal comes as a message from "
         f"{state.HUMAN}"
@@ -1044,18 +1056,24 @@ def post(
     summary: str,
     body: str = "",
     or_human: bool = False,
+    attachments: state.Attached = (),
 ) -> str:
-    """Queue a message whose summary is checked already and deliver it now if the
-    recipient is idle. LADO's own messages (lado.runs) come here directly: a step's body
-    carries the task, which may be longer than an agent's message.
+    """Queue a message whose summary is checked already, with its attachments resolved
+    already, and deliver it now if the recipient is idle. LADO's own messages (lado.runs)
+    come here directly: a step's body carries the task, which may be longer than an agent's
+    message.
 
     The human has no window: a message to them is delivered at once, and the UI shows it.
     `or_human`: an unknown recipient's error names the human too, for an agent's message."""
     if recipient == state.HUMAN:
-        state.queue_message(session, sender, recipient, summary, body, state.DELIVERED)
+        state.queue_message(
+            session, sender, recipient, summary, body, state.DELIVERED, attachments=attachments
+        )
         return TO_HUMAN
     with _to_running(session, or_human):
-        message = state.queue_message(session, sender, recipient, summary, body)
+        message = state.queue_message(
+            session, sender, recipient, summary, body, attachments=attachments
+        )
     return _deliver(session, recipient, message)
 
 
@@ -1384,12 +1402,18 @@ def _check_summary(summary: str, what: str = "summary", details: str = "body") -
 
 
 def format_message(message: state.Message) -> str:
-    """The one line typed for a message; its body is left for read_messages."""
+    """The one line typed for a message; its body and artifacts are left for read_messages."""
     line = f"[from {message.sender}] {message.title}"
-    if not message.body:
+    more = []
+    if message.body:
+        lines = len(message.body.splitlines())
+        more.append(f"{lines} line{'s' if lines != 1 else ''}")
+    if message.attachments:
+        n = message.attachments
+        more.append(f"{n} artifact{'s' if n != 1 else ''}")
+    if not more:
         return line
-    lines = len(message.body.splitlines())
-    return f"{line} (#{message.id}, {lines} line{'s' if lines != 1 else ''}: call read_messages)"
+    return f"{line} (#{message.id}, {', '.join(more)}: call read_messages)"
 
 
 def format_messages(messages: list[state.Message]) -> str:

@@ -12,7 +12,7 @@ from contextlib import contextmanager, suppress
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from lado import kits, runs, runtime, state, tmux
+from lado import artifacts, kits, runs, runtime, state, tmux
 
 
 @contextmanager
@@ -21,7 +21,7 @@ def _reasons() -> Iterator[None]:
     executing tool" for other exceptions, so it would not learn why or what to do."""
     try:
         yield
-    except (runtime.LadoError, kits.KitError, tmux.TmuxError) as exc:
+    except (runtime.LadoError, artifacts.ArtifactError, kits.KitError, tmux.TmuxError) as exc:
         # The notes: what undoing a failed start or spawn could not do (runtime._undo).
         raise ToolError("\n".join([str(exc), *getattr(exc, "__notes__", [])])) from exc
 
@@ -103,20 +103,25 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
 
     @server.tool()
     def flow_advance(
-        run: str, outcome: str, note_summary: str | None = None, note_body: str | None = None
+        run: str,
+        outcome: str,
+        note_summary: str | None = None,
+        note_body: str | None = None,
+        artifacts: list[str] | None = None,
     ) -> dict:
         """Report the outcome of the flow step you were given; the run moves on to the next
         state and LADO tells whoever acts there.
 
         Only the agent acting in the run's current step can advance it. `outcome` is one of
-        the step's outcomes. `note_summary` (one line) and `note_body` go to the next step.
+        the step's outcomes. `note_summary` (one line) and `note_body` go to the next step,
+        with the `artifacts` attached (names as in write_artifact; each as it is now).
         `notices` are what LADO tells you about the move you made (e.g. that the next step
         needs a worker), instead of a message.
         """
         with _reasons():
             notices = []
             advanced = runs.advance(
-                session, agent, run, outcome, note_summary, note_body, notices=notices
+                session, agent, run, outcome, note_summary, note_body, notices, artifacts
             )
             return {**runs.describe(advanced), "notices": notices}
 
@@ -129,17 +134,20 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             return runs.status(session, agent, run)
 
     @server.tool()
-    def send_message(to: str, summary: str, body: str | None = None) -> str:
+    def send_message(
+        to: str, summary: str, body: str | None = None, artifacts: list[str] | None = None
+    ) -> str:
         """Send a message to another agent in this session, e.g. to="supervisor", or to the
         human with to="human" (they read it in LADO's UI).
 
         `summary` is one line (at most 200 characters) and is all the recipient sees at
-        first; put the details in `body`, which it reads with read_messages. It is delivered
-        right away if the agent is idle, otherwise as soon as it is idle (when its current
-        turn ends, or once it has started).
+        first; put the details in `body`, which it reads with read_messages, and attach
+        `artifacts` (names as in write_artifact; each as it is now). It is delivered right
+        away if the agent is idle, otherwise as soon as it is idle (when its current turn
+        ends, or once it has started).
         """
         with _reasons():
-            return runtime.send_message(session, agent, to, summary, body)
+            return runtime.send_message(session, agent, to, summary, body, artifacts)
 
     @server.tool()
     def ask_human(
@@ -147,34 +155,94 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         details: str | None = None,
         choices: list[str] | None = None,
         free_answer: bool = True,
+        artifacts: list[str] | None = None,
     ) -> str:
         """Ask the human a question in LADO's UI, e.g. a decision with your recommendation.
 
-        `question` is one line; `details` the rest. `choices` (at most 6, each one short
-        line) are buttons; with `free_answer` the human may also answer in their own words.
-        It does not wait: the answer, or that the human dismissed the question, comes as a
-        message from human: "Answer to #<id>: ..." or "Dismissed #<id>".
+        `question` is one line; `details` the rest; `artifacts` (names as in write_artifact)
+        are shown with it. `choices` (at most 6, each one short line) are buttons; with
+        `free_answer` the human may also answer in their own words. It does not wait: the
+        answer, or that the human dismissed the question, comes as a message from human:
+        "Answer to #<id>: ..." or "Dismissed #<id>".
         """
         with _reasons():
-            return runtime.ask_human(session, agent, question, details, choices, free_answer)
+            return runtime.ask_human(
+                session, agent, question, details, choices, free_answer, artifacts
+            )
 
     @server.tool()
     def read_messages() -> list[dict]:
-        """Read the bodies of the messages you got that you have not read yet, oldest first.
+        """Read the bodies and artifacts of the messages you got that you have not read yet,
+        oldest first.
 
-        A message with a body arrives as one line ending in "call read_messages". Each body
-        is returned once; with nothing unread the list is empty.
+        A message with a body or artifacts arrives as one line ending in "call
+        read_messages". Each is returned once; with nothing unread the list is empty.
+        `artifacts` names each attached artifact (read it with read_artifact) and whether
+        it `changed` since it was attached.
         """
-        return [
-            {
-                "id": m.id,
-                "from": m.sender,
-                "summary": m.title,
-                "body": m.body,
-                "time": f"{m.created_at} UTC",
-            }
-            for m in state.read_messages(session, agent)
-        ]
+        with _reasons():
+            return [
+                {
+                    "id": m.id,
+                    "from": m.sender,
+                    "summary": m.title,
+                    "body": m.body,
+                    "artifacts": artifacts.attached(state.message_attachments(m.id))
+                    if m.attachments
+                    else [],
+                    "time": f"{m.created_at} UTC",
+                }
+                for m in state.read_messages(session, agent)
+            ]
+
+    @server.tool()
+    def write_artifact(
+        name: str,
+        content: str | None = None,
+        file: str | None = None,
+        media_type: str | None = None,
+        summary: str | None = None,
+        title: str | None = None,
+    ) -> dict:
+        """Write an artifact: a named document of this session that LADO keeps and shows the
+        human (a design, plan, review, report, an image, an HTML mockup, any file). Each
+        write is a new version; everyone reads the latest.
+
+        `name`: 1-64 characters of a-z, 0-9, "-", "_" and ".", e.g. "design" or
+        "mockup.html". A bare name is in your run's scope if you work for a flow run, else
+        in the session's; "<run>/<name>" names a run's artifact. Give exactly one of
+        `content` (text) or `file` (a path relative to your working folder, or absolute; its
+        bytes are copied, the path is not kept). `media_type` defaults to the file's or the
+        name's extension, else text/markdown for content. `summary` (one line) says what
+        changed; `title` (one line) names the artifact. Returns its full name, "created" or
+        "unchanged" (the same content as before), size and media type.
+        """
+        with _reasons():
+            written = artifacts.write(
+                session, agent, name, content, file, media_type, summary, title
+            )
+        return {
+            "name": written.full_name,
+            "status": written.status,
+            "size": written.size,
+            "media_type": written.media_type,
+        }
+
+    @server.tool()
+    def read_artifact(name: str, from_line: int | None = None, to_line: int | None = None) -> dict:
+        """Read the latest content of a text artifact, by its name (as in write_artifact) or
+        full name "<run>/<name>". At most 100000 characters at a time: when `cut` is true,
+        read on with `from_line` (and `to_line`); `lines` is the total. A binary artifact
+        (an image, a PDF) gives its media type and size only."""
+        with _reasons():
+            return artifacts.read(session, agent, name, from_line, to_line)
+
+    @server.tool()
+    def list_artifacts(run: str | None = None) -> list[dict]:
+        """The artifacts of your scope (your run's, else the session's), or of `run`'s: full
+        name, title, media type, size, author, time and the latest summary."""
+        with _reasons():
+            return artifacts.listed(session, agent, run)
 
     try:
         me = state.get_agent(session, agent)

@@ -302,6 +302,77 @@ def read(
     }
 
 
+def listed(session: str, agent: str, run: str | None = None) -> list[dict]:
+    """list_artifacts' result: the artifacts of `run`'s scope, else of the scope a bare
+    name means for `agent`, each as of its latest record."""
+    if run:
+        if state.get_run(session, run) is None:
+            raise ArtifactError(f'no run "{run}" in session {session}')
+        scope = run
+    else:
+        scope = _agent(session, agent).run or SESSION_SCOPE
+    return [
+        {
+            "name": artifact.full_name,
+            "title": artifact.title,
+            "media_type": record.media_type,
+            "size": record.size,
+            "author": record.author,
+            "time": f"{record.created_at} UTC",
+            "summary": record.summary,
+        }
+        for artifact, record in store().list(session, scope)
+    ]
+
+
+def resolve_attachments(session: str, agent: str, names: list[str] | None) -> list[tuple[str, str]]:
+    """Each name `agent` attaches (bare or full, as in `find`) as its artifact's id and its
+    latest record's, once each, in order; a name not found refuses them all."""
+    if not names:
+        return []
+    me = _agent(session, agent)
+    attached = []
+    for name in names:
+        artifact, record = find(session, name, me)
+        if (artifact.id, record.id) not in attached:
+            attached.append((artifact.id, record.id))
+    return attached
+
+
+def attached(attachments: list[tuple[str, str]]) -> list[dict]:
+    """What read_messages says of each attachment: its full name, title, the attached
+    record's media type and size, and whether the artifact's content changed since (its
+    latest record's hash differs from the attached one's)."""
+    described = []
+    for _, record_id in attachments:
+        found = store().record(record_id)
+        if found is None:
+            continue  # its session was forgotten: so was the message
+        artifact, record = found
+        _, latest = store().latest(artifact.session, artifact.scope, artifact.name)
+        described.append(
+            {
+                "name": artifact.full_name,
+                "title": artifact.title,
+                "media_type": record.media_type,
+                "size": record.size,
+                "changed": latest.hash != record.hash,
+            }
+        )
+    return described
+
+
+def attached_line(attachments: list[tuple[str, str]]) -> str:
+    """One line naming the attachments, each changed one with "(changed since)"; '' for
+    none. For a flow step's notes and `lado answer`."""
+    if not attachments:
+        return ""
+    names = [
+        a["name"] + (" (changed since)" if a["changed"] else "") for a in attached(attachments)
+    ]
+    return f"Artifacts: {', '.join(names)}"
+
+
 def find(session: str, name: str, agent: state.Agent | None = None) -> tuple[Artifact, Record]:
     """The artifact a name means, with its latest record: a bare name is in the scope of
     `agent`'s run, else the session's."""

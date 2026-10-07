@@ -57,7 +57,9 @@ directly and takes no lock. A plain `uv run pytest` takes none either.
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
 instead of a real agent CLI; it keeps its logs (`inputs.jsonl`, `seen.json`) in
 `agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. They use a temp `LADO_HOME` and their own tmux server
-(`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. Tests never use the default
+(`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. They run LADO's timers
+short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=0.5,0.5,0.5`, set for each test in
+`tests/integration/conftest.py` (How agents talk); only tests set either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
 `LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
@@ -669,12 +671,19 @@ fixes and docs only: no new feature, no API or schema change.
   (the supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
   reported. The agent's first hook after that puts the messages no hook ran after back in
   the queue with their attempts from 0; the ones it saw and never confirmed stay failed.
-  `LADO_RETRY_DELAYS` (`0.5,0.5,0.5`) replaces the delays in the processes started with it,
-  for the integration tests.
+  `LADO_RETRY_DELAYS` (`0.5,0.5,0.5`) replaces the delays in the processes started with it:
+  only tests set it, the integration tests for each test (`tests/integration/conftest.py`,
+  also `runtime.RETRY_DELAYS` in the test's own process); a test that moves time itself
+  takes the `production_retry_delays` fixture.
 - The session loop is a hidden `lado loop <session>` (`loop.py`), a process of its own
   outside tmux that `lado start` (also a resume) starts once the tmux session exists. It
-  sweeps the session every `loop.INTERVAL` seconds, so an unconfirmed message is typed
-  again or failed on time with no send and no hook. Before each sweep it looks at the
+  sweeps the session every `loop.INTERVAL` seconds (2; `LADO_LOOP_INTERVAL`, a positive
+  number of seconds, replaces it in the processes started with it, and a value that is none
+  stops them with an error at once; only tests set it, the integration tests to 0.25 s in
+  `tests/integration/conftest.py`, with `loop.INTERVAL` in the test's own process; it is
+  also how long `check_windows` leaves a new agent alone, and `loop.wait_stopped` waits
+  three of them; `loop.log` names it at the loop's start), so an unconfirmed message is
+  typed again or failed on time with no send and no hook. Before each sweep it looks at the
   session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen): an agent
   not stopped whose window is missing in two passes in a row, and that was added more than
   one interval ago, has ended (`agent_ended`), so a CLI that crashed before its first hook

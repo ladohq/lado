@@ -3185,3 +3185,8 @@ def test_a_last_sign_of_life_before_the_resume_makes_a_span_of_nothing(repo, fak
     assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(600, None)
     runtime.stop_session("s")
     assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(600, None)
+
+
+@pytest.mark.parametrize(("value", "delays"), [(None, (15.0, 30.0, 60.0)), ("0.5,1", (0.5, 1.0))])
+def test_the_retry_delays_are_lado_retry_delays_else_lado_s_own(value, delays):
+    assert runtime.retry_delays_from(value) == delays

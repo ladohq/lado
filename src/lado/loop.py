@@ -13,6 +13,7 @@ database is no longer of its own schema.
 
 import contextlib
 import fcntl
+import math
 import os
 import subprocess
 import sys
@@ -24,7 +25,24 @@ from typing import IO
 
 from lado import providers, state, tmux
 
-INTERVAL = 2.0  # seconds between two sweeps
+
+def interval_from(value: str | None) -> float:
+    """The seconds between two sweeps: `value`, LADO_LOOP_INTERVAL's, else 2. Only tests set
+    it (the integration tests' conftest); a value that is no positive number is refused."""
+    if value is None:
+        return 2.0
+    try:
+        seconds = float(value)
+    except ValueError:
+        seconds = 0.0
+    if not (0 < seconds < math.inf):
+        raise ValueError(f"LADO_LOOP_INTERVAL must be a positive number of seconds, not {value!r}")
+    return seconds
+
+
+# Also how long an agent's window may be in the making (runtime.check_windows), and what
+# wait_stopped waits for, in the processes started with LADO_LOOP_INTERVAL alike.
+INTERVAL = interval_from(os.environ.get("LADO_LOOP_INTERVAL"))
 LOCK_WAIT = 0.1  # seconds a starting loop tries to take the lock before it exits
 REPEAT_NOTE = 60.0  # seconds between two lines about the same repeating error
 
@@ -75,10 +93,11 @@ def running(session: str) -> bool:
     return False
 
 
-def wait_stopped(session: str, timeout: float = 3 * INTERVAL) -> bool:
-    """Whether the session's loop has ended within `timeout` seconds: after a stop it ends
-    at its next pass. `lado update` waits for it, so no loop of the old LADO is left."""
-    deadline = time.monotonic() + timeout
+def wait_stopped(session: str, timeout: float | None = None) -> bool:
+    """Whether the session's loop has ended within `timeout` seconds (three intervals by
+    default): after a stop it ends at its next pass. `lado update` waits for it, so no loop
+    of the old LADO is left."""
+    deadline = time.monotonic() + (3 * INTERVAL if timeout is None else timeout)
     while running(session):
         if time.monotonic() >= deadline:
             return False
@@ -109,8 +128,11 @@ def forget(session: str) -> None:
     lock_path(session).unlink(missing_ok=True)
 
 
-def run(session: str, interval: float = INTERVAL) -> int:
-    """`lado loop <session>`: sweep the session every `interval` seconds until why_stop."""
+def run(session: str, interval: float | None = None) -> int:
+    """`lado loop <session>`: sweep the session every `interval` seconds (INTERVAL by
+    default) until why_stop."""
+    if interval is None:
+        interval = INTERVAL
     # Imported here: lado.runtime starts the loop.
     from lado import runtime
 
@@ -123,7 +145,7 @@ def run(session: str, interval: float = INTERVAL) -> int:
     if lock is None:
         return 0  # the session has its loop
     with lock:
-        log(session, f"loop started, pid {os.getpid()}")
+        log(session, f"loop started, pid {os.getpid()}, a pass every {interval:g} s")
         errors = RepeatedErrors(lambda text: log(session, text))
         missing: set[str] = set()  # the agents whose window the pass before did not find
         while True:

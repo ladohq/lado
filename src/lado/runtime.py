@@ -31,7 +31,14 @@ MAX_MESSAGE = 8000
 # Seconds after the 1st, 2nd, ... time a message was typed into an agent's window before
 # sweep deals with it again: types it again, or gives up after the last. LADO_RETRY_DELAYS
 # ("0.5,0.5,0.5") replaces them for the processes started with it: the integration tests'.
-RETRY_DELAYS = tuple(float(d) for d in os.environ.get("LADO_RETRY_DELAYS", "15,30,60").split(","))
+
+
+def retry_delays_from(value: str | None) -> tuple[float, ...]:
+    """The retry delays: `value`, LADO_RETRY_DELAYS's, else LADO's own."""
+    return tuple(float(d) for d in (value or "15,30,60").split(","))
+
+
+RETRY_DELAYS = retry_delays_from(os.environ.get("LADO_RETRY_DELAYS"))
 # Seconds after the 1st, 2nd, ... turn in a row that ended on an error that passes by itself
 # (Event.transient) before LADO tells the agent to go on; after the last, the error goes to
 # the lead (turn_failed). LADO_RESUME_DELAYS replaces them, as LADO_RETRY_DELAYS does.

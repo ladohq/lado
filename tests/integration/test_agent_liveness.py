@@ -13,8 +13,12 @@ from lado import loop, runtime, state, tmux
 pytestmark = pytest.mark.integration
 
 SESSION = "live"
-# Two passes of the session loop after an agent's first loop interval, and some slack.
-FOUND_GONE = 5 * loop.INTERVAL + agent_helpers.TIMEOUT
+
+
+def found_gone() -> float:
+    """Two passes of the session loop after an agent's first loop interval, and some slack:
+    loop.INTERVAL is the integration tests' (conftest) only once a test runs."""
+    return 5 * loop.INTERVAL + agent_helpers.TIMEOUT
 
 
 def wait_for(check, what: str, timeout: float = agent_helpers.TIMEOUT):
@@ -71,7 +75,7 @@ def session(repo, monkeypatch):
 def test_an_agent_that_crashes_before_its_first_hook_is_found_stopped(session):
     runtime.spawn_worker(SESSION, "crash at start", name="w1")
     runtime.send_message(SESSION, "supervisor", "w1", "are you there?")
-    wait_status("w1", state.STOPPED, FOUND_GONE)
+    wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
     assert message_to("w1").state == state.DROPPED
     hint = f"w1 stopped ({runtime.WINDOW_GONE}): end it with"
@@ -91,7 +95,7 @@ def test_an_agent_that_dies_in_a_turn_is_found_stopped(session):
     runtime.spawn_worker(SESSION, "sleep 1\ndie", name="w1")
     wait_status("w1", state.BUSY)
     runtime.send_message(SESSION, "supervisor", "w1", "next")
-    wait_status("w1", state.STOPPED, FOUND_GONE)
+    wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
     assert message_to("w1").state == state.DROPPED
 
@@ -172,7 +176,7 @@ def test_an_agent_whose_cli_asks_first_and_ends_on_no_is_found_stopped(session, 
     monkeypatch.setenv("FAKE_AGENT_ASKS_FIRST", "1")
     runtime.spawn_worker(SESSION, "sleep 0", name="w1")
     tmux.run("send-keys", "-t", f"{SESSION}:w1", "Enter")  # "no": the CLI exits, no hook
-    wait_status("w1", state.STOPPED, FOUND_GONE)
+    wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
 
 

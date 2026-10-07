@@ -135,10 +135,14 @@ def channels(recipient: str) -> list[str | None]:
 
 
 @pytest.mark.parametrize("provider", ["fake", "fake-stop"])
-def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(repo, provider):
+def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(
+    repo, provider, production_retry_delays
+):
     """Confirmed by the prompt-submit hook of the text the output became ("fake", as
     OpenCode and Kilo), or by the end of the turn that went on from it ("fake-stop", as
-    Claude Code); one batch at a time, each at once after the one before."""
+    Claude Code); one batch at a time, each at once after the one before. A turn of 1 s
+    with no hook is longer than the short first retry delay, after which the output would
+    be typed in once more."""
     start(repo, provider)
     runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
     runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
@@ -266,7 +270,9 @@ def test_agent_that_switches_conversation_keeps_running(repo):
 
 
 def swallowed_report() -> None:
-    """A dialog in the idle supervisor's window swallows a report typed into it."""
+    """A dialog in the idle supervisor's window swallows a report typed into it. Its tests
+    move time themselves (later) and take the production_retry_delays: the session loop
+    must not type the report again before they do."""
     tmux.send_text(SESSION, "supervisor", "dialog")  # opened by the human, say
     assert runtime.send_message(SESSION, "w1", "supervisor", "report") == "sent"
     wait_for(lambda: "swallowed" in tmux.capture(SESSION, "supervisor"), "the dialog")
@@ -280,25 +286,32 @@ def later(seconds: float) -> None:
         db.execute("UPDATE agents SET seen_at = seen_at - ?", (seconds,))
 
 
-def test_a_swallowed_message_is_typed_again_with_the_next_one(repo):
+def test_a_swallowed_message_is_typed_again_with_the_next_one(repo, production_retry_delays):
     start(repo)
     swallowed_report()
+    # Queued first: whichever sweep finds the report due (this send's or the loop's) types
+    # it with the queue.
+    assert runtime.send_message(SESSION, "w1", "supervisor", "ping").startswith("queued")
     later(runtime.RETRY_DELAYS[0])
-    runtime.send_message(SESSION, "w1", "supervisor", "ping")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     assert inputs("supervisor") == ["[from w1] report\n[from w1] ping"]
 
 
-def test_a_swallowed_message_is_typed_again_after_a_hook_of_its_agent(repo):
+def test_a_swallowed_message_is_typed_again_after_a_hook_of_its_agent(
+    repo, production_retry_delays
+):
     start(repo)
     swallowed_report()
-    later(runtime.RETRY_DELAYS[0])
     tmux.send_text(SESSION, "supervisor", "sleep 0")  # the human goes on
+    wait_for(lambda: inputs("supervisor") == ["sleep 0"], "the human's input")
+    wait_status("supervisor", state.IDLE)
+    # Due only once its hooks ran: no sweep pastes it again while the human types.
+    later(runtime.RETRY_DELAYS[0])
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     assert inputs("supervisor") == ["sleep 0", "[from w1] report"]
 
 
-def test_nothing_is_typed_into_an_agent_that_asks_the_human(repo):
+def test_nothing_is_typed_into_an_agent_that_asks_the_human(repo, production_retry_delays):
     start(repo)
     swallowed_report()
     tmux.send_text(SESSION, "supervisor", "ask")
@@ -344,7 +357,9 @@ def test_only_the_answer_to_its_request_ends_an_agent_s_wait(repo):
     assert status("supervisor") == state.IDLE
 
 
-def test_an_agent_waiting_after_failed_messages_gets_them_when_its_turn_ends(repo):
+def test_an_agent_waiting_after_failed_messages_gets_them_when_its_turn_ends(
+    repo, production_retry_delays
+):
     start(repo)
     swallowed_report()
     for attempt in range(2, 2 + len(runtime.RETRY_DELAYS)):  # every paste is swallowed

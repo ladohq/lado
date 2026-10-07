@@ -11,7 +11,14 @@ import fake_provider
 import pytest
 from agent_helpers import refuse_unless_isolated
 
-from lado import loop, providers, state
+from lado import loop, providers, runtime, state
+
+# LADO's timers, short: the session loop's interval and the delays before an unconfirmed
+# message is typed again, for every process a test starts (the loop, the agents' hooks and
+# lado mcp, the CLI) and for the test's own waits, which read loop.INTERVAL and
+# runtime.RETRY_DELAYS.
+LOOP_INTERVAL = "0.25"
+RETRY_DELAYS = "0.5,0.5,0.5"
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +27,9 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
         pytest.skip("tmux not installed")
     socket = f"lado-test-{uuid.uuid4().hex[:8]}"  # a tmux server of its own for each test
     monkeypatch.setenv("LADO_TMUX_SOCKET", socket)
+    monkeypatch.setenv("LADO_LOOP_INTERVAL", LOOP_INTERVAL)
+    monkeypatch.setattr(loop, "INTERVAL", loop.interval_from(LOOP_INTERVAL))
+    retry_delays(monkeypatch, RETRY_DELAYS)
     refuse_unless_isolated()
     for fake in fake_provider.FAKES:
         monkeypatch.setitem(providers._PROVIDERS, fake.name, fake)
@@ -28,9 +38,29 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
     no_loop_left()
 
 
-def no_loop_left(timeout: float = 5 * loop.INTERVAL) -> None:
+def retry_delays(monkeypatch, value: str | None) -> None:
+    """LADO_RETRY_DELAYS `value` (None: unset, LADO's own) for the processes a test starts
+    and for the test."""
+    if value is None:
+        monkeypatch.delenv("LADO_RETRY_DELAYS", raising=False)
+    else:
+        monkeypatch.setenv("LADO_RETRY_DELAYS", value)
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", runtime.retry_delays_from(value))
+
+
+@pytest.fixture
+def production_retry_delays(monkeypatch):
+    """LADO's own retry delays, for a test that moves time itself (agents' seen_at and
+    messages' sent_at back by a delay), or whose agent's turns go on longer than a short
+    delay without a hook: with short delays the session loop would type a message again
+    before the test does, or while the turn still goes on."""
+    retry_delays(monkeypatch, None)
+
+
+def no_loop_left() -> None:
     """Session loops end by themselves once their tmux session is gone: fail a test that
-    leaves one running."""
+    leaves one running five loop intervals after."""
+    timeout = 5 * loop.INTERVAL
     deadline = time.monotonic() + timeout
     folder = state.home() / "loop"
     locks = sorted(folder.glob("*.lock")) if folder.exists() else []

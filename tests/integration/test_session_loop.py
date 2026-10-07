@@ -65,6 +65,14 @@ def test_a_session_has_one_loop_after_start_and_after_resume(repo, session):
     assert loop.running(session)
 
 
+def test_the_loop_runs_on_the_interval_of_the_environment_it_was_started_in(repo, session):
+    interval = os.environ["LADO_LOOP_INTERVAL"]  # the integration tests' (conftest)
+    assert loop.INTERVAL == loop.interval_from(interval) < 2
+    start(repo, session)
+    wait_for(lambda: f"{session}: loop started" in logged(session), "the loop", session)
+    assert f"a pass every {loop.INTERVAL:g} s" in logged(session)
+
+
 def test_the_loop_ends_when_its_tmux_session_is_gone(repo, session):
     start(repo, session)
     wait_for(lambda: loops(session), "the loop", session)
@@ -74,8 +82,7 @@ def test_the_loop_ends_when_its_tmux_session_is_gone(repo, session):
     assert not loop.running(session)
 
 
-def test_the_loop_types_a_swallowed_message_again(repo, session, monkeypatch):
-    monkeypatch.setenv("LADO_RETRY_DELAYS", "0.5,0.5,0.5")  # for the loop it starts
+def test_the_loop_types_a_swallowed_message_again(repo, session):
     start(repo, session)
     tmux.send_text(session, "supervisor", "dialog")  # opened by the human, say
     assert runtime.send_message(session, "w1", "supervisor", "report") == "sent"

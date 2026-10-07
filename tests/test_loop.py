@@ -1,5 +1,10 @@
+import os
+import subprocess
+import sys
 import threading
+import time
 
+import pytest
 from agent_helpers import previous_schema
 
 from lado import loop, runtime, state, tmux
@@ -239,3 +244,51 @@ def test_the_windows_are_looked_at_before_the_sweep(repo, fake_tmux, monkeypatch
     monkeypatch.setattr(runtime, "sweep", sweep)
     loop.run("s", interval=0)
     assert calls == ["check", "sweep"]
+
+
+@pytest.mark.parametrize(("value", "seconds"), [(None, 2.0), ("0.25", 0.25), (" 3 ", 3.0)])
+def test_the_loop_interval_is_lado_loop_interval_else_two_seconds(value, seconds):
+    assert loop.interval_from(value) == seconds
+
+
+@pytest.mark.parametrize("value", ["", "fast", "0", "-1", "nan", "inf"])
+def test_a_loop_interval_that_is_no_positive_number_is_refused(value):
+    with pytest.raises(ValueError, match="LADO_LOOP_INTERVAL must be a positive number"):
+        loop.interval_from(value)
+
+
+def _interval_in_a_process(value: str) -> subprocess.CompletedProcess:
+    env = {**os.environ, "LADO_LOOP_INTERVAL": value}
+    code = "from lado import loop; print(repr(loop.INTERVAL))"
+    return subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+
+
+def test_lado_loop_interval_replaces_the_interval_in_the_processes_started_with_it():
+    assert _interval_in_a_process("0.25").stdout.strip() == "0.25"
+
+
+def test_an_invalid_lado_loop_interval_stops_the_process_loudly():
+    started = _interval_in_a_process("fast")
+    assert started.returncode != 0
+    assert "LADO_LOOP_INTERVAL must be a positive number of seconds, not 'fast'" in started.stderr
+
+
+def test_wait_stopped_waits_three_intervals_by_default(lado_home, monkeypatch):
+    monkeypatch.setattr(loop, "INTERVAL", 0.05)
+    held = loop.take_lock("s")
+    begun = time.monotonic()
+    assert not loop.wait_stopped("s")
+    assert time.monotonic() - begun < 1
+    held.close()
+
+
+def test_the_loop_sweeps_every_interval_and_logs_it(repo, fake_tmux, monkeypatch, lado_home):
+    _session(repo)
+    monkeypatch.setattr(loop, "INTERVAL", 0.01)
+    sleeps = []
+    monkeypatch.setattr(runtime, "sweep", runtime.stop_session)
+    monkeypatch.setattr(loop.time, "sleep", sleeps.append)
+    assert loop.run("s") == 0
+    assert sleeps == [0.01]
+    log = (lado_home / "loop.log").read_text()
+    assert f"s: loop started, pid {os.getpid()}, a pass every 0.01 s" in log

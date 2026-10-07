@@ -25,7 +25,7 @@ make web                # the web UI: npm ci, stale-types check, tsc, vitest, bu
 make web-types          # web/openapi.json and web/src/api.gen.ts from the server's API (commit both)
 make test-ui            # uv run pytest -m ui: Chromium against a real lado server, fake agent
 make dist               # uv build, and check that the sdist and the wheel ship the web UI
-make check              # lint, the plugin, the web UI, unit, integration and UI tests in one run
+make check              # lint, the plugin, the web UI, then unit, integration and UI tests one after another
 make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=claude|kilo|opencode
 ```
 
@@ -37,6 +37,12 @@ its own `LADO_HOME`, tmux server and repos, so tests must not share a fixed path
 file. To debug serially, with output in order: `make test PYTEST_ARGS=-n0` (`PYTEST_ARGS`
 replaces `-n auto` and takes any pytest options, e.g. `PYTEST_ARGS="-n0 -k gate -x"`), or
 `uv run pytest` without `-n`. Live tests always run serially.
+
+`make check` runs the unit, integration and UI tests as three pytest runs, one after another
+(`scripts/check_groups.py`): in one run xdist hands the integration tests, collected first,
+to two workers while the others wait idle. Each group runs also after one that failed, a
+group that collects no tests (pytest's exit 5) is no failure, `PYTEST_ARGS` applies to each,
+and the last line names the groups that failed (`check: failed: integration, ui`).
 
 One heavy test run per machine at a time: `make check`, `make test`, `make test-integration`
 and `make test-ui` run under a lock (`scripts/check_lock.py`, an flock on
@@ -50,8 +56,16 @@ directly and takes no lock. A plain `uv run pytest` takes none either.
 
 Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, provider "fake")
 instead of a real agent CLI; it keeps its logs (`inputs.jsonl`, `seen.json`) in
-`agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. They use a temp `LADO_HOME` and their own tmux server
-(`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. Tests never use the default
+`agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. It talks to
+`lado mcp` through its own small stdio JSON-RPC client, not the MCP SDK's (whose import
+alone took a third of a second per launch). A test keeps it busy with its `pause` command
+and ends that pause itself (`agent_helpers.release`), never with a `sleep` it must act
+within. They use a temp `LADO_HOME` and their own tmux server
+(`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. They run LADO's timers
+short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each test in
+`tests/integration/conftest.py` (How agents talk; the first delay outlasts a prompt-submit
+hook's confirmation under `-n auto`, the comment there says by how much); only tests set
+either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
 `LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
@@ -201,6 +215,11 @@ fixes and docs only: no new feature, no API or schema change.
     user's keys. A loader under `-c` drops it (`''`) before importing anything but `sys`,
     then runs the module as `-m` would. Not `-P` (3.11+ only) nor `-I`, which also drops
     PYTHONPATH and the user site, where a user's LADO may be installed. Never `-m` for one.
+    Each such process pays for its imports: `lado.__version__` is read from the package's
+    metadata only when asked for (`lado/__init__.py`'s `__getattr__`; use it as
+    `lado.__version__`, never `from lado import __version__` at a module's top), and
+    `cli.py` imports `doctor`, `update` and `server` only in the commands that use them
+    (`tests/test_lazy_imports.py`).
   - `mcp_exec.py`: a kit's MCP server whose `env` refers to `${NAME}`: its value never goes
     on disk. `kits.ResolvedAgent.mcp_servers` checks each name is set in the agent's
     environment (else `KitError`, before the start) and gives the CLI the command
@@ -372,7 +391,8 @@ fixes and docs only: no new feature, no API or schema change.
     `InstalledKitInfo`; each item only its own row and files). From schema 19 a message
     keeps the channel it was handed over by, `messages.channel` (`typed`, `hook_output`;
     NULL while pending and for a first input or the human's UI; How agents talk; not in the
-    API).
+    API). From schema 20 an agent keeps its planned resume after a transient turn error,
+    `agents.resume_at` and `agents.resumes` (How agents talk; not in the API).
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -382,7 +402,9 @@ fixes and docs only: no new feature, no API or schema change.
     through `state.py`/`runtime.py`, never migrates the database), the bundle's files, and `index.html` for every other path
     that is a page of the UI (its router shows it); `feed.py`: the change feed behind
     `GET /api/events` (Server-Sent Events): the `Source` of changes (now the `changes`
-    journal, read only), one hub per server, `reset` and resume, the derived fields;
+    journal, read only), one hub per server, `reset` and resume, the derived fields, and
+    the end of every stream when the server shuts down (`Hub.close`, called first by
+    `app.Server`'s shutdown, as uvicorn waits for open responses before the lifespan's);
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
@@ -458,6 +480,7 @@ fixes and docs only: no new feature, no API or schema change.
   UI's unit tests (vitest).
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
 - `scripts/check_lock.py`: the Makefile's machine-wide test-run lock (Commands).
+  `scripts/check_groups.py`: `make check`'s test groups, one after another (Commands).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk
@@ -494,7 +517,23 @@ fixes and docs only: no new feature, no API or schema change.
   `Event.error` (one short line), the agent is `idle` and gets its queue as after any turn,
   a `turn_error` event keeps the error (`lado log`), and `runtime.turn_failed` tells the
   supervisor in one line from `lado` (`turn of <agent> ended on an error: <error>; it is
-  idle`), or the human when it is the supervisor's turn. Claude Code runs `StopFailure`
+  idle`), or the human when it is the supervisor's turn. An error the provider says passes
+  by itself (`Event.transient`) is told to no one at first: LADO resumes the agent.
+  `state.schedule_resume` plans the n-th resume in a row `RESUME_DELAYS[n-1]` seconds
+  later (30, 120, 480; `LADO_RESUME_DELAYS` replaces them, and their count is the number of
+  resumes) in `agents.resume_at`; when it is due and the agent is idle, `runtime.sweep`
+  (hooks or the session loop) queues one message from `lado`, `your turn ended on a
+  temporary API error (<error>); continue where you left off (resume <n> of <N>)`, and
+  drops the plan in the same transaction (`state.take_resume`); the message goes through
+  the queue as any other. Any other status drops a planned resume (`state._set_status`):
+  busy, the agent goes on anyway (a message, the human's input, its queue at the turn's
+  end); waiting or starting (a dialog, failed messages, `/clear`), the human acts on it
+  already, so dropping it is no silent drop. A transient error after the last resume goes
+  to the lead as above, with `after <N> resumes`. Every turn's end that plans no resume (as
+  usual, a permanent error, the resumes spent) sets the count back to 0. Claude Code's
+  transient types are `overloaded`, `server_error` and `unknown` (also the machine's
+  sleep; `claude.TRANSIENT`); Kilo and OpenCode mark no error transient: the plugin gives
+  only the error's class name (BACKLOG.md). Claude Code runs `StopFailure`
   instead of `Stop` then (API errors: rate_limit, overloaded, authentication_failed,
   billing_error, server_error, also the machine's sleep, max_output_tokens, unknown) and
   ignores its output (`Event.output_ignored`: the queue is typed in, not printed); read in
@@ -502,8 +541,11 @@ fixes and docs only: no new feature, no API or schema change.
   `session.error`, then `session.idle` of the same session (read in their bundles); the
   plugin passes the error's name (and an `APIError`'s message) with that idle, drops it at
   `session.compacted` (a context overflow the CLI compacts its way out of ends no turn),
-  and `MessageAbortedError` (the human's Esc) is no error. Claude Code is said to run no
-  hook when the human interrupts a turn (BACKLOG.md).
+  and `MessageAbortedError` (the human's Esc) is no error. Claude Code runs no hook when
+  the human interrupts a turn with Esc, while text streams, while a tool runs or on a
+  permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
+  after a `PermissionRequest`, until the human's next prompt in its window, whose `Stop`
+  ends the turn and hands over the queue (BACKLOG.md).
 - An agent whose process ends by itself goes through one transition, `runtime.agent_ended`
   (`state.agent_ended`, one conditional transaction): its session-end hook (`SESSION_END`,
   "its CLI exited") and the session loop's window check ("its window closed without a
@@ -650,23 +692,33 @@ fixes and docs only: no new feature, no API or schema change.
   (the supervisor for LADO's own messages) gets one line from `lado`; a failed notice is not
   reported. The agent's first hook after that puts the messages no hook ran after back in
   the queue with their attempts from 0; the ones it saw and never confirmed stay failed.
-  `LADO_RETRY_DELAYS` (`0.5,0.5,0.5`) replaces the delays in the processes started with it,
-  for the integration tests.
+  `LADO_RETRY_DELAYS` (`2,0.5,0.5`) replaces the delays in the processes started with it:
+  only tests set it, the integration tests for each test (`tests/integration/conftest.py`,
+  also `runtime.RETRY_DELAYS` in the test's own process); a test that moves time itself
+  takes the `production_retry_delays` fixture.
 - The session loop is a hidden `lado loop <session>` (`loop.py`), a process of its own
   outside tmux that `lado start` (also a resume) starts once the tmux session exists. It
-  sweeps the session every `loop.INTERVAL` seconds, so an unconfirmed message is typed
-  again or failed on time with no send and no hook. Before each sweep it looks at the
-  session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen): an agent
+  sweeps the session every `loop.INTERVAL` seconds (2; `LADO_LOOP_INTERVAL`, a positive
+  number of seconds, replaces it in the processes started with it, and a value that is none
+  stops them with an error at once; only tests set it, the integration tests to 0.25 s in
+  `tests/integration/conftest.py`, with `loop.INTERVAL` in the test's own process; it is
+  also how long `check_windows` leaves a new agent alone, and `loop.wait_stopped` waits
+  three of them; `loop.log` names it at the loop's start), so an unconfirmed message is
+  typed again or failed on time with no send and no hook. Before each sweep it looks at the
+  session's windows (`runtime.check_windows`, one `tmux list-windows`, no screen; the
+  pass's only tmux call): an agent
   not stopped whose window is missing in two passes in a row, and that was added more than
   one interval ago, has ended (`agent_ended`), so a CLI that crashed before its first hook
-  or in a turn is `stopped` within a few seconds. A failing list changes nothing (an error
-  of the pass). The supervisor's window, when it was the last, takes the tmux session with
+  or in a turn is `stopped` within a few seconds. A failing list changes nothing: only then
+  a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
+  error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's
+  window, when it was the last, takes the tmux session with
   it: that stays "tmux session is gone". One per session: it holds an exclusive
   `flock` on `LADO_HOME/loop/<session>.lock` (gone with the process, no pid file); a second
   one exits when it cannot take the lock within `loop.LOCK_WAIT` (0.1 s, so a moment's lock
-  check by `lado ls` does not make a starting loop exit). Before each pass it ends, writing
+  check by `lado ls` does not make a starting loop exit). It ends, writing
   why to `LADO_HOME/loop.log`, when the
-  session is stopped or gone, its tmux session is gone, or `lado.db` has another schema
+  session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
   migrates); an error in a pass is
   written there too with its traceback, and the loop goes on. While the same error
@@ -686,7 +738,8 @@ fixes and docs only: no new feature, no API or schema change.
   servers, and defers the tools of a server that connects later, `alwaysLoad` or not. So
   the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists
   its tools, and the session-start hook of a provider with `hold_first_turn` waits for it
-  (at most `hooks.MCP_READY_TIMEOUT`; giving up is written to `hooks.log`). Verified with
+  (looking every `hooks.MCP_READY_POLL`, 0.02 s, at most `hooks.MCP_READY_TIMEOUT`; giving
+  up is written to `hooks.log`). Verified with
   Claude Code 2.1.289 (`providers/claude.py`: `TESTED_VERSION`; `lado doctor` warns about
   others); the live test checks w1's transcript.
 

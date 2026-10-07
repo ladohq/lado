@@ -22,7 +22,8 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
-from lado import __version__, state
+import lado
+from lado import state
 
 INDEX_URL = "https://pypi.org/pypi/lado/json"
 INDEX_TIMEOUT = 10.0  # seconds `lado update` waits for PyPI
@@ -144,14 +145,16 @@ def check(now: datetime.datetime | None = None) -> Check | None:
     now = now or datetime.datetime.now(datetime.timezone.utc)
     cached = _cached()
     if cached and _age(cached, now) < CHECK_EVERY:
-        return Check(__version__, cached.get("latest"), cached["checked_at"], cached.get("error"))
+        return Check(
+            lado.__version__, cached.get("latest"), cached["checked_at"], cached.get("error")
+        )
     newest, error = cached.get("latest") if cached else None, None
     try:
         found = latest(fetch_index(CHECK_TIMEOUT))
         newest = found.version if found else None
     except (OSError, ValueError) as exc:
         error = f"cannot look up LADO's latest version: {exc}"
-    checked = Check(__version__, newest, now.isoformat(timespec="seconds"), error)
+    checked = Check(lado.__version__, newest, now.isoformat(timespec="seconds"), error)
     _write_cache(checked)
     return checked
 

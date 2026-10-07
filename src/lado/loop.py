@@ -13,6 +13,7 @@ database is no longer of its own schema.
 
 import contextlib
 import fcntl
+import math
 import os
 import subprocess
 import sys
@@ -24,7 +25,24 @@ from typing import IO
 
 from lado import providers, state, tmux
 
-INTERVAL = 2.0  # seconds between two sweeps
+
+def interval_from(value: str | None) -> float:
+    """The seconds between two sweeps: `value`, LADO_LOOP_INTERVAL's, else 2. Only tests set
+    it (the integration tests' conftest); a value that is no positive number is refused."""
+    if value is None:
+        return 2.0
+    try:
+        seconds = float(value)
+    except ValueError:
+        seconds = 0.0
+    if not (0 < seconds < math.inf):
+        raise ValueError(f"LADO_LOOP_INTERVAL must be a positive number of seconds, not {value!r}")
+    return seconds
+
+
+# Also how long an agent's window may be in the making (runtime.check_windows), and what
+# wait_stopped waits for, in the processes started with LADO_LOOP_INTERVAL alike.
+INTERVAL = interval_from(os.environ.get("LADO_LOOP_INTERVAL"))
 LOCK_WAIT = 0.1  # seconds a starting loop tries to take the lock before it exits
 REPEAT_NOTE = 60.0  # seconds between two lines about the same repeating error
 
@@ -38,16 +56,27 @@ def lock_path(session: str) -> Path:
 
 
 def why_stop(session: str) -> str | None:
-    """Why the session's loop must end now, or None while it has work. Another schema of
-    the database is a state.SchemaError (run ends on it)."""
+    """Why the session's loop must end now by the database, or None while it has work.
+    Whether its tmux session is gone the pass learns from its window list (tmux_gone).
+    Another schema of the database is a state.SchemaError (run ends on it)."""
     sess = state.get_session(session)
     if sess is None:
         return "the session is gone"
     if sess.stopped_at:
         return STOPPED
-    if not tmux.has_session(session):
-        return TMUX_GONE
     return None
+
+
+def tmux_gone(session: str, error: Exception) -> bool:
+    """Whether a pass failed with `error` because the session's tmux session is gone: a
+    failing tmux call says only that, so has-session tells, once, on a failure only. A tmux
+    that cannot run says nothing about the session (an error of the pass)."""
+    if not isinstance(error, tmux.TmuxError) or isinstance(error, tmux.TmuxMissing):
+        return False
+    try:
+        return not tmux.has_session(session)
+    except tmux.TmuxError:
+        return False
 
 
 def take_lock(session: str) -> IO | None:
@@ -75,10 +104,11 @@ def running(session: str) -> bool:
     return False
 
 
-def wait_stopped(session: str, timeout: float = 3 * INTERVAL) -> bool:
-    """Whether the session's loop has ended within `timeout` seconds: after a stop it ends
-    at its next pass. `lado update` waits for it, so no loop of the old LADO is left."""
-    deadline = time.monotonic() + timeout
+def wait_stopped(session: str, timeout: float | None = None) -> bool:
+    """Whether the session's loop has ended within `timeout` seconds (three intervals by
+    default): after a stop it ends at its next pass. `lado update` waits for it, so no loop
+    of the old LADO is left."""
+    deadline = time.monotonic() + (3 * INTERVAL if timeout is None else timeout)
     while running(session):
         if time.monotonic() >= deadline:
             return False
@@ -109,8 +139,11 @@ def forget(session: str) -> None:
     lock_path(session).unlink(missing_ok=True)
 
 
-def run(session: str, interval: float = INTERVAL) -> int:
-    """`lado loop <session>`: sweep the session every `interval` seconds until why_stop."""
+def run(session: str, interval: float | None = None) -> int:
+    """`lado loop <session>`: sweep the session every `interval` seconds (INTERVAL by
+    default) until why_stop, or until its tmux session is gone (tmux_gone)."""
+    if interval is None:
+        interval = INTERVAL
     # Imported here: lado.runtime starts the loop.
     from lado import runtime
 
@@ -123,7 +156,7 @@ def run(session: str, interval: float = INTERVAL) -> int:
     if lock is None:
         return 0  # the session has its loop
     with lock:
-        log(session, f"loop started, pid {os.getpid()}")
+        log(session, f"loop started, pid {os.getpid()}, a pass every {interval:g} s")
         errors = RepeatedErrors(lambda text: log(session, text))
         missing: set[str] = set()  # the agents whose window the pass before did not find
         while True:
@@ -131,7 +164,8 @@ def run(session: str, interval: float = INTERVAL) -> int:
                 reason = why_stop(session)
                 if reason is None:
                     # First the agents that ended without a hook: what was meant for them
-                    # is dropped and told, not typed into no window.
+                    # is dropped and told, not typed into no window. The pass's one tmux
+                    # call: a gone tmux session fails it (tmux_gone).
                     missing = runtime.check_windows(session, missing)
                     runtime.sweep(session)
                     errors.worked()
@@ -139,9 +173,10 @@ def run(session: str, interval: float = INTERVAL) -> int:
                 # Every connection refuses another schema, so no pass migrates; this LADO
                 # is not the one the database is for now: end.
                 reason = str(exc)
-            except Exception:
-                reason = None
-                errors.failed()
+            except Exception as exc:
+                reason = TMUX_GONE if tmux_gone(session, exc) else None
+                if reason is None:
+                    errors.failed()
             if reason:
                 errors.flush()
                 log(session, f"loop ended: {reason}")

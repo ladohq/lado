@@ -12,11 +12,10 @@ import termios
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 
+import lado
 from lado import (
-    __version__,
-    doctor,
     flows,
     kits,
     log,
@@ -27,8 +26,13 @@ from lado import (
     runtime,
     state,
     tmux,
-    update,
 )
+
+# lado.doctor and lado.update are imported by the commands that use them, and
+# lado.__version__ is read only when shown: every hook, `lado mcp` and `lado loop` is a
+# process of this module, and neither is theirs to pay for.
+if TYPE_CHECKING:
+    from lado import update
 
 PAGER = ["less", "-R"]  # for a gate's full note
 POLL = 1.0  # seconds between two checks that a gate the human is asked about is open
@@ -371,6 +375,8 @@ def cmd_ls(args: argparse.Namespace) -> int:
             gate = state.open_gate(sess.name, run.name)
             if gate:
                 print(f"    gate #{gate.id} waiting: {gate.question}")
+    from lado import update
+
     available = update.available_line(update.check())  # a failed check: in `lado doctor`
     if available:
         print(available)
@@ -391,9 +397,12 @@ class Restarts:
 
 
 def cmd_update(args: argparse.Namespace) -> int:
-    # Everything the update needs from LADO is imported before the installer replaces it.
+    # Everything the update needs from LADO is imported before the installer replaces it,
+    # and the version read (lado caches it).
+    from lado import update
     from lado.server import run as server_run
 
+    current = lado.__version__
     _human_only("update")
     _unfinished_update()
     try:
@@ -406,11 +415,11 @@ def cmd_update(args: argparse.Namespace) -> int:
             raise runtime.LadoError(f"PyPI has no LADO {args.version}; nothing was stopped")
     else:
         to = update.latest(index)
-        if to is None or not update.newer(to.version, __version__):
-            print(f"LADO {__version__} is the latest version.")
+        if to is None or not update.newer(to.version, current):
+            print(f"LADO {current} is the latest version.")
             return 0
-    if update.same(to.version, __version__):
-        print(f"LADO {__version__} is installed already.")
+    if update.same(to.version, current):
+        print(f"LADO {current} is installed already.")
         return 0
     installer = update.installer()
     restarts = _restarts(server_run.running())
@@ -440,15 +449,17 @@ def _restarts(server: dict | None) -> Restarts:
 
 
 def _print_update_plan(
-    to: update.Release, installer: update.Installer | None, restarts: Restarts
+    to: "update.Release", installer: "update.Installer | None", restarts: Restarts
 ) -> None:
-    print(f"LADO {__version__} -> {to.version} (PyPI, released {to.date})")
+    from lado import update
+
+    print(f"LADO {lado.__version__} -> {to.version} (PyPI, released {to.date})")
     if installer:
         command = shlex.join(installer.command(to.version))
         print(f"Installed with {installer.kind}: {command}")
         if installer.lost:
             _warn([f"{command} does not keep {', '.join(installer.lost)} of this install"])
-    if update.newer(__version__, to.version):
+    if update.newer(lado.__version__, to.version):
         _warn(
             [
                 f"an older LADO may refuse lado.db (schema {state.SCHEMA_VERSION}); "
@@ -478,6 +489,8 @@ def _print_update_plan(
 
 
 def _print_update_by_hand(version: str, restarts: Restarts) -> None:
+    from lado import update
+
     prefix = update.prefix()
     print(
         f"LADO runs from {prefix}, not a uv tool or pipx install of lado from PyPI; "
@@ -497,13 +510,16 @@ def _print_update_by_hand(version: str, restarts: Restarts) -> None:
 
 def _update(
     version: str,
-    installer: update.Installer,
+    installer: "update.Installer",
     restarts: Restarts,
     stop_server: Callable[[], object],
 ) -> int:
     """Stop, install, check the version, resume. After the installer this process starts
     nothing of its own (`providers.lado_command`): the installed `lado` resumes, through its
     public commands, whichever version it is."""
+    from lado import update
+
+    current = lado.__version__  # before the installer replaces the package's metadata
     server = restarts.server
     address = (server["host"], server["port"]) if server else None
     update.write_pending(update.Pending({s.name: s.repo for s in restarts.sessions}, address))
@@ -539,7 +555,7 @@ def _update(
         print(f"lado: {exc}", file=sys.stderr)
         installed = False
     if not installed:
-        print(f"The upgrade failed; LADO {__version__} is unchanged. Resuming the sessions on it:")
+        print(f"The upgrade failed; LADO {current} is unchanged. Resuming the sessions on it:")
         _resume(binary, stopped, address)
         return 1
     now = update.installed_version(binary)
@@ -599,6 +615,8 @@ def _run(binary: Path, *args: str) -> int:
 def _unfinished_update() -> None:
     """Say which sessions an update that did not finish left stopped, and how to resume
     them."""
+    from lado import update
+
     pending = update.read_pending()
     if pending is None:
         return
@@ -902,14 +920,14 @@ def cmd_ui(args: argparse.Namespace) -> int:
         )
     if info is None:
         info = server_run.wait_ready(server_run.start_background(args.host, args.port))
-    elif info["version"] != __version__:
+    elif info["version"] != lado.__version__:
         # An old server would serve this LADO's bundle from disk against its own, older API.
         try:
             server_run.stop()
         except (OSError, runtime.LadoError) as error:
             raise runtime.LadoError(
                 f"the running LADO server is version {info['version']}, this LADO is "
-                f"{__version__}, and stopping it failed: {error}; "
+                f"{lado.__version__}, and stopping it failed: {error}; "
                 "stop it with `lado server stop`, then run `lado ui` again"
             ) from error
         old = info["version"]
@@ -969,12 +987,29 @@ def _without_arg(parser: argparse.ArgumentParser, default: list[str] | None = No
     )
 
 
+class _Version(argparse.Action):
+    """`--version`, as argparse's own, but with the version read only when asked for."""
+
+    def __init__(self, option_strings: list[str], dest: str = argparse.SUPPRESS) -> None:
+        super().__init__(
+            option_strings,
+            dest=dest,
+            default=argparse.SUPPRESS,
+            nargs=0,
+            help="show program's version number and exit",
+        )
+
+    def __call__(self, parser, namespace, values, option_string=None) -> None:
+        print(f"lado {lado.__version__}")
+        parser.exit()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="lado",
         description="Layered Agent Delegation & Orchestration.",
     )
-    parser.add_argument("--version", action="version", version=f"lado {__version__}")
+    parser.add_argument("--version", action=_Version)
     commands = parser.add_subparsers(dest="command", metavar="<command>")
 
     commands.add_parser("doctor", help="check that tmux and the agent CLIs are installed")
@@ -1192,6 +1227,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
+        from lado import doctor
+
         _sources_warning()
         return doctor.main()
     if args.command == "mcp":

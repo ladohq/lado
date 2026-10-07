@@ -20,8 +20,9 @@ for _var in ("LADO_AGENT", "LADO_SESSION", "LADO_HOME", "LADO_TMUX_SOCKET", "TMU
 # maintenance, which would still be writing in a repo while a test copies or removes it.
 os.environ.update(no_maintenance_env(os.environ))
 
-# Agents get the test run's environment (the settings above, LADO_RETRY_DELAYS), not the
-# user's login shell; tests of the shell set their own.
+# Agents get the test run's environment (the settings above, and in the integration tests
+# their short LADO_LOOP_INTERVAL and LADO_RETRY_DELAYS from tests/integration/conftest.py),
+# not the user's login shell; tests of the shell set their own.
 os.environ["LADO_AGENT_ENV"] = "inherit"
 
 # No test looks up LADO's latest version on PyPI; the tests of the check switch it on with a

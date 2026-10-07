@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import agent_helpers
@@ -27,6 +28,15 @@ def status(agent: str) -> str:
 
 def wait_status(agent: str, expected: str) -> None:
     wait_for(lambda: status(agent) == expected, f"{agent} to be {expected}")
+
+
+def paused(agent: str, n: int) -> None:
+    """Wait until the agent is in its n-th pause (fake agent's `pause`)."""
+    wait_for(lambda: agent_helpers.paused(SESSION, agent, n), f"{agent} paused {n}")
+
+
+def release(agent: str, n: int) -> None:
+    agent_helpers.release(SESSION, agent, n)
 
 
 def inputs(agent: str) -> list[str]:
@@ -60,41 +70,33 @@ def start(repo: Path, provider: str = "fake") -> None:
     wait_status("supervisor", state.IDLE)
 
 
-def test_supervisor_starts_and_becomes_idle(repo):
-    runtime.start_session(str(repo), SESSION, None, "fake")
-    assert status("supervisor") == state.STARTING
-    wait_status("supervisor", state.IDLE)
-    assert tmux.has_session(SESSION)
-
-
 def test_a_message_sent_while_the_supervisor_starts_is_delivered(repo):
     """Its session-start hook types it in: no turn ends before it, and nothing else runs."""
     runtime.start_session(str(repo), SESSION, None, "fake")
+    assert status("supervisor") == state.STARTING
     reply = runtime.send_message(SESSION, "human", "supervisor", "hello")
     assert reply.startswith("queued; supervisor is starting")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     assert inputs("supervisor") == ["[from human] hello"]
+    wait_status("supervisor", state.IDLE)
+    assert tmux.has_session(SESSION)
 
 
-def test_first_turn_waits_until_the_lado_mcp_server_listed_its_tools(repo):
+def test_first_turn_waits_for_the_one_lado_mcp_server_of_the_launch(repo):
     """The fake agent lists its LADO MCP server's tools while its session-start hook runs,
-    like Claude Code; the hook returns only after the server has recorded it."""
+    like Claude Code; the hook returns only after the server has recorded it. Like a real
+    CLI, it starts that server once and calls every tool on it: the server records
+    mcp_ready once, however many tools the agent calls."""
     start(repo)
-    worker = runtime.spawn_worker(SESSION, "sleep 0", name="w1")
+    task = "send supervisor one\nsend supervisor two\nread"
+    worker = runtime.spawn_worker(SESSION, task, name="w1")
+    wait_for(lambda: "read" in seen("w1"), "w1's tool calls")
     wait_status("w1", state.IDLE)
     events = [(e.kind, e.detail) for e in state.list_events(SESSION) if e.agent == "w1"]
     assert (state.MCP_READY, worker.instance) in events
     assert events.index((state.MCP_READY, worker.instance)) < events.index(
         (state.STATUS, state.BUSY)
     )
-
-
-def test_an_agent_keeps_one_lado_mcp_server_for_its_launch(repo):
-    """Like a real CLI, the fake agent starts its MCP server once and calls every tool on it:
-    the server records mcp_ready once, however many tools the agent calls."""
-    start(repo)
-    runtime.spawn_worker(SESSION, "send supervisor one\nsend supervisor two\nread", name="w1")
-    wait_for(lambda: "read" in seen("w1"), "w1's tool calls")
     ready = [e for e in state.list_events(SESSION) if e.kind == state.MCP_READY]
     assert [e.agent for e in ready] == ["supervisor", "w1"]
 
@@ -114,13 +116,14 @@ def test_a_message_ending_in_a_backslash_is_submitted_and_confirmed(repo):
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
     # Queued while it is busy and typed in at its turn's end: the last line ends in `\\`.
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
     runtime.send_message(SESSION, "human", "supervisor", "hello", "the body")
     runtime.send_message(SESSION, "human", "supervisor", "two\\\\")
+    release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 4, "delivery")
     assert inputs("supervisor") == [
         "[from human] what now?\\ ",
-        "[from human] sleep 1",
+        "[from human] pause",
         "[from human] hello (#3, 1 line: call read_messages)\n[from human] two\\\\ ",
     ]
 
@@ -135,44 +138,59 @@ def channels(recipient: str) -> list[str | None]:
 
 
 @pytest.mark.parametrize("provider", ["fake", "fake-stop"])
-def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(repo, provider):
+def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(
+    repo, provider, production_retry_delays
+):
     """Confirmed by the prompt-submit hook of the text the output became ("fake", as
     OpenCode and Kilo), or by the end of the turn that went on from it ("fake-stop", as
-    Claude Code); one batch at a time, each at once after the one before."""
+    Claude Code); one batch at a time, each at once after the one before. A paused turn
+    has no hook for as long as the test takes, maybe longer than the short retry delays,
+    after which the output would be typed in once more."""
     start(repo, provider)
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
-    wait_for(lambda: message_states("supervisor")[1] == state.SENT, "the output")
+    assert runtime.send_message(SESSION, "human", "supervisor", "pause") == "sent"
+    reply = runtime.send_message(SESSION, "human", "supervisor", "pause")
+    assert reply.startswith("queued; supervisor is busy")
+    runtime.send_message(SESSION, "human", "supervisor", "there")
+    release("supervisor", 1)
+    paused("supervisor", 2)  # in the turn that goes on from the output
     runtime.send_message(SESSION, "human", "supervisor", "hello")
-    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 3, "delivery")
+    release("supervisor", 2)
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 4, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] sleep 1"] * 2 + ["[from human] hello"]
-    assert channels("supervisor") == [state.TYPED, state.HOOK_OUTPUT, state.HOOK_OUTPUT]
+    # One short line per message, the queued ones in one input.
+    assert inputs("supervisor") == [
+        "[from human] pause",
+        "[from human] pause\n[from human] there",
+        "[from human] hello",
+    ]
+    assert channels("supervisor") == [state.TYPED] + [state.HOOK_OUTPUT] * 3
 
 
 @pytest.mark.parametrize("provider", ["fake", "fake-stop"])
 def test_a_turn_end_output_the_cli_drops_is_typed_in_once(repo, provider):
     start(repo, provider)
-    runtime.send_message(SESSION, "human", "supervisor", "lose 1")
+    runtime.send_message(SESSION, "human", "supervisor", "lose")
     runtime.send_message(SESSION, "human", "supervisor", "hello")
+    release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] lose 1", "[from human] hello"]
+    assert inputs("supervisor") == ["[from human] lose", "[from human] hello"]
     assert channels("supervisor") == [state.TYPED, state.TYPED]
 
 
-@pytest.mark.parametrize("provider", ["fake", "fake-paste"])
-def test_message_to_busy_agent_arrives_when_its_turn_ends(repo, provider):
-    start(repo, provider)
-    assert runtime.send_message(SESSION, "human", "supervisor", "sleep 1") == "sent"
+def test_message_to_busy_agent_arrives_when_its_turn_ends(repo):
+    """Typed in at its turn's end; the turn-end output's way is in the test above."""
+    start(repo, "fake-paste")
+    assert runtime.send_message(SESSION, "human", "supervisor", "pause") == "sent"
     reply = runtime.send_message(SESSION, "human", "supervisor", "hello")
     assert reply.startswith("queued; supervisor is busy")
     runtime.send_message(SESSION, "human", "supervisor", "there")
+    release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 3, "delivery")
     wait_status("supervisor", state.IDLE)
     # One short line per message, the queued ones in one input.
     assert inputs("supervisor") == [
-        "[from human] sleep 1",
+        "[from human] pause",
         "[from human] hello\n[from human] there",
     ]
 
@@ -236,18 +254,36 @@ def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     assert message_states("supervisor")[0] == state.READ
     supervisor_runs("read")
     assert seen("supervisor")["read"] == []
-    log = lado_cli("log", SESSION, "--agent", "w1").stdout.splitlines()
+    wait_status("w1", state.IDLE)
+    runtime.send_message(SESSION, "supervisor", "w1", "hello w1")
+    wait_for(lambda: message_states("w1") == [state.DELIVERED], "delivery")
+    wait_status("w1", state.IDLE)
+    # `lado log` of real events: spawns, statuses, messages both ways, a body indented.
+    result = lado_cli("log", SESSION, "--agent", "w1")
+    assert result.returncode == 0, result.stderr
+    log = result.stdout.splitlines()
     at = log.index(next(x for x in log if "w1 → supervisor [read] DONE: work.txt added" in x))
     assert log[at + 1 : at + 4] == ["    Status: DONE", "    Files: work.txt", "    Checks: ok"]
+    lines = [line.split(" ", 1)[1] for line in log if line[:1] != " "]
+    assert lines[0] == "w1: spawned (role worker, provider fake)"
+    assert "w1: busy" in lines
+    assert "w1: idle" in lines
+    assert "supervisor → w1 [delivered] hello w1" in lines
 
 
 def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):
     """The helper's own race: messages queued while the agent is busy are typed together,
     one line each, so the command is a line of the input, not all of it."""
     start(repo)
-    runtime.send_message(SESSION, "human", "supervisor", "sleep 1")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
     wait_status("supervisor", state.BUSY)
     runtime.send_message(SESSION, "human", "supervisor", "sleep 0")  # queued
+
+    def release_once_queued() -> None:  # while the helper waits for its command
+        wait_for(lambda: len(message_states("supervisor")) == 3, "the helper's command")
+        release("supervisor", 1)
+
+    threading.Thread(target=release_once_queued, daemon=True).start()
     supervisor_runs("sleep 0.1")  # queued too, typed with the one before
     assert inputs("supervisor")[-1] == "[from human] sleep 0\n[from human] sleep 0.1"
 
@@ -255,9 +291,10 @@ def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):
 def test_agent_that_switches_conversation_keeps_running(repo):
     """Like Claude Code's /resume: the conversation ends, the process goes on with another."""
     start(repo)
-    tmux.send_text(SESSION, "supervisor", "switch 1")  # typed by the human
+    tmux.send_text(SESSION, "supervisor", "switch")  # typed by the human
     wait_status("supervisor", state.STARTING)
     assert runtime.send_message(SESSION, "human", "supervisor", "hello").startswith("queued")
+    release("supervisor", 1)  # it picked another conversation
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
     assert "[from human] hello" in inputs("supervisor")[-1].splitlines()
@@ -266,7 +303,9 @@ def test_agent_that_switches_conversation_keeps_running(repo):
 
 
 def swallowed_report() -> None:
-    """A dialog in the idle supervisor's window swallows a report typed into it."""
+    """A dialog in the idle supervisor's window swallows a report typed into it. Its tests
+    move time themselves (later) and take the production_retry_delays: the session loop
+    must not type the report again before they do."""
     tmux.send_text(SESSION, "supervisor", "dialog")  # opened by the human, say
     assert runtime.send_message(SESSION, "w1", "supervisor", "report") == "sent"
     wait_for(lambda: "swallowed" in tmux.capture(SESSION, "supervisor"), "the dialog")
@@ -280,25 +319,32 @@ def later(seconds: float) -> None:
         db.execute("UPDATE agents SET seen_at = seen_at - ?", (seconds,))
 
 
-def test_a_swallowed_message_is_typed_again_with_the_next_one(repo):
+def test_a_swallowed_message_is_typed_again_with_the_next_one(repo, production_retry_delays):
     start(repo)
     swallowed_report()
+    # Queued first: whichever sweep finds the report due (this send's or the loop's) types
+    # it with the queue.
+    assert runtime.send_message(SESSION, "w1", "supervisor", "ping").startswith("queued")
     later(runtime.RETRY_DELAYS[0])
-    runtime.send_message(SESSION, "w1", "supervisor", "ping")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     assert inputs("supervisor") == ["[from w1] report\n[from w1] ping"]
 
 
-def test_a_swallowed_message_is_typed_again_after_a_hook_of_its_agent(repo):
+def test_a_swallowed_message_is_typed_again_after_a_hook_of_its_agent(
+    repo, production_retry_delays
+):
     start(repo)
     swallowed_report()
-    later(runtime.RETRY_DELAYS[0])
     tmux.send_text(SESSION, "supervisor", "sleep 0")  # the human goes on
+    wait_for(lambda: inputs("supervisor") == ["sleep 0"], "the human's input")
+    wait_status("supervisor", state.IDLE)
+    # Due only once its hooks ran: no sweep pastes it again while the human types.
+    later(runtime.RETRY_DELAYS[0])
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     assert inputs("supervisor") == ["sleep 0", "[from w1] report"]
 
 
-def test_nothing_is_typed_into_an_agent_that_asks_the_human(repo):
+def test_nothing_is_typed_into_an_agent_that_asks_the_human(repo, production_retry_delays):
     start(repo)
     swallowed_report()
     tmux.send_text(SESSION, "supervisor", "ask")
@@ -344,7 +390,9 @@ def test_only_the_answer_to_its_request_ends_an_agent_s_wait(repo):
     assert status("supervisor") == state.IDLE
 
 
-def test_an_agent_waiting_after_failed_messages_gets_them_when_its_turn_ends(repo):
+def test_an_agent_waiting_after_failed_messages_gets_them_when_its_turn_ends(
+    repo, production_retry_delays
+):
     start(repo)
     swallowed_report()
     for attempt in range(2, 2 + len(runtime.RETRY_DELAYS)):  # every paste is swallowed
@@ -406,25 +454,9 @@ def database() -> bytes:
     return agent_helpers.database()
 
 
-def test_cli_refuses_to_migrate_the_database_under_a_running_session(repo):
-    start(repo)
-    agent_helpers.previous_schema()  # as an older LADO, running this session, left it
-    before = database()
-    result = lado_cli("ls")
-    assert result.returncode == 1
-    assert f'under the running sessions: "{SESSION}"' in result.stderr
-    assert "`lado stop --all`" in result.stderr
-    assert database() == before
-    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, [SESSION])
-    # The only running session: its stop kills it, migrates, then marks it stopped.
-    result = lado_cli("stop", SESSION)
-    assert result.returncode == 0, result.stderr
-    assert not tmux.has_session(SESSION)
-    assert state.pending_migration() is None
-    assert state.get_session(SESSION).stopped_at
-
-
-def test_stop_of_one_of_two_sessions_on_an_older_schema_is_refused_stop_all_is_not(repo):
+def test_cli_refuses_to_migrate_under_running_sessions_and_stop_all_migrates(repo):
+    """A command refuses to migrate, so does the stop of one of two sessions; `lado stop
+    --all` kills both, waits for their loops, migrates and marks them stopped."""
     start(repo)
     runtime.start_session(str(repo), "other", None, "fake")
     agent_helpers.wait_for(
@@ -432,8 +464,14 @@ def test_stop_of_one_of_two_sessions_on_an_older_schema_is_refused_stop_all_is_n
         "other's supervisor to be idle",
         "other",
     )
-    agent_helpers.previous_schema()
+    agent_helpers.previous_schema()  # as an older LADO, running these sessions, left it
     before = database()
+    result = lado_cli("ls")
+    assert result.returncode == 1
+    assert f'under the running sessions: "{SESSION}", "other"' in result.stderr
+    assert "`lado stop --all`" in result.stderr
+    assert database() == before
+    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, [SESSION, "other"])
     result = lado_cli("stop", SESSION)
     assert result.returncode == 1
     assert "`lado stop --all`" in result.stderr and '"other"' in result.stderr
@@ -520,25 +558,3 @@ def test_unmerged_worker_is_finished_only_with_discard(repo):
     assert state.list_events(SESSION)[-1].detail == "discarded"
     assert state.get_agent(SESSION, "w1") is None
     assert not (state.home() / "hooks.log").exists()
-
-
-def test_log_shows_spawns_statuses_and_messages(repo):
-    start(repo)
-    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
-    wait_status("w1", state.IDLE)
-    runtime.send_message(SESSION, "supervisor", "w1", "hello w1")
-    wait_for(lambda: message_states("w1") == [state.DELIVERED], "delivery")
-    wait_status("w1", state.IDLE)
-    result = subprocess.run(
-        [sys.executable, "-m", "lado.cli", "log", SESSION, "--agent", "w1"],
-        capture_output=True,
-        text=True,
-        env=os.environ,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    lines = [line.split(" ", 1)[1] for line in result.stdout.splitlines() if line[:1] != " "]
-    assert lines[0] == "w1: spawned (role worker, provider fake)"
-    assert "w1: busy" in lines
-    assert "w1: idle" in lines
-    assert "supervisor → w1 [delivered] hello w1" in lines

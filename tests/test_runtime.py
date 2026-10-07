@@ -1304,6 +1304,25 @@ def test_session_start_waits_until_the_lado_mcp_server_listed_its_tools(repo, fa
     assert state.get_agent("s", "w1").status == state.BUSY
 
 
+def test_session_start_looks_for_the_lado_mcp_server_every_twentieth_of_a_second(
+    repo, fake_tmux, monkeypatch
+):
+    """Each look sooner starts the agent's first turn sooner."""
+    _session_with_worker(repo)
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 2:
+            _mcp_ready("w1")
+
+    monkeypatch.setattr(hooks.time, "sleep", sleep)
+    _hook("SessionStart", "w1", mcp_ready=False)
+    assert hooks.MCP_READY_POLL == 0.02
+    assert sleeps == [hooks.MCP_READY_POLL] * 2
+    assert hooks.MCP_READY_TIMEOUT == 20.0
+
+
 def test_session_start_goes_on_without_the_lado_mcp_server_after_a_while(
     repo, fake_tmux, lado_home, monkeypatch
 ):
@@ -1954,6 +1973,26 @@ def test_spawn_worker_takes_the_only_role(repo, fake_tmux):
         prompt
     )
     assert runtime.spawn_worker("s", "t").role == "worker"
+
+
+def test_a_worker_gets_its_role_from_an_installed_kit(tmp_path, repo, fake_tmux):
+    """An installed kit is a row in lado.db; a running session reads it at each spawn."""
+    work = agent_helpers.init_repo(tmp_path / "team-kit")
+    agent = "---\nname: dev\ndescription: d\n---\n{text}\n"
+    files = {"kit.yaml": "name: team\nversion: 1.0.0\n", "agents/dev.md": agent.format(text="v1")}
+    url = agent_helpers.publish(work, files, tag="v1.0.0")
+    kits.install(kits.plan_add(url))
+    assert not (state.home() / "kits").exists()
+
+    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
+    runtime.spawn_worker("s", "t", role="dev")
+    assert _prompt(fake_tmux[-1][-1]).startswith("v1")
+
+    files = {"kit.yaml": "name: team\nversion: 1.1.0\n", "agents/dev.md": agent.format(text="v2")}
+    agent_helpers.publish(work, files, tag="v1.1.0")
+    kits.install(kits.plan_update("team"))
+    assert runtime.spawn_worker("s", "t", role="dev").name == "dev-2"
+    assert _prompt(fake_tmux[-1][-1]).startswith("v2")
 
 
 def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
@@ -3216,3 +3255,8 @@ def test_branch_and_remote_of_a_repository_with_origin(repo):
 def test_no_remote_without_origin_and_no_branch_on_a_detached_head(repo):
     subprocess.run(["git", "-C", str(repo), "checkout", "-q", "--detach"], check=True)
     assert (runtime.branch(str(repo)), runtime.remote(str(repo))) == (None, None)
+
+
+@pytest.mark.parametrize(("value", "delays"), [(None, (15.0, 30.0, 60.0)), ("0.5,1", (0.5, 1.0))])
+def test_the_retry_delays_are_lado_retry_delays_else_lado_s_own(value, delays):
+    assert runtime.retry_delays_from(value) == delays

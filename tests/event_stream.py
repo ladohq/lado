@@ -18,7 +18,8 @@ class Event:
 
 
 class EventStream:
-    """The events of one connection, in order. `closed` once the server ended it."""
+    """The events of one connection, in order. `closed` once the server ended it; `error`
+    when the connection broke before the response's end (e.g. cut by the server)."""
 
     def __init__(self, url: str, token: str, after: int | None = None, last_id: int | None = None):
         headers = {"Authorization": f"Bearer {token}"}
@@ -31,6 +32,7 @@ class EventStream:
         )
         self.status = self._response.status_code
         self.closed = threading.Event()
+        self.error: httpx.HTTPError | None = None
         self._events: queue.Queue[Event] = queue.Queue()
         self.detail = ""  # the server's reason, when it refused the stream
         if self.status == 200:
@@ -57,8 +59,8 @@ class EventStream:
                         )
                     )
                     fields = {}
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as error:
+            self.error = error
         finally:
             self.closed.set()
 

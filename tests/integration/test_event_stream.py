@@ -87,6 +87,12 @@ def session_change(session: str, status: str | None = None):
     return wanted
 
 
+def derived_change(session: str, status: str):
+    """A change of the session's status the hub derived (no id: no journal row has it)."""
+    of_session = session_change(session, status)
+    return lambda event: of_session(event) and event.id is None
+
+
 def test_a_change_by_another_process_reaches_the_stream(streams, session):
     stream = streams()
     reset = stream.next()
@@ -132,13 +138,30 @@ def test_a_write_between_the_streams_start_and_the_load_is_not_lost(server, stre
     assert stream.until(session_change(session, "stopped"), timeout=15)[-1].id > reset.id
 
 
+def past_the_first_derivation(stream: EventStream, session: str) -> None:
+    """Wait until the server has computed what is derived once for this stream: its hub does
+    that at the end of its first pass (feed.Hub._pass). A change written after one that came
+    in the stream comes in a later pass, so the first one is over by then."""
+    for n in (1, 2):
+        runtime.send_message(session, "human", "supervisor", f"probe {n}")
+        stream.until(
+            lambda e, n=n: (
+                e.event == "change"
+                and e.data["kind"] == "messages"
+                and (e.data["item"] or {}).get("summary") == f"probe {n}"
+            ),
+            timeout=15,
+        )
+
+
 def test_a_killed_tmux_session_shows_as_tmux_gone(streams, session):
     stream = streams()
     stream.next()
-    time.sleep(4)  # past the server's first computation of what is derived
+    past_the_first_derivation(stream, session)
     tmux.kill_session(session)
-    gone = stream.until(session_change(session, "tmux_gone"), timeout=15)[-1]
-    assert gone.id is None
+    # The supervisor's end (agent_ended) may bring the session's item already gone through
+    # the journal first, an id with it: what the hub promises is its derived change.
+    stream.until(derived_change(session, "tmux_gone"), timeout=15)
 
 
 def test_a_tmux_session_killed_while_no_stream_was_open_shows_on_reconnect(streams, session):
@@ -147,14 +170,17 @@ def test_a_tmux_session_killed_while_no_stream_was_open_shows_on_reconnect(strea
     stream.close()
     tmux.kill_session(session)
     again = streams(after=position)
-    assert again.until(session_change(session, "tmux_gone"), timeout=5)[-1].id is None
+    again.until(derived_change(session, "tmux_gone"), timeout=5)
 
 
 def test_the_server_stops_with_a_stream_open(streams):
+    """The shutdown ends the stream (the response's end, not a cut), so the stop does not
+    wait out the server's grace for open requests."""
     stream = streams()
     stream.next()
     started = time.monotonic()
-    stopped = lado_cli("server", "stop")
-    assert stopped.returncode == 0, stopped.stderr
+    assert server_run.stop() is not None
+    took = time.monotonic() - started
     assert stream.closed.wait(5)
-    assert time.monotonic() - started < server_run.STOP_TIMEOUT / 2
+    assert stream.error is None
+    assert took < server_run.SHUTDOWN_GRACE * 0.8

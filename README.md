@@ -4,7 +4,9 @@
 
 LADO runs teams of AI coding agents. Supervisors split work into tasks and hand them to specialist agents; the agents coordinate, and a human approves the key decisions. It is built for work that is too large for a single agent session.
 
-> **Status: early development.** Nothing is ready to use yet. This repository reserves the name and will hold the first working version.
+> **Status: early development, usable.** `lado start <repo>` runs a team of agents, `lado ui`
+> opens the web UI; kits and flows work. Expect changes between versions; see
+> [ROADMAP.md](ROADMAP.md) for what is done and what comes next.
 
 ## The name
 
@@ -12,22 +14,40 @@ LADO runs teams of AI coding agents. Supervisors split work into tasks and hand 
 
 In Russian, *лад* (lad) means harmony or being in tune, the way a well-run team works. The same root gives *наладить*: to set up, to get something working.
 
+## What works now
+
+- **Delegation.** A supervisor agent breaks work down and starts worker agents, each in its
+  own git worktree and branch, all in tmux on your machine.
+- **Messages.** Agents send each other tasks and reports through LADO, and can write to you
+  or ask you.
+- **Providers.** Claude Code, Kilo CLI and OpenCode, chosen per session and per worker.
+- **Kits.** Agent roles, skills, MCP servers and flows in a git repository or a folder,
+  installed with `lado kits add` or from a marketplace.
+- **Flows.** Steps, outcomes and human gates that LADO enforces, not the agent; you answer a
+  gate with `lado answer`, in a tmux popup or in the web UI.
+- **Web UI** (in progress). `lado ui`: sessions, agents and their terminals, messages, gates,
+  flow runs, kits.
+
 ## Planned
 
-- **Hierarchical delegation.** Supervisor agents break work down and assign it to worker agents.
-- **Governed workflows.** Phases, gates, and human approval points are enforced by the system, not left to the agent's discretion.
-- **Collaboration.** Agents pass tasks, messages, and artifacts to each other.
-- **Provider-agnostic.** Use the CLI coding agents you already have.
-- **Runs anywhere.** Works on a local machine, with a path to remote and cloud execution.
+- **Artifacts.** Named, versioned documents of a session (design, plan, review) shown in the UI.
+- **Desktop app** that bundles the UI and LADO.
+- **Conversations that survive a restart** of a session or an update.
+- **ACP runtime.** Agents driven over the Agent Client Protocol instead of tmux.
+- **Task trackers** (YouGile, Jira) as kits.
 
-## Install
+## Quick start
 
 ```bash
 uv tool install lado    # or: pip install lado
 lado doctor             # checks tmux and the agent CLIs: any of Claude Code, Kilo CLI, OpenCode
+lado start <repo>       # a supervisor for a git repository (with at least one commit), in tmux
+lado ui                 # the web UI in your browser
 ```
 
-There is nothing else to run yet; see [ROADMAP.md](ROADMAP.md).
+`lado start --help` lists the options (`--provider`, `--kit`, `--permission-mode`). `lado ls`
+shows the sessions and their agents, `lado attach <session>` their tmux windows, `lado stop
+<session>` ends one (`lado start` resumes it).
 
 ## Update
 

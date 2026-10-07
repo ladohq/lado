@@ -58,7 +58,8 @@ from pathlib import Path
 
 import yaml
 
-from lado import __version__, flows, gitcache, marketplaces, mcp_exec, state
+import lado
+from lado import flows, gitcache, marketplaces, mcp_exec, state
 from lado.flows import Flow
 from lado.providers.base import McpServer
 
@@ -774,7 +775,7 @@ def load_release(
     if need:
         version = _yaml_file(root / KIT_FILE, []).get("version")
         raise KitError(
-            f"{_kit_name(root)} {version} needs LADO {need}, this is {__version__}; "
+            f"{_kit_name(root)} {version} needs LADO {need}, this is {lado.__version__}; "
             f"upgrade LADO{hint}"
         )
     kit = fetch(load(root, where, named_folder=named))
@@ -867,7 +868,7 @@ def _lado_needed(path: Path) -> str | None:
 
 
 def _too_old(need: re.Match) -> bool:
-    return _version(__version__) < tuple(int(n or 0) for n in need.groups())
+    return _version(lado.__version__) < tuple(int(n or 0) for n in need.groups())
 
 
 def remove(name: str) -> Path:
@@ -1137,7 +1138,7 @@ def _load_dependencies(value: object, path: Path, kit_name: str, errors: list[st
             errors.append(f'{file}: dependencies.lado must be ">=X.Y" or ">=X.Y.Z"')
         elif _too_old(match):
             errors.append(
-                f'{file}: kit "{kit_name}" needs LADO {need.strip()}, this is {__version__}; '
+                f'{file}: kit "{kit_name}" needs LADO {need.strip()}, this is {lado.__version__}; '
                 "upgrade LADO"
             )
     entries = value.get("skills", {})

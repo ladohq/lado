@@ -9,7 +9,8 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from lado import __version__, agent_env, providers, runtime, state, terminal, tmux, update
+import lado
+from lado import agent_env, providers, runtime, state, terminal, tmux, update
 
 OK = "ok"
 INFO = "info"  # for the human to know; nothing to fix
@@ -156,11 +157,11 @@ def check_lado() -> Check:
     """This LADO's version and whether a newer one is out (update.check: once a day)."""
     checked = update.check()
     if checked is None:
-        return Check("LADO", OK, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)")
+        return Check("LADO", OK, f"{lado.__version__} (no update check: LADO_NO_UPDATE_CHECK=1)")
     hints = [h for h in (update.available_line(checked), checked.error) if h]
     if hints:
-        return Check("LADO", WARN, __version__, "; ".join(hints))
-    return Check("LADO", OK, f"{__version__}, the latest version")
+        return Check("LADO", WARN, lado.__version__, "; ".join(hints))
+    return Check("LADO", OK, f"{lado.__version__}, the latest version")
 
 
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:

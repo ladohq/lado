@@ -41,6 +41,9 @@ EVENTS = {
 # A turn that ends on an error: the plugin passes the "session.error" before "session.idle"
 # on with it (Kilo 7.8.3 and OpenCode 1.18.34 publish one, then the other, read in their
 # bundles). The human's Esc is an error too, this one, which their TUIs do not show either.
+# No error is Event.transient: the plugin gets only the error's class name and message (an
+# overloaded API and a refused key are both an APIError), and which ones reach
+# "session.error" is not checked (BACKLOG.md), so LADO resumes none of their agents.
 ABORTED = "MessageAbortedError"
 
 

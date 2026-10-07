@@ -170,6 +170,13 @@ putting the default kit back, so a product race is not ruled out.
 Wanted: if the kits test still fails with the wait, look for a load that resets the kits
 after the human removed them.
 Found: 2026-10-05, run feature/session-head (developer, reviewer).
+Seen again 2026-10-07, verify of fix/integration-fix2, load average 75–108: 4 UI tests
+failed, all passed on rerun: test_launch::test_stop_from_the_session_head (tooltip 'Stop
+session…' not in 5 s), test_chat::test_the_human_writes_and_the_supervisor_gets_it_and_replies
+(test_chat.py:35, value ''), test_layout::test_many_tabs_stay_on_one_line… (click 'Open
+terminal' 30 s timeout), test_launch::test_a_session_starts_from_the_new_session_window
+(provider select disabled: `/api/providers` slower than 30 s, since the CLIs' `--version`
+are slow under load; failed twice, passed the third time).
 
 ## Test runs leave `lado server` processes behind
 
@@ -441,6 +448,10 @@ may retry retryable requests itself.
 Wanted: check by hand which errors of Kilo and OpenCode end a turn, and mark the ones that
 pass by themselves `Event.transient` in the provider (e.g. by the APIError's status code).
 Found: 2026-10-07, design of run feature/turn-resume.
+Seen again 2026-10-07 in the OpenCode live test (verify of fix/integration-fix2): w1's turn
+ended twice on `UnknownError: ... [503] Upstream error from Nvidia: Service temporarily
+overloaded`, not resumed; passed the third time. The live test cannot tell a model outage
+from a LADO failure.
 
 ## A message typed again before its hook confirms it runs twice
 
@@ -607,6 +618,12 @@ called `finish_worker(name="w1")` before w1 answered the human ("agent w1 is gon
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
+Seen with Claude too, 2026-10-07 (verify of fix/integration-fix2):
+test_a_flow_run_moves_on_when_its_worker_reports[claude] failed on `assert not
+os.path.exists(run.worktree)` after finish_worker(w1): the passive supervisor (haiku) called
+spawn_worker for the run on its own, and that worker keeps the worktree; passed on rerun.
+Wanted also: the test does not depend on the supervisor not spawning (deny it spawn_worker
+in the live kit, or tolerate extra workers).
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
@@ -1083,6 +1100,14 @@ was still importing (before `take_lock`) while the second took and dropped the l
 Wanted: find which with that run's loop.log; if a loop can start after another one gave up
 the lock, the test should wait for the lock holder, or the product should say so.
 Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis).
+
+## tests/test_loop.py `_stop_after`: its docstring says `passes` holds tmux calls
+
+Size: S. Why here: a misleading test comment (review Minor of fix/integration-fix2).
+The docstring says each pass's tmux calls go to `passes`, but `passes` collects the loop's
+sleeps; the tmux calls are counted in `tmux_server["calls"]`.
+Wanted: the docstring says what each collects.
+Found: 2026-10-07, review of fix/integration-fix2.
 
 # P3: maybe never
 

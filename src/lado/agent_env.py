@@ -47,6 +47,11 @@ INHERIT_HINT = (
     f"set {SOURCE_VAR}={INHERIT} to give agents the environment of the process that starts them"
 )
 HINT = f"fix your shell's startup files, or {INHERIT_HINT}"
+# What to do about a command not on the agents' PATH (an agent's CLI, a kit's expects).
+PATH_ADVICE = (
+    f"add its folder to PATH in your shell's startup files, or with {SOURCE_VAR}={INHERIT} to "
+    "the PATH of the process that starts LADO"
+)
 
 
 class AgentEnvError(RuntimeError):
@@ -195,11 +200,7 @@ def command(file: Path, env: Mapping[str, str], argv: list[str]) -> list[str]:
     reads it. Fails when `argv[0]` is not on `env`'s PATH: the window would close at once."""
     path = env.get("PATH", os.defpath)
     if shutil.which(argv[0], path=path) is None:
-        raise AgentEnvError(
-            f"`{argv[0]}` is not on the agents' PATH ({path}): add its folder to PATH in your "
-            f"shell's startup files, or with {SOURCE_VAR}={INHERIT} to the PATH of the process "
-            "that starts LADO"
-        )
+        raise AgentEnvError(f"`{argv[0]}` is not on the agents' PATH ({path}): {PATH_ADVICE}")
     fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     os.fchmod(fd, 0o600)  # the mode above is only for a new file
     with os.fdopen(fd, "w") as f:

@@ -370,6 +370,7 @@ def start_session(
     env = kits.resolve(repo, sess.kits, sess.without)
     if base_env is None:
         base_env = _base_env()
+    _check_commands(env, base_env)
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
@@ -503,6 +504,7 @@ def spawn_worker(
         run=run.name if run else None,
     )
     base_env = _base_env()
+    _check_commands(env, base_env)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
     if not run:
         exclude_worktrees(sess.repo)
@@ -1834,6 +1836,15 @@ def _base_env() -> dict[str, str]:
         return agent_env.resolve()
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
+
+
+def _check_commands(env: kits.Environment, base_env: dict[str, str]) -> None:
+    """Refuse a launch while a command the session's kits expect (expects.commands) is not
+    on the agents' PATH; called before the launch changes anything."""
+    path = base_env.get("PATH", os.defpath)
+    missing = kits.missing_commands(env.kits, path)
+    if missing:
+        raise LadoError(kits.commands_error(missing, path))
 
 
 def _launch_env(

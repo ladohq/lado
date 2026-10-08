@@ -12,6 +12,7 @@ from agent_helpers import init_repo, publish
 import lado
 from lado import (
     __version__,
+    agent_env,
     artifacts,
     artifacts_local,
     cli,
@@ -1804,7 +1805,7 @@ def test_kits_check_passes_a_kit_alone_with_the_skills_it_expects(repo, capsys, 
         == "sdlc: OK (1 agents, 0 skills, 0 packs and 0 flows)\nexpects skills: tracker\n"
     )
     assert (
-        f"warning: {kit.resolve() / 'kit.yaml'}: expects needs LADO 0.29 or newer; add "
+        f"warning: {kit.resolve() / 'kit.yaml'}: expects.skills needs LADO 0.29 or newer; add "
         'dependencies.lado: ">=0.29" so an older LADO says to upgrade\n'
     ) in captured.err
     monkeypatch.setattr(lado, "__version__", "0.29.0")
@@ -1824,3 +1825,94 @@ def test_kits_show_names_who_provides_what_a_kit_expects(repo, capsys):
     out = capsys.readouterr().out
     assert "    expects skill tracker: from tracker\n" in out
     assert "    skills: tracker (tracker)\n" in out
+
+
+COMMANDING = "name: cmd\nversion: 1.0.0\nexpects:\n  commands: [openspec, uv]\n"
+
+
+def _executable(folder, name):
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text("#!/bin/sh\n")
+    (folder / name).chmod(0o755)
+    return folder / name
+
+
+def _process_path(monkeypatch, folder):
+    """This process's PATH: `folder`, with git and nothing else of the machine's."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(folder))
+
+
+def test_kits_check_names_the_commands_a_kit_expects(repo, capsys, monkeypatch, tmp_path):
+    kit = _kit(repo, "cmd")
+    monkeypatch.setattr(lado, "__version__", "0.30.0")
+    (kit / "kit.yaml").write_text(COMMANDING + 'dependencies:\n  lado: ">=0.30"\n')
+    bin_ = tmp_path / "bin"
+    _executable(bin_, "uv")
+    _process_path(monkeypatch, bin_)  # not the agents'
+    assert main(["kits", "check", str(kit)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.endswith("\nexpects commands: openspec, uv\n")
+    assert captured.err == (
+        'warning: kit "cmd" expects command "openspec", which is not on this process\'s '
+        "PATH; a session refuses to start without it\n"
+    )
+    _executable(bin_, "openspec")
+    assert main(["kits", "check", str(kit)]) == 0
+    assert capsys.readouterr().err == ""
+    for deps in ("", 'dependencies:\n  lado: ">=0.29"\n'):
+        (kit / "kit.yaml").write_text(COMMANDING + deps)
+        assert main(["kits", "check", str(kit)]) == 0
+        assert (
+            'expects.commands needs LADO 0.30 or newer; add dependencies.lado: ">=0.30"'
+            in capsys.readouterr().err
+        )
+
+
+@pytest.mark.parametrize("bad", ["/usr/bin/gh", "gh auth", "gh, gh"])
+def test_kits_check_refuses_a_command_that_is_no_name(repo, capsys, bad):
+    kit = _kit(repo, "cmd")
+    (kit / "kit.yaml").write_text(f"name: cmd\nversion: 1.0.0\nexpects:\n  commands: [{bad}]\n")
+    assert main(["kits", "check", str(kit)]) == 1
+    assert "expects.commands: " in capsys.readouterr().err
+
+
+def test_kits_show_looks_for_expected_commands_on_the_agents_path(
+    repo, capsys, monkeypatch, tmp_path
+):
+    (_kit(repo, "cmd") / "kit.yaml").write_text(COMMANDING)
+    found = _executable(tmp_path / "agents-bin", "uv")
+    _executable(tmp_path / "process-bin", "openspec")
+    _process_path(monkeypatch, tmp_path / "process-bin")
+    calls = []
+
+    def resolve():
+        calls.append(1)
+        return {"PATH": str(tmp_path / "agents-bin")}
+
+    monkeypatch.setattr(agent_env, "resolve", resolve)
+    assert main(["kits", "--repo", str(repo), "show", "cmd"]) == 0
+    out = capsys.readouterr().out
+    assert "    expects command openspec: not on the agents' PATH\n" in out
+    assert f"    expects command uv: {found}\n" in out
+    assert calls == [1]
+    # A kit that expects no command does not resolve the agents' environment.
+    assert main(["kits", "--repo", str(repo), "show", "default"]) == 0
+    assert calls == [1] and "expects command" not in capsys.readouterr().out
+
+
+def test_kits_show_says_when_it_cannot_tell_the_agents_path(repo, capsys, monkeypatch):
+    (_kit(repo, "cmd") / "kit.yaml").write_text(COMMANDING)
+
+    def broken():
+        raise agent_env.AgentEnvError("your shell failed with exit status 1")
+
+    monkeypatch.setattr(agent_env, "resolve", broken)
+    assert main(["kits", "--repo", str(repo), "show", "cmd"]) == 0
+    out = capsys.readouterr().out
+    for name in ("openspec", "uv"):
+        assert (
+            f"    expects command {name}: cannot tell: your shell failed with exit status 1\n"
+            in out
+        )

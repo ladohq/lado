@@ -487,6 +487,31 @@ Found: 2026-10-08, CI of the release commit c165eee (0.28.0).
 
 # P2: when convenient
 
+## The commands of a kit's MCP servers are not checked before a start
+
+Size: S. Why here: a kit whose MCP server runs through `uvx` or `npx` gets an agent without
+that server when the command is missing, and nobody hears of it until a tool call.
+
+`expects.commands` (0.30) is checked on the agents' PATH at start, resume and spawn
+(`runtime._check_commands`), but an agent's MCP server command (`mcp.command[0]` in its
+frontmatter) is not: the agent's CLI only fails to connect it. The command is in the kit
+already, so the kit's author should not have to list it again in `expects.commands` (the
+README says to, for now).
+Wanted: the same check (`kits.missing_commands`, the same error) also takes the first word
+of each MCP server's command of the agents a launch starts, not only `expects.commands`.
+Found: 2026-10-08, run feature/expects-commands (architect's review).
+
+## No way to start a session whose expected command is missing
+
+Size: S. Why here: no case yet; the human chose no flag in the first version.
+
+A kit's `expects.commands` refuses a start, resume or spawn while a command is not on the
+agents' PATH. A command that exists only inside a container the agent enters, or that the
+agent installs itself, cannot be declared then.
+Wanted: when such a case comes, a flag (e.g. `lado start --skip-commands`) that starts
+anyway and says loudly which commands are missing.
+Found: 2026-10-08, run feature/expects-commands (design, Q4).
+
 ## A message keeps no run: the chat cannot say which run an agent writes for
 
 Size: M. Why here: the chat's rows show only the agent's name; with several runs at once the

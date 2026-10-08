@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, TextIO
 
 import lado
 from lado import (
+    agent_env,
     artifacts,
     flows,
     kits,
@@ -253,6 +254,7 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
         print(f"warning: {warning}", file=sys.stderr)
     print("Kits:")
     labels = {}  # (kit, pack) -> the pack's name@ref
+    agents_path = _agents_path(env.kits)
     for kit in env.kits:
         print(f"  {kit.name} {kit.version}  ({kit.source})")
         for pack in kit.packs.values():
@@ -260,10 +262,16 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
             print(f"    pack {pack.name}: {pack.spec}  {pack.path}")
         if kit.packs and not kit.agents:
             print("    shares its packs with the session (no agents)")
-        for name in kit.expects:
+        for name in kit.expects.skills:
             provider = env.shared.get(name)
             found = f"from {provider.kit}" if provider else "no kit here provides it"
             print(f"    expects skill {name}: {found}")
+        for name in kit.expects.commands:
+            if isinstance(agents_path, agent_env.AgentEnvError):
+                where = f"cannot tell: {agents_path}"
+            else:
+                where = shutil.which(name, path=agents_path) or "not on the agents' PATH"
+            print(f"    expects command {name}: {where}")
 
     def origin(skill: kits.Skill) -> str:
         return f"{labels[skill.kit, skill.pack]} ({skill.kit})" if skill.pack else skill.kit
@@ -336,9 +344,29 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     skills = len(env.all_skills())
     counts = f"{len(env.agents)} agents, {skills} skills, {len(kit.packs)} packs"
     print(f"{kit.name}: OK ({counts} and {len(env.flows)} flows)")
-    if kit.expects:
-        print(f"expects skills: {', '.join(kit.expects)}")
+    if kit.expects.skills:
+        print(f"expects skills: {', '.join(kit.expects.skills)}")
+    if kit.expects.commands:
+        print(f"expects commands: {', '.join(kit.expects.commands)}")
+    # Checked where the kit is, which need not be where it runs (a marketplace's CI).
+    for _, name in kits.missing_commands([kit], os.environ.get("PATH", os.defpath)):
+        print(
+            f'warning: kit "{kit.name}" expects command "{name}", which is not on this '
+            "process's PATH; a session refuses to start without it",
+            file=sys.stderr,
+        )
     return 0
+
+
+def _agents_path(kits_: list[kits.Kit]) -> str | agent_env.AgentEnvError | None:
+    """The agents' PATH, as a launch resolves it, when a kit expects commands; why it
+    cannot be told, else."""
+    if not any(kit.expects.commands for kit in kits_):
+        return None
+    try:
+        return agent_env.resolve().get("PATH", os.defpath)
+    except agent_env.AgentEnvError as exc:
+        return exc
 
 
 def _repo_or_none(path: str) -> str | None:

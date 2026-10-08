@@ -52,6 +52,7 @@ their `skills:` names one.
 import dataclasses
 import os
 import re
+import shutil
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,7 +60,7 @@ from pathlib import Path
 import yaml
 
 import lado
-from lado import flows, gitcache, marketplaces, mcp_exec, state
+from lado import agent_env, flows, gitcache, marketplaces, mcp_exec, state
 from lado.flows import Flow
 from lado.providers.base import McpServer
 
@@ -72,9 +73,11 @@ BUILTIN = Path(__file__).with_name("builtin_kits")
 
 KIT_KEYS = {"name", "version", "description", "supervisor", "dependencies", "expects"}
 DEPENDENCY_KEYS = {"lado", "skills"}
-EXPECTS_KEYS = {"skills"}
-# The first LADO that reads kit.yaml's expects; an older one refuses the key.
-EXPECTS_SINCE = (0, 29)
+EXPECTS_KEYS = {"skills", "commands"}
+# The first LADO that reads each key of kit.yaml's expects; an older one refuses the key.
+EXPECTS_SINCE = {"skills": (0, 29), "commands": (0, 30)}
+# expects.commands: an executable's name as PATH finds it; no path, spaces or arguments.
+COMMAND = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 # resolve's modes for the skills a kit expects (expects.skills): a session requires that a
 # kit of it provides them; the check of a kit alone assumes it.
 REQUIRE = "require"
@@ -130,6 +133,14 @@ class Pack:
 
 
 @dataclass(frozen=True)
+class Expects:
+    """kit.yaml's expects: what the kit needs and does not bring itself."""
+
+    skills: tuple[str, ...] = ()  # what another kit of the session brings
+    commands: tuple[str, ...] = ()  # CLIs on the agents' PATH
+
+
+@dataclass(frozen=True)
 class McpDef:
     name: str
     command: list[str]  # may contain ${KIT_DIR}
@@ -161,7 +172,7 @@ class Kit:
     flows: dict[str, Flow] = field(default_factory=dict)
     packs: dict[str, Pack] = field(default_factory=dict)  # dependencies.skills
     origin: str | None = None  # an installed kit from git: its address@tag
-    expects: tuple[str, ...] = ()  # expects.skills: what another kit of the session brings
+    expects: Expects = Expects()
 
     @property
     def source(self) -> str:
@@ -425,7 +436,7 @@ class Environment:
         agent = self.lead if name == self.lead.name else self.agents[name]
         visible = self.visible(agent)
         kit = by_name.get(agent.kit)
-        for s in kit.expects if kit else ():
+        for s in kit.expects.skills if kit else ():
             if s in visible and _off(excluded["skill"], s, visible[s].kit):
                 item = (
                     f"skill:{s}"
@@ -1107,7 +1118,7 @@ def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Ki
     packs = _load_dependencies(meta.get("dependencies", {}), path, kit_name, errors)
     _check_unique(skills, packs, path / KIT_FILE, errors)
     expects = _load_expects(meta.get("expects", {}), path / KIT_FILE, errors)
-    _check_expects(expects, skills, packs, path / KIT_FILE, errors)
+    _check_expects(expects.skills, skills, packs, path / KIT_FILE, errors)
     agents = _load_agents(path, kit_name, errors)
     if supervisor is not None and supervisor not in agents:
         errors.append(
@@ -1152,7 +1163,7 @@ def fetch(kit: Kit) -> Kit:
             continue
         packs[name] = _fill_pack(packs[name], clone.resolve(), kit.name, where, errors)
     _check_unique(kit.skills, packs, kit.path / KIT_FILE, errors)
-    _check_expects(kit.expects, kit.skills, packs, kit.path / KIT_FILE, errors)
+    _check_expects(kit.expects.skills, kit.skills, packs, kit.path / KIT_FILE, errors)
     if errors:
         raise KitError("\n".join(errors))
     return dataclasses.replace(kit, packs=packs)
@@ -1277,27 +1288,90 @@ def _check_unique(own: dict[str, Skill], packs: dict[str, Pack], file: Path, err
             _add_skill(skills, skill, str(file), errors)
 
 
-def _load_expects(value: object, file: Path, errors: list[str]) -> tuple[str, ...]:
-    """expects.skills: names of skills another kit of the session must bring."""
+def _load_expects(value: object, file: Path, errors: list[str]) -> Expects:
+    """expects.skills: names of skills another kit of the session must bring;
+    expects.commands: names of the CLIs the kit's agents need on their PATH."""
     if not isinstance(value, dict):
         errors.append(f"{file}: expects must be a mapping")
-        return ()
+        return Expects()
     _unknown_keys(value, EXPECTS_KEYS, f"{file}: expects", errors)
-    names = value.get("skills", [])
+    skills = _expected_names(
+        value,
+        "skills",
+        "skill names",
+        NAME,
+        "must be lowercase letters, digits, - or _",
+        file,
+        errors,
+    )
+    commands = _expected_names(
+        value,
+        "commands",
+        "command names",
+        COMMAND,
+        "must be a command's name as PATH finds it: letters, digits, . _ + -, no path, "
+        "spaces or arguments",
+        file,
+        errors,
+    )
+    return Expects(skills, commands)
+
+
+def _expected_names(
+    value: dict,
+    key: str,
+    what: str,
+    pattern: re.Pattern,
+    rule: str,
+    file: Path,
+    errors: list[str],
+) -> tuple[str, ...]:
+    """The names of expects.<key>, each once and of `pattern`."""
+    names = value.get(key, [])
     if not _str_list(names):
-        errors.append(f"{file}: expects.skills must be a list of skill names")
+        errors.append(f"{file}: expects.{key} must be a list of {what}")
         return ()
     found: list[str] = []
     for name in names:
-        if not NAME.fullmatch(name):
-            errors.append(
-                f'{file}: expects.skills: "{name}" must be lowercase letters, digits, - or _'
-            )
+        if not pattern.fullmatch(name):
+            errors.append(f'{file}: expects.{key}: "{name}" {rule}')
         elif name in found:
-            errors.append(f'{file}: expects.skills: "{name}" is listed twice')
+            errors.append(f'{file}: expects.{key}: "{name}" is listed twice')
         else:
             found.append(name)
     return tuple(found)
+
+
+def missing_commands(kits: Iterable[Kit], path: str) -> list[tuple[Kit, str]]:
+    """Each command a kit expects (expects.commands) that is not an executable on `path`,
+    in the order of the kits and of each kit's list."""
+    return [
+        (kit, name)
+        for kit in kits
+        for name in kit.expects.commands
+        if shutil.which(name, path=path) is None
+    ]
+
+
+def commands_error(missing: list[tuple[Kit, str]], path: str) -> str:
+    """The one text of a launch refused for `missing` (missing_commands) on the agents'
+    PATH `path`: a line per kit, then the PATH."""
+    by_kit: dict[str, list[str]] = {}
+    for kit, name in missing:
+        by_kit.setdefault(kit.name, []).append(name)
+    lines = []
+    for kit, names in by_kit.items():
+        quoted = ", ".join(f'"{n}"' for n in names)
+        what, are, them = ("commands", "are", "them") if len(names) > 1 else ("command", "is", "it")
+        lines.append(
+            f'kit "{kit}" expects {what} {quoted}, which {are} not on the agents\' PATH: '
+            f"install {them} (each launch looks again), or leave out --kit {kit} when the "
+            "session starts"
+        )
+    lines.append(
+        f"the agents' PATH: {path}; for a command installed elsewhere: {agent_env.PATH_ADVICE}"
+    )
+    return "\n".join(lines)
 
 
 def _check_expects(
@@ -1429,7 +1503,7 @@ def resolve(
     if expected == REQUIRE:
         for kit in trimmed:
             _check_expected(kit, skills, private, without)
-    assumed = {k.name: set(k.expects) for k in trimmed} if expected == ASSUME else {}
+    assumed = {k.name: set(k.expects.skills) for k in trimmed} if expected == ASSUME else {}
     # A skill an agent names that is switched off, in the session or in the kit it came
     # from, is no error.
     off_skills = {name for name, _ in excluded["skill"]}
@@ -1473,7 +1547,7 @@ def _check_expected(
 ) -> None:
     """Each skill `kit` expects is a shared skill of the session; else the error names why
     not: a --without item, a kit that has it only for its own agents, or no kit at all."""
-    for name in kit.expects:
+    for name in kit.expects.skills:
         if name in shared:
             continue
         items = [i for i in without if i == f"skill:{name}" or i.startswith(f"skill:{name}@")]
@@ -1673,13 +1747,16 @@ def warnings(kit: Kit) -> list[str]:
                 f'{agent.path}: role "{agent.name}" acts in no state of the kit\'s flows; '
                 "it can still be spawned outside a flow"
             )
-    need = _lado_need(kit.path) if kit.expects else None
-    if kit.expects and (need is None or _needed(need) < (*EXPECTS_SINCE, 0)):
-        since = ".".join(map(str, EXPECTS_SINCE))
-        doubts.append(
-            f"{kit.path / KIT_FILE}: expects needs LADO {since} or newer; add "
-            f'dependencies.lado: ">={since}" so an older LADO says to upgrade'
-        )
+    used = [key for key in EXPECTS_SINCE if getattr(kit.expects, key)]
+    if used:
+        key = max(used, key=EXPECTS_SINCE.__getitem__)
+        need = _lado_need(kit.path)
+        if need is None or _needed(need) < (*EXPECTS_SINCE[key], 0):
+            since = ".".join(map(str, EXPECTS_SINCE[key]))
+            doubts.append(
+                f"{kit.path / KIT_FILE}: expects.{key} needs LADO {since} or newer; add "
+                f'dependencies.lado: ">={since}" so an older LADO says to upgrade'
+            )
     return doubts
 
 

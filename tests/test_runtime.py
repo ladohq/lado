@@ -3314,3 +3314,115 @@ def test_a_spawn_may_not_switch_off_a_skill_its_kit_expects(repo, fake_tmux):
         runtime.spawn_worker("s", "t", role="analyst", without=["skill:tracker"])
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
     assert len(fake_tmux) == windows
+
+
+@pytest.fixture
+def agents_bin(monkeypatch, fake_clis, tmp_path):
+    """A folder on the agents' PATH (with the agent CLIs), not on this process's."""
+    folder = tmp_path / "agents-bin"
+    folder.mkdir()
+    path = f"{folder}{os.pathsep}{fake_clis}"
+    monkeypatch.setattr(agent_env, "resolve", lambda: {"PATH": path})
+    return folder
+
+
+def _command(folder: Path, name: str) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text("#!/bin/sh\n")
+    (folder / name).chmod(0o755)
+
+
+def _commanding_kits(repo):
+    """Kit sdlc (role analyst) expects commands openspec and uv; kit host (role dev) gh."""
+    base = repo / ".lado" / "kits"
+    for kit, role, commands in (("sdlc", "analyst", "[openspec, uv]"), ("host", "dev", "[gh]")):
+        (base / kit / "agents").mkdir(parents=True)
+        (base / kit / "kit.yaml").write_text(
+            f"name: {kit}\nversion: 1.0.0\nexpects:\n  commands: {commands}\n"
+        )
+        (base / kit / "agents" / f"{role}.md").write_text(
+            f"---\nname: {role}\ndescription: r\n---\nR.\n"
+        )
+
+
+def _missing_text(path: str) -> str:
+    return (
+        'kit "sdlc" expects commands "openspec", "uv", which are not on the agents\' PATH: '
+        "install them (each launch looks again), or leave out --kit sdlc when the session "
+        'starts\nkit "host" expects command "gh", which is not on the agents\' PATH: install '
+        "it (each launch looks again), or leave out --kit host when the session starts\n"
+        f"the agents' PATH: {path}; for a command installed elsewhere: {agent_env.PATH_ADVICE}"
+    )
+
+
+def test_a_session_whose_kits_expect_commands_not_on_the_agents_path_does_not_start(
+    repo, fake_tmux, agents_bin, monkeypatch, tmp_path
+):
+    _commanding_kits(repo)
+    # On this process's PATH, which is not the agents'.
+    process_bin = tmp_path / "process-bin"
+    for name in ("openspec", "uv", "gh"):
+        _command(process_bin, name)
+    monkeypatch.setenv("PATH", f"{process_bin}{os.pathsep}{os.environ['PATH']}")
+    with pytest.raises(runtime.LadoError) as exc:
+        runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "host"], provider="claude")
+    assert str(exc.value) == _missing_text(agent_env.resolve()["PATH"])
+    assert state.get_session("s") is None and fake_tmux == []
+    assert not (state.home() / "agents" / "s").exists()
+
+
+def test_a_session_whose_expected_commands_are_on_the_agents_path_starts(
+    repo, fake_tmux, agents_bin
+):
+    _commanding_kits(repo)
+    for name in ("openspec", "uv", "gh"):
+        _command(agents_bin, name)  # on the agents' PATH only
+    runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "host"], provider="claude")
+    assert state.get_session("s").stopped_at is None
+    runtime.spawn_worker("s", "t", role="analyst")
+    assert [a.name for a in state.list_agents("s")] == ["supervisor", "analyst"]
+
+
+def test_a_resume_whose_kits_expect_missing_commands_stays_stopped(repo, fake_tmux, agents_bin):
+    _commanding_kits(repo)
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    before = state.get_session("s")
+    for kit_names in (["sdlc", "host"], None):
+        if kit_names is None:
+            # Stored with commands the agents' PATH had then and has no longer.
+            for name in ("openspec", "uv", "gh"):
+                _command(agents_bin, name)
+            runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "host"])
+            runtime.stop_session("s")
+            before = state.get_session("s")
+            for name in ("openspec", "uv", "gh"):
+                (agents_bin / name).unlink()
+        resumes = [e.kind for e in state.list_events("s")].count(state.SESSION_RESUME)
+        with pytest.raises(runtime.LadoError) as exc:
+            runtime.start_session(str(repo), "s", None, kit_names=kit_names)
+        assert str(exc.value) == _missing_text(agent_env.resolve()["PATH"])
+        after = state.get_session("s")
+        assert after == before and after.stopped_at is not None
+        assert [e.kind for e in state.list_events("s")].count(state.SESSION_RESUME) == resumes
+
+
+def test_a_spawn_whose_kits_expect_a_missing_command_is_refused(repo, fake_tmux, agents_bin):
+    _commanding_kits(repo)
+    for name in ("openspec", "uv", "gh"):
+        _command(agents_bin, name)
+    runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "host"], provider="claude")
+    windows = len(fake_tmux)
+    (agents_bin / "gh").unlink()  # of kit host; the worker's role is sdlc's
+    with pytest.raises(runtime.LadoError) as exc:
+        runtime.spawn_worker("s", "t", role="analyst")
+    assert str(exc.value) == (
+        'kit "host" expects command "gh", which is not on the agents\' PATH: install it (each '
+        "launch looks again), or leave out --kit host when the session starts\n"
+        f"the agents' PATH: {agent_env.resolve()['PATH']}; for a command installed elsewhere: "
+        f"{agent_env.PATH_ADVICE}"
+    )
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert len(fake_tmux) == windows
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/*").strip() == ""
+    assert not (repo / ".lado" / "worktrees" / "s").exists()

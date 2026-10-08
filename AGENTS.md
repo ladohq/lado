@@ -160,7 +160,11 @@ fixes and docs only: no new feature, no API or schema change.
     is the caller's `shutil.which` (never `--version`): for that choice `start_session`
     resolves the agents' environment first and looks on its PATH (a provider given or
     stored, and its permission mode, are checked before the login shell runs); the UI's
-    folder check looks on the server's. A resume keeps its stored provider. `stop_preview` and `forget_preview` say what a
+    folder check looks on the server's. A resume keeps its stored provider. The commands
+    the session's kits expect are looked for on the agents' PATH by `_check_commands` in
+    `start_session` (new and resumed) and `spawn_worker`, after the agents' environment is
+    resolved and before anything changes; a missing one refuses the launch
+    (`kits.commands_error`). `stop_preview` and `forget_preview` say what a
     stop or forget would do now, refused alike; `stop_session` and `forget_session` use
     them. So does `finish_worker` with `finish_preview`, which goes by `work_state`: where
     a worker's branch stands against the repo's current branch and what its worktree has
@@ -258,7 +262,11 @@ fixes and docs only: no new feature, no API or schema change.
     (skills another kit of the session must bring; `resolve(expected=REQUIRE)`, the
     default of every session path, refuses a session where none does or `--without`
     switches one off, and `ASSUME`, only for `lado kits check` and `lado kits show`, takes
-    them as visible to the kit's agents), a flow state of
+    them as visible to the kit's agents), `expects.commands` (CLIs the kit's agents need,
+    names of `COMMAND`; `Kit.expects` is an `Expects` of both lists; `missing_commands`
+    looks for them on a PATH it is given, `commands_error` is the one text of a launch
+    refused for them; `EXPECTS_SINCE`, per key, the LADO `warnings` asks a kit to need), a
+    flow state of
     a kit's supervisor read as the lead's (`kits.LEAD`), validation, and the installed kits:
     rows of the `kits` table in lado.db (`state.InstalledKit`; `installed_kits` gives each
     as a `Found` with its row in `Found.installed`), which `lado kits add/update/remove`

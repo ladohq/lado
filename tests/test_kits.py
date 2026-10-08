@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -8,7 +9,7 @@ import yaml
 from agent_helpers import init_repo, publish
 
 import lado
-from lado import flows, gitcache, kits, marketplaces, mcp_exec, state
+from lado import agent_env, flows, gitcache, kits, marketplaces, mcp_exec, state
 
 
 def make_kit(base, name, agents=None, skills=(), **meta):
@@ -1610,7 +1611,21 @@ def sdlc_kit(project, name="sdlc", supervisor=False, **meta):
     "expects, error",
     [
         ("nope", "expects must be a mapping"),
-        ({"skills": ["tracker"], "mcp": ["db"]}, "expects: unknown keys mcp; allowed: skills"),
+        (
+            {"skills": ["tracker"], "mcp": ["db"]},
+            "expects: unknown keys mcp; allowed: commands, skills",
+        ),
+        ({"commands": "gh"}, "expects.commands must be a list of command names"),
+        ({"commands": [3]}, "expects.commands must be a list of command names"),
+        *(
+            (
+                {"commands": [bad]},
+                f'expects.commands: "{bad}" must be a command\'s name as PATH finds it: '
+                "letters, digits, . _ + -, no path, spaces or arguments",
+            )
+            for bad in ("/usr/bin/gh", "gh auth", "~/bin/x", "", "-x")
+        ),
+        ({"commands": ["gh", "gh"]}, 'expects.commands: "gh" is listed twice'),
         ({"skills": "tracker"}, "expects.skills must be a list of skill names"),
         ({"skills": ["Tracker"]}, 'expects.skills: "Tracker" must be lowercase letters'),
         ({"skills": ["tracker", "tracker"]}, 'expects.skills: "tracker" is listed twice'),
@@ -1635,8 +1650,53 @@ def test_expects_errors(project, expects, error):
 
 
 def test_expects_is_read(project):
-    assert kits.load(sdlc_kit(project)).expects == ("tracker",)
-    assert kits.load(make_kit(project, "plain")).expects == ()
+    assert kits.load(sdlc_kit(project)).expects == kits.Expects(skills=("tracker",))
+    assert kits.load(make_kit(project, "plain")).expects == kits.Expects()
+    assert kits.EXPECTS_KEYS == {"skills", "commands"}
+    names = ["gh", "python3.12", "g++", "docker-compose", "7z", "openspec"]
+    both = make_kit(project, "both", expects={"skills": ["tracker"], "commands": names})
+    assert kits.load(both).expects == kits.Expects(skills=("tracker",), commands=tuple(names))
+    empty = make_kit(project, "empty", expects={"commands": []})
+    assert kits.load(empty).expects == kits.Expects()
+
+
+def command(folder, name, executable=True):
+    """A file `name` in `folder`, executable or not."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text("#!/bin/sh\n")
+    path.chmod(0o755 if executable else 0o644)
+    return path
+
+
+def test_missing_commands_looks_on_the_path_it_is_given(tmp_path, project):
+    a = make_kit(project, "a", expects={"commands": ["one", "two", "three"]})
+    b = make_kit(project, "b", expects={"commands": ["four"]})
+    command(tmp_path / "bin1", "one")
+    command(tmp_path / "bin2", "three")
+    command(tmp_path / "bin2", "two", executable=False)
+    loaded = [kits.load(a), kits.load(b), kits.load(make_kit(project, "plain"))]
+    path = f"{tmp_path / 'bin1'}{os.pathsep}{tmp_path / 'bin2'}"
+    missing = kits.missing_commands(loaded, path)
+    assert [(k.name, c) for k, c in missing] == [("a", "two"), ("b", "four")]
+    assert kits.missing_commands(loaded, str(tmp_path / "bin1")) == [
+        (loaded[0], "two"),
+        (loaded[0], "three"),
+        (loaded[1], "four"),
+    ]
+
+
+def test_commands_error_names_each_kit_its_commands_and_the_path(project):
+    a = kits.load(make_kit(project, "a", expects={"commands": ["one", "two"]}))
+    b = kits.load(make_kit(project, "b", expects={"commands": ["four"]}))
+    text = kits.commands_error([(a, "one"), (a, "two"), (b, "four")], "/x:/y")
+    assert text == (
+        'kit "a" expects commands "one", "two", which are not on the agents\' PATH: install '
+        "them (each launch looks again), or leave out --kit a when the session starts\n"
+        'kit "b" expects command "four", which is not on the agents\' PATH: install it (each '
+        "launch looks again), or leave out --kit b when the session starts\n"
+        f"the agents' PATH: /x:/y; for a command installed elsewhere: {agent_env.PATH_ADVICE}"
+    )
 
 
 def test_expects_of_a_pack_fetched_later_is_an_error(tmp_path, project, lado_home):
@@ -1767,7 +1827,7 @@ def test_one_agents_without_may_not_switch_off_a_skill_its_kit_expects(repo, pro
 def test_warnings_name_expects_without_a_lado_dependency(project, monkeypatch):
     monkeypatch.setattr(lado, "__version__", "0.30.0")  # a kit may need up to this LADO
     message = (
-        'kit.yaml: expects needs LADO 0.29 or newer; add dependencies.lado: ">=0.29" so an '
+        'kit.yaml: expects.skills needs LADO 0.29 or newer; add dependencies.lado: ">=0.29" so an '
         "older LADO says to upgrade"
     )
     kit = sdlc_kit(project)
@@ -1789,3 +1849,19 @@ def test_warnings_name_expects_without_a_lado_dependency(project, monkeypatch):
         (kit / "kit.yaml").write_text(yaml.safe_dump(meta))
         assert not any("expects" in w for w in kits.warnings(kits.load(kit)))
     assert not any("expects" in w for w in kits.warnings(kits.load(make_kit(project, "plain"))))
+
+
+def test_warnings_name_expects_commands_without_a_lado_that_reads_them(project, monkeypatch):
+    monkeypatch.setattr(lado, "__version__", "0.30.0")
+    message = (
+        'kit.yaml: expects.commands needs LADO 0.30 or newer; add dependencies.lado: ">=0.30" '
+        "so an older LADO says to upgrade"
+    )
+    expects = {"skills": ["tracker"], "commands": ["openspec"]}
+    for name, need in (("none", None), ("old", ">=0.29")):
+        deps = {"dependencies": {"lado": need}} if need else {}
+        kit = make_kit(project, name, expects=expects, **deps)
+        doubts = [w for w in kits.warnings(kits.load(kit)) if "expects" in w]
+        assert len(doubts) == 1 and message in doubts[0]
+    kit = make_kit(project, "new", expects=expects, dependencies={"lado": ">=0.30"})
+    assert not any("expects" in w for w in kits.warnings(kits.load(kit)))

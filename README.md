@@ -171,9 +171,10 @@ project uses:
 name: sdlc
 version: 1.0.0
 expects:
-  skills: [tracker]   # a kit of the session must provide it
+  skills: [tracker]    # a kit of the session must provide it
+  commands: [openspec] # a CLI the kit's agents run, on their PATH
 dependencies:
-  lado: ">=0.29"      # the first LADO that reads expects
+  lado: ">=0.30"       # the first LADO that reads expects.commands (expects.skills: 0.29)
 ```
 
 ```bash
@@ -184,6 +185,18 @@ lado start . --kit sdlc --kit tracker-jira-server  # the tracker kit provides tr
 `lado kits check` and `lado kits show` take the expected skills as there; `lado kits show`
 says which kit provides each. A session in which no kit provides one, or whose `--without`
 switches it off, does not start, and the error says why.
+
+`expects.commands` names the external CLIs a kit cannot work without, each as PATH finds
+it (`openspec`, `uv`; no path, spaces or arguments). LADO checks only that each is on the
+agents' PATH, the one of your login shell that agents start with: not its version, nor
+whether it is logged in or set up (the kit's own text checks that). `lado start`, a
+resume and each new worker look again; when one is missing, nothing starts, and one error
+names every missing command, its kit and the agents' PATH. A command that only some
+projects of the kit need (a code host's CLI chosen by the project's settings) does not
+belong there. `lado kits check` lists them (`expects commands: openspec`) and warns about
+one that is not on its own PATH, since a kit is also checked where it does not run (a
+marketplace's CI); `lado kits show` gives each one's place on the agents' PATH. LADO does
+not check the commands of a kit's MCP servers yet: list one there too to have it checked.
 
 Names are shared in a session: a flow of kit-b that calls `reviewer` then gets kit-a's.
 A kit's supervisor is no role: `--without agent:<name>` that names one is read as

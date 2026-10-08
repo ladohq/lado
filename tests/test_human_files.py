@@ -1,8 +1,6 @@
 """The human's files: uploads to the session's scope, read by every agent as `/<name>`
 (docs/design/artifacts.md, The human's side; Names and scopes)."""
 
-import dataclasses
-
 import pytest
 
 from lado import artifacts, state

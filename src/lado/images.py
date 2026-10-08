@@ -47,9 +47,8 @@ def _webp(data: bytes) -> tuple[int, int] | None:
     if chunk == b"VP8X":  # extended: the canvas, 24 bits each, minus one
         if len(payload) < 10:
             return None
-        return int.from_bytes(payload[4:7], "little") + 1, int.from_bytes(
-            payload[7:10], "little"
-        ) + 1
+        width, height = payload[4:7], payload[7:10]
+        return int.from_bytes(width, "little") + 1, int.from_bytes(height, "little") + 1
     return None
 
 

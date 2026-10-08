@@ -162,6 +162,29 @@ lado start . --kit default --kit my-team --without agent:supervisor@default
 lado start . --kit kit-a --kit kit-b --without agent:reviewer@kit-b
 ```
 
+A kit may use a skill that another kit of the session brings: it lists it under `expects`.
+LADO installs `dependencies` with the kit; what a kit expects, another kit of the session
+must bring. A process kit whose roles use the skill `tracker` of whichever tracker kit the
+project uses:
+
+```yaml
+name: sdlc
+version: 1.0.0
+expects:
+  skills: [tracker]   # a kit of the session must provide it
+dependencies:
+  lado: ">=0.29"      # the first LADO that reads expects
+```
+
+```bash
+lado kits check .                                  # passes alone: expects skills: tracker
+lado start . --kit sdlc --kit tracker-jira-server  # the tracker kit provides tracker
+```
+
+`lado kits check` and `lado kits show` take the expected skills as there; `lado kits show`
+says which kit provides each. A session in which no kit provides one, or whose `--without`
+switches it off, does not start, and the error says why.
+
 Names are shared in a session: a flow of kit-b that calls `reviewer` then gets kit-a's.
 A kit's supervisor is no role: `--without agent:<name>` that names one is read as
 `agent:<name>@<its kit>` (so sessions of older LADOs resume as before); when several kits'

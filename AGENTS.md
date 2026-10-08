@@ -90,6 +90,8 @@ Live tests are not in CI: run them locally.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
 tag against the package version, builds with `make dist` and publishes to PyPI.
+CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; the release
+commit puts the date in its place.
 
 Versions (0.x): bump the minor (0.7.0) for new features, an MCP tool or CLI change that older
 agents cannot use, or a database schema migration; running sessions must be restarted after
@@ -252,7 +254,11 @@ fixes and docs only: no new feature, no API or schema change.
     the default kit's, with the `--without` items applied; its `skills:` is checked as if
     it led, so a skill its kit does not have is an error; a skill `lead-<kit>` the lead
     would get besides is refused with both ways out),
-    a name in two kits refused with both ways out (`KitError.switch_off`), a flow state of
+    a name in two kits refused with both ways out (`KitError.switch_off`), `expects.skills`
+    (skills another kit of the session must bring; `resolve(expected=REQUIRE)`, the
+    default of every session path, refuses a session where none does or `--without`
+    switches one off, and `ASSUME`, only for `lado kits check` and `lado kits show`, takes
+    them as visible to the kit's agents), a flow state of
     a kit's supervisor read as the lead's (`kits.LEAD`), validation, and the installed kits:
     rows of the `kits` table in lado.db (`state.InstalledKit`; `installed_kits` gives each
     as a `Found` with its row in `Found.installed`), which `lado kits add/update/remove`

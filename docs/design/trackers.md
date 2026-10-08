@@ -18,12 +18,13 @@ tracker client, no tracker settings, no tracker-specific fields or dependencies.
 2. **A session combines kits:** `lado start <repo> --kit <process-kit> --kit tracker-jira`.
    A process kit's roles talk about the tracker in plain words ("file it with the tracker
    skill").
-3. **Checks LADO already does, no core change:** a role that lists `skills: [tracker]`
-   cannot start without a tracker kit in the session (`skill "tracker" is not visible to
-   agent ...`), and two tracker kits in one session fail as `skill "tracker" is defined by
-   two kits`, with the `--without` ways out. A role without `skills:` gets every skill,
-   so the tracker is optional for it. Whether a process kit requires a tracker is the
-   kit's choice.
+3. **The process kit says it expects the tracker:** `expects: {skills: [tracker]}` in its
+   kit.yaml (LADO 0.29). `lado kits check` of the process kit alone then passes, and a
+   session without a tracker kit does not start (`kit "<kit>" expects skill "tracker",
+   which no kit of the session provides: add a kit that provides it with --kit <kit>`).
+   Two tracker kits in one session fail as `skill "tracker" is defined by two kits`, with
+   the `--without` ways out. A role without `skills:` gets every skill, so the tracker is
+   optional for it. Whether a process kit requires a tracker is the kit's choice.
 4. **How the kit uses the tracker is the kit's choice:** which roles touch it (the
    supervisor only or every role), when statuses move, what agents may and may not do.
    LADO sets no limits here.
@@ -44,8 +45,10 @@ tracker client, no tracker settings, no tracker-specific fields or dependencies.
 A tracker kit is a kit without agents whose skill `tracker` describes one tracker: each
 usual action, the markup the tracker expects, where the project's settings are and what to
 do on each error. A process kit does not depend on a tracker kit: its roles name the
-tracker skill in plain words, and a role that cannot work without it lists
-`skills: [tracker]`, so a session without a tracker kit refuses to start it. Project
+tracker skill in plain words, and a kit whose roles cannot work without it lists the
+skill under `expects.skills` (and its roles under `skills: [tracker]`): `lado kits check`
+passes on the kit alone, and a session without a tracker kit refuses to start, with the
+hint to add one. Project
 specifics (domain, project key, fields) go in the project's `.lado/tracker.yaml`, never in
 the skill's text.
 

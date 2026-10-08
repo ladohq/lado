@@ -70,8 +70,15 @@ DEFAULT_KIT = "default"
 LEAD = "supervisor"
 BUILTIN = Path(__file__).with_name("builtin_kits")
 
-KIT_KEYS = {"name", "version", "description", "supervisor", "dependencies"}
+KIT_KEYS = {"name", "version", "description", "supervisor", "dependencies", "expects"}
 DEPENDENCY_KEYS = {"lado", "skills"}
+EXPECTS_KEYS = {"skills"}
+# The first LADO that reads kit.yaml's expects; an older one refuses the key.
+EXPECTS_SINCE = (0, 29)
+# resolve's modes for the skills a kit expects (expects.skills): a session requires that a
+# kit of it provides them; the check of a kit alone assumes it.
+REQUIRE = "require"
+ASSUME = "assume"
 PACK_KEYS = {"from", "folders"}
 LADO_NEEDS = re.compile(r">=\s*(\d+)\.(\d+)(?:\.(\d+))?")
 AGENT_KEYS = {"name", "description", "skills", "mcp"}
@@ -154,6 +161,7 @@ class Kit:
     flows: dict[str, Flow] = field(default_factory=dict)
     packs: dict[str, Pack] = field(default_factory=dict)  # dependencies.skills
     origin: str | None = None  # an installed kit from git: its address@tag
+    expects: tuple[str, ...] = ()  # expects.skills: what another kit of the session brings
 
     @property
     def source(self) -> str:
@@ -416,6 +424,18 @@ class Environment:
         _check_known(plain, {s.name for s in self.all_skills()}, self._all_mcp(), set(), set())
         agent = self.lead if name == self.lead.name else self.agents[name]
         visible = self.visible(agent)
+        kit = by_name.get(agent.kit)
+        for s in kit.expects if kit else ():
+            if s in visible and _off(excluded["skill"], s, visible[s].kit):
+                item = (
+                    f"skill:{s}"
+                    if (s, None) in excluded["skill"]
+                    else f"skill:{s}@{visible[s].kit}"
+                )
+                raise KitError(
+                    f'kit "{kit.name}" expects skill "{s}"; agent "{agent.name}" cannot run '
+                    f"without it: drop {item} from without"
+                )
         wanted = list(visible) if agent.skills is None else agent.skills
         skills = {
             s: visible[s]
@@ -858,17 +878,26 @@ def _commit(clone: Path) -> str:
 
 def _lado_needed(path: Path) -> str | None:
     """`X.Y[.Z]` when the kit at `path` needs a newer LADO than this one, else None."""
-    meta = _yaml_file(path / KIT_FILE, [])
-    deps = meta.get("dependencies") if isinstance(meta, dict) else None
-    need = deps.get("lado") if isinstance(deps, dict) else None
-    match = LADO_NEEDS.fullmatch(need.strip()) if isinstance(need, str) else None
+    match = _lado_need(path)
     if match and _too_old(match):
-        return need.strip().removeprefix(">=").strip()
+        return match.string.strip().removeprefix(">=").strip()
     return None
 
 
+def _lado_need(path: Path) -> re.Match | None:
+    """The kit's dependencies.lado at `path`, when it is one (>=X.Y[.Z])."""
+    meta = _yaml_file(path / KIT_FILE, [])
+    deps = meta.get("dependencies") if isinstance(meta, dict) else None
+    need = deps.get("lado") if isinstance(deps, dict) else None
+    return LADO_NEEDS.fullmatch(need.strip()) if isinstance(need, str) else None
+
+
 def _too_old(need: re.Match) -> bool:
-    return _version(lado.__version__) < tuple(int(n or 0) for n in need.groups())
+    return _version(lado.__version__) < _needed(need)
+
+
+def _needed(need: re.Match) -> tuple[int, ...]:
+    return tuple(int(n or 0) for n in need.groups())
 
 
 def remove(name: str) -> Path:
@@ -1077,6 +1106,8 @@ def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Ki
     skills = _load_skills(path, kit_name, errors)
     packs = _load_dependencies(meta.get("dependencies", {}), path, kit_name, errors)
     _check_unique(skills, packs, path / KIT_FILE, errors)
+    expects = _load_expects(meta.get("expects", {}), path / KIT_FILE, errors)
+    _check_expects(expects, skills, packs, path / KIT_FILE, errors)
     agents = _load_agents(path, kit_name, errors)
     if supervisor is not None and supervisor not in agents:
         errors.append(
@@ -1101,6 +1132,7 @@ def load(path: str | Path, where: str = "path", named_folder: bool = True) -> Ki
         skills=skills,
         flows=kit_flows,
         packs=packs,
+        expects=expects,
     )
 
 
@@ -1120,6 +1152,7 @@ def fetch(kit: Kit) -> Kit:
             continue
         packs[name] = _fill_pack(packs[name], clone.resolve(), kit.name, where, errors)
     _check_unique(kit.skills, packs, kit.path / KIT_FILE, errors)
+    _check_expects(kit.expects, kit.skills, packs, kit.path / KIT_FILE, errors)
     if errors:
         raise KitError("\n".join(errors))
     return dataclasses.replace(kit, packs=packs)
@@ -1244,6 +1277,50 @@ def _check_unique(own: dict[str, Skill], packs: dict[str, Pack], file: Path, err
             _add_skill(skills, skill, str(file), errors)
 
 
+def _load_expects(value: object, file: Path, errors: list[str]) -> tuple[str, ...]:
+    """expects.skills: names of skills another kit of the session must bring."""
+    if not isinstance(value, dict):
+        errors.append(f"{file}: expects must be a mapping")
+        return ()
+    _unknown_keys(value, EXPECTS_KEYS, f"{file}: expects", errors)
+    names = value.get("skills", [])
+    if not _str_list(names):
+        errors.append(f"{file}: expects.skills must be a list of skill names")
+        return ()
+    found: list[str] = []
+    for name in names:
+        if not NAME.fullmatch(name):
+            errors.append(
+                f'{file}: expects.skills: "{name}" must be lowercase letters, digits, - or _'
+            )
+        elif name in found:
+            errors.append(f'{file}: expects.skills: "{name}" is listed twice')
+        else:
+            found.append(name)
+    return tuple(found)
+
+
+def _check_expects(
+    expects: tuple[str, ...],
+    own: dict[str, Skill],
+    packs: dict[str, Pack],
+    file: Path,
+    errors: list[str],
+) -> None:
+    """A kit expects no skill it has: its own (skills/) or its packs' (fetched)."""
+    for name in expects:
+        if name in own:
+            where = f"is a skill of this kit (skills/{name})"
+        else:
+            pack = next((p for p in packs.values() if name in (p.skills or {})), None)
+            if pack is None:
+                continue
+            where = f'comes with its pack "{pack.name}" (dependencies.skills)'
+        errors.append(
+            f'{file}: expects.skills: "{name}" {where}; a kit does not expect what it has'
+        )
+
+
 def _add_skill(skills: dict[str, Skill], skill: Skill, where: str, errors: list[str]) -> None:
     other = skills.setdefault(skill.name, skill)
     if other.path != skill.path:
@@ -1267,7 +1344,10 @@ def _version(text: str) -> tuple[int, ...]:
 
 
 def resolve(
-    repo: str | Path | None, kits: Iterable[str | Kit], without: Iterable[str] = ()
+    repo: str | Path | None,
+    kits: Iterable[str | Kit],
+    without: Iterable[str] = (),
+    expected: str = REQUIRE,
 ) -> Environment:
     """Combine kits into one environment. A kit is a name, looked up, loaded and fetched
     here, or a loaded kit, fetched already (fetch). In this order:
@@ -1277,7 +1357,10 @@ def resolve(
     2. the lead: the supervisor of the one kit that has one, else LADO's built-in supervisor;
     3. the kits' supervisors are no roles: one leads, the others are not in the session;
     4. the roles, flows and skills of the kits are combined: a name twice is an error;
-    5. the other `without` items ("agent:x", ...) switch it off in the whole session."""
+    5. the other `without` items ("agent:x", ...) switch it off in the whole session;
+    6. each skill a kit expects must be one of the session's shared skills (REQUIRE, every
+       session); ASSUME, the check of kits apart from a session, takes it as visible to
+       that kit's agents instead."""
     taken: dict[Path, Kit] = {}
     for item in kits:
         kit = item if isinstance(item, Kit) else fetch(find(item, repo).load())
@@ -1343,6 +1426,10 @@ def resolve(
         k: {n: s for n, s in own.items() if n not in plain["skill"]} for k, own in private.items()
     }
     env_flows = {n: f for n, f in env_flows.items() if n not in plain["flow"]}
+    if expected == REQUIRE:
+        for kit in trimmed:
+            _check_expected(kit, skills, private, without)
+    assumed = {k.name: set(k.expects) for k in trimmed} if expected == ASSUME else {}
     # A skill an agent names that is switched off, in the session or in the kit it came
     # from, is no error.
     off_skills = {name for name, _ in excluded["skill"]}
@@ -1350,7 +1437,7 @@ def resolve(
     for agent in [*agents.values(), lead, *kit_supervisors.values()]:
         visible = {**skills, **private.get(agent.kit, {})}
         for skill in agent.skills or []:
-            if skill not in visible and skill not in off_skills:
+            if skill not in visible and skill not in off_skills | assumed.get(agent.kit, set()):
                 raise KitError(
                     f'{agent.path}: skill "{skill}" is not visible to agent "{agent.name}" '
                     f'(kit "{agent.kit}"): not a skill of the session\'s kits or of kit '
@@ -1376,6 +1463,37 @@ def resolve(
     return Environment(
         env_kits, agents, skills, lead, supervisors, without, env_flows, private, kit_supervisors
     )
+
+
+def _check_expected(
+    kit: Kit,
+    shared: dict[str, Skill],
+    private: dict[str, dict[str, Skill]],
+    without: list[str],
+) -> None:
+    """Each skill `kit` expects is a shared skill of the session; else the error names why
+    not: a --without item, a kit that has it only for its own agents, or no kit at all."""
+    for name in kit.expects:
+        if name in shared:
+            continue
+        items = [i for i in without if i == f"skill:{name}" or i.startswith(f"skill:{name}@")]
+        if items:
+            several = len(items) > 1
+            raise KitError(
+                f'kit "{kit.name}" expects skill "{name}", which --without {_and(items)} '
+                f"{'switch' if several else 'switches'} off; the kit does not work without it: "
+                f"drop {'those --without items' if several else 'that --without item'}"
+            )
+        hint = "add a kit that provides it with --kit <kit>"
+        owner = next((k for k, own in private.items() if name in own), None)
+        if owner is not None:
+            raise KitError(
+                f'kit "{kit.name}" expects skill "{name}", which kit "{owner}" has only for its '
+                f"own agents (its dependencies.skills): {hint}"
+            )
+        raise KitError(
+            f'kit "{kit.name}" expects skill "{name}", which no kit of the session provides: {hint}'
+        )
 
 
 def _supervisors_by_kit(
@@ -1525,9 +1643,10 @@ def lint(kit: Kit) -> list[str]:
 def warnings(kit: Kit) -> list[str]:
     """Doubts about a kit that do not stop it: a kit from the git cache whose version
     differs from the version tags on its clone's commit (or whose tags cannot be read), a
-    flow step whose role is not in the kit (another kit of the session may have it) and,
+    flow step whose role is not in the kit (another kit of the session may have it),
     when the kit has flows, a role of the kit but its supervisor that acts in none of them
-    (it may still be spawned outside a flow)."""
+    (it may still be spawned outside a flow), and a kit with expects that does not need a
+    LADO that reads it (an older one refuses the key without saying to upgrade)."""
     doubts = []
     clone = gitcache.clone_root(kit.path)
     try:
@@ -1554,6 +1673,13 @@ def warnings(kit: Kit) -> list[str]:
                 f'{agent.path}: role "{agent.name}" acts in no state of the kit\'s flows; '
                 "it can still be spawned outside a flow"
             )
+    need = _lado_need(kit.path) if kit.expects else None
+    if kit.expects and (need is None or _needed(need) < (*EXPECTS_SINCE, 0)):
+        since = ".".join(map(str, EXPECTS_SINCE))
+        doubts.append(
+            f"{kit.path / KIT_FILE}: expects needs LADO {since} or newer; add "
+            f'dependencies.lado: ">={since}" so an older LADO says to upgrade'
+        )
     return doubts
 
 

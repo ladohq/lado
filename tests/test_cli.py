@@ -9,6 +9,7 @@ import agent_helpers
 import pytest
 from agent_helpers import init_repo, publish
 
+import lado
 from lado import (
     __version__,
     artifacts,
@@ -1774,3 +1775,52 @@ def test_forget_says_how_many_artifacts_it_removed(repo, fake_tmux, capsys):
     assert capsys.readouterr().out.startswith(
         'Forgot session "s" and its history; removed 2 artifacts; dropped open runs: ship/x.\n'
     )
+
+
+EXPECTING = "name: sdlc\nversion: 1.0.0\nexpects:\n  skills: [tracker]\n"
+
+
+def _expecting_kit(repo):
+    """Kit sdlc whose role analyst uses skill tracker, which it expects; and kit tracker,
+    without agents, which has it."""
+    kit = _kit(repo, "sdlc", "---\nname: analyst\ndescription: a\nskills: [tracker]\n---\nA.\n")
+    (kit / "agents" / "rev.md").rename(kit / "agents" / "analyst.md")
+    (kit / "kit.yaml").write_text(EXPECTING)
+    tracker = repo / ".lado" / "kits" / "tracker"
+    (tracker / "skills" / "tracker").mkdir(parents=True)
+    (tracker / "kit.yaml").write_text("name: tracker\nversion: 1.0.0\n")
+    (tracker / "skills" / "tracker" / "SKILL.md").write_text(
+        "---\nname: tracker\ndescription: t\n---\n"
+    )
+    return kit
+
+
+def test_kits_check_passes_a_kit_alone_with_the_skills_it_expects(repo, capsys, monkeypatch):
+    kit = _expecting_kit(repo)
+    assert main(["kits", "check", str(kit)]) == 0
+    captured = capsys.readouterr()
+    assert (
+        captured.out
+        == "sdlc: OK (1 agents, 0 skills, 0 packs and 0 flows)\nexpects skills: tracker\n"
+    )
+    assert (
+        f"warning: {kit.resolve() / 'kit.yaml'}: expects needs LADO 0.29 or newer; add "
+        'dependencies.lado: ">=0.29" so an older LADO says to upgrade\n'
+    ) in captured.err
+    monkeypatch.setattr(lado, "__version__", "0.29.0")
+    (kit / "kit.yaml").write_text(EXPECTING + 'dependencies:\n  lado: ">=0.29"\n')
+    assert main(["kits", "check", str(kit)]) == 0
+    assert "expects needs" not in capsys.readouterr().err
+
+
+def test_kits_show_names_who_provides_what_a_kit_expects(repo, capsys):
+    _expecting_kit(repo)
+    assert main(["kits", "--repo", str(repo), "show", "sdlc"]) == 0
+    out = capsys.readouterr().out
+    assert "  sdlc 1.0.0  (project: " in out
+    assert "    expects skill tracker: no kit here provides it\n" in out
+    assert "  analyst  from sdlc" in out and "    skills: none\n" in out
+    assert main(["kits", "--repo", str(repo), "show", "sdlc", "tracker"]) == 0
+    out = capsys.readouterr().out
+    assert "    expects skill tracker: from tracker\n" in out
+    assert "    skills: tracker (tracker)\n" in out

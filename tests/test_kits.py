@@ -1594,3 +1594,198 @@ def test_a_damaged_clone_is_a_kit_error_not_a_crash(tmp_path, lado_home):
         kits.plan_update("team")
     (warning,) = kits.warnings(kit)
     assert warning.startswith(f"team: cannot read the version tags of {kit.path}: ")
+
+
+def sdlc_kit(project, name="sdlc", supervisor=False, **meta):
+    """A process kit whose role analyst uses skill tracker, which it expects; with
+    `supervisor`, its supervisor uses it too."""
+    agents = {"analyst": ({"skills": ["tracker"]}, "")}
+    if supervisor:
+        agents["supervisor"] = ({"skills": ["tracker"]}, f"{name} boss")
+        meta["supervisor"] = kits.LEAD
+    return make_kit(project, name, agents=agents, expects={"skills": ["tracker"]}, **meta)
+
+
+@pytest.mark.parametrize(
+    "expects, error",
+    [
+        ("nope", "expects must be a mapping"),
+        ({"skills": ["tracker"], "mcp": ["db"]}, "expects: unknown keys mcp; allowed: skills"),
+        ({"skills": "tracker"}, "expects.skills must be a list of skill names"),
+        ({"skills": ["Tracker"]}, 'expects.skills: "Tracker" must be lowercase letters'),
+        ({"skills": ["tracker", "tracker"]}, 'expects.skills: "tracker" is listed twice'),
+        (
+            {"skills": ["own"]},
+            'expects.skills: "own" is a skill of this kit (skills/own); a kit does not '
+            "expect what it has",
+        ),
+        (
+            {"skills": ["tdd"]},
+            'expects.skills: "tdd" comes with its pack "p" (dependencies.skills); a kit does '
+            "not expect what it has",
+        ),
+    ],
+)
+def test_expects_errors(project, expects, error):
+    make_pack(project.parent / "p", ["tdd"])
+    kit = pack_kit(project, packs={"p": "../../p"}, skills=["own"], expects=expects)
+    with pytest.raises(kits.KitError) as exc:
+        kits.load(kit)
+    assert f"{(kit / 'kit.yaml').resolve()}: {error}" in str(exc.value)
+
+
+def test_expects_is_read(project):
+    assert kits.load(sdlc_kit(project)).expects == ("tracker",)
+    assert kits.load(make_kit(project, "plain")).expects == ()
+
+
+def test_expects_of_a_pack_fetched_later_is_an_error(tmp_path, project, lado_home):
+    url = publish(
+        init_repo(tmp_path / "pack"),
+        {"skills/tracker/SKILL.md": SKILL_MD.replace("tdd", "tracker")},
+        tag="v1",
+    )
+    kit = pack_kit(project, packs={"p": f"{url}@v1"}, expects={"skills": ["tracker"]})
+    loaded = kits.load(kit)
+    with pytest.raises(kits.KitError, match='"tracker" comes with its pack "p"'):
+        kits.fetch(loaded)
+
+
+def test_a_kit_alone_may_name_a_skill_it_expects_when_assumed(repo, project):
+    sdlc_kit(project, supervisor=True)
+    env = kits.resolve(repo, ["sdlc"], expected=kits.ASSUME)
+    assert env.resolve("analyst").skills == {}
+    make_kit(project, "loose", agents={"rev": ({"skills": ["tracker"]}, "")})
+    with pytest.raises(kits.KitError) as exc:
+        kits.resolve(repo, ["loose"], expected=kits.ASSUME)
+    assert str(exc.value) == (
+        f'{(project / "loose" / "agents" / "rev.md").resolve()}: skill "tracker" is not '
+        'visible to agent "rev" (kit "loose"): not a skill of the session\'s kits or of kit '
+        '"loose"\'s dependencies'
+    )
+
+
+def test_a_non_leading_kit_supervisor_may_name_a_skill_its_kit_expects_when_assumed(repo, project):
+    sdlc_kit(project, supervisor=True)
+    lead_kit(project, "b")
+    env = kits.resolve(repo, ["sdlc", "b"], expected=kits.ASSUME)
+    assert [s.name for s in env.lead_skills()] == ["lead-sdlc", "lead-b"]
+
+
+def test_a_kit_that_provides_an_expected_skill_gives_it(repo, project):
+    sdlc_kit(project)
+    make_kit(project, "tracker-jira-server", skills=["tracker"])
+    env = kits.resolve(repo, ["sdlc", "tracker-jira-server"])
+    assert env.resolve("analyst").skills["tracker"].kit == "tracker-jira-server"
+    # A pack of a kit without agents provides it as well.
+    make_pack(project.parent / "tp", ["tracker"])
+    pack_kit(project, "tracker-pack", packs={"tp": "../../tp"})
+    env = kits.resolve(repo, ["sdlc", "tracker-pack"])
+    assert env.resolve("analyst").skills["tracker"].pack == "tp"
+
+
+def test_an_expected_skill_reaches_the_kits_supervisor_leading_or_not(repo, project):
+    sdlc_kit(project, supervisor=True)
+    make_kit(project, "tracker-jira-server", skills=["tracker"])
+    env = kits.resolve(repo, ["sdlc", "tracker-jira-server"])
+    assert list(env.resolve("supervisor").skills) == ["tracker"]
+    lead_kit(project, "b")
+    env = kits.resolve(repo, ["sdlc", "tracker-jira-server", "b"])
+    sdlc = next(s for s in env.lead_skills() if s.kit == "sdlc")
+    assert list(sdlc.skills) == ["tracker"]
+
+
+NOT_PROVIDED = (
+    'kit "sdlc" expects skill "tracker", which no kit of the session provides: add a kit that '
+    "provides it with --kit <kit>"
+)
+
+
+def test_a_session_without_a_kit_that_provides_an_expected_skill_is_refused(repo, project):
+    sdlc_kit(project)
+    with pytest.raises(kits.KitError) as exc:
+        kits.resolve(repo, ["sdlc"])
+    assert str(exc.value) == NOT_PROVIDED  # not "is not visible to agent"
+    assert "tracker-" not in str(exc.value) and "jira" not in str(exc.value)
+    # Also when no role names it.
+    make_kit(project, "quiet", expects={"skills": ["tracker"]})
+    with pytest.raises(kits.KitError, match='kit "quiet" expects skill "tracker", which no kit'):
+        kits.resolve(repo, ["default", "quiet"])
+
+
+def test_an_expected_skill_only_in_a_private_pack_is_refused(repo, project):
+    sdlc_kit(project)
+    make_pack(project.parent / "tp", ["tracker"])
+    pack_kit(project, "x", packs={"tp": "../../tp"}, agents={"wx": ({}, "")})
+    with pytest.raises(kits.KitError) as exc:
+        kits.resolve(repo, ["sdlc", "x"])
+    assert str(exc.value) == (
+        'kit "sdlc" expects skill "tracker", which kit "x" has only for its own agents (its '
+        "dependencies.skills): add a kit that provides it with --kit <kit>"
+    )
+
+
+@pytest.mark.parametrize("item", ["skill:tracker", "skill:tracker@tracker-jira-server"])
+def test_a_session_without_that_switches_off_an_expected_skill_is_refused(repo, project, item):
+    sdlc_kit(project)
+    make_kit(project, "tracker-jira-server", skills=["tracker"])
+    with pytest.raises(kits.KitError) as exc:
+        kits.resolve(repo, ["sdlc", "tracker-jira-server"], [item])
+    assert str(exc.value) == (
+        f'kit "sdlc" expects skill "tracker", which --without {item} switches off; the kit '
+        "does not work without it: drop that --without item"
+    )
+
+
+def test_without_one_of_two_providers_keeps_the_other(repo, project):
+    sdlc_kit(project)
+    make_kit(project, "ta", skills=["tracker"])
+    make_pack(project.parent / "tp", ["tracker"])
+    pack_kit(project, "tb", packs={"tp": "../../tp"})
+    # Two providers clash as any skill of two kits does; switching one off is the way out.
+    with pytest.raises(kits.KitError, match='skill "tracker" is defined by two kits'):
+        kits.resolve(repo, ["sdlc", "ta", "tb"])
+    env = kits.resolve(repo, ["sdlc", "ta", "tb"], ["skill:tracker@ta"])
+    assert env.resolve("analyst").skills["tracker"].kit == "tb"
+
+
+def test_one_agents_without_may_not_switch_off_a_skill_its_kit_expects(repo, project):
+    sdlc_kit(project)
+    make_kit(project, "tracker-jira-server", skills=["tracker"])
+    make_kit(project, "other", agents={"dev": ({}, "")})
+    env = kits.resolve(repo, ["sdlc", "tracker-jira-server", "other"])
+    for item in ("skill:tracker", "skill:tracker@tracker-jira-server"):
+        with pytest.raises(kits.KitError) as exc:
+            env.resolve("analyst", [item])
+        assert str(exc.value) == (
+            f'kit "sdlc" expects skill "tracker"; agent "analyst" cannot run without it: '
+            f"drop {item} from without"
+        )
+    assert "tracker" not in env.resolve("dev", ["skill:tracker"]).skills
+
+
+def test_warnings_name_expects_without_a_lado_dependency(project, monkeypatch):
+    monkeypatch.setattr(lado, "__version__", "0.30.0")  # a kit may need up to this LADO
+    message = (
+        'kit.yaml: expects needs LADO 0.29 or newer; add dependencies.lado: ">=0.29" so an '
+        "older LADO says to upgrade"
+    )
+    kit = sdlc_kit(project)
+    assert any(message in w for w in kits.warnings(kits.load(kit)))
+    (kit / "kit.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "sdlc",
+                "version": "1.0.0",
+                "expects": {"skills": ["tracker"]},
+                "dependencies": {"lado": ">=0.28"},
+            }
+        )
+    )
+    assert any(message in w for w in kits.warnings(kits.load(kit)))
+    for need in (">=0.29", ">=0.29.0", ">=0.30"):
+        meta = yaml.safe_load((kit / "kit.yaml").read_text())
+        meta["dependencies"]["lado"] = need
+        (kit / "kit.yaml").write_text(yaml.safe_dump(meta))
+        assert not any("expects" in w for w in kits.warnings(kits.load(kit)))
+    assert not any("expects" in w for w in kits.warnings(kits.load(make_kit(project, "plain"))))

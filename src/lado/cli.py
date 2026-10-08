@@ -246,7 +246,8 @@ def _sources_warning(unless_in: str = "") -> None:
 
 def cmd_kits_show(args: argparse.Namespace) -> int:
     repo = _repo_or_none(args.repo)
-    env = kits.resolve(repo, args.names, args.without)
+    # A kit shown alone works without the kit that brings what it expects.
+    env = kits.resolve(repo, args.names, args.without, expected=kits.ASSUME)
     print(env.lead_line())
     for warning in env.warnings:
         print(f"warning: {warning}", file=sys.stderr)
@@ -259,6 +260,10 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
             print(f"    pack {pack.name}: {pack.spec}  {pack.path}")
         if kit.packs and not kit.agents:
             print("    shares its packs with the session (no agents)")
+        for name in kit.expects:
+            provider = env.shared.get(name)
+            found = f"from {provider.kit}" if provider else "no kit here provides it"
+            print(f"    expects skill {name}: {found}")
 
     def origin(skill: kits.Skill) -> str:
         return f"{labels[skill.kit, skill.pack]} ({skill.kit})" if skill.pack else skill.kit
@@ -316,7 +321,7 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
             kit = kits.load_release(target, spec, args.tag)
         else:
             kit = kits.find(args.kit, repo).release(args.tag)
-        env = kits.resolve(repo, [kit])
+        env = kits.resolve(repo, [kit], expected=kits.ASSUME)
         problems = kits.lint(kit)
         doubts = kits.warnings(kit)
     except kits.KitError as exc:
@@ -331,6 +336,8 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     skills = len(env.all_skills())
     counts = f"{len(env.agents)} agents, {skills} skills, {len(kit.packs)} packs"
     print(f"{kit.name}: OK ({counts} and {len(env.flows)} flows)")
+    if kit.expects:
+        print(f"expects skills: {', '.join(kit.expects)}")
     return 0
 
 

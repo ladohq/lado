@@ -3275,3 +3275,42 @@ def test_no_remote_without_origin_and_no_branch_on_a_detached_head(repo):
 @pytest.mark.parametrize(("value", "delays"), [(None, (15.0, 30.0, 60.0)), ("0.5,1", (0.5, 1.0))])
 def test_the_retry_delays_are_lado_retry_delays_else_lado_s_own(value, delays):
     assert runtime.retry_delays_from(value) == delays
+
+
+def _expecting_kits(repo):
+    """Kit sdlc whose role analyst uses skill tracker, which it expects; kit tracker, without
+    agents, has it."""
+    base = repo / ".lado" / "kits"
+    (base / "sdlc" / "agents").mkdir(parents=True)
+    (base / "sdlc" / "kit.yaml").write_text(
+        "name: sdlc\nversion: 1.0.0\nexpects:\n  skills: [tracker]\n"
+    )
+    (base / "sdlc" / "agents" / "analyst.md").write_text(
+        "---\nname: analyst\ndescription: a\nskills: [tracker]\n---\nA.\n"
+    )
+    (base / "tracker" / "skills" / "tracker").mkdir(parents=True)
+    (base / "tracker" / "kit.yaml").write_text("name: tracker\nversion: 1.0.0\n")
+    (base / "tracker" / "skills" / "tracker" / "SKILL.md").write_text(
+        "---\nname: tracker\ndescription: t\n---\n"
+    )
+
+
+def test_a_session_without_the_kit_an_expected_skill_needs_does_not_start(repo, fake_tmux):
+    _expecting_kits(repo)
+    with pytest.raises(kits.KitError) as exc:
+        runtime.start_session(str(repo), "s", None, kit_names=["sdlc"], provider="claude")
+    assert str(exc.value) == (
+        'kit "sdlc" expects skill "tracker", which no kit of the session provides: add a kit '
+        "that provides it with --kit <kit>"
+    )
+    assert state.get_session("s") is None and fake_tmux == []
+
+
+def test_a_spawn_may_not_switch_off_a_skill_its_kit_expects(repo, fake_tmux):
+    _expecting_kits(repo)
+    runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "tracker"], provider="claude")
+    windows = len(fake_tmux)
+    with pytest.raises(kits.KitError, match='agent "analyst" cannot run without it'):
+        runtime.spawn_worker("s", "t", role="analyst", without=["skill:tracker"])
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert len(fake_tmux) == windows

@@ -3,7 +3,7 @@
 // first, then what was copied is said for COPIED_MS in the caller's role="status". Without
 // the API (a page not served from localhost or https) or when the copy is refused, the
 // text is shown selected, to copy by hand.
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import { useBelow, useDismiss } from "./Menu";
 import { Tooltip } from "./Tooltip";
@@ -37,12 +37,14 @@ export function CopyField({
   title,
   label,
   text,
+  ref,
   style,
   onClose,
 }: {
   title: string; // the dialog's name: "Link to lado"
   label: string; // the field's: "Link"
   text: string;
+  ref: RefObject<HTMLDivElement | null>; // the dialog, for useBelow
   style?: CSSProperties;
   onClose: () => void;
 }) {
@@ -53,6 +55,7 @@ export function CopyField({
   }, []);
   return (
     <div
+      ref={ref}
       role="dialog"
       aria-label={title}
       className="popover link-popover"
@@ -90,12 +93,13 @@ export function CopyButton({
   const [shown, setShown] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const popover = useRef<HTMLDivElement>(null);
   const close = () => {
     setShown(false);
     button.current?.focus();
   };
   useDismiss(shown, box, () => setShown(false));
-  const below = useBelow(box, shown);
+  const below = useBelow(box, popover, shown);
   return (
     <span ref={box} className={`copy-button ${className}`.trim()}>
       <Tooltip tip={label}>
@@ -112,7 +116,7 @@ export function CopyButton({
       <span role="status" className="row-note">
         {note}
       </span>
-      {shown && <CopyField title={field.title} label={field.label} text={text} style={below} onClose={close} />}
+      {shown && <CopyField title={field.title} label={field.label} text={text} ref={popover} style={below} onClose={close} />}
     </span>
   );
 }

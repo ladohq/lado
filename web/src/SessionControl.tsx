@@ -3,7 +3,7 @@
 // stopped), Resume one that does not run, Forget one that is stopped. Stop asks in a
 // popover, Forget in a modal window; both say first what they do, from the server's
 // preview. The session list's rows have none of them (Sessions.tsx, SessionRowMenu).
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
 import {
@@ -48,9 +48,10 @@ export function SessionActions({ session }: { session: SessionInfo }) {
   const launch = useLaunch();
   const [shown, setShown] = useState<"stop" | "forget" | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  const popover = useRef<HTMLDivElement>(null);
   const close = () => setShown(null);
   useDismiss(shown === "stop", box, close);
-  const below = useBelow(box, shown === "stop", true);
+  const below = useBelow(box, popover, shown === "stop", true);
 
   const act = (action: Action) => {
     if (action === "resume") {
@@ -77,7 +78,7 @@ export function SessionActions({ session }: { session: SessionInfo }) {
           </button>
         </Tooltip>
       ))}
-      {shown === "stop" && <StopPopover session={session.name} style={below} onClose={close} />}
+      {shown === "stop" && <StopPopover session={session.name} ref={popover} style={below} onClose={close} />}
       {shown === "forget" && <ForgetDialog session={session.name} onClose={close} />}
     </div>
   );
@@ -121,11 +122,20 @@ function stopItems(preview: StopPreview): string[] {
   ];
 }
 
-function StopPopover({ session, style, onClose }: { session: string; style?: CSSProperties; onClose: () => void }) {
+function StopPopover({
+  session,
+  ref: panel,
+  style,
+  onClose,
+}: {
+  session: string;
+  ref: RefObject<HTMLDivElement | null>;
+  style?: CSSProperties;
+  onClose: () => void;
+}) {
   const preview = usePreview(() => getStopPreview(session));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     panel.current?.focus();
   }, []);

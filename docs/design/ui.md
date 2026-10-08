@@ -962,6 +962,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `stop-preview` (its agents are closed, the messages they did not get are dropped,
   branches, worktrees, open runs and the history stay, it can be resumed) and the button
   `Stop <name>`; the name is in the request's address. The page stays on the session.
+- **A menu or popover below its button** (the row's menu, the selected text of a copy that
+  failed, Stop's popover; `useBelow` in `Menu.tsx`) is fixed 6px under the button, so a
+  scrolling box around it does not cut it: from the button's left edge, Stop's from its
+  right edge, and moved along, measured with its own width, so it stays 8px inside both of
+  the window's edges (a Copy link at the window's right edge, e.g. an artifact's panel).
 - **Forget** asks in a modal window: the history is deleted for good, the worktrees and
   branches left on disk (`forget-preview`), and with open runs a box to tick
   ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,

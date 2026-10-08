@@ -216,3 +216,26 @@ def test_a_wide_table_scrolls_in_its_frame_and_the_panel_does_not(
     assert widths["scroll"] > widths["client"], widths  # the table scrolls in its frame
     assert widths["sideways"] == [], widths  # and nothing around it does
     shot(page, "wide-table")
+
+
+@pytest.mark.parametrize("width", [1280, 390])
+def test_the_link_to_copy_by_hand_stays_inside_the_window(
+    page: Page, server, repo, tmp_path, shot, width
+):
+    # Copy link sits at the panel's right edge; without the Clipboard API (http from
+    # another machine) its field opens below it, kept 8px inside the window.
+    session = designed_session(repo, tmp_path)
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.evaluate("Object.defineProperty(navigator, 'clipboard', {value: undefined})")
+    page.get_by_role("button", name="Open artifact ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    panel.get_by_role("button", name="Copy link").click()
+    field = page.get_by_role("dialog", name="Link to ship/x/design")
+    expect(field.get_by_role("textbox", name="Link")).to_be_focused()
+    expect(field.get_by_text("Press ⌘C / Ctrl+C to copy")).to_be_visible()
+    box = field.bounding_box()
+    assert box is not None
+    assert box["x"] >= 8 and box["x"] + box["width"] <= width - 8, box
+    shot(page, f"copy-field-{width}")

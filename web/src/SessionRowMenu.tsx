@@ -15,9 +15,10 @@ export function SessionRowMenu({ name }: { name: string }) {
   const { note, copy } = useCopy();
   const box = useRef<HTMLDivElement>(null);
   const more = useRef<HTMLButtonElement>(null);
+  const popover = useRef<HTMLDivElement>(null); // the menu, or the link to copy
   const close = () => setShown(null);
   useDismiss(shown !== null, box, close);
-  const below = useBelow(box, shown !== null);
+  const below = useBelow(box, popover, shown !== null);
   const link = sessionLink(name);
 
   const back = () => {
@@ -48,6 +49,7 @@ export function SessionRowMenu({ name }: { name: string }) {
       {shown === "menu" && (
         <Menu
           label={name}
+          ref={popover}
           style={below}
           items={[
             { label: "Copy link", onSelect: () => void copyLink() },
@@ -56,7 +58,7 @@ export function SessionRowMenu({ name }: { name: string }) {
           onClose={back}
         />
       )}
-      {shown === "link" && <CopyField title={`Link to ${name}`} label="Link" text={link} style={below} onClose={back} />}
+      {shown === "link" && <CopyField title={`Link to ${name}`} label="Link" text={link} ref={popover} style={below} onClose={back} />}
     </div>
   );
 }

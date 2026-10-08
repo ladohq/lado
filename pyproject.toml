@@ -1,6 +1,6 @@
 [project]
 name = "lado"
-version = "0.27.0"
+version = "0.28.0"
 description = "Layered Agent Delegation & Orchestration: run teams of AI coding agents (early development)"
 readme = "README.md"
 requires-python = ">=3.10"

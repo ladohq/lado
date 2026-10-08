@@ -105,11 +105,43 @@ def test_the_tab_filters_finds_and_opens_an_artifacts_page(
     shot(page, "found")
     page.get_by_role("searchbox", name="Find an artifact").fill("")
     table.get_by_role("row").filter(has_text="ship/x/shot.png").click()
+    page.get_by_role("dialog", name="Artifact ship/x/shot.png").get_by_role(
+        "link", name="Open in Artifacts tab"
+    ).click()
     expect(page.get_by_role("img", name="The login form")).to_be_visible()
     shot(page, "image")
     page.get_by_role("link", name="← Artifacts").click()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/artifacts")
     expect(names).to_have_count(4)
+
+
+def test_the_tab_counts_the_artifacts_and_a_row_opens_one_in_the_panel(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    page.get_by_role("button", name="Collapse terminals").click()
+    tabs = page.get_by_role("navigation", name="Session sections")
+    expect(tabs.get_by_role("link", name="Artifacts · 4")).to_be_visible()
+    table = page.get_by_role("table", name="Artifacts")
+    page.get_by_role("searchbox", name="Find an artifact").fill("login")
+    names = table.locator("tbody .full-name")
+    expect(names).to_have_text(["ship/x/design", "ship/x/shot.png"])
+    shot(page, "count")
+    table.get_by_role("row").filter(has_text="ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    assert page.url.startswith(f"{server['url']}/sessions/{session}/artifacts?view=")
+    expect(table).to_be_visible()
+    shot(page, "panel")
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    expect(page).to_have_url(f"{server['url']}/sessions/{session}/artifacts")
+    expect(names).to_have_text(["ship/x/design", "ship/x/shot.png"])
+    expect(table.get_by_role("link", name="ship/x/design")).to_be_focused()
+    artifacts.write(session, "supervisor", "notes", content="more", title="More notes")
+    expect(tabs.get_by_role("link", name="Artifacts · 5")).to_be_visible()
 
 
 def test_a_gates_chip_opens_the_attached_record_and_says_when_it_changed(

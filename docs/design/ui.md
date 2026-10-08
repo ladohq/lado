@@ -1303,10 +1303,17 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   per `artifacts.kindOf`). Filters work on the loaded list; a session without artifacts
   says "No artifacts yet", a filter that keeps none "No match". The tab is a size
   container: below 720 px of its own width (the terminals open, a phone) each row is a
-  card. A row opens the artifact's page.
+  card. A plain click on a row, or Enter on its name's link, opens its latest record in
+  the panel over the list (The panel, below), which keeps its filters, search and scroll;
+  closing it brings the focus back to the row's link. The link's address is the
+  artifact's page, so Cmd/Ctrl-click or the middle button opens the page in a new tab.
+  The tab is **Artifacts · N**, N the session's artifacts of all scopes (that live list;
+  none: Artifacts); the session's view watches the list for it.
 - **The page**: `/sessions/<name>/artifacts/<id>` (`paths.artifactPath`), "← Artifacts"
   above the viewer; it shows the latest record, or with `?record=<id>` the record an
-  attachment keeps. An unknown id says "No artifact <id> in this session".
+  attachment keeps (for links: Copy link, a deep link, the row's link in a new tab, the
+  panel's "Open in Artifacts tab"); its Open latest shows the latest record in the panel
+  over it. An unknown id says "No artifact <id> in this session".
 - **The viewer** (`ArtifactView.tsx`, one component for the page and the panel): its head
   is the type's icon and the full name, Download (the content with `?download=1`), Copy
   link (the page's address, with `?record=` when it is not the latest), for HTML Open in
@@ -1335,11 +1342,11 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   open latest" is joined to it; while that list is not loaded the chip says nothing
   (`unknown`), never "unchanged". The Activity tab (chat and gates), Flows and the panel
   watch the session's artifacts for it, so a new record changes a chip without a reload.
-- **The panel** (`ArtifactPanel.tsx`): a chip opens the viewer on the right over the page
+- **The panel** (`ArtifactPanel.tsx`): a chip or a row of the tab opens the viewer on the right over the page
   (`?view=<record>`, `paths.VIEW_PARAM`, on any of the session's tabs; from Needs you,
   over the session's Activity tab), min(620 px, 100%) wide, the whole screen on a phone,
   over a scrim; the page stays where it was. Esc, × or a click on the scrim closes it and
-  the focus goes back to the chip; Back closes it too (the chip's view is a step of the
+  the focus goes back to the chip (a row's link); Back closes it too (the view is a step of the
   history). "Open in Artifacts tab" leads to the artifact's page with that record. Open
   latest in it shows the latest record in the same panel.
 - **A gate's note** (`GateCard.tsx`): its chips under the note before the gate, then the

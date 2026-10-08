@@ -1,15 +1,18 @@
 // The session's Artifacts tab (docs/design/ui.md, Artifacts): a table of the session's
 // artifacts over the whole column, newest first by their latest record, filtered by scope
 // (the session's or a run's) and by type, and found by name, title, change and author; a
-// narrow column shows each row as a card. A row opens the artifact's page, which leads back
-// with "← Artifacts": its latest record, or with ?record= the one an attachment keeps. Live
-// from the feed: a new record moves its artifact to the top.
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+// narrow column shows each row as a card. A row opens its latest record in the panel over
+// the list (ArtifactPanel.tsx). The artifact's page, its row's link for a new tab and the
+// panel's "Open in Artifacts tab", leads back with "← Artifacts": its latest record, or
+// with ?record= the one an attachment keeps. Live from the feed: a new record moves its
+// artifact to the top.
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { Link, useSearchParams } from "react-router";
 
 import { ApiError, getRecord, type ArtifactInfo, type RecordInfo } from "./api";
 import { changed, kindOf, size, type Kind } from "./artifacts";
 import { ArtifactView, FullName, KindIcon } from "./ArtifactView";
+import { useView } from "./Attachments";
 import { since } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
@@ -116,17 +119,26 @@ function ArtifactsTable({ session, artifacts }: { session: string; artifacts: Ar
   );
 }
 
-// A row: a click anywhere on it opens the artifact's page, as its name's link does.
+// A row: a plain click anywhere on it, or on its name's link (also Enter), opens its latest
+// record in the panel over the list, with the focus on the link, so closing the panel
+// brings it back there. The link keeps the page's address: a click with a modifier or the
+// middle button opens the page in a new tab, as the browser does.
 function Row({ session, artifact }: { session: string; artifact: ArtifactInfo }) {
-  const navigate = useNavigate();
+  const view = useView(session);
+  const link = useRef<HTMLAnchorElement>(null);
   const { latest } = artifact;
-  const to = artifactPath(session, artifact.id);
+  const open = (event: MouseEvent) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    link.current?.focus();
+    view(latest.id);
+  };
   return (
-    <tr onClick={(event) => !(event.target as Element).closest("a") && navigate(to)}>
+    <tr onClick={(event) => !(event.target as Element).closest("a") && open(event)}>
       <td className="artifact-cell">
         <KindIcon mediaType={latest.media_type} />
         <span>
-          <Link to={to} className="artifact-link">
+          <Link ref={link} to={artifactPath(session, artifact.id)} className="artifact-link" onClick={open}>
             <FullName scope={artifact.scope} name={artifact.name} />
           </Link>
           {artifact.title && <span className="artifact-row-title">{artifact.title}</span>}
@@ -151,9 +163,9 @@ function Row({ session, artifact }: { session: string; artifact: ArtifactInfo })
 }
 
 // An artifact's page: its latest record, or the one ?record= names, which says so when the
-// artifact changed since.
+// artifact changed since; its Open latest shows the latest in the panel over it.
 function ArtifactPage({ session, id, artifacts }: { session: string; id: string; artifacts: ListLoaded<ArtifactInfo> & object }) {
-  const navigate = useNavigate();
+  const view = useView(session);
   const [params] = useSearchParams();
   const wanted = params.get(RECORD_PARAM);
   const artifact = "items" in artifacts ? artifacts.items.find((one) => one.id === id) : undefined;
@@ -194,7 +206,7 @@ function ArtifactPage({ session, id, artifacts }: { session: string; id: string;
         session={session}
         artifact={artifact}
         record={shown}
-        latest={stale ? () => navigate(artifactPath(session, artifact.id)) : undefined}
+        latest={stale ? () => view(artifact.latest.id) : undefined}
       />
     </div>
   );

@@ -428,9 +428,12 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
   const agents = useLive().agents[name] ?? null;
   useEffect(() => live.watch("runs", name), [live, name]);
   useEffect(() => live.watch("agents", name), [live, name]);
+  const artifacts = useLive().artifacts[name] ?? null;
+  useEffect(() => live.watch("artifacts", name), [live, name]);
   const counts: Partial<Record<Tab, number>> = {
     flows: runs && "items" in runs ? runs.items.filter(isOpen).length : 0,
     agents: agents && "items" in agents ? agents.items.length : 0,
+    artifacts: artifacts && "items" in artifacts ? artifacts.items.length : 0,
   };
   const stopped = session.status === "stopped";
   const view = useSearchParams()[0].get(VIEW_PARAM); // a chip's record, in the panel over the tab

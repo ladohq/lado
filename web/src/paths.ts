@@ -41,8 +41,8 @@ export const artifactPath = (session: string, id: string, record?: string) =>
     record ? `?${RECORD_PARAM}=${encodeURIComponent(record)}` : ""
   }`;
 
-// The address's parameter of the panel over the Activity tab that shows the record an
-// attachment keeps (a chip opens it): ?view=<record id>.
+// The address's parameter of the panel over a session's tab that shows a record (a chip
+// opens the one an attachment keeps, a row of the Artifacts tab the latest): ?view=<record id>.
 export const VIEW_PARAM = "view";
 
 // A card in the session's chat: the chat scrolls to the element of that id.

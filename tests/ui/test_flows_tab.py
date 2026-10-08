@@ -224,7 +224,9 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
 def test_in_a_narrow_column_the_overview_is_searched_from_the_tab_bar_and_a_run_has_the_way_back(
     page: Page, server, repo, shot
 ):
-    page.set_viewport_size({"width": 1440, "height": 900})
+    # Wide enough for the four tabs with their counts (Agents, Flows, Artifacts), narrow
+    # enough for the overview alone.
+    page.set_viewport_size({"width": 1480, "height": 900})
     session = flows_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/activity")

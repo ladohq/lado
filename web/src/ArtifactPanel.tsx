@@ -1,8 +1,9 @@
-// The panel a chip opens (docs/design/ui.md, Artifacts): the record an attachment keeps, on
-// the right over the session's page, min(620px, 100%) wide, the whole screen on a narrow
-// one; the page stays where it was. Its address is the page's with ?view=<record>. Esc,
-// its close button or a click beside it close it, and the focus goes back where it was (the
-// chip). "Open in Artifacts tab" leads to the artifact's page with that record.
+// The panel a chip or a row of the Artifacts tab opens (docs/design/ui.md, Artifacts): the
+// record an attachment keeps, or an artifact's latest, on the right over the session's
+// page, min(620px, 100%) wide, the whole screen on a narrow one; the page stays where it
+// was. Its address is the page's with ?view=<record>. Esc, its close button or a click
+// beside it close it, and the focus goes back where it was (the chip, the row's link).
+// "Open in Artifacts tab" leads to the artifact's page with that record.
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 

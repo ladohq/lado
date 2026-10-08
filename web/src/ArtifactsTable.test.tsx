@@ -222,24 +222,78 @@ test("a session without artifacts says so", async () => {
   expect(await screen.findByText("No artifacts yet")).toBeTruthy();
 });
 
-test("a row opens the artifact's page, which leads back to the tab", async () => {
+const tabs = () => screen.findByRole("navigation", { name: "Session sections" });
+
+test("the Artifacts tab counts the session's artifacts, none while there are none", async () => {
+  serve();
+  open("/sessions/lado/activity");
+  const link = await within(await tabs()).findByRole("link", { name: "Artifacts · 3" });
+  expect(link.querySelector(".tab-count")?.textContent).toBe("· 3");
+  cleanup();
+  serve({ artifacts: [] });
+  open("/sessions/lado/activity");
+  await screen.findByRole("region", { name: "Chat" });
+  await waitFor(() => expect(within(screen.getByRole("navigation", { name: "Session sections" })).getByRole("link", { name: "Artifacts" }).querySelector(".tab-count")).toBeNull());
+});
+
+test("a new artifact raises the tab's count without a reload", async () => {
+  serve({ artifacts: [DESIGN] });
+  open("/sessions/lado/agents");
+  await within(await tabs()).findByRole("link", { name: "Artifacts · 1" });
+  const written = artifact({ id: "a9", name: "notes", full_name: "notes", scope: "" }, { id: "n1", hash: "hn" });
+  act(() => stream().send("change", { kind: "artifacts", session: "lado", key: "a9", op: "insert", item: written }));
+  expect(await within(await tabs()).findByRole("link", { name: "Artifacts · 2" })).toBeTruthy();
+});
+
+test("a row opens the artifact's latest record in the panel over the list; Esc closes it", async () => {
   serve();
   open("/sessions/lado/artifacts");
   const shown = await table();
-  fireEvent.click(within(shown).getByRole("link", { name: /feature\/x\/design/ }));
-  expect(address()).toBe("/sessions/lado/artifacts/a1");
+  fireEvent.change(screen.getByRole("searchbox", { name: "Find an artifact" }), { target: { value: "design" } });
+  const link = within(shown).getByRole("link", { name: /feature\/x\/design/ });
+  expect(link.getAttribute("href")).toBe("/sessions/lado/artifacts/a1");
+  fireEvent.click(within(shown).getByText("first cut"));
+  expect(address()).toBe("/sessions/lado/artifacts?view=r1");
+  const panel = await screen.findByRole("dialog", { name: "Artifact feature/x/design" });
+  await within(panel).findByRole("heading", { name: "Content of r1" });
+  expect(screen.getByRole("table", { name: "Artifacts" })).toBe(shown);
+  fireEvent.keyDown(panel, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(address()).toBe("/sessions/lado/artifacts");
+  expect(document.activeElement).toBe(link);
+  expect((screen.getByRole("searchbox", { name: "Find an artifact" }) as HTMLInputElement).value).toBe("design");
+});
+
+test("a plain click on a row's link opens the panel; a click with a modifier is the browser's", async () => {
+  serve();
+  open("/sessions/lado/artifacts");
+  const shown = await table();
+  const link = within(shown).getByRole("link", { name: /^plan/ });
+  expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+  expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+  expect(address()).toBe("/sessions/lado/artifacts");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(link);
+  expect(address()).toBe("/sessions/lado/artifacts?view=p1");
+  expect(await screen.findByRole("dialog", { name: "Artifact plan" })).toBeTruthy();
+});
+
+test("an artifact's page still opens by its address and leads back to the tab", async () => {
+  serve();
+  open("/sessions/lado/artifacts/a1");
   await screen.findByRole("heading", { name: "Content of r1" });
   fireEvent.click(screen.getByRole("link", { name: "← Artifacts" }));
   expect(address()).toBe("/sessions/lado/artifacts");
 });
 
-test("a page of an older record says the artifact changed since and opens the latest", async () => {
+test("a page of an older record says the artifact changed since and opens the latest in the panel", async () => {
   serve();
   open("/sessions/lado/artifacts/a1?record=r0");
   await screen.findByRole("heading", { name: "Content of r0" });
   fireEvent.click(screen.getByRole("button", { name: "Open latest" }));
-  expect(address()).toBe("/sessions/lado/artifacts/a1");
-  await screen.findByRole("heading", { name: "Content of r1" });
+  expect(address()).toBe("/sessions/lado/artifacts/a1?record=r0&view=r1");
+  const panel = await screen.findByRole("dialog", { name: "Artifact feature/x/design" });
+  await within(panel).findByRole("heading", { name: "Content of r1" });
 });
 
 test("a page of an unknown artifact says so", async () => {

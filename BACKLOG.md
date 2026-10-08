@@ -1269,6 +1269,16 @@ Wanted: `list_artifacts` takes the session's scope too (e.g. `run="/"`), when a 
 it.
 Found: 2026-10-08, implement of feature/chat-attachments.
 
+## OpenCode's live image check never runs on the default model
+
+Size: S. Why here: the image path of OpenCode (and Kilo) has no live proof.
+`test_an_agent_sees_the_image_the_human_attaches[opencode]` always skips with `Cannot read
+image`: the default free model `opencode/nemotron-3-ultra-free` takes no images. So only
+Claude Code proves that an attached image reaches the model.
+Wanted: a free OpenCode model with image input for that test (e.g. a separate
+`LADO_LIVE_OPENCODE_IMAGE_MODEL`), or the gap named in AGENTS.md (Testing, Live e2e).
+Found: 2026-10-08, verify of feature/chat-attachments.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

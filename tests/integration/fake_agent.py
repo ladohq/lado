@@ -9,7 +9,8 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
                        send_message; "\\n" in the body is a line break
     artifact_write <name> <path>  call the LADO MCP tool write_artifact with the file at
                        <path> (relative: to the agent's folder, as an agent passes it)
-    artifact_read <name>  call the LADO MCP tool read_artifact
+    artifact_read <name>  call the LADO MCP tool read_artifact; "seen" gets its result and
+                       the type (and mimeType) of each content block
     read               call the LADO MCP tool read_messages
     askhuman <question>[ | <choice>, <choice>...]  call the LADO MCP tool ask_human
     spawn <task>       call the LADO MCP tool spawn_worker
@@ -76,6 +77,7 @@ import time
 import traceback
 
 PASTE_START, PASTE_END = "\x1b[200~", "\x1b[201~"
+TO_READ = re.compile(r" \(#\d+, [^)]*: call read_messages\)$")
 
 config = json.load(open(sys.argv[1]))
 
@@ -147,6 +149,7 @@ class LadoMcp:
         self.error: BaseException | None = None
         self.server: subprocess.Popen | None = None
         self.last_id = 0
+        self.last_content: list[dict] = []  # the content blocks of the latest tool call
 
     def connect(self) -> None:
         """Start the server, initialize the session and list the tools, in a thread (as the
@@ -209,6 +212,7 @@ def call_tool(name: str, arguments: dict):
     """Call a tool of the LADO MCP server. Returns its structured result."""
     result = lado_mcp.call_tool(name, arguments)
     content = result.get("content", [])
+    lado_mcp.last_content = content
     print(f"{name}: {[c.get('text') for c in content]}", flush=True)
     if result.get("structuredContent") is None:  # a dict comes as JSON text
         return json.loads(content[0]["text"]) if not result.get("isError") else None
@@ -216,6 +220,7 @@ def call_tool(name: str, arguments: dict):
 
 
 def send(to: str, text: str) -> None:
+    text = TO_READ.sub("", text)  # LADO's note on the line it got: no part of the command
     text, _, attached = text.partition(" --artifacts ")
     summary, _, body = text.partition(" | ")
     arguments = {"to": to, "summary": summary}
@@ -325,7 +330,10 @@ def work(text: str) -> bool:
             written = call_tool("write_artifact", {"name": command[1], "file": command[2]})
             report(artifact_write=written)
         elif command[0] == "artifact_read":
-            report(artifact_read=call_tool("read_artifact", {"name": command[1]}))
+            read = call_tool("read_artifact", {"name": command[1]})
+            blocks = lado_mcp.last_content
+            kinds = [{"type": b.get("type"), "mimeType": b.get("mimeType")} for b in blocks]
+            report(artifact_read=read, artifact_read_blocks=kinds)
         elif command[0] == "askhuman":
             question, _, choices = " ".join(command[1:]).partition(" | ")
             arguments = {"question": question}

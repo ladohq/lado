@@ -9,6 +9,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_gates import gated_session
+from test_images import png
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -274,3 +275,59 @@ def test_needs_you_leads_to_an_old_question_the_chat_had_not_loaded(page: Page, 
     assert visible_in(chat, card)
     assert chat.get_by_role("article").count() > 50
     shot(page)
+
+
+def test_the_human_attaches_files_and_the_agent_gets_them(page: Page, server, repo, shot):
+    """The paperclip's picker, chips (a PDF with the crossed-out eye and its hint), the drop
+    zone, then Send: the message with its chips and the image's preview; the agent's line."""
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    expect(chat).to_contain_text("No messages yet")
+    picker = page.locator(".composer input[type=file]")
+    picker.set_input_files(
+        [
+            {"name": "screenshot.png", "mimeType": "image/png", "buffer": SHOT},
+            {"name": "server.log", "mimeType": "text/plain", "buffer": b"GET / 500\n" * 300},
+            {"name": "spec.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.7\n"},
+        ]
+    )
+    files = page.get_by_role("list", name="Attached files")
+    expect(files.get_by_role("listitem")).to_have_count(3)
+    expect(page.locator(".composer-to")).to_contain_text("3 files")
+    eye = files.get_by_role("button", name="The agent sees only this file's name and size")
+    expect(eye).to_have_count(1)
+    page.get_by_role("textbox", name="Write to the supervisor…").fill("read")
+    shot(page, "files")
+    eye.focus()
+    expect(page.get_by_role("tooltip")).to_contain_text("Agents read text and PNG")
+    shot(page, "hint")
+    page.locator(".chat-feed").dispatch_event(
+        "dragenter", {"dataTransfer": page.evaluate_handle(DRAGGED)}
+    )
+    expect(page.get_by_text("Drop to attach · up to 10 files, 25.0 MB each")).to_be_visible()
+    shot(page, "drop")
+    page.locator(".chat-feed").dispatch_event(
+        "dragleave", {"dataTransfer": page.evaluate_handle(DRAGGED)}
+    )
+    page.get_by_role("button", name="Send").click()
+    mine = chat.get_by_role("article", name="Message from you")
+    expect(mine.get_by_role("button", name=re.compile(r"^Open artifact "))).to_have_count(3)
+    preview = mine.get_by_role("button", name=re.compile(r"^Open image screenshot-"))
+    expect(preview.locator("img")).to_have_js_property("naturalWidth", 320)
+    box = preview.locator("img").bounding_box()
+    assert box is not None and (box["width"], box["height"]) == (240, 135)  # at most 240 × 180
+    expect(files).to_have_count(0)
+    [message] = [m for m in state.list_messages(session) if m.sender == "human"]
+    line = f"[from human] read (#{message.id}, 3 artifacts: call read_messages)"
+    agent_helpers.wait_for(lambda: line in inputs(session), "the agent's line", session)
+    shot(page, "sent")
+    preview.click()
+    expect(page.get_by_role("dialog", name=re.compile(r"^Artifact screenshot-"))).to_be_visible()
+
+
+# Files dragged over the page, as the browser's drag events carry them.
+DRAGGED = "() => { const d = new DataTransfer(); d.items.add(new File(['x'], 'x.txt')); return d; }"
+
+SHOT = png(320, 180)

@@ -15,6 +15,7 @@ from test_agents import (
     wait_for,
     wait_status,
 )
+from test_images import png
 
 from lado import artifacts, runs, runtime, state, tmux
 
@@ -405,3 +406,25 @@ def test_a_popup_asks_the_human_and_never_types_into_an_agent(repo, flow_kit):
     # The popup closes when no gate is left.
     wait_for(lambda: "1) approve" not in tmux.capture("viewer", "v"), "the popup closed")
     assert all(text.strip() != "1" for text in inputs("worker") + inputs("supervisor"))
+
+
+def test_the_supervisor_forwards_the_humans_file_to_a_runs_worker_which_reads_it_as_slash_name(
+    repo, flow_kit
+):
+    name = "tiny/build-it"
+    supervisor_runs("flow_start tiny build it")
+    supervisor_runs(f"spawnrun {name}")
+    wait_status("worker", state.IDLE)
+    shot = artifacts.upload(SESSION, "shot.png", png(3, 2)).full_name
+    command = f"send worker look --artifacts {shot}"
+    before = len(inputs("supervisor"))
+    runtime.write_as_human(SESSION, command, attached=[shot])
+    wait_for(lambda: any(command in text for text in inputs("supervisor")[before:]), "the forward")
+    wait_for(lambda: got("worker", "[from supervisor] look ("), "the worker's line")
+    runtime.send_message(SESSION, "human", "worker", "read")
+    read = wait_for(lambda: seen("worker").get("read"), "read_messages")
+    assert [a["name"] for m in read for a in m["artifacts"]] == [f"/{shot}"]
+    runtime.send_message(SESSION, "human", "worker", f"artifact_read /{shot}")
+    blocks = wait_for(lambda: seen("worker").get("artifact_read_blocks"), "read_artifact")
+    assert [b["type"] for b in blocks] == ["text", "image"]
+    assert seen("worker")["artifact_read"]["name"] == f"/{shot}"

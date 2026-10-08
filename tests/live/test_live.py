@@ -5,9 +5,11 @@ reports the outcome, which ends the run."""
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 import time
+import zlib
 from pathlib import Path
 
 import agent_helpers
@@ -610,3 +612,90 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
     hooks_log = state.home() / "hooks.log"
     assert not hooks_log.exists(), hooks_log.read_text()
     print(f"{live_provider} flow: {time.monotonic() - started:.0f}s")
+
+
+IMAGE_WORKER = (
+    "Do nothing now. When a message from the human comes, do exactly what it says, using "
+    "only the tools it names."
+)
+
+
+def rgb_png(width: int, height: int, row) -> bytes:
+    """A PNG of 8-bit RGB pixels, `row()` giving each row's width * 3 bytes."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        crc = struct.pack(">I", zlib.crc32(kind + data))
+        return struct.pack(">I", len(data)) + kind + data + crc
+
+    pixels = b"".join(b"\x00" + row() for _ in range(height))
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(pixels))
+        + chunk(b"IEND", b"")
+    )
+
+
+def solid_png(width: int, height: int, rgb: bytes) -> bytes:
+    return rgb_png(width, height, lambda: rgb * width)
+
+
+def noise_png(width: int, height: int) -> bytes:
+    """Random pixels: as large as a screenshot of that size gets, or larger."""
+    return rgb_png(width, height, lambda: os.urandom(width * 3))
+
+
+def ask_about_image(name: str, data: bytes, ask: str) -> str:
+    """The human sends `data` as the file `name` to w1 with `ask`; w1's reply to the human."""
+    upload = artifacts.upload(SESSION, name, data)
+    before = len(messages("w1", "human"))
+    runtime.write_as_human(
+        SESSION, ask.format(name=upload.full_name), to="w1", attached=[upload.full_name]
+    )
+    wait_for(lambda: len(messages("w1", "human")) > before, f"w1's reply about {name}", 180)
+    wait_for(lambda: status("w1") == state.IDLE, f"w1 to be idle after {name}", 120)
+    errors = [e.detail for e in state.list_events(SESSION) if e.kind == state.TURN_ERROR]
+    assert errors == [], f"a turn of w1 ended on an error after {name}: {errors}"
+    return messages("w1", "human")[-1][0]
+
+
+def test_an_agent_sees_the_image_the_human_attaches(live_repo, live_provider):
+    """The human's PNG reaches the model as an image through read_artifact: w1 names the
+    colour of a solid red one. A screenshot-sized one over 1 MB and one just under
+    artifacts.IMAGE_LIMIT do not end its turn on an error (an image the API refuses would
+    fail every later turn). A model that takes no images is named and skipped, never a
+    pass."""
+    repo = live_repo
+    start_session(repo, live_provider)
+    runtime.spawn_worker(SESSION, IMAGE_WORKER, name="w1")
+    try:
+        wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 120)
+        colour = ask_about_image(
+            "colour.png",
+            solid_png(64, 64, b"\xff\x00\x00"),
+            'Read the attached image "{name}" with read_artifact. Then reply to me with '
+            'send_message(to="human", summary=<its colour in one lower-case English word>) '
+            "and nothing else.",
+        )
+        print(f"{live_provider}: the colour: {colour!r}")
+        if "red" not in colour.lower():
+            if live_provider == "claude":
+                pytest.fail(f"Claude Code did not see the image: {colour!r}")
+            pytest.skip(
+                f"{live_provider}'s model did not see the image (no image input?): {colour!r}"
+            )
+        if live_provider != "claude":
+            return  # the sizes are Claude's API's limits (artifacts.IMAGE_LIMIT)
+        seen = (
+            'Read the attached image "{name}" with read_artifact, then reply to me with '
+            'send_message(to="human", summary="SEEN") and nothing else.'
+        )
+        screenshot = noise_png(1280, 300)
+        assert 1_000_000 < len(screenshot) <= artifacts.IMAGE_LIMIT
+        assert "SEEN" in ask_about_image("screenshot.png", screenshot, seen)
+        largest = noise_png(1440, 900)
+        assert artifacts.IMAGE_LIMIT - 100_000 < len(largest) <= artifacts.IMAGE_LIMIT
+        assert "SEEN" in ask_about_image("largest.png", largest, seen)
+    finally:
+        runtime.stop_session(SESSION)

@@ -10,6 +10,7 @@ import httpx
 import pytest
 from agent_helpers import fake_logs, wait_for
 from event_stream import EventStream
+from test_images import png
 
 from lado import runtime, state
 from lado.server import auth
@@ -62,6 +63,11 @@ def inputs(agent: str = "supervisor") -> list:
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
+def seen(agent: str = "supervisor") -> dict:
+    path = fake_logs(SESSION, agent) / "seen.json"
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
 def chat(api) -> list[dict]:
     answer = api.get(f"/api/sessions/{SESSION}/messages", params={"with": "human"})
     assert answer.status_code == 200
@@ -111,3 +117,36 @@ def test_the_agents_question_is_answered_through_the_api(api, session):
     line = f"[from human] Answer to #{question['id']}: yes"
     wait_for(lambda: line in inputs(), "the answer", SESSION)
     assert chat(api)[1]["question_state"] == "answered"
+
+
+def test_the_humans_image_reaches_the_agent_which_reads_it_as_an_image(api, session):
+    """The composer's path: an upload, then a message with its name; the agent's line counts
+    it, read_messages names it and read_artifact gives the image itself."""
+    data = png(3, 2)
+    upload = api.post(
+        f"/api/sessions/{SESSION}/artifacts", params={"file_name": "Shot.png"}, content=data
+    )
+    assert upload.status_code == 200
+    name = upload.json()["full_name"]
+    sent = api.post(f"/api/sessions/{SESSION}/messages", json={"text": "read", "artifacts": [name]})
+    assert sent.status_code == 200
+    [message] = [m for m in chat(api) if m["from"] == "human"]
+    line = f"[from human] read (#{message['id']}, 1 artifact: call read_messages)"
+    wait_for(lambda: line in inputs(), "the human's line", SESSION)
+    [read] = wait_for(lambda: seen().get("read"), "read_messages", SESSION)
+    assert read["artifacts"] == [
+        {
+            "name": name,
+            "title": "Shot.png",
+            "media_type": "image/png",
+            "size": len(data),
+            "changed": False,
+        }
+    ]
+    api.post(f"/api/sessions/{SESSION}/messages", json={"text": f"artifact_read {name}"})
+    blocks = wait_for(lambda: seen().get("artifact_read_blocks"), "read_artifact", SESSION)
+    assert blocks == [
+        {"type": "text", "mimeType": None},
+        {"type": "image", "mimeType": "image/png"},
+    ]
+    assert (seen()["artifact_read"]["width"], seen()["artifact_read"]["height"]) == (3, 2)

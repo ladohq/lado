@@ -50,8 +50,15 @@ ABORTED = "MessageAbortedError"
 class OpenCodeFamily(base.Provider):
     plugin = PLUGIN
     config_file_name: str  # the agent's config in its config folder, e.g. "opencode.json"
+    # Text typed into OpenCode's TUI 0.2-0.7 s after the plugin's init is lost whole, and
+    # no event or API says when the TUI takes input (checked by hand with OpenCode 1.18.35):
+    # the first messages' lines go in as --prompt (notice_on_argv).
     capabilities = base.Capabilities(
-        status_events=True, permission_event=True, deliver_on_turn_end=True, skills=True
+        status_events=True,
+        permission_event=True,
+        deliver_on_turn_end=True,
+        skills=True,
+        notice_on_argv=True,
     )
     permission_modes = ("default", "acceptEdits", "bypassPermissions", "plan")
 
@@ -60,6 +67,7 @@ class OpenCodeFamily(base.Provider):
         agent: state.Agent,
         session: state.Session,
         spec: base.AgentSpec,
+        notice: str | None = None,
     ) -> base.Launch:
         config_dir = base.config_dir(agent)
         role = config_dir / "role.md"
@@ -68,7 +76,10 @@ class OpenCodeFamily(base.Provider):
         text = json.dumps(config, indent=2)
         config_file = config_dir / self.config_file_name
         config_file.write_text(text)
-        return base.Launch(self.argv(session.permission_mode), self.env(config_file, text))
+        argv = self.argv(session.permission_mode)
+        if notice:
+            argv[1:1] = ["--prompt", notice]
+        return base.Launch(argv, self.env(config_file, text))
 
     def config(
         self, agent: state.Agent, mode: str | None, spec: base.AgentSpec, role: Path

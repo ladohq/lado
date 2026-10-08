@@ -401,7 +401,7 @@ def start_session(
         # Written once the session is taken, as the provider's config: a start that lost
         # does not touch the running lead's files.
         _write_lead_skills(agent, env.lead_skills())
-        launch = agent_cli.launch_command(agent, sess, spec)
+        launch = _launch_command(agent_cli, agent, sess, spec)
         started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
     except Exception as error:
@@ -504,7 +504,7 @@ def spawn_worker(
         text = task if has_step else task + REPORT_REMINDER
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         state.queue_message(session, state.LADO, worker, summary, text)
-        launch = agent_cli.launch_command(agent, sess, spec)
+        launch = _launch_command(agent_cli, agent, sess, spec)
         held = _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
     except Exception as error:
@@ -533,6 +533,24 @@ def spawn_worker(
     if warnings is not None:
         warnings += held
     return agent
+
+
+def _launch_command(
+    agent_cli: providers.Provider,
+    agent: state.Agent,
+    sess: state.Session,
+    spec: providers.AgentSpec,
+) -> providers.Launch:
+    """The provider's launch of the agent. A CLI that loses what is typed into it right
+    after its start (Capabilities.notice_on_argv) takes the lines of its queue (its task, a
+    resumed supervisor's messages from LADO) on its command line, never a body: they are
+    handed over now as typed, an attempt like any hand-over (hand_over), and confirmed by
+    its prompt-submit hook as typed text; the agent stays starting."""
+    if not agent_cli.capabilities.notice_on_argv:
+        return agent_cli.launch_command(agent, sess, spec)
+    taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
+    notice = format_messages(taken) or None
+    return agent_cli.launch_command(agent, sess, spec, notice=notice)
 
 
 def _undo(

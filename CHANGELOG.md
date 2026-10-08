@@ -5,7 +5,8 @@
 - An agent's role prompt and its first input (a worker's task, a resumed supervisor's
   messages) are no longer on its process's command line, where `ps` shows them to every
   user of the machine: the role is read from a file, and the first input comes as a message
-  from `lado` through the agent's queue, for every provider.
+  from `lado` through the agent's queue, for every provider (Kilo and OpenCode see only its
+  one-line notice on their command line, never its text).
 
 ## 0.30.0 (2026-10-08)
 

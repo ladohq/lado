@@ -406,6 +406,60 @@ def test_a_worker_gets_its_task_through_its_queue(repo, fake_tmux, task):
     assert not [a for a in window[-1] if "fix the bug" in a or "xxx" in a]
 
 
+@pytest.mark.parametrize("provider", ["kilo", "opencode"])
+def test_an_opencode_family_worker_gets_its_first_line_on_its_command_line(
+    repo, fake_tmux, provider
+):
+    """Its TUI loses what is typed in right after its start (notice_on_argv): the line of
+    its task is handed over at its launch, as typed, and confirmed as typed text."""
+    cli = providers.get(provider)
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    runtime.spawn_worker("s", "fix the bug;", name="w1")
+    [task] = state.list_messages("s")
+    line = f"[from lado] your task (#{task.id}, 3 lines: call read_messages)"
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--prompt") + 1] == line
+    assert not [a for a in argv if "fix the bug" in a]  # never a body
+    assert (task.state, task.attempts, task.channel) == (state.SENT, 1, state.TYPED)
+    assert state.get_agent("s", "w1").status == state.STARTING
+    # Its start makes it idle; the batch it has is not typed in again.
+    hooks.handle(cli, providers.Event(providers.SESSION_START), "s", "w1")
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert not [c for c in fake_tmux if c[0] == "send_text"]
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
+    assert state.list_messages("s")[0].state == state.DELIVERED
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_a_failed_spawn_drops_the_first_line_handed_over_on_the_command_line(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    monkeypatch.setattr(tmux, "new_window", _fail)
+    with pytest.raises(tmux.TmuxError):
+        runtime.spawn_worker("s", "fix the bug;", name="w1")
+    assert [m.state for m in state.list_messages("s")] == [state.DROPPED]
+
+
+def test_a_resumed_opencode_family_supervisor_gets_its_lines_on_its_command_line(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_session", _fail)
+        with pytest.raises(tmux.TmuxError):
+            runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--prompt") + 1] == "[from lado] session resumed: 0 open runs"
+    # The failed resume's went with its stop; this one's is handed over at the launch.
+    assert [(m.state, m.attempts, m.channel) for m in state.list_messages("s")] == [
+        (state.DROPPED, 1, state.TYPED),
+        (state.SENT, 1, state.TYPED),
+    ]
+
+
 @pytest.mark.parametrize(
     ("role", "taken", "expected"),
     [

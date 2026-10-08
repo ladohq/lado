@@ -104,7 +104,10 @@ class ClaudeProvider(base.Provider):
         agent: state.Agent,
         session: state.Session,
         spec: base.AgentSpec,
+        notice: str | None = None,
     ) -> base.Launch:
+        if notice:
+            raise ValueError(f"{self.title} takes no notice on its command line")
         config_dir = base.config_dir(agent)
 
         mcp_config = config_dir / "mcp.json"

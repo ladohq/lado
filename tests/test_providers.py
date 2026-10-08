@@ -806,6 +806,35 @@ def test_no_prompt_or_input_on_the_command_line(repo, lado_home, provider):
         assert prompt.read_text() == spec.prompt
 
 
+NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_opencode_family_gets_its_first_notice_on_the_command_line(repo, provider):
+    """Its TUI loses what is typed in right after its start (OpenCode 1.18.35): the lines of
+    its first messages go on --prompt, as they would be typed; never a body."""
+    cli = providers.get(provider)
+    assert cli.capabilities.notice_on_argv
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
+    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
+    assert cli.launch_command(agent, sess, spec, notice=NOTICE).argv == [
+        provider,
+        "--prompt",
+        NOTICE,
+    ]
+    assert "--prompt" not in cli.launch_command(agent, sess, spec).argv
+
+
+def test_claude_takes_no_notice_on_the_command_line(repo):
+    claude = providers.get("claude")
+    assert not claude.capabilities.notice_on_argv
+    sess = state.Session("s", str(repo), None, "claude")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    with pytest.raises(ValueError, match="notice"):
+        claude.launch_command(agent, sess, providers.AgentSpec("the role"), notice=NOTICE)
+
+
 @pytest.mark.parametrize("provider", list(FAMILY))
 def test_opencode_family_gets_skills_and_kit_mcp(repo, skill_dir, provider):
     sess = state.Session("s", str(repo), None, provider)

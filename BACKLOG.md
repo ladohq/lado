@@ -722,6 +722,10 @@ Again on 2026-10-08 (verify of feature/expects-commands): OpenCode's passive sup
 spawned `worker` for the run besides w1, so finishing w1 kept the worktree; the rerun
 passed. In that rerun `test_an_agent_sees_the_image_the_human_attaches[opencode]` timed out
 with w1 busy for 120 s again; the next run skipped it as expected (the model takes no images).
+Again on 2026-10-08 (implement of feature/argv-prompt, its second visit):
+`test_a_flow_run_moves_on_when_its_worker_reports[opencode]` timed out once after w1 was
+finished (the passive supervisor busy), and once w1 committed `flow.txt` with two lines of
+its own instead of "OK"; the third run passed.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
@@ -1337,6 +1341,17 @@ Claude Code proves that an attached image reaches the model.
 Wanted: a free OpenCode model with image input for that test (e.g. a separate
 `LADO_LIVE_OPENCODE_IMAGE_MODEL`), or the gap named in AGENTS.md (Testing, Live e2e).
 Found: 2026-10-08, verify of feature/chat-attachments.
+
+## A traceback in hooks.log when the tmux server is gone at an agent's end
+
+Size: S. Why here: noise in hooks.log, no lost work.
+When a live test kills the tmux server, OpenCode's dispose hook runs `agent_ended` →
+`_tell_lead` → `hand_over` → `tmux.send_text`, which fails with `TmuxError: error
+connecting to /private/tmp/tmux-501/lado-test-… (No such file or directory)`, and the hook
+writes the whole traceback to hooks.log.
+Wanted: a tmux server that is gone during the hand-over at an agent's end is no error with
+a traceback; the message just stays queued.
+Found: 2026-10-08, verify of feature/argv-prompt (OpenCode flow live test's hooks.log).
 
 # P3: maybe never
 

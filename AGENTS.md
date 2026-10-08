@@ -716,15 +716,20 @@ fixes and docs only: no new feature, no API or schema change.
   agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
   after it got them (by `sent_at`, when each was handed over, not by id), else `missing`,
   which the chat shows as "replied only in its terminal".
-- No prompt and no input on an agent's command line, which `ps` shows to every user of the
-  machine: the role and LADO's instructions go in a file (Claude Code
+- No prompt and no message text on an agent's command line, which `ps` shows to every user
+  of the machine: the role and LADO's instructions go in a file (Claude Code
   `--append-system-prompt-file`, Kilo and OpenCode `instructions`), and an agent's first
   input (a worker's task or step, a resumed supervisor's messages from `lado`) is a pending
   message from `lado` in its queue, with the text as its body (`your task` or `flow <run>:
   step <state>` for a worker; `agents.task` keeps the full text). Its session-start hook
   makes it idle, which hands the queue over as any other (below): the agent gets one line
   and reads the text with `read_messages`. A spawn or resume that fails drops it with the
-  rest of the queue; the next resume writes LADO's messages anew.
+  rest of the queue; the next resume writes LADO's messages anew. Kilo and OpenCode
+  (`Capabilities.notice_on_argv`) lose text typed into their TUI right after the plugin's
+  init, and no event or API says when it takes input (OpenCode 1.18.35, checked by hand):
+  their queue's lines at launch, never a body, go on `--prompt` (`runtime._launch_command`),
+  handed over then as `typed` with its first attempt and confirmed by `chat.message` as
+  typed text; the agent stays `starting` until its session start.
 - A queue is handed over by one of two channels, kept with each message
   (`messages.channel`), and stays `sent` until the agent confirms it (then `delivered`):
   - `typed`: pasted into the agent's window, confirmed when its prompt-submit hook sees

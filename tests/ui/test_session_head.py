@@ -167,3 +167,9 @@ def test_the_head_shows_the_remote_and_branch_and_a_kits_version_on_hover(
     head(page).locator(".session-git .session-hint").hover()
     expect(tip).to_have_text("https://github.com/ladohq/lado.gitbranch main · " + str(repo))
     shot(page, "remote")
+    # The CLI alone in the line; the fake agent has no permission modes, so no mode line.
+    expect(head(page).locator(".session-agent-cli")).to_have_text("fake")
+    head(page).locator(".session-agent-cli .session-hint").hover()
+    expect(tip).to_contain_text("installed now: the next agent starts with it")
+    expect(tip).not_to_contain_text("mode")
+    shot(page, "cli")

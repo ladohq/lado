@@ -7,6 +7,7 @@
   user of the machine: the role is read from a file, and the first input comes as a message
   from `lado` through the agent's queue, for every provider (Kilo and OpenCode see only its
   one-line notice on their command line, never its text).
+- UI: the session's head shows its permission mode in the CLI's tooltip, not in the line.
 
 ## 0.30.0 (2026-10-08)
 

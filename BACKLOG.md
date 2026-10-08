@@ -1356,6 +1356,16 @@ Wanted: a tmux server that is gone during the hand-over at an agent's end is no 
 a traceback; the message just stays queued.
 Found: 2026-10-08, verify of feature/argv-prompt (OpenCode flow live test's hooks.log).
 
+## CHANGELOG.md conflicts when parallel branches add a line
+
+Size: S. Why here: each such merge goes back to implement for a one-line fix.
+Branches append lines under the same `## X.Y.Z (unreleased)` heading, so merging main into a
+run's branch conflicts there (feature/argv-prompt and main both added one to 0.30.1).
+`.gitattributes` has `merge=union` for BACKLOG.md only.
+Wanted: CHANGELOG.md merges such additions without a conflict (e.g. `merge=union` too,
+checking that a release's dated heading still merges right).
+Found: 2026-10-08, merge of main into feature/argv-prompt.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

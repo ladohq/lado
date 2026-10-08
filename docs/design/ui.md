@@ -424,8 +424,8 @@ Sessions for now. The UI's texts are in English.
   roughly (its largest unit) for `since` in Agents and Flows. The second line, small and
   quiet: Copy path (a folder icon, no other copy button), the folder in mono on one line,
   cut with "…" at its start so its end stays in view, whole in its `title`; its git remote
-  and branch; the kits; the provider · permission mode (the provider alone without a mode);
-  versions in tooltips (Session head, below). In a narrow column the
+  and branch; the kits; the provider; versions and the permission mode in tooltips
+  (Session head, below). In a narrow column the
   icons of the first line and the items of the second go to lines of their own, with no
   sideways scrolling. The Activity chat (its feed and composer) is at most 860 px wide and
   stands in the middle of a wider column (the terminals folded), as much room on each
@@ -976,7 +976,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 
 - The head's second line, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
-  the kits, the CLI · permission mode. The git icon is Copy URL (the whole remote, "URL
+  the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,
+  fix/head-mode-tooltip). The git icon is Copy URL (the whole remote, "URL
   copied"), and its tooltip has the whole URL, the branch and the path. Without a remote
   only the branch shows, without either no git fact.
 - Versions are in tooltips (the UI's `Tooltip`, never a `title`), on each kit's name:
@@ -984,7 +985,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   the next agent starts with it"; a kit not found or not loading shows why. On the
   provider's name: `<title> <version>`, with an untested version also `tested with
   <tested>` and an orange `!` in the line (`var(--human)`, named "untested version"), as
-  `lado doctor` warns; a CLI not installed says so. The versions are the ones installed
+  `lado doctor` warns; a CLI not installed says so; then, when the session has one,
+  `mode <permission mode>`. Until the about comes there is no tooltip, so no mode in the
+  head either. The versions are the ones installed
   now, which the next agent starts with; a version per agent is not kept.
 - They come from `GET /api/sessions/{name}/about` (`SessionAbout`), not from
   `SessionInfo`: git, `<cli> --version` and loading kits are too dear for the change feed,

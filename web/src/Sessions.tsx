@@ -558,8 +558,8 @@ function Find({ label }: { label: string }) {
 // The session's head (docs/design/ui.md, Structure and Session head): its name, status and
 // how long it ran, Copy link and its actions; below, small, its folder (Copy path on the
 // folder's icon), its git remote and branch (Copy URL on the git icon), its kits and its
-// agents' CLI with the permission mode; the versions in their tooltips. Until its about
-// comes, or when it fails, the line has the session's settings alone.
+// agents' CLI; the versions, and the permission mode, in their tooltips. Until its about
+// comes, or when it fails, the line has the session's settings alone, the mode not shown.
 function SessionHead({ session }: { session: SessionInfo }) {
   const { name, repo, kits, provider, permission_mode: mode } = session;
   const about = useAbout(session);
@@ -623,7 +623,7 @@ function SessionHead({ session }: { session: SessionInfo }) {
           <AgentCliIcon />
           <span className="session-agent-cli">
             {cli ? (
-              <Tooltip tip={<CliTip cli={cli} />}>
+              <Tooltip tip={<CliTip cli={cli} mode={mode} />}>
                 <span className="session-hint" tabIndex={0}>
                   {provider}
                 </span>
@@ -636,7 +636,6 @@ function SessionHead({ session }: { session: SessionInfo }) {
                 !
               </span>
             )}
-            {mode && ` · ${mode}`}
           </span>
         </span>
       </div>
@@ -723,21 +722,24 @@ function KitTip({ kit }: { kit: SessionKitInfo }) {
   );
 }
 
-function CliTip({ cli }: { cli: ProviderInfo }) {
-  if (!cli.installed) {
-    return (
-      <div className="tooltip-line">
-        <b>{cli.title}</b> not installed: {cli.detail}
-      </div>
-    );
-  }
+// The CLI's version (or that it is not installed), then the session's permission mode.
+function CliTip({ cli, mode }: { cli: ProviderInfo; mode: string | null }) {
   return (
     <>
-      <div className="tooltip-line">
-        <b>{cli.title}</b> {cli.version || cli.detail}
-      </div>
-      {cli.warning && <div className="tooltip-line session-warn">tested with {cli.tested_version}</div>}
-      <div className="tooltip-line">{NEXT_AGENT}</div>
+      {cli.installed ? (
+        <>
+          <div className="tooltip-line">
+            <b>{cli.title}</b> {cli.version || cli.detail}
+          </div>
+          {cli.warning && <div className="tooltip-line session-warn">tested with {cli.tested_version}</div>}
+          <div className="tooltip-line">{NEXT_AGENT}</div>
+        </>
+      ) : (
+        <div className="tooltip-line">
+          <b>{cli.title}</b> not installed: {cli.detail}
+        </div>
+      )}
+      {mode && <div className="tooltip-line">mode {mode}</div>}
     </>
   );
 }

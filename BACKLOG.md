@@ -722,6 +722,9 @@ Again on 2026-10-08 (verify of feature/expects-commands): OpenCode's passive sup
 spawned `worker` for the run besides w1, so finishing w1 kept the worktree; the rerun
 passed. In that rerun `test_an_agent_sees_the_image_the_human_attaches[opencode]` timed out
 with w1 busy for 120 s again; the next run skipped it as expected (the model takes no images).
+Again on 2026-10-08 (verify of feature/argv-prompt, a1f2fa0): in the OpenCode flow test w1
+committed its own three lines (`flow: tiny / test: live / status: active`) in `flow.txt`
+instead of "OK" (tests/live/test_live.py:606); the rerun passed.
 Again on 2026-10-08 (implement of feature/argv-prompt, its second visit):
 `test_a_flow_run_moves_on_when_its_worker_reports[opencode]` timed out once after w1 was
 finished (the passive supervisor busy), and once w1 committed `flow.txt` with two lines of

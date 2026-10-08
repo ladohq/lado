@@ -759,16 +759,35 @@ h3 {
 }
 
 /* A session's head, one line of the top bar (its items are the bar's): the status dot, the
-   name, the run time, the facts, then the icons at the right end. A narrow window puts the
-   facts on a second line (below). */
+   name, the run time, the facts, then the icons at the right end. Facts that do not fit
+   between the name and the icons wrap to more lines there; the other items keep to the top
+   line, each 32 px high as the icons. A narrow window puts the facts on a second line of
+   the bar (below). */
 .session-head {
   display: contents;
+}
+
+.topbar:has(.session-head) {
+  align-items: flex-start;
+  padding-block: 10px;
+}
+
+.session-head h1,
+.session-state,
+.session-ran,
+.topbar:has(.session-head) .link {
+  line-height: 32px;
+}
+
+.session-head .topbar-sep {
+  margin-block: 5px;
 }
 
 .session-dot {
   flex: none;
   width: 9px;
   height: 9px;
+  margin-block: 11.5px;
   border-radius: 50%;
   background: var(--done);
 }
@@ -819,15 +838,19 @@ h3 {
   height: 18px;
 }
 
-/* The facts, small and quiet: the folder, git, the kits, the agents' CLI. On the line they
-   take the room left, and only the folder gives some up; on a line of their own (narrow)
-   each goes to a line of its own when they do not fit. */
+/* The facts, small and quiet: the folder, git, the kits, the agents' CLI. They take the room
+   between the name and the icons, the folder at most half of it; what does not fit goes to
+   a line of its own there, and a fact wider than the whole room wraps its own text, so
+   none ever lies over the icons. */
 .session-meta {
   display: flex;
-  flex: 0 1000 auto; /* gives up its room long before the name does */
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-content: center;
   align-items: center;
-  gap: 4px 16px;
+  gap: 2px 16px;
   min-width: 0;
+  min-height: 32px;
   color: var(--muted);
   font-size: 12.5px;
 }
@@ -841,9 +864,12 @@ h3 {
   max-width: 100%;
 }
 
+.session-meta .session-folder {
+  max-width: 50%;
+}
+
 .session-fact {
-  flex: none;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .session-fact .icon {
@@ -927,23 +953,14 @@ h3 {
   }
 
   .session-meta {
-    flex-wrap: wrap;
     flex-basis: 100%;
     order: 1;
+    min-height: 0;
   }
 
   /* The dot, the run time, the icons and the link's dot, with their gaps. */
   .session-head h1 {
     max-width: calc(100% - 190px);
-  }
-
-  .session-fact {
-    white-space: normal;
-  }
-
-  /* Cut to half the line, so the other facts stay beside it. */
-  .session-meta .session-folder {
-    max-width: 50%;
   }
 
   .session-head > .meta-sep {

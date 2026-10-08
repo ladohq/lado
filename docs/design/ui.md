@@ -437,8 +437,11 @@ Sessions for now. The UI's texts are in English.
   quiet: Copy path (a folder icon, no other copy button), the folder in mono on one line,
   cut with "…" at its start so its end stays in view, whole in its `title`; its git remote
   and branch; the kits; the provider; versions and the permission mode in tooltips
-  (Session head, below). Only the folder gives up room on the line; the name keeps a third
-  of the bar. In a narrow window (up to 1100 px) the first line keeps the dot, the name,
+  (Session head, below). The facts take the room between the run time and the icons, the
+  folder at most half of it; facts that do not fit there go to a line of their own in that
+  room (a fact wider than all of it wraps its own text), so none lies over the icons, and
+  the other items stay on the top line. The name keeps a third of the bar. In a narrow
+  window (up to 1100 px) the first line keeps the dot, the name,
   the run time, the icons and the link's dot (its word for the ear only), and the facts go
   to a second line of the top bar, with no sideways scrolling; only the name and the
   folder are cut. The Activity chat (its feed and composer) is at most 860 px wide and

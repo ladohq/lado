@@ -1,13 +1,15 @@
 // The session page's layout (docs/design/ui.md, Structure): the team chips, the session
 // list's groups and "+", the rail with Launch and the top bar.
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { StrictMode } from "react";
-import { MemoryRouter } from "react-router";
+import { StrictMode, useState } from "react";
+import { createPortal } from "react-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeSocket, stream, stubDialogs } from "./fakes";
+import { Shell, useTitle, useTopBar } from "./Shell";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -656,3 +658,51 @@ test("the top bar is the page's: a session claims it, not found and loading keep
   expect(bar().querySelector(".session-head")).toBeNull();
   expect(document.title).toBe("Sessions · LADO");
 });
+
+// Two heads that claim the bar at once (useTopBar's contract): the claims are counted, so
+// the one that goes does not give the bar back while the other still holds it.
+function Claim({ name }: { name: string }) {
+  const slot = useTopBar();
+  return slot && createPortal(<span className="claim">{name}</span>, slot);
+}
+
+function TwoClaims() {
+  useTitle("Page");
+  const [both, setBoth] = useState(true);
+  return (
+    <>
+      <Claim name="first" />
+      {both && <Claim name="second" />}
+      <button type="button" onClick={() => setBoth(false)}>
+        Drop the second
+      </button>
+      <Link to="/plain">Elsewhere</Link>
+    </>
+  );
+}
+
+test("the bar stays claimed while any page part claims it; the title comes back with the last", () => {
+  const routes = (
+    <Routes>
+      <Route element={<Shell />}>
+        <Route index element={<TwoClaims />} />
+        <Route path="plain" element={<Plain />} />
+      </Route>
+    </Routes>
+  );
+  render(<MemoryRouter initialEntries={["/"]}>{routes}</MemoryRouter>);
+  const claims = () => [...bar().querySelectorAll(".claim")].map((one) => one.textContent);
+  expect(claims()).toEqual(["first", "second"]);
+  expect(barHeadings()).toEqual([]);
+  fireEvent.click(screen.getByRole("button", { name: "Drop the second" }));
+  expect(claims()).toEqual(["first"]);
+  expect(barHeadings()).toEqual([]); // the first still holds it
+  fireEvent.click(screen.getByRole("link", { name: "Elsewhere" }));
+  expect(claims()).toEqual([]);
+  expect(barHeadings()).toEqual(["Plain"]);
+});
+
+function Plain() {
+  useTitle("Plain");
+  return null;
+}

@@ -188,6 +188,46 @@ def test_in_a_narrow_window_the_facts_wrap_to_a_second_line_without_scrolling(
     shot(page)
 
 
+@pytest.mark.parametrize("width", [1101, 1200])
+def test_long_facts_on_a_wide_window_wrap_and_never_lie_over_the_icons(
+    page: Page, server, repo, shot, width
+):
+    page.set_viewport_size({"width": width, "height": 800})
+    url = "https://gitlab.example.com/a-group/a-subgroup/a-rather-long-project-name.git"
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", url], check=True)
+    branch = "feature/session-head-topbar-with-a-long-branch-name"
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-b", branch], check=True)
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    expect(head(page).locator(".session-git")).to_contain_text(branch)
+    # No fact, nor the name or the run time, overlaps the icons or the link; all in the bar.
+    found = page.evaluate(
+        """() => {
+            const bar = document.querySelector('.topbar').getBoundingClientRect();
+            const solid = [...document.querySelectorAll('.session-head-actions, .link')]
+                .map((e) => e.getBoundingClientRect());
+            const over = (a, b) => a.left < b.right - 1 && b.left < a.right - 1
+                && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+            return [...document.querySelectorAll('.session-meta > *, .session-head h1,'
+                    + ' .session-ran, .session-hint, .session-path')]
+                .filter((e) => { const r = e.getBoundingClientRect();
+                    return solid.some((s) => over(r, s)) || r.left < bar.left - 1
+                        || r.right > bar.right + 1 || r.bottom > bar.bottom + 1; })
+                .map((e) => e.className || e.tagName);
+        }"""
+    )
+    assert found == []
+    # The name stays whole and the icons on the top line.
+    name = head(page).locator("h1")
+    assert name.evaluate(
+        """(e) => { const text = document.createRange(); text.selectNodeContents(e);
+            return text.getBoundingClientRect().width <= e.getBoundingClientRect().width; }"""
+    )
+    assert box(page, ".session-head-actions")["y"] < box(page, ".topbar")["y"] + 20
+    shot(page)
+
+
 def test_what_drops_from_the_top_bar_shows_over_the_expanded_terminals(
     page: Page, server, repo, shot
 ):

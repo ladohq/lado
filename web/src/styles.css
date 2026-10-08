@@ -30,8 +30,9 @@ button {
   cursor: pointer;
 }
 
-/* For the ear only: read out, not shown. */
-.visually-hidden {
+/* For the ear only: read out, not shown (`sr-only`: remark-gfm's footnotes heading). */
+.visually-hidden,
+.chat-body .sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2445,7 +2446,8 @@ h3 {
   font-size: 1em;
 }
 
-.chat-body :is(p, ul, ol, blockquote, pre, .md-table) {
+/* :where, so `.chat-body > :last-child` still ends a body at its text. */
+.chat-body :where(p, ul, ol, blockquote, pre, .md-table) {
   margin: 0 0 0.8em;
 }
 

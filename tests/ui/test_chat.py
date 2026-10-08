@@ -135,6 +135,8 @@ def test_a_message_with_a_wide_table_shows_it_in_a_frame_and_the_chat_does_not_s
 ):
     session = running_session(repo)
     state.queue_message(session, "supervisor", "human", "DONE", REPORT, mark=state.DELIVERED)
+    noted = "Merged.[^1]\n\n[^1]: after the review"
+    state.queue_message(session, "supervisor", "human", "merged", noted, mark=state.DELIVERED)
     page.set_viewport_size({"width": 900, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
@@ -145,6 +147,12 @@ def test_a_message_with_a_wide_table_shows_it_in_a_frame_and_the_chat_does_not_s
     expect(chat.locator("del")).to_have_text("single tilde")
     assert frame.evaluate("frame => frame.scrollWidth > frame.clientWidth")
     assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")
+    # A body ends at its text: its last block has no margin under it.
+    expect(chat.locator(".chat-body blockquote")).to_have_css("margin-bottom", "0px")
+    # A footnote's "Footnotes" heading is for the ear only.
+    label = chat.get_by_role("heading", name="Footnotes")
+    expect(label).to_have_count(1)
+    assert label.bounding_box()["height"] <= 1
     shot(page)
 
 

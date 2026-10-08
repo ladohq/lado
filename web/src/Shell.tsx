@@ -1,14 +1,16 @@
 // The frame around every page: the rail of sections on the left (with Launch after Home),
-// the top bar with the page's title, the server's address and the change feed's link, and
-// the page itself. The one place that handles a 401: it shows the server's own message
+// the top bar with the page's title, or a head the page draws there (useTopBar), and the
+// change feed's link, and the page itself. The one place that handles a 401: it shows the server's own message
 // instead of the page. It holds the tab's one change feed (live.ts) for every page, and the
 // New session window (Launch.tsx).
 import {
   createContext,
   Fragment,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -29,6 +31,7 @@ import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
+import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
 
 const NEEDS_YOU = "/needs-you"; // its link counts what waits
@@ -49,8 +52,33 @@ export function useTitle(title: string): void {
   useLayoutEffect(() => setTitle(title), [setTitle, title]);
 }
 
+type TopBar = { slot: HTMLElement | null; claim: () => () => void };
+
+const TopBarContext = createContext<TopBar>({ slot: null, claim: () => () => {} });
+
+// A page with a head of its own draws it in the top bar, in place of the Shell's title
+// (docs/design/ui.md, Session head): it renders into the element this returns with
+// createPortal. The element is the top bar's slot, kept by the Shell in state through a
+// callback ref, so its arrival renders the page again; null until it exists, and the page
+// draws nothing there until then. The page claims the bar in a layout effect and gives it
+// back in the effect's cleanup; the claims are counted, so a StrictMode remount (mount,
+// unmount, mount) leaves the bar claimed and the Shell's title never shows between. The
+// Shell draws its title only while no page claims the bar.
+export function useTopBar(): HTMLElement | null {
+  const { slot, claim } = useContext(TopBarContext);
+  useLayoutEffect(claim, [claim]);
+  return slot;
+}
+
 export function Shell() {
   const [title, setTitle] = useState("");
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [claims, setClaims] = useState(0);
+  const claim = useCallback(() => {
+    setClaims((now) => now + 1);
+    return () => setClaims((now) => now - 1);
+  }, []);
+  const topBar = useMemo(() => ({ slot, claim }), [slot, claim]);
   const [collapsed, setCollapsed] = useState(storedRailCollapsed);
   const [denied, setDenied] = useState<string | null>(null);
   const [live] = useState(() => new Live());
@@ -113,10 +141,8 @@ export function Shell() {
       </nav>
       <div className="main">
         <header className="topbar">
-          <h1>{title}</h1>
-          <span className="server" title="The LADO server this page talks to">
-            {window.location.host}
-          </span>
+          {claims === 0 && <h1>{title}</h1>}
+          <div ref={setSlot} className="topbar-slot" />
           <LinkState />
         </header>
         <VersionBanner />
@@ -128,7 +154,9 @@ export function Shell() {
             </p>
           ) : (
             <TitleContext.Provider value={setTitle}>
-              <Outlet />
+              <TopBarContext.Provider value={topBar}>
+                <Outlet />
+              </TopBarContext.Provider>
             </TitleContext.Provider>
           )}
         </main>
@@ -212,15 +240,17 @@ function UpdateLine() {
 }
 
 // The change feed's link: live, or reconnecting while it is down (what the page shows may
-// be old), with the reason.
+// be old), with the reason. The server's address is in its tooltip.
 function LinkState() {
   const { link, problem } = useLive();
   if (link === "refused") return null; // the page says how to get in
   if (link !== "down") {
     return (
-      <span className={`link link-${link}`} role="status">
-        {link === "open" ? "live" : "connecting…"}
-      </span>
+      <Tooltip tip={`The LADO server this page talks to: ${window.location.host}`}>
+        <span className={`link link-${link}`} role="status" tabIndex={0}>
+          <span className="link-word">{link === "open" ? "live" : "connecting…"}</span>
+        </span>
+      </Tooltip>
     );
   }
   return (

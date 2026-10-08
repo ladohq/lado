@@ -42,7 +42,8 @@ def test_the_link_opens_the_page_it_names_and_the_session_shows_there(
 
     view = page.get_by_role("region", name=f"Session {session}")
     expect(view.get_by_text("No active runs")).to_be_visible()
-    expect(view).to_contain_text("running")
+    bar = page.get_by_role("banner")  # the session's head
+    expect(bar.get_by_role("img", name="running")).to_be_visible()
     expect(page.get_by_role("navigation", name="Sessions").get_by_role("link")).to_contain_text(
         [session]
     )
@@ -58,7 +59,7 @@ def test_the_link_opens_the_page_it_names_and_the_session_shows_there(
 
     runtime.stop_session(session)
     page.reload()
-    expect(view).to_contain_text("stopped")
+    expect(bar.get_by_role("img", name="stopped")).to_be_visible()
     shot(page, "stopped")
 
 

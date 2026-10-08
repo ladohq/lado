@@ -29,8 +29,8 @@ def test_a_new_session_and_lado_stop_show_without_a_reload(page: Page, server, r
     first = running_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{first}")
-    view = page.get_by_role("region", name=f"Session {first}")
-    expect(view).to_contain_text("running")
+    bar = page.get_by_role("banner")  # the session's head
+    expect(bar.get_by_role("img", name="running")).to_be_visible()
     page.evaluate("window.notReloaded = true")
     shot(page)
 
@@ -40,7 +40,7 @@ def test_a_new_session_and_lado_stop_show_without_a_reload(page: Page, server, r
     shot(page, "new-session")
 
     assert lado_cli("stop", first).returncode == 0  # another process
-    expect(view).to_contain_text("stopped")
+    expect(bar.get_by_role("img", name="stopped")).to_be_visible()
     # Stopped is folded at first, but the open session is seen in it.
     expect(sessions.get_by_role("button", name="Stopped 1")).to_have_attribute(
         "aria-expanded", "false"

@@ -535,21 +535,22 @@ test("Resume fills the window from the session, sends only what changed and show
   expect((await screen.findByRole("alert")).textContent).toContain("run y needs a rev");
 });
 
-// The session's actions, by status: icons in its head; its list row has only the entry's menu
+// The session's actions, by status: icons in its head, in the top bar; its list row has only
+// the entry's menu
 
-const head = () => document.querySelector(".session-head") as HTMLElement;
+const head = () => document.querySelector(".topbar .session-head") as HTMLElement;
 
 test.each([
   ["running", ["Stop session…"]],
   ["loop_down", ["Stop session…"]],
   ["stopped", ["Resume…", "Forget…"]],
   ["tmux_gone", ["Resume…", "Stop session…"]],
-] as const)("a %s session's head has Copy link, the icons %j and Copy path, each with its tooltip, and no menu", async (status, labels) => {
+] as const)("a %s session's head has Copy path, Copy link and the icons %j, each with its tooltip, and no menu", async (status, labels) => {
   sessions = [session("lado", { status })];
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
   const buttons = within(head()).getAllByRole("button");
-  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Copy link", ...labels, "Copy path"]);
+  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Copy path", "Copy link", ...labels]);
   for (const button of buttons) {
     expect(button.querySelector("svg")).toBeTruthy();
     expect(button.getAttribute("title")).toBeNull(); // the UI's tooltip, not the browser's

@@ -2,6 +2,7 @@
 // session on the right with its tabs. The list's width is dragged on its edge and remembered;
 // the list collapses to a strip of the sessions' icons (remembered too).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   NavLink,
@@ -56,7 +57,7 @@ import {
   type SessionGroup,
 } from "./prefs";
 import { shortRemote } from "./remote";
-import { useTitle } from "./Shell";
+import { useTitle, useTopBar } from "./Shell";
 import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
 import { Team } from "./Team";
 import { Tooltip } from "./Tooltip";
@@ -363,6 +364,17 @@ function Status({ status }: { status: SessionStatus }) {
   return <span className={`status status-${status}`}>{STATUS[status]}</span>;
 }
 
+// The session's status in its head, a dot before its name: running in the done tone with
+// no word, stopped in the muted one (its run time says "stopped"), and a session that needs
+// an action (tmux gone, loop down) in the danger tone, its status in words after the name.
+function StatusDot({ status }: { status: SessionStatus }) {
+  return (
+    <Tooltip tip={STATUS[status]}>
+      <span className={`session-dot session-dot-${status}`} role="img" aria-label={STATUS[status]} tabIndex={0} />
+    </Tooltip>
+  );
+}
+
 export function NoSession() {
   useTitle("Sessions");
   const loaded = useOutletContext<Loaded>();
@@ -400,12 +412,15 @@ export function Session() {
 }
 
 function SessionTab({ name, tab, item, loaded }: { name: string; tab: Tab; item?: string; loaded: Loaded }) {
-  useTitle("Sessions");
   const started = (useLocation().state as StartedState | null)?.started;
-  if (loaded === null || "error" in loaded) return null; // the list, or its strip, says what is wrong
   // Just started here: the change feed may bring it a moment after the start's answer.
   const session =
-    loaded.sessions.find((one) => one.name === name) ?? (started?.session.name === name ? started.session : undefined);
+    loaded === null || "error" in loaded
+      ? undefined
+      : (loaded.sessions.find((one) => one.name === name) ?? (started?.session.name === name ? started.session : undefined));
+  // The session names the page; while it loads or when there is none, the page is Sessions.
+  useTitle(session ? name : "Sessions");
+  if (loaded === null || "error" in loaded) return null; // the list, or its strip, says what is wrong
   if (session === undefined) {
     return (
       <div className="empty">
@@ -555,33 +570,31 @@ function Find({ label }: { label: string }) {
   );
 }
 
-// The session's head (docs/design/ui.md, Structure and Session head): its name, status and
-// how long it ran, Copy link and its actions; below, small, its folder (Copy path on the
-// folder's icon), its git remote and branch (Copy URL on the git icon), its kits and its
-// agents' CLI; the versions, and the permission mode, in their tooltips. Until its about
-// comes, or when it fails, the line has the session's settings alone, the mode not shown.
+// The session's head, one line of the top bar (docs/design/ui.md, Structure and Session
+// head): its status as a dot, its name and how long it ran; then, small, its folder (Copy
+// path on the folder's icon), its git remote and branch (Copy URL on the git icon), its kits
+// and its agents' CLI, the versions, and the permission mode, in their tooltips; then Copy
+// link and its actions. Until its about comes, or when it fails, the facts are the
+// session's settings alone, the mode not shown. Drawn in the top bar's slot (useTopBar).
 function SessionHead({ session }: { session: SessionInfo }) {
-  const { name, repo, kits, provider, permission_mode: mode } = session;
+  const slot = useTopBar();
+  if (slot === null) return null;
+  return createPortal(<HeadLine session={session} />, slot);
+}
+
+function HeadLine({ session }: { session: SessionInfo }) {
+  const { name, repo, kits, provider, permission_mode: mode, status } = session;
   const about = useAbout(session);
   const repository = about?.repos[0];
   const cli = about?.provider;
+  const trouble = status === "tmux_gone" || status === "loop_down";
   return (
-    <header className="session-head">
-      <div className="session-title">
-        <h2 title={name}>{name}</h2>
-        <Status status={session.status} />
-        <Ran session={session} />
-        <div className="session-head-actions">
-          <CopyButton
-            label="Copy link"
-            copied="Link copied"
-            text={sessionLink(name)}
-            field={{ title: `Link to ${name}`, label: "Link" }}
-            icon={<LinkIcon />}
-          />
-          <SessionActions session={session} />
-        </div>
-      </div>
+    <div className="session-head">
+      <StatusDot status={status} />
+      <h1 title={name}>{name}</h1>
+      {trouble && <span className="session-state danger-text">{STATUS[status]}</span>}
+      <Ran session={session} />
+      <span className="topbar-sep meta-sep" aria-hidden="true" />
       <div className="session-meta">
         <span className="session-folder">
           <CopyButton
@@ -639,7 +652,18 @@ function SessionHead({ session }: { session: SessionInfo }) {
           </span>
         </span>
       </div>
-    </header>
+      <div className="session-head-actions">
+        <CopyButton
+          label="Copy link"
+          copied="Link copied"
+          text={sessionLink(name)}
+          field={{ title: `Link to ${name}`, label: "Link" }}
+          icon={<LinkIcon />}
+        />
+        <SessionActions session={session} />
+      </div>
+      <span className="topbar-sep" aria-hidden="true" />
+    </div>
   );
 }
 

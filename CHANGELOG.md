@@ -3,6 +3,10 @@
 ## 0.30.1 (unreleased)
 
 - UI: the session's head shows its permission mode in the CLI's tooltip, not in the line.
+- UI: a session's head is now the top bar, one line (the facts wrap to a second one in a
+  narrow window), so the tabs and the chat start about 90 px higher; its status is a dot,
+  in words only for a session that needs an action. The server's address moved into the
+  tooltip of the feed's link on every page.
 
 ## 0.30.0 (2026-10-08)
 

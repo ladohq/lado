@@ -178,11 +178,9 @@ test.each(["/nowhere/at/all", "/gates/12"])("%s is Not found with a link to Home
   expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
 });
 
-test("the top bar shows the server's address; Launch is on the rail and Escape closes its window", async () => {
+test("Launch is on the rail and Escape closes its window", async () => {
   stubDialogs();
   open("/");
-  const bar = screen.getByRole("banner");
-  expect(within(bar).getByText(window.location.host)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Launch" }));
   const dialog = await screen.findByRole("dialog", { name: "New session" });
   fireEvent.keyDown(dialog, { key: "Escape" });
@@ -337,7 +335,7 @@ test("the search filters the list by name", async () => {
 test("a session opens on its Activity tab with its status, and no placeholder for its gates", async () => {
   open("/sessions/lado");
   const view = await screen.findByRole("region", { name: "Session lado" });
-  expect(within(view).getByText("running")).toBeTruthy();
+  expect(within(screen.getByRole("banner")).getByRole("img", { name: "running" })).toBeTruthy(); // the head is the top bar
   expect(within(view).queryByRole("note")).toBeNull();
   expect(view.textContent).not.toMatch(/will show here/);
   const tabs = within(view).getByRole("navigation", { name: "Session sections" });
@@ -441,10 +439,10 @@ test("every reset loads the sessions again", async () => {
 
 test("changes update the list and the session's header as they come", async () => {
   open("/sessions/lado");
-  const view = await screen.findByRole("region", { name: "Session lado" });
+  await screen.findByRole("region", { name: "Session lado" });
   const list = screen.getByRole("navigation", { name: "Sessions" });
   stream().send("change", change("lado", { ...SESSIONS[0], status: "tmux_gone" }));
-  expect(within(view).getByText("tmux session is gone")).toBeTruthy();
+  expect(within(screen.getByRole("banner")).getByText("tmux session is gone")).toBeTruthy();
   expect(within(list).getByRole("link", { name: /lado/ }).textContent).toContain("tmux session is gone");
   stream().send(
     "change",
@@ -468,8 +466,8 @@ test("a change that comes while the sessions load is not lost to an older load",
   stream().start();
   stream().send("change", change("lado", { ...SESSIONS[0], status: "tmux_gone" }), "11");
   await act(async () => answer(new Response(JSON.stringify(SESSIONS))));
-  const view = await screen.findByRole("region", { name: "Session lado" });
-  expect(within(view).getByText("tmux session is gone")).toBeTruthy();
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(within(screen.getByRole("banner")).getByText("tmux session is gone")).toBeTruthy();
 });
 
 test("a change of another kind leaves the sessions alone", async () => {

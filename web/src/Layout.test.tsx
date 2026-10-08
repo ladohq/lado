@@ -1,6 +1,7 @@
 // The session page's layout (docs/design/ui.md, Structure): the team chips, the session
 // list's groups and "+", the rail with Launch and the top bar.
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -568,12 +569,90 @@ test("while the sessions load the strip's column is busy; a failed load is an al
 
 // The top bar (Launch moved to the rail: Launch and session control, 2026-10-04)
 
-test("the top bar has the title, the server and the link", async () => {
+test("the top bar has the title and the link; the server's address is in the link's tooltip", async () => {
   open("/sessions");
   const bar = screen.getByRole("banner");
-  expect(within(bar).getByText(window.location.host)).toBeTruthy();
-  expect((await within(bar).findByRole("status")).textContent).toBe("live");
+  expect(bar.querySelector("h1")!.textContent).toBe("Sessions");
+  expect(within(bar).queryByText(window.location.host)).toBeNull();
+  const link = await within(bar).findByRole("status");
+  expect(link.textContent).toBe("live");
+  expect(link.getAttribute("title")).toBeNull(); // the UI's tooltip, not the browser's
+  fireEvent.focus(link);
+  expect(screen.getByRole("tooltip").textContent).toBe(`The LADO server this page talks to: ${window.location.host}`);
+  fireEvent.blur(link);
   expect(within(bar).queryByRole("button")).toBeNull();
   stream().fail(false);
   expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
+});
+
+// The session's head in the top bar (docs/design/ui.md, Session head; feature/session-head-topbar)
+
+const bar = () => screen.getByRole("banner");
+const barHeadings = () => [...bar().querySelectorAll("h1")].map((one) => one.textContent);
+
+test("a session's head is the top bar: its name, the running dot with no word, the facts and the actions", async () => {
+  open();
+  const region = await screen.findByRole("region", { name: "Session lado" });
+  expect(barHeadings()).toEqual(["lado"]);
+  const dot = within(bar()).getByRole("img", { name: "running" });
+  expect(bar().textContent).not.toMatch(/running/);
+  fireEvent.focus(dot);
+  expect(screen.getByRole("tooltip").textContent).toBe("running");
+  fireEvent.blur(dot);
+  expect(bar().querySelector(".session-meta .session-path")!.textContent).toBe("/src/lado");
+  expect(within(bar()).getByRole("button", { name: "Copy link" })).toBeTruthy();
+  expect(within(bar()).getByRole("button", { name: "Stop session…" })).toBeTruthy();
+  expect(bar().querySelector(".link")!.textContent).toBe("live");
+  expect(region.querySelector(".session-head, .session-meta, h1, h2")).toBeNull();
+  expect(document.title).toBe("lado · LADO");
+});
+
+test.each([
+  ["stopped", "stopped", null, /^stopped .* ago · ran /],
+  ["tmux_gone", "tmux session is gone", "tmux session is gone", /^ran /],
+  ["loop_down", "session loop not running", "session loop not running", /^ran |^\d|^<1/],
+] as const)("a %s session's dot is named %j; the words, when any, in the danger tone before the run time", async (status, name, words, ran) => {
+  const since = status === "loop_down" ? new Date().toISOString() : null;
+  const stopped = status === "stopped" ? new Date(Date.now() - 60 * 60_000).toISOString() : null;
+  sessions = [session("lado", { status, running_since: since, stopped_at: stopped })];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  const dot = within(bar()).getByRole("img", { name });
+  expect(dot.classList).toContain(`session-dot-${status}`);
+  const said = bar().querySelector(".session-state");
+  expect(said?.textContent ?? null).toBe(words);
+  if (said) expect(said.classList).toContain("danger-text");
+  expect(bar().querySelector(".session-ran")!.textContent).toMatch(ran);
+  expect(bar().textContent!.match(/stopped/g)?.length ?? 0).toBe(status === "stopped" ? 1 : 0);
+});
+
+test("the top bar is the page's: a session claims it, not found and loading keep the title, under StrictMode too", async () => {
+  sessions = [session("lado"), session("app")];
+  const view = render(
+    <StrictMode>
+      <MemoryRouter initialEntries={["/sessions/lado"]}>
+        <App />
+      </MemoryRouter>
+    </StrictMode>,
+  );
+  // While the sessions load, the page has no session: the Shell's title.
+  expect(barHeadings()).toEqual(["Sessions"]);
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(barHeadings()).toEqual(["lado"]);
+  fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("link", { name: /^app/ }));
+  await screen.findByRole("region", { name: "Session app" });
+  expect(barHeadings()).toEqual(["app"]);
+  expect(bar().querySelectorAll(".session-head")).toHaveLength(1);
+  view.unmount();
+  render(
+    <StrictMode>
+      <MemoryRouter initialEntries={["/sessions/nowhere"]}>
+        <App />
+      </MemoryRouter>
+    </StrictMode>,
+  );
+  expect(await screen.findByText("Session nowhere not found")).toBeTruthy();
+  expect(barHeadings()).toEqual(["Sessions"]);
+  expect(bar().querySelector(".session-head")).toBeNull();
+  expect(document.title).toBe("Sessions · LADO");
 });

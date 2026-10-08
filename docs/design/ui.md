@@ -369,8 +369,15 @@ Sessions for now. The UI's texts are in English.
   bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
   remembers the choice; a window narrower than 900 px starts collapsed.
-- **Top bar**: the page's title on the left; on the right the server's address and the
-  change feed's link (`live`, or `reconnecting…` with the reason).
+- **Top bar**: the page's title on the left, or on a session's page the session's head
+  (Session head, below); on the right the change feed's link (`live`, or `reconnecting…`
+  with the reason), with the server's address in its tooltip ("The LADO server this page
+  talks to: <host>"). A page draws its head there through `Shell.useTopBar`, a slot of the
+  top bar it fills with a portal; the Shell draws its own title only while no page claims
+  the bar. Sticky at the window's top, z-index 10: over the session's splitter and the
+  expanded terminals, so what drops from it (the copy notes, the Stop popover) shows over
+  them, and under the narrow window's fixed terminals, the artifact panel and the
+  lightbox. Its content sets its height (at least 52 px).
 - **Sessions** (the Layout task, 2026-10-03): three columns under the top bar, each the
   window's height. The **list** on the left: "+" in its head (it opens the New session
   window, as Launch), the
@@ -409,25 +416,32 @@ Sessions for now. The UI's texts are in English.
   status · agents, `Needs you: <the row's line>` in the human's colour, the folder, kits ·
   provider · `mode <permission mode>` when it has one, and for a stopped session `Stopped:
   open it and press Resume`; all from `SessionInfo`, no CLI commands. The **session**
-  in the middle: its head in two lines (task feature/session-head, 2026-10-05), then the
+  in the middle: its head is the top bar's line (task feature/session-head, 2026-10-05; in
+  the top bar since feature/session-head-topbar, 2026-10-08), then the
   tabs **Activity | Agents | Flows |
   Artifacts** (their look: Look, Tabs; its gates come as cards in the feed): Activity is the
   feed (The human in the session, below), Agents the agents and what each does (Agents
   below), Flows the runs (Flows below), Artifacts the documents the agents write
-  (Artifacts below). The head's first line: the name, the status, how long the session ran, then on the
-  right Copy link and its actions (Launch and session control, below). The run time is
+  (Artifacts below). The head, one line of the top bar, left to right: the status as a dot,
+  the name (`h1`, the browser tab's title too), how long the session ran, a thin line, the
+  facts (below); on the right Copy link, its actions (Launch and session control, below),
+  a thin line and the feed's link. The dot: running `--done` with no word (its name and
+  tooltip "running"); stopped `--muted`, the run time saying "stopped"; tmux gone and loop
+  down `--danger`, their status in words in `--danger` after the name. The run time is
   the server's (`SessionInfo.ran_seconds`, `running_since`: `runtime.session_time`, stops
   and the time after its tmux died left out); while it runs the UI adds the time since
   `running_since` and counts on each minute ("2 h 14 min"); a stopped session says
   `stopped 5 h ago · ran 3 h 2 min` (from `stopped_at`), one whose tmux is gone `ran …`.
   One formatter (`ChatText.duration`) says every duration: exact to the next unit here,
-  roughly (its largest unit) for `since` in Agents and Flows. The second line, small and
+  roughly (its largest unit) for `since` in Agents and Flows. The facts, small and
   quiet: Copy path (a folder icon, no other copy button), the folder in mono on one line,
   cut with "…" at its start so its end stays in view, whole in its `title`; its git remote
   and branch; the kits; the provider; versions and the permission mode in tooltips
-  (Session head, below). In a narrow column the
-  icons of the first line and the items of the second go to lines of their own, with no
-  sideways scrolling. The Activity chat (its feed and composer) is at most 860 px wide and
+  (Session head, below). Only the folder gives up room on the line; the name keeps a third
+  of the bar. In a narrow window (up to 1100 px) the first line keeps the dot, the name,
+  the run time, the icons and the link's dot (its word for the ear only), and the facts go
+  to a second line of the top bar, with no sideways scrolling; only the name and the
+  folder are cut. The Activity chat (its feed and composer) is at most 860 px wide and
   stands in the middle of a wider column (the terminals folded), as much room on each
   side; an agent's composer (Agents) stays at its page's left edge. The **terminal panel** on the
   right, on every tab (Terminal above), is always there, so the page never jumps (the UI
@@ -942,8 +956,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   feature/activity-team): running and `loop_down`: Stop session…; stopped:
   Resume… and Forget… (in the colour of a dangerous action); `tmux_gone`: Resume… and Stop
   session… (which marks it stopped). The head has no ⋯. Before them **Copy link** (a link
-  icon) copies the session page's address as the list row's Copy link does, and on the
-  head's second line **Copy path** its folder (Structure, above); both say what was copied
+  icon) copies the session page's address as the list row's Copy link does, and among the
+  head's facts **Copy path** its folder (Structure, above); both say what was copied
   ("Link copied", "Path copied") under the button for 2 s, or show the text selected when
   the copy fails. Copying is one module, `Copy.tsx`, for the head and the row's menu.
 - **The list row's menu** (`SessionRowMenu.tsx`, on the shared `Menu.tsx`): ⋯ holds
@@ -974,7 +988,14 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 
 ### Session head (decided 2026-10-07, feature/session-head)
 
-- The head's second line, left to right: where (the folder, then its git: the origin
+- The head is the top bar's line (decided with the human 2026-10-08, run
+  feature/session-head-topbar: its mockup `feature/session-head-topbar/mockup-topbar.html`,
+  variant A with "A, status as an icon"; a head under the top bar, or two lines in it, or
+  the facts behind an ⓘ were turned down): the tabs and the chat start about 90 px
+  higher. The Shell knows nothing of sessions: `SessionHead` draws itself into the top
+  bar's slot (`useTopBar`); while the sessions load or a session is not found nothing
+  claims the bar and it keeps the title "Sessions".
+- The head's facts, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
   the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,
   fix/head-mode-tooltip). The git icon is Copy URL (the whole remote, "URL
@@ -1485,8 +1506,10 @@ The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8E
 Both themes add a raised ground for hover and the current item (#EEF0F4 / #20242C), and
 (Flows, 2026-10-05) green for work that went well, a run that ended and a step of its
 history (#1E7A46 on #E7F4EC / #5CC98A on #18301F); since task feature/session-list-groups
-green (`--done`) also means what works now, the session list's Running group, and since
-task feature/flows-list-states (2026-10-07) the Flows overview's Active group. (Kits, 2026-10-05) A quiet ground for the action
+green (`--done`) also means what works now, the session list's Running group, since
+task feature/flows-list-states (2026-10-07) the Flows overview's Active group, and since
+feature/session-head-topbar (2026-10-08) the running dot of a session's head, where
+`--danger` marks a session that needs an action (tmux gone, loop down). (Kits, 2026-10-05) A quiet ground for the action
 colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official `--done`, another
 marketplace `--action`, always beside the source's text. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test

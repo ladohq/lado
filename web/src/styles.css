@@ -232,14 +232,19 @@ button.rail-link {
   min-width: 0;
 }
 
+/* Sticky, so a stacking context of its own: what drops down from it (the copy notes, the
+   Stop popover; the tooltips are in the body) paints at its level. 10 puts it over the
+   session's splitter (2) and the expanded terminals (3), and under the narrow window's
+   fixed terminals (20), the artifact panel and its scrim (30, 31) and the lightbox (40).
+   Its content sets its height: a session's head wraps to a second line when narrow. */
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 10;
   display: flex;
   align-items: center;
-  gap: 16px;
-  height: 52px;
+  gap: 14px;
+  min-height: 52px;
   padding: 0 24px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
@@ -249,10 +254,28 @@ button.rail-link {
   margin: 0;
   font-size: 17px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
-/* The change feed's link, after the server's address: live, or reconnecting with the reason
-   cut to one line. */
+/* The Shell's title keeps the link at the right end. */
+.topbar > h1 {
+  margin-right: auto;
+}
+
+/* The slot a page draws its head in (Shell.tsx, useTopBar): its items are the top bar's. */
+.topbar-slot {
+  display: contents;
+}
+
+.topbar-sep {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+}
+
+/* The change feed's link at the top bar's right end: live, or reconnecting with the reason
+   cut to one line; the server's address in its tooltip. */
 .link {
   min-width: 0;
   overflow: hidden;
@@ -273,15 +296,15 @@ button.rail-link {
   vertical-align: 1px;
 }
 
+/* Live and connecting are short and stay whole; only reconnecting's reason is cut. */
+.link-open,
+.link-connecting {
+  flex: none;
+}
+
 .link-open::before {
   border-color: var(--action);
   background: var(--action);
-}
-
-.server {
-  margin-left: auto;
-  color: var(--muted);
-  font: 13px var(--mono);
 }
 
 .primary {
@@ -735,22 +758,42 @@ h3 {
   font-size: 13px;
 }
 
-/* Two lines. The name, status and run time, then the icons; in a narrow column the icons go
-   to a line of their own rather than cut the name. */
+/* A session's head, one line of the top bar (its items are the bar's): the status dot, the
+   name, the run time, the facts, then the icons at the right end. A narrow window puts the
+   facts on a second line (below). */
 .session-head {
-  margin-bottom: 10px;
+  display: contents;
 }
 
-.session-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
+.session-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--done);
 }
 
-.session-head .status,
+.session-dot-stopped {
+  background: var(--muted);
+}
+
+.session-dot-tmux_gone,
+.session-dot-loop_down {
+  background: var(--danger);
+}
+
+.session-state,
 .session-ran {
   flex: none;
+  white-space: nowrap;
+}
+
+.session-state {
+  font-size: 13px;
+}
+
+.danger-text {
+  color: var(--danger);
 }
 
 .session-ran {
@@ -776,14 +819,15 @@ h3 {
   height: 18px;
 }
 
-/* The second line, small and quiet: the folder, the kits, the agents' CLI; each goes to a
-   line of its own when the column is narrow. */
+/* The facts, small and quiet: the folder, git, the kits, the agents' CLI. On the line they
+   take the room left, and only the folder gives some up; on a line of their own (narrow)
+   each goes to a line of its own when they do not fit. */
 .session-meta {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 1000 auto; /* gives up its room long before the name does */
   align-items: center;
   gap: 4px 16px;
-  margin-top: 4px;
+  min-width: 0;
   color: var(--muted);
   font-size: 12.5px;
 }
@@ -795,6 +839,11 @@ h3 {
   gap: 5px;
   min-width: 0;
   max-width: 100%;
+}
+
+.session-fact {
+  flex: none;
+  white-space: nowrap;
 }
 
 .session-fact .icon {
@@ -858,14 +907,56 @@ h3 {
   left: auto;
 }
 
-/* One line; a name longer than the row ends in "…", whole in its title. */
-.session-head h2 {
-  min-width: 0;
-  max-width: 100%;
-  margin: 0;
+/* One line; a name longer than its room ends in "…", whole in its title. It does not shrink
+   with the facts (a shrink of a fraction of a pixel would already cut it), it has a room of
+   its own: a third of the bar, and when narrow the first line but what stays beside it. */
+.session-head h1 {
+  flex: none;
+  max-width: 33%;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* A window too narrow for the head on one line: the facts go to a second line of the top
+   bar, the dot, the name, the run time, the icons and the link's dot stay on the first. */
+@media (max-width: 1100px) {
+  .topbar:has(.session-head) {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding-block: 8px;
+  }
+
+  .session-meta {
+    flex-wrap: wrap;
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  /* The dot, the run time, the icons and the link's dot, with their gaps. */
+  .session-head h1 {
+    max-width: calc(100% - 190px);
+  }
+
+  .session-fact {
+    white-space: normal;
+  }
+
+  /* Cut to half the line, so the other facts stay beside it. */
+  .session-meta .session-folder {
+    max-width: 50%;
+  }
+
+  .session-head > .meta-sep {
+    display: none;
+  }
+
+  .topbar:has(.session-head) .link-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
 }
 
 /* Tabs, one look in the whole UI (docs/design/ui.md, Look): folder tabs on a raised band.
@@ -2943,15 +3034,7 @@ h3 {
   }
 
   .topbar {
-    padding: 0 16px;
-  }
-
-  .server {
-    display: none;
-  }
-
-  .link {
-    margin-left: auto;
+    padding-inline: 16px;
   }
 }
 
@@ -3015,6 +3098,8 @@ h3 {
     flex-direction: column;
   }
 
+  /* The top bar's 52 px: a session's head of two lines makes it taller, so this is a bit
+     more than the room left; accepted, as the window scrolls here anyway. */
   .session-main {
     min-width: 0 !important;
     min-height: calc(100vh - 52px);

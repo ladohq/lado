@@ -144,7 +144,7 @@ def test_the_session_list_row_has_only_the_entrys_menu(page: Page, server, repo,
 def test_stop_from_the_session_head(page: Page, server, repo, shot):
     session = running_session(repo)
     log_in(page, server, f"/sessions/{session}")
-    head = page.get_by_role("region", name=f"Session {session}").locator(".session-head")
+    head = page.get_by_role("banner").locator(".session-head")
     head.get_by_role("button", name="Stop session…").hover()
     expect(page.get_by_role("tooltip")).to_have_text("Stop session…")
     shot(page, "running")
@@ -183,7 +183,7 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     dialog.get_by_role("button", name="Resume session").click()
     expect(dialog).to_have_count(0)
     idle(session)
-    head = page.get_by_role("region", name=f"Session {session}").locator(".session-head")
+    head = page.get_by_role("banner").locator(".session-head")
     expect(head.get_by_role("button", name="Resume…")).to_have_count(0)
     assert state.get_session(session).stopped_at is None
     shot(page)
@@ -193,8 +193,8 @@ def test_forget_a_stopped_session(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")
     # The name stays on one line beside the status and the icons, its whole text in a tooltip.
-    head = page.get_by_role("region", name=f"Session {session}").locator(".session-head")
-    name = head.locator("h2")
+    head = page.get_by_role("banner").locator(".session-head")
+    name = head.locator("h1")
     expect(name).to_have_attribute("title", session)
     assert name.bounding_box()["height"] < 36
     expect(head.get_by_role("button", name="Session actions")).to_have_count(0)

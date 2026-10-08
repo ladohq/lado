@@ -818,7 +818,8 @@ Built in the chat task (2026-10-03):
     (`POST …/messages {to, text, artifacts}`). A file that fails stays as a red chip
     (`--danger`) with its reason, the text stays and nothing is sent: Send again uploads
     only what was not uploaded, also after the recipient changed (the files are the
-    session's, not the recipient's).
+    session's, not the recipient's). A file dropped while Send is under way is not part of
+    that message: it stays as a chip for the next one (only the files sent go).
 - **The human's images in the chat**: under the human's own message, each image it carries
   shows as a preview (at most 240 × 180 px, `ImagePreviews` in `Attachments.tsx`) that
   opens the panel as its chip does; its chips follow as on any message. An agent's

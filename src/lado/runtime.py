@@ -909,7 +909,7 @@ def write_as_human(
     """Send the human's text (the UI's composer) to agent `to` as a message from `human`,
     through the same queue, confirmation and retries as an agent's. Its first line, without
     tabs and control characters, is the summary, cut to the limit; the whole text is the
-    body when it has more lines or the line was cut. `artifacts` are the full names of the
+    body when it has more lines or the line was cut. `attached` are the full names of the
     files the human uploaded (lado.artifacts.upload), attached as send_message attaches;
     with them the text may be empty, and the summary names the files.
 

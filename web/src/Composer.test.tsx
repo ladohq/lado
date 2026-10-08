@@ -285,3 +285,23 @@ test("while files upload the field and chips are locked and a chip shows its pro
   finish();
   await waitFor(() => expect(calls).toHaveLength(2));
 });
+
+test("a file dropped while Send uploads stays for the next message; only the sent ones go", async () => {
+  let finish = () => {};
+  const calls = serve({}, new Promise<void>((done) => (finish = done)));
+  open();
+  await ready();
+  await pick(file("a.txt"), file("shot.png", 10, "image/png"));
+  fireEvent.click(send());
+  await screen.findByRole("progressbar", { name: "Uploading a.txt" });
+  fireEvent.drop(screen.getByText("the feed"), { dataTransfer: { types: ["Files"], files: [file("late.png", 10, "image/png")] } });
+  expect(chips()).toEqual(["a.txt", "shot.png", "late.png"]);
+  finish();
+  await waitFor(() => expect(chips()).toEqual(["late.png"]));
+  expect(calls.at(-1)).toEqual({
+    path: "/api/sessions/lado/messages",
+    body: { text: "", artifacts: ["a-1a2b3c4d.txt", "shot-1a2b3c4d.png"] },
+  });
+  expect(revoked).toEqual(["blob:thumb-1"]); // the sent image's, not the late one's
+  expect(screen.getByRole("button", { name: "Remove late.png" })).toBeTruthy();
+});

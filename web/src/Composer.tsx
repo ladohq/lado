@@ -211,8 +211,10 @@ export function Composer({
       }
       await writeMessage(session, text, to, names);
       setText("");
+      // Only the files sent go: one dropped meanwhile stays for the next message.
+      const sent = new Set(files.map((one) => one.key));
       files.forEach((one) => drop(one.thumb));
-      setFiles([]);
+      setFiles((now) => now.filter((one) => !sent.has(one.key)));
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : String(error));
     } finally {

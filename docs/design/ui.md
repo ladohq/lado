@@ -786,8 +786,43 @@ Built in the chat task (2026-10-03):
   resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
   scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
   an `--action` frame and an `--action-ground` ring. Under it "to <agent>" and "Enter to
-  send · Shift+Enter for a new line". Enter sends, Shift+Enter is a new line; a refusal
-  shows at the field and the text stays; a stopped session's composer is off and says so.
+  send · Shift+Enter for a new line" (with no files, "· paste or drop files to attach").
+  Enter sends, Shift+Enter is a new line; a refusal shows at the field and the text stays;
+  a stopped session's composer is off and says so, its paperclip too.
+- **Files in the composer** (`Composer.tsx`; run feature/chat-attachments, mockup
+  `mockup-composer.html` of the run): the human attaches files to a message to any agent.
+  - Three ways in: the paperclip left of the field (the file picker, several files);
+    paste while the focus is in the composer (files in the clipboard; an image the browser
+    names `image.png` becomes `screenshot-<HHMMSS>.png`; a text longer than `MAX_MESSAGE`
+    becomes a chip `pasted-<HHMMSS>.txt` instead of text, a shorter one stays text); drop:
+    files dragged over the chat column or an agent's page make the composer's frame the
+    drop zone ("Drop to attach · up to <n> files, <size> each", dashed `--action`), and a
+    drop there lands in that composer.
+  - Chips above the field, 44 px: an image's thumbnail (an object URL, revoked when the
+    chip is removed, after Send and when the composer unmounts), else the type's icon;
+    the name and size; × removes it (a button, reachable by keyboard). A file an agent
+    cannot read (by the server's types; an image over `IMAGE_LIMIT` too) has a small
+    crossed-out eye on its tile, a button whose hint (the UI's Tooltip: the light card,
+    `--panel` with a `--line` frame and a soft shadow) shows on hover and on keyboard
+    focus: "The agent sees only this file's name and size. Agents read text and PNG, JPEG,
+    GIF and WebP images." No orange: orange is only what waits for the human.
+  - Under the composer "to <agent> · <n> files, <size>" while there are files.
+  - Limits from the server (`GET /api/limits`, read when the composer mounts; `web/src`
+    keeps no copy of the extension table, the readable types or the limits): more than
+    `max_files` files or one over `max_size` is refused at the field before any upload,
+    naming each file refused; the rest stay. A media type is the server's, by the
+    extension, never the browser's.
+  - Send (on with text or files) locks the field and the chips, uploads each file not
+    uploaded yet (`POST …/artifacts?file_name=`, the bytes as the body; a moving bar on its
+    chip, as fetch tells no progress), then sends the message with the uploaded full names
+    (`POST …/messages {to, text, artifacts}`). A file that fails stays as a red chip
+    (`--danger`) with its reason, the text stays and nothing is sent: Send again uploads
+    only what was not uploaded, also after the recipient changed (the files are the
+    session's, not the recipient's).
+- **The human's images in the chat**: under the human's own message, each image it carries
+  shows as a preview (at most 240 × 180 px, `ImagePreviews` in `Attachments.tsx`) that
+  opens the panel as its chip does; its chips follow as on any message. An agent's
+  message shows chips only.
 - **Narrow** (a column of 520 px or less): 24 px avatars, the continued rows' times shown,
   no sideways scroll.
 
@@ -1302,8 +1337,9 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
 - **A gate's note** (`GateCard.tsx`): its chips under the note before the gate, then the
   artifacts the gate reads; an artifact the note carries is left out of those
   (`runs.gate_reads`), so each shows once.
-- Not in it: syntax highlighting, a record's history and a diff, uploads by the human,
-  attachments in the composer, deleting an artifact, server-side filters and pages.
+- Not in it: syntax highlighting, a record's history and a diff, uploads in this tab (the
+  human attaches files in the composer: Files in the composer), deleting an artifact,
+  server-side filters and pages.
 
 ### Home
 
@@ -1456,6 +1492,15 @@ open latest" is joined to its right on `--raised` with a `--action` dot (below 6
 it). The panel is `--panel` with a shadow (`--shadow`) over a scrim (`--scrim`); an image
 at full size over `--lightbox`; an HTML frame's ground is `--frame-ground` (white, as a
 page without a background). Orange is never an artifact's.
+
+**Files in the composer** (feature/chat-attachments, 2026-10-08): a file's chip is 44 px
+high, a `--line` frame on `--panel`, a 36 px thumbnail or type tile; a failed upload's chip
+has a `--danger` frame on a light `--danger` wash and its reason in `--danger`. The
+crossed-out eye is a 17 px `--panel` circle with a `--line` frame on the tile's lower right
+corner, the icon in `--muted`; its hint is the UI's tooltip, the light card (`--panel`,
+`--line` frame, `--shadow`). The drop zone is the composer's frame dashed in `--action` on
+`--action-ground`. A preview of the human's image is at most 240 × 180, a `--line` frame
+on `--raised`. No orange.
 
 **Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
 "h23"`), whatever the browser's locale.

@@ -332,16 +332,25 @@ fixes and docs only: no new feature, no API or schema change.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
     `list_agents`, `flow_advance`, `flow_status`, `write_artifact`, `read_artifact`,
     `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to
-    attach; the supervisor also gets `spawn_worker`, `finish_worker`, `flow_start` and
-    `flow_cancel`). No tool answers a gate or a question.
+    attach; `read_artifact` returns an image as MCP image content, the SDK's `Image`, after
+    its facts, when `artifacts.read` gives it as `Shown`; the supervisor also gets
+    `spawn_worker`, `finish_worker`, `flow_start` and `flow_cancel`). No tool answers a
+    gate or a question.
   - `artifacts.py`: artifacts, named documents of a session (contract:
     [docs/design/artifacts.md](docs/design/artifacts.md)); the only module the rest of LADO
     calls for them (MCP tools, CLI, runs, runtime, doctor, the UI server): names (`NAME`,
-    full names parsed by the last `/`), scopes and the rights to write (`_writable`),
-    limits, media types by one extension table (`EXTENSIONS`, `is_text`;
-    `PREFERRED_EXTENSION`, one per type, for a download's `file_name`), reading (`read`,
-    `listed`, `find`, `of_session`, and by id only of the session's: `of_artifact`,
-    `of_record`), attachments (`resolve_attachments`; `attached`, the one builder of an
+    full names parsed by the last `/`; `/<name>` the session's, for a run's worker too),
+    scopes and the rights to write (`_writable`), the name an agent reads an artifact by
+    (`as_read`, the one function for what agents are shown), limits (`MAX_SIZE`,
+    `MAX_HUMAN_FILES`, and the images an agent is shown: `AGENT_IMAGES`, `IMAGE_LIMIT`,
+    `IMAGE_MAX_SIDE`, each provider's number in the comment beside them), media types by
+    one extension table (`EXTENSIONS`, `is_text`; `PREFERRED_EXTENSION`, one per type,
+    for a download's `file_name`), the human's files (`upload`, the only writer for
+    `human`: always the session's scope, named by `upload_name`, the same file again
+    writes nothing), reading (`read`, an image within the limits as `Shown`, its size
+    from `images.py`, the header read by the standard library; `listed`, `find`,
+    `of_session`, and by id only of the session's: `of_artifact`, `of_record`),
+    attachments (`resolve_attachments`, with no agent for the human; `attached`, the one builder of an
     `Attachment`, its artifact and record, with `changed` only when asked,
     `with_changed`; `read_attachments` for read_messages; `attached_line`) and the
     `Store` protocol (with `artifact(id)`), whose backend `store()` chooses. `artifacts_local.py`: `LocalStore`,
@@ -453,7 +462,10 @@ fixes and docs only: no new feature, no API or schema change.
     (`/api/sessions/{name}/events`), gates (with the human's answer), runs and notes
     endpoints are in `app.py`, and the artifacts' (docs/design/artifacts.md, The human's
     side): `GET …/artifacts`, `…/artifacts/{id}`, `…/records/{record}` and
-    `…/records/{record}/content[?download=1]`, a session's only (404 else), through
+    `…/records/{record}/content[?download=1]`, a session's only (404 else), the human's
+    upload `POST …/artifacts?file_name=` (the raw bytes, under `Guard.changes`; it reads no
+    more than `artifacts.MAX_SIZE` and a chunk, else 413) and `GET /api/limits` (`Limits`:
+    the extension table, the types agents read and the limits the composer checks), through
     `artifacts.py` alone, whose content's headers are one function, `_content_headers`
     (`Content-Security-Policy: sandbox`, `allow-scripts` only for `text/html`, nosniff,
     inline only for `INLINE`, the file's name; `immutable` only on a 200, a missing
@@ -668,9 +680,13 @@ fixes and docs only: no new feature, no API or schema change.
   answer by default); such a message is `delivered` at once into no window, and the UI's
   Activity chat shows it. The human writes from the UI's composer (`runtime.write_as_human`,
   only through the server's API; to the supervisor by default) through the same queue,
-  confirmation and retries, and the agent gets `[from human] ...`; when the human writes to
-  another agent, the supervisor gets a one-line copy from `lado`, `human wrote to <agent>:
-  <summary> (#<id>)`, queued in the same transaction (answers and dismissals get none), and
+  confirmation and retries, and the agent gets `[from human] ...`. A message may carry the
+  files the human uploaded (`artifacts.upload`, the session's scope; at most
+  `MAX_HUMAN_FILES`, attached as `send_message` attaches; with files the text may be empty,
+  the summary then `<n> file(s): <names>`); a run's worker reads such a file as `/<name>`.
+  When the human writes to another agent, the supervisor gets a one-line copy from `lado`,
+  `human wrote to <agent>: <summary> (#<id>[, <k> files])`, without the attachments, queued
+  in the same transaction (answers and dismissals get none), and
   only while the supervisor runs: a stopped one would never get it, so there is none. An answer
   (`Answer to #<id>: ...`) or dismissal (`Dismissed #<id>`) comes to the agent the same way.
   No agent may be named `human` or `lado` (`state.RESERVED`). Messages to `human` are never

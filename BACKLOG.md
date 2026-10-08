@@ -1173,15 +1173,6 @@ sleeps; the tmux calls are counted in `tmux_server["calls"]`.
 Wanted: the docstring says what each collects.
 Found: 2026-10-07, review of fix/integration-fix2.
 
-## The human cannot give an agent a file
-
-Size: M. Why here: on a remote LADO the human's own file (a screenshot, a spec) reaches an agent only as pasted text; left out of artifacts on purpose (docs/design/artifacts.md, Left out).
-Artifacts go from agents to the human: agents write them, the UI shows them; the UI has no
-way to add one.
-Wanted: the human uploads a file in the UI as an artifact of the session or a run, under a
-name agents then read with `read_artifact`, with the same limits as an agent's write.
-Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
-
 ## Artifact cleanup can remove the content of a write in progress
 
 Size: S. Why here: a narrow race (a `lado forget` of one session while another writes the
@@ -1236,6 +1227,47 @@ is 886.64 kB on main (gzip 251.83 kB) and 924.84 kB with remark-gfm (gzip 262.94
 Wanted: split the bundle with dynamic `import()` (e.g. the Markdown renderer and the
 terminal in chunks of their own), or raise `build.chunkSizeWarningLimit` on purpose.
 Found: 2026-10-08, verify of feature/markdown-render.
+
+## Images over the limits are named, not resized; more than 20 large images can break an agent
+
+Size: M. Why here: a retina screenshot is often over 2000 px a side, and the API's tighter rule turns a working agent into one whose every turn fails (architecture review of feature/chat-attachments, Minor 6).
+`read_artifact` shows an image only up to `artifacts.IMAGE_LIMIT` (3.75 MB) and
+`IMAGE_MAX_SIDE` (8000 px); a larger one gives its facts and "not shown". Claude's API also
+refuses any image over 2000 px a side once a request holds more than 20 images, and an
+agent's whole conversation is sent with each request: after about 20 large screenshots
+read, every later turn of that agent may fail.
+Wanted: LADO scales an image down (before the upload in the browser, or in
+`read_artifact`) to fit the limits, and past 20 images in an agent's conversation to
+2000 px a side; or it says so before the agent reads one more.
+Found: 2026-10-08, design and architecture review of feature/chat-attachments.
+
+## Files only in the composer: not in gate answers, question answers or the New session window
+
+Size: M. Why here: the upload has no recipient on purpose, so these reuse it (feature/chat-attachments, Out of scope).
+The human attaches files only to a message from the composer. Answering a gate or an
+agent's question, or starting a session with a task, takes text only.
+Wanted: the same chips and upload in a gate's comment, a question's free answer and the New
+session window's task; the files attached to the answer's note or message.
+Found: 2026-10-08, design of feature/chat-attachments.
+
+## An upload whose message failed stays in the session
+
+Size: S. Why here: Send uploads first, then sends; a message refused after the uploads (the agent stopped meanwhile) leaves artifacts no message refers to (feature/chat-attachments, Out of scope).
+They show in the Artifacts tab, attached by nobody, and live until `lado forget`; the next
+Send of the same file returns them, so nothing is stored twice.
+Wanted: with deleting artifacts (none yet), a way to remove the human's uploads that no
+message or note refers to.
+Found: 2026-10-08, design of feature/chat-attachments.
+
+## A run's worker cannot list the session's artifacts
+
+Size: S. Why here: it reads them as `/<name>`, but only when it is told the name (feature/chat-attachments).
+`list_artifacts()` gives a run's worker its run's scope and `list_artifacts(run=...)` another
+run's; there is no way to ask for the session's scope, so a run's worker learns a session
+artifact's name only from a message, a step or a note.
+Wanted: `list_artifacts` takes the session's scope too (e.g. `run="/"`), when a kit needs
+it.
+Found: 2026-10-08, implement of feature/chat-attachments.
 
 # P3: maybe never
 
@@ -1593,11 +1625,21 @@ and the ones attachments refer to), never a silent delete; together with the his
 "A session's history grows until `lado forget`".
 Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
 
-## Agents read image artifacts only as metadata
+## Image previews only under the human's own messages
 
-Size: M. Why here: no kit needs it yet; providers differ in how an MCP tool may return an image (docs/design/artifacts.md, Left out).
-`read_artifact` reads text only; for an image (a screenshot, a mockup's picture) it gives the
-metadata and says it cannot be read as text.
-Wanted: `read_artifact` returns an image as an image to providers that take one from an MCP
-tool, and says so loudly where a provider cannot.
-Found: 2026-10-07, design of feature/artifacts (the human's decision: later).
+Size: S. Why here: the human asked for previews of their own files first (feature/chat-attachments, Out of scope).
+An image an agent attaches (a screenshot it took, a mockup's picture) shows in the chat as a
+chip only; the human opens it to see it.
+Wanted: the same preview (at most 240 × 180) under an agent's message to the human, if it
+proves useful.
+Found: 2026-10-08, design of feature/chat-attachments.
+
+## Agents read no PDF or other binary
+
+Size: M. Why here: no kit needs it yet; providers differ in what a tool may return (feature/chat-attachments, Out of scope).
+`read_artifact` gives text and PNG, JPEG, GIF and WebP images; a PDF, an archive or any
+other binary the human attaches is only its name and size to the agent (the composer's
+crossed-out eye says so).
+Wanted: a PDF's pages as images (or its text), within the image limits; an archive's list
+of files.
+Found: 2026-10-08, design of feature/chat-attachments.

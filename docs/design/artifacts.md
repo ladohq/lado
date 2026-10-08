@@ -30,7 +30,10 @@ on one disk. Artifacts give it one: a name in a session, kept by LADO and shown 
 - Every write makes a new record, also one with the same content as the latest: the write
   then says `unchanged`, and the content is not stored again (records refer to content by
   its hash). So a step that writes its artifact again unchanged still counts as having
-  written it (Flows). The media type may change between records.
+  written it (Flows). The media type may change between records. One exception: the
+  human's upload of a file the artifact of that name already has as its latest record
+  writes nothing and returns that record (The human's side), so a retried Send leaves no
+  trace.
 
 ### Names and scopes
 
@@ -49,7 +52,16 @@ on one disk. Artifacts give it one: a name in a session, kept by LADO and shown 
   reach another run's artifact. There is no fallback from one scope to another: a bare name
   that is not in the agent's scope is not found, and the error says which full name was
   looked up.
-- A worker of a run cannot address the session's scope in this version (no real use yet).
+- `/<name>` is the full name of a session-scope artifact for reading, for any agent: a
+  worker of a run reads the session's artifacts so (the human's files, a session artifact
+  the supervisor forwards), since its bare name means its run's scope (decided with the
+  human 2026-10-08, run feature/chat-attachments). It gives no right to write:
+  `write_artifact("/<name>")` by a run's worker is refused as any write outside its run.
+- The name LADO shows an agent is the one that agent reads it by (`artifacts.as_read`, the
+  one function: `read_messages`' attachments, a step's `Artifacts:` line, `read_artifact`'s
+  and `list_artifacts`' `name`): a session-scope artifact is `/<name>` for a run's worker,
+  bare for everyone else; a run's artifact is `<run>/<name>` as always. The human, the API
+  and the CLI keep the full name (`Artifact.full_name`).
 - Reading and writing are different rights (the human's decision, 2026-10-07). Any agent
   reads any artifact of its session by its full name. A worker of a run writes only to its
   run's scope, a worker of no run only to the session's, the supervisor to the session's
@@ -141,8 +153,23 @@ MCP tools for every agent (`mcp_server.py`), so every provider has them:
   `text/*`, `application/json`, `image/svg+xml`), UTF-8 with invalid bytes replaced, at
   most 100 000 characters of whole lines (one longer line is cut), a line range for a
   longer one: `{name, media_type, size, lines` (the total), `from_line, to_line, content,
-  cut}`. A binary artifact gives `{name, media_type, size, binary: true, note: "cannot be
-  read as text"}`.
+  cut}`.
+  An image (`AGENT_IMAGES`: PNG, JPEG, GIF, WebP) comes back as MCP image content, after
+  its facts as text, `{name, media_type, size, width, height}`, when it is at most
+  `IMAGE_LIMIT` bytes (3 932 160: 5 MiB in base64) and each side, read from its header by
+  the standard library (`images.py`: PNG IHDR, GIF screen, WebP VP8/VP8L/VP8X, JPEG SOFn),
+  at most `IMAGE_MAX_SIDE` (8000 px). These are the smallest limits of the providers' APIs
+  (the comment beside them names each): an image the API refuses stays in the agent's
+  conversation and fails every later turn, so LADO never sends one over them. Otherwise
+  the facts with `binary: true` and `note: "not shown: <why> (the limit …)"` (over the
+  size, a side over the limit, a header that cannot be read). A known gap: a request with
+  more than 20 images takes at most 2000 px a side on Claude's API, so an agent that has
+  read more than 20 large images may have its later turns refused (BACKLOG.md, with
+  resizing). Any other binary gives `{name, media_type, size, binary: true, note: "cannot
+  be read by an agent: only text and PNG, JPEG, GIF, WebP images"}`. A text artifact's
+  result is as it was. Claude Code and OpenCode show a tool's image to the model (a model
+  without image input gets its CLI's error); Kilo, OpenCode's fork, is checked by the
+  live test.
 - `list_artifacts(run?)`: the scope a bare name means for the agent, or `run`'s: `{name`
   (full), `title, media_type, size, author, time, summary}` each, as of its latest record.
 
@@ -165,7 +192,10 @@ limit is refused with the limit in the error.
 - A flow step's text names the artifacts of a needed note and of the previous step's note
   on a line below it, `Artifacts: <full name>[ (changed since)], ...`; `lado answer` prints
   the same line under the note that led to the gate.
-- The human attaches nothing in this version (`write_as_human` takes no artifacts).
+- The human attaches files to a message (The human's side): `write_as_human` takes the
+  full names of the uploads and attaches them as `send_message` does
+  (`resolve_attachments` with no agent: a bare name is the session's), at most
+  `MAX_HUMAN_FILES` (10); a name not found refuses the whole message, nothing queued.
 - What the human approved at a gate is the record attached to the note before it, so a
   later rewrite of the artifact never changes what the gate showed. A gate keeps the id of
   that note (`gates.note_id`, schema 22, written after the note in the same transaction);
@@ -231,6 +261,36 @@ limit is refused with the limit in the error.
   opened in a tab of its own.
 - HTML is shown in an `<iframe sandbox="allow-scripts">`, never with `allow-same-origin`:
   mockups work, the page cannot reach the UI.
+- **The human's files** (run feature/chat-attachments, 2026-10-08; the composer in
+  docs/design/ui.md): `artifacts.upload(session, file_name, data)`, the only writer for
+  `human`, through the same store and limits.
+  - Always the session's scope, whoever the message goes to, so the supervisor can forward
+    a file to a run's worker (which reads it as `/<name>`) and a change of recipient after
+    a failed Send needs no new upload. A stopped session is refused.
+  - Name: the file name's stem made a valid name (lower case; anything outside
+    `a-z0-9-_.` a `-`, runs of `-` folded, leading `-._` and trailing `-.` dropped, at most
+    40 characters; `file` when nothing is left), `-`, the first 8 hex characters of the
+    content's SHA-256, then the extension in lower case when `EXTENSIONS` knows it:
+    `Screenshot 2026-10-08.PNG` → `screenshot-2026-10-08-1a2b3c4d.png`. Two different
+    `image.png` stay apart; the same file again is the same name.
+  - The same file again (its name's latest record has its hash) writes nothing and
+    returns that record.
+  - Media type by the extension (`EXTENSIONS`), else `application/octet-stream`; never by
+    sniffing or the browser's word.
+  - Record: author `human`, title the original file name (one line, at most 200
+    characters), summary `attached by the human`, no run, state or visit.
+  - API: `POST /api/sessions/{name}/artifacts?file_name=<name>`, the raw bytes as the body,
+    under `Guard.changes`; it reads no more than `MAX_SIZE` and one chunk (a
+    `Content-Length` over it: nothing), 413 over the limit, 400 for a core refusal, else
+    the `ArtifactInfo` of the artifact with the record written or found. `GET /api/limits`
+    gives the UI the extension table, the types agents read (`text_types`, `agent_images`)
+    and the limits (`max_size`, `max_files`, `image_limit`, `image_max_side`,
+    `max_message`), so it keeps no copy. `POST …/messages` takes `artifacts`, the uploads'
+    full names; with some, the text may be empty: the summary is then `<n> file(s):
+    <names>`, cut to the limit. The supervisor's copy of the human's message to another
+    agent says `(#<id>, <k> files)`.
+  - An upload whose message then fails stays an artifact of the session that nothing
+    refers to (BACKLOG.md).
 
 ## Flows
 
@@ -329,10 +389,13 @@ schema 23.
 ## Left out
 
 - Showing records as versions, and a diff between them.
-- The human uploading files for agents.
+- Files in gate answers, in answers to `ask_human` and in the New session window; uploads
+  in the Artifacts tab.
 - Artifacts that outlive their session (a project's, a tracker task's): with projects
   (ROADMAP, Later).
-- A retention policy, and images given to agents as images.
+- A retention policy; removing an upload nothing refers to.
+- PDFs and other binaries an agent reads (a PDF's pages as images); resizing an image an
+  agent is not shown (it is named, not shown).
 - Any other backend than the local one.
 - Deleting one artifact, by an agent or the human: no real case yet; a mistaken one lives
   until `lado forget`.

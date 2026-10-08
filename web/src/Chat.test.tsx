@@ -440,7 +440,9 @@ test("the composer is one frame with Send inside, says to whom and how to send",
   expect(field.rows).toBe(1);
   const form = field.closest("form")!;
   expect(form.querySelector(".composer-to")?.textContent).toBe("to supervisor");
-  expect(form.querySelector(".composer-keys")?.textContent).toBe("Enter to send · Shift+Enter for a new line");
+  expect(form.querySelector(".composer-keys")?.textContent).toBe(
+    "Enter to send · Shift+Enter for a new line · paste or drop files to attach",
+  );
 });
 
 test("in a stopped session the composer is off and says why", async () => {

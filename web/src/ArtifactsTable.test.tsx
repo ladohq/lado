@@ -339,3 +339,22 @@ test("a note in a run's history carries its chips", async () => {
   fireEvent.click(chip);
   expect(await screen.findByRole("dialog", { name: "Artifact feature/x/design" })).toBeTruthy();
 });
+
+test("an image the human attached shows as a preview under their message, which opens the panel; an agent's does not", async () => {
+  const shot = attachment({ artifact: "h1", record: "hr1", full_name: "shot-1a2b3c4d.png", name: "shot-1a2b3c4d.png", scope: "", media_type: "image/png", title: "shot.png" });
+  const log = attachment({ artifact: "h2", record: "hr2", full_name: "log-1a2b3c4d.txt", name: "log-1a2b3c4d.txt", scope: "", media_type: "text/plain" });
+  serve({
+    messages: [
+      message(7, [shot, log], { from: "human", to: "supervisor", summary: "see this" }),
+      message(8, [{ ...shot, record: "hr3" }], { from: "architect", to: "human" }),
+    ],
+  });
+  open("/sessions/lado/activity");
+  const preview = await screen.findByRole("button", { name: "Open image shot-1a2b3c4d.png" });
+  const image = preview.querySelector("img")!;
+  expect(image.getAttribute("src")).toBe("/api/sessions/lado/records/hr1/content");
+  expect(image.getAttribute("alt")).toBe("shot.png");
+  expect(screen.getAllByRole("button", { name: /^Open image/ })).toHaveLength(1); // not the log, not the agent's
+  fireEvent.click(preview);
+  expect(address()).toBe("/sessions/lado/activity?view=hr1");
+});

@@ -17,8 +17,8 @@ import {
   type FinishPreviewInfo,
   type RunInfo,
 } from "./api";
-import { Composer } from "./Chat";
 import { clock, Preview, since } from "./ChatText";
+import { Composer } from "./Composer";
 import { isOpen } from "./Flows";
 import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } from "./live";
 import { ListPage, type Entry } from "./ListPage";

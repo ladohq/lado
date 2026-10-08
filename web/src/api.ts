@@ -174,9 +174,32 @@ export async function getContent(session: string, record: string, signal?: Abort
 export const answerGate = (session: string, id: number, option: string, comment: string) =>
   post<Sent>(`${sessionPath(session)}/gates/${id}/answer`, { option, comment });
 
-// The human's text to an agent of the session (default: the supervisor).
-export const writeMessage = (session: string, text: string, to?: string) =>
-  post<Sent>(`${sessionPath(session)}/messages`, to === undefined ? { text } : { to, text });
+// The human's text to an agent of the session (default: the supervisor), with the full
+// names of the files uploaded for it.
+export const writeMessage = (session: string, text: string, to?: string, artifacts: string[] = []) =>
+  post<Sent>(`${sessionPath(session)}/messages`, {
+    ...(to === undefined ? {} : { to }),
+    text,
+    ...(artifacts.length ? { artifacts } : {}),
+  });
+
+export type Limits = components["schemas"]["Limits"];
+
+// What the composer checks before an upload and which files an agent reads: the server's.
+export const getLimits = () => get<Limits>("/api/limits");
+
+// The human's file as an artifact of the session's scope, its bytes as the body; the same
+// file again gives the record it has.
+export async function uploadFile(session: string, file: File, name: string): Promise<ArtifactInfo> {
+  const answer = await fetch(`${sessionPath(session)}/artifacts?file_name=${encodeURIComponent(name)}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: file,
+  });
+  if (!answer.ok) throw await refused(answer);
+  return (await answer.json()) as ArtifactInfo;
+}
 
 export const answerQuestion = (session: string, id: number, answer: { choice?: string; text?: string }) =>
   post<Sent>(`${sessionPath(session)}/questions/${id}/answer`, answer);

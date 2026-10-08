@@ -4,12 +4,13 @@
 // live from the feed (live.ts); and the composer. Each message, question and open gate is a
 // row (FeedRow), grouped by sender, with a divider between days. What the human sends shows
 // only once the feed brings it: nothing ahead of the server.
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
-import { ApiError, HUMAN, writeMessage, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
-import { Attachments } from "./Attachments";
+import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
+import { Attachments, ImagePreviews } from "./Attachments";
 import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
+import { Composer } from "./Composer";
 import { FeedRow, MiniAvatar } from "./FeedRow";
 import { Gate, gateAnchor } from "./GateCard";
 import { ChevronIcon, FlowsIcon } from "./icons";
@@ -604,6 +605,7 @@ function Message({ session, message, continued }: { session: string; message: Me
       className={`chat-message${between ? " between" : ""}`}
     >
       <MessageText message={message} />
+      {mine && <ImagePreviews session={session} attachments={message.attachments} />}
       <Attachments session={session} attachments={message.attachments} />
       {message.state === "failed" && <p className="chat-note">not delivered</p>}
       {message.reply_state === "missing" && <p className="chat-note">{message.to} replied only in its terminal</p>}
@@ -611,97 +613,3 @@ function Message({ session, message, continued }: { session: string; message: Me
   );
 }
 
-// The lines the composer's field grows to before it scrolls.
-const COMPOSER_LINES = 8;
-
-// The field as tall as its text, from 1 line to COMPOSER_LINES, then it scrolls.
-function grow(field: HTMLTextAreaElement | null) {
-  if (!field) return;
-  const style = getComputedStyle(field);
-  const line = parseFloat(style.lineHeight) || 20;
-  const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-  const most = line * COMPOSER_LINES + padding;
-  field.style.height = "auto";
-  const height = field.scrollHeight;
-  field.style.height = `${Math.min(height, most)}px`;
-  field.style.overflowY = height > most ? "auto" : "hidden";
-}
-
-// The human's text to the supervisor, or to agent `to` (an agent's page): one frame with
-// the field, which grows with the text, and Send; under it to whom and how to send.
-export function Composer({
-  session,
-  stopped,
-  to,
-  inputRef,
-}: {
-  session: string;
-  stopped: boolean;
-  to?: string;
-  inputRef?: RefObject<HTMLTextAreaElement | null>;
-}) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const own = useRef<HTMLTextAreaElement>(null);
-  const field = inputRef ?? own;
-  useLayoutEffect(() => grow(field.current), [text, field]);
-
-  async function send() {
-    if (!text.trim() || busy) return;
-    setBusy(true);
-    setProblem(null);
-    try {
-      await writeMessage(session, text, to);
-      setText("");
-    } catch (error) {
-      setProblem(error instanceof ApiError ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function keyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      void send();
-    }
-  }
-
-  return (
-    <form
-      className="composer"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void send();
-      }}
-    >
-      <div className="composer-box">
-        <textarea
-          ref={field}
-          aria-label={`Write to ${to ?? "the supervisor"}…`}
-          placeholder={stopped ? "The session is stopped: resume it to write" : `Write to ${to ?? "the supervisor"}…`}
-          rows={1}
-          value={text}
-          disabled={stopped}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={keyDown}
-        />
-        <button type="submit" className="send" disabled={stopped || busy || !text.trim()}>
-          Send
-        </button>
-      </div>
-      <p className="composer-meta">
-        <span className="composer-to">
-          to <span className="composer-name">{to ?? "supervisor"}</span>
-        </span>
-        <span className="composer-keys">Enter to send · Shift+Enter for a new line</span>
-      </p>
-      {problem && (
-        <p className="field-problem" role="alert">
-          {problem}
-        </p>
-      )}
-    </form>
-  );
-}

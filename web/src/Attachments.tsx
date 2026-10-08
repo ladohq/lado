@@ -5,8 +5,8 @@
 // artifact changed since, "changed since · open latest" beside it opens its latest record.
 import { useNavigate, useParams, useSearchParams } from "react-router";
 
-import type { AttachmentInfo } from "./api";
-import { changed, size } from "./artifacts";
+import { contentPath, type AttachmentInfo } from "./api";
+import { changed, kindOf, size } from "./artifacts";
 import { FullName, KindIcon } from "./ArtifactView";
 import { useLive } from "./live";
 import { sessionPath, VIEW_PARAM } from "./paths";
@@ -28,6 +28,29 @@ export function useView(session: string): (record: string) => void {
       return next;
     });
   };
+}
+
+// The images of the human's own message as previews under its text (at most 240 × 180),
+// each opening its record in the panel as its chip does.
+export function ImagePreviews({ session, attachments }: { session: string; attachments: AttachmentInfo[] }) {
+  const view = useView(session);
+  const images = attachments.filter((one) => kindOf(one.media_type) === "image");
+  if (images.length === 0) return null;
+  return (
+    <div className="chat-images">
+      {images.map((one) => (
+        <button
+          key={one.record}
+          type="button"
+          className="chat-image"
+          aria-label={`Open image ${one.full_name}`}
+          onClick={() => view(one.record)}
+        >
+          <img src={contentPath(session, one.record)} alt={one.title ?? one.full_name} loading="lazy" />
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function Attachments({

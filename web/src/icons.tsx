@@ -296,3 +296,19 @@ export const CloseIcon = () => (
     <path d="m6 6 12 12M18 6 6 18" />
   </Icon>
 );
+
+// A paperclip: attach files.
+export const ClipIcon = () => (
+  <Icon>
+    <path d="M20 11.5 12.2 19.3a5 5 0 0 1-7.1-7.1l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4L14.8 7" />
+  </Icon>
+);
+
+// An eye struck through: an agent cannot see what the file holds.
+export const UnseenIcon = () => (
+  <Icon>
+    <path d="m4 4 16 16" />
+    <path d="M9.9 5.3A9.6 9.6 0 0 1 12 5c4.6 0 8 4 9 7a11 11 0 0 1-2.5 3.8M6.4 6.5C4.4 7.8 3.2 9.9 3 12c1 3 4.4 7 9 7a9 9 0 0 0 4.6-1.3" />
+    <path d="M10 10.2a2.6 2.6 0 0 0 3.7 3.7" />
+  </Icon>
+);

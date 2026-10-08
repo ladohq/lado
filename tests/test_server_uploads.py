@@ -36,7 +36,11 @@ def test_an_upload_gives_the_artifact_with_its_record(client, session):
     answer = client.post(UPLOAD, params={"file_name": "Shot 1.PNG"}, content=b"abc")
     assert answer.status_code == 200
     info = answer.json()
-    assert (info["full_name"], info["scope"], info["title"]) == (f"shot-1-{ABC}.png", "", "Shot 1.PNG")
+    assert (info["full_name"], info["scope"], info["title"]) == (
+        f"shot-1-{ABC}.png",
+        "",
+        "Shot 1.PNG",
+    )
     latest = info["latest"]
     assert (latest["author"], latest["media_type"], latest["size"]) == ("human", "image/png", 3)
     again = client.post(UPLOAD, params={"file_name": "Shot 1.PNG"}, content=b"abc").json()
@@ -107,9 +111,7 @@ def _asgi_upload(app, chunks, length=None):
     return status, len(asked)
 
 
-def test_an_upload_over_the_limit_is_413_having_read_no_more_than_the_limit(
-    session, monkeypatch
-):
+def test_an_upload_over_the_limit_is_413_having_read_no_more_than_the_limit(session, monkeypatch):
     monkeypatch.setattr(artifacts, "MAX_SIZE", 10)
     app = server_app.create_app(auth.token(), PORT)
     status, asked = _asgi_upload(app, [b"x" * 4] * 100)

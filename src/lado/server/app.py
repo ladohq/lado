@@ -747,9 +747,7 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         files uploaded for it, through the same queue and delivery as an agent's message."""
         known(name, has_db)
         return Sent(
-            result=core(
-                runtime.write_as_human, name, message.text, message.to, message.artifacts
-            )
+            result=core(runtime.write_as_human, name, message.text, message.to, message.artifacts)
         )
 
     @app.post(

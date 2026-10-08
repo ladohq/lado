@@ -116,12 +116,13 @@ def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
     expect(agents).to_be_visible()
 
 
-def test_a_worker_that_crashed_says_why_it_stopped(page: Page, server, repo, shot):
+def test_a_worker_that_crashed_says_why_it_stopped(page: Page, server, repo, shot, monkeypatch):
     page.set_viewport_size({"width": 1600, "height": 1000})
     session = f"ui-{uuid.uuid4().hex[:6]}"
     runtime.start_session(str(repo), session, None, "fake")
     agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
-    runtime.spawn_worker(session, "crash at start", name="w1")
+    monkeypatch.setenv("FAKE_AGENT_CRASH_AT_START", "1")  # w1 only: the supervisor runs
+    runtime.spawn_worker(session, "task", name="w1")
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/agents/w1")
     page.get_by_role("button", name="Collapse terminals").click()

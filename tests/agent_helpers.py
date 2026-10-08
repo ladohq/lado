@@ -42,6 +42,22 @@ def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
     return json.loads(Path(file).read_text()), argv
 
 
+def claude_prompt(argv: list[str]) -> str:
+    """The system prompt a Claude Code agent's argv appends, read from its file."""
+    return Path(argv[argv.index("--append-system-prompt-file") + 1]).read_text()
+
+
+def forget_tasks(session: str) -> None:
+    """Delete the task messages LADO queued for the session's workers (runtime.spawn_worker),
+    as if each worker got and read its task before the test: a unit test of messages then
+    sees only its own."""
+    with state.connect() as db:
+        db.execute(
+            "DELETE FROM messages WHERE session = ? AND sender = ? AND summary = 'your task'",
+            (session, state.LADO),
+        )
+
+
 _template: Path | None = None  # the first repo made by this process, copied for the next ones
 
 # git config that keeps git from starting gc or maintenance in the background after a command.

@@ -121,6 +121,19 @@ def run_state(name: str) -> state.Run:
     return state.get_run(SESSION, name)
 
 
+def read_step(agent: str = "worker") -> str:
+    """Wait until the worker read its step (its latest message from lado) and is idle again,
+    past the moment its session start makes it idle; returns the step's text."""
+
+    def step() -> state.Message:
+        return [m for m in state.list_messages(SESSION) if m.recipient == agent][-1]
+
+    wait_for(lambda: step().state == state.READ, f"{agent} to read its step")
+    wait_status(agent, state.IDLE)
+    assert step().sender == state.LADO
+    return step().body
+
+
 def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     name = "ship/add-a-file"
     supervisor_runs("flow_start ship add a file")
@@ -131,10 +144,10 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     assert Path(run.worktree, ".git").exists()
 
     supervisor_runs(f"spawnrun {name}")
-    wait_status("worker", state.IDLE)
+    step = read_step()
     worker = state.get_agent(SESSION, "worker")
     assert (worker.cwd, worker.branch, worker.run) == (run.worktree, run.branch, name)
-    assert inputs("worker")[0].startswith(f"Run {name} (flow ship), step build.")
+    assert step.startswith(f"Run {name} (flow ship), step build.")
 
     Path(run.worktree, "work.txt").write_text("done\n")
     runtime.git(run.worktree, "add", "work.txt")
@@ -159,7 +172,8 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     ended = f"flow {name}: ended at end; worktree and branch removed"
     assert seen("supervisor")["advance"]["notices"] == [ended]
     assert [m.summary for m in state.list_messages(SESSION) if m.sender == "lado"] == [
-        f"flow {name}: step merge"
+        f"flow {name}: step build",  # the worker's, at its spawn
+        f"flow {name}: step merge",
     ]
     assert run_state(name).status == state.ENDED
     # Each flow_advance through MCP kept its step: who reported it, the outcome, where to.
@@ -200,22 +214,20 @@ def test_the_supervisor_hears_when_a_worker_ends_the_run(repo, flow_kit):
 
 
 def test_a_worker_gets_a_step_far_longer_than_a_tmux_command(repo, flow_kit):
-    # tmux refuses a command over about 16 KB; the first message used to be on it.
+    # tmux refuses a command over about 16 KB; a step was on it before 0.30.1.
     name = "planned/long"
     runs.start(SESSION, "planned", "a long plan", name="long", notices=[])
     plan = "\n".join(f"plan line {n}: " + "x" * 60 for n in range(800))  # about 60 KB
     runs.advance(SESSION, "supervisor", name, "ready", "planned", plan, notices=[])
     worker = runs.spawn_worker(SESSION, name)
-    wait_status("worker", state.IDLE)
+    got_step = read_step()
     step = runs.step_text(run_state(name), runs.flow_of(run_state(name)))
     assert worker.task == step  # still the worker's task, in full
     [first] = inputs("worker")
     line = r"\[from lado\] flow planned/long: step build \(#\d+, \d+ lines: call read_messages\)"
     assert re.fullmatch(line, first)
-    runtime.send_message(SESSION, "human", "worker", "read")
-    wait_for(lambda: "read" in seen("worker"), "the worker to read")
-    [got_step] = seen("worker")["read"]
-    assert got_step["body"] == step
+    assert got_step == step
+    assert seen("worker")["first_read"][0]["body"] == step
 
 
 def test_a_run_waits_at_a_gate_until_the_human_sets_it(repo, flow_kit):
@@ -239,8 +251,7 @@ def test_a_step_is_refused_until_it_writes_what_it_produces(repo, flow_kit):
     name = "produced/report-it"
     supervisor_runs("flow_start produced report it")
     supervisor_runs(f"spawnrun {name}")
-    wait_status("worker", state.IDLE)
-    assert "This step must write: report (write_artifact)" in inputs("worker")[0]
+    assert "This step must write: report (write_artifact)" in read_step()
 
     runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
     refusal = "step build must write report before flow_advance"
@@ -300,10 +311,9 @@ def test_a_step_gets_the_artifact_it_reads_after_a_gate_and_after_flow_set(repo,
     result = lado_cli("answer", SESSION, "1", "approve", "-m", "go")
     assert result.returncode == 0, result.stderr
     supervisor_runs(f"spawnrun {name}")
-    wait_status("worker", state.IDLE)
+    first = read_step()
     # The worker's run's scope: the bare name, never the content.
     design = "Artifacts this step reads (read each with read_artifact):\n- design"
-    [first] = inputs("worker")
     assert first.startswith(f"Run {name} (flow designed), step build.")
     assert design in first
     assert "no captcha" not in first
@@ -341,20 +351,20 @@ def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
     resumed = "[from lado] session resumed: 2 open runs"
     wait_for(lambda: any(t.startswith(resumed) for t in inputs("supervisor")), "the resume")
     wait_status("supervisor", state.IDLE)
-    supervisor_runs("read")
-    # Bodies the old supervisor never read were dropped at the stop: it starts fresh.
-    [told] = seen("supervisor")["read"]
+    # Its first input, through its queue: the line typed in, the text read. Bodies the old
+    # supervisor never read were dropped at the stop: it starts fresh.
+    [told] = seen("supervisor")["first_read"]
     assert told["summary"] == "session resumed: 2 open runs"
     assert f'spawn_worker(role="worker", run="{ship}")' in told["body"]
     assert f"lado answer {SESSION} {gate.id}" in told["body"]
 
     # A new worker takes over the run's worktree and branch, with the earlier commit.
     supervisor_runs(f"spawnrun {ship}")
-    wait_status("worker", state.IDLE)
+    step = read_step()
     worker = state.get_agent(SESSION, "worker")
     assert (worker.cwd, worker.branch) == (run.worktree, run.branch)
     assert "work before the stop" in runtime.git(worker.cwd, "log", "--format=%s")
-    assert inputs("worker")[-1].startswith(f"Run {ship} (flow ship), step build.")
+    assert step.startswith(f"Run {ship} (flow ship), step build.")
     runtime.send_message(SESSION, "human", "worker", f"advance {ship} done")
     wait_for(lambda: got("supervisor", f"[from lado] flow {ship}: step merge"), "the merge step")
 

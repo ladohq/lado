@@ -64,7 +64,8 @@ def about_an_end() -> list[str]:
 
 
 def message_to(agent: str) -> state.Message:
-    return next(m for m in state.list_messages(SESSION) if m.recipient == agent)
+    """The first message to the agent after its task."""
+    return [m for m in state.list_messages(SESSION) if m.recipient == agent][1]
 
 
 @pytest.fixture
@@ -76,12 +77,16 @@ def session(repo, monkeypatch):
     return SESSION
 
 
-def test_an_agent_that_crashes_before_its_first_hook_is_found_stopped(session):
-    runtime.spawn_worker(SESSION, "crash at start", name="w1")
+def test_an_agent_that_crashes_before_its_first_hook_is_found_stopped(session, monkeypatch):
+    monkeypatch.setenv("FAKE_AGENT_CRASH_AT_START", "1")  # w1 only: the supervisor runs
+    runtime.spawn_worker(SESSION, "task", name="w1")
     runtime.send_message(SESSION, "supervisor", "w1", "are you there?")
     wait_status("w1", state.STOPPED, found_gone())
     assert runtime.status_reason(SESSION, "w1") == runtime.WINDOW_GONE
-    assert message_to("w1").state == state.DROPPED
+    assert [m.state for m in state.list_messages(SESSION) if m.recipient == "w1"] == [
+        state.DROPPED,  # its task
+        state.DROPPED,
+    ]
     hint = f"w1 stopped ({runtime.WINDOW_GONE}): end it with"
     wait_for(
         lambda: any(s.startswith(hint) for s in from_lado("supervisor")), "the supervisor's hint"
@@ -134,8 +139,11 @@ def test_a_turn_that_ends_on_a_transient_error_is_resumed_until_the_resumes_are_
         f"continue where you left off (resume {n} of 2)"
         for n in (1, 2)
     ]
-    assert [i for i in inputs("w1") if str(i).startswith("[from lado]")] == resumes
+    lines = [i for i in inputs("w1") if str(i).startswith("[from lado]")]
+    assert lines[0].startswith("[from lado] your task (#")
+    assert lines[1:] == resumes
     assert [m.state for m in state.list_messages(SESSION) if m.recipient == "w1"] == [
+        state.READ,  # its task
         state.DELIVERED,
         state.DELIVERED,
     ]
@@ -174,7 +182,8 @@ def test_an_agent_whose_cli_asks_first_waits_until_the_human_answers(session, mo
     time.sleep(2 * loop.INTERVAL)  # the loop sweeps: nothing is typed into the question
     assert (status("w1"), message_to("w1").state) == (state.WAITING, state.PENDING)
     tmux.send_text(SESSION, "w1", "yes")  # the human answers
-    wait_for(lambda: "[from supervisor] hello" in inputs("w1"), "w1 to get its message")
+    # Typed in with its task.
+    wait_for(lambda: any("[from supervisor] hello" in i for i in inputs("w1")), "its message")
     wait_for(lambda: message_to("w1").state == state.DELIVERED, "w1 to confirm its message")
     assert runtime.status_reason(SESSION, "w1") is None
 
@@ -209,7 +218,7 @@ def test_finishing_a_worker_tells_no_one_it_stopped(session):
 
 def test_stopping_a_session_tells_no_one_and_counts_what_it_dropped(session):
     runtime.spawn_worker(SESSION, "pause", name="w1")  # never released: busy till the stop
-    wait_status("w1", state.BUSY)
+    wait_for(lambda: agent_helpers.paused(SESSION, "w1", 1), "w1 to read its task")
     runtime.send_message(SESSION, "supervisor", "w1", "queued")
     stopped = runtime.stop_session(SESSION)
     for agent in ("supervisor", "w1"):

@@ -484,11 +484,11 @@ def test_stop_shows_what_it_does_then_does_it(client, repo, fake_tmux):
     preview = client.get("/api/sessions/s/stop-preview").json()
     assert preview == {
         "agents": ["supervisor", "w1"],
-        "dropped": 1,
+        "dropped": 2,  # and w1's task
         "open_runs": [],
         "worktrees": [{"path": worker.cwd, "branch": worker.branch}],
     }
-    assert client.post("/api/sessions/s/stop").json() == {"dropped": 1}
+    assert client.post("/api/sessions/s/stop").json() == {"dropped": 2}
     assert state.get_session("s").stopped_at
     answer = client.post("/api/sessions/s/stop")
     assert answer.status_code == 400 and "stopped already" in answer.json()["detail"]

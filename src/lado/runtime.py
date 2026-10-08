@@ -45,9 +45,6 @@ RETRY_DELAYS = retry_delays_from(os.environ.get("LADO_RETRY_DELAYS"))
 RESUME_DELAYS = tuple(
     float(d) for d in os.environ.get("LADO_RESUME_DELAYS", "30,120,480").split(",")
 )
-# Characters of an agent's first input that go on its command line. tmux refuses a command
-# over about 16 KB, and the system prompt is on it too; a longer input comes as a message.
-FIRST_INPUT_LIMIT = 2000
 
 # What every agent must know about LADO, appended to its role prompt from the kit. Kits only
 # describe the role.
@@ -389,27 +386,22 @@ def start_session(
         taken_over = state.add_session(sess)
     if not taken_over:
         raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
-    taken: list[state.Message] = []
     # From here on the session is stored as running, with the new settings; whatever fails
     # before its supervisor runs undoes that.
     try:
         if old:
-            # Imported here: lado.runs builds on this module.
+            # Imported here: lado.runs builds on this module. LADO's messages about the open
+            # runs wait in the supervisor's queue for its first hook.
             from lado import runs
 
             started.problems = runs.resume(sess, env)
-            # LADO's messages about the open runs are its first input, so they cannot be
-            # lost while it starts.
-            taken = state.take_pending(session, SUPERVISOR, state.DELIVERED)
-            agent.task = format_messages(taken)
         # None of its agents runs: what an older LADO or a failed launch left goes.
         providers.base.remove_session_config_dirs(session)
         _add_agent(agent)
-        first = _first_input(agent, agent.task, "your first messages")
         # Written once the session is taken, as the provider's config: a start that lost
         # does not touch the running lead's files.
         _write_lead_skills(agent, env.lead_skills())
-        launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
+        launch = agent_cli.launch_command(agent, sess, spec)
         started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
     except Exception as error:
@@ -417,15 +409,10 @@ def start_session(
             ("remove the supervisor's config", lambda: providers.base.remove_config_dir(agent))
         ]
         if old:
-            # Stopped again, with the settings it had: the supervisor never got LADO's
-            # messages; the next resume writes them anew.
+            # Stopped again, with the settings it had: the stop drops LADO's messages the
+            # supervisor never got; the next resume writes them anew.
             restored = ", ".join(_changes(sess, old))
-            steps.append(
-                (
-                    "stop the session again",
-                    lambda: state.fail_resume(old, [m.id for m in taken], restored),
-                )
-            )
+            steps.append(("stop the session again", lambda: state.fail_resume(old, restored)))
         else:
             steps.append(("forget the session", lambda: state.delete_session(session)))
         _undo(session, f"the start of {session}", error, steps)
@@ -464,8 +451,10 @@ def spawn_worker(
     one worker role), minus the `without` items ("skill:y", "mcp:z", each optionally @kit)
     for this worker.
     `has_step`: the task holds a step of `run`, which the worker reports with flow_advance;
-    any other task it reports with send_message. What holds the worker before its first
-    hook (_first_hook_blocker) is added to `warnings` and written to loop.log.
+    any other task it reports with send_message. The task waits in its queue as a message
+    from LADO, handed over at its first hook as any message; none of it is on the command
+    line. What holds the worker before its first hook (_first_hook_blocker) is added to
+    `warnings` and written to loop.log.
 
     A worker gets its own worktree and branch; a worker for a flow `run` works in the
     run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""
@@ -512,10 +501,10 @@ def spawn_worker(
     _add_agent(agent)
     try:
         # A step is reported with flow_advance, as the run worker's instructions say.
-        first = task if has_step else task + REPORT_REMINDER
+        text = task if has_step else task + REPORT_REMINDER
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
-        first = _first_input(agent, first, summary)
-        launch = agent_cli.launch_command(agent, sess, spec, first_message=first)
+        state.queue_message(session, state.LADO, worker, summary, text)
+        launch = agent_cli.launch_command(agent, sess, spec)
         held = _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
     except Exception as error:
@@ -560,17 +549,6 @@ def _undo(
             # add_note from Python 3.11 on; the same attribute before.
             error.__notes__ = [*getattr(error, "__notes__", []), note]
             loop.log(session, note)
-
-
-def _first_input(agent: state.Agent, text: str | None, summary: str) -> str | None:
-    """What goes on the agent's command line as its first input: `text`, or, when it is
-    too long for that, the line of a message from LADO that holds it, which the agent reads
-    with read_messages. The message counts as delivered with that line."""
-    if not text or len(text) <= FIRST_INPUT_LIMIT:
-        return text
-    lado, mark = state.LADO, state.DELIVERED
-    message_id = state.queue_message(agent.session, lado, agent.name, summary, text, mark)
-    return format_message(state.Message(message_id, lado, summary, text))
 
 
 def migrate_if_safe() -> None:

@@ -225,8 +225,9 @@ MARKETPLACES_TABLE = [MARKETPLACES, MARKETPLACES_OFFICIAL, *_journal_triggers("m
 KITS_TABLE = [KITS, *_journal_triggers("kits")]
 # How a message was handed over to its recipient, from version 19 on: typed into its window
 # or carried on in its turn-end hook's output (TYPED, HOOK_OUTPUT; lado.runtime.hand_over).
-# NULL while it is pending, and for one handed over another way (a first input, the human's
-# UI). Each channel has its own confirmation and its own sweep rule (lado.runtime._plan).
+# NULL while it is pending, and for one handed over another way (a message to the human, the
+# first input of a LADO before 0.30.1). Each channel has its own confirmation and its own
+# sweep rule (lado.runtime._plan).
 MESSAGES_CHANNEL = "ALTER TABLE messages ADD COLUMN channel TEXT"
 # Resuming an agent whose turn ended on an error that passes by itself (lado.hooks), from
 # version 20 on: when LADO tells it to go on (NULL for nothing planned; only while it is
@@ -994,15 +995,11 @@ def resume_session(session: Session, detail: str) -> bool:
     return True
 
 
-def fail_resume(old: Session, message_ids: list[int], restored: str) -> None:
-    """Stop a session whose resume failed, in one go: drop the messages its supervisor never
-    got (`message_ids`) and put back the settings of `old`; `restored` says which."""
+def fail_resume(old: Session, restored: str) -> None:
+    """Stop a session whose resume failed, in one go, dropping the messages its supervisor
+    never got, and put back the settings of `old`; `restored` says which."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        db.executemany(
-            "UPDATE messages SET state = ? WHERE session = ? AND id = ?",
-            [(DROPPED, old.name, i) for i in message_ids],
-        )
         _stop_session(db, old.name, f"; settings put back: {restored}" if restored else "")
         _set_settings(db, old)
         db.execute("COMMIT")
@@ -1783,13 +1780,13 @@ def queue_message(
     before_start: bool = False,
     attachments: Attached = (),
 ) -> int:
-    """Store a message in state `mark`: pending, or delivered when its line goes to the
-    recipient another way (its first input, or the human's UI): then it is handed over
-    now (sent_at), with the artifacts attached. Returns its id.
+    """Store a message in state `mark`: pending, or delivered when it reaches the
+    recipient another way (a message to the human, whom the UI shows it): then it is handed
+    over now (sent_at), with the artifacts attached. Returns its id.
 
     A pending message to an agent needs it running (NotRunning), but with `before_start`:
-    the supervisor of a session being started, not stored yet, takes it as its first
-    input."""
+    the supervisor of a session being started, not stored yet, gets it at its first
+    hook."""
     sent_at = None if mark == PENDING else time.time()
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")

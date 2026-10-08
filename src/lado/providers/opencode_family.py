@@ -60,7 +60,6 @@ class OpenCodeFamily(base.Provider):
         agent: state.Agent,
         session: state.Session,
         spec: base.AgentSpec,
-        first_message: str | None = None,
     ) -> base.Launch:
         config_dir = base.config_dir(agent)
         role = config_dir / "role.md"
@@ -69,9 +68,7 @@ class OpenCodeFamily(base.Provider):
         text = json.dumps(config, indent=2)
         config_file = config_dir / self.config_file_name
         config_file.write_text(text)
-        return base.Launch(
-            self.argv(session.permission_mode, first_message), self.env(config_file, text)
-        )
+        return base.Launch(self.argv(session.permission_mode), self.env(config_file, text))
 
     def config(
         self, agent: state.Agent, mode: str | None, spec: base.AgentSpec, role: Path
@@ -135,10 +132,8 @@ class OpenCodeFamily(base.Provider):
         readable = [state.home(), *spec.read]
         return {"external_directory": {f"{p}/**": "allow" for p in readable}}
 
-    def argv(self, mode: str | None, first_message: str | None) -> list[str]:
+    def argv(self, mode: str | None) -> list[str]:
         argv = [self.command]
-        if first_message:
-            argv += ["--prompt", first_message]
         if mode == "bypassPermissions":
             argv += self.bypass_argv()
         elif mode == "plan":

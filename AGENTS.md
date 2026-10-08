@@ -58,7 +58,11 @@ Integration tests (`tests/integration/`) run a fake agent (`fake_agent.py`, prov
 instead of a real agent CLI; it keeps its logs (`inputs.jsonl`, `seen.json`) in
 `agent_helpers.fake_logs`, outside its config folder, so they outlive the agent. It talks to
 `lado mcp` through its own small stdio JSON-RPC client, not the MCP SDK's (whose import
-alone took a third of a second per launch). A test keeps it busy with its `pause` command
+alone took a third of a second per launch). Like a real agent, it gets its task as a
+message: in its first input, a line from `lado` with more to read makes it call
+`read_messages` and run the bodies of LADO's messages as commands (later bodies it only
+reads when told to). `FAKE_AGENT_CRASH_AT_START=1` in its environment makes it exit before
+its first hook. A test keeps it busy with its `pause` command
 and ends that pause itself (`agent_helpers.release`), never with a `sleep` it must act
 within. They use a temp `LADO_HOME` and their own tmux server
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. They run LADO's timers
@@ -176,7 +180,8 @@ fixes and docs only: no new feature, no API or schema change.
     (`loop.log`).
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
-    `EVENTS` maps its native events; `claude.py`: Claude Code; `opencode_family.py`: the
+    `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
+    its config folder (`--append-system-prompt-file`); `opencode_family.py`: the
     base of OpenCode and its fork Kilo, holding only what is checked on both (each claim
     names the CLI and version), with `opencode_plugin.js`, the plugin that runs LADO's
     hooks, and one config dict per agent, written to its config folder and passed in the
@@ -437,7 +442,7 @@ fixes and docs only: no new feature, no API or schema change.
     folder) holds the installed kits, journaled the same way (session `''`, an
     `InstalledKitInfo`; each item only its own row and files). From schema 19 a message
     keeps the channel it was handed over by, `messages.channel` (`typed`, `hook_output`;
-    NULL while pending and for a first input or the human's UI; How agents talk; not in the
+    NULL while pending and for a message to the human; How agents talk; not in the
     API). From schema 20 an agent keeps its planned resume after a transient turn error,
     `agents.resume_at` and `agents.resumes` (How agents talk; not in the API). From schema
     21 the local artifact store's tables `artifacts` and `artifact_records` (each with its
@@ -711,10 +716,15 @@ fixes and docs only: no new feature, no API or schema change.
   agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
   after it got them (by `sent_at`, when each was handed over, not by id), else `missing`,
   which the chat shows as "replied only in its terminal".
-- An agent's first input (a worker's task or step, a resumed supervisor's messages) goes on
-  its command line. When it is longer than 2000 characters (tmux refuses commands over about
-  16 KB), it comes as a message from `lado` instead, marked delivered: the agent gets its
-  one line and reads the text with `read_messages`. The worker's task is still the full text.
+- No prompt and no input on an agent's command line, which `ps` shows to every user of the
+  machine: the role and LADO's instructions go in a file (Claude Code
+  `--append-system-prompt-file`, Kilo and OpenCode `instructions`), and an agent's first
+  input (a worker's task or step, a resumed supervisor's messages from `lado`) is a pending
+  message from `lado` in its queue, with the text as its body (`your task` or `flow <run>:
+  step <state>` for a worker; `agents.task` keeps the full text). Its session-start hook
+  makes it idle, which hands the queue over as any other (below): the agent gets one line
+  and reads the text with `read_messages`. A spawn or resume that fails drops it with the
+  rest of the queue; the next resume writes LADO's messages anew.
 - A queue is handed over by one of two channels, kept with each message
   (`messages.channel`), and stays `sent` until the agent confirms it (then `delivered`):
   - `typed`: pasted into the agent's window, confirmed when its prompt-submit hook sees
@@ -745,8 +755,8 @@ fixes and docs only: no new feature, no API or schema change.
   second, a hook sets idle first and takes the queue second: exactly one of them hands a
   message over, and the sender's reply says `sent` also when a hook or the loop handed its
   message over in between (and refuses, as for an agent not running, when the agent was
-  finished or stopped in between). A queue is taken only so; the one exception is the
-  first input (below and above), taken as `delivered` with no channel. What was handed
+  finished or stopped in between). A queue is taken only so, also an agent's first input.
+  What was handed
   over and is unconfirmed is typed again only by the sweep's rule (below), also into a
   busy agent whose window shows no sign of having taken it; never into one that is
   waiting, starting or stopped.

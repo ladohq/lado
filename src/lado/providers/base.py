@@ -135,13 +135,14 @@ class Provider(ABC):
         agent: state.Agent,
         session: state.Session,
         spec: AgentSpec,
-        first_message: str | None = None,
     ) -> Launch:
         """Write the agent's config files (MCP servers, skills, hooks) and return how to
         start it.
 
-        `spec.prompt` is the agent's role, added to the system prompt; `first_message`, if
-        any, is its first input. LADO checks `spec` against `capabilities` before the call.
+        `spec.prompt` is the agent's role, added to the system prompt in a way that keeps it
+        off the command line, which `ps` shows to every user of the machine. The agent gets
+        no input there either: its first input comes through LADO's queue, as any message.
+        LADO checks `spec` against `capabilities` before the call.
         """
 
     @abstractmethod

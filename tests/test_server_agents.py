@@ -3,6 +3,7 @@ finishing a worker. In process, with FastAPI's test client."""
 
 from pathlib import Path
 
+import agent_helpers
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,6 +28,7 @@ def client(lado_home):
 def session(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "Build the layout\nwith three columns", name="w1")
+    agent_helpers.forget_tasks("s")
     return "s"
 
 

@@ -6,6 +6,7 @@ import json
 import os
 import time
 
+import agent_helpers
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
@@ -23,6 +24,7 @@ def _call(session, agent, tool, args=None):
 def session(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     for agent in ("supervisor", "w1"):
         state.set_status("s", agent, state.BUSY)  # nothing is typed: the line is read below
     return "s"

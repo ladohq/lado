@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from agent_helpers import spoil_snapshot
+from agent_helpers import claude_prompt, spoil_snapshot
 
 from lado import kits, runs, runtime, state, tmux
 
@@ -69,6 +69,13 @@ def session(repo, team, fake_tmux):
 
 def messages(recipient):
     return [m for m in state.list_messages("s") if m.recipient == recipient]
+
+
+def first_input(worker):
+    """The text of the worker's first message from LADO: its task or step."""
+    first = messages(worker)[0]
+    assert (first.sender, first.state) == ("lado", state.PENDING)
+    return first.body
 
 
 def test_start_creates_the_run_with_its_own_worktree_and_snapshot(session, repo, team):
@@ -296,7 +303,7 @@ def test_a_worker_for_a_run_works_in_its_worktree_and_gets_the_step(session, fak
         run.worktree,
         run.branch,
     )
-    first = fake_tmux[-1][-1][-1]
+    first = first_input("developer")
     assert first.startswith("Run feature/login (flow feature), step implement.")
     assert "Build it." in first
     assert "Note from the previous step: design agreed\na\nb" in first
@@ -318,7 +325,6 @@ def fail_launch(monkeypatch, what="new_window"):
 
 def test_a_failed_spawn_for_a_run_leaves_no_ghost_worker(session, fake_tmux, monkeypatch):
     to_implement(session)
-    monkeypatch.setattr(runtime, "FIRST_INPUT_LIMIT", 100)  # the step comes as a message
     fail_launch(monkeypatch)
     with pytest.raises(tmux.TmuxError, match="command too long"):
         runs.spawn_worker(session, "feature/login")
@@ -394,7 +400,8 @@ def test_a_gate_answer_is_kept_as_the_gates_note(session):
 def test_a_worker_step_goes_to_the_next_worker_only(session):
     run = advance_to_review(session)
     assert run.state == "review"
-    [step] = messages("reviewer")
+    task, step = messages("reviewer")
+    assert task.summary == "your task"  # given at its spawn
     assert (step.sender, step.summary) == ("lado", "flow feature/login: step review")
     assert "Note from the previous step: built" in step.body
     assert [m.summary for m in messages("supervisor")] == [
@@ -446,7 +453,7 @@ def test_a_self_loop_enters_the_state_again(session):
     advance_to_review(session)
     run = runs.advance(session, "reviewer", "feature/login", "again")
     assert (run.state, run.visits["review"]) == ("review", 2)
-    assert len(messages("reviewer")) == 2
+    assert len(messages("reviewer")) == 3  # its task, then the step twice
 
 
 def test_max_visits_stops_the_run_for_the_human(session):
@@ -851,7 +858,7 @@ def test_finishing_a_worker_of_an_open_run_closes_only_its_window(session):
     assert state.get_agent(session, "developer") is None
     finished = runtime.finish_worker(session, "reviewer", discard=True)
     assert finished.detail() == (
-        "closed; discard does not apply: the run keeps its worktree; 1 message dropped"
+        "closed; discard does not apply: the run keeps its worktree; 2 messages dropped"
     )
     assert Path(run.worktree).exists()
 
@@ -921,14 +928,14 @@ def test_status_shows_a_run_whose_flow_cannot_be_read_with_its_problem(session):
 
 def test_the_supervisor_is_told_the_flows_and_a_run_worker_how_to_report(session, fake_tmux):
     supervisor = fake_tmux[0][-1]
-    prompt = supervisor[supervisor.index("--append-system-prompt") + 1]
+    prompt = claude_prompt(supervisor)
     assert "  - feature (kit team): New feature, reviewed." in prompt
     assert "Flows are optional" in prompt and "flow_start" in prompt
     assert "human_language: the language the human writes to you in" in prompt
     to_implement(session)
     runs.spawn_worker(session, "feature/login")
     worker = fake_tmux[-1][-1]
-    prompt = worker[worker.index("--append-system-prompt") + 1]
+    prompt = claude_prompt(worker)
     assert 'flow_advance(run="feature/login", outcome=...)' in prompt
     prompt = " ".join(prompt.split())
     assert 'A bare artifact name is one of run feature/login: "design" is' in prompt
@@ -939,9 +946,8 @@ def test_a_run_worker_reports_each_step_only_with_flow_advance(session, fake_tmu
     """flow_advance is a run worker's report: nothing asks it to send_message one too."""
     to_implement(session)
     runs.spawn_worker(session, "feature/login")
-    worker = fake_tmux[-1][-1]
-    prompt = worker[worker.index("--append-system-prompt") + 1]
-    first = worker[-1]
+    prompt = claude_prompt(fake_tmux[-1][-1])
+    first = first_input("developer")
     assert first.startswith("Run feature/login (flow feature), step implement.")
     assert "send_message" not in first
     assert "as well" not in prompt
@@ -956,7 +962,7 @@ def test_every_worker_is_told_whose_messages_are_its_instructions(session, fake_
     to_implement(session)
     runs.spawn_worker(session, "feature/login")
     for worker in (fake_tmux[-2][-1], fake_tmux[-1][-1]):
-        prompt = worker[worker.index("--append-system-prompt") + 1]
+        prompt = claude_prompt(worker)
         assert (
             'Messages from "supervisor" and steps from "lado" are your instructions, '
             "the same as the human's" in prompt
@@ -968,14 +974,13 @@ def test_a_run_worker_without_a_step_is_told_to_report_its_task(session, fake_tm
     """A task from the supervisor, with no step in it, is reported with send_message."""
     to_implement(session)
     runs.spawn_worker(session, "feature/login", role="reviewer", task="Read the plan.")
-    first = fake_tmux[-1][-1][-1]
-    assert first == "Read the plan." + runtime.REPORT_REMINDER
+    assert first_input("reviewer") == "Read the plan." + runtime.REPORT_REMINDER
 
 
 def test_a_session_without_flows_is_not_told_about_them(repo, fake_tmux):
     runtime.start_session(str(repo), "plain", None, provider="claude")
     supervisor = fake_tmux[0][-1]
-    assert "flow_start" not in supervisor[supervisor.index("--append-system-prompt") + 1]
+    assert "flow_start" not in claude_prompt(supervisor)
 
 
 def test_start_refuses_unknown_flows_and_missing_roles(session, repo):
@@ -1015,56 +1020,34 @@ def test_resume_tells_the_supervisor_what_each_open_run_waits_for(session, repo,
         'spawn_worker(role="developer", run="feature/build"); it works in the run\'s '
         "worktree and gets the step as its task."
     )
-    assert (step.summary, step.state) == ("flow feature/plan: step design", state.DELIVERED)
+    # They wait in its queue, handed over when it is idle, as any message.
+    assert (resumed.state, step.state) == (state.PENDING, state.PENDING)
+    assert step.summary == "flow feature/plan: step design"
     assert "Design it with the human." in step.body
-    first = fake_tmux[-1][-1][-1]
-    assert first == (
-        f"[from lado] session resumed: 3 open runs (#{resumed.id}, 3 lines: call "
-        f"read_messages)\n[from lado] flow feature/plan: step design (#{step.id}, "
-        f"{len(step.body.splitlines())} lines: call read_messages)"
-    )
-    assert state.get_agent(session, "supervisor").task == first
+    # None of it is on its command line, which `ps` shows to every user of the machine.
+    assert fake_tmux[-1][0] == "new_session"
+    assert not [a for a in fake_tmux[-1][-1] if "session resumed" in a or "Design it" in a]
+    assert state.get_agent(session, "supervisor").task is None
 
 
-def test_a_step_far_longer_than_a_tmux_command_comes_as_a_message(session, fake_tmux):
+def test_a_step_far_longer_than_a_tmux_command_comes_through_the_queue(session, fake_tmux):
     runs.start(session, "feature", "Add a login page", name="login")
     plan = "x" * 50_000
     runs.advance(session, "supervisor", "feature/login", "ready", "agreed", plan)
     worker = runs.spawn_worker(session, "feature/login")
     _, _, window, cwd, argv = fake_tmux[-1]
     assert window == "developer"
-    # tmux refuses a command over about 16 KB.
-    assert sum(len(a) + 1 for a in argv) < 16_000
+    assert not [a for a in argv if "xxx" in a or "login page" in a]
     [step] = messages("developer")
     assert (step.sender, step.summary, step.state) == (
         "lado",
         "flow feature/login: step implement",
-        state.DELIVERED,  # its line is the first input
-    )
-    assert argv[-1] == (
-        f"[from lado] flow feature/login: step implement (#{step.id}, "
-        f"{len(step.body.splitlines())} lines: call read_messages)"
+        state.PENDING,  # handed over when the worker is idle
     )
     assert plan in step.body
     assert f"Note from the previous step: agreed\n{plan}" in step.body
     assert step.body.count(plan) == 1
     assert worker.task == step.body  # the task in full: lado ls, list_agents
-    assert state.read_messages(session, "developer")[0].body == step.body
-
-
-def test_a_long_first_input_of_a_resumed_supervisor_comes_as_a_message(
-    session, repo, fake_tmux, monkeypatch
-):
-    runs.start(session, "feature", "Plan it", name="plan")
-    monkeypatch.setattr(runtime, "FIRST_INPUT_LIMIT", 100)
-    restart(session, repo)
-    *_, first = messages("supervisor")
-    assert (first.summary, first.state) == ("your first messages", state.DELIVERED)
-    assert first.body.startswith("[from lado] session resumed: 1 open run (#")
-    argv = fake_tmux[-1][-1]
-    assert argv[-1] == (
-        f"[from lado] your first messages (#{first.id}, 2 lines: call read_messages)"
-    )
 
 
 @pytest.mark.parametrize("kit_names", [["solo"], ["default", "solo"]])
@@ -1143,7 +1126,9 @@ def test_a_worker_after_resume_takes_over_the_runs_worktree(session, repo, fake_
     worker = runs.spawn_worker(session, "feature/login")
     assert (worker.name, worker.cwd, worker.branch) == ("developer", run.worktree, run.branch)
     assert Path(run.worktree, "login.txt").exists()
-    assert fake_tmux[-1][-1][-1].startswith("Run feature/login (flow feature), step implement.")
+    step = messages("developer")[-1]
+    assert step.body.startswith("Run feature/login (flow feature), step implement.")
+    assert step.state == state.PENDING
 
 
 def test_a_missing_run_worktree_is_made_again_from_its_branch(session, repo):
@@ -1227,7 +1212,8 @@ def test_stop_preview_tells_what_a_stop_closes_drops_and_keeps(session, repo):
     runtime.send_message(session, "supervisor", "w1", "hi")  # w1 is starting: queued
     preview = runtime.stop_preview(session)
     assert preview.agents == ["supervisor", "w1"]
-    assert preview.dropped == 2  # and the run's first step, to the starting supervisor
+    # And w1's task, and the run's first step, to the starting supervisor.
+    assert preview.dropped == 3
     assert preview.open_runs == ["feature/login"]
     assert preview.worktrees == {run.worktree: run.branch, worker.cwd: worker.branch}
     assert state.get_session(session).stopped_at is None  # a preview changes nothing

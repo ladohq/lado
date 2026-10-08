@@ -62,10 +62,9 @@ def handle(
         # too.
         held = current and current.status == state.WAITING and agent in state.block_reasons(session)
         if current and (current.status == state.STARTING or held):
-            if current.task:
-                state.set_status(session, agent, state.BUSY)  # its first turn: the task
-            else:
-                _idle(provider, session, agent)
+            # Ready: its first input (a worker's task, a resumed supervisor's messages from
+            # LADO) is in its queue.
+            _idle(provider, session, agent)
     elif event.kind == providers.PROMPT_SUBMIT:
         state.set_status(session, agent, state.BUSY)
         state.confirm_sent(session, agent, event.prompt, format_message)

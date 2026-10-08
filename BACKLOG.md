@@ -485,6 +485,19 @@ Wanted: the test waits for what the finish guarantees, not for a hook of a worke
 being killed.
 Found: 2026-10-08, CI of the release commit c165eee (0.28.0).
 
+## Other users of the machine can read LADO_HOME
+
+Size: M. Why here: every message, task, note and artifact of every session is readable by
+the machine's other local users; the human decided to do it after the argv fix.
+`~/.lado` is made with mode 755, `lado.db` and `lado.db-wal` 644, `artifacts/` 755, and the
+agents' config folders (`mcp.json`, `settings.json`, `prompt.md`, `role.md`) 755/644. On
+macOS the home folder is 750 with group `staff`, which every local user is in. Only
+`server-token`, `server.log` and `env.json` are 600.
+Wanted: LADO makes `LADO_HOME` with mode 700 and tightens an existing one by default;
+`lado doctor` warns about modes wider than 700, and for a `LADO_HOME` set by hand only
+warns.
+Found: 2026-10-08, design of feature/argv-prompt.
+
 # P2: when convenient
 
 ## The commands of a kit's MCP servers are not checked before a start

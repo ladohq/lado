@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 
+import agent_helpers
 import pytest
 
 from lado import hooks, providers, runtime, state, tmux
@@ -28,6 +29,7 @@ def _hook(event, agent, payload=None):
 def _session_with_worker(repo):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
 
 
 def _from_lado(to):

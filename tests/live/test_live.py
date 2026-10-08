@@ -167,6 +167,20 @@ def status(agent: str) -> str:
     return current.status
 
 
+def check_first_input(recipient: str, summary: str) -> None:
+    """The agent's first input, a message from LADO through its queue (no part of its
+    command line), was handed over once and taken at the first attempt: a hand-over from
+    its session-start hook works with this CLI."""
+    [first] = [
+        m
+        for m in state.list_messages(SESSION)
+        if (m.sender, m.recipient, m.summary) == (state.LADO, recipient, summary)
+    ]
+    assert (first.state, first.attempts) in [(s, 1) for s in RECEIVED], (
+        f"{recipient}'s first input {summary!r}: {first.state} after {first.attempts} attempts"
+    )
+
+
 def messages(sender: str, recipient: str) -> list[tuple[str, str]]:
     """(summary, state) of each message from `sender` to `recipient`."""
     return [
@@ -378,6 +392,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider,
         60,
     )
     summary = check_report()
+    check_first_input("w1", "your task")
     check_artifact()
 
     hello = runtime.git(str(repo), "show", f"{worker.branch}:hello.txt")
@@ -500,11 +515,11 @@ def check_clear(provider: str) -> None:
 
 def check_resume(provider: str, repo) -> None:
     """`lado start` again: the stopped session resumes, and the new supervisor's first input
-    is LADO's resume message, given on its command line. Then stop it for good."""
+    is LADO's resume message, through its queue. Then stop it for good."""
     started = runtime.start_session(str(repo), SESSION, None)
     assert (started.resumed, started.changes, started.problems) == (True, [], [])
     resumed = "[from lado] session resumed: 0 open runs"
-    assert state.get_agent(SESSION, "supervisor").task == resumed
+    assert state.get_agent(SESSION, "supervisor").task is None
     resume_event = [e for e in state.list_events(SESSION) if e.kind == state.SESSION_RESUME][-1]
 
     def answered() -> bool:
@@ -517,6 +532,7 @@ def check_resume(provider: str, repo) -> None:
         return bool(idle) and resumed in tmux.capture(SESSION, "supervisor")
 
     wait_for(answered, "the supervisor to take the resume message", 120)
+    check_first_input("supervisor", "session resumed: 0 open runs")
     assert loop.running(SESSION)
     ls = subprocess.run(
         [sys.executable, "-m", "lado.cli", "ls"], capture_output=True, text=True, env=os.environ
@@ -584,6 +600,7 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
         240,
     )
     assert ended.state == "end"
+    check_first_input("w1", f"flow {run.name}: step step")
     moves = [(e.agent, e.detail) for e in state.list_events(SESSION) if e.kind == state.FLOW]
     assert moves == [("w1", "step -done-> end")]
     assert runtime.git(str(repo), "show", f"{run.branch}:flow.txt").strip() == "OK"

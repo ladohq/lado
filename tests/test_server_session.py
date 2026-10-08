@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from lado import doctor, providers, runtime, state
 from lado.server import app as server_app
-from lado.server import auth
+from lado.server import auth, models
 
 PORT = 8123
 
@@ -235,3 +235,17 @@ def test_about_gives_the_sessions_provider_with_its_version_and_warning(client, 
 
 def test_about_an_unknown_session_is_404(client, session):
     assert client.get("/api/sessions/x/about").status_code == 404
+
+
+@pytest.mark.parametrize("status", list(runtime.SessionStatus))
+def test_a_session_says_how_many_agents_work_only_while_it_runs(
+    client, session, monkeypatch, status
+):
+    state.set_status("s", "supervisor", state.BUSY)
+    monkeypatch.setattr(runtime, "session_status", lambda sess: status)
+    [sess] = client.get("/api/sessions").json()
+    if status == runtime.SessionStatus.RUNNING:
+        since = state.status_since("s")["supervisor"]
+        assert (sess["busy"], sess["activity_since"]) == (1, models._iso(since))
+    else:  # the agents of a dead session may keep their last statuses
+        assert (sess["busy"], sess["activity_since"]) == (0, None)

@@ -1842,6 +1842,10 @@ export interface components {
             /** Agents */
             agents: number;
             waiting: components["schemas"]["Waiting"];
+            /** Busy */
+            busy: number;
+            /** Activity Since */
+            activity_since: string | null;
             /** Kits */
             kits: string[];
             /** Provider */

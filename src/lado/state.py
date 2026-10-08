@@ -1665,6 +1665,23 @@ def waiting_for_human(session: str) -> tuple[int, int, int]:
     )
 
 
+def session_activity(session: str) -> tuple[int, datetime.datetime | None]:
+    """Whether something moves in the session: its agents in `busy` or `starting`, and
+    since when (UTC, as status_since says): with some, the earliest time one of them got its
+    status; with none, the latest time any agent got its own. None with no such event."""
+    moving = (BUSY, STARTING)
+    with connect() as db:
+        busy, earliest, latest = db.execute(
+            "SELECT COALESCE(SUM(a.status IN (?, ?)), 0),"
+            " MIN(CASE WHEN a.status IN (?, ?) THEN e.created_at END), MAX(e.created_at)"
+            f" FROM agents a LEFT JOIN ({STATUS_EVENTS}) e"
+            " ON e.session = a.session AND e.agent = a.name WHERE a.session = ?",
+            (*moving, *moving, *status_events_args(session), session),
+        ).fetchone()
+    since = earliest if busy else latest
+    return busy, _utc(since) if since else None
+
+
 def open_gate(session: str, run: str) -> Gate | None:
     """The run's open gate, if it has one."""
     return next((g for g in open_gates(session) if g.run == run), None)

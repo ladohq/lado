@@ -95,6 +95,7 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
     runtime.stop_session("t")
     with state.connect() as db:
         db.execute("UPDATE sessions SET created_at = '2026-10-05 10:00:00'")
+        db.execute("UPDATE events SET created_at = '2026-10-05 10:00:01' WHERE session = 's'")
         db.execute("UPDATE sessions SET stopped_at = '2026-10-05 10:30:00.500' WHERE name = 't'")
         db.execute(
             "UPDATE events SET created_at = '2026-10-05 10:30:00.500' WHERE session = 't'"
@@ -113,6 +114,8 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "status": "running",
             "agents": 1,
             "waiting": none,
+            "busy": 1,  # its supervisor is starting
+            "activity_since": "2026-10-05T10:00:01.000Z",
             **defaults,
             "ran_seconds": 0,
             "running_since": "2026-10-05T10:00:00.000Z",
@@ -124,6 +127,8 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "status": "stopped",
             "agents": 0,
             "waiting": none,
+            "busy": 0,
+            "activity_since": None,
             "kits": ["default"],
             "provider": "kilo",
             "permission_mode": "plan",

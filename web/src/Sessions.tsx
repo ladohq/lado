@@ -238,15 +238,17 @@ const initials = (name: string) => {
 
 function StripIcon({ session }: { session: SessionInfo }) {
   const needsYou = waits(session);
+  const work = tracked(session) && workWord(session);
   return (
     <li>
       <Tooltip tip={<SessionTip session={session} />}>
         <NavLink
           to={sessionPath(session.name)}
           className={`strip-session${needsYou ? " waits" : ""}`}
-          aria-label={needsYou ? `${session.name}, needs you` : session.name}
+          aria-label={needsYou ? `${session.name}, needs you` : work ? `${session.name}, ${work}` : session.name}
         >
           {initials(session.name)}
+          {work && <span className={`dot dot-small activity-${work}`} aria-hidden="true" />}
         </NavLink>
       </Tooltip>
     </li>
@@ -258,11 +260,19 @@ function StripIcon({ session }: { session: SessionInfo }) {
 // permission mode; a stopped one, how to bring it back (Resume is in the session's head).
 function SessionTip({ session }: { session: SessionInfo }) {
   const mode = session.permission_mode ? ` · mode ${session.permission_mode}` : "";
+  const now = useNow(tracked(session) ? session.activity_since : null);
+  const agents = count(session.agents, "agent");
+  const since = session.activity_since && ` ${duration(secondsSince(session.activity_since, now))}`;
+  const work = !tracked(session)
+    ? agents
+    : session.busy > 0
+      ? `${session.busy} of ${agents} working`
+      : `idle${since || ""} · ${agents}`;
   return (
     <div className={`session-tip tone-${TONES[groupOf(session)]}`}>
       <div className="tooltip-line">
         <span className="tip-dot" aria-hidden="true" />
-        <b>{session.name}</b> · {STATUS[session.status]} · {count(session.agents, "agent")}
+        <b>{session.name}</b> · {STATUS[session.status]} · {work}
       </div>
       {waits(session) && <div className="tooltip-line waits">Needs you: {about(session)}</div>}
       <div className="tooltip-line">{session.repo}</div>
@@ -297,6 +307,21 @@ function grouped(sessions: SessionInfo[]): Record<SessionGroup, SessionInfo[]> {
 }
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// Whether the list says if a session's agents work (SessionInfo.busy, activity_since): a
+// Running row of a session that runs; the server counts none in one that does not.
+const tracked = (session: SessionInfo) => session.status === "running" && !waits(session);
+const workWord = (session: SessionInfo) => (session.busy > 0 ? "working" : "idle");
+
+// A Running row's line: how many of its agents work, or how many it has, and how long it has
+// worked or stood still, counted on by the minute.
+function WorkAbout({ session }: { session: SessionInfo }) {
+  const since = session.activity_since;
+  const now = useNow(since);
+  const agents = count(session.agents, "agent");
+  const who = session.busy > 0 ? `${session.busy} of ${agents}` : agents;
+  return <span className="session-about">{since ? `${who} · ${duration(secondsSince(since, now))}` : who}</span>;
+}
 
 // One line under a session's name: what waits for the human, or its agents and status.
 function about(session: SessionInfo): string {
@@ -346,8 +371,17 @@ function Group({
           <li key={session.name} className="session-row">
             <Tooltip tip={<SessionTip session={session} />}>
               <NavLink to={sessionPath(session.name)} className="session-link">
-                <span className="session-name">{session.name}</span>
-                <span className="session-about">{about(session)}</span>
+                <span className="session-name">
+                  <span>{session.name}</span>
+                  {tracked(session) && (
+                    <span
+                      className={`dot activity-${workWord(session)}`}
+                      role="img"
+                      aria-label={workWord(session)}
+                    />
+                  )}
+                </span>
+                {tracked(session) ? <WorkAbout session={session} /> : <span className="session-about">{about(session)}</span>}
                 {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
               </NavLink>
             </Tooltip>
@@ -744,13 +778,10 @@ function CliTip({ cli, mode }: { cli: ProviderInfo; mode: string | null }) {
   );
 }
 
-const TICK_MS = 60_000; // how often the times in a session's head are counted on
+const TICK_MS = 60_000; // how often the times of the session list and head are counted on
 
-// How long the session ran: while it runs, its closed spans and the time since its last
-// start; stopped, how long ago too; both counted on each minute.
-function Ran({ session }: { session: SessionInfo }) {
-  const { running_since: since, stopped_at: stopped } = session;
-  const from = since ?? stopped; // the time counted from
+// The clock of a time counted from `from` (none: no clock): now, again on each TICK_MS.
+function useNow(from: string | null): number {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!from) return;
@@ -758,7 +789,18 @@ function Ran({ session }: { session: SessionInfo }) {
     const timer = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(timer);
   }, [from]);
-  const seconds = (iso: string) => Math.max(0, (now - new Date(iso).getTime()) / 1000);
+  return now;
+}
+
+// The seconds from `iso` to `now`, none below 0.
+const secondsSince = (iso: string, now: number) => Math.max(0, (now - new Date(iso).getTime()) / 1000);
+
+// How long the session ran: while it runs, its closed spans and the time since its last
+// start; stopped, how long ago too; both counted on each minute.
+function Ran({ session }: { session: SessionInfo }) {
+  const { running_since: since, stopped_at: stopped } = session;
+  const now = useNow(since ?? stopped); // the time counted from
+  const seconds = (iso: string) => secondsSince(iso, now);
   const ran = duration(session.ran_seconds + (since ? seconds(since) : 0), true);
   const text = since ? ran : stopped ? `stopped ${duration(seconds(stopped))} ago · ran ${ran}` : `ran ${ran}`;
   return <span className="session-ran">{text}</span>;

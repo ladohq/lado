@@ -8,6 +8,11 @@
   from `lado` through the agent's queue, for every provider (Kilo and OpenCode see only its
   one-line notice on their command line, never its text).
 - UI: the session's head shows its permission mode in the CLI's tooltip, not in the line.
+- UI: a Running session in the session list says whether its agents work now: a pulsing
+  dot and `2 of 3 agents · 4 min` while some agent is busy, a ring and `1 agent · 12 min`
+  (how long it has stood still) when all wait for the human's next message; its card and
+  its icon in the collapsed list say it too. The API's `SessionInfo` has `busy` and
+  `activity_since`.
 
 ## 0.30.0 (2026-10-08)
 

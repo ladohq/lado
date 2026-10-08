@@ -115,6 +115,8 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "status": "tmux_gone",
             "agents": 0,
             "waiting": {"gates": 0, "questions": 0, "agents": 0},
+            "busy": 0,
+            "activity_since": None,
             "kits": ["default"],
             "provider": "claude",
             "permission_mode": None,
@@ -390,6 +392,30 @@ def test_a_change_of_an_agent_also_updates_its_session(streams, repo, fake_tmux)
     assert sessions[-1].data["item"]["status"] == "stopped"
 
 
+def test_an_agents_status_updates_how_many_work_in_its_session(
+    streams, repo, fake_tmux, monkeypatch
+):
+    assert ("sessions", feed._the_session) in feed.ALSO["agents"]
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    monkeypatch.setattr(loop, "running", lambda session: True)  # no loop runs in these tests
+    stream = streams()
+    stream.next()
+
+    def activity(e):
+        return is_change("sessions", "s")(e) and (
+            e.data["item"]["busy"],
+            e.data["item"]["activity_since"],
+        )
+
+    def since():
+        return models._iso(state.status_since("s")["supervisor"])
+
+    state.set_status("s", "supervisor", state.BUSY)
+    stream.until(lambda e: activity(e) == (1, since()))
+    state.set_status("s", "supervisor", state.IDLE)
+    stream.until(lambda e: activity(e) == (0, since()))
+
+
 def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
     stream = streams()
     stream.next()
@@ -528,6 +554,8 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "status": "tmux_gone",
         "agents": 1,
         "waiting": {"gates": 0, "questions": 0, "agents": 0},
+        "busy": 0,
+        "activity_since": None,
         "kits": ["default"],
         "provider": "claude",
         "permission_mode": None,

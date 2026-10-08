@@ -16,7 +16,7 @@ const NONE = { gates: 0, questions: 0, agents: 0 };
 
 function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
   const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null };
-  return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, ...settings, ...more };
+  return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, busy: 0, activity_since: null, ...settings, ...more };
 }
 
 function agent(name: string, role: string, status: AgentInfo["status"], more: Partial<AgentInfo> = {}): AgentInfo {
@@ -342,7 +342,7 @@ test("a row's card on focus and hover: name · status · agents, what needs the 
     tone: "session-tip tone-human",
   });
   expect(await card(/^calm/)).toEqual({
-    lines: ["calm · running · 1 agent", "/src/calm", "default · kilo"],
+    lines: ["calm · running · idle · 1 agent", "/src/calm", "default · kilo"],
     tone: "session-tip tone-done",
   });
   const stopped = await card(/^old/);
@@ -357,7 +357,7 @@ test("a row's card on focus and hover: name · status · agents, what needs the 
     fireEvent.mouseEnter(row);
     expect(screen.queryByRole("tooltip")).toBeNull();
     act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
-    expect(screen.getByRole("tooltip").textContent).toContain("calm · running · 1 agent");
+    expect(screen.getByRole("tooltip").textContent).toContain("calm · running · idle · 1 agent");
     fireEvent.mouseLeave(row);
     expect(screen.queryByRole("tooltip")).toBeNull();
   } finally {
@@ -372,6 +372,104 @@ test("a session moves to Needs you when the feed says something waits in it", as
   const gated = session("lado", { waiting: { gates: 1, questions: 0, agents: 0 } });
   stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: gated }, "11");
   expect(within(group("Needs you")).getByRole("link", { name: /lado/ })).toBeTruthy();
+});
+
+// Whether a Running session's agents work (SessionInfo.busy, activity_since): a dot before
+// its name and its line.
+const MINUTE = 60_000;
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+const row = (name: string) => within(list()).getByRole("link", { name: new RegExp(`^${name}`) });
+const dot = (link: HTMLElement) => within(link).queryByRole("img");
+const about = (link: HTMLElement) => link.querySelector(".session-about")!.textContent;
+
+test("a Running row says whether its agents work: a full dot and how many, or a ring, with the time since", async () => {
+  sessions = [
+    session("one", { busy: 1, activity_since: ago(3 * MINUTE) }),
+    session("two", { agents: 3, busy: 2, activity_since: ago(40_000) }),
+    session("calm", { activity_since: ago(12 * MINUTE) }),
+    session("pair", { agents: 2, activity_since: ago(2 * 60 * MINUTE) }),
+    session("fresh", { busy: 1 }), // no event tells since when
+    session("quiet", { agents: 2 }),
+  ];
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^one/ });
+  expect(names(group("Running"))).toEqual(["one", "two", "calm", "pair", "fresh", "quiet"]);
+  const working = dot(row("one"))!;
+  expect(working.getAttribute("aria-label")).toBe("working");
+  expect(working.className).toContain("activity-working");
+  expect(about(row("one"))).toBe("1 of 1 agent · 3 min");
+  expect(about(row("two"))).toBe("2 of 3 agents · <1 min");
+  const idle = dot(row("calm"))!;
+  expect(idle.getAttribute("aria-label")).toBe("idle");
+  expect(idle.className).toContain("activity-idle");
+  expect(about(row("calm"))).toBe("1 agent · 12 min");
+  expect(about(row("pair"))).toBe("2 agents · 2 h");
+  expect(about(row("fresh"))).toBe("1 of 1 agent");
+  expect(dot(row("quiet"))!.getAttribute("aria-label")).toBe("idle");
+  expect(about(row("quiet"))).toBe("2 agents");
+});
+
+test("a row's time goes on by itself, on the minute's clock of the head's run time", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    sessions = [session("calm", { activity_since: ago(30_000) })];
+    open("/sessions");
+    await within(list()).findByRole("link", { name: /^calm/ });
+    expect(about(row("calm"))).toBe("1 agent · <1 min");
+    act(() => vi.advanceTimersByTime(MINUTE));
+    expect(about(row("calm"))).toBe("1 agent · 1 min");
+    act(() => vi.advanceTimersByTime(2 * MINUTE));
+    expect(about(row("calm"))).toBe("1 agent · 3 min");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("only a Running row has the dot: Needs you, Stopped, tmux gone and loop down rows are as before", async () => {
+  sessions = [
+    session("gated", { busy: 1, activity_since: ago(MINUTE), waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("gone", { status: "tmux_gone" }),
+    session("down", { status: "loop_down", agents: 2 }),
+    session("old", { status: "stopped", agents: 0 }),
+  ];
+  localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^gated/ });
+  for (const name of ["gated", "gone", "down", "old"]) expect(dot(row(name))).toBeNull();
+  expect(about(row("gated"))).toBe("1 gate");
+  expect(about(row("gone"))).toBe("1 agent");
+  expect(about(row("down"))).toBe("2 agents");
+  expect(about(row("old"))).toBe("stopped");
+});
+
+test("a Running row's card and its icon in the strip say whether it works", async () => {
+  sessions = [
+    session("busy", { agents: 3, busy: 2, activity_since: ago(MINUTE) }),
+    session("calm", { activity_since: ago(12 * MINUTE) }),
+    session("gated", { waiting: { gates: 1, questions: 0, agents: 0 } }),
+  ];
+  open("/sessions");
+  const first = async (name: RegExp) => {
+    const link = await within(list()).findByRole("link", { name });
+    fireEvent.focus(link);
+    const line = screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent;
+    fireEvent.blur(link);
+    return line;
+  };
+  expect(await first(/^busy/)).toBe("busy · running · 2 of 3 agents working");
+  expect(await first(/^calm/)).toBe("calm · running · idle 12 min · 1 agent");
+  expect(await first(/^gated/)).toBe("gated · running · 1 agent");
+  cleanup();
+  collapsed();
+  open("/sessions");
+  const icon = (name: string) => within(strip()!).getByRole("link", { name: new RegExp(`^${name}`) });
+  await within(strip()!).findByRole("link", { name: /^busy/ });
+  expect(icon("busy").getAttribute("aria-label")).toBe("busy, working");
+  expect(icon("busy").querySelector(".dot")!.className).toContain("activity-working");
+  expect(icon("calm").getAttribute("aria-label")).toBe("calm, idle");
+  expect(icon("calm").querySelector(".dot")!.className).toContain("activity-idle");
+  expect(icon("gated").getAttribute("aria-label")).toBe("gated, needs you");
+  expect(icon("gated").querySelector(".dot")).toBeNull();
 });
 
 test("the list's width changes with its edge and is remembered", async () => {
@@ -461,13 +559,13 @@ test("the strip shows each session not stopped as two letters, those that need t
     session("stuck", { status: "tmux_gone", waiting: { gates: 0, questions: 0, agents: 1 } }),
   ];
   open("/sessions");
-  await within(strip()!).findByRole("link", { name: "lado" });
+  await within(strip()!).findByRole("link", { name: "lado, idle" });
   // In the open list's order: Needs you, then Running; no stopped session.
   expect(icons().map((icon) => icon.getAttribute("aria-label"))).toEqual([
     "gated.site, needs you",
     "stuck, needs you",
-    "crm-api",
-    "lado",
+    "crm-api, idle",
+    "lado, idle",
   ]);
   expect(icons().map((icon) => icon.textContent)).toEqual(["GS", "ST", "CA", "LA"]);
   expect(icons().map((icon) => icon.classList.contains("waits"))).toEqual([true, true, false, false]);
@@ -483,7 +581,7 @@ test("without a session that needs the human the strip has no line between parts
   collapsed();
   sessions = [session("crm-api"), session("lado")];
   open("/sessions");
-  await within(strip()!).findByRole("link", { name: "lado" });
+  await within(strip()!).findByRole("link", { name: "lado, idle" });
   expect(strip()!.querySelector(".strip-gap")).toBeNull();
 });
 
@@ -491,8 +589,8 @@ test("an icon opens its session at the row's address and is current there", asyn
   collapsed();
   sessions = [session("lado"), session("crm-api")];
   open("/sessions/lado/flows");
-  const lado = await within(strip()!).findByRole("link", { name: "lado" });
-  const crm = within(strip()!).getByRole("link", { name: "crm-api" });
+  const lado = await within(strip()!).findByRole("link", { name: "lado, idle" });
+  const crm = within(strip()!).getByRole("link", { name: "crm-api, idle" });
   expect(crm.getAttribute("href")).toBe("/sessions/crm-api");
   expect(lado.getAttribute("aria-current")).toBe("page");
   expect(crm.getAttribute("aria-current")).toBeNull();

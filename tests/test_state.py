@@ -1292,3 +1292,35 @@ def test_a_transition_s_detail_reads_back_as_it_was_written():
 )
 def test_a_detail_not_in_the_transition_s_form_is_no_transition(detail):
     assert state.transition(detail) is None
+
+
+def _agent_at(name, status, *events):
+    state.add_agent(state.Agent("s", name, "worker", "/w", None, None, status, provider="claude"))
+    for kind, created_at in events:
+        _event_at(name, kind, created_at, status)
+
+
+def test_session_activity_counts_busy_and_starting_since_the_earliest_of_them(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    utc = datetime.timezone.utc
+    assert state.session_activity("s") == (0, None)
+    _agent_at("w0", state.IDLE)  # written without LADO's runtime: no event
+    assert state.session_activity("s") == (0, None)
+    _agent_at("w1", state.IDLE, (state.SPAWNED, "2026-10-01 10:00:00.000"))
+    _agent_at(
+        "w2",
+        state.WAITING,
+        (state.SPAWNED, "2026-10-01 09:00:00.000"),
+        (state.STATUS, "2026-10-01 10:20:00.000"),
+    )
+    _agent_at("w3", state.STOPPED, (state.SPAWNED, "2026-10-01 10:10:00.000"))
+    # None busy: the latest time any agent got its current status.
+    assert state.session_activity("s") == (0, datetime.datetime(2026, 10, 1, 10, 20, tzinfo=utc))
+    _agent_at("w4", state.BUSY, (state.STATUS, "2026-10-01 10:40:00.000"))
+    _agent_at("w5", state.STARTING, (state.SPAWNED, "2026-10-01 10:30:00.500"))
+    _agent_at("w6", state.BUSY)  # busy, but no event: counted, no time
+    assert state.session_activity("s") == (
+        3,
+        datetime.datetime(2026, 10, 1, 10, 30, 0, 500000, tzinfo=utc),
+    )
+    assert state.session_activity("other") == (0, None)

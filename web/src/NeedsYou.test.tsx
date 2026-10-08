@@ -16,7 +16,7 @@ const SINCE = "2026-10-03T12:00:00.000Z";
 
 function session(name: string, waiting = { gates: 0, questions: 0, agents: 0 }, more: Partial<SessionInfo> = {}) {
   const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [] };
-  const time = { ran_seconds: 0, running_since: null, stopped_at: null };
+  const time = { ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, activity_since: null };
   return { name, repo: `/src/${name}`, status: "running", agents: 2, waiting, ...settings, ...time, ...more } as SessionInfo;
 }
 

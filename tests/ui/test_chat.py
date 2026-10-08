@@ -301,7 +301,16 @@ def test_the_human_attaches_files_and_the_agent_gets_them(page: Page, server, re
     page.get_by_role("textbox", name="Write to the supervisor…").fill("read")
     shot(page, "files")
     eye.focus()
-    expect(page.get_by_role("tooltip")).to_contain_text("Agents read text and PNG")
+    hint = page.get_by_role("tooltip")
+    expect(hint).to_contain_text("Agents read text and PNG")
+    expect(hint).to_have_attribute("data-side", re.compile(r"^(below|above)$"))
+    arrow = hint.evaluate(
+        "el => { const a = getComputedStyle(el, '::before');"
+        " return { content: a.content, x: el.getBoundingClientRect().left + parseFloat(a.left) } }"
+    )
+    eye_box = eye.bounding_box()
+    assert eye_box is not None and arrow["content"] == '""'
+    assert abs(arrow["x"] - (eye_box["x"] + eye_box["width"] / 2)) <= 1  # at the eye's centre
     shot(page, "hint")
     page.locator(".chat-feed").dispatch_event(
         "dragenter", {"dataTransfer": page.evaluate_handle(DRAGGED)}

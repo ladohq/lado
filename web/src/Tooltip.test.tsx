@@ -71,3 +71,60 @@ test("the trigger keeps its own handlers, and the tooltip takes no clicks", () =
   expect(clicked).toHaveBeenCalledOnce();
   expect(screen.getByRole("tooltip").classList.contains("tooltip")).toBe(true); // pointer-events: none
 });
+
+// A window of 800 × 600; the trigger and the card at the rectangles given (jsdom lays out nothing).
+function placed(trigger: { left: number; top: number; width: number; height: number }) {
+  const card = { width: 200, height: 40 };
+  vi.stubGlobal("innerWidth", 800);
+  vi.stubGlobal("innerHeight", 600);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    const r = this.getAttribute("role") === "tooltip" ? { left: 0, top: 0, ...card } : trigger;
+    const [right, bottom] = [r.left + r.width, r.top + r.height];
+    return { ...r, x: r.left, y: r.top, right, bottom, toJSON() {} };
+  });
+  fireEvent.focus(show());
+  return screen.getByRole("tooltip");
+}
+
+const left = (tip: HTMLElement) => parseFloat(tip.style.left);
+const arrowX = (tip: HTMLElement) => parseFloat(tip.style.getPropertyValue("--arrow-x"));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+test("under its trigger, the arrow on the top edge points at the trigger's centre", () => {
+  const tip = placed({ left: 300, top: 100, width: 60, height: 20 });
+  expect(tip.dataset.side).toBe("below");
+  expect(parseFloat(tip.style.top)).toBeGreaterThanOrEqual(120 + 10); // room for the arrow
+  expect(left(tip) + arrowX(tip)).toBe(330);
+});
+
+test("over its trigger when there is no room below, the arrow on the bottom edge", () => {
+  const tip = placed({ left: 300, top: 560, width: 60, height: 20 });
+  expect(tip.dataset.side).toBe("above");
+  expect(parseFloat(tip.style.top) + 40).toBeLessThanOrEqual(560 - 10);
+  expect(left(tip) + arrowX(tip)).toBe(330);
+});
+
+test("a narrow trigger still gets the arrow at its centre, away from the card's corner", () => {
+  const tip = placed({ left: 300, top: 100, width: 16, height: 16 });
+  expect(left(tip) + arrowX(tip)).toBe(308);
+  expect(arrowX(tip)).toBeGreaterThanOrEqual(16);
+});
+
+test("a card pushed by the window's edge keeps its arrow at the trigger, off its ends", () => {
+  let tip = placed({ left: 760, top: 100, width: 30, height: 20 });
+  expect(left(tip)).toBe(800 - 8 - 200);
+  expect(arrowX(tip)).toBe(775 - 592);
+  cleanup();
+  tip = placed({ left: 790, top: 100, width: 10, height: 20 });
+  expect(arrowX(tip)).toBe(200 - 16); // past the card's end: clamped
+  cleanup();
+  tip = placed({ left: 0, top: 100, width: 4, height: 20 });
+  expect(left(tip)).toBe(8);
+  expect(arrowX(tip)).toBe(16);
+});

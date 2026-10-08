@@ -1233,6 +1233,35 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+/* Its arrow: a square turned 45°, the card's fill and frame, its middle on the card's
+   border at --arrow-x (Tooltip.tsx). Painted under the text but over the card's border
+   (z-index -1 in the card's own stacking context), so the frame runs on with no seam. */
+.tooltip::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: var(--arrow-x);
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+
+.tooltip[data-side="below"]::before {
+  top: -5px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.tooltip[data-side="above"]::before {
+  bottom: -5px;
+  border-top: 0;
+  border-left: 0;
+}
+
 .tooltip-line + .tooltip-line {
   color: var(--muted);
 }

@@ -2,7 +2,8 @@
 // Structure): it shows TOOLTIP_DELAY_MS after the pointer enters its trigger, and at once
 // when the trigger gets the focus from the keyboard; it goes when the pointer leaves, the
 // focus goes, or on Esc. While shown, the trigger is described by it (aria-describedby).
-// It takes no pointer events and stays inside the window.
+// It takes no pointer events and stays inside the window. An arrow on the edge facing the
+// trigger points at the trigger's centre.
 import {
   cloneElement,
   useEffect,
@@ -10,6 +11,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FocusEvent,
   type MouseEvent,
   type PointerEvent,
@@ -20,8 +22,11 @@ import { createPortal } from "react-dom";
 
 export const TOOLTIP_DELAY_MS = 300;
 
-const GAP = 6; // pixels between the trigger and the tooltip
+const GAP = 11; // pixels between the trigger and the tooltip: the arrow's 5 and 6 of room
 const MARGIN = 8; // the least room to the window's edge
+const ARROW_END = 16; // the least room from the arrow's middle to the card's end, past its corner
+
+type Place = { left: number; top: number; side: "below" | "above"; arrow: number };
 
 type Trigger = {
   onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
@@ -35,7 +40,7 @@ type Trigger = {
 export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElement<Trigger> }) {
   const id = useId();
   const [shown, setShown] = useState(false);
-  const [place, setPlace] = useState({ left: 0, top: 0 });
+  const [place, setPlace] = useState<Place>({ left: 0, top: 0, side: "below", arrow: 0 });
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const trigger = useRef<HTMLElement | null>(null);
   const pressed = useRef(false); // the focus that follows comes from the pointer, not the keyboard
@@ -59,15 +64,24 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
     return () => document.removeEventListener("keydown", escape);
   }, [shown]);
 
-  // Under the trigger, or over it when there is no room below; never past the window's edge.
+  // Under the trigger, or over it when there is no room below; from the trigger's left, but
+  // far enough left for the arrow to reach a narrow trigger's centre; never past the
+  // window's edge. The arrow points at the trigger's centre, kept off the card's corners.
   useLayoutEffect(() => {
     if (!shown || !trigger.current || !box.current) return;
     const at = trigger.current.getBoundingClientRect();
     const size = box.current.getBoundingClientRect();
-    const left = Math.max(MARGIN, Math.min(at.left, window.innerWidth - size.width - MARGIN));
+    const centre = at.left + at.width / 2;
+    const wanted = Math.min(at.left, centre - ARROW_END);
+    const left = Math.max(MARGIN, Math.min(wanted, window.innerWidth - size.width - MARGIN));
     const below = at.bottom + GAP;
-    const top = below + size.height > window.innerHeight - MARGIN ? at.top - GAP - size.height : below;
-    setPlace({ left, top: Math.max(MARGIN, top) });
+    const side = below + size.height > window.innerHeight - MARGIN ? "above" : "below";
+    const top = side === "below" ? below : at.top - GAP - size.height;
+    const arrow =
+      size.width < 2 * ARROW_END
+        ? size.width / 2
+        : Math.max(ARROW_END, Math.min(centre - left, size.width - ARROW_END));
+    setPlace({ left, top: Math.max(MARGIN, top), side, arrow });
   }, [shown]);
 
   const own = children.props;
@@ -103,7 +117,16 @@ export function Tooltip({ tip, children }: { tip: ReactNode; children: ReactElem
       {element}
       {shown &&
         createPortal(
-          <div ref={box} id={id} role="tooltip" className="tooltip" style={place}>
+          <div
+            ref={box}
+            id={id}
+            role="tooltip"
+            className="tooltip"
+            data-side={place.side}
+            style={
+              { left: place.left, top: place.top, "--arrow-x": `${place.arrow}px` } as CSSProperties
+            }
+          >
             {tip}
           </div>,
           document.body,

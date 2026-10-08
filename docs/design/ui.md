@@ -858,7 +858,9 @@ Built in the layout task (2026-10-03, schema 14):
   status is in the accessible name). It shows 300 ms after the pointer enters, at once on
   the keyboard's focus (not a click's), goes when the pointer leaves, the focus goes or on
   Esc; `role="tooltip"`, the trigger's `aria-describedby` while it shows, no pointer
-  events, kept inside the window. A chip opens the agent's terminal in the panel, or selects its tab. The feed
+  events, kept inside the window; under its trigger, or over it when there is no room
+  below, with an arrow on the edge facing the trigger that points at the trigger's centre
+  (Look: Tooltips). A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
   (Flow events in Look of the feed), the kinds shown as lines named in one list in the UI
@@ -1499,9 +1501,19 @@ high, a `--line` frame on `--panel`, a 36 px thumbnail or type tile; a failed up
 has a `--danger` frame on a light `--danger` wash and its reason in `--danger`. The
 crossed-out eye is a 17 px `--panel` circle with a `--line` frame on the tile's lower right
 corner, the icon in `--muted`; its hint is the UI's tooltip, the light card (`--panel`,
-`--line` frame, `--shadow`). The drop zone is the composer's frame dashed in `--action` on
+`--line` frame, `--shadow`, its arrow at the eye; Tooltips below). The drop zone is the composer's frame dashed in `--action` on
 `--action-ground`. A preview of the human's image is at most 240 × 180, a `--line` frame
 on `--raised`. No orange.
+
+**Tooltips** (fix/tooltip-arrow, the human's decision 2026-10-08): every tooltip of the
+UI (`Tooltip.tsx`) is the light card, `--panel` with a `--line` frame and a soft
+`--shadow`, and an arrow to its trigger: an 8 px square turned 45° in the card's fill and
+frame, on the top edge under the trigger and on the bottom edge over it (`data-side`),
+painted over the card's border so the frame runs on with no seam. It points at the
+trigger's horizontal centre (`--arrow-x`), also when the window's edge pushes the card,
+and stays 16 px from the card's ends, off its rounded corners; for a narrow trigger the
+card starts left of it so the arrow still reaches its centre. The card is 11 px from its
+trigger, so the arrow never touches it.
 
 **Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
 "h23"`), whatever the browser's locale.

@@ -1228,6 +1228,15 @@ Wanted: the mark goes once none of its sessions is stopped (e.g. `_unfinished_up
 resume drops it), and `lado update` writes why a resume failed to `loop.log` too.
 Found: 2026-10-08, checking the 0.27.0 update in session core-tracker.
 
+## The web UI's main bundle is over Vite's 800 kB warning
+
+Size: S. Why here: every `make web` warns, so the warning no longer tells anything.
+`make web` prints `(!) Some chunks are larger than 800 kB after minification`: `index-*.js`
+is 886.64 kB on main (gzip 251.83 kB) and 924.84 kB with remark-gfm (gzip 262.94 kB).
+Wanted: split the bundle with dynamic `import()` (e.g. the Markdown renderer and the
+terminal in chunks of their own), or raise `build.chunkSizeWarningLimit` on purpose.
+Found: 2026-10-08, verify of feature/markdown-render.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

@@ -472,6 +472,16 @@ loaded machine whose hook takes longer than the first 15 s delay.
 Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis); outputs
 kept in .lado/briefs/integ-analysis/FLAKE-*.out (local, uncommitted).
 
+## Flaky: integration test of a finished worker waits for a hook that never comes
+
+Size: S. Why here: it turned CI red on a release commit.
+`tests/integration/test_agent_liveness.py::test_finishing_a_worker_tells_no_one_it_stopped`
+failed once in CI on Python 3.10 (`Failed: timed out after 30s waiting for w1's hook`; the
+events show w1 `finished merged` before it); 104 passed locally on 3.10.
+Wanted: the test waits for what the finish guarantees, not for a hook of a worker that is
+being killed.
+Found: 2026-10-08, CI of the release commit c165eee (0.28.0).
+
 # P2: when convenient
 
 ## A message keeps no run: the chat cannot say which run an agent writes for
@@ -636,6 +646,10 @@ Also on OpenCode: `test_worker_does_a_task_reports_and_gets_a_message[opencode]`
 `opencode/nemotron-3-ultra-free` failed once in two runs (2026-10-06, feature/agent-liveness):
 the supervisor merged w1's branch and called `finish_worker(name="w1")` before the test's
 check of the human's message ("agent w1 is gone"); the rerun passed.
+Again on OpenCode (2026-10-08, release 0.28.0): the same test failed the same way, and
+`test_an_agent_sees_the_image_the_human_attaches[opencode]` timed out with w1 busy for 120 s
+("waiting for w1 to be idle"); the rerun passed (the image test skipped: the model takes
+no images).
 Again on Kilo (2026-10-06, feature/trust-dialog): the supervisor spawned `worker` for the
 step besides w1, so finishing w1 kept the run's worktree; the rerun passed. The same day on
 Claude Code (haiku): the passive supervisor spawned `worker`, which advanced the run instead

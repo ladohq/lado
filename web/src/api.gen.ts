@@ -554,8 +554,8 @@ export interface paths {
         put?: never;
         /**
          * Write
-         * @description The human's text to an agent of the session (default: the supervisor), through
-         *     the same queue and delivery as an agent's message.
+         * @description The human's text to an agent of the session (default: the supervisor), with the
+         *     files uploaded for it, through the same queue and delivery as an agent's message.
          */
         post: operations["write_api_sessions__name__messages_post"];
         delete?: never;
@@ -656,6 +656,32 @@ export interface paths {
          * @description The session's artifacts, each as of its latest record.
          */
         get: operations["session_artifacts_api_sessions__name__artifacts_get"];
+        put?: never;
+        /**
+         * Upload
+         * @description The human's file, its bytes as the body: an artifact of the session's scope
+         *     (lado.artifacts.upload), for a message to attach. Over the size limit 413, having
+         *     read no more than the limit and one chunk.
+         */
+        post: operations["upload_api_sessions__name__artifacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Limits
+         * @description What the composer checks before an upload, and which files an agent reads.
+         */
+        get: operations["limits_api_limits_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1317,6 +1343,31 @@ export interface components {
             /** Without */
             without?: string[] | null;
         };
+        /**
+         * Limits
+         * @description What the composer checks before an upload and how it marks a file, all the core's
+         *     (lado.artifacts, lado.runtime): the UI keeps no copy.
+         */
+        Limits: {
+            /** Extensions */
+            extensions: {
+                [key: string]: string;
+            };
+            /** Text Types */
+            text_types: string[];
+            /** Agent Images */
+            agent_images: string[];
+            /** Max Size */
+            max_size: number;
+            /** Max Files */
+            max_files: number;
+            /** Image Limit */
+            image_limit: number;
+            /** Image Max Side */
+            image_max_side: number;
+            /** Max Message */
+            max_message: number;
+        };
         /** MarketplaceChange */
         MarketplaceChange: {
             /** Enabled */
@@ -1425,7 +1476,8 @@ export interface components {
         };
         /**
          * MessageText
-         * @description The human's text from the composer.
+         * @description The human's text from the composer, with the full names of the files uploaded for
+         *     it (POST …/artifacts); the text may be empty when there are some.
          */
         MessageText: {
             /**
@@ -1435,6 +1487,11 @@ export interface components {
             to: string;
             /** Text */
             text: string;
+            /**
+             * Artifacts
+             * @default []
+             */
+            artifacts: string[];
         };
         /** NewMarketplace */
         NewMarketplace: {
@@ -3133,6 +3190,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_api_sessions__name__artifacts_post: {
+        parameters: {
+            query: {
+                file_name: string;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    limits_api_limits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
                 };
             };
         };

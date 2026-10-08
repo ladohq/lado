@@ -1326,7 +1326,7 @@
       },
       "post": {
         "summary": "Write",
-        "description": "The human's text to an agent of the session (default: the supervisor), through\nthe same queue and delivery as an agent's message.",
+        "description": "The human's text to an agent of the session (default: the supervisor), with the\nfiles uploaded for it, through the same queue and delivery as an agent's message.",
         "operationId": "write_api_sessions__name__messages_post",
         "parameters": [
           {
@@ -1586,6 +1586,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Upload",
+        "description": "The human's file, its bytes as the body: an artifact of the session's scope\n(lado.artifacts.upload), for a message to attach. Over the size limit 413, having\nread no more than the limit and one chunk.",
+        "operationId": "upload_api_sessions__name__artifacts_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "file_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/limits": {
+      "get": {
+        "summary": "Limits",
+        "description": "What the composer checks before an upload, and which files an agent reads.",
+        "operationId": "limits_api_limits_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Limits"
                 }
               }
             }
@@ -3567,6 +3643,64 @@
         "title": "Launch",
         "description": "A new session, as `lado start` takes it."
       },
+      "Limits": {
+        "properties": {
+          "extensions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Extensions"
+          },
+          "text_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Text Types"
+          },
+          "agent_images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Agent Images"
+          },
+          "max_size": {
+            "type": "integer",
+            "title": "Max Size"
+          },
+          "max_files": {
+            "type": "integer",
+            "title": "Max Files"
+          },
+          "image_limit": {
+            "type": "integer",
+            "title": "Image Limit"
+          },
+          "image_max_side": {
+            "type": "integer",
+            "title": "Image Max Side"
+          },
+          "max_message": {
+            "type": "integer",
+            "title": "Max Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "extensions",
+          "text_types",
+          "agent_images",
+          "max_size",
+          "max_files",
+          "image_limit",
+          "image_max_side",
+          "max_message"
+        ],
+        "title": "Limits",
+        "description": "What the composer checks before an upload and how it marks a file, all the core's\n(lado.artifacts, lado.runtime): the UI keeps no copy."
+      },
       "MarketplaceChange": {
         "properties": {
           "enabled": {
@@ -3913,6 +4047,14 @@
           "text": {
             "type": "string",
             "title": "Text"
+          },
+          "artifacts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Artifacts",
+            "default": []
           }
         },
         "type": "object",
@@ -3920,7 +4062,7 @@
           "text"
         ],
         "title": "MessageText",
-        "description": "The human's text from the composer."
+        "description": "The human's text from the composer, with the full names of the files uploaded for\nit (POST \u2026/artifacts); the text may be empty when there are some."
       },
       "NewMarketplace": {
         "properties": {

@@ -22,6 +22,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 import lado
 from lado import artifacts, kits, marketplaces, runs, runtime, state, terminal, update
@@ -45,6 +46,7 @@ from lado.server.models import (
     KitInfo,
     KitUsersInfo,
     Launch,
+    Limits,
     MarketplaceChange,
     MarketplaceInfo,
     MarketplaceUpdate,
@@ -108,8 +110,19 @@ def core(action: Callable[..., T], *args) -> T:
     """Do what the human asked through the core; what it refuses is 400 with its reason."""
     try:
         return action(*args)
-    except runtime.LadoError as refused:
+    except (runtime.LadoError, artifacts.ArtifactError) as refused:
         raise HTTPException(400, str(refused)) from refused
+
+
+def too_large() -> HTTPException:
+    return HTTPException(413, f"the file is over the limit of {artifacts.MAX_SIZE} bytes")
+
+
+def stored(name: str, file_name: str, data: bytes, has_db: bool) -> ArtifactInfo:
+    """The human's upload through the core, as the artifact with its record."""
+    known(name, has_db)
+    written = core(artifacts.upload, name, file_name, data)
+    return models.artifact_info(written.artifact, written.record)
 
 
 def _kits_refused(refused: kits.KitError) -> HTTPException:
@@ -539,6 +552,46 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
         known(name, has_db)
         return [models.artifact_info(*found) for found in artifacts.of_session(name)]
 
+    @app.post(
+        "/api/sessions/{name}/artifacts",
+        dependencies=[Depends(guard.changes)],
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {"application/octet-stream": {"schema": {"type": "string"}}},
+            }
+        },
+    )
+    async def upload(
+        name: str, file_name: str, request: Request, has_db: bool = Depends(database)
+    ) -> ArtifactInfo:
+        """The human's file, its bytes as the body: an artifact of the session's scope
+        (lado.artifacts.upload), for a message to attach. Over the size limit 413, having
+        read no more than the limit and one chunk."""
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > artifacts.MAX_SIZE:
+            raise too_large()
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > artifacts.MAX_SIZE:
+                raise too_large()
+        return await run_in_threadpool(stored, name, file_name, bytes(data), has_db)
+
+    @app.get("/api/limits", dependencies=[Depends(guard)])
+    def limits() -> Limits:
+        """What the composer checks before an upload, and which files an agent reads."""
+        return Limits(
+            extensions=artifacts.EXTENSIONS,
+            text_types=list(artifacts.TEXT_TYPES),
+            agent_images=list(artifacts.AGENT_IMAGES),
+            max_size=artifacts.MAX_SIZE,
+            max_files=artifacts.MAX_HUMAN_FILES,
+            image_limit=artifacts.IMAGE_LIMIT,
+            image_max_side=artifacts.IMAGE_MAX_SIDE,
+            max_message=runtime.MAX_MESSAGE,
+        )
+
     @app.get("/api/sessions/{name}/artifacts/{artifact}", dependencies=[Depends(guard)])
     def one_artifact(name: str, artifact: str, has_db: bool = Depends(database)) -> ArtifactInfo:
         """One artifact of the session with its latest record."""
@@ -690,10 +743,14 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
 
     @app.post("/api/sessions/{name}/messages", dependencies=[Depends(guard.changes)])
     def write(name: str, message: MessageText, has_db: bool = Depends(database)) -> Sent:
-        """The human's text to an agent of the session (default: the supervisor), through
-        the same queue and delivery as an agent's message."""
+        """The human's text to an agent of the session (default: the supervisor), with the
+        files uploaded for it, through the same queue and delivery as an agent's message."""
         known(name, has_db)
-        return Sent(result=core(runtime.write_as_human, name, message.text, message.to))
+        return Sent(
+            result=core(
+                runtime.write_as_human, name, message.text, message.to, message.artifacts
+            )
+        )
 
     @app.post(
         "/api/sessions/{name}/questions/{question}/answer", dependencies=[Depends(guard.changes)]

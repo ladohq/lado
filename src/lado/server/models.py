@@ -643,10 +643,26 @@ class MessagePage(BaseModel):
 
 
 class MessageText(BaseModel):
-    """The human's text from the composer."""
+    """The human's text from the composer, with the full names of the files uploaded for
+    it (POST …/artifacts); the text may be empty when there are some."""
 
     to: str = "supervisor"
     text: str
+    artifacts: list[str] = []
+
+
+class Limits(BaseModel):
+    """What the composer checks before an upload and how it marks a file, all the core's
+    (lado.artifacts, lado.runtime): the UI keeps no copy."""
+
+    extensions: dict[str, str]  # a file name's extension -> its media type
+    text_types: list[str]  # read as text besides text/*
+    agent_images: list[str]  # the images read_artifact shows an agent
+    max_size: int  # bytes of a file
+    max_files: int  # files of a message
+    image_limit: int  # bytes of an image an agent is shown
+    image_max_side: int  # px
+    max_message: int  # characters of a message's text; a longer paste becomes a file
 
 
 class Answer(BaseModel):

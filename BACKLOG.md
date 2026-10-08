@@ -705,6 +705,10 @@ Again at the 0.26.0 release check (2026-10-08, e9ba5fa): OpenCode's passive supe
 spawned `worker` for the run besides w1 twice in a row (finishing w1 kept the worktree; the
 second time `worker`'s turn ended on the model's "tokens to keep ... greater than the
 context length" and the supervisor cancelled the run); the second rerun passed.
+Again on 2026-10-08 (verify of feature/expects-commands): OpenCode's passive supervisor
+spawned `worker` for the run besides w1, so finishing w1 kept the worktree; the rerun
+passed. In that rerun `test_an_agent_sees_the_image_the_human_attaches[opencode]` timed out
+with w1 busy for 120 s again; the next run skipped it as expected (the model takes no images).
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.

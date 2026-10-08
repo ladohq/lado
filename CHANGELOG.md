@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.1 (unreleased)
+
+- UI: the session's head shows its permission mode in the CLI's tooltip, not in the line.
+
 ## 0.30.0 (2026-10-08)
 
 - kit.yaml takes `expects: {commands: [...]}`: the CLIs a kit cannot work without. A

@@ -611,7 +611,7 @@ test("a stopped session's head counts on how long ago it stopped", async () => {
   }
 });
 
-test("the head's second line has the folder, whole in its title, the kits, the provider and the mode", async () => {
+test("the head's second line has the folder, whole in its title, the kits and the provider, no mode", async () => {
   sessions = [
     session("lado", { repo: "/Users/me/src/lado", kits: ["team", "default"], provider: "kilo", permission_mode: "plan" }),
     session("app"),
@@ -623,7 +623,7 @@ test("the head's second line has the folder, whole in its title, the kits, the p
   expect(path.textContent).toBe("/Users/me/src/lado");
   expect(path.getAttribute("title")).toBe("/Users/me/src/lado");
   expect(meta.querySelector(".session-kits")?.textContent).toBe("team, default");
-  expect(meta.querySelector(".session-agent-cli")?.textContent).toBe("kilo · plan");
+  expect(meta.querySelector(".session-agent-cli")?.textContent).toBe("kilo");
   expect(within(meta).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Copy path"]);
   cleanup();
   open("/sessions/app");
@@ -854,8 +854,8 @@ const meta = () => head().querySelector(".session-meta") as HTMLElement;
 const tip = () => screen.getByRole("tooltip").textContent;
 const aboutCalls = () => calls.filter((call) => call.path.endsWith("/about")).length;
 
-async function openHead(given: SessionAbout) {
-  sessions = [session("lado", { kits: ["team", "default"], permission_mode: "plan" })];
+async function openHead(given: SessionAbout, mode: string | null = "plan") {
+  sessions = [session("lado", { kits: ["team", "default"], permission_mode: mode })];
   abouts = { lado: given };
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
@@ -865,7 +865,7 @@ async function openHead(given: SessionAbout) {
 test("with its about, the head's second line has the folder, the remote and branch, the kits and the CLI", async () => {
   await openHead(about());
   const facts = [...meta().children].map((fact) => fact.textContent);
-  expect(facts).toEqual(["/src/lado", "github.com/ladohq/lado · main", "team, default", "claude · plan"]);
+  expect(facts).toEqual(["/src/lado", "github.com/ladohq/lado · main", "team, default", "claude"]);
   expect(within(meta()).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
     "Copy path",
     "Copy URL",
@@ -910,14 +910,26 @@ test("each kit's tooltip has its version, where it is and that the next agent st
 
 test("the CLI's tooltip has its version; ! in the line only for an untested version", async () => {
   const untested = provider("claude", { version: "2.1.300", tested_version: "2.1.291", warning: "untested version" });
-  await openHead(about({ provider: untested }));
+  await openHead(about({ provider: untested }), null);
   expect(within(meta()).getByRole("img", { name: "untested version" }).textContent).toBe("!");
   fireEvent.focus(meta().querySelector(".session-agent-cli .session-hint") as HTMLElement);
   expect(tip()).toBe("Claude Code 2.1.300tested with 2.1.291installed now: the next agent starts with it");
   cleanup();
-  await openHead(about({ provider: provider("claude", { installed: false, version: "", detail: "`claude` not found on PATH" }) }));
+  await openHead(about({ provider: provider("claude", { installed: false, version: "", detail: "`claude` not found on PATH" }) }), null);
   fireEvent.focus(meta().querySelector(".session-agent-cli .session-hint") as HTMLElement);
   expect(tip()).toBe("Claude Code not installed: `claude` not found on PATH");
+});
+
+test("the CLI's tooltip has the session's permission mode as its last line, when it has one", async () => {
+  await openHead(about(), "bypassPermissions");
+  expect(meta().querySelector(".session-agent-cli")?.textContent).toBe("claude");
+  fireEvent.focus(meta().querySelector(".session-agent-cli .session-hint") as HTMLElement);
+  const lines = () => [...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  expect(lines()).toEqual(["Claude Code 2.1.300", "installed now: the next agent starts with it", "mode bypassPermissions"]);
+  cleanup();
+  await openHead(about({ provider: provider("claude", { installed: false, version: "", detail: "`claude` not found on PATH" }) }));
+  fireEvent.focus(meta().querySelector(".session-agent-cli .session-hint") as HTMLElement);
+  expect(lines()).toEqual(["Claude Code not installed: `claude` not found on PATH", "mode plan"]);
 });
 
 test("about is asked again when a kit changes, or the session's kits, and not for another change", async () => {

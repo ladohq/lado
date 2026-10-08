@@ -2,6 +2,11 @@
 
 ## 0.30.1 (unreleased)
 
+- An agent's role prompt and its first input (a worker's task, a resumed supervisor's
+  messages) are no longer on its process's command line, where `ps` shows them to every
+  user of the machine: the role is read from a file, and the first input comes as a message
+  from `lado` through the agent's queue, for every provider (Kilo and OpenCode see only its
+  one-line notice on their command line, never its text).
 - UI: the session's head shows its permission mode in the CLI's tooltip, not in the line.
 - UI: a session's head is now the top bar, one line (the facts wrap to a second one in a
   narrow window), so the tabs and the chat start about 90 px higher; its status is a dot,

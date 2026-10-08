@@ -204,7 +204,15 @@ def test_spawned_worker_reports_back_to_supervisor(repo):
     assert (worker.branch, worker.task) == ("lado/itest/worker", "send supervisor finished")
     assert Path(worker.cwd, ".git").exists()
     runtime.git(str(repo), "rev-parse", "--verify", "lado/itest/worker")
-    assert inputs("worker")[0].startswith("send supervisor finished\n")
+    # Its task came through its queue: one line typed in, the text read with read_messages.
+    assert inputs("worker")[0].startswith("[from lado] your task (#")
+    [task] = seen("worker")["first_read"]
+    assert (task["from"], task["summary"]) == ("lado", "your task")
+    assert task["body"].startswith("send supervisor finished\n")
+    assert message_states("worker") == [state.READ]
+    # None of it is on the command line of its window, which `ps` shows to every user.
+    command = tmux.run("display", "-p", "-t", f"={SESSION}:=worker", "#{pane_start_command}")
+    assert "worker" in command and "finished" not in command
     wait_status("worker", state.IDLE)
     wait_status("supervisor", state.IDLE)
 
@@ -243,20 +251,20 @@ def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     start(repo)
     report = "send supervisor DONE: work.txt added | Status: DONE\\nFiles: work.txt\\nChecks: ok"
     runtime.spawn_worker(SESSION, report, name="w1")
-    line = "[from w1] DONE: work.txt added (#1, 3 lines: call read_messages)"
+    line = "[from w1] DONE: work.txt added (#2, 3 lines: call read_messages)"  # 1: its task
     wait_for(lambda: line in inputs("supervisor"), "the report")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
     supervisor_runs("read")
     [message] = seen("supervisor")["read"]
-    assert (message["id"], message["from"], message["summary"]) == (1, "w1", "DONE: work.txt added")
+    assert (message["id"], message["from"], message["summary"]) == (2, "w1", "DONE: work.txt added")
     assert message["body"] == "Status: DONE\nFiles: work.txt\nChecks: ok"
     assert message_states("supervisor")[0] == state.READ
     supervisor_runs("read")
     assert seen("supervisor")["read"] == []
     wait_status("w1", state.IDLE)
     runtime.send_message(SESSION, "supervisor", "w1", "hello w1")
-    wait_for(lambda: message_states("w1") == [state.DELIVERED], "delivery")
+    wait_for(lambda: message_states("w1") == [state.READ, state.DELIVERED], "delivery")
     wait_status("w1", state.IDLE)
     # `lado log` of real events: spawns, statuses, messages both ways, a body indented.
     result = lado_cli("log", SESSION, "--agent", "w1")
@@ -289,7 +297,7 @@ def test_a_worker_keeps_a_file_of_its_worktree_as_an_artifact_and_attaches_it(re
     }
     wait_status("w1", state.IDLE)
     runtime.send_message(SESSION, "supervisor", "w1", "send supervisor done --artifacts report")
-    line = "[from w1] done (#3, 1 artifact: call read_messages)"
+    line = "[from w1] done (#4, 1 artifact: call read_messages)"  # 1: its task
     wait_for(lambda: got_line("supervisor", line), "the report with its artifact")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     supervisor_runs("read")

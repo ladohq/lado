@@ -1,4 +1,5 @@
 import importlib
+import inspect
 import json
 import subprocess
 from pathlib import Path
@@ -346,7 +347,7 @@ class _NoTurnEndDelivery(providers.Provider):
         status_events=True, permission_event=False, deliver_on_turn_end=False, skills=False
     )
 
-    def launch_command(self, agent, session, spec, first_message=None):
+    def launch_command(self, agent, session, spec):
         return providers.Launch([])
 
     def parse_event(self, native, payload):
@@ -365,20 +366,20 @@ def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tm
     assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
-def _kilo_launch(repo, permission_mode=None, first_message=None):
+def _kilo_launch(repo, permission_mode=None):
     sess = state.Session("s", str(repo), permission_mode, "kilo")
     agent = state.Agent(
         "s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo", instance="i1"
     )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
-    launch = providers.get("kilo").launch_command(agent, sess, spec, first_message)
+    launch = providers.get("kilo").launch_command(agent, sess, spec)
     config = json.loads(launch.env["KILO_CONFIG_CONTENT"])
     return launch, config
 
 
 def test_kilo_launch_writes_config_and_env(repo, lado_home):
-    launch, config = _kilo_launch(repo, first_message="do it")
-    assert launch.argv == ["kilo", "--prompt", "do it"]
+    launch, config = _kilo_launch(repo)
+    assert launch.argv == ["kilo"]
     assert launch.env["KILO_NO_DAEMON"] == "1"
     # The config goes in as text: a KILO_CONFIG file loses to the repo's own kilo.json, the
     # text wins (Kilo 7.8.3). The same text is in the agent's config folder to look at.
@@ -489,20 +490,20 @@ def test_kilo_turn_end_prints_queued_messages(repo, fake_tmux):
     assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
-def _opencode_launch(repo, permission_mode=None, first_message=None):
+def _opencode_launch(repo, permission_mode=None):
     sess = state.Session("s", str(repo), permission_mode, "opencode")
     agent = state.Agent(
         "s", "w1", "worker", str(repo), None, None, state.STARTING, "opencode", instance="i1"
     )
     spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
-    launch = providers.get("opencode").launch_command(agent, sess, spec, first_message)
+    launch = providers.get("opencode").launch_command(agent, sess, spec)
     config = json.loads(launch.env["OPENCODE_CONFIG_CONTENT"])
     return launch, config
 
 
 def test_opencode_launch_writes_config_and_env(repo, lado_home):
-    launch, config = _opencode_launch(repo, first_message="do it")
-    assert launch.argv == ["opencode", "--prompt", "do it"]
+    launch, config = _opencode_launch(repo)
+    assert launch.argv == ["opencode"]
     # The config goes in as text, after the repo's own opencode.json (OpenCode 1.18.34); the
     # same text is in the agent's config folder to look at.
     assert launch.env == {
@@ -774,7 +775,7 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
     # Without skills, no --add-dir and no stale links.
     cmd = claude.launch_command(agent, sess, providers.AgentSpec("the role")).argv
     assert "--add-dir" not in cmd and not added.exists()
-    assert cmd[cmd.index("--append-system-prompt") + 1] == "the role"
+    assert agent_helpers.claude_prompt(cmd) == "the role"
 
 
 def test_claude_agent_cannot_use_built_in_agent_messaging(repo):
@@ -786,6 +787,52 @@ def test_claude_agent_cannot_use_built_in_agent_messaging(repo):
     cmd = providers.get("claude").launch_command(agent, sess, spec).argv
     settings = json.loads(open(cmd[cmd.index("--settings") + 1]).read())
     assert settings["permissions"]["deny"] == ["SendMessage", "ListAgents"]
+
+
+@pytest.mark.parametrize("provider", ["claude", *FAMILY])
+def test_no_prompt_or_input_on_the_command_line(repo, lado_home, provider):
+    # `ps` shows a process's argv to every user of the machine.
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, "TASK-MARK", state.STARTING, provider)
+    spec = providers.AgentSpec("PROMPT-MARK\nthe role", mcp={"lado": base.mcp_server(agent)})
+    cli = providers.get(provider)
+    assert "first_message" not in inspect.signature(cli.launch_command).parameters
+    argv = cli.launch_command(agent, sess, spec).argv
+    assert not [a for a in argv if "MARK" in a]
+    assert not {"--", "--prompt", "--append-system-prompt"} & set(argv)
+    if provider == "claude":
+        prompt = Path(argv[argv.index("--append-system-prompt-file") + 1])
+        assert prompt == lado_home / "agents" / "s" / "w1" / "prompt.md"
+        assert prompt.read_text() == spec.prompt
+
+
+NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_opencode_family_gets_its_first_notice_on_the_command_line(repo, provider):
+    """Its TUI loses what is typed in right after its start (OpenCode 1.18.35): the lines of
+    its first messages go on --prompt, as they would be typed; never a body."""
+    cli = providers.get(provider)
+    assert cli.capabilities.notice_on_argv
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
+    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
+    assert cli.launch_command(agent, sess, spec, notice=NOTICE).argv == [
+        provider,
+        "--prompt",
+        NOTICE,
+    ]
+    assert "--prompt" not in cli.launch_command(agent, sess, spec).argv
+
+
+def test_claude_takes_no_notice_on_the_command_line(repo):
+    claude = providers.get("claude")
+    assert not claude.capabilities.notice_on_argv
+    sess = state.Session("s", str(repo), None, "claude")
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    with pytest.raises(ValueError, match="notice"):
+        claude.launch_command(agent, sess, providers.AgentSpec("the role"), notice=NOTICE)
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))

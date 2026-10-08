@@ -60,7 +60,6 @@ class FakeProvider(base.Provider):
         agent: state.Agent,
         session: state.Session,
         spec: base.AgentSpec,
-        first_message: str | None = None,
     ) -> base.Launch:
         config_dir = base.config_dir(agent)
         # Its own logs outlive it, for the tests (agent_helpers.fake_logs): LADO removes
@@ -85,9 +84,7 @@ class FakeProvider(base.Provider):
         }
         config_file = config_dir / "fake.json"
         config_file.write_text(json.dumps(config, indent=2))
-        # On the command line, like the real CLIs: tmux's limit on its length applies.
-        first = [first_message] if first_message else []
-        return base.Launch([sys.executable, str(AGENT), str(config_file), *first])
+        return base.Launch([sys.executable, str(AGENT), str(config_file)])
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:

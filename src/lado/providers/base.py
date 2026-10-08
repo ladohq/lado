@@ -36,6 +36,10 @@ class Capabilities:
     # The session-start hook can hold the first turn until the CLI has listed LADO's MCP
     # tools (lado.hooks waits for it); False where that hook would hold the MCP server too.
     hold_first_turn: bool = False
+    # The CLI loses what is typed into it right after its start, and says by no event when
+    # it takes input: its first messages' lines (never a body) go on its command line as
+    # the `notice` of launch_command, handed over as typed (lado.runtime).
+    notice_on_argv: bool = False
 
 
 @dataclass(frozen=True)
@@ -135,13 +139,17 @@ class Provider(ABC):
         agent: state.Agent,
         session: state.Session,
         spec: AgentSpec,
-        first_message: str | None = None,
+        notice: str | None = None,
     ) -> Launch:
         """Write the agent's config files (MCP servers, skills, hooks) and return how to
         start it.
 
-        `spec.prompt` is the agent's role, added to the system prompt; `first_message`, if
-        any, is its first input. LADO checks `spec` against `capabilities` before the call.
+        `spec.prompt` is the agent's role, added to the system prompt in a way that keeps it
+        off the command line, which `ps` shows to every user of the machine. The agent gets
+        its first input through LADO's queue, as any message; only for a provider with
+        `capabilities.notice_on_argv`, `notice` holds the lines of its first messages (never
+        a body), which it takes as its first input. LADO checks `spec` against
+        `capabilities` before the call.
         """
 
     @abstractmethod

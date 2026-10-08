@@ -115,6 +115,7 @@ def test_duration_is_short(seconds, shown):
 def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys):
     main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     with state.connect() as db:
         db.execute(
             "UPDATE events SET created_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-11105 seconds')"
@@ -132,6 +133,7 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
 def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsys):
     main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
     at = state.list_messages("s")[0].sent_at
@@ -151,6 +153,7 @@ def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsy
 def test_ls_says_why_an_agent_stopped(repo, fake_tmux, capsys):
     main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     runtime.agent_ended("s", "w1", "its CLI exited")
     capsys.readouterr()
     main(["ls"])
@@ -167,7 +170,8 @@ def test_finish_ends_a_worker(repo, fake_tmux, capsys):
     assert 'lado: worker "w1" has uncommitted changes' in capsys.readouterr().err
     assert main(["finish", "s", "w1", "--discard"]) == 0
     out = capsys.readouterr().out
-    assert f'Finished worker "w1" (discarded): removed window, worktree {worker.cwd}' in out
+    finished = 'Finished worker "w1" (discarded; 1 message dropped): removed window, worktree'
+    assert f"{finished} {worker.cwd}" in out  # the message: its task
     assert "branch lado/s/w1" in out
     assert state.get_agent("s", "w1") is None
 
@@ -1345,10 +1349,8 @@ def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
     runs.spawn_worker("s", "ship/x", role="rev", task="Help.")
     assert main(["finish", "s", "rev-2"]) == 0
     out = capsys.readouterr().out
-    assert (
-        f'Finished worker "rev-2" (closed): closed its window; run ship/x keeps {run.worktree}'
-        in out
-    )
+    finished = 'Finished worker "rev-2" (closed; 1 message dropped): closed its window'
+    assert f"{finished}; run ship/x keeps {run.worktree}" in out  # the message: its task
     assert main(["stop", "s"]) == 0
     out = capsys.readouterr().out
     assert out.count(f"kept worktree {run.worktree}") == 1
@@ -1357,13 +1359,15 @@ def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
 def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
     run = _session_with_run(repo)
     runs.force("s", "ship/x", "check", "built by hand")
-    runtime.spawn_worker("s", "task", name="w1", role="worker")  # starting: a message waits
+    runtime.spawn_worker(
+        "s", "task", name="w1", role="worker"
+    )  # starting: its task and a message wait
     runtime.send_message("s", "supervisor", "w1", "hi")
     capsys.readouterr()
     assert main(["stop", "s"]) == 0
     out = capsys.readouterr().out
     # The supervisor is starting as well: LADO's two messages to it about the run wait.
-    assert out.startswith('Stopped session "s"; 3 undelivered messages dropped.\n')
+    assert out.startswith('Stopped session "s"; 4 undelivered messages dropped.\n')
     assert f"  kept worktree {run.worktree} (branch {run.branch})" in out
     assert f"  kept worktree {repo}/.lado/worktrees/s/w1 (branch lado/s/w1)" in out
     assert "History, open runs and gates are kept: lado start resumes the session" in out
@@ -1383,7 +1387,7 @@ def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
     ]
     assert lines[2] == "    gate #1 waiting: Ship it?"
     assert main(["log", "s"]) == 0
-    assert "lado: session_stop (3 messages dropped)" in capsys.readouterr().out
+    assert "lado: session_stop (4 messages dropped)" in capsys.readouterr().out
     for argv in (["answer", "s", "1", "approve"], ["answer", "s", "1"], ["answer", "s"]):
         assert main(argv) == 1
         assert 'session "s" is stopped; resume it with `lado start`' in capsys.readouterr().err

@@ -485,6 +485,19 @@ Wanted: the test waits for what the finish guarantees, not for a hook of a worke
 being killed.
 Found: 2026-10-08, CI of the release commit c165eee (0.28.0).
 
+## Other users of the machine can read LADO_HOME
+
+Size: M. Why here: every message, task, note and artifact of every session is readable by
+the machine's other local users; the human decided to do it after the argv fix.
+`~/.lado` is made with mode 755, `lado.db` and `lado.db-wal` 644, `artifacts/` 755, and the
+agents' config folders (`mcp.json`, `settings.json`, `prompt.md`, `role.md`) 755/644. On
+macOS the home folder is 750 with group `staff`, which every local user is in. Only
+`server-token`, `server.log` and `env.json` are 600.
+Wanted: LADO makes `LADO_HOME` with mode 700 and tightens an existing one by default;
+`lado doctor` warns about modes wider than 700, and for a `LADO_HOME` set by hand only
+warns.
+Found: 2026-10-08, design of feature/argv-prompt.
+
 # P2: when convenient
 
 ## The commands of a kit's MCP servers are not checked before a start
@@ -709,6 +722,13 @@ Again on 2026-10-08 (verify of feature/expects-commands): OpenCode's passive sup
 spawned `worker` for the run besides w1, so finishing w1 kept the worktree; the rerun
 passed. In that rerun `test_an_agent_sees_the_image_the_human_attaches[opencode]` timed out
 with w1 busy for 120 s again; the next run skipped it as expected (the model takes no images).
+Again on 2026-10-08 (verify of feature/argv-prompt, a1f2fa0): in the OpenCode flow test w1
+committed its own three lines (`flow: tiny / test: live / status: active`) in `flow.txt`
+instead of "OK" (tests/live/test_live.py:606); the rerun passed.
+Again on 2026-10-08 (implement of feature/argv-prompt, its second visit):
+`test_a_flow_run_moves_on_when_its_worker_reports[opencode]` timed out once after w1 was
+finished (the passive supervisor busy), and once w1 committed `flow.txt` with two lines of
+its own instead of "OK"; the third run passed.
 Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
 role, or the test tolerates and names it), so the test checks LADO, not the model.
 Found: 2026-10-05, live tests of run feature/opencode-provider.
@@ -1324,6 +1344,45 @@ Claude Code proves that an attached image reaches the model.
 Wanted: a free OpenCode model with image input for that test (e.g. a separate
 `LADO_LIVE_OPENCODE_IMAGE_MODEL`), or the gap named in AGENTS.md (Testing, Live e2e).
 Found: 2026-10-08, verify of feature/chat-attachments.
+
+## A traceback in hooks.log when the tmux server is gone at an agent's end
+
+Size: S. Why here: noise in hooks.log, no lost work.
+When a live test kills the tmux server, OpenCode's dispose hook runs `agent_ended` →
+`_tell_lead` → `hand_over` → `tmux.send_text`, which fails with `TmuxError: error
+connecting to /private/tmp/tmux-501/lado-test-… (No such file or directory)`, and the hook
+writes the whole traceback to hooks.log.
+Wanted: a tmux server that is gone during the hand-over at an agent's end is no error with
+a traceback; the message just stays queued.
+Found: 2026-10-08, verify of feature/argv-prompt (OpenCode flow live test's hooks.log).
+
+## CHANGELOG.md conflicts when parallel branches add a line
+
+Size: S. Why here: each such merge goes back to implement for a one-line fix.
+Branches append lines under the same `## X.Y.Z (unreleased)` heading, so merging main into a
+run's branch conflicts there (feature/argv-prompt and main both added one to 0.30.1).
+`.gitattributes` has `merge=union` for BACKLOG.md only.
+Wanted: CHANGELOG.md merges such additions without a conflict (e.g. `merge=union` too,
+checking that a release's dated heading still merges right).
+Found: 2026-10-08, merge of main into feature/argv-prompt.
+
+## The supervisor is told twice when a worker crashes before its first hook
+
+Size: S. Why here: a duplicate notice, no lost state; left open by the review of feature/argv-prompt.
+A worker whose CLI ends before its first hook, with its first input as a message from `lado`,
+gets two lines to the supervisor: the `agent_ended` notice and a `_report_failure` "not
+delivered" line for that input (`runtime.py`, `agent_ended` / `_report_failure`).
+Wanted: one line per crash, saying why the worker stopped.
+Found: 2026-10-08, review of feature/argv-prompt (Minor, not fixed on the branch).
+
+## Docs disagree on who takes an agent's queue
+
+Size: S. Why here: docs only; left open by the review of feature/argv-prompt.
+AGENTS.md (How agents talk: "A queue is taken only so, also an agent's first input", and the
+paragraph on the first input) and the docstring of `state.take_pending` say different things
+about whether the first input is taken through `runtime.hand_over`.
+Wanted: one wording, matching the code, in both places.
+Found: 2026-10-08, review of feature/argv-prompt (Minor, not fixed on the branch).
 
 # P3: maybe never
 

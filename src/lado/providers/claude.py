@@ -104,8 +104,10 @@ class ClaudeProvider(base.Provider):
         agent: state.Agent,
         session: state.Session,
         spec: base.AgentSpec,
-        first_message: str | None = None,
+        notice: str | None = None,
     ) -> base.Launch:
+        if notice:
+            raise ValueError(f"{self.title} takes no notice on its command line")
         config_dir = base.config_dir(agent)
 
         mcp_config = config_dir / "mcp.json"
@@ -138,14 +140,19 @@ class ClaudeProvider(base.Provider):
         }
         settings.write_text(json.dumps(config, indent=2))
 
+        # From a file, so the role is not on the command line (checked by hand with 2.1.294
+        # in an interactive session).
+        prompt = config_dir / "prompt.md"
+        prompt.write_text(spec.prompt)
+
         cmd = [
             self.command,
             "--mcp-config",
             str(mcp_config),
             "--settings",
             str(settings),
-            "--append-system-prompt",
-            spec.prompt,
+            "--append-system-prompt-file",
+            str(prompt),
         ]
         # Claude Code loads the skills in <dir>/.claude/skills of every --add-dir directory
         # (checked with Claude Code 2.1.286; symlinked skill folders work, and their scripts
@@ -162,8 +169,6 @@ class ClaudeProvider(base.Provider):
             cmd += ["--add-dir", str(folder)]
         if session.permission_mode:
             cmd += ["--permission-mode", session.permission_mode]
-        if first_message:
-            cmd += ["--", first_message]
         return base.Launch(cmd)
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:

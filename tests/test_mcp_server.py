@@ -18,6 +18,7 @@ def _tools(session, agent):
 def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     supervisor_tools = [
         "ask_human",
         "finish_worker",
@@ -58,6 +59,7 @@ def test_listing_the_tools_records_that_the_server_is_ready(repo, fake_tmux):
 def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     with state.connect() as db:
         db.execute(
             "UPDATE events SET created_at = strftime('%Y-%m-%d %H:%M:%f', 'now', '-90 seconds')"
@@ -74,6 +76,7 @@ def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake
 def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     state.set_status("s", "supervisor", state.IDLE)
     runtime.send_message("s", "w1", "supervisor", "report")
     at = state.list_messages("s")[0].sent_at
@@ -90,6 +93,7 @@ def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tm
 def test_list_agents_says_why_an_agent_stopped(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     runtime.agent_ended("s", "w1", "its CLI exited")
     result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("list_agents", {}))
     supervisor, worker = result.structured_content["result"]
@@ -100,6 +104,7 @@ def test_list_agents_says_why_an_agent_stopped(repo, fake_tmux):
 def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     worker = mcp_server.build("s", "w1")
     report = {"to": "supervisor", "summary": "DONE: x added", "body": "Files: x.py\nChecks: ok"}
     asyncio.run(worker.call_tool("send_message", report))
@@ -109,7 +114,7 @@ def test_a_report_is_a_summary_and_a_body_read_once(repo, fake_tmux):
     [message] = result.structured_content["result"]
     assert message.pop("time")
     assert message == {
-        "id": 1,
+        "id": 2,  # after w1's task
         "from": "w1",
         "summary": "DONE: x added",
         "body": "Files: x.py\nChecks: ok",
@@ -128,7 +133,7 @@ def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
         "name": "w1",
         "finished": "discarded",
         "removed": {"window": "w1", "worktree": worker.cwd, "branch": "lado/s/w1"},
-        "dropped_messages": 0,
+        "dropped_messages": 1,  # its task
     }
     assert state.get_agent("s", "w1") is None
 
@@ -393,6 +398,7 @@ def test_spawn_worker_takes_a_role_and_without(repo, fake_tmux):
 def test_an_agent_writes_to_and_asks_the_human(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     sent = _call("s", "w1", "send_message", {"to": "human", "summary": "a milestone"})
     assert sent == runtime.TO_HUMAN
     asked = _call(

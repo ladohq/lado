@@ -454,7 +454,7 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
             lines.append(f"  {problem[0].upper()}{problem[1:]}.")
     count = len(open_runs)
     summary = f"session resumed: {count} open run{'' if count == 1 else 's'}"
-    # Before the supervisor is stored: they become its first input.
+    # Before the supervisor is stored: they wait in its queue for its first hook.
     state.queue_message(sess.name, LADO, SUPERVISOR, summary, "\n".join(lines), before_start=True)
     for run in steps:
         summary = f"flow {run.name}: step {run.state}"

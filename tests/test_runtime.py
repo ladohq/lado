@@ -378,8 +378,6 @@ def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
     assert (repo / ".lado/worktrees/s/worker/.git").exists()
     kind, _, window, cwd, cmd = fake_tmux[-1]
     assert (kind, window, cwd) == ("new_window", "worker", worker.cwd)
-    assert cmd[-2] == "--"
-    assert cmd[-1].startswith("fix the bug;") and "send_message" in cmd[-1]
     status = subprocess.run(
         ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True
     )
@@ -387,6 +385,79 @@ def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
     assert runtime.spawn_worker("s", "another").name == "worker-2"
     assert runtime.spawn_worker("s", "named", name="w1").name == "w1"  # a given name wins
     assert runtime.spawn_worker("s", "third").name == "worker-3"
+
+
+@pytest.mark.parametrize("task", ["fix the bug;", "x" * 50_000])
+def test_a_worker_gets_its_task_through_its_queue(repo, fake_tmux, task):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    worker = runtime.spawn_worker("s", task)
+    assert worker.task == task  # in full: lado ls, list_agents
+    [message] = state.list_messages("s")
+    assert (message.sender, message.recipient, message.summary, message.state) == (
+        "lado",
+        "worker",
+        "your task",
+        state.PENDING,  # handed over when the worker is idle, as any message
+    )
+    assert message.body == task + runtime.REPORT_REMINDER
+    # Not on the command line, which `ps` shows to every user of the machine.
+    window = fake_tmux[-1]
+    assert window[0] == "new_window"
+    assert not [a for a in window[-1] if "fix the bug" in a or "xxx" in a]
+
+
+@pytest.mark.parametrize("provider", ["kilo", "opencode"])
+def test_an_opencode_family_worker_gets_its_first_line_on_its_command_line(
+    repo, fake_tmux, provider
+):
+    """Its TUI loses what is typed in right after its start (notice_on_argv): the line of
+    its task is handed over at its launch, as typed, and confirmed as typed text."""
+    cli = providers.get(provider)
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    runtime.spawn_worker("s", "fix the bug;", name="w1")
+    [task] = state.list_messages("s")
+    line = f"[from lado] your task (#{task.id}, 3 lines: call read_messages)"
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--prompt") + 1] == line
+    assert not [a for a in argv if "fix the bug" in a]  # never a body
+    assert (task.state, task.attempts, task.channel) == (state.SENT, 1, state.TYPED)
+    assert state.get_agent("s", "w1").status == state.STARTING
+    # Its start makes it idle; the batch it has is not typed in again.
+    hooks.handle(cli, providers.Event(providers.SESSION_START), "s", "w1")
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert not [c for c in fake_tmux if c[0] == "send_text"]
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
+    assert state.list_messages("s")[0].state == state.DELIVERED
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_a_failed_spawn_drops_the_first_line_handed_over_on_the_command_line(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    monkeypatch.setattr(tmux, "new_window", _fail)
+    with pytest.raises(tmux.TmuxError):
+        runtime.spawn_worker("s", "fix the bug;", name="w1")
+    assert [m.state for m in state.list_messages("s")] == [state.DROPPED]
+
+
+def test_a_resumed_opencode_family_supervisor_gets_its_lines_on_its_command_line(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_session", _fail)
+        with pytest.raises(tmux.TmuxError):
+            runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--prompt") + 1] == "[from lado] session resumed: 0 open runs"
+    # The failed resume's went with its stop; this one's is handed over at the launch.
+    assert [(m.state, m.attempts, m.channel) for m in state.list_messages("s")] == [
+        (state.DROPPED, 1, state.TYPED),
+        (state.SENT, 1, state.TYPED),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -408,12 +479,12 @@ def test_worker_is_told_a_text_report_is_lost(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task")
     cmd = fake_tmux[-1][-1]
-    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    prompt = agent_helpers.claude_prompt(cmd)
     assert "The supervisor cannot see your screen" in prompt
 
 
 def _prompt(cmd):
-    return cmd[cmd.index("--append-system-prompt") + 1]
+    return agent_helpers.claude_prompt(cmd)
 
 
 def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
@@ -484,6 +555,7 @@ def _hook(event, agent, payload=None, mcp_ready=True):
 def _session_with_worker(repo):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
 
 
 def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
@@ -1204,9 +1276,9 @@ def test_typed_in_after_the_hook_output_it_is_retried_and_fails_as_any_typed(rep
     assert _typed(fake_tmux) == ["[from w1] report"] * len(DELAYS)
     assert state.list_messages("s")[0].state == state.FAILED
     assert state.get_agent("s", "supervisor").status == state.WAITING
-    notice = state.list_messages("s")[-1]
+    report, *_, notice = state.list_messages("s")
     assert (notice.sender, notice.recipient) == ("lado", "w1")
-    assert notice.summary == "message #1 to supervisor not delivered: report"
+    assert notice.summary == f"message #{report.id} to supervisor not delivered: report"
 
 
 def test_a_turn_that_ends_without_taking_the_hook_output_gets_it_from_the_queue(repo, fake_tmux):
@@ -1298,7 +1370,7 @@ def test_status_hooks(repo, fake_tmux):
     _hook("SessionStart", "supervisor")
     _hook("SessionStart", "w1")
     assert state.get_agent("s", "supervisor").status == state.IDLE  # no task yet
-    assert state.get_agent("s", "w1").status == state.BUSY  # started with a task
+    assert state.get_agent("s", "w1").status == state.IDLE  # its task was taken before
     _hook("PermissionRequest", "w1", {"tool_name": "Bash", "tool_input": {}})
     assert state.get_agent("s", "w1").status == state.WAITING
     _hook("Notification", "w1", {"notification_type": "idle_prompt"})
@@ -1316,7 +1388,7 @@ def test_session_start_waits_until_the_lado_mcp_server_listed_its_tools(repo, fa
     threading.Timer(0.2, _mcp_ready, ["w1"]).start()
     _hook("SessionStart", "w1", mcp_ready=False)
     assert 0.2 <= time.monotonic() - started < hooks.MCP_READY_TIMEOUT
-    assert state.get_agent("s", "w1").status == state.BUSY
+    assert state.get_agent("s", "w1").status == state.IDLE  # ready: its queue is empty
 
 
 def test_session_start_looks_for_the_lado_mcp_server_every_twentieth_of_a_second(
@@ -1346,7 +1418,7 @@ def test_session_start_goes_on_without_the_lado_mcp_server_after_a_while(
     started = time.monotonic()
     _hook("SessionStart", "w1", mcp_ready=False)
     assert time.monotonic() - started >= 0.1
-    assert state.get_agent("s", "w1").status == state.BUSY
+    assert state.get_agent("s", "w1").status == state.IDLE  # ready: its queue is empty
     assert "w1: LADO's MCP server listed no tools" in (lado_home / "hooks.log").read_text()
 
 
@@ -1358,7 +1430,7 @@ def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
     hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
     # Far below the wait, but not tight: the tests run in parallel on a busy machine.
     assert time.monotonic() - started < hooks.MCP_READY_TIMEOUT / 4
-    assert state.get_agent("s", "w1").status == state.BUSY
+    assert state.get_agent("s", "w1").status == state.IDLE  # ready: its queue is empty
 
 
 def test_session_start_types_in_what_was_queued_while_the_agent_started(repo, fake_tmux):
@@ -1373,12 +1445,17 @@ def test_session_start_types_in_what_was_queued_while_the_agent_started(repo, fa
     assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
-def test_session_start_of_an_agent_busy_with_its_task_types_in_nothing(repo, fake_tmux):
-    _session_with_worker(repo)
+def test_session_start_of_a_worker_types_in_its_task_with_its_queue(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task", name="w1")
     runtime.send_message("s", "supervisor", "w1", "hi")
     _hook("SessionStart", "w1", {"source": "startup"})
-    assert _typed(fake_tmux, "w1") == []  # it gets the queue when its first turn ends
-    assert _hook("Stop", "w1") == {"decision": "block", "reason": "[from supervisor] hi"}
+    task = next(m for m in state.list_messages("s") if m.summary == "your task")
+    assert _typed(fake_tmux, "w1") == [
+        f"[from lado] your task (#{task.id}, {len(task.body.splitlines())} lines: call "
+        "read_messages)\n[from supervisor] hi"
+    ]
+    assert state.get_agent("s", "w1").status == state.BUSY
 
 
 @pytest.mark.parametrize("hook_runs", ["before the queue", "after the queue", "after the read"])
@@ -1606,11 +1683,6 @@ def test_stop_all_removes_the_config_folders_of_each_session(repo, fake_tmux, la
     assert _config_folders(lado_home) == []
 
 
-def _launched_with(cmd):
-    """The first message a fake-tmux claude command line was started with."""
-    return cmd[-1] if cmd[-2] == "--" else None
-
-
 def test_start_resumes_a_stopped_session(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.spawn_worker("s", "task")  # "worker"
@@ -1619,11 +1691,11 @@ def test_start_resumes_a_stopped_session(repo, fake_tmux):
     assert (started.resumed, started.changes, started.problems) == (True, [], [])
     assert started.session.stopped_at is None
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
-    assert _launched_with(fake_tmux[-1][-1]) == "[from lado] session resumed: 0 open runs"
-    assert [(m.sender, m.recipient, m.state) for m in state.list_messages("s")][-1] == (
+    assert [(m.sender, m.recipient, m.summary, m.state) for m in state.list_messages("s")][-1] == (
         "lado",
         "supervisor",
-        state.DELIVERED,
+        "session resumed: 0 open runs",
+        state.PENDING,
     )
     kinds = [e.kind for e in state.list_events("s")]
     assert kinds[-2:] == [state.SESSION_RESUME, state.SPAWNED]
@@ -1649,7 +1721,6 @@ def _fail(*args, **kwargs):
 @pytest.mark.parametrize("failing", ["tmux", "provider"])
 def test_a_failed_spawn_leaves_no_ghost_worker(repo, fake_tmux, monkeypatch, failing):
     runtime.start_session(str(repo), "s", None, provider="claude")
-    monkeypatch.setattr(runtime, "FIRST_INPUT_LIMIT", 10)  # the task comes as a message
     with monkeypatch.context() as m:
         if failing == "tmux":
             m.setattr(tmux, "new_window", _fail)
@@ -1691,6 +1762,11 @@ def test_a_failed_resume_leaves_the_session_stopped(repo, fake_tmux, monkeypatch
     assert not (state.home() / "agents" / "s" / "supervisor").exists()
     assert runtime.start_session(str(repo), "s", None).resumed
     assert state.get_agent("s", "supervisor") is not None
+    # The resume writes them anew, once.
+    assert [(m.summary, m.state) for m in state.list_messages("s")] == [
+        ("session resumed: 0 open runs", state.DROPPED),
+        ("session resumed: 0 open runs", state.PENDING),
+    ]
 
 
 @pytest.mark.parametrize("failing", ["tmux", "runs"])
@@ -1892,7 +1968,7 @@ def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tm
     assert (stored.kits, stored.without) == (["default", "team"], ["skill:style"])
     assert state.get_agent("s", "supervisor").role == "supervisor"
     cmd = fake_tmux[0][-1]
-    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    prompt = agent_helpers.claude_prompt(cmd)
     assert prompt.startswith("You are the supervisor.")  # the role from the default kit
     assert 'agent "supervisor" in LADO session "s"' in prompt
     assert "`role` picks the kind of worker; required: this session has several. Roles:" in prompt
@@ -1909,7 +1985,7 @@ def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypat
     worker = runtime.spawn_worker("s", "review it", role="reviewer")
     assert worker.role == "reviewer"
     cmd = fake_tmux[-1][-1]
-    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    prompt = agent_helpers.claude_prompt(cmd)
     assert prompt.startswith(f"You review. Notes are in {team_kit.resolve()}/notes.")
     assert 'You are worker "reviewer" in LADO session "s"' in prompt
     added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
@@ -1983,7 +2059,7 @@ def test_spawn_worker_errors_leave_nothing_behind(repo, fake_tmux, team_kit, mon
 def test_spawn_worker_takes_the_only_role(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     cmd = fake_tmux[0][-1]
-    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    prompt = agent_helpers.claude_prompt(cmd)
     assert '`role` picks the kind of worker; it may be left out: "worker" is the only one.' in (
         prompt
     )
@@ -2017,7 +2093,7 @@ def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
     assert started.lead == "lead: boss of kit team"
     assert state.get_agent("s", "supervisor").role == "boss"
     cmd = fake_tmux[0][-1]
-    assert cmd[cmd.index("--append-system-prompt") + 1].startswith("You lead.")
+    assert agent_helpers.claude_prompt(cmd).startswith("You lead.")
     started = runtime.start_session(
         str(repo), "t", None, kit_names=["default", "team"], provider="claude"
     )
@@ -2048,7 +2124,7 @@ class _NoSkills(providers.Provider):
         status_events=True, permission_event=False, deliver_on_turn_end=True, skills=False
     )
 
-    def launch_command(self, agent, session, spec, first_message=None):
+    def launch_command(self, agent, session, spec):
         return providers.Launch(["noskills"])
 
     def parse_event(self, native, payload):
@@ -2254,9 +2330,11 @@ def test_finish_worker_drops_its_undelivered_messages(repo, fake_tmux, monkeypat
     assert (last.kind, last.detail) == ("finished", "discarded; 2 messages dropped")
     runtime.spawn_worker("s", "new task", name="w1")
     monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
-    assert _hook("Stop", "w1") is None  # nothing meant for the old w1
-    assert fake_tmux[-1][0] != "send_text"
-    assert [m.state for m in state.list_messages("s")] == [state.DROPPED, state.DROPPED]
+    # Its own task only, nothing meant for the old w1.
+    reason = _hook("Stop", "w1")["reason"]
+    assert reason.startswith("[from lado] your task (#") and "\n" not in reason
+    states = [m.state for m in state.list_messages("s")]
+    assert states == [state.DROPPED, state.DROPPED, state.SENT]
 
 
 @pytest.mark.parametrize(
@@ -2286,7 +2364,8 @@ def test_a_message_queued_while_the_worker_is_finished_reaches_nobody(
         send(question)
     monkeypatch.setattr(state, queue, store)
     runtime.spawn_worker("s", "new task", name="w1")
-    assert state.take_pending("s", "w1", state.SENT, state.BUSY) == []
+    taken = state.take_pending("s", "w1", state.SENT, state.BUSY)
+    assert [m.summary for m in taken] == ["your task"]  # its own only
     assert state.read_messages("s", "w1") == []
 
 
@@ -2301,7 +2380,8 @@ def test_finish_worker_drops_the_bodies_it_never_read(repo, fake_tmux):
     assert finished.dropped == 1
     runtime.spawn_worker("s", "new task", name="w1")
     assert state.read_messages("s", "w1") == []  # nothing meant for the old w1
-    assert [m.state for m in state.list_messages("s")] == [state.DROPPED, state.DELIVERED]
+    states = [m.state for m in state.list_messages("s")]
+    assert states == [state.DROPPED, state.DELIVERED, state.PENDING]  # its task last
 
 
 def test_hooks_of_a_finished_worker_are_ignored(repo, fake_tmux, monkeypatch):
@@ -2990,7 +3070,7 @@ def test_the_built_in_lead_gets_a_lead_skill_per_kit_supervisor(
     assert added == [str(config / "skills"), str(files)]
     link = config / "skills" / ".claude" / "skills" / "lead-boss"
     assert link.resolve() == skill_md.parent
-    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    prompt = agent_helpers.claude_prompt(cmd)
     assert (
         "Kits whose own supervisor does not lead: boss. Read the skill lead-<kit> before you "
         "take a task for that kit's roles or flows.\n"

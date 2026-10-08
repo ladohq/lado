@@ -1,10 +1,14 @@
 """A fake agent CLI for the integration tests: behaves like an agent in a terminal, no LLM.
 
-Usage: fake_agent.py <config.json> [<first message>] (written by fake_provider.FakeProvider).
-The first message is on the command line, as real agent CLIs take it.
+Usage: fake_agent.py <config.json> (written by fake_provider.FakeProvider). Like a real agent
+under LADO, it gets no input on its command line: its task comes as a message from LADO.
 
 It reports its lifecycle through the hooks in the config and works on each input typed or
-pasted into its terminal. Every input line is a command, after an optional "[from <name>] ":
+pasted into its terminal. In its first input (a worker's task, a resumed supervisor's
+messages), a line from "lado" that has more to read makes it call read_messages and work on
+the body of each message from "lado" it gets, as an agent reads its task and does it; the
+bodies of later messages, and of other senders, it only reads when told to (`read`).
+Every input line is a command, after an optional "[from <name>] ":
     send <to> <summary>[ | <body>][ --artifacts <name>,<name>...]  call the LADO MCP tool
                        send_message; "\\n" in the body is a line break
     artifact_write <name> <path>  call the LADO MCP tool write_artifact with the file at
@@ -45,7 +49,7 @@ pasted into its terminal. Every input line is a command, after an optional "[fro
                        stays down
     lose               pause, then drop what the turn-end hook prints, as a CLI that does
                        not take it
-A first message that starts with "crash at start" makes it exit before its first hook, as a
+With FAKE_AGENT_CRASH_AT_START=1 in its environment it exits before its first hook, as a
 CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environment it asks
 the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
 any other input exits at once with no hook. With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
@@ -368,6 +372,18 @@ def work(text: str) -> bool:
     return False
 
 
+def lado_bodies(text: str) -> str:
+    """The bodies of LADO's messages whose lines in `text` say there is more to read, read
+    with read_messages (reported as "first_read"); "" when there are none."""
+    if not any(
+        line.startswith("[from lado] ") and TO_READ.search(line) for line in text.splitlines()
+    ):
+        return ""
+    read = call_tool("read_messages", {})
+    report(first_read=read)
+    return "\n".join(m["body"] for m in read if m["from"] == "lado" and m["body"])
+
+
 def hung_up(*_) -> None:
     """Its tmux window was killed: like Claude Code, it ends its session with the hook."""
     if os.environ.get("FAKE_AGENT_HANGUP_HOOK") == "1":
@@ -377,7 +393,7 @@ def hung_up(*_) -> None:
 
 def main() -> None:
     global turn_error, lose_output
-    if len(sys.argv) > 2 and sys.argv[2].startswith("crash at start"):
+    if os.environ.get("FAKE_AGENT_CRASH_AT_START") == "1":
         os._exit(3)
     signal.signal(signal.SIGHUP, hung_up)
     print("\x1b[?2004h", end="", flush=True)  # bracketed paste mode
@@ -391,7 +407,8 @@ def main() -> None:
     # Like Claude Code: the MCP server connects while the session-start hook runs.
     lado_mcp.connect()
     hook("session_start")
-    text = sys.argv[2] if len(sys.argv) > 2 else None  # the first message
+    text = None
+    first = True  # the next input is its first
     continued = False  # this turn goes on from what the turn-end hook printed
     while True:
         if text is None:
@@ -416,6 +433,9 @@ def main() -> None:
         if not (continued and config.get("says_continued")):
             hook("prompt_submit", text)
         try:
+            if first:  # its task: read it and do it
+                first = False
+                text = "\n".join(filter(None, [text, lado_bodies(text)]))
             if work(text):
                 break
         except Exception:

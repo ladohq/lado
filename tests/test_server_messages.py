@@ -4,6 +4,7 @@ dismissing questions. In process, with FastAPI's test client."""
 import json
 from pathlib import Path
 
+import agent_helpers
 import pytest
 from agent_helpers import previous_schema
 from fastapi.testclient import TestClient
@@ -29,6 +30,7 @@ def client():
 def session(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
+    agent_helpers.forget_tasks("s")
     return "s"
 
 
@@ -43,7 +45,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
     assert told["created_at"].endswith("Z") and "T" in told["created_at"]
     del told["created_at"], asked["created_at"], thanks["created_at"]
     assert told == {
-        "id": 2,
+        "id": 3,  # after w1's task
         "from": "supervisor",
         "to": "human",
         "kind": "message",

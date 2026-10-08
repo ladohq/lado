@@ -8,19 +8,34 @@ full name is `<run>/<name>`, or `<name>` in the session's scope; it is parsed by
 `/`, since a run's name holds one. Every write is a record; agents see the latest.
 """
 
+import hashlib
 import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from lado import flows, state
+from lado import flows, images, state
 
 SESSION_SCOPE = ""
 SUPERVISOR = "supervisor"  # the lead's agent name (lado.runtime.SUPERVISOR)
 NAME = flows.ARTIFACT_NAME
 SUMMARY_LIMIT = state.SUMMARY_LIMIT  # characters in a title or a summary
 MAX_SIZE = 25 * 1024 * 1024  # bytes in a record
+MAX_HUMAN_FILES = 10  # files the human attaches to one message
+# The images read_artifact shows the model, and their limits: the smallest of the APIs of
+# the providers LADO runs, since an image the API refuses stays in the conversation and
+# fails every later turn of that agent.
+# - Claude (Claude Code; OpenCode and Kilo on Anthropic's models): at most 5 MB an image
+#   as sent, in base64, so 5 MiB * 3/4 raw, and 8000 px a side (docs.claude.com, Vision).
+#   A request with more than 20 images takes at most 2000 px a side: an agent that has
+#   read more than 20 large images may have every later turn refused (BACKLOG.md).
+# - OpenCode and Kilo pass the image on to their model's API: other models' limits are
+#   higher (OpenAI: 50 MB a request), a model without image input refuses it.
+AGENT_IMAGES = ("image/png", "image/jpeg", "image/gif", "image/webp")
+IMAGE_LIMIT = 5 * 1024 * 1024 * 3 // 4  # bytes: 3 932 160
+IMAGE_MAX_SIDE = 8000  # px
+UNREADABLE = "cannot be read by an agent: only text and PNG, JPEG, GIF, WebP images"
 READ_LIMIT = 100_000  # characters read_artifact gives at once
 CREATED, UNCHANGED = "created", "unchanged"
 MEDIA_TYPE = re.compile(r"[A-Za-z0-9][\w.+-]*/[A-Za-z0-9][\w.+-]*")
@@ -201,6 +216,15 @@ def full_name(scope: str, name: str) -> str:
     return f"{scope}/{name}" if scope else name
 
 
+def as_read(artifact: Artifact, run: str | None = None) -> str:
+    """An artifact's name as an agent of `run` (None: of no run) reads it: for a run's
+    worker, a bare name is its run's, so the session's scope is `/<name>`; for everyone
+    else the full name. The human, the API and the CLI use the full name."""
+    if run and artifact.scope == SESSION_SCOPE:
+        return f"/{artifact.name}"
+    return artifact.full_name
+
+
 def parse(given: str) -> tuple[str | None, str]:
     """A name as given: its scope (None for a bare name) and its name, by the last `/`."""
     scope, slash, name = given.strip().rpartition("/")
@@ -263,6 +287,60 @@ def write(
     )
 
 
+HUMAN_SUMMARY = "attached by the human"
+STEM_LIMIT = 40  # characters of a file name's stem in an upload's name
+NOT_IN_NAME = re.compile(r"[^a-z0-9_.-]+")
+
+
+def upload(session: str, file_name: str, data: bytes) -> Written:
+    """The human's file (the UI's composer): an artifact of the session's scope, whoever it
+    goes to, named `<stem>-<8 hex of its SHA-256>[.<ext>]` (`upload_name`), its media type
+    by the extension. The same file again returns the record it has and writes nothing, so
+    a retried upload leaves no trace."""
+    sess = state.get_session(session)
+    if sess is None:
+        raise ArtifactError(f'unknown session "{session}"')
+    if sess.stopped_at:
+        raise ArtifactError(f'session "{session}" is stopped; resume it with `lado start` first')
+    if not file_name.strip():
+        raise ArtifactError("the file has no name")
+    _check_size(len(data))
+    digest = hashlib.sha256(data).hexdigest()
+    name = upload_name(file_name, digest)
+    found = store().latest(session, SESSION_SCOPE, name)
+    if found and found[1].hash == digest:
+        return Written(*found, unchanged=True)
+    title = " ".join(file_name.split())[:SUMMARY_LIMIT]
+    return store().write(
+        session,
+        SESSION_SCOPE,
+        name,
+        data,
+        _by_extension(name) or "application/octet-stream",
+        author=state.HUMAN,
+        run=None,
+        state=None,
+        visit=None,
+        summary=HUMAN_SUMMARY,
+        title=title,
+    )
+
+
+def upload_name(file_name: str, digest: str) -> str:
+    """An upload's artifact name: the file name's stem made a valid name (lower case,
+    anything else a `-`, at most STEM_LIMIT characters; `file` when nothing is left), `-`
+    and the first 8 hex characters of its content's SHA-256, then its extension when
+    EXTENSIONS knows it."""
+    stem, dot, extension = file_name.strip().rpartition(".")
+    if not dot or not stem:
+        stem, extension = file_name.strip(), ""
+    extension = extension.lower()
+    stem = re.sub("-{2,}", "-", NOT_IN_NAME.sub("-", stem.lower())).lstrip("-._")
+    stem = stem[:STEM_LIMIT].rstrip("-.") or "file"
+    name = f"{stem}-{digest[:8]}"
+    return f"{name}.{extension}" if extension in EXTENSIONS else name
+
+
 def _writable(session: str, agent: state.Agent, scope: str | None, name: str) -> state.Run | None:
     """The run whose scope `agent` writes `name` of `scope` (None: bare) to, None for the
     session's, or why it may not: a run's worker writes only to its run's, another worker
@@ -299,14 +377,30 @@ def _writable(session: str, agent: state.Agent, scope: str | None, name: str) ->
     return run
 
 
+@dataclass(frozen=True)
+class Shown:
+    """An image read_artifact shows the model: its facts and its bytes."""
+
+    facts: dict
+    data: bytes
+
+
 def read(
     session: str, agent: str, name: str, from_line: int | None = None, to_line: int | None = None
-) -> dict:
-    """read_artifact's result: the latest content of a text artifact as `agent` names it."""
-    artifact, record = find(session, name, _agent(session, agent))
-    about = {"name": artifact.full_name, "media_type": record.media_type, "size": record.size}
+) -> dict | Shown:
+    """read_artifact's result: the latest content of a text artifact as `agent` names it,
+    an image within the limits (AGENT_IMAGES) as Shown, else the facts and why not."""
+    me = _agent(session, agent)
+    artifact, record = find(session, name, me)
+    about = {
+        "name": as_read(artifact, me.run),
+        "media_type": record.media_type,
+        "size": record.size,
+    }
+    if record.media_type in AGENT_IMAGES:
+        return _image(about, record)
     if not is_text(record.media_type):
-        return {**about, "binary": True, "note": "cannot be read as text"}
+        return {**about, "binary": True, "note": UNREADABLE}
     lines = store().content(record.id).decode(errors="replace").splitlines(keepends=True)
     first = 1 if from_line is None else from_line
     last = len(lines) if to_line is None else to_line
@@ -332,18 +426,43 @@ def read(
     }
 
 
+def _image(about: dict, record: Record) -> dict | Shown:
+    """An image as Shown with its width and height, or its facts and why it is not shown:
+    over IMAGE_LIMIT, a side over IMAGE_MAX_SIDE, a header that cannot be read."""
+    if record.size > IMAGE_LIMIT:
+        why = f"it is {record.size} bytes, the limit is {IMAGE_LIMIT} bytes"
+        return {**about, "binary": True, "note": f"not shown: {why}"}
+    data = store().content(record.id)
+    size = images.size(data, record.media_type)
+    if size is None:
+        why = f"its header cannot be read as {record.media_type}"
+        return {**about, "binary": True, "note": f"not shown: {why}"}
+    width, height = size
+    if max(size) > IMAGE_MAX_SIDE:
+        why = f"it is {width}×{height} px, the limit is {IMAGE_MAX_SIDE} px a side"
+        return {
+            **about,
+            "binary": True,
+            "width": width,
+            "height": height,
+            "note": f"not shown: {why}",
+        }
+    return Shown({**about, "width": width, "height": height}, data)
+
+
 def listed(session: str, agent: str, run: str | None = None) -> list[dict]:
     """list_artifacts' result: the artifacts of `run`'s scope, else of the scope a bare
     name means for `agent`, each as of its latest record."""
+    me = _agent(session, agent)
     if run:
         if state.get_run(session, run) is None:
             raise ArtifactError(f'no run "{run}" in session {session}')
         scope = run
     else:
-        scope = _agent(session, agent).run or SESSION_SCOPE
+        scope = me.run or SESSION_SCOPE
     return [
         {
-            "name": artifact.full_name,
+            "name": as_read(artifact, me.run),
             "title": artifact.title,
             "media_type": record.media_type,
             "size": record.size,
@@ -383,12 +502,15 @@ def content(record: Record) -> bytes:
     return store().content(record.id)
 
 
-def resolve_attachments(session: str, agent: str, names: list[str] | None) -> list[tuple[str, str]]:
-    """Each name `agent` attaches (bare or full, as in `find`) as its artifact's id and its
-    latest record's, once each, in order; a name not found refuses them all."""
+def resolve_attachments(
+    session: str, agent: str | None, names: list[str] | None
+) -> list[tuple[str, str]]:
+    """Each name `agent` (None: the human, whose bare name is the session's) attaches, bare
+    or full as in `find`, as its artifact's id and its latest record's, once each, in
+    order; a name not found refuses them all."""
     if not names:
         return []
-    me = _agent(session, agent)
+    me = _agent(session, agent) if agent is not None else None
     attached = []
     for name in names:
         artifact, record = find(session, name, me)
@@ -460,12 +582,13 @@ def attached(attachments: list[tuple[str, str]], with_changed: bool = False) -> 
     return described
 
 
-def read_attachments(attachments: list[tuple[str, str]]) -> list[dict]:
-    """What read_messages says of each attachment: its full name, title, the attached
-    record's media type and size, and whether the artifact's content changed since."""
+def read_attachments(attachments: list[tuple[str, str]], run: str | None = None) -> list[dict]:
+    """What read_messages says of each attachment to an agent of `run`: its name as that
+    agent reads it, title, the attached record's media type and size, and whether the
+    artifact's content changed since."""
     return [
         {
-            "name": a.artifact.full_name,
+            "name": as_read(a.artifact, run),
             "title": a.artifact.title,
             "media_type": a.record.media_type,
             "size": a.record.size,
@@ -475,13 +598,13 @@ def read_attachments(attachments: list[tuple[str, str]]) -> list[dict]:
     ]
 
 
-def attached_line(attachments: list[tuple[str, str]]) -> str:
-    """One line naming the attachments, each changed one with "(changed since)"; '' for
-    none. For a flow step's notes and `lado answer`."""
+def attached_line(attachments: list[tuple[str, str]], run: str | None = None) -> str:
+    """One line naming the attachments as an agent of `run` reads them, each changed one
+    with "(changed since)"; '' for none. For a flow step's notes and `lado answer`."""
     if not attachments:
         return ""
     names = [
-        a.artifact.full_name + (" (changed since)" if a.changed else "")
+        as_read(a.artifact, run) + (" (changed since)" if a.changed else "")
         for a in attached(attachments, with_changed=True)
     ]
     return f"Artifacts: {', '.join(names)}"

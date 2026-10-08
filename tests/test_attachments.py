@@ -296,3 +296,78 @@ def test_forget_removes_the_sessions_artifacts_records_attachments_and_content(
     assert not content.exists()
     [(_, shared)] = artifacts.store().list("t")
     assert artifacts.store().content(shared.id) == b"the same"
+
+
+def test_a_runs_worker_is_shown_the_sessions_artifacts_as_slash_names(run):
+    """The supervisor forwards a session artifact (e.g. the human's file) to a run's worker,
+    which reads it by `/<name>` (docs/design/artifacts.md, Names and scopes)."""
+    artifacts.write("s", "supervisor", "brief", content="b")
+    sent = _call(
+        "s",
+        "supervisor",
+        "send_message",
+        {"to": "worker", "summary": "see", "artifacts": ["brief"]},
+    )
+    assert sent
+    _delivered("s", _last_message("s").id)
+    [message] = _call("s", "worker", "read_messages")
+    assert [a["name"] for a in message["artifacts"]] == ["/brief"]
+    assert _call("s", "worker", "read_artifact", {"name": "/brief"})["content"] == "b"
+    args = {"run": "ship/x", "outcome": "done", "note_summary": "built", "artifacts": ["/brief"]}
+    _call("s", "worker", "flow_advance", args)
+    check = state.get_run("s", "ship/x")
+    assert "Artifacts: /brief" in runs.step_text(check, runs.flow_of(check))
+
+
+def test_the_humans_message_carries_uploaded_files_to_the_supervisor(session):
+    shot = artifacts.upload(session, "shot.png", b"png").full_name
+    runtime.write_as_human(session, "look at this", attached=[shot])
+    message = _delivered(session, _last_message(session).id)
+    assert (message.sender, message.recipient) == ("human", "supervisor")
+    assert runtime.format_message(message) == (
+        f"[from human] look at this (#{message.id}, 1 artifact: call read_messages)"
+    )
+    [read] = _call(session, "supervisor", "read_messages")
+    assert read["artifacts"] == [
+        {"name": shot, "title": "shot.png", "media_type": "image/png", "size": 3, "changed": False}
+    ]
+
+
+def test_the_humans_files_to_a_worker_and_the_supervisors_copy_counts_them(session):
+    names = [artifacts.upload(session, f"{n}.txt", n.encode()).full_name for n in ("a", "b")]
+    runtime.write_as_human(session, "logs", to="w1", attached=names)
+    message, copy = state.list_messages(session)[-2:]
+    assert (message.recipient, message.attachments) == ("w1", 2)
+    assert [
+        a["name"] for a in artifacts.read_attachments(state.message_attachments(message.id))
+    ] == (names)
+    assert (copy.sender, copy.recipient, copy.attachments) == ("lado", "supervisor", 0)
+    assert copy.title == f"human wrote to w1: logs (#{message.id}, 2 files)"
+
+
+def test_files_without_text_are_summarised_by_their_names(session):
+    a = artifacts.upload(session, "a.txt", b"a").full_name
+    runtime.write_as_human(session, "  ", attached=[a])
+    assert _last_message(session).title == f"1 file: {a}"
+    names = [
+        artifacts.upload(session, f"{'x' * 40}{n}.txt", str(n).encode()).full_name for n in range(9)
+    ]
+    runtime.write_as_human(session, "", to="w1", attached=names)
+    message = state.list_messages(session)[-2]
+    assert message.title.startswith(f"9 files: {names[0]}, ")
+    assert len(message.title) == state.SUMMARY_LIMIT and message.title.endswith("…")
+    assert message.body == ""
+
+
+@pytest.mark.parametrize("to", ["supervisor", "w1"])
+def test_too_many_files_or_an_unknown_name_refuses_the_humans_message(session, monkeypatch, to):
+    monkeypatch.setattr(artifacts, "MAX_HUMAN_FILES", 2)
+    names = [artifacts.upload(session, f"{n}.txt", n.encode()).full_name for n in "abc"]
+    before = state.list_messages(session)
+    with pytest.raises(runtime.LadoError, match="3 files, the limit is 2"):
+        runtime.write_as_human(session, "logs", to=to, attached=names)
+    with pytest.raises(artifacts.ArtifactError, match='no artifact "nothing" in session s'):
+        runtime.write_as_human(session, "logs", to=to, attached=[names[0], "nothing"])
+    with pytest.raises(runtime.LadoError, match="the message is empty"):
+        runtime.write_as_human(session, "", to=to)
+    assert state.list_messages(session) == before

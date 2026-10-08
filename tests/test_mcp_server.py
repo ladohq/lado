@@ -484,4 +484,8 @@ def test_read_artifact_of_a_binary_gives_its_metadata(repo, fake_tmux):
     (repo / "logo.png").write_bytes(b"\x89PNG")
     _call("s", "supervisor", "write_artifact", {"name": "logo", "file": "logo.png"})
     read = _call("s", "supervisor", "read_artifact", {"name": "logo"})
-    assert (read["binary"], read["note"], read["size"]) == (True, "cannot be read as text", 4)
+    assert (read["binary"], read["note"], read["size"]) == (
+        True,
+        "not shown: its header cannot be read as image/png",
+        4,
+    )

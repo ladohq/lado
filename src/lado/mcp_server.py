@@ -11,6 +11,7 @@ from contextlib import contextmanager, suppress
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.utilities.types import Image
 
 from lado import artifacts, kits, runs, runtime, state, tmux
 
@@ -181,13 +182,15 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         it `changed` since it was attached.
         """
         with _reasons():
+            me = state.get_agent(session, agent)
+            run = me.run if me else None
             return [
                 {
                     "id": m.id,
                     "from": m.sender,
                     "summary": m.title,
                     "body": m.body,
-                    "artifacts": artifacts.read_attachments(state.message_attachments(m.id))
+                    "artifacts": artifacts.read_attachments(state.message_attachments(m.id), run)
                     if m.attachments
                     else [],
                     "time": f"{m.created_at} UTC",
@@ -229,13 +232,21 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         }
 
     @server.tool()
-    def read_artifact(name: str, from_line: int | None = None, to_line: int | None = None) -> dict:
-        """Read the latest content of a text artifact, by its name (as in write_artifact) or
-        full name "<run>/<name>". At most 100000 characters at a time: when `cut` is true,
-        read on with `from_line` (and `to_line`); `lines` is the total. A binary artifact
-        (an image, a PDF) gives its media type and size only."""
+    def read_artifact(
+        name: str, from_line: int | None = None, to_line: int | None = None
+    ) -> dict | list[dict | Image]:
+        """Read the latest content of an artifact, by its name (as in write_artifact) or
+        full name: "<run>/<name>" for a run's, "/<name>" for the session's. A text artifact:
+        at most 100000 characters at a time; when `cut` is true, read on with `from_line`
+        (and `to_line`); `lines` is the total. A PNG, JPEG, GIF or WebP image comes back as
+        an image, with its size in bytes and pixels; another binary (a PDF), or an image
+        too large to show, gives its media type and size and why."""
         with _reasons():
-            return artifacts.read(session, agent, name, from_line, to_line)
+            read = artifacts.read(session, agent, name, from_line, to_line)
+        if isinstance(read, artifacts.Shown):
+            image_format = read.facts["media_type"].removeprefix("image/")
+            return [read.facts, Image(data=read.data, format=image_format)]
+        return read
 
     @server.tool()
     def list_artifacts(run: str | None = None) -> list[dict]:

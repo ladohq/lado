@@ -134,7 +134,8 @@ the step and its outcomes. Use send_message(to="supervisor", ...) only for quest
 when you are blocked and cannot finish the step.
 Nobody can see your screen: a report you only write as text is lost.
 A bare artifact name is one of run {run}: "design" is "{run}/design"; you write only the \
-run's artifacts, and read any other by its full name.
+run's artifacts, and read any other by its full name: one of the session's (e.g. a file \
+the human attached) is "/<name>".
 """
     + WORKER_INPUT
 )
@@ -902,26 +903,41 @@ def send_message(
     return post(session, sender, recipient, summary, body, or_human=True, attachments=attachments)
 
 
-def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
+def write_as_human(
+    session: str, text: str, to: str = SUPERVISOR, attached: list[str] | None = None
+) -> str:
     """Send the human's text (the UI's composer) to agent `to` as a message from `human`,
     through the same queue, confirmation and retries as an agent's. Its first line, without
     tabs and control characters, is the summary, cut to the limit; the whole text is the
-    body when it has more lines or the line was cut.
+    body when it has more lines or the line was cut. `artifacts` are the full names of the
+    files the human uploaded (lado.artifacts.upload), attached as send_message attaches;
+    with them the text may be empty, and the summary names the files.
 
     The supervisor gets a one-line copy from LADO of what the human writes to another agent,
     queued in the same transaction, so it knows what its team was told."""
     running_session(session)
     text = text.strip()
-    if not text:
+    names = list(attached or [])
+    if not text and not names:
         raise LadoError("the message is empty")
     if to == state.HUMAN:
         raise LadoError(f'no running agent "{to}": the human cannot write to themselves')
-    summary, body = _human_text(text)
+    if len(names) > artifacts.MAX_HUMAN_FILES:
+        raise LadoError(f"{len(names)} files, the limit is {artifacts.MAX_HUMAN_FILES}")
+    attachments = artifacts.resolve_attachments(session, None, names)
+    summary, body = _human_text(text) if text else (_files_line(names), "")
     if to == SUPERVISOR:
-        return post(session, state.HUMAN, to, summary, body)
+        return post(session, state.HUMAN, to, summary, body, attachments=attachments)
     with _to_running(session):
         message = state.queue_with_copy(
-            session, state.HUMAN, to, summary, body, SUPERVISOR, lambda id: _copy(to, summary, id)
+            session,
+            state.HUMAN,
+            to,
+            summary,
+            body,
+            SUPERVISOR,
+            lambda id: _copy(to, summary, id, len(attachments)),
+            attachments,
         )
     result = _deliver(session, to, message)
     supervisor = state.get_agent(session, SUPERVISOR)
@@ -930,13 +946,24 @@ def write_as_human(session: str, text: str, to: str = SUPERVISOR) -> str:
     return result
 
 
-def _copy(to: str, summary: str, message_id: int) -> str:
-    """The supervisor's one line about the human's message to agent `to`."""
-    prefix, suffix = f"human wrote to {to}: ", f" (#{message_id})"
+def _copy(to: str, summary: str, message_id: int, files: int = 0) -> str:
+    """The supervisor's one line about the human's message to agent `to`, with how many
+    files it carries."""
+    count = f", {files} file{'s' if files != 1 else ''}" if files else ""
+    prefix, suffix = f"human wrote to {to}: ", f" (#{message_id}{count})"
     room = state.SUMMARY_LIMIT - len(prefix) - len(suffix)
     if len(summary) > room:
         summary = summary[: room - 1] + "…"
     return prefix + summary + suffix
+
+
+def _files_line(names: list[str]) -> str:
+    """The summary of the human's message of files only: how many and their names, cut to
+    the limit."""
+    line = f"{len(names)} file{'s' if len(names) != 1 else ''}: {', '.join(names)}"
+    if len(line) > state.SUMMARY_LIMIT:
+        line = line[: state.SUMMARY_LIMIT - 1] + "…"
+    return line
 
 
 def _human_text(text: str, prefix: str = "") -> tuple[str, str]:

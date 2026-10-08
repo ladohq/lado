@@ -544,7 +544,7 @@ def step_text(run: state.Run, flow: flows.Flow) -> str:
             " note when you report."
         )
     previous = state.last_note(run.session, run.name)
-    listed = _attached(previous)
+    listed = _attached(previous, None if _lead_step(current) else run.name)
     if run.note or run.note_body or listed:
         text = f"{run.note}\n{run.note_body}".rstrip()
         parts.append(f"Note from the previous step: {text}{listed}")
@@ -592,9 +592,10 @@ def _record_lines(
     return "\n".join(lines)
 
 
-def _attached(note: state.Note | None) -> str:
-    """The line naming a note's artifacts, after a line break; '' for none."""
-    line = artifacts.attached_line(state.note_attachments(note.id)) if note else ""
+def _attached(note: state.Note | None, reader_run: str | None) -> str:
+    """The line naming a note's artifacts as the step's agent reads them (of `reader_run`,
+    None for the lead), after a line break; '' for none."""
+    line = artifacts.attached_line(state.note_attachments(note.id), reader_run) if note else ""
     return f"\n{line}" if line else ""
 
 

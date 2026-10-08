@@ -1839,11 +1839,13 @@ def queue_with_copy(
     body: str,
     copy_to: str,
     copy_summary: Callable[[int], str],
+    attachments: Attached = (),
 ) -> int:
-    """Queue a message and, in the same transaction, a copy from LADO to `copy_to` whose
-    summary is `copy_summary(id of the message)`, without a body. Returns the message's id;
-    NotRunning, with nothing queued, when the recipient does not run. When `copy_to` does
-    not run, there is no copy: it would never be delivered."""
+    """Queue a message with its attachments and, in the same transaction, a copy from LADO
+    to `copy_to` whose summary is `copy_summary(id of the message)`, without a body or
+    attachments. Returns the message's id; NotRunning, with nothing queued, when the
+    recipient does not run. When `copy_to` does not run, there is no copy: it would never
+    be delivered."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         _check_running(db, session, recipient)
@@ -1852,6 +1854,7 @@ def queue_with_copy(
             " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))"
         )
         message = db.execute(insert, (session, sender, recipient, summary, body)).lastrowid
+        _attach(db, "message", message, attachments)
         with suppress(NotRunning):
             _check_running(db, session, copy_to)
             db.execute(insert, (session, LADO, copy_to, copy_summary(message), ""))

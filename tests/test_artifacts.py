@@ -261,7 +261,16 @@ def test_a_binary_artifact_gives_its_metadata_only(session, tmp_path):
         "media_type": "image/png",
         "size": 6,
         "binary": True,
-        "note": "cannot be read as text",
+        "note": "not shown: its header cannot be read as image/png",
+    }
+    (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.7")
+    artifacts.write(session, "supervisor", "doc", file="doc.pdf")
+    assert artifacts.read(session, "w2", "doc") == {
+        "name": "doc",
+        "media_type": "application/pdf",
+        "size": 8,
+        "binary": True,
+        "note": "cannot be read by an agent: only text and PNG, JPEG, GIF, WebP images",
     }
 
 

@@ -1366,6 +1366,24 @@ Wanted: CHANGELOG.md merges such additions without a conflict (e.g. `merge=union
 checking that a release's dated heading still merges right).
 Found: 2026-10-08, merge of main into feature/argv-prompt.
 
+## The supervisor is told twice when a worker crashes before its first hook
+
+Size: S. Why here: a duplicate notice, no lost state; left open by the review of feature/argv-prompt.
+A worker whose CLI ends before its first hook, with its first input as a message from `lado`,
+gets two lines to the supervisor: the `agent_ended` notice and a `_report_failure` "not
+delivered" line for that input (`runtime.py`, `agent_ended` / `_report_failure`).
+Wanted: one line per crash, saying why the worker stopped.
+Found: 2026-10-08, review of feature/argv-prompt (Minor, not fixed on the branch).
+
+## Docs disagree on who takes an agent's queue
+
+Size: S. Why here: docs only; left open by the review of feature/argv-prompt.
+AGENTS.md (How agents talk: "A queue is taken only so, also an agent's first input", and the
+paragraph on the first input) and the docstring of `state.take_pending` say different things
+about whether the first input is taken through `runtime.hand_over`.
+Wanted: one wording, matching the code, in both places.
+Found: 2026-10-08, review of feature/argv-prompt (Minor, not fixed on the branch).
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

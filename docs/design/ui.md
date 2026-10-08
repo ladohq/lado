@@ -703,8 +703,23 @@ Built in the chat task (2026-10-03):
     `runtime._human_text`), else the summary; no heading, nothing folded. Markdown with
     the human's single line breaks kept as breaks (`Body` with `breaks`, a small remark
     plugin of `ChatText.tsx`).
+  - **Markdown** (task feature/markdown-render, 2026-10-08): every Markdown text of the UI
+    (messages, gate and run notes, answers, an artifact in the viewer) is one `Body`
+    (`ChatText.tsx`): react-markdown with `remark-gfm`, GitHub-flavoured Markdown (tables,
+    task lists with disabled checkboxes, strikethrough only with `~~`, so `5~10 min` stays
+    text, autolinks, footnotes), any raw HTML left out (`skipHtml`), links through
+    react-markdown's default URL transform. Each `Body` has its own footnote ids
+    (`clobberPrefix` from `useId`), so a footnote link never jumps to another message's.
+    Its typography is one set of rules on `.chat-body`, in `em` so a card's 14 px and the
+    viewer's 15 px step alike: headings h1–h4 in steps, h1 with a rule under it; lists
+    indented, task items without bullets; inline `code` on `--raised` in `--mono`; quotes
+    muted with a `--line` bar; `del` muted; links `--action`. A table sits in a
+    `.md-table` frame (`--line`, radius 6) that scrolls sideways when the table is wider,
+    so neither the chat nor the panel ever does: the table `max-content` wide and at least
+    the frame's, the head row on `--raised` in 600 without wrapping, cells 6×10 px whose
+    words are never split letter by letter, each column aligned as its `:---:` says.
   - An **agent's message to the human**: the summary in Inter 600, the whole body under
-    it (CommonMark: agents wrap lines by width, so no `breaks`). The summary is not drawn
+    it (Markdown: agents wrap lines by width, so no `breaks`). The summary is not drawn
     when it only repeats the body (`repeatsSummary`, only for agents' messages): the
     body's first line that is not blank, trimmed, is the summary, or the summary ends in
     "…" and that line starts with the rest of it.
@@ -1254,8 +1269,9 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   link (the page's address, with `?record=` when it is not the latest), for HTML Open in
   new tab (the content address, under the server's sandbox); the title; the author, how
   long ago, the run's state or "session", the media type and size; the record's summary.
-  The body by `artifacts.kindOf`: Markdown as the chat's `Body` (react-markdown, no raw
-  HTML); text and code in a table with line numbers and Wrap lines (no syntax
+  The body by `artifacts.kindOf`: Markdown (GFM: tables, task lists, strikethrough
+  with `~~`, autolinks, footnotes; no raw HTML) as the chat's `Body` (Markdown in Look of
+  the feed); text and code in a table with line numbers and Wrap lines (no syntax
   highlighting: BACKLOG.md); an image fitted to the column, a click shows it at its own
   size until Esc or a click; HTML in `<iframe sandbox="allow-scripts">`, never
   `allow-same-origin`, under a bar "Runs sandboxed: its scripts work, it cannot reach

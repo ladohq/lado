@@ -57,6 +57,15 @@ test("Markdown shows as the chat shows it, with no raw HTML", async () => {
   expect(screen.getAllByRole("listitem").map((one) => one.textContent)).toEqual(["a", "b"]);
 });
 
+test("a Markdown table shows as a table with its head and body", async () => {
+  serve("# Review\n\n| finding | level |\n| --- | --- |\n| tilde | Minor |\n| ids | Minor |");
+  show(artifact());
+  await screen.findByRole("heading", { name: "Review" });
+  const table = document.querySelector(".artifact-markdown table")!;
+  expect([...table.querySelectorAll("thead th")].map((cell) => cell.textContent)).toEqual(["finding", "level"]);
+  expect(table.querySelectorAll("tbody tr")).toHaveLength(2);
+});
+
 test("text and code show with their line numbers", async () => {
   serve("def f():\n    return 1\n");
   show(artifact({ name: "tool.py", full_name: "feature/x/tool.py" }, { media_type: "text/x-python" }));

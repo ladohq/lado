@@ -181,3 +181,38 @@ def test_on_a_phone_the_panel_takes_the_screen(page: Page, server, repo, tmp_pat
         f"{artifacts.find(session, 'ship/x/design')[0].id}"
         f"?record={artifacts.find(session, 'ship/x/design')[1].id}"
     )
+
+
+LONG_NAME = "very-long-file-name-" * 3
+TODO = "rename it and check it again " * 4
+WIDE = "# Review\n\n| finding | where | what to do |\n| :--- | :---: | ---: |\n" + "".join(
+    f"| finding {i} | web/src/{LONG_NAME}{i}.tsx | {TODO} |\n" for i in range(3)
+)
+
+
+def test_a_wide_table_scrolls_in_its_frame_and_the_panel_does_not(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    artifacts.write(session, "supervisor", "ship/x/design", content=WIDE, summary="a table")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.get_by_role("button", name="Open artifact ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    panel.get_by_role("button", name="Open latest").click()
+    frame = panel.locator(".md-table")
+    expect(frame.get_by_role("columnheader")).to_have_text(["finding", "where", "what to do"])
+    expect(frame.get_by_role("row")).to_have_count(4)
+    widths = frame.evaluate(
+        """(frame) => {
+          const sideways = [];
+          for (let one = frame.parentElement; one; one = one.parentElement) {
+            if (one.scrollWidth > one.clientWidth) sideways.push(one.className || one.tagName);
+            if (one.getAttribute("role") === "dialog") break;
+          }
+          return { scroll: frame.scrollWidth, client: frame.clientWidth, sideways };
+        }"""
+    )
+    assert widths["scroll"] > widths["client"], widths  # the table scrolls in its frame
+    assert widths["sideways"] == [], widths  # and nothing around it does
+    shot(page, "wide-table")

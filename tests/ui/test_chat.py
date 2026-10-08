@@ -115,6 +115,39 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     shot(page, "narrow")
 
 
+REPORT = """\
+## Report
+
+| AC | status | test |
+| :--- | :---: | --- |
+| 1. a table renders | done | `web/src/Body.test.tsx` and `tests/ui/test_artifacts_tab.py` |
+| 2. the chat renders it too | done | `tests/ui/test_chat.py::test_a_message_with_a_wide_table` |
+
+- [x] tables
+- [ ] ~~single tilde~~, see https://github.com/remarkjs/remark-gfm
+
+> No concerns.
+"""
+
+
+def test_a_message_with_a_wide_table_shows_it_in_a_frame_and_the_chat_does_not_scroll(
+    page: Page, server, repo, shot
+):
+    session = running_session(repo)
+    state.queue_message(session, "supervisor", "human", "DONE", REPORT, mark=state.DELIVERED)
+    page.set_viewport_size({"width": 900, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    frame = chat.locator(".md-table")
+    expect(frame.get_by_role("columnheader")).to_have_text(["AC", "status", "test"])
+    expect(chat.locator("input[type=checkbox]")).to_have_count(2)
+    expect(chat.locator("del")).to_have_text("single tilde")
+    assert frame.evaluate("frame => frame.scrollWidth > frame.clientWidth")
+    assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")
+    shot(page)
+
+
 def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_card(
     page: Page, server, repo, shot
 ):

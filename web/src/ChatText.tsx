@@ -1,7 +1,8 @@
 // Text in the session's feed, shared by its messages and its gate cards: a body as Markdown,
 // a long one cut behind Show more, and a time of day.
-import { useState } from "react";
-import Markdown from "react-markdown";
+import { useId, useState } from "react";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // The characters a line that is not blank counts for: a text of n such lines may have
 // n * CHARS_PER_LINE characters before it is long, and a cut one shows as many.
@@ -84,12 +85,31 @@ function lineBreaks() {
   return split;
 }
 
-// A text as Markdown, with any HTML in it left out. `breaks`: the human's text, whose single
-// line breaks are breaks; an agent's body is CommonMark (agents wrap lines by width).
+// GitHub-flavoured Markdown: tables, task lists, autolinks, footnotes, and strikethrough
+// only by a double tilde ("5~10 min" stays text).
+const GFM: [typeof remarkGfm, { singleTilde: boolean }] = [remarkGfm, { singleTilde: false }];
+// A table in a frame of its own, which scrolls sideways when the table is wider than the body.
+const COMPONENTS: Components = {
+  table: ({ node: _node, ...props }) => (
+    <div className="md-table">
+      <table {...props} />
+    </div>
+  ),
+};
+
+// A text as GitHub-flavoured Markdown, with any HTML in it left out. `breaks`: the human's
+// text, whose single line breaks are breaks; an agent's body wraps lines by width. Each body's
+// footnote ids are its own, so a footnote link never jumps to another message's footnote.
 export function Body({ text, breaks = false }: { text: string; breaks?: boolean }) {
+  const prefix = `md${useId().replace(/[^a-zA-Z0-9]/g, "")}-`;
   return (
     <div className="chat-body">
-      <Markdown skipHtml remarkPlugins={breaks ? [lineBreaks] : []}>
+      <Markdown
+        skipHtml
+        remarkPlugins={breaks ? [GFM, lineBreaks] : [GFM]}
+        remarkRehypeOptions={{ clobberPrefix: prefix }}
+        components={COMPONENTS}
+      >
         {text}
       </Markdown>
     </div>

@@ -454,6 +454,9 @@ Seen again 2026-10-07 in the OpenCode live test (verify of fix/integration-fix2)
 ended twice on `UnknownError: ... [503] Upstream error from Nvidia: Service temporarily
 overloaded`, not resumed; passed the third time. The live test cannot tell a model outage
 from a LADO failure.
+Again at the release of 0.29.0 (2026-10-08): `test_an_agent_sees_the_image_the_human_attaches[opencode]`
+failed twice in a row on `[503] Upstream error from Nvidia: Service temporarily overloaded`
+after colour.png; released on the human's decision (no provider change in 0.29.0).
 
 ## A message typed again before its hook confirms it runs twice
 

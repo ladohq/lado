@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.30.0 (unreleased)
+## 0.30.0 (2026-10-08)
 
 - kit.yaml takes `expects: {commands: [...]}`: the CLIs a kit cannot work without. A
   session start, resume or new worker is refused, with one error naming every missing

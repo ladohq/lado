@@ -1408,6 +1408,30 @@ about whether the first input is taken through `runtime.hand_over`.
 Wanted: one wording, matching the code, in both places.
 Found: 2026-10-08, review of feature/argv-prompt (Minor, not fixed on the branch).
 
+## A turn's end clears an open dialog's wait
+
+Size: M. Why here: pre-existing, but background subagents make it common.
+
+A background subagent can open a permission dialog (`PermissionRequest`, the agent
+`waiting`) while the main turn still runs. That turn's `Stop` then sets the agent idle (now
+`background`) and drops `waiting_for`, though the dialog is still on screen, and
+`hand_over` types the queue into it: the dialog takes the text, and the retries follow.
+Wanted: tell a subagent's `PermissionRequest` from the main agent's (does the payload carry
+`agent_id`? check by hand), and keep the wait across the turn's end.
+Found: 2026-10-09, architecture review of feature/background-status.
+
+## Background subagents' hooks keep `seen_at` fresh
+
+Size: S. Why here: pre-existing; a swallowed message still fails loudly.
+
+Every hook calls `state.seen`, a background subagent's async `PostToolUse` too, so
+`runtime._plan`'s "no hook since the paste: type it again" rarely holds for an agent whose
+subagents work. A typed message a dialog swallowed then goes to `failed` after its delays
+instead of being typed again.
+Wanted: count only the main agent's hooks as a sign that it took input (the payload's
+`agent_id`, if it has one), or another sign of a swallowed paste.
+Found: 2026-10-09, architecture review of feature/background-status.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting
@@ -1465,6 +1489,11 @@ monitors; read in the binary, not yet seen live). Options: A `CLAUDE_CODE_DISABL
 "idle · N in background" (M, schema change; recommended); C busy while tasks run (rejected:
 blocks the queue). Not decided by the human yet. Full report: artifact `analysis-subagent-idle`
 of session `lado`.
+Done for Claude Code (2026-10-09, feature/background-status): a status `background`, which
+takes input as idle, set from the Stop's `background_tasks` (seen live with 2.1.295). Still
+open: OpenCode and Kilo report no background work (OpenCode's background subagents are
+experimental, `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`; Kilo not checked), so their
+agents show idle while it runs.
 
 ## The running-session check sees one tmux socket
 

@@ -2,6 +2,15 @@
 
 ## 0.31.1 (unreleased)
 
+- A new agent status, `background`: a Claude Code agent whose turn ended while work it
+  started still runs (background subagents, background shell commands) shows `background`
+  instead of `idle` in `lado ls`, `list_agents`, the API and the UI, and its session counts
+  as working. It takes messages at once, as an idle agent does. OpenCode and Kilo report
+  no background work, so their agents stay `idle`. In the UI, busy is now a green dot and
+  background a half-filled green one, both pulsing (not with reduced motion), and idle a
+  grey ring. The Agents page reads a worker's git state again when the agent leaves busy.
+  LADO is now tested with Claude Code 2.1.295.
+
 - UI: the Kits page shows its kits as a grid of compact cards instead of a list of rows.
   A newer version a check found shows as `→ vX` with an ↑ button that opens the update to
   that version; an Available kit has a + by its version; Update…, Remove…, Install… and

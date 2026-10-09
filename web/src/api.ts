@@ -57,8 +57,27 @@ export const getHealth = () => get<Health>("/api/health");
 
 export type UpdateInfo = components["schemas"]["UpdateInfo"];
 
-// Whether a newer LADO is out (the server looks once a day).
+// Whether a newer LADO is out (the server looks once a day), whether this one can update
+// itself now, and the latest update's result.
 export const getUpdate = () => get<UpdateInfo>("/api/update");
+
+// The same, the server looking at PyPI now.
+export const checkUpdateNow = () => post<UpdateInfo>("/api/update/check");
+
+export type UpdatePlan = components["schemas"]["UpdatePlan"];
+export type UpdateStarted = components["schemas"]["UpdateStarted"];
+export type UpdateResultInfo = components["schemas"]["UpdateResultInfo"];
+
+// What an update to the latest LADO would do (409: none is newer).
+export const getUpdatePlan = () => get<UpdatePlan>("/api/update/plan");
+
+// Start `lado update`: it stops this server within seconds.
+export const startUpdate = (to: string) => post<UpdateStarted>("/api/update", { to });
+
+export type SystemInfo = components["schemas"]["SystemInfo"];
+
+// The system panel's facts and the report to copy.
+export const getSystem = () => get<SystemInfo>("/api/system");
 
 const agentsPath = (session: string) => `${sessionPath(session)}/agents`;
 

@@ -119,7 +119,11 @@ fixes and docs only: no new feature, no API or schema change.
     none installed is one `FAIL` (`Agent CLI: no agent CLI installed`, every install hint).
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
-    kit MCP secrets there.
+    kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
+    `doctor.system_info` (version, OS, installer, home, schema, tmux, providers, kits,
+    session counts, the update check and the last update's result) and the text to copy for
+    an issue from `doctor.report`: no address, path, repository, session name, token or
+    message, only whether the server is open to the network and whether LADO_HOME is set.
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
     (`fetch_index`; `latest` skips pre-releases and yanked ones, `release` finds a named
     one), the one PEP 440 comparison (`newer`, `same`; not `gitcache.latest`, which sorts
@@ -133,24 +137,46 @@ fixes and docs only: no new feature, no API or schema change.
     `--with` again, never `uv tool upgrade`; it refreshes lado's index entry (uv
     `--refresh-package lado`, pip `--no-cache-dir` in pipx's one `--pip-args`), since a
     cached index may not have a release PyPI's JSON already shows; `lost` names what it cannot repeat; `binary`
-    is `<prefix>/bin/lado`, never one on PATH), `installed_version` and the mark of an
-    update that did not finish (`LADO_HOME/update.json`, `Pending`). `lado update`
-    (`cli.cmd_update`) does the rest: the sessions `runtime.session_status` says run (also
-    with the loop down) and the UI server, the plan and `Update? [y/N]` (`--yes`; refused
-    inside an agent), then writes update.json, stops each session with
-    `runtime.stop_session` and waits for its loop's lock (`loop.wait_stopped`; one that
-    does not end stops the update before the installer, and the sessions are resumed),
-    stops the server, runs the installer, checks `<prefix>/bin/lado --version` and resumes
-    with that binary's public commands (`lado start <repo> --name <s> --no-attach`, `lado
-    ui --no-open [--host H] --port P`; `--host` only for another than 127.0.0.1, which a
-    LADO before 0.20 lacks), whatever version is installed; a failed installer resumes on
-    the old one. After the installer the old process starts nothing of its own
-    (`providers.lado_command`) and imports nothing more. update.json is removed when every
-    step worked; while one of its sessions is stopped, `lado ls` and `lado update` name
-    them with their `lado start`. Sessions on another tmux socket are not seen (the plan
-    says so). Tests: `LADO_UPDATE_INDEX` (a local file instead of PyPI),
+    is `<prefix>/bin/lado`, never one on PATH), `installed_version`, the mark of an
+    update that did not finish (`LADO_HOME/update.json`, `Pending`) and the result of the
+    latest update, `LADO_HOME/update-result.json` (`Result`, `write_result`,
+    `read_result`): the one exchange between LADO versions, format 1 in the module's
+    docstring, which only grows (a reader passes over unknown keys and names a higher
+    format as a newer LADO's). Tests: `LADO_UPDATE_INDEX` (a local file instead of PyPI),
     `LADO_UPDATE_INSTALLER` (an installer's argv, given the version as its last argument)
     and `LADO_UPDATE_PREFIX` (the install's prefix instead of `sys.prefix`).
+  - `self_update.py`: `lado update` for the CLI and the UI alike (`cli.cmd_update` only
+    asks and prints). `refusal` is the one answer to "can this LADO update itself now"
+    (inside an agent, an update running, no installer), the CLI's and the API's `can_update`.
+    `plan` is what an update would do (the sessions `runtime.session_status` says run, also
+    with the loop down, those whose tmux is gone, the UI server; `print_plan`,
+    `print_by_hand`, the API's `UpdatePlan`). `run` holds an exclusive flock on
+    `LADO_HOME/update.lock` (its pid in it) for the whole update, so a second one, from the
+    CLI or the UI, is refused at once; only then it truncates `LADO_HOME/update.log` (mode
+    600: `lado ui` prints its login link), where each line it says and the output of each
+    command it runs go too, and writes the result `running`. It writes update.json, stops
+    each session with `runtime.stop_session` and waits for its loop's lock
+    (`loop.wait_stopped`; one that does not end stops the update before the installer, and
+    the sessions are resumed), stops the server, backs up lado.db with SQLite's backup API
+    to `LADO_HOME/backups/lado.db.<old version>` (one backup kept), runs the installer,
+    checks `<prefix>/bin/lado --version` and resumes with that binary's public commands
+    (`lado start <repo> --name <s> --no-attach`, `lado ui --no-open [--host H] --port P`;
+    `--host` only for another than 127.0.0.1, which a LADO before 0.20 lacks). It rolls
+    back only when the new version itself is bad: a wrong `--version`, or the UI server,
+    when one ran before, does not come up on it (`lado ui` fails, or `/api/health` names
+    another version). The rollback stops what the new version started, waits for those
+    loops (one that does not end: `rollback_failed`, lado.db untouched), reinstalls the old
+    version with the same installer and checks its `--version`, only then restores lado.db
+    into the live file by the backup API, only when its `user_version` moved, and resumes on
+    the old version. A session that does not resume is `partial`, never a rollback; a failed
+    installer resumes on the old version (`failed`). After the installer the old process
+    starts nothing of its own (`providers.lado_command`) and imports nothing more (all its
+    imports at its top; a test forbids imports after the installer). update.json is removed
+    when every step worked, and by `unfinished` once none of its sessions is stopped; while
+    one is, `lado ls` and `lado update` name them with their `lado start`. Sessions on
+    another tmux socket are not seen (the plan says so). `start_detached` is the UI's way:
+    `lado update --yes <to> --id <id>` of this LADO in its own process group, its lines only
+    in update.log (`--id`, hidden from the help).
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: does not exist, not inside a git repository, no commits yet), asked

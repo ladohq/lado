@@ -390,11 +390,272 @@ h3 {
   margin-left: 12px;
 }
 
-/* A newer LADO is out: quiet, under the top bar. */
-.update-line {
-  margin: 12px 32px 0;
-  color: var(--muted);
+/* The system panel (SystemPanel.tsx): `live` is its button, `↑ X.Y.Z` beside it while a
+   newer LADO is out. */
+.system {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+
+.system-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px; /* no block padding: in the session head its line is the head's */
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  font: inherit;
   font-size: 13px;
+  cursor: pointer;
+}
+
+.system-button:hover,
+.system-button[aria-expanded="true"] {
+  background: var(--raised);
+}
+
+.update-mark {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--human) 45%, transparent);
+  border-radius: 10px;
+  color: var(--human);
+  font-size: 12px;
+}
+
+.system-panel {
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  padding: 0;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.system-panel > * {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.system-panel > :last-child {
+  border-bottom: 0;
+}
+
+.system-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-block: 8px;
+  font-size: 14px;
+}
+
+.system-links {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* "System info copied" drops under the icons, as a copy button's note does. */
+.system-links > .row-note {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 6;
+  white-space: nowrap;
+}
+
+.system-head strong,
+.system-links a {
+  white-space: nowrap;
+}
+
+.system-links a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.system-links a:hover {
+  color: var(--action);
+}
+
+.system-facts {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 4px 8px;
+  margin: 0;
+}
+
+.system-facts dt {
+  color: var(--muted);
+}
+
+.system-facts dd {
+  min-width: 0;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.system-home {
+  display: flex;
+  align-items: flex-start; /* the icon by the path's first line */
+  gap: 4px;
+}
+
+.system-home .icon-button {
+  width: 22px;
+  height: 22px;
+  margin-left: -4px;
+}
+
+.system-home .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.system-providers h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.system-providers ul {
+  display: grid;
+  grid-template-columns: 10px auto 1fr;
+  gap: 4px 8px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.system-providers li {
+  display: contents;
+}
+
+.system-providers small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.provider-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.provider-ok {
+  background: var(--done);
+}
+
+.provider-warn {
+  background: var(--human);
+}
+
+.provider-off {
+  border: 1.5px solid var(--muted);
+}
+
+.system-panel p.system-check {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  color: var(--muted);
+}
+
+.system-update {
+  background: var(--human-ground);
+}
+
+.system-update-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* p.: over .popover p's margins. */
+.system-panel p.system-why {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere; /* the reason names a path */
+}
+
+.system-by-hand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+}
+
+.system-by-hand .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.system-by-hand .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.system-panel .log,
+.update-banner .log {
+  flex-basis: 100%;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--raised);
+  font: 11px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.update-restarts {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+
+/* The update while the server restarts (U2), then its result (U3), under the top bar. */
+.update-banner {
+  margin: 12px 32px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.update-banner p {
+  margin: 4px 0 0;
+}
+
+.update-banner ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.update-banner > button {
+  margin-top: 8px;
+}
+
+.update-good {
+  background: var(--done-ground);
+}
+
+.update-bad {
+  border-left: 3px solid var(--danger);
+}
+
+.update-clock {
+  font-variant-numeric: tabular-nums;
 }
 
 .empty {
@@ -1020,6 +1281,15 @@ h3 {
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
+  }
+
+  /* Only the dot (and the update mark) is left of `live`. */
+  .topbar:has(.session-head) .system-button {
+    padding-inline: 4px;
+  }
+
+  .topbar:has(.session-head) .system-button::before {
+    margin-right: 0;
   }
 }
 
@@ -3109,7 +3379,7 @@ h3 {
   }
 
   .version-banner,
-  .update-line {
+  .update-banner {
     margin: 12px 16px 0;
   }
 

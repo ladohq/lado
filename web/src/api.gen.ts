@@ -2198,6 +2198,8 @@ export interface components {
             id: string;
             /** Requested At */
             requested_at: string;
+            /** Log */
+            log: string;
         };
         /** ValidationError */
         ValidationError: {

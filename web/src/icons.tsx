@@ -234,6 +234,15 @@ export const DocumentIcon = () => (
   </Icon>
 );
 
+// A clipboard with lines: the system info to copy for an issue.
+export const ClipboardIcon = () => (
+  <Icon>
+    <rect x="8" y="3.5" width="8" height="3.5" rx="1" />
+    <path d="M16 5h1.5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2H8" />
+    <path d="M9 12h6M9 16h4" />
+  </Icon>
+);
+
 // Text and code: two angle brackets.
 export const CodeIcon = () => (
   <Icon>

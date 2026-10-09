@@ -277,15 +277,15 @@ test("a reload for another server version than this one's does not count", async
   expect((await screen.findByRole("alert")).textContent).toContain("reload the page");
 });
 
-// A newer LADO on PyPI (/api/update)
+// A newer LADO on PyPI (/api/update): the mark on `live` and the panel (SystemPanel.test.tsx)
 
-test("a newer LADO is named with the command that installs it", async () => {
+test("a newer LADO marks live, and no line is under the top bar", async () => {
   available = "99.0.0";
   serve();
   open("/");
-  const line = await screen.findByText(/is available/);
-  expect(line.textContent).toBe("LADO 99.0.0 is available: run lado update");
-  expect(line.querySelector("code")?.textContent).toBe("lado update");
+  const live = await screen.findByRole("button", { name: "System: LADO 99.0.0 is available" });
+  expect(live.textContent).toBe("live↑ 99.0.0");
+  expect(screen.queryByText(/is available/)).toBeNull();
 });
 
 test("without a newer LADO nothing is said", async () => {

@@ -424,6 +424,7 @@ class UpdateAsk(BaseModel):
 class UpdateStarted(BaseModel):
     id: str  # the result of this update carries it
     requested_at: str
+    log: str  # update.log, for when the server does not come back
 
 
 class TmuxInfo(BaseModel):

@@ -725,13 +725,13 @@ test("the top bar has the title and the link; the server's address is in the lin
   const bar = screen.getByRole("banner");
   expect(bar.querySelector("h1")!.textContent).toBe("Sessions");
   expect(within(bar).queryByText(window.location.host)).toBeNull();
-  const link = await within(bar).findByRole("status");
+  // Live is the system panel's button (SystemPanel.test.tsx).
+  const link = await within(bar).findByRole("button", { name: "System" });
   expect(link.textContent).toBe("live");
   expect(link.getAttribute("title")).toBeNull(); // the UI's tooltip, not the browser's
   fireEvent.focus(link);
   expect(screen.getByRole("tooltip").textContent).toBe(`The LADO server this page talks to: ${window.location.host}`);
   fireEvent.blur(link);
-  expect(within(bar).queryByRole("button")).toBeNull();
   stream().fail(false);
   expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
 });

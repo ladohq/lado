@@ -189,6 +189,7 @@ def test_the_update_starts_lado_update_detached_and_answers_202(client, installe
     started = answer.json()
     assert spawned == [(NEW, started["id"])]
     assert started["requested_at"]
+    assert started["log"] == str(state.home() / "update.log")
 
 
 def test_the_update_refuses_another_version_than_the_plans(client, installed, spawned):

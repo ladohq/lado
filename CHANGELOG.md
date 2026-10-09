@@ -2,6 +2,17 @@
 
 ## 0.32.0 (unreleased)
 
+- The UI's `live` opens a system panel: LADO's version, the server, how long it runs, its
+  home, tmux, the providers and the update check (with a check now), and one click to copy
+  the system info for an issue (no paths, addresses, session names or tokens). A newer LADO
+  shows as `↑ X.Y.Z` beside `live`, in place of the line under the top bar, and the panel
+  updates LADO: it shows `lado update`'s plan, restarts, and says how the update ended.
+- `lado update` backs up lado.db (`~/.lado/backups/`) before installing, and rolls back to
+  the old version when the new one does not install right or its UI server does not come
+  up, restoring lado.db only when its schema changed. It writes `~/.lado/update.log` and
+  `~/.lado/update-result.json`, and refuses a second update while one runs. A session that
+  does not resume no longer leaves the "an update did not finish" mark once you resume it.
+
 - Codex CLI as a provider: `lado start --provider codex` and `spawn_worker(provider="codex")`.
   Each Codex agent gets its own Codex home in its config folder (its role as
   `developer_instructions`, LADO's hooks, already trusted, its MCP servers); from your own

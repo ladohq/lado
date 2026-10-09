@@ -1387,18 +1387,6 @@ Size: S. Why here: Minor findings of the review of feature/artifacts-ui; none mi
   Wanted: every response of a content address carries the sandbox header, errors too.
 Found: 2026-10-07, review of feature/artifacts-ui.
 
-## An unfinished update's mark outlives the sessions resumed by hand
-
-Size: S. Why here: harmless today, misleading later; no session is lost.
-`lado update` to 0.27.0 resumed core-tracker and the UI server but not kit-lado-dev and
-kit-builder; the human resumed those with `lado start`, yet `~/.lado/update.json` stays
-(only `cmd_update` clears it, on full success). A later deliberate `lado stop` of one of
-those sessions makes `lado ls` say "an update did not finish" again. The update's own
-output, which would say why it stopped resuming, was not kept.
-Wanted: the mark goes once none of its sessions is stopped (e.g. `_unfinished_update` or a
-resume drops it), and `lado update` writes why a resume failed to `loop.log` too.
-Found: 2026-10-08, checking the 0.27.0 update in session core-tracker.
-
 ## The web UI's main bundle is over Vite's 800 kB warning
 
 Size: S. Why here: every `make web` warns, so the warning no longer tells anything.

@@ -44,6 +44,13 @@ export function storeReloadedFor(version: string | null): void {
   }
 }
 
+// The update result this browser dismissed (its id, or its start), so each shows once.
+const UPDATE_SEEN = "lado.updateSeen";
+
+export const updateSeen = (): string | null => read(UPDATE_SEEN);
+
+export const storeUpdateSeen = (key: string): void => write(UPDATE_SEEN, key);
+
 export function storedTheme(): Theme {
   const theme = read(THEME);
   return theme === "light" || theme === "dark" ? theme : "system";

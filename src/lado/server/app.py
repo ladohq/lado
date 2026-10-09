@@ -357,7 +357,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         id = uuid.uuid4().hex
         requested = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
         self_update.start_detached(given.to, id)
-        return UpdateStarted(id=id, requested_at=requested)
+        return UpdateStarted(id=id, requested_at=requested, log=str(self_update.log_path()))
 
     @app.get("/api/system", dependencies=[Depends(guard)])
     def system() -> SystemInfo:

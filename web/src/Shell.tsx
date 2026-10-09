@@ -16,7 +16,7 @@ import {
 } from "react";
 import { NavLink, Outlet } from "react-router";
 
-import { getHealth, getUpdate, onDenied } from "./api";
+import { getHealth, onDenied } from "./api";
 import {
   CollapseIcon,
   HomeIcon,
@@ -31,7 +31,7 @@ import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
-import { Tooltip } from "./Tooltip";
+import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
 import { BUNDLE_VERSION } from "./version";
 
 const NEEDS_YOU = "/needs-you"; // its link counts what waits
@@ -146,7 +146,7 @@ export function Shell() {
           <LinkState />
         </header>
         <VersionBanner />
-        <UpdateLine />
+        <UpdateStatus />
         <main className="content">
           {denied !== null ? (
             <p className="problem" role="alert">
@@ -165,7 +165,9 @@ export function Shell() {
   );
   return (
     <LiveContext.Provider value={live}>
-      <LaunchProvider>{frame}</LaunchProvider>
+      <UpdateProvider>
+        <LaunchProvider>{frame}</LaunchProvider>
+      </UpdateProvider>
     </LiveContext.Provider>
   );
 }
@@ -215,44 +217,12 @@ function VersionBanner() {
   );
 }
 
-// A newer LADO on PyPI, as the server's daily check found it: one quiet line. Asked, like
-// the version, each time the change feed opens.
-function UpdateLine() {
-  const { link } = useLive();
-  const [available, setAvailable] = useState<string | null>(null);
-  useEffect(() => {
-    if (link !== "open") return;
-    let current = true;
-    getUpdate().then(
-      (update) => current && setAvailable(update.available ?? null),
-      () => {}, // no line: `lado doctor` says why the check failed
-    );
-    return () => {
-      current = false;
-    };
-  }, [link]);
-  if (available === null) return null;
-  return (
-    <p className="update-line">
-      LADO {available} is available: run <code>lado update</code>
-    </p>
-  );
-}
-
 // The change feed's link: live, or reconnecting while it is down (what the page shows may
-// be old), with the reason. The server's address is in its tooltip.
+// be old), with the reason. Live opens the system panel (SystemPanel.tsx).
 function LinkState() {
   const { link, problem } = useLive();
   if (link === "refused") return null; // the page says how to get in
-  if (link !== "down") {
-    return (
-      <Tooltip tip={`The LADO server this page talks to: ${window.location.host}`}>
-        <span className={`link link-${link}`} role="status" tabIndex={0}>
-          <span className="link-word">{link === "open" ? "live" : "connecting…"}</span>
-        </span>
-      </Tooltip>
-    );
-  }
+  if (link !== "down") return <LiveButton link={link} />;
   return (
     <span className="link reconnecting" role="status" title={problem ?? undefined}>
       reconnecting…{problem && <span className="reconnecting-why"> {problem}</span>}

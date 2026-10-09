@@ -87,12 +87,26 @@ later desktop app and a later cloud setup; the UI is its client.
   page cannot load (e.g. a 404 from an older server) shows the API's error, never an empty
   page.
 - A newer LADO: `GET /api/update` (`UpdateInfo`: `current`, `latest`, `available`,
-  `checked_at`) gives what the daily update check found (`lado.update.check`, the rule
-  `lado ls` and `lado doctor` share; a plain `def`, so its look at PyPI holds up no other
-  request). Asked each time the change feed opens; when a newer version is `available`,
-  one quiet line under the top bar says `LADO X.Y.Z is available: run lado update`. A
-  failed check shows nothing here (`lado doctor` says why). `lado update` restarts the
-  server on the new version, on the same host and port.
+  `released`, `checked_at`, `error`; `running`, an update holds `update.lock`;
+  `can_update` and `why_not`, from `self_update.refusal`, the CLI's too; `by_hand`, the
+  commands without an installer; `last`, the latest `update-result.json`) gives what the
+  daily update check found (`lado.update.check`, the rule `lado ls` and `lado doctor`
+  share; a plain `def`, so its look at PyPI holds up no other request). Asked each time the
+  change feed opens; a newer version marks `live` (System panel, below); no line under the
+  top bar. `POST /api/update/check` (under `Guard.changes`: it goes to the network) looks
+  now, past the day's cache (`check(force=True)`). `GET /api/update/plan` is the plan
+  `lado update` prints (`UpdatePlan`, `self_update.plan`; 409 when no version is newer; a
+  plain `def`). `POST /api/update {to}` (under `Guard.changes`) starts a detached `lado
+  update --yes <to> --id <id>` of the server's own LADO (`self_update.start_detached`,
+  its own process group) and answers 202 with that id, the time and update.log's path; 409
+  when `to` is not the plan's version or `refusal` says no. The update stops this server
+  within seconds and starts it again, on the same host and port. `GET /api/health` has
+  `started_at`, the server's start, kept in its memory only: a restart shows also when the
+  version stayed the same (a rollback). `GET /api/system` (`SystemInfo`) is the system
+  panel's facts (`doctor.system_info`, from what `lado doctor` checks) and `report`
+  (`doctor.report`): Markdown to paste into an issue, with no server address, home path,
+  repository path, session name, token or message, only "open to the network" or
+  "loopback only" and "LADO_HOME set" or "default home".
 - Host (decided 2026-10-04): 127.0.0.1 by default; `--host` takes any IPv4 address or name
   (`lado server`, and `lado ui` for a server it starts), e.g. `0.0.0.0` to open the UI of a
   remote host from another machine. An IPv6 address is refused (not supported yet). A
@@ -372,7 +386,9 @@ Sessions for now. The UI's texts are in English.
 - **Top bar**: the page's title on the left, or on a session's page the session's head
   (Session head, below); on the right the change feed's link (`live`, or `reconnecting…`
   with the reason), with the server's address in its tooltip ("The LADO server this page
-  talks to: <host>"). A page draws its head there through `Shell.useTopBar`, a slot of the
+  talks to: <host>"). `live` is a button (`aria-haspopup`, `aria-expanded`) that opens the
+  system panel (System panel, below); while a newer LADO is out, `↑ X.Y.Z` is beside it
+  (mockup M2) and its tooltip says so. A page draws its head there through `Shell.useTopBar`, a slot of the
   top bar it fills with a portal; the Shell draws its own title only while no page claims
   the bar. Sticky at the window's top, z-index 10: over the session's splitter and the
   expanded terminals, so what drops from it (the copy notes, the Stop popover) shows over
@@ -1076,6 +1092,43 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - Known limit: the server finds the CLI on its own PATH (`shutil.which`), as
   `/api/providers` and the folder check do; agents get their login shell's PATH, so the
   version shown may differ from theirs.
+
+### System panel (decided 2026-10-09, feature/system-panel)
+
+What LADO, the server and the machine are, and updating LADO without a terminal
+(`SystemPanel.tsx`; the mockup `feature/system-panel/mockup-panel.html`, approved variants
+M2, P1–P3 of round 3, F3 and U1–U3).
+
+- **The panel** (P1), a popover under `live`: the header `LADO X.Y.Z` with the clipboard
+  icon (copies `SystemInfo.report` and one line the page adds, its browser and OS from the
+  user agent; "System info copied") and GitHub ↗. Then Server (the page's origin), Running
+  (how long only; the start in its tooltip, F3), Home (shortened with `~`; the folder icon
+  on its left copies the full path, the session head's `CopyButton`), tmux (version ·
+  socket), the providers (a dot: ok, an untested version, not installed; the version, and
+  the tested one when it differs), and last the update check: `Up to date · checked 09:12`,
+  `checked yesterday`, `Checking…`, `Check failed · 09:12` with the reason in its tooltip,
+  each with ↻ (`POST /api/update/check`). Esc or a press outside closes it.
+- **A newer LADO** (P2): an Update block on top, `0.33.0 is out · 12 Oct`, What's new (the
+  GitHub release of its tag) and **Update…**. Without an installer (P3) the block says
+  why (`why_not`) and shows the commands by hand with Copy, and no button; with
+  `can_update` false for another reason (an update runs) it says that reason.
+- **Update…** (U1) opens a modal with the plan from `GET /api/update/plan`, the same data
+  `lado update` prints: from → to, each session to restart with its agents' statuses and
+  open runs, this UI server, "Busy agents lose their current turn…", Cancel and **Restart
+  and update**, which asks `/api/health` for the server's `started_at`, then `POST
+  /api/update`.
+- **The wait** (U2), under the top bar: "Updating to X · The server is restarting · m:ss".
+  The page polls `/api/health` and `/api/update` every 2 s and ends on both: a server whose
+  `started_at` is newer than the one before, and `UpdateInfo.last` with the id the 202
+  answered and an outcome other than `running`. So it ends after a rollback too, where the
+  version is the same; when the version changed, the version banner offers the reload.
+  After 5 minutes it says "The server did not come back. See <update.log>; start it with
+  `lado ui`" and goes on polling. The page cannot learn the steps while the server is gone.
+- **The result** (U3), under the top bar, from `UpdateInfo.last`, also after a reload:
+  ok; partial with the sessions that did not resume and their `lado start`; failed, rolled
+  back or rollback failed with the reason, the database line and the log's tail. Each
+  result shows until dismissed (the browser keeps its id, `localStorage`), and none older
+  than a day.
 
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 

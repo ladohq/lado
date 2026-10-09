@@ -6060,12 +6060,17 @@
           "requested_at": {
             "type": "string",
             "title": "Requested At"
+          },
+          "log": {
+            "type": "string",
+            "title": "Log"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "requested_at"
+          "requested_at",
+          "log"
         ],
         "title": "UpdateStarted"
       },

@@ -847,6 +847,12 @@ overwritten by merge"); once the passive supervisor, whose role reached the mode
 with `codex debug prompt-input` on its home), ran `git add . && git commit` in the main
 checkout, so the test's `merge --ff-only` failed. Wanted also: a stronger local model for
 the Codex live test (`LADO_LIVE_CODEX_MODEL`).
+In the last verify of that run (9ef014f) `test_worker_does_a_task_reports_and_gets_a_message[codex]`
+passed 1 of 3: once w1 sent its report three times, called Codex's goal tool in a loop
+(`cannot update goal because this thread has no goal`) and stayed `busy` with no Stop hook
+although Codex's screen showed the turn done (maybe the same gap as "A Codex agent whose
+turn ends on a model or API error stays busy"); once it did not read the follow-up within
+120 s.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

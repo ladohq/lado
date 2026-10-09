@@ -1522,6 +1522,17 @@ Wanted: count only the main agent's hooks as a sign that it took input (the payl
 `agent_id`, if it has one), or another sign of a swallowed paste.
 Found: 2026-10-09, architecture review of feature/background-status.
 
+## A worker can move any branch of the repo, main too
+
+Size: M. Why here: the human accepted the risk for now (2026-10-09); no agent has done it.
+A worker's worktree shares the repo's git common dir, and its sandbox lets it write there:
+Codex's `default` profile opens the git folders but their hooks and config (else it cannot
+commit), and Claude Code, Kilo and OpenCode do not restrict git at all. So a worker can
+`git update-ref`, reset or push any branch, `main` included, not only `lado/<session>/<name>`.
+Wanted: a worker's writes to refs other than its own branch refused or at least seen (e.g. a
+check of main's tip before a run's merge, or a hook on ref updates).
+Found: 2026-10-09, review of feature/codex-provider (the reviewer's open question).
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

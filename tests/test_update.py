@@ -399,3 +399,35 @@ def test_ls_and_update_name_the_sessions_an_unfinished_update_left_stopped(
 
 def test_the_tests_switch_the_check_off():
     assert os.environ.get("LADO_NO_UPDATE_CHECK") == "1"
+
+
+def test_the_result_of_an_update_is_read_in_format_1_and_unknown_keys_are_passed_over():
+    update.write_result(
+        update.Result(
+            outcome="ok", from_="0.32.0", to="0.33.0", started_at="2026-10-09T10:00:00+00:00"
+        )
+    )
+    written = json.loads(update.result_path().read_text())
+    assert written["format"] == 1 and written["from"] == "0.32.0"
+    written["later_key"] = "from a later LADO of format 1"
+    update.result_path().write_text(json.dumps(written))
+    read = update.read_result()
+    assert (read.outcome, read.from_, read.to, read.newer_format) == (
+        "ok",
+        "0.32.0",
+        "0.33.0",
+        False,
+    )
+
+
+def test_a_result_of_a_higher_format_is_named_as_a_newer_lado_s():
+    update.result_path().write_text(json.dumps({"format": 2, "outcome": "something"}))
+    read = update.read_result()
+    assert read.newer_format
+    assert read.problem == "written by a newer LADO (format 2)"
+
+
+def test_no_result_without_the_file_or_with_one_that_is_no_json():
+    assert update.read_result() is None
+    update.result_path().write_text("{not json")
+    assert update.read_result() is None

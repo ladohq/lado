@@ -24,7 +24,8 @@ def test_importing_lado_and_its_hooks_does_not_read_the_package_metadata():
 
 def test_the_cli_imports_what_only_some_commands_need_in_those_commands():
     loaded = _modules_after("import lado.cli")
-    assert {"lado.doctor", "lado.update", "lado.server", "importlib.metadata"}.isdisjoint(loaded)
+    lazy = {"lado.doctor", "lado.update", "lado.self_update", "lado.server", "importlib.metadata"}
+    assert lazy.isdisjoint(loaded)
 
 
 def test_a_lado_command_that_does_not_show_the_version_does_not_read_it(tmp_path, monkeypatch):

@@ -47,6 +47,16 @@ class Install:
         self.version_file = folder / "installed-version"
         self.version_file.write_text(__version__)
         self.calls = folder / "calls"
+        # The processes of the installed lado say the version it was installed as (the UI
+        # server's /api/health too): a sitecustomize on their PYTHONPATH sets it.
+        site = folder / "site"
+        site.mkdir()
+        (site / "sitecustomize.py").write_text(
+            "import os\n"
+            "if os.environ.get('LADO_TEST_VERSION'):\n"
+            "    import lado\n"
+            "    lado.__version__ = os.environ['LADO_TEST_VERSION']\n"
+        )
         lado = self.prefix / "bin" / "lado"
         # Every call of the installed lado is written down; `start` and `ui` run this working
         # copy with the fake providers, as `lado` of any version would take them.
@@ -56,6 +66,7 @@ class Install:
             'if [ "$1" = "--version" ]; then\n'
             f'  echo "lado $(cat "{self.version_file}")"; exit 0\n'
             "fi\n"
+            f'export LADO_TEST_VERSION="$(cat "{self.version_file}")" PYTHONPATH="{site}"\n'
             f'exec "{sys.executable}" "{fake_provider.LADO}" "$@"\n'
         )
         lado.chmod(0o755)
@@ -194,16 +205,24 @@ def test_a_failed_installer_resumes_the_session_on_the_old_version(repo, session
     assert "did not finish" not in lado_cli("ls").stderr
 
 
-def test_an_installer_that_installs_another_version_is_named(repo, session, install):
+def test_an_installer_that_installs_another_version_is_named_and_rolled_back(
+    repo, session, install
+):
     start(repo, session)
-    install.installs("echo 'done, says the installer'")
+    install.installs(
+        f'[ "$1" = "{NEW}" ] && echo "{NEW}-broken" > "{install.version_file}" '
+        f'|| echo "$1" > "{install.version_file}"'
+    )
     done = lado_cli("update", "--yes")
     assert done.returncode == 1
-    assert (
-        f"The installer finished, but LADO is {__version__}, not {NEW}. "
-        f"Resuming the sessions on {__version__}:"
-    ) in done.stdout
+    assert f"The installer finished, but LADO is {NEW}-broken, not {NEW}.\n" in done.stdout
+    assert f"Rolling back to LADO {__version__}: " in done.stdout
+    assert f"Reinstalling: {install.installer} {__version__}\n" in done.stdout
+    assert done.stdout.endswith("Attach with: lado attach " + session + "\n")
     assert resumed(session) == 1
+    assert json.loads((state.home() / "update-result.json").read_text())["outcome"] == (
+        "rolled_back"
+    )
 
 
 def test_update_back_to_an_older_lado_resumes_with_its_public_commands(repo, session, install):

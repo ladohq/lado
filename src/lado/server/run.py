@@ -274,11 +274,18 @@ def start_background(host: str | None, port: int | None) -> Started:
     return Started(process, log_from)
 
 
-def _healthy(url: str) -> bool:
+def health(url: str, timeout: float = 1) -> dict | None:
+    """What the server at `url` answers on /api/health; None when it does not."""
     with contextlib.suppress(OSError, ValueError):
-        with urllib.request.urlopen(f"{url}/api/health", timeout=1) as answer:
-            return json.load(answer).get("ok") is True
-    return False
+        with urllib.request.urlopen(f"{url}/api/health", timeout=timeout) as answer:
+            said = json.load(answer)
+            return said if isinstance(said, dict) else None
+    return None
+
+
+def _healthy(url: str) -> bool:
+    said = health(url)
+    return bool(said and said.get("ok") is True)
 
 
 def wait_ready(started: Started | None = None, timeout: float | None = None) -> dict:

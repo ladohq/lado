@@ -1,8 +1,28 @@
 """Upgrading LADO: which version PyPI has, how LADO was installed and the command that
-installs another version; `lado update` (lado.cli) stops and resumes the sessions around it.
+installs another version; `lado update` (lado.self_update) stops and resumes the sessions
+around it.
 
 No tmux, providers or UI here. The release index is PyPI's JSON of the package
 (`INDEX_URL`); `LADO_UPDATE_INDEX` names a local file of that format instead, for the tests.
+
+The one exchange between LADO versions is LADO_HOME/update-result.json, the outcome of the
+latest update: the old version's `lado update` writes it, and the server of either version
+reads it. Format 1, a JSON object:
+
+- `format`: 1;
+- `id`: the id the UI server gave the update it started (`lado update --id`), else null;
+- `from`, `to`: the versions; `started_at`, `ended_at`: ISO times, UTC (`ended_at` null
+  while it runs);
+- `outcome`: `running` (written at the start), `ok`, `partial` (some sessions did not
+  resume), `failed` (nothing was changed, or the installer failed: the old version runs),
+  `rolled_back` or `rollback_failed`;
+- `sessions_failed`: the sessions that did not resume, each `{name, command}`;
+- `reason`: one line, or null;
+- `database`: `kept`, `restored`, or null (not backed up, or not restored: `reason` says why);
+- `log`: the path of update.log; `tail`: its last lines, a list of strings.
+
+Format 1 only grows: a reader passes over keys it does not know, and takes a higher format
+as written by a newer LADO.
 """
 
 import contextlib
@@ -321,6 +341,98 @@ def read_pending() -> Pending | None:
 
 def clear_pending() -> None:
     pending_path().unlink(missing_ok=True)
+
+
+RESULT_FORMAT = 1
+RUNNING = "running"
+OUTCOMES = (RUNNING, "ok", "partial", "failed", "rolled_back", "rollback_failed")
+
+
+def result_path() -> Path:
+    return state.home() / "update-result.json"
+
+
+@dataclass(frozen=True)
+class Result:
+    """An update's outcome as update-result.json keeps it (format 1, the module's docstring)."""
+
+    outcome: str
+    from_: str
+    to: str
+    started_at: str
+    ended_at: str | None = None
+    id: str | None = None
+    sessions_failed: list[dict] = field(default_factory=list)  # each {name, command}
+    reason: str | None = None
+    database: str | None = None
+    log: str | None = None
+    tail: list[str] = field(default_factory=list)
+    format: int = RESULT_FORMAT  # as read; a higher one is a newer LADO's
+
+    @property
+    def newer_format(self) -> bool:
+        return self.format > RESULT_FORMAT
+
+    @property
+    def problem(self) -> str | None:
+        return f"written by a newer LADO (format {self.format})" if self.newer_format else None
+
+
+def write_result(result: Result) -> None:
+    fields = {
+        "format": RESULT_FORMAT,
+        "id": result.id,
+        "from": result.from_,
+        "to": result.to,
+        "started_at": result.started_at,
+        "ended_at": result.ended_at,
+        "outcome": result.outcome,
+        "sessions_failed": result.sessions_failed,
+        "reason": result.reason,
+        "database": result.database,
+        "log": result.log,
+        "tail": result.tail,
+    }
+    path = result_path()
+    written = path.with_suffix(f".{os.getpid()}.tmp")
+    written.write_text(json.dumps(fields, indent=1))
+    written.replace(path)
+
+
+def read_result() -> Result | None:
+    """The latest update's result; None without one or when it cannot be read."""
+    try:
+        fields = json.loads(result_path().read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(fields, dict) or not isinstance(fields.get("format"), int):
+        return None
+    if fields["format"] > RESULT_FORMAT:
+        return Result("", "", "", "", format=fields["format"])
+
+    def text(key: str) -> str | None:
+        value = fields.get(key)
+        return value if isinstance(value, str) else None
+
+    failed = [
+        {"name": str(s.get("name", "")), "command": str(s.get("command", ""))}
+        for s in fields.get("sessions_failed") or []
+        if isinstance(s, dict)
+    ]
+    tail = fields.get("tail")
+    return Result(
+        outcome=text("outcome") or "",
+        from_=text("from") or "",
+        to=text("to") or "",
+        started_at=text("started_at") or "",
+        ended_at=text("ended_at"),
+        id=text("id"),
+        sessions_failed=failed,
+        reason=text("reason"),
+        database=text("database"),
+        log=text("log"),
+        tail=[str(line) for line in tail] if isinstance(tail, list) else [],
+    )
 
 
 def available_line(checked: Check | None) -> str | None:

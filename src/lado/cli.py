@@ -4,13 +4,11 @@ import argparse
 import datetime
 import os
 import select
-import shlex
 import shutil
 import subprocess
 import sys
 import termios
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
@@ -34,7 +32,7 @@ from lado import (
 # lado.__version__ is read only when shown: every hook, `lado mcp` and `lado loop` is a
 # process of this module, and neither is theirs to pay for.
 if TYPE_CHECKING:
-    from lado import update
+    pass
 
 PAGER = ["less", "-R"]  # for a gate's full note
 POLL = 1.0  # seconds between two checks that a gate the human is asked about is open
@@ -419,27 +417,16 @@ def cmd_ls(args: argparse.Namespace) -> int:
     return 0
 
 
-DEFAULT_HOST = "127.0.0.1"  # `lado server --host`'s default
-
-
-@dataclass
-class Restarts:
-    """What `lado update` stops and resumes: the sessions `runtime.session_status` says run
-    (also those whose loop is down), and the UI server's server.json, if one runs."""
-
-    sessions: list[state.Session]
-    gone: list[state.Session]  # not stopped, but their tmux is gone: not restarted
-    server: dict | None
-
-
 def cmd_update(args: argparse.Namespace) -> int:
-    # Everything the update needs from LADO is imported before the installer replaces it,
-    # and the version read (lado caches it).
-    from lado import update
-    from lado.server import run as server_run
+    # Everything the update needs from LADO is imported before the installer replaces it
+    # (self_update imports the rest), and the version read (lado caches it).
+    from lado import self_update, update
 
     current = lado.__version__
-    _human_only("update")
+    installer = update.installer()
+    refused = self_update.refusal(installer)
+    if refused and refused.kind != self_update.NO_INSTALLER:
+        raise runtime.LadoError(refused.why)
     _unfinished_update()
     try:
         index = update.fetch_index()
@@ -457,11 +444,11 @@ def cmd_update(args: argparse.Namespace) -> int:
     if update.same(to.version, current):
         print(f"LADO {current} is installed already.")
         return 0
-    installer = update.installer()
-    restarts = _restarts(server_run.running())
-    _print_update_plan(to, installer, restarts)
+    plan = self_update.plan(to)
+    say = _quiet if args.id else print
+    self_update.print_plan(plan, say)
     if installer is None:
-        _print_update_by_hand(to.version, restarts)
+        self_update.print_by_hand(plan, say)
         return 1
     if not args.yes:
         if not sys.stdin.isatty():
@@ -470,206 +457,21 @@ def cmd_update(args: argparse.Namespace) -> int:
         if (_input("Update? [y/N] ") or "").lower() not in ("y", "yes"):
             print("Not updated.")
             return 1
-    return _update(to.version, installer, restarts, server_run.stop)
+    return self_update.run(plan, say, args.id)
 
 
-def _restarts(server: dict | None) -> Restarts:
-    restarts = Restarts([], [], server)
-    for sess in state.list_sessions():
-        status = runtime.session_status(sess)
-        if status in (runtime.SessionStatus.RUNNING, runtime.SessionStatus.LOOP_DOWN):
-            restarts.sessions.append(sess)
-        elif status == runtime.SessionStatus.TMUX_GONE:
-            restarts.gone.append(sess)
-    return restarts
-
-
-def _print_update_plan(
-    to: "update.Release", installer: "update.Installer | None", restarts: Restarts
-) -> None:
-    from lado import update
-
-    print(f"LADO {lado.__version__} -> {to.version} (PyPI, released {to.date})")
-    if installer:
-        command = shlex.join(installer.command(to.version))
-        print(f"Installed with {installer.kind}: {command}")
-        if installer.lost:
-            _warn([f"{command} does not keep {', '.join(installer.lost)} of this install"])
-    if update.newer(lado.__version__, to.version):
-        _warn(
-            [
-                f"an older LADO may refuse lado.db (schema {state.SCHEMA_VERSION}); "
-                "it says so when it starts"
-            ]
-        )
-    if restarts.sessions or restarts.server:
-        print("Restarts:")
-    for sess in restarts.sessions:
-        agents = ", ".join(f"{a.name} {a.status}" for a in state.list_agents(sess.name))
-        count = len(state.list_runs(sess.name, open_only=True))
-        open_runs = f"{count} open run{'' if count == 1 else 's'}" if count else "no open runs"
-        print(f"  session {sess.name}  ({sess.repo})  {agents or 'no agents'}; {open_runs}")
-    if restarts.server:
-        print(f"  UI server  {restarts.server['url']}")
-    if restarts.sessions:
-        print(
-            "Busy agents lose their current turn. Runs, gates, branches and worktrees stay;\n"
-            "each supervisor starts a new conversation and gets what its open runs wait for."
-        )
-    for sess in restarts.gone:
-        print(
-            f"Not running, its tmux session is gone: {sess.name}; resume it with "
-            f"lado start {sess.repo} --name {sess.name}"
-        )
-    print(f'Only sessions on tmux socket "{tmux.socket()}" are seen.')
-
-
-def _print_update_by_hand(version: str, restarts: Restarts) -> None:
-    from lado import update
-
-    prefix = update.prefix()
-    print(
-        f"LADO runs from {prefix}, not a uv tool or pipx install of lado from PyPI; "
-        "lado update does not "
-        "upgrade it. By hand:"
-    )
-    for sess in restarts.sessions:
-        print(f"  lado stop {sess.name}")
-    if restarts.server:
-        print("  lado server stop")
-    print(f"  {prefix / 'bin' / 'pip'} install lado=={version}")
-    for sess in restarts.sessions:
-        print(f"  lado start {sess.repo} --name {sess.name}")
-    if restarts.server:
-        print("  lado ui")
-
-
-def _update(
-    version: str,
-    installer: "update.Installer",
-    restarts: Restarts,
-    stop_server: Callable[[], object],
-) -> int:
-    """Stop, install, check the version, resume. After the installer this process starts
-    nothing of its own (`providers.lado_command`): the installed `lado` resumes, through its
-    public commands, whichever version it is."""
-    from lado import update
-
-    current = lado.__version__  # before the installer replaces the package's metadata
-    server = restarts.server
-    address = (server["host"], server["port"]) if server else None
-    update.write_pending(update.Pending({s.name: s.repo for s in restarts.sessions}, address))
-    binary = installer.binary
-    stopped: list[state.Session] = []
-    server_stopped = False
-    try:
-        for sess in restarts.sessions:
-            print(f"Stopping session {sess.name}...", end=" ", flush=True)
-            dropped = runtime.stop_session(sess.name).dropped
-            stopped.append(sess)
-            if not loop.wait_stopped(sess.name):
-                print()
-                raise runtime.LadoError(
-                    f"the session loop of {sess.name} did not end; see {state.home() / 'loop.log'}"
-                )
-            not_read = f" ({dropped} messages not read are dropped)" if dropped else ""
-            print(f"stopped{not_read}")
-        if server:
-            print("Stopping the UI server...", end=" ", flush=True)
-            stop_server()
-            server_stopped = True
-            print("stopped")
-    except (runtime.LadoError, tmux.TmuxError, OSError) as exc:
-        print(f"lado: {exc}; nothing was upgraded. Resuming the sessions:", file=sys.stderr)
-        _resume(binary, stopped, address if server_stopped else None)
-        return 1
-    command = installer.command(version)
-    print(f"Upgrading: {shlex.join(command)}", flush=True)
-    try:
-        installed = subprocess.run(command, check=False).returncode == 0
-    except OSError as exc:
-        print(f"lado: {exc}", file=sys.stderr)
-        installed = False
-    if not installed:
-        print(f"The upgrade failed; LADO {current} is unchanged. Resuming the sessions on it:")
-        _resume(binary, stopped, address)
-        return 1
-    now = update.installed_version(binary)
-    right = now is not None and update.same(now, version)
-    if right:
-        print(f"Resuming on LADO {version}:", flush=True)
-    else:
-        print(
-            f"The installer finished, but LADO is {now or 'unknown'}, not {version}. "
-            f"Resuming the sessions on {now or 'it'}:",
-            flush=True,
-        )
-    resumed = _resume(binary, stopped, address)
-    if not (right and resumed):
-        return 1
-    update.clear_pending()
-    print(f"LADO {version} is ready." + (" Reload open UI tabs." if server else ""))
-    return 0
-
-
-def _resume(binary: Path, sessions: list[state.Session], server: tuple[str, int] | None) -> bool:
-    """Resume the sessions, then the UI server, with `binary`'s public commands; whether
-    each did."""
-    resumed = True
-    for sess in sessions:
-        code = _run(binary, "start", sess.repo, "--name", sess.name, "--no-attach")
-        if code:
-            print(
-                f"lado: session {sess.name} did not resume (exit code {code}); "
-                f"resume it with lado start {sess.repo} --name {sess.name}",
-                file=sys.stderr,
-            )
-            resumed = False
-    if server:
-        host, port = server
-        # --host only when needed: a LADO before 0.20 has none.
-        hosting = [] if host == DEFAULT_HOST else ["--host", host]
-        code = _run(binary, "ui", "--no-open", *hosting, "--port", str(port))
-        if code:
-            print(
-                f"lado: the UI server did not start (exit code {code}); start it with lado ui",
-                file=sys.stderr,
-            )
-            resumed = False
-    return resumed
-
-
-def _run(binary: Path, *args: str) -> int:
-    """`binary` with `args`, its output on this terminal: its exit code."""
-    try:
-        return subprocess.run([str(binary), *args], check=False).returncode
-    except OSError as exc:
-        print(f"lado: {exc}", file=sys.stderr)
-        return 127
+def _quiet(*args, **kwargs) -> None:
+    """The `say` of an update the UI server started: its lines go only to update.log."""
 
 
 def _unfinished_update() -> None:
     """Say which sessions an update that did not finish left stopped, and how to resume
     them."""
-    from lado import update
+    from lado import self_update
 
-    pending = update.read_pending()
-    if pending is None:
-        return
-    left = []
-    for name, repo in pending.sessions.items():
-        sess = state.get_session(name)
-        if sess and sess.stopped_at:
-            left.append((name, repo))
-    if not left:
-        return
-    names = ", ".join(name for name, _ in left)
-    commands = "; ".join(f"lado start {repo} --name {name}" for name, repo in left)
-    print(
-        f"lado: an update did not finish: sessions {names} may be stopped; "
-        f"resume them with {commands}",
-        file=sys.stderr,
-    )
+    line = self_update.unfinished()
+    if line:
+        print(line, file=sys.stderr)
 
 
 def _human_only(command: str) -> None:
@@ -1379,6 +1181,9 @@ def main(argv: list[str] | None = None) -> int:
         "version", nargs="?", metavar="X.Y.Z", help="this version (default: the latest)"
     )
     update_cmd.add_argument("--yes", action="store_true", help="update without asking")
+    # The UI server's: the update it started writes this id into its result, and only to
+    # update.log, since nobody reads its terminal.
+    update_cmd.add_argument("--id", help=argparse.SUPPRESS)
     update_cmd.set_defaults(func=cmd_update)
 
     # Internal: started by the agent CLIs of LADO agents.

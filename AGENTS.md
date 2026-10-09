@@ -121,7 +121,9 @@ fixes and docs only: no new feature, no API or schema change.
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
     `doctor.system_info` (version, OS, installer, home, schema, tmux, providers, kits,
-    session counts, the update check and the last update's result) and the text to copy for
+    session counts, on a Mac where it and LADO's tmux server run, `gui_places`, also
+    `lado doctor`'s Graphical session, the update check and the last update's result) and
+    the text to copy for
     an issue from `doctor.report`: no address, path, repository, session name, token or
     message, only whether the server is open to the network and whether LADO_HOME is set.
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
@@ -281,6 +283,26 @@ fixes and docs only: no new feature, no API or schema change.
     never an empty list. A window's name is its agent's: `new_session` and `new_window` set
     `allow-rename off` globally on LADO's server, so no program renames it, also when the
     user's tmux.conf allows that (a human's `rename-window` still would).
+    `server_running` is the one look at whether a server runs on a socket (`list-sessions`;
+    it never starts one). `new_session` sets `exit-empty on` (tmux's default) first in its
+    chain and takes `before_attempt`, run before each attempt, also the one after
+    `SERVER_ENDED`, and returns what it said: `runtime.start_session` passes
+    `gui_session.ensure_server`. tmux.py knows nothing of macOS (a test: it does not import
+    `gui_session`).
+  - `gui_session.py`: where a process runs on macOS (How agents talk): `place()`, a
+    `Place` (`other` but on a Mac, `gui`, `remote`: outside the graphical session while
+    someone is logged in to it, `no-gui`, `unknown`) by its audit session's flags
+    (`getaudit_addr` through ctypes, `flags_from`) and `launchctl print gui/<uid>`, never by
+    its environment; `LADO_MACOS_PLACE` (gui, remote, no-gui; only tests, `tests/conftest.py`
+    sets `gui`) replaces it on a Mac. `server_place(socket)`: the same of LADO's tmux server,
+    by a probe it runs (`run-shell`, `PROBE` with `-I`: it imports nothing of LADO), None
+    when no server runs (asked first, so it never starts one). `start_server`: a launchd job
+    of `gui/<uid>` (a plist under `LADO_HOME/launchd/`, removed in any outcome; label
+    `LABEL_PREFIX.<socket>.<pid>`) that starts tmux with `exit-empty off`, waited for
+    (`START_TIMEOUT`), then booted out; the server stays. `ensure_server`: that, only from
+    `remote` with no server; a failure is `LAUNCHD_FAILED`, a warning, and the server starts
+    here instead. The texts (`OUTSIDE_GUI`, `NO_GUI`, `PLAN_REMOTE`) name no provider:
+    `fill` puts in the titles and hints of `Provider.keychain_login`.
   - `agent_env.py`: where an agent's environment comes from (How agents talk): `resolve`,
     and `command`, the window's command that runs the agent with exactly that environment.
   - `interpreter.py`: `run_module`, the one way LADO starts a process of its own with its
@@ -745,6 +767,25 @@ fixes and docs only: no new feature, no API or schema change.
   forgets the worker before it kills its window, `stop_session` (`lado stop`, `--all`,
   `lado update`) marks the session stopped before it kills its tmux session (only the
   migration path of an older lado.db kills first: its agents' hooks cannot write to it).
+- On macOS an agent runs in the audit session of LADO's tmux server, its parent (not of
+  the client, and its environment does not change it), and only the graphical audit
+  session opens the login keychain, where Claude Code keeps its login. The server is born
+  in the audit session of the process whose `new-session` finds no server on the socket.
+  So before each attempt of `runtime.start_session`'s `new-session` (start and resume, the
+  hook `gui_session.ensure_server`), a process outside the graphical session (`lado start`
+  or `lado ui` over ssh, `lado update` resuming from ssh) with someone logged in to it and
+  no server on the socket has launchd start the server in `gui/<uid>`; its agents can read
+  the keychain. Linux and the graphical session start it as before; a launchd failure is
+  a warning and the server starts here. A server that runs already is never restarted
+  (the human's decision): once an agent's window is there (start, resume, spawn), an agent
+  whose provider needs the keychain (`Provider.keychain_login`: Claude Code on a Mac
+  without `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+  `CLAUDE_CODE_USE_BEDROCK` or `CLAUDE_CODE_USE_VERTEX` in its environment; the others
+  never) gets a warning when the server runs outside the graphical session (`OUTSIDE_GUI`:
+  `lado stop --all`, then start again) or nobody is logged in (`NO_GUI`), told whoever
+  starts it as a blocker's reason is (`Started.warnings`, `spawn_worker`'s warnings,
+  `loop.log`); the agent runs anyway. `lado doctor` (Graphical session), the system panel
+  (`SystemInfo.gui_session`) and the update's plan (`agents_note`) say the same.
 - An agent whose CLI asks the human before any hook (Claude Code's "trust this folder?" in a
   repo it does not trust; `Provider.first_hook_blocker`) waits from its start: after
   `launch_command` and before its window starts (`runtime._first_hook_blocker`, for start,

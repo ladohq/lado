@@ -11,10 +11,12 @@ from lado import (
     artifacts,
     artifacts_local,
     doctor,
+    gui_session,
     providers,
     runtime,
     state,
 )
+from lado.gui_session import Place
 from lado.providers import claude, codex, kilo, opencode
 
 
@@ -38,6 +40,7 @@ def _versions(
 
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")  # its check: below
     checks = doctor.run_checks(which=lambda cmd: cmd)
     names = [
         "LADO",
@@ -296,3 +299,85 @@ def test_artifacts_are_not_checked_on_another_schema(lado_home):
     agent_helpers.previous_schema()
     check = doctor.check_artifacts()
     assert (check.level, check.detail[:13]) == (doctor.INFO, "not checked: ")
+
+
+@pytest.fixture
+def mac(monkeypatch):
+    """A Mac (gui_session): mac(process, server) sets where this process and LADO's tmux
+    server run; Claude Code needs the keychain (no other login)."""
+    monkeypatch.setattr(gui_session.sys, "platform", "darwin")
+    monkeypatch.setattr(claude.sys, "platform", "darwin")
+    for name in claude.LOGINS:
+        monkeypatch.delenv(name, raising=False)
+
+    def place(process, server):
+        monkeypatch.setattr(gui_session, "place", lambda: Place(process))
+        monkeypatch.setattr(gui_session, "server_place", lambda socket: server and Place(server))
+
+    return place
+
+
+def _graphical(which=lambda cmd: cmd):
+    return next(c for c in doctor.run_checks(which=which) if c.name == "Graphical session")
+
+
+def test_no_graphical_session_check_but_on_a_mac(monkeypatch):
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    names = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert "Graphical session" not in names
+    assert doctor.system_info(which=lambda cmd: cmd).gui_session is None
+
+
+@pytest.mark.parametrize(
+    ("process", "server"),
+    [("gui", "gui"), ("remote", "gui"), ("gui", None), ("remote", None), ("no-gui", "gui")],
+)
+def test_agents_in_the_graphical_session_are_ok(mac, process, server):
+    mac(process, server)
+    check = _graphical()
+    assert check.level == doctor.OK
+    assert check.detail == f"process: {process}, server: {server or 'none'}"
+
+
+def _hint():
+    return providers.get("claude").keychain_login({})
+
+
+@pytest.mark.parametrize(
+    ("process", "server", "text"),
+    [
+        ("gui", "remote", gui_session.OUTSIDE_GUI),
+        ("remote", "no-gui", gui_session.OUTSIDE_GUI),
+        ("no-gui", None, gui_session.NO_GUI),
+        ("no-gui", "no-gui", gui_session.OUTSIDE_GUI),
+    ],
+)
+def test_agents_that_cannot_read_the_keychain_are_a_warning(mac, process, server, text):
+    mac(process, server)
+    check = _graphical()
+    assert check.level == doctor.WARN
+    assert check.detail == f"process: {process}, server: {server or 'none'}"
+    assert check.hint == gui_session.fill(text, [("Claude Code", _hint())])
+    # With no provider installed that needs the keychain: the same fact, for information.
+    check = _graphical(which=lambda cmd: None if cmd == "claude" else cmd)
+    assert check.level == doctor.INFO
+    assert check.hint == gui_session.fill(text, [])
+
+
+@pytest.mark.parametrize(("process", "server"), [("unknown", None), ("gui", "unknown")])
+def test_a_place_that_cannot_be_read_is_not_checked(mac, process, server):
+    mac(process, server)
+    check = _graphical()
+    assert check.level == doctor.INFO
+    assert check.detail.startswith("not checked: ")
+
+
+def test_system_info_and_report_give_only_the_kind_of_place(mac):
+    mac("remote", "gui")
+    system = doctor.system_info(which=lambda cmd: cmd)
+    assert system.gui_session == (Place.REMOTE, Place.GUI)
+    report = doctor.report(system, False, 0)
+    assert "- Graphical session: process remote, server gui\n" in report
+    mac("no-gui", None)
+    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
+    assert "- Graphical session: process no-gui, no tmux server\n" in report

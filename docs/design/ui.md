@@ -1104,7 +1104,9 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   user agent; "System info copied") and GitHub ↗. Then Server (the page's origin), Running
   (how long only; the start in its tooltip, F3), Home (shortened with `~`; the folder icon
   on its left copies the full path, the session head's `CopyButton`), tmux (version ·
-  socket), the providers (a dot: ok, an untested version, not installed; the version, and
+  socket), on a Mac Graphical session (`process remote · server gui`, or `no tmux
+  server`: `SystemInfo.gui_session`, where the server's process and LADO's tmux server run,
+  lado.gui_session), the providers (a dot: ok, an untested version, not installed; the version, and
   the tested one when it differs), and last the update check: `Up to date · checked 09:12`,
   `checked yesterday`, `Checking…`, `Check failed · 09:12` with the reason in its tooltip,
   each with ↻ (`POST /api/update/check`). Esc or a press outside closes it. It ends 8 px
@@ -1115,7 +1117,9 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   `can_update` false for another reason (an update runs) it says that reason.
 - **Update…** (U1) opens a modal with the plan from `GET /api/update/plan`, the same data
   `lado update` prints: from → to, each session to restart with its agents' statuses and
-  open runs, this UI server, "Busy agents lose their current turn…", Cancel and **Restart
+  open runs, this UI server, "Busy agents lose their current turn…", on a Mac outside the
+  graphical session the core's line on where the agents resume (`UpdatePlan.agents_note`,
+  as `lado update` prints it), Cancel and **Restart
   and update**, which asks `/api/health` for the server's `started_at`, then `POST
   /api/update`.
 - **The wait** (U2), under the top bar: "Updating to X · The server is restarting · m:ss".

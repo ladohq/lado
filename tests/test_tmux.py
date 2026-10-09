@@ -1,6 +1,9 @@
+import ast
 import shutil
+import subprocess
 import time
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -253,3 +256,75 @@ def test_a_program_cannot_rename_its_window(tmp_path):
     finally:
         tmux.kill_session(session)
         tmux.kill_session(helper)
+
+
+def _recorded(monkeypatch, answers):
+    """tmux._run_once recorded: each call takes the next answer (an exception is raised)."""
+    calls = []
+
+    def once(args, input, sock=None):
+        calls.append(("tmux", args))
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(tmux, "_run_once", once)
+    monkeypatch.setattr(tmux, "SERVER_ENDED_WAIT", 0)
+    return calls
+
+
+def test_new_session_sets_exit_empty_on_first_and_is_otherwise_as_before(monkeypatch):
+    calls = _recorded(monkeypatch, [""])
+    assert tmux.new_session("s", "w", "/repo", ["agent", "x;"]) == []
+    assert calls == [
+        (
+            "tmux",
+            [
+                *("set-option", "-g", "exit-empty", "on", ";"),
+                *("new-session", "-d", "-s", "s", "-n", "w", "-c", "/repo", "agent", "x\\;", ";"),
+                *("set-option", "-g", "allow-rename", "off"),
+            ],
+        )
+    ]
+
+
+def test_the_hook_runs_before_each_attempt_also_the_one_after_an_ending_server(monkeypatch):
+    calls = _recorded(monkeypatch, [tmux.TmuxError(tmux.SERVER_ENDED), ""])
+    said = iter(["launchd failed", None])
+
+    def hook():
+        calls.append(("hook",))
+        return next(said)
+
+    assert tmux.new_session("s", "w", "/repo", ["agent"], before_attempt=hook) == ["launchd failed"]
+    assert [c[0] for c in calls] == ["hook", "tmux", "hook", "tmux"]
+
+
+def test_what_the_hook_says_twice_is_said_once(monkeypatch):
+    _recorded(monkeypatch, [tmux.TmuxError(tmux.SERVER_ENDED), ""])
+    assert tmux.new_session("s", "w", "/", ["a"], before_attempt=lambda: "no") == ["no"]
+
+
+def test_tmux_knows_nothing_of_the_graphical_session():
+    """lado.runtime passes the hook in: runtime -> gui_session -> tmux, no import cycle."""
+    tree = ast.parse(Path(tmux.__file__).read_text())
+    imported = [
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    ]
+    assert "gui_session" not in imported and "lado.gui_session" not in imported
+    assert "darwin" not in Path(tmux.__file__).read_text()
+
+
+def test_server_running_tells_whether_a_server_runs_and_never_starts_one(tmp_path):
+    socket = f"lado-test-{uuid.uuid4().hex[:8]}"
+    try:
+        assert tmux.server_running(socket) is False
+        assert tmux.server_running(socket) is False  # still none
+        subprocess.run(["tmux", "-L", socket, "new-session", "-d", "sleep", "60"], check=True)
+        assert tmux.server_running(socket) is True
+    finally:
+        subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True, check=False)

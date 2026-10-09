@@ -32,6 +32,7 @@ const SYSTEM: SystemInfo = {
   home_set: false,
   schema: 23,
   tmux: { version: "3.5a", socket: "lado" },
+  gui_session: null,
   providers: [
     { ...PROVIDER, name: "claude", title: "Claude Code", installed: true, version: "2.1.295", tested_version: "2.1.295", warning: "" },
     { ...PROVIDER, name: "kilo", title: "Kilo", installed: true, version: "7.9.0", tested_version: "7.8.3", warning: "untested" },
@@ -65,6 +66,7 @@ const PLAN: UpdatePlan = {
   gone: [],
   server: "http://127.0.0.1:8000",
   socket: "lado",
+  agents_note: null,
   by_hand: [],
 };
 
@@ -108,6 +110,8 @@ let update: UpdateInfo;
 let checked: UpdateInfo | { status: number; detail: string };
 let health: Health;
 let down: boolean; // the server is away (restarting)
+let system: SystemInfo;
+let plan: UpdatePlan;
 
 function serve() {
   const fetch = vi.fn(async (path: string, init?: RequestInit) => {
@@ -121,8 +125,8 @@ function serve() {
     if (path === "/api/update/check") {
       return "status" in checked ? json({ detail: checked.detail }, checked.status) : json(checked);
     }
-    if (path === "/api/update/plan") return json(PLAN);
-    if (path === "/api/system") return json(SYSTEM);
+    if (path === "/api/update/plan") return json(plan);
+    if (path === "/api/system") return json(system);
     if (path.startsWith("/api/events")) return json("");
     if (path === "/api/sessions") return json([]);
     return json([]);
@@ -152,6 +156,8 @@ beforeEach(() => {
   checked = info();
   health = { ok: true, version: BUNDLE_VERSION, started_at: STARTED };
   down = false;
+  system = SYSTEM;
+  plan = PLAN;
   serve();
   FakeEventSource.all = [];
   FakeEventSource.autoStart = true;
@@ -200,6 +206,27 @@ test("live is a button that opens the system panel", async () => {
   expect(shown.querySelector(".system-check")!.textContent).toMatch(/^Up to date · checked \d\d:\d\d↻$/);
   fireEvent.keyDown(shown, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "System" })).toBeNull();
+});
+
+test("on a Mac the panel says where the server and LADO's tmux server run", async () => {
+  system = { ...SYSTEM, gui_session: { process: "remote", server: "gui" } };
+  open();
+  const facts = await within(await panel()).findByText("Graphical session");
+  expect(facts.nextElementSibling!.textContent).toBe("process remote · server gui");
+  cleanup();
+  system = { ...SYSTEM, gui_session: { process: "no-gui", server: null } };
+  open();
+  const none = await within(await panel()).findByText("Graphical session");
+  expect(none.nextElementSibling!.textContent).toBe("process no-gui · no tmux server");
+});
+
+test("the update's plan shows the core's line on where the agents resume", async () => {
+  update = info({ latest: "99.0.0", available: "99.0.0" });
+  plan = { ...PLAN, agents_note: "tmux server will be started in the graphical session (launchd)" };
+  open();
+  fireEvent.click(within(await panel()).getByRole("button", { name: "Update…" }));
+  const dialog = await screen.findByRole("dialog", { name: `Update LADO ${BUNDLE_VERSION} → 99.0.0?` });
+  expect(await within(dialog).findByText("tmux server will be started in the graphical session (launchd)")).toBeTruthy();
 });
 
 test("the clipboard icon copies the report and the browser line", async () => {

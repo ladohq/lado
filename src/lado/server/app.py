@@ -377,6 +377,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             home_set=facts.home_set,
             schema_=facts.schema,
             tmux=TmuxInfo(version=facts.tmux, socket=facts.tmux_socket),
+            gui_session=models.gui_session_info(facts.gui_session),
             providers=[launch.provider_info(p, status) for p, status in facts.providers],
             kits=[KitFactInfo(name=k.name, version=k.version, origin=k.origin) for k in facts.kits],
             sessions=SessionCounts(**facts.sessions),

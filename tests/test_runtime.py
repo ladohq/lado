@@ -13,7 +13,19 @@ import agent_helpers
 import pytest
 import yaml
 
-from lado import agent_env, hooks, kits, loop, mcp_exec, providers, runs, runtime, state, tmux
+from lado import (
+    agent_env,
+    gui_session,
+    hooks,
+    kits,
+    loop,
+    mcp_exec,
+    providers,
+    runs,
+    runtime,
+    state,
+    tmux,
+)
 
 
 def test_slug():
@@ -1127,9 +1139,9 @@ def _seen_at_launch(monkeypatch, call, agent):
     """Record the agent's status and status_reason when tmux's `call` starts its window."""
     seen, launch = [], getattr(tmux, call)
 
-    def record(*args):
+    def record(*args, **kwargs):
         seen.append((state.get_agent("s", agent).status, runtime.status_reason("s", agent)))
-        return launch(*args)
+        return launch(*args, **kwargs)
 
     monkeypatch.setattr(tmux, call, record)
     return seen
@@ -1234,6 +1246,84 @@ def test_a_claude_config_that_cannot_be_read_is_a_warning(repo, fake_tmux, claud
     runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
     assert warnings == started.warnings
     assert f"s: w1: {warnings[0]}" in (state.home() / "loop.log").read_text()
+
+
+def test_a_session_start_may_start_tmux_in_the_graphical_session(repo, fake_tmux, monkeypatch):
+    """runtime passes gui_session.ensure_server to the new-session, which calls it before
+    each attempt; what it says is a warning, and the session starts."""
+    asked = []
+    monkeypatch.setattr(gui_session, "ensure_server", lambda socket: asked.append(socket) or "x")
+
+    def new_session(*args, before_attempt=None):
+        fake_tmux.append(("new_session", *args))
+        return [before_attempt()]
+
+    monkeypatch.setattr(tmux, "new_session", new_session)
+    started = runtime.start_session(str(repo), "s", None, provider="kilo")
+    assert asked == [tmux.socket()]
+    assert started.warnings == ["x"]
+    assert "s: supervisor: x" in (state.home() / "loop.log").read_text()
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+
+
+@pytest.fixture
+def keychain(monkeypatch):
+    """Claude Code on a Mac with no login but the keychain's; keychain.text(template) is the
+    warning LADO gives for it."""
+    from lado.providers import claude
+
+    monkeypatch.setattr(claude.sys, "platform", "darwin")
+    for name in claude.LOGINS:
+        monkeypatch.delenv(name, raising=False)
+    hint = providers.get("claude").keychain_login({})
+
+    class Keychain:
+        @staticmethod
+        def text(template):
+            return gui_session.fill(template, [("Claude Code", hint)])
+
+    return Keychain()
+
+
+@pytest.mark.parametrize(
+    ("place", "server", "warned"),
+    [
+        ("gui", gui_session.Place.REMOTE, gui_session.OUTSIDE_GUI),
+        ("remote", gui_session.Place.NO_GUI, gui_session.OUTSIDE_GUI),
+        ("no-gui", None, gui_session.NO_GUI),
+        ("gui", gui_session.Place.GUI, None),
+        ("remote", gui_session.Place.GUI, None),
+        ("gui", None, None),
+        ("gui", gui_session.Place.UNKNOWN, None),
+    ],
+)
+def test_an_agent_that_cannot_read_the_keychain_is_started_with_a_warning(
+    repo, fake_tmux, keychain, monkeypatch, place, server, warned
+):
+    monkeypatch.setenv("LADO_MACOS_PLACE", place)
+    monkeypatch.setattr(gui_session, "server_place", lambda socket: server)
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    expected = [keychain.text(warned)] if warned else []
+    assert started.warnings == expected
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
+    assert warnings == expected
+    logged = (state.home() / "loop.log").read_text() if expected else ""
+    for agent in ("supervisor", "w1"):
+        assert all(f"s: {agent}: {line}" in logged for line in expected)
+    assert [a.name for a in state.list_agents("s")] == ["supervisor", "w1"]
+
+
+def test_an_agent_with_another_login_gets_no_keychain_warning(
+    repo, fake_tmux, keychain, monkeypatch
+):
+    monkeypatch.setenv("LADO_MACOS_PLACE", "no-gui")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "t")
+    assert runtime.start_session(str(repo), "s", None, provider="claude").warnings == []
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", provider="kilo", warnings=warnings)
+    assert warnings == []
 
 
 def test_providers_that_never_hold_an_agent_start_it_as_before(repo, fake_tmux, claude_config):

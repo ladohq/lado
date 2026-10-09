@@ -11,7 +11,18 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import lado
-from lado import agent_env, artifacts, kits, providers, runtime, state, terminal, tmux, update
+from lado import (
+    agent_env,
+    artifacts,
+    gui_session,
+    kits,
+    providers,
+    runtime,
+    state,
+    terminal,
+    tmux,
+    update,
+)
 
 OK = "ok"
 INFO = "info"  # for the human to know; nothing to fix
@@ -155,6 +166,36 @@ def check_config_folders() -> Check:
     )
 
 
+def gui_places() -> tuple[gui_session.Place, gui_session.Place | None] | None:
+    """Where this process and LADO's tmux server (None: none runs) are on a Mac; None
+    elsewhere."""
+    process = gui_session.place()
+    if process == gui_session.Place.OTHER:
+        return None
+    return process, gui_session.server_place(tmux.socket())
+
+
+def check_graphical_session(which: Callable[[str], str | None]) -> Check | None:
+    """On a Mac: whether agents run in the graphical session, whose login keychain the
+    agent CLIs that keep their login there need (lado.gui_session)."""
+    places = gui_places()
+    if places is None:
+        return None
+    name = "Graphical session"
+    process, server = places
+    detail = f"process: {process.value}, server: {server.value if server else 'none'}"
+    if gui_session.Place.UNKNOWN in places:
+        return Check(name, INFO, f"not checked: {detail}")
+    if server is None:
+        text = gui_session.NO_GUI if process == gui_session.Place.NO_GUI else None
+    else:
+        text = None if server == gui_session.Place.GUI else gui_session.OUTSIDE_GUI
+    if text is None:
+        return Check(name, OK, detail)
+    users = providers.keychain_users(dict(os.environ), which)
+    return Check(name, WARN if users else INFO, detail, gui_session.fill(text, users))
+
+
 def check_artifacts() -> Check:
     """What the artifact store holds, and its content no record refers to that a forget
     would remove (from a crash, or a forget that could not remove it yet)."""
@@ -221,6 +262,8 @@ class System:
     schema: int | None  # lado.db's, None without one
     tmux: str  # its version, "version unknown" or "not installed"
     tmux_socket: str
+    # Where this process and LADO's tmux server are on a Mac (gui_places); None elsewhere.
+    gui_session: tuple[gui_session.Place, gui_session.Place | None] | None
     providers: list[tuple[providers.Provider, ProviderStatus]]
     kits: list[KitFact]
     sessions: dict[str, int]  # running, stopped, gone
@@ -296,6 +339,7 @@ def system_info(which: Callable[[str], str | None] = shutil.which) -> System:
         if tmux_check.level == FAIL
         else "version unknown",
         tmux_socket=tmux.socket(),
+        gui_session=gui_places(),
         providers=list(zip(registry, statuses, strict=True)),
         kits=_kit_facts(),
         sessions=_session_counts(),
@@ -318,8 +362,12 @@ def report(system: System, open_to_network: bool, up_seconds: float) -> str:
         f"up {_duration(up_seconds)}, schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",
         f"- tmux: {system.tmux}, socket {system.tmux_socket}",
-        "- Providers:",
     ]
+    if system.gui_session:
+        process, server = system.gui_session
+        where = f"server {server.value}" if server else "no tmux server"
+        lines.append(f"- Graphical session: process {process.value}, {where}")
+    lines.append("- Providers:")
     for provider, status in system.providers:
         if not status.installed:
             lines.append(f"  - {provider.name}: not installed")
@@ -367,10 +415,12 @@ def _duration(seconds: float) -> str:
 
 
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
+    graphical = check_graphical_session(which)
     return [
         check_lado(),
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
+        *([graphical] if graphical else []),
         check_agent_env(),
         check_config_folders(),
         check_artifacts(),

@@ -1662,7 +1662,7 @@ def test_a_failed_start_shows_its_cause_then_what_its_undo_could_not_do(
 ):
     from lado import tmux
 
-    def fail(*args):
+    def fail(*args, **kwargs):
         raise tmux.TmuxError("command too long")
 
     def locked(*args):

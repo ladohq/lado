@@ -907,3 +907,42 @@ def test_opencode_family_may_read_the_folders_of_spec_read_and_takes_no_skills_f
         f"{tmp_path / 'files'}/**": "allow",
     }
     assert config["skills"]["paths"] == [str(base.config_dir(agent) / "skills")]
+
+
+CLAUDE_LOGINS = (
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+)
+
+
+def test_claude_code_needs_the_keychain_on_a_mac_without_another_login(monkeypatch):
+    from lado.providers import claude
+
+    claude_cli = providers.get("claude")
+    monkeypatch.setattr(claude.sys, "platform", "darwin")
+    hint = claude_cli.keychain_login({"PATH": "/bin"})
+    assert hint == ", or set `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) in your login shell"
+    for name in CLAUDE_LOGINS:
+        assert claude_cli.keychain_login({name: "x"}) is None, name
+    monkeypatch.setattr(claude.sys, "platform", "linux")
+    assert claude_cli.keychain_login({}) is None
+
+
+@pytest.mark.parametrize("name", ["codex", "kilo", "opencode"])
+def test_other_providers_do_not_need_the_keychain(monkeypatch, name):
+    from lado.providers import claude
+
+    monkeypatch.setattr(claude.sys, "platform", "darwin")
+    assert providers.get(name).keychain_login({}) is None
+
+
+def test_keychain_users_are_the_installed_providers_that_need_it(monkeypatch):
+    from lado.providers import claude
+
+    monkeypatch.setattr(claude.sys, "platform", "darwin")
+    hint = providers.get("claude").keychain_login({})
+    assert providers.keychain_users({}, lambda c: f"/bin/{c}") == [("Claude Code", hint)]
+    assert providers.keychain_users({}, lambda c: None if c == "claude" else "/x") == []

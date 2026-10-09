@@ -19,6 +19,7 @@ import fcntl
 import os
 import re
 import shlex
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import IO
 
 import lado
-from lado import loop, providers, runtime, state, tmux, update
+from lado import gui_session, loop, providers, runtime, state, tmux, update
 from lado.server import run as server_run
 
 DEFAULT_HOST = "127.0.0.1"  # `lado server --host`'s default
@@ -127,6 +128,9 @@ class Plan:
     gone: list[state.Session]  # not stopped, but their tmux is gone: not restarted
     server: dict | None
     socket: str = field(default_factory=tmux.socket)
+    # On a Mac outside the graphical session: where the resumed agents' tmux server starts,
+    # or why they cannot read their login from the keychain (lado.gui_session); else None.
+    agents_note: str | None = None
 
     @property
     def command(self) -> str | None:
@@ -148,6 +152,7 @@ class Plan:
 
 def plan(to: update.Release) -> Plan:
     found = Plan(lado.__version__, to, update.installer(), [], [], server_run.running())
+    found.agents_note = agents_note()
     for sess in state.list_sessions():
         status = runtime.session_status(sess)
         if status in (runtime.SessionStatus.RUNNING, runtime.SessionStatus.LOOP_DOWN):
@@ -155,6 +160,19 @@ def plan(to: update.Release) -> Plan:
         elif status == runtime.SessionStatus.TMUX_GONE:
             found.gone.append(sess)
     return found
+
+
+def agents_note() -> str | None:
+    """The plan's line on where the resumed sessions' tmux server starts: from outside the
+    graphical session of a Mac, launchd starts it there; with nobody logged in to it, the
+    agent CLIs installed that keep their login in the keychain cannot read it."""
+    where = gui_session.place()
+    if where == gui_session.Place.REMOTE:
+        return gui_session.PLAN_REMOTE
+    if where == gui_session.Place.NO_GUI:
+        users = providers.keychain_users(dict(os.environ), shutil.which)
+        return gui_session.fill(gui_session.NO_GUI, users)
+    return None
 
 
 def latest_plan() -> Plan | None:
@@ -206,6 +224,8 @@ def print_plan(found: Plan, say: Say = print) -> None:
             f"Not running, its tmux session is gone: {sess.name}; resume it with "
             f"lado start {sess.repo} --name {sess.name}"
         )
+    if found.agents_note:
+        say(found.agents_note)
     say(f'Only sessions on tmux socket "{found.socket}" are seen.')
 
 

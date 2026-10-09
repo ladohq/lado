@@ -12,6 +12,7 @@ from lado import (
     artifacts,
     flows,
     gitcache,
+    gui_session,
     kits,
     marketplaces,
     runs,
@@ -383,6 +384,9 @@ class UpdatePlan(BaseModel):
     gone: list[SessionCommand]  # not stopped, their tmux gone: not restarted
     server: str | None  # the UI server's url, restarted
     socket: str  # the tmux socket whose sessions are seen
+    # On a Mac outside the graphical session: the core's line on where the resumed agents
+    # run (self_update.agents_note); None elsewhere.
+    agents_note: str | None
     by_hand: list[str]
 
 
@@ -413,6 +417,7 @@ def update_plan(plan: self_update.Plan) -> UpdatePlan:
         ],
         server=plan.server["url"] if plan.server else None,
         socket=plan.socket,
+        agents_note=plan.agents_note,
         by_hand=plan.by_hand(),
     )
 
@@ -430,6 +435,23 @@ class UpdateStarted(BaseModel):
 class TmuxInfo(BaseModel):
     version: str  # or why there is none
     socket: str
+
+
+class GuiSession(BaseModel):
+    """On a Mac: where the server's process and LADO's tmux server run (lado.gui_session's
+    places: gui, remote, no-gui, unknown)."""
+
+    process: str
+    server: str | None  # None when no tmux server runs
+
+
+def gui_session_info(
+    places: tuple[gui_session.Place, gui_session.Place | None] | None,
+) -> GuiSession | None:
+    if places is None:
+        return None
+    process, server = places
+    return GuiSession(process=process.value, server=server.value if server else None)
 
 
 class KitFactInfo(BaseModel):
@@ -458,6 +480,7 @@ class SystemInfo(BaseModel):
     home_set: bool  # LADO_HOME is set
     schema_: int | None = Field(alias="schema")
     tmux: TmuxInfo
+    gui_session: GuiSession | None  # None but on a Mac
     providers: list[ProviderInfo]
     kits: list[KitFactInfo]
     sessions: SessionCounts

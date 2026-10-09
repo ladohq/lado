@@ -1242,6 +1242,17 @@ export interface components {
             /** Problem */
             problem: string | null;
         };
+        /**
+         * GuiSession
+         * @description On a Mac: where the server's process and LADO's tmux server run (lado.gui_session's
+         *     places: gui, remote, no-gui, unknown).
+         */
+        GuiSession: {
+            /** Process */
+            process: string;
+            /** Server */
+            server: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2053,6 +2064,7 @@ export interface components {
             /** Schema */
             schema: number | null;
             tmux: components["schemas"]["TmuxInfo"];
+            gui_session: components["schemas"]["GuiSession"] | null;
             /** Providers */
             providers: components["schemas"]["ProviderInfo"][];
             /** Kits */
@@ -2159,6 +2171,8 @@ export interface components {
             server: string | null;
             /** Socket */
             socket: string;
+            /** Agents Note */
+            agents_note: string | null;
             /** By Hand */
             by_hand: string[];
         };

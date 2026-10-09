@@ -550,6 +550,27 @@ Found: 2026-10-09, release of 0.32.0.
 
 # P2: when convenient
 
+## macOS: Codex with `cli_auth_credentials_store = "keyring"` is not warned about
+
+Size: S. Why here: only a Codex user who keeps its login in the macOS keychain meets it, and
+only with agents started outside the graphical session.
+Codex's `keychain_login` is None: LADO does not read whether the user's Codex config keeps
+the login in the keyring, so a Codex agent of a tmux server outside the graphical session
+may fail to log in without LADO's warning (lado.gui_session; Claude Code is warned about).
+Wanted: Codex's `keychain_login` from the carried config's `cli_auth_credentials_store`
+(`keyring`, `auto`), checked by hand on a Mac over ssh; together with carrying the Codex
+login (P1 above).
+Found: 2026-10-10, design of run feature/macos-gui-session.
+
+## macOS: agents after a reboot with nobody logged in to the graphical session
+
+Size: M. Why here: a headless Mac (a build host reached by ssh) after a reboot has no
+graphical domain until someone logs in; LADO only warns there (`NO_GUI`), and Claude Code's
+agents work only with a token (`CLAUDE_CODE_OAUTH_TOKEN`).
+Wanted: decide whether LADO should help more: e.g. say how to turn on automatic login, or
+read the token from somewhere the human chooses; checked on a host after a reboot.
+Found: 2026-10-10, design of run feature/macos-gui-session.
+
 ## Every Codex agent asks whether to trust a repo the user's Codex does not trust
 
 Size: S. Why here: in such a repo each Codex agent, worker or resumed supervisor, waits for

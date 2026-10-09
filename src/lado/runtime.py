@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from lado import agent_env, artifacts, kits, loop, providers, state, terminal, tmux
+from lado import agent_env, artifacts, gui_session, kits, loop, providers, state, terminal, tmux
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 # In the lead's config folder: its lead skills (kits.LeadSkill), and the copies of the
@@ -409,7 +409,16 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec)
         started.warnings += launch.warnings
         started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
-        tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
+        # The first new-session on a socket starts LADO's tmux server, whose audit session
+        # its agents inherit (lado.gui_session).
+        placed = tmux.new_session(
+            session,
+            SUPERVISOR,
+            repo,
+            _command(agent, base_env, launch),
+            before_attempt=lambda: gui_session.ensure_server(tmux.socket()),
+        )
+        placed += _keychain_warnings(agent_cli, base_env)
     except Exception as error:
         steps: list[tuple[str, Callable[[], object]]] = [
             ("remove the supervisor's config", lambda: providers.base.remove_config_dir(agent))
@@ -423,6 +432,9 @@ def start_session(
             steps.append(("forget the session", lambda: state.delete_session(session)))
         _undo(session, f"the start of {session}", error, steps)
         raise
+    started.warnings += placed
+    for line in placed:
+        loop.log(session, f"{SUPERVISOR}: {line}")
     # It ends by itself when the tmux session is gone, so not before that exists.
     loop.start(session)
     return started
@@ -533,6 +545,7 @@ def spawn_worker(
             ]
         _undo(session, f"the spawn of {worker}", error, steps)
         raise
+    held += _keychain_warnings(agent_cli, base_env)
     # The spawner may be an agent: the log keeps them for the human too.
     for line in held:
         loop.log(session, f"{worker}: {line}")
@@ -1896,6 +1909,23 @@ def _first_hook_blocker(
     if blocker.reason:
         state.block(agent.session, agent.name, blocker.reason)
     return [line for line in (blocker.reason, blocker.warning) if line]
+
+
+def _keychain_warnings(agent_cli: providers.Provider, base_env: dict[str, str]) -> list[str]:
+    """Once the agent's window is there: why its CLI cannot read its login from the macOS
+    keychain, when it needs it (Provider.keychain_login) and LADO's tmux server, its
+    parent, runs outside the graphical session, or nobody is logged in to that. The agent
+    runs anyway."""
+    hint = agent_cli.keychain_login(base_env)
+    if hint is None:
+        return []
+    users = [(agent_cli.title, hint)]
+    if gui_session.place() == gui_session.Place.NO_GUI:
+        return [gui_session.fill(gui_session.NO_GUI, users)]
+    server = gui_session.server_place(tmux.socket())
+    if server in (None, gui_session.Place.GUI, gui_session.Place.UNKNOWN):
+        return []
+    return [gui_session.fill(gui_session.OUTSIDE_GUI, users)]
 
 
 def _next_name(role: str, taken: set[str]) -> str:

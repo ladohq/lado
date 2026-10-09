@@ -3159,6 +3159,32 @@
         "title": "GateInfo",
         "description": "A flow run's question to the human: open while `answer` is None."
       },
+      "GuiSession": {
+        "properties": {
+          "process": {
+            "type": "string",
+            "title": "Process"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          }
+        },
+        "type": "object",
+        "required": [
+          "process",
+          "server"
+        ],
+        "title": "GuiSession",
+        "description": "On a Mac: where the server's process and LADO's tmux server run (lado.gui_session's\nplaces: gui, remote, no-gui, unknown)."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -5567,6 +5593,16 @@
           "tmux": {
             "$ref": "#/components/schemas/TmuxInfo"
           },
+          "gui_session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuiSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "providers": {
             "items": {
               "$ref": "#/components/schemas/ProviderInfo"
@@ -5612,6 +5648,7 @@
           "home_set",
           "schema",
           "tmux",
+          "gui_session",
           "providers",
           "kits",
           "sessions",
@@ -5908,6 +5945,17 @@
             "type": "string",
             "title": "Socket"
           },
+          "agents_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agents Note"
+          },
           "by_hand": {
             "items": {
               "type": "string"
@@ -5929,6 +5977,7 @@
           "gone",
           "server",
           "socket",
+          "agents_note",
           "by_hand"
         ],
         "title": "UpdatePlan",

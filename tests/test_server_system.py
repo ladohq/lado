@@ -6,11 +6,13 @@ tests/integration/test_update_process.py."""
 import datetime
 import fcntl
 import json
+import os
+import shutil
 
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import __version__, doctor, runtime, self_update, state, update
+from lado import __version__, doctor, gui_session, providers, runtime, self_update, state, update
 from lado.server import app as server_app
 from lado.server import auth
 from lado.server import run as server_run
@@ -261,3 +263,45 @@ def test_a_cli_whose_version_cannot_be_read_puts_no_path_in_the_report(tmp_path)
     assert "- tmux: version unknown, socket" in report
     assert "  - claude: installed, version unknown\n" in report
     assert "  - codex: installed, version unknown\n" in report
+
+
+@pytest.mark.parametrize(
+    ("platform", "place", "note"),
+    [
+        ("darwin", "remote", gui_session.PLAN_REMOTE),
+        ("darwin", "no-gui", "NO_GUI"),
+        ("darwin", "gui", None),
+        ("linux", "remote", None),
+    ],
+)
+def test_the_plan_says_where_agents_resume_on_a_mac(
+    client, installed, monkeypatch, platform, place, note
+):
+    from lado.providers import claude
+
+    monkeypatch.setattr(gui_session.sys, "platform", platform)
+    monkeypatch.setattr(claude.sys, "platform", platform)
+    monkeypatch.setenv("LADO_MACOS_PLACE", place)
+    if note == "NO_GUI":
+        note = gui_session.fill(
+            gui_session.NO_GUI, providers.keychain_users(dict(os.environ), shutil.which)
+        )
+    plan = ok(client.get("/api/update/plan"))
+    assert plan["agents_note"] == note
+    printed = []
+    self_update.print_plan(self_update.latest_plan(), say=lambda line, **_: printed.append(line))
+    assert (note in printed) if note else not any("graphical" in line for line in printed)
+
+
+def test_the_system_says_where_on_a_mac_and_nothing_elsewhere(client, monkeypatch):
+    monkeypatch.setattr(gui_session.sys, "platform", "darwin")
+    monkeypatch.setenv("LADO_MACOS_PLACE", "remote")
+    monkeypatch.setattr(gui_session, "server_place", lambda socket: gui_session.Place.GUI)
+    info = ok(client.get("/api/system"))
+    assert info["gui_session"] == {"process": "remote", "server": "gui"}
+    assert "- Graphical session: process remote, server gui\n" in info["report"]
+    monkeypatch.setattr(gui_session, "server_place", lambda socket: None)
+    assert ok(client.get("/api/system"))["gui_session"] == {"process": "remote", "server": None}
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    info = ok(client.get("/api/system"))
+    assert info["gui_session"] is None and "Graphical session" not in info["report"]

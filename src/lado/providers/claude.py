@@ -3,6 +3,7 @@
 import hashlib
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from lado import state
@@ -71,6 +72,16 @@ SWITCHES = ("clear", "resume")
 # list_agents talks to nobody, so they are denied. A deny rule removes them from the
 # agent's tool list, also with --permission-mode bypassPermissions (checked with 2.1.286).
 BUILT_IN_MESSAGING = ["SendMessage", "ListAgents"]
+
+# Variables that log Claude Code in without the keychain: a token, an API key, or another
+# API provider (all in the binary of 2.1.296).
+LOGINS = (
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+)
 
 
 class ClaudeProvider(base.Provider):
@@ -207,6 +218,14 @@ class ClaudeProvider(base.Provider):
         # (8 by default) it ends the turn without the text (read in the binary of 2.1.291):
         # sweep types it in then (lado.runtime._plan).
         return json.dumps({"decision": "block", "reason": text})
+
+    def keychain_login(self, env: dict[str, str]) -> str | None:
+        # On macOS Claude Code keeps its OAuth login in the login keychain ("Claude
+        # Code-credentials"). It needs none with one of LOGINS. apiKeyHelper in its settings
+        # is not read: missing it only warns, and only outside the graphical session.
+        if sys.platform != "darwin" or any(env.get(name) for name in LOGINS):
+            return None
+        return ", or set `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) in your login shell"
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
         # Claude Code asks whether to trust a folder it does not trust before any hook runs,

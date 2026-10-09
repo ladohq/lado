@@ -181,6 +181,13 @@ class Provider(ABC):
         nothing. Called before the agent's window starts."""
         return Blocker()
 
+    def keychain_login(self, env: dict[str, str]) -> str | None:
+        """None when the CLI, started with `env`, does not read its login from the macOS
+        login keychain, which only the graphical session opens (lado.gui_session); else
+        how else to log it in, as the end of a sentence ("" when there is no other way).
+        By default None."""
+        return None
+
     def continue_output(self, text: str) -> str | None:
         """Hook output that makes the agent continue with `text` when its turn ends.
 

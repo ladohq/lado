@@ -29,6 +29,11 @@ os.environ["LADO_AGENT_ENV"] = "inherit"
 # local index (LADO_UPDATE_INDEX).
 os.environ["LADO_NO_UPDATE_CHECK"] = "1"
 
+# On a Mac, the test run is taken for one in the graphical session, wherever it runs (over
+# ssh too): no test starts LADO's tmux server through launchd unless it says so
+# (lado.gui_session; its own tests and the integration test of launchd set their place).
+os.environ["LADO_MACOS_PLACE"] = "gui"
+
 
 def _kill_tmux_server(socket: str) -> None:
     if shutil.which("tmux"):
@@ -127,10 +132,14 @@ def fake_clis(tmp_path, monkeypatch, claude_config):
 @pytest.fixture
 def fake_tmux(monkeypatch, loop_starts, fake_clis):
     """Record tmux calls instead of running them; no session loop is started either."""
-    from lado import terminal, tmux
+    from lado import gui_session, terminal, tmux
 
     calls = []
-    monkeypatch.setattr(tmux, "new_session", lambda *a: calls.append(("new_session", *a)))
+    # The hook it is given (runtime passes gui_session.ensure_server) is not called.
+    monkeypatch.setattr(
+        tmux, "new_session", lambda *a, **k: calls.append(("new_session", *a)) or []
+    )
+    monkeypatch.setattr(gui_session, "server_place", lambda socket: None)  # no tmux server
     monkeypatch.setattr(tmux, "new_window", lambda *a: calls.append(("new_window", *a)))
     monkeypatch.setattr(tmux, "send_text", lambda *a: calls.append(("send_text", *a)))
 

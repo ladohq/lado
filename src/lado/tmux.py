@@ -11,7 +11,7 @@ import shlex
 import subprocess
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 DEFAULT_SOCKET = "lado"
 TIMEOUT = 10
@@ -69,16 +69,22 @@ def run(*args: str, input: str | None = None) -> str:
     return _run([_arg(a) for a in args], input)
 
 
-def run_chain(*commands: list[str]) -> str:
+def run_chain(*commands: list[str], before_attempt: Callable[[], object] | None = None) -> str:
     """Several commands in one tmux call, run in order; tmux skips the rest after one fails
-    (and the call fails)."""
+    (and the call fails). `before_attempt` runs before each attempt (_run)."""
     args: list[str] = []
     for command in commands:
         args += [*([";"] if args else []), *(_arg(a) for a in command)]
-    return _run(args)
+    return _run(args, before_attempt=before_attempt)
 
 
-def _run(args: list[str], input: str | None = None) -> str:
+def _run(
+    args: list[str],
+    input: str | None = None,
+    before_attempt: Callable[[], object] | None = None,
+) -> str:
+    if before_attempt:
+        before_attempt()
     try:
         return _run_once(args, input)
     except TmuxError as error:
@@ -88,11 +94,26 @@ def _run(args: list[str], input: str | None = None) -> str:
         if str(error) != SERVER_ENDED:
             raise
         time.sleep(SERVER_ENDED_WAIT)
+        if before_attempt:
+            before_attempt()
         return _run_once(args, input)
 
 
-def _run_once(args: list[str], input: str | None) -> str:
-    cmd = ["tmux", "-L", socket(), *args]
+def server_running(sock: str | None = None) -> bool:
+    """Whether a tmux server runs on the socket (LADO's by default); never starts one."""
+    try:
+        _run_once(["list-sessions"], None, sock)
+    except TmuxMissing:
+        raise
+    except TmuxError as error:
+        if "no server running" in str(error) or "error connecting" in str(error):
+            return False
+        raise
+    return True
+
+
+def _run_once(args: list[str], input: str | None, sock: str | None = None) -> str:
+    cmd = ["tmux", "-L", sock or socket(), *args]
     env = clean_env()
     try:
         result = subprocess.run(
@@ -124,11 +145,32 @@ def _env_args(env: dict[str, str]) -> list[str]:
 # with -n is not renamed automatically; no program renames it either, also when the user's
 # tmux.conf allows that (the option is global on LADO's own server).
 NO_RENAME = ["set-option", "-g", "allow-rename", "off"]
+# tmux's default, set again first: a server started without sessions (by launchd, see
+# lado.gui_session) then ends with its last session as any other, and at once when the
+# new-session fails.
+EXIT_EMPTY = ["set-option", "-g", "exit-empty", "on"]
 
 
 # A window gets the tmux server's environment; an agent's window replaces it (lado.agent_env).
-def new_session(session: str, window: str, cwd: str, cmd: list[str]) -> None:
-    run_chain(["new-session", "-d", "-s", session, "-n", window, "-c", cwd, *cmd], NO_RENAME)
+def new_session(
+    session: str,
+    window: str,
+    cwd: str,
+    cmd: list[str],
+    before_attempt: Callable[[], str | None] | None = None,
+) -> list[str]:
+    """`before_attempt` runs before each attempt to make the session, which may start the
+    tmux server; returns what it said (each line once)."""
+    said: list[str] = []
+
+    def attempt() -> None:
+        line = before_attempt() if before_attempt else None
+        if line and line not in said:
+            said.append(line)
+
+    made = ["new-session", "-d", "-s", session, "-n", window, "-c", cwd, *cmd]
+    run_chain(EXIT_EMPTY, made, NO_RENAME, before_attempt=attempt)
+    return said
 
 
 def new_window(session: str, window: str, cwd: str, cmd: list[str]) -> None:

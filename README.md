@@ -246,6 +246,13 @@ It warns: whoever reaches the server with the token can run commands as you, and
 token travels unencrypted (plain HTTP). Do this only on a network you trust. A TLS proxy in
 front of it (Caddy, `tailscale serve`, nginx) works if it keeps the `Host` header.
 
+On a Mac, LADO started over ssh (`lado start`, `lado ui`, `lado update`) runs its agents in
+your graphical session, where Claude Code reads its login from the Keychain: you must be
+logged in on the Mac (at its screen or through Screen Sharing). With nobody logged in, LADO
+warns, and Claude Code's agents need a token in your login shell instead:
+`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. `lado doctor` shows where LADO and its
+tmux server run (Graphical session).
+
 ## License
 
 MIT (placeholder; to be confirmed before the first release).

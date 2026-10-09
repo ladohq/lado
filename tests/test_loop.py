@@ -208,10 +208,11 @@ def test_the_loop_sweeps_until_its_session_stops(repo, fake_tmux, monkeypatch, l
 def test_start_starts_the_loop_once_the_tmux_session_exists(
     repo, fake_tmux, loop_starts, monkeypatch
 ):
-    def new_session(*args):
+    def new_session(*args, before_attempt=None):
         sessions = [c for c in fake_tmux if c[0] == "new_session"]
         assert len(loop_starts) == len(sessions)  # not started before the tmux session
         fake_tmux.append(("new_session", *args))
+        return []
 
     monkeypatch.setattr(tmux, "new_session", new_session)
     runtime.start_session(str(repo), "s", None, provider="claude")

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.33.0 (unreleased)
+
+- On macOS, agents started over ssh (also by `lado update`) run in the graphical session,
+  so Claude Code reads its login from the Keychain; LADO warns when it cannot. `lado doctor`
+  and the UI's system panel say where LADO and its tmux server run (Graphical session), and
+  the update's plan says where the agents resume.
+
 ## 0.32.0 (2026-10-09)
 
 - The UI's `live` opens a system panel: LADO's version, the server, how long it runs, its

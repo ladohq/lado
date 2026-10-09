@@ -342,6 +342,15 @@ function SystemPanel({
             <dd>
               {facts.tmux.version} · socket {facts.tmux.socket}
             </dd>
+            {facts.gui_session && (
+              <>
+                <dt>Graphical session</dt>
+                <dd>
+                  process {facts.gui_session.process} ·{" "}
+                  {facts.gui_session.server ? `server ${facts.gui_session.server}` : "no tmux server"}
+                </dd>
+              </>
+            )}
           </>
         )}
       </dl>
@@ -539,6 +548,7 @@ function UpdateDialog({ onClose }: { onClose: (started: boolean) => void }) {
               Not running, its tmux session is gone: {sess.name}; resume it with <code>{sess.command}</code>
             </p>
           ))}
+          {found.agents_note && <p className="muted">{found.agents_note}</p>}
         </>
       )}
       {refused && (

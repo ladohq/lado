@@ -509,7 +509,58 @@ Wanted: the test waits for w1 to be idle (as the other status checks do) instead
 it once.
 Found: 2026-10-09, CI of the 0.31.0 release (run 37887140737).
 
+## A Codex agent whose turn ends on a model or API error stays busy
+
+Size: M. Why here: a Codex worker whose model fails (a 400, a 500, a server that is down)
+looks busy forever; neither the supervisor nor the human is told.
+Codex CLI 0.162 runs no hook at all for such a turn (400 and 500 tried; a refused connection
+it retries forever). Only the rollout at the hooks' `transcript_path` has it: a
+`task_complete` with an `error`. The human's decision for v1: a working model is the user's
+responsibility, and LADO reads no transcript.
+Wanted: a later event source for Codex turn errors (the rollout, or app-server events over
+ACP, stage 8), mapped to a turn's end with `Event.error`.
+Found: 2026-10-09, design of run feature/codex-provider.
+
+## Codex agents cannot log in: the user's Codex login is not carried
+
+Size: S/M. Why here: a Codex user with an account (ChatGPT login or an API key stored by
+`codex login`) gets the login screen in every agent; only a model that needs no login works.
+Each Codex agent has its own CODEX_HOME, and LADO carries only the model settings from the
+user's config.toml, not `auth.json` or the keyring setting.
+Wanted: carry the login next to the carried settings (read only; a link or a copy with mode
+600, or the keyring's setting), checked by hand with an account.
+Found: 2026-10-09, design of run feature/codex-provider.
+
 # P2: when convenient
+
+## Every Codex agent asks whether to trust a repo the user's Codex does not trust
+
+Size: S. Why here: in such a repo each Codex agent, worker or resumed supervisor, waits for
+the human at its start (`lado ls` says why), since its home is new at each launch.
+LADO carries the user's own trust entry and never trusts a folder on the human's behalf; the
+answer in an agent's window is lost with its home. Trusting the repo once in the user's own
+Codex (`codex` in it) ends the questions.
+Wanted: the human's decision whether LADO may pre-trust the session's repo for its agents
+(e.g. after the first agent's answer), and how that is shown.
+Found: 2026-10-09, design of run feature/codex-provider.
+
+## A Codex approval of a command moved to a background terminal may wait until the turn ends
+
+Size: S. Why here: such an agent shows `waiting` after the human approved.
+A shell command Codex 0.162 moves to a background terminal gets PreToolUse and never
+PostToolUse, which is what ends a wait (RESUMED); the turn's Stop ends it at last.
+Wanted: check whether such a command can ask for approval, and if so find the event that
+says it was answered.
+Found: 2026-10-09, design of run feature/codex-provider.
+
+## The live tests run every provider only under bypassPermissions
+
+Size: S/M. Why here: a provider's default sandbox or permission mode can keep a worker from
+committing (Codex's sandbox does, LADO's permission profile lifts it), and no live scenario
+would see it.
+Wanted: one live check per provider that a worker commits on its branch under the
+provider's `default` mode (Kilo and OpenCode are untested there too).
+Found: 2026-10-09, architecture review of run feature/codex-provider.
 
 ## The artifact panel's "Link copied" is cut by the window's right edge
 
@@ -978,13 +1029,15 @@ touching the user's global config; `lado doctor` says what it found. Low priorit
 (environment isolation), but it makes runs reproducible.
 Found: 2026-10-03, choosing UI skills for the lado-dev kit.
 
-### OpenCode and Kilo agents load the user's global skills
+### OpenCode, Kilo and Codex agents load the user's global skills
 
 Besides LADO's `skills.paths`, OpenCode 1.18.34 finds skills in `~/.claude/skills`,
 `~/.agents/skills` and `~/.config/opencode/skills` (seen with `opencode debug skill`), and
 Kilo probably does the same: an agent gets skills its kit never named. The switch
 `OPENCODE_DISABLE_EXTERNAL_SKILLS` drops the repo's own `.claude/skills` too. Same kind of
 leak as "Claude agents load the user's global Claude Code plugins".
+Codex CLI 0.162 reads `$HOME/.agents/skills` whatever its CODEX_HOME is (checked by hand,
+2026-10-09, design of run feature/codex-provider): its agents get the user's skills too.
 Wanted: decide which outside skills an agent may see, and keep the others away without
 touching the user's global config.
 Found: 2026-10-05, design of run feature/opencode-provider.

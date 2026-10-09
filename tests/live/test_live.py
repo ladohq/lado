@@ -29,6 +29,7 @@ TASK = (
 )
 RECEIVED = (state.DELIVERED, state.READ)
 CLAUDE_TRUST = "Yes, I trust this folder"
+CODEX_TRUST = "Trust this folder?"
 # The follow-up has a body, so w1 must call read_messages to get it.
 FOLLOW_UP = "Thanks, one last note for you"
 FOLLOW_UP_BODY = (
@@ -241,9 +242,28 @@ def answer_dialogs(provider: str, session: str, window: str) -> None:
             reason = runtime.status_reason(session, window) or ""
             assert reason.startswith("Claude Code asks whether to trust "), reason
         tmux.run("send-keys", "-t", f"{session}:{window}", "Down", "Enter")
+    if provider == "codex" and CODEX_TRUST in tmux.capture(session, window):
+        if (session, window) not in TRUST_ASKED:
+            TRUST_ASKED.add((session, window))
+            assert status(window) == state.WAITING
+            reason = runtime.status_reason(session, window) or ""
+            assert reason.startswith("Codex CLI asks whether to trust "), reason
+        # "Trust and continue" is the first choice; the prompt on its command line follows.
+        tmux.run("send-keys", "-t", f"{session}:{window}", "Enter")
 
 
 TRUST_ASKED: set[tuple[str, str]] = set()  # the agents answer_dialogs checked
+
+
+def answering(provider: str, agent: str, check):
+    """`check` for wait_for, answering the agent's dialogs first: each Codex agent has a
+    new home, so a worker asks about the folder too (Claude Code's trusts it by then)."""
+
+    def answered():
+        answer_dialogs(provider, SESSION, agent)
+        return check()
+
+    return answered
 
 
 def check_report() -> str:
@@ -389,7 +409,8 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider,
     start_session(repo, live_provider, monkeypatch)
 
     worker = runtime.spawn_worker(SESSION, TASK, name="w1")
-    wait_for(lambda: status("w1") == state.BUSY, "w1 to be busy", 60)
+    busy = answering(live_provider, "w1", lambda: status("w1") == state.BUSY)
+    wait_for(busy, "w1 to be busy", 60)
     check_lado_tools_loaded(live_provider, worker.cwd, since)
     wait_for(lambda: messages("w1", "supervisor"), "w1's report", 240)
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 60)
@@ -602,7 +623,11 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
     check_lado_tools_loaded(live_provider, worker.cwd, since)
 
     ended = wait_for(
-        lambda: (r := state.get_run(SESSION, run.name)).status == state.ENDED and r,
+        answering(
+            live_provider,
+            "w1",
+            lambda: (r := state.get_run(SESSION, run.name)).status == state.ENDED and r,
+        ),
         "the run to end",
         240,
     )
@@ -694,7 +719,8 @@ def test_an_agent_sees_the_image_the_human_attaches(live_repo, live_provider):
     start_session(repo, live_provider)
     runtime.spawn_worker(SESSION, IMAGE_WORKER, name="w1")
     try:
-        wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 120)
+        idle = answering(live_provider, "w1", lambda: status("w1") == state.IDLE)
+        wait_for(idle, "w1 to be idle", 120)
         colour = ask_about_image(
             "colour.png",
             solid_png(64, 64, b"\xff\x00\x00"),

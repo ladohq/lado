@@ -457,8 +457,8 @@ def spawn_worker(
     `has_step`: the task holds a step of `run`, which the worker reports with flow_advance;
     any other task it reports with send_message. The task waits in its queue as a message
     from LADO, handed over at its first hook as any message; none of it is on the command
-    line. What holds the worker before its first hook (_first_hook_blocker) is added to
-    `warnings` and written to loop.log.
+    line. What holds the worker before its first hook (_first_hook_blocker), and its
+    provider's launch warnings, are added to `warnings` and written to loop.log.
 
     A worker gets its own worktree and branch; a worker for a flow `run` works in the
     run's worktree, shared with the run's other workers (see lado.runs.spawn_worker)."""

@@ -136,7 +136,8 @@ def check_agent_env() -> Check:
 
 def check_config_folders() -> Check:
     """An agent's config folder lives only while the agent runs; one that is left may hold
-    an older LADO's kit MCP secrets."""
+    an older LADO's kit MCP secrets, or a Codex agent's config.toml with what LADO carried
+    from the user's Codex config (its model providers may hold keys)."""
     name = "Agent config folders"
     try:
         stray = runtime.stray_config_dirs()

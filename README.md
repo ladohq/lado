@@ -20,7 +20,8 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
   own git worktree and branch, all in tmux on your machine.
 - **Messages.** Agents send each other tasks and reports through LADO, and can write to you
   or ask you.
-- **Providers.** Claude Code, Kilo CLI and OpenCode, chosen per session and per worker.
+- **Providers.** Claude Code, Codex CLI, Kilo CLI and OpenCode, chosen per session and per
+  worker.
 - **Kits.** Agent roles, skills, MCP servers and flows in a git repository or a folder,
   installed with `lado kits add` or from a marketplace.
 - **Flows.** Steps, outcomes and human gates that LADO enforces, not the agent; you answer a
@@ -40,7 +41,7 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 
 ```bash
 uv tool install lado    # or: pip install lado
-lado doctor             # checks tmux and the agent CLIs: any of Claude Code, Kilo CLI, OpenCode
+lado doctor             # checks tmux and the agent CLIs: any of Claude Code, Codex, Kilo, OpenCode
 lado start <repo>       # a supervisor for a git repository (with at least one commit), in tmux
 lado ui                 # the web UI in your browser
 ```

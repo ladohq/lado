@@ -1,6 +1,18 @@
 # Changelog
 
-## 0.31.1 (unreleased)
+## 0.32.0 (unreleased)
+
+- Codex CLI as a provider: `lado start --provider codex` and `spawn_worker(provider="codex")`.
+  Each Codex agent gets its own Codex home in its config folder (its role as
+  `developer_instructions`, LADO's hooks, already trusted, its MCP servers); from your own
+  Codex config (`CODEX_HOME` or `~/.codex`, only read) it carries your model settings, your
+  trust of the folder and of the repository's own hooks. A folder your Codex does not trust
+  makes the agent wait for you, as with Claude Code. Your login is not carried yet: it runs
+  on a model that needs none (e.g. a local one through Ollama). Permission modes `default`
+  and `bypassPermissions`; in Codex's sandbox a worker may commit on its branch. `lado
+  doctor` checks it (tested with 0.162).
+- A Codex supervisor starts with one short line from `lado`, since Codex starts its session
+  only at its first input: one model turn per start.
 
 - UI: the Kits page shows its kits as a grid of compact cards instead of a list of rows.
   A newer version a check found shows as `→ vX` with an ↑ button that opens the update to

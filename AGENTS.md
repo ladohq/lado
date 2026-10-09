@@ -26,7 +26,7 @@ make web-types          # web/openapi.json and web/src/api.gen.ts from the serve
 make test-ui            # uv run pytest -m ui: Chromium against a real lado server, fake agent
 make dist               # uv build, and check that the sdist and the wheel ship the web UI
 make check              # lint, the plugin, the web UI, then unit, integration and UI tests one after another
-make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=claude|kilo|opencode
+make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=claude|codex|kilo|opencode
 ```
 
 The web UI needs Node (npm) to build; users of the wheel do not. `make browser` (part of
@@ -79,8 +79,13 @@ on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`).
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`,
-OpenCode on `opencode/nemotron-3-ultra-free` (override with `LADO_LIVE_CLAUDE_MODEL` /
-`LADO_LIVE_KILO_MODEL` / `LADO_LIVE_OPENCODE_MODEL`). The Claude test uses a fixed
+OpenCode on `opencode/nemotron-3-ultra-free`, Codex CLI on the local `qwen3-coder:30b` of
+Ollama (it skips without `ollama` or the model; the model's provider goes in the test's own
+user Codex config, which LADO carries) (override with `LADO_LIVE_CLAUDE_MODEL` /
+`LADO_LIVE_KILO_MODEL` / `LADO_LIVE_OPENCODE_MODEL` / `LADO_LIVE_CODEX_MODEL`). Each Codex
+agent asks whether to trust the test's repo, answered by the test after checking the wait.
+Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
+user's `~/.codex`. The Claude test uses a fixed
 repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted
 folder for it; when it shows, the test first checks that the supervisor waits with its reason
 (a run in a repo trusted already prints that it does not check that). Unit tests that start
@@ -188,21 +193,47 @@ fixes and docs only: no new feature, no API or schema change.
     environment (`env`, the subclass's: `KILO_CONFIG_CONTENT`, `OPENCODE_CONFIG_CONTENT`,
     which win over the repo's own config); `kilo.py`: Kilo CLI and `opencode.py`: OpenCode,
     its subclasses, each with its own `TESTED_VERSION`, config file name, switches and
-    permission rules). OpenCode and Kilo still read the user's global config and global
-    skills (`~/.claude/skills`, `~/.agents/skills`; BACKLOG.md); LADO's keys go on top. A
-    provider writes the agent's config, returns its argv and env and translates its hook
-    events. The config goes in the agent's config folder, `LADO_HOME/agents/<session>/<agent>/`
+    permission rules; `codex.py`: Codex CLI, below; `gitpaths.py`: where a folder sits in
+    its repository (`git_root`, `main_root`), shared by the providers whose CLI looks a
+    folder's trust up by it). OpenCode and Kilo still read the user's global config and
+    global skills (`~/.claude/skills`, `~/.agents/skills`; BACKLOG.md); LADO's keys go on
+    top. Codex reads `~/.agents/skills` too, whatever its home. A provider writes the agent's config, returns its argv and env (and its
+    `warnings`, `Launch.warnings`, told whoever starts the agent as a blocker's are) and
+    translates its hook events; it gets the agent's environment as `AgentSpec.environ`
+    (read only) and, for a kit's MCP server, the names of the variables it reads
+    (`McpServer.env_vars`). The config goes in the agent's config folder, `LADO_HOME/agents/<session>/<agent>/`
     (`base.config_path`), which exists only while the agent runs: each launch writes it anew,
     and finishing a worker, an agent's end (`agent_ended`), `lado stop` (also `--all`),
     `lado forget` and a start or resume (what is left of the session's) remove it
     (`base.remove_config_dir`, `remove_session_config_dirs`); nothing of the CLI's own goes
-    there. `first_hook_blocker(cwd, env)` (a `Blocker`: `reason`, `warning`) says what its
-    CLI will ask the human before any hook (How agents talk). Only Claude Code asks: whether
+    there but Codex's, whose home it is. `first_hook_blocker(cwd, env)` (a `Blocker`:
+    `reason`, `warning`) says what its CLI will ask the human before any hook (How agents
+    talk). Claude Code asks whether
     to trust the folder, read from `projects[<folder>].hasTrustDialogAccepted` in its global
     config (`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`, an older
     `<config home>/.config.json` first), by the repo's main root (a worktree's main repo) or
     a folder from `cwd` up to its git root, each by real path; only `projects` is read,
-    nothing written; a config it cannot read is a `warning`. The provider is chosen
+    nothing written; a config it cannot read is a `warning`. Codex CLI (`codex.py`): each
+    agent's `CODEX_HOME` is its config folder, with a `config.toml` (mode 600) LADO writes
+    with a small TOML writer (`toml_text`; a value it cannot write is left out with a
+    launch warning): the role as `developer_instructions` (the base prompt stays), Codex's
+    update check, subagents (`features.multi_agent`), analytics and feedback off, LADO's
+    hooks with their `trusted_hash` (`hook_hash`, Codex's formula, pinned by a test against
+    hashes Codex wrote; keyed by the real path of that config.toml), the MCP servers (`lado`
+    `required` and its tools approved; `env_vars` for a kit's), a permission profile that
+    lets the sandbox write the git folders but their hooks and config (else a worker cannot
+    commit; not with `bypassPermissions`), and what it carries from the user's own Codex
+    config (`CODEX_HOME` of the agent's environment, else `~/.codex`; read, never written;
+    one it cannot read is a launch warning): `CARRIED` (model settings), the `projects`
+    entry Codex goes by in the agent's folder, and the user's `hooks.state` entries of the
+    repository's own hooks. Codex asks before any hook whether to trust a folder with no
+    entry (by the folder, its project root, then its repository's main root, each by real
+    path then as spelled; the first entry with a level decides, `untrusted` too) and to
+    review the repository's own hooks (`.codex/hooks.json` and `[hooks]` of
+    `.codex/config.toml`, the main checkout's in a linked worktree) it has no trust for:
+    `first_hook_blocker` reads both from the agent's config.toml. Its argv is `codex
+    --no-daemon` (else a background app server outlives the agent) with the first lines
+    last. Codex's own login is not carried (BACKLOG.md). The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
     Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
@@ -588,7 +619,8 @@ fixes and docs only: no new feature, no API or schema change.
   window runs `lado.agent_env <file> <argv>` (`interpreter.run_module`): it reads that environment from a file
   in the agent's config folder (`env.json`, mode 600 also when it was there before, removed
   once read; the one file under `LADO_HOME/agents/` that holds the values of a kit's MCP
-  `env`, see `mcp_exec.py`), keeps tmux's own `TERM`,
+  `env`, see `mcp_exec.py`; a Codex agent's `config.toml`, mode 600 too, holds what LADO
+  carried of the user's Codex config, whose model providers may hold keys), keeps tmux's own `TERM`,
   `TERM_PROGRAM(_VERSION)`, `TMUX` and `TMUX_PANE`, and execs the agent's CLI, found on the
   resolved `PATH`. `lado doctor` shows the source and how long the shell takes (a warning
   above 2 s).
@@ -629,7 +661,11 @@ fixes and docs only: no new feature, no API or schema change.
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
   after a `PermissionRequest`, until the human's next prompt in its window, whose `Stop`
-  ends the turn and hands over the queue (BACKLOG.md).
+  ends the turn and hands over the queue (BACKLOG.md). Codex CLI 0.162 runs no hook at all
+  for a turn that ends on a model or API error: the agent stays `busy` (BACKLOG.md); the
+  human's Esc, and a refused approval, run `Interrupt` and no `Stop`: a turn's end whose
+  output Codex ignores (`output_ignored`, read in its source), so the queue is typed in, and
+  a refused approval ends the wait at once.
 - An agent whose process ends by itself goes through one transition, `runtime.agent_ended`
   (`state.agent_ended`, one conditional transaction): its session-end hook (`SESSION_END`,
   "its CLI exited") and the session loop's window check ("its window closed without a
@@ -685,7 +721,11 @@ fixes and docs only: no new feature, no API or schema change.
   `Notification` is not used. Kilo and OpenCode: the plugin reports `permission.asked`,
   `question.asked` (WAITING) and `permission.replied` (also a refusal),
   `question.replied`, `question.rejected` (RESUMED) with the request's id, also for
-  subagents' sessions; with `--auto` the permission events are not reported.
+  subagents' sessions; with `--auto` the permission events are not reported. Codex CLI
+  (0.162, checked by hand): `PermissionRequest` runs before an approval dialog (a shell
+  command that leaves the sandbox, an MCP tool call), its tool call's `PostToolUse` is the
+  answer, keyed by the tool and its input; a cancelled MCP call runs no `PostToolUse`, so
+  the wait ends with the turn's `Stop`.
 - A message is a one-line `summary` (at most 200 characters; a longer or multi-line one is
   refused) and an optional `body` with the details. Only one short line per message reaches
   the recipient: `[from <sender>] <summary>`, plus ` (#<id>, <n> lines: call read_messages)`
@@ -732,7 +772,13 @@ fixes and docs only: no new feature, no API or schema change.
   init, and no event or API says when it takes input (OpenCode 1.18.35, checked by hand):
   their queue's lines at launch, never a body, go on `--prompt` (`runtime._launch_command`),
   handed over then as `typed` with its first attempt and confirmed by `chat.message` as
-  typed text; the agent stays `starting` until its session start.
+  typed text; the agent stays `starting` until its session start. Codex CLI takes them as
+  its own `[PROMPT]` argument, and starts its session (SessionStart) only when its first
+  input is submitted (`Capabilities.session_start_on_first_input`): an agent of it with an
+  empty queue (a new supervisor) first gets `runtime.FIRST_INPUT` from `lado`, a message
+  like any other, so a Codex supervisor's start costs one short model turn. Codex's
+  `SessionEnd` is not used: after `/resume` it runs for the conversation left, once the
+  next one has started; an agent whose Codex exits is ended by the window check.
 - A queue is handed over by one of two channels, kept with each message
   (`messages.channel`), and stays `sent` until the agent confirms it (then `delivered`):
   - `typed`: pasted into the agent's window, confirmed when its prompt-submit hook sees
@@ -843,7 +889,9 @@ fixes and docs only: no new feature, no API or schema change.
   (looking every `hooks.MCP_READY_POLL`, 0.02 s, at most `hooks.MCP_READY_TIMEOUT`; giving
   up is written to `hooks.log`). Verified with
   Claude Code 2.1.289 (`providers/claude.py`: `TESTED_VERSION`; `lado doctor` warns about
-  others); the live test checks w1's transcript.
+  others); the live test checks w1's transcript. Codex CLI needs no hold: its first turn
+  waits for a `required` MCP server, which `lado` is in its config, and one that fails to
+  start makes Codex exit (0.162, checked by hand; the window check ends the agent).
 
 ## Try it locally
 

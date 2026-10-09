@@ -143,8 +143,10 @@ class CodexProvider(base.Provider):
         config.update(
             developer_instructions=spec.prompt,
             check_for_update_on_startup=False,
-            # Codex's own subagents: an agent that starts them talks to nobody.
-            features={"multi_agent": False},
+            # Codex's own subagents: an agent that starts them talks to nobody. Its shell
+            # snapshot writes the agent's whole environment, a kit's MCP secrets too, into
+            # shell_snapshots/ of its home: no such value may go on disk (lado.mcp_exec).
+            features={"multi_agent": False, "shell_snapshot": False},
             analytics={"enabled": False},
             feedback={"enabled": False},
         )

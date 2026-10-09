@@ -108,6 +108,13 @@ def test_the_agent_does_not_update_itself_nor_start_its_own_agents(repo):
     assert config["feedback"] == {"enabled": False}
 
 
+def test_the_agent_keeps_no_snapshot_of_its_environment(repo):
+    """Codex's shell snapshot writes the agent's whole environment into its home, a kit's
+    MCP secrets too: no value of those may be on disk (lado.mcp_exec)."""
+    _, config = _launch(repo)
+    assert config["features"]["shell_snapshot"] is False
+
+
 def test_hooks_report_each_event_lado_uses(repo):
     launch, config = _launch(repo)
     groups = config["hooks"]

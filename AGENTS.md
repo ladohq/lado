@@ -217,7 +217,9 @@ fixes and docs only: no new feature, no API or schema change.
     agent's `CODEX_HOME` is its config folder, with a `config.toml` (mode 600) LADO writes
     with a small TOML writer (`toml_text`; a value it cannot write is left out with a
     launch warning): the role as `developer_instructions` (the base prompt stays), Codex's
-    update check, subagents (`features.multi_agent`), analytics and feedback off, LADO's
+    update check, subagents (`features.multi_agent`), analytics and feedback off, its shell
+    snapshot off (`features.shell_snapshot`: it writes the agent's whole environment, a
+    kit's MCP secrets too, into the home's `shell_snapshots/`), LADO's
     hooks with their `trusted_hash` (`hook_hash`, Codex's formula, pinned by a test against
     hashes Codex wrote; keyed by the real path of that config.toml), the MCP servers (`lado`
     `required` and its tools approved; each server's `env_vars` names every variable of the

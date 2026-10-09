@@ -520,6 +520,9 @@ responsibility, and LADO reads no transcript.
 Wanted: a later event source for Codex turn errors (the rollout, or app-server events over
 ACP, stage 8), mapped to a turn's end with `Event.error`.
 Found: 2026-10-09, design of run feature/codex-provider.
+Seen live (2026-10-09, verify of feature/codex-provider): in the image test, w1 on
+`qwen3-coder:30b`, a model with no image input, stayed busy for 3 min after the human's
+PNG. The test now skips Codex models whose `ollama show` lists no `vision`.
 
 ## Codex agents cannot log in: the user's Codex login is not carried
 
@@ -831,6 +834,19 @@ tests/agent_helpers.py:239): w1 and the passive supervisor looked for the image 
 `find /` instead of calling `read_artifact`; the third run skipped as designed (the model
 takes no images). Wanted also: skip when the model cannot see the image on its first try
 instead of waiting 180 s.
+Again on 2026-10-09 (verify of feature/codex-provider, which does not change Kilo): both
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` (the supervisor merged and
+finished w1 before the follow-up; once the line sent while w1 was busy was not delivered in
+time) and `test_an_agent_sees_the_image_the_human_attaches[kilo]` (180 s for the reply about
+colour.png) failed 3 of 3, not once.
+On Codex CLI with the local `qwen3-coder:30b` (2026-10-09, verify and implement of
+feature/codex-provider): `test_a_flow_run_moves_on_when_its_worker_reports[codex]` passed
+about one run in two. w1 wrote other text than `OK` in flow.txt (tests/live/test_live.py:638),
+or left flow.txt uncommitted in the main checkout ("untracked working tree files would be
+overwritten by merge"); once the passive supervisor, whose role reached the model (checked
+with `codex debug prompt-input` on its home), ran `git add . && git commit` in the main
+checkout, so the test's `merge --ff-only` failed. Wanted also: a stronger local model for
+the Codex live test (`LADO_LIVE_CODEX_MODEL`).
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

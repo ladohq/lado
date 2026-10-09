@@ -709,12 +709,31 @@ def ask_about_image(name: str, data: bytes, ask: str) -> str:
     return messages("w1", "human")[-1][0]
 
 
+def ollama_sees_images(model: str) -> bool:
+    """Whether Ollama lists `vision` among the model's capabilities."""
+    shown = subprocess.run(["ollama", "show", model], capture_output=True, text=True)
+    lines = shown.stdout.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == "Capabilities"), None)
+    if start is None:
+        return False
+    capabilities = []
+    for line in lines[start + 1 :]:
+        if not line.strip():
+            break
+        capabilities.append(line.strip())
+    return "vision" in capabilities
+
+
 def test_an_agent_sees_the_image_the_human_attaches(live_repo, live_provider):
     """The human's PNG reaches the model as an image through read_artifact: w1 names the
     colour of a solid red one. A screenshot-sized one over 1 MB and one just under
     artifacts.IMAGE_LIMIT do not end its turn on an error (an image the API refuses would
     fail every later turn). A model that takes no images is named and skipped, never a
     pass."""
+    if live_provider == "codex" and not ollama_sees_images(providers.get("codex").model):
+        # Codex runs no hook when the model fails on the image: w1 would look busy forever
+        # (BACKLOG.md), so a model that takes no images is skipped before it gets one.
+        pytest.skip(f"{providers.get('codex').model} takes no images (`ollama show`)")
     repo = live_repo
     start_session(repo, live_provider)
     runtime.spawn_worker(SESSION, IMAGE_WORKER, name="w1")

@@ -1,6 +1,8 @@
 """.github/workflows/windows-shell.yml: the Windows (+ WSL2) probe, started by hand."""
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "windows-shell.yml"
 # A boolean input as GitHub's web form gives it (a boolean) or the API (a string).
 WSL = "inputs.wsl == true || inputs.wsl == 'true'"
 SHELL = "inputs.shell == true || inputs.shell == 'true'"
+TESTS = "inputs.tests == true || inputs.tests == 'true'"
 
 
 @pytest.fixture(scope="module")
@@ -54,6 +57,8 @@ def test_inputs(workflow):
     assert inputs["wsl"]["default"] is True
     assert inputs["shell"]["type"] == "boolean"
     assert inputs["shell"]["default"] is False
+    assert inputs["tests"]["type"] == "boolean"
+    assert inputs["tests"]["default"] is True
     assert inputs["minutes"]["type"] == "number"
     assert inputs["minutes"]["default"] == 120
 
@@ -115,7 +120,10 @@ def test_wsl2_ubuntu_with_the_tools(steps):
     assert step["with"]["distribution"] == "Ubuntu-24.04"
     assert str(step["with"]["wsl-version"]) == "2"
     packages = step["with"]["additional-packages"].split()
-    assert {"tmux", "git", "curl", "build-essential", "less", "xz-utils"} <= set(packages)
+    assert {"tmux", "git", "curl", "build-essential", "less"} <= set(packages)
+    # Ubuntu's own, dynamically linked tmate: the static release's resolver never found
+    # ssh.tmate.io in WSL (run 38005117396); xz-utils only unpacked that release.
+    assert "tmate" in packages and "xz-utils" not in packages
     assert all("continue-on-error" not in s for s in steps)
 
 
@@ -186,6 +194,60 @@ def test_wsl_probe_runs_as_a_non_root_user_in_a_login_shell(steps):
     assert order == sorted(order)
 
 
+def run_wsl_probe(steps, tmp_path, tests: str) -> list[list[str]]:
+    """Run the WSL probe's script with a `timeout` that runs nothing: its checks.tsv rows."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "timeout"
+    stub.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >>"$PROBE/ran"\n')
+    stub.chmod(0o755)
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    env = {
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PROBE": str(probe),
+        "UV_VERSION": "0",
+        "TESTS": tests,
+    }
+    script = step_named(steps, "WSL probe")["run"]
+    subprocess.run(["bash", "-c", script], env=env, check=True)
+    rows = (probe / "checks.tsv").read_text().splitlines()
+    return [row.split("\t") for row in rows]
+
+
+def test_wsl_probe_gets_the_tests_input_as_a_boolean(steps):
+    probe = step_named(steps, "WSL probe")
+    assert probe["env"]["TESTS"] == "${{ " + TESTS + " }}"
+    assert "TESTS" in probe["env"]["WSLENV"].split(":")
+
+
+def test_wsl_probe_runs_the_make_checks_with_tests(steps, tmp_path):
+    rows = {row[0]: row for row in run_wsl_probe(steps, tmp_path, "true")}
+    assert rows["wsl make-test"][1:] == ["0", "required", "wsl-make-test.log"]
+    assert rows["wsl make-test-integration"][1:3] == ["0", "required"]
+    ran = (tmp_path / "probe" / "ran").read_text()
+    assert "cd ~/lado && make test\n" in ran and "make test-integration" in ran
+
+
+def test_wsl_probe_skips_the_make_checks_without_tests(steps, tmp_path):
+    rows = {row[0]: row for row in run_wsl_probe(steps, tmp_path, "false")}
+    for name in ("wsl make-test", "wsl make-test-integration"):
+        assert rows[name][1:3] == ["skipped", "skipped"], rows[name]
+    # The other checks still run.
+    assert rows["wsl uv-sync"][1:3] == ["0", "required"]
+    ran = (tmp_path / "probe" / "ran").read_text()
+    assert "make test" not in ran and "uv sync" in ran
+
+
+def test_a_skipped_check_neither_passes_nor_fails(steps):
+    summary = step_named(steps, "Summary")["run"]
+    # The summary names it, and lists no log for it as a failure.
+    assert "'skipped'" in summary and "skipped" in summary.split("$failed")[1]
+    verdict = step_named(steps, "Verdict")["run"]
+    # Only `required` rows decide; a skipped row is not one.
+    assert "$_.kind -eq 'required' -and $_.code -ne '0'" in verdict
+
+
 def test_report_uploaded_always_then_the_verdict_last(steps):
     summary = step_named(steps, "Summary")
     assert summary["if"] == "always()"
@@ -221,11 +283,12 @@ def test_shell_after_the_upload_only_with_shell_and_wsl(steps):
     assert steps.index(shell) == len(steps) - 2
 
 
-def test_shell_is_linux_tmate_checked_and_only_for_the_starter(steps):
+def test_shell_is_ubuntus_tmate_and_only_for_the_starter(steps):
     shell = step_named(steps, "Shell")
     run = shell["run"]
-    assert re.search(r"tmate/releases/download/\d+\.\d+\.\d+/", run)
-    assert re.search(r"[0-9a-f]{64}", run) and "sha256sum -c" in run
+    # Ubuntu's package (setup-wsl's additional-packages), no static release.
+    assert "releases/download" not in run and "sha256sum" not in run
+    assert "/usr/local/bin" not in run
     assert "https://github.com/$ACTOR.keys" in run
     assert shell["env"]["ACTOR"] == "${{ github.actor }}"
     # No keys: no session open to anyone.

@@ -19,6 +19,10 @@ on:
         description: After the report, an SSH shell into WSL Ubuntu (tmate; needs wsl)
         type: boolean
         default: false
+      tests:
+        description: Run make test and make test-integration in WSL (false reaches the shell sooner)
+        type: boolean
+        default: true
       minutes:
         description: Job length in minutes, setup included (at most 360)
         type: number
@@ -108,7 +112,7 @@ jobs:
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2
-          additional-packages: tmux git curl build-essential less xz-utils
+          additional-packages: tmux git curl build-essential less tmate
 
       - name: Check WSL
         if: inputs.wsl == true || inputs.wsl == 'true'
@@ -155,7 +159,8 @@ jobs:
         shell: wsl-bash {0}
         env:
           UV_VERSION: "0.12.3"
-          WSLENV: PROBE/p:UV_VERSION
+          TESTS: ${{ inputs.tests == true || inputs.tests == 'true' }}
+          WSLENV: PROBE/p:UV_VERSION:TESTS
         run: |
           set -u
           touch "$PROBE/checks.tsv" || exit 1
@@ -163,6 +168,9 @@ jobs:
             local log="wsl-$1.log" code=0
             timeout --kill-after=30 "$2" su - lado -c "$3" >"$PROBE/$log" 2>&1 || code=$?
             printf '%s\t%s\t%s\t%s\n' "wsl $1" "$code" "${4:-required}" "$log" >>"$PROBE/checks.tsv" || exit 1
+          }
+          skip() { # skip <name>: recorded, neither passed nor failed
+            printf '%s\tskipped\tskipped\t-\n' "wsl $1" >>"$PROBE/checks.tsv" || exit 1
           }
           check uname 60 'uname -m'
           check tmux 60 'tmux -V'
@@ -175,8 +183,13 @@ jobs:
           check lado-version 120 'cd ~/lado && uv run lado --version'
           # No agent CLI is installed, which doctor reports as a FAIL (exit 1): only recorded.
           check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected
-          check make-test 1800 'cd ~/lado && make test'
-          check make-test-integration 1800 'cd ~/lado && make test-integration'
+          if [ "$TESTS" = true ]; then
+            check make-test 1800 'cd ~/lado && make test'
+            check make-test-integration 1800 'cd ~/lado && make test-integration'
+          else
+            skip make-test
+            skip make-test-integration
+          fi
           exit 0
 
       - name: Summary
@@ -194,7 +207,11 @@ jobs:
           $rows = @(Import-Csv $checks -Delimiter "`t" -Header name, code, kind, log)
           $out += "| check | exit | counts |", "| --- | --- | --- |"
           foreach ($r in $rows) {
-            $counts = if ($r.kind -eq 'required') { 'yes' } else { 'no (expected)' }
+            $counts = switch ($r.kind) {
+              'required' { 'yes' }
+              'skipped' { 'no (skipped: tests=false)' }
+              default { 'no (expected)' }
+            }
             $out += "| $($r.name) | $($r.code) | $counts |"
           }
           foreach ($name in 'path', 'agents-path') {
@@ -203,7 +220,7 @@ jobs:
               $out += "", "${name}: ``$(Get-Content $file -Tail 1)``"
             }
           }
-          $failed = $rows | Where-Object { $_.code -ne '0' } | Select-Object -ExpandProperty log -Unique
+          $failed = $rows | Where-Object { $_.kind -ne 'skipped' -and $_.code -ne '0' } | Select-Object -ExpandProperty log -Unique
           foreach ($log in $failed) {
             $out += "", "<details><summary>$log (last lines)</summary>", "", '```'
             $out += Get-Content (Join-Path $env:PROBE $log) -Tail 20
@@ -219,6 +236,8 @@ jobs:
           retention-days: 5
 
       # Linux tmate in WSL: action-tmate's MSYS2 tmate hung on Windows before its SSH line.
+      # Ubuntu's package (setup-wsl above): the static release's own resolver never found
+      # ssh.tmate.io in WSL (run 38005117396).
       - name: Shell
         if: (inputs.shell == true || inputs.shell == 'true') && (inputs.wsl == true || inputs.wsl == 'true')
         shell: wsl-bash {0}
@@ -235,9 +254,6 @@ jobs:
           printf '%s\n' "$keys" >~lado/.tmate-keys
           chown lado:lado ~lado/.tmate-keys
           chmod 600 ~lado/.tmate-keys
-          curl -fsSL -o /tmp/tmate.tar.xz https://github.com/tmate-io/tmate/releases/download/2.4.0/tmate-2.4.0-static-linux-amd64.tar.xz
-          echo "6e503a1a3b0f9117bce6ff7cc30cf61bdc79e9b32d074cf96deb0264e067a60d  /tmp/tmate.tar.xz" | sha256sum -c -
-          tar -xJf /tmp/tmate.tar.xz -C /usr/local/bin --strip-components=1 tmate-2.4.0-static-linux-amd64/tmate
           su - lado -c 'tmate -v -a ~/.tmate-keys -S /tmp/tmate.sock new-session -d'
           if ! timeout 120 su - lado -c 'tmate -S /tmp/tmate.sock wait tmate-ready'; then
             echo "::error::tmate did not reach its server within 120 seconds"

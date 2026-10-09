@@ -105,13 +105,16 @@ default, at most 360, setup included). It installs LADO from the checkout on Win
 with `wsl`, in WSL2 Ubuntu 24.04 as the user `lado` (the repo at the run's commit in
 `~/lado`), runs each check in its login shell: `uname -m`, `tmux -V`, uv's install, its `PATH`
 and the agents' (`wsl-path.log`, `wsl-agents-path.log`), `uv sync`, `lado --version`, `lado
-doctor` (recorded only: no agent CLI there), `make test`, `make test-integration`. The job is
-red when one of the WSL checks but doctor fails. The logs are the artifact
+doctor` (recorded only: no agent CLI there), `make test`, `make test-integration` (with `-f
+tests=false` both are `skipped`, neither passed nor failed). The job is red when one of the
+WSL checks but doctor fails. The logs are the artifact
 `windows-probe-<runner>` (`gh run download <id>`), and the job's summary has each check's exit
 code, the PATH lines and the end of each failing log (`gh run view <id>`, `--log` for all).
 With `shell`, after the upload, an `ssh ...tmate.io` line (the step's log and a notice) opens
-a shell in WSL as `lado`, only for the GitHub user who started it, by the SSH keys on their
-GitHub account; `touch ~/continue` ends it, and everything is wiped when the job ends.
+a shell in WSL as `lado` (Ubuntu's `tmate` package), only for the GitHub user who started it,
+by the SSH keys on their GitHub account; `touch ~/continue` ends it, and everything is wiped
+when the job ends. The quick shell, without the ~20 minutes of make checks: `-f shell=true -f
+tests=false`.
 `windows-11-arm` runs only with `-f wsl=false`: setup-wsl's Ubuntu image is amd64 only.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the

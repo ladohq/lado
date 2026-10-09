@@ -3,9 +3,7 @@
 ## 0.31.1 (unreleased)
 
 - UI: a session's card (the tooltip of its row and of its icon in the collapsed list) no
-  longer has a dot before the name, whose colour differed from the row's own dot; its
-  status word now has its group's colour (green Running, orange Needs you, grey Stopped,
-  red for a session whose tmux is gone or whose loop does not run).
+  longer has a dot before the name, whose colour differed from the row's own dot.
 
 ## 0.31.0 (2026-10-09)
 

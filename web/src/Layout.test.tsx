@@ -485,45 +485,6 @@ test("a Running row's card and its icon in the strip say whether it works", asyn
   expect(screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent).toBe("busy · running · 2 of 3 agents working");
 });
 
-// The card's status word takes its group's colour (the card's tone), a session in trouble
-// the danger colour; the name keeps its own.
-const statusOf = (link: HTMLElement) => {
-  fireEvent.focus(link);
-  const shown = screen.getByRole("tooltip");
-  const card = shown.firstElementChild!;
-  const word = card.querySelector(".tooltip-line")!.children[1];
-  const seen = { card: card.className, word: `${word.className}: ${word.textContent}`, name: card.querySelector("b")!.className };
-  fireEvent.blur(link);
-  return seen;
-};
-
-test("a card's status word is in its group's colour, a session in trouble in the danger colour, in the row's card and the icon's", async () => {
-  sessions = [
-    session("calm"),
-    session("gated", { waiting: { gates: 1, questions: 0, agents: 0 } }),
-    session("stuck", { status: "tmux_gone" }),
-    session("old", { status: "stopped", agents: 0 }),
-  ];
-  localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
-  open("/sessions");
-  await within(list()).findByRole("link", { name: /^old/ });
-  const running = { card: "session-tip tone-done", word: "tip-status: running", name: "" };
-  const needsYou = { card: "session-tip tone-human", word: "tip-status: running", name: "" };
-  const trouble = { card: "session-tip tone-done", word: "danger-text: tmux session is gone", name: "" };
-  expect(statusOf(row("calm"))).toEqual(running);
-  expect(statusOf(row("gated"))).toEqual(needsYou);
-  expect(statusOf(row("stuck"))).toEqual(trouble);
-  expect(statusOf(row("old"))).toEqual({ card: "session-tip tone-neutral", word: "tip-status: stopped", name: "" });
-  cleanup();
-  collapsed();
-  open("/sessions");
-  await within(strip()!).findByRole("link", { name: /^calm/ });
-  const icon = (name: string) => within(strip()!).getByRole("link", { name: new RegExp(`^${name}`) });
-  expect(statusOf(icon("calm"))).toEqual(running);
-  expect(statusOf(icon("gated"))).toEqual(needsYou);
-  expect(statusOf(icon("stuck"))).toEqual(trouble);
-});
-
 test("the list's width changes with its edge and is remembered", async () => {
   open("/sessions");
   const edge = screen.getByRole("separator", { name: "Resize the session list" });

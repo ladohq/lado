@@ -1714,6 +1714,10 @@ Size: S. Why here: met at the end of fix/windows-probe, whose branch was pushed 
 (`not deleting branch ... that is not yet merged to 'refs/remotes/origin/<branch>', even though it
 is merged to HEAD`; `The branch ... is not fully merged`), since git checks a branch with an
 upstream against that upstream. The supervisor deleted the remote and local branch by hand.
+The run's workers stayed too (the end stopped before closing them): `finish_worker` closed the
+developer and reviewer, but the checker cannot be finished at all once the branch and worktree
+are gone: `cannot read its work: fatal: ambiguous argument 'HEAD...<branch>'`, and with
+`discard=true`: `'<worktree>' is not a working tree`. It stays in `list_agents`.
 Wanted: the run's end checks "merged" against the repo's current branch as `work_state` does and
 deletes with that knowledge (e.g. `git branch -D` after its own check), or says the branch is kept and why.
 Found: 2026-10-10, merge step of fix/windows-probe (session lado-windows).

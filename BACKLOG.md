@@ -580,6 +580,35 @@ supervisor acts on its own"). The branch changed nothing in Kilo, artifacts or t
 Wanted: find whether the free model gets the image's content at all (then skip a model that
 takes no images, as OpenCode's test does) or pin a Kilo model that sees images.
 Found: 2026-10-10, verify of feature/macos-gui-session.
+At the release of 0.33.0 (f9d3739, 2026-10-10) it failed 2 of 3 the same way (the third run
+skipped: the model did not see the image).
+
+## Kilo live flow test fails 3 of 3: w1 never reads its step
+
+Size: M. Why here: a live test red every time at a release; it was a flake before.
+`test_a_flow_run_moves_on_when_its_worker_reports[kilo]` on `kilo/kilo-auto/free` failed 3 of
+3 at the release of 0.33.0 (f9d3739): twice `fatal: path 'flow.txt' does not exist in
+'lado/live/tiny-add-flow-txt-for-the'` (test_live.py:638), once the run did not end within
+240 s. In all three w1 never called `read_messages`: its step message stayed `delivered`,
+and it acted on the one-line notice alone. Earlier flakes of this test are in "Flaky: Kilo
+live flow test, the passive supervisor acts on its own".
+Wanted: find whether the free model ignores "call read_messages" (then a stronger model for
+Kilo's live tests, or a notice it follows) or LADO's notice reaches Kilo differently, and make
+the test pass reliably.
+Found: 2026-10-10, release of 0.33.0.
+
+## Agents' PATH on Ubuntu is not a new terminal's
+
+Size: M. Why here: breaks the "as a new terminal sees it" contract on every Ubuntu and WSL2.
+`agent_env.from_shell` starts `$SHELL -ilc` with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`
+(`agent_env.SHELL_PATH`), which on macOS `/etc/profile`'s `path_helper` rebuilds; Ubuntu's
+`/etc/profile` sets no PATH (it comes from PAM's `/etc/environment`, and in WSL from WSL
+itself), so agents lose `/usr/local/bin`, `/usr/lib/wsl/lib` and WSL's Windows PATH. A CLI in
+`/usr/local/bin` is refused as not on the agents' PATH, while `lado doctor` and the UI (the
+process PATH) see it. No test runs a real Linux login shell (all use `inherit` or fake shells).
+Wanted: on Linux the base PATH a new terminal starts from (e.g. `/etc/environment`), and a test
+against a real login shell. To confirm in the WSL VM run (checklist step 2).
+Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
 
 # P2: when convenient
 
@@ -1627,6 +1656,36 @@ on the second rerun: `test_terminal_panel::test_an_agents_terminal_opens_to_view
 Wanted: the terminal test types only after the agent's first input is confirmed; the gates
 test waits for the scroll to end.
 Found: 2026-10-09, release of 0.32.0.
+Again at the release of 0.33.0 (f9d3739): the terminal panel test, the same `ValueError`;
+passed on the first rerun.
+
+## Codex agents call `read_mcp_resource` instead of LADO's tools
+
+Size: S. Why here: a live-test flake with a cause in what Codex offers the model.
+At the release of 0.33.0 (f9d3739) `test_worker_does_a_task_reports_and_gets_a_message[codex]`
+on `qwen3-coder:30b` failed once (`timed out after 60s waiting for w1 to be idle`): the
+supervisor called Codex's `read_mcp_resource` (`unknown MCP server 'default'`, then
+`resources/read failed for lado (artifact://…, message://…)`) instead of `read_messages` and
+`read_artifact`; the rerun passed.
+Wanted: find whether LADO's MCP server lists resources Codex then offers, and either serve
+them or list none, so the model takes LADO's tools.
+Found: 2026-10-10, release of 0.33.0.
+
+## `lado ui` says "Opening" when no browser opened
+
+Size: S. Why here: a small silent drop, seen in the WSL audit.
+`cli.py` ignores `webbrowser.open`'s False result (WSL, a server without a browser) and prints
+`Opening <url>` anyway.
+Wanted: on False, say no browser opened and to open the link by hand.
+Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
+
+## `make browser` installs Chromium without its system libraries
+
+Size: S. Why here: a fresh Ubuntu (or WSL) cannot run `make test-ui`/`make check`.
+`make browser` runs `playwright install chromium` without `--with-deps`, which CI adds; on a
+fresh machine Chromium does not launch (libnss3 and others missing).
+Wanted: say so in AGENTS.md's Commands, or a target that adds `--with-deps` on Linux.
+Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
 
 # P3: maybe never
 

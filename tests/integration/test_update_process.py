@@ -303,3 +303,82 @@ def test_update_at_the_latest_version_stops_nothing(repo, session, install, tmp_
     assert not state.get_session(session).stopped_at
     assert loop.running(session)
     assert install.called() == []
+
+
+def api(url: str, path: str, body: dict | None = None):
+    """The server's answer to a GET, or with `body` a POST, as the UI sends them; None while
+    it does not answer."""
+    request = urllib.request.Request(
+        f"{url}{path}",
+        data=None if body is None else json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {auth.token()}",
+            "Content-Type": "application/json",
+            "Origin": url,
+        },
+        method="GET" if body is None else "POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as answer:
+            return answer.status, json.load(answer)
+    except OSError:
+        return None
+
+
+def update_from_the_ui(url: str) -> tuple[dict, dict, dict]:
+    """POST /api/update as the page does, then wait as U2 waits: for a server started after
+    the one before and a result of this update that no longer runs. The health before, the
+    health after and the UpdateInfo after."""
+    before = api(url, "/api/health")[1]
+    status, started = api(url, "/api/update", {"to": NEW})
+    assert status == 202
+
+    def back():
+        health = api(url, "/api/health")
+        info = api(url, "/api/update")
+        if not health or not info or health[1]["started_at"] <= before["started_at"]:
+            return None
+        last = info[1]["last"]
+        if not last or last["id"] != started["id"] or last["outcome"] == "running":
+            return None
+        return health[1], info[1]
+
+    after, info = agent_helpers.wait_for(back, "the server back after the update", "none", 120)
+    return before, after, info
+
+
+def test_the_ui_updates_lado_and_the_server_comes_back_on_the_new_version(repo, session, install):
+    start(repo, session)
+    url = server()["url"]
+    before, after, info = update_from_the_ui(url)
+    assert (before["version"], after["version"]) == (__version__, NEW)
+    last = info["last"]
+    assert (last["outcome"], last["from"], last["to"], last["database"]) == (
+        "ok",
+        __version__,
+        NEW,
+        "kept",
+    )
+    assert last["tail"][-1] == f"LADO {NEW} is ready. Reload open UI tabs."
+    assert install.called() == [
+        "--version",
+        f"start {repo} --name {session} --no-attach",
+        f"ui --no-open --port {server_run.running()['port']}",
+    ]
+    assert resumed(session) == 1
+
+
+def test_the_ui_update_rolls_back_when_the_new_version_is_wrong(repo, session, install):
+    start(repo, session)
+    url = server()["url"]
+    install.installs(
+        f'[ "$1" = "{NEW}" ] && echo "{NEW}-broken" > "{install.version_file}" '
+        f'|| echo "$1" > "{install.version_file}"'
+    )
+    before, after, info = update_from_the_ui(url)
+    assert after["version"] == before["version"] == __version__  # the old one, restarted
+    last = info["last"]
+    assert last["outcome"] == "rolled_back"
+    assert last["reason"] == f"LADO {NEW} did not install right: --version says {NEW}-broken"
+    assert resumed(session) == 1
+    assert info["running"] is False

@@ -542,6 +542,7 @@ h3 {
 }
 
 .strip-session {
+  position: relative;
   display: grid;
   flex: none;
   place-items: center;
@@ -750,8 +751,54 @@ h3 {
 }
 
 .session-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.session-name > span:first-child {
+  min-width: 0;
+}
+
+/* Whether a Running session's agents work: a full dot in the group's green with a soft
+   pulse, or a ring, the team chips' busy and idle shapes. In a row it stands before the
+   name (after it in the page, so the row is read by its name first); on a strip icon, in
+   its corner. */
+.session-name .dot {
+  order: -1;
+}
+
+.activity-working {
+  background: var(--done);
+  animation: activity-pulse 1.6s infinite;
+}
+
+.activity-idle {
+  border: 1.5px solid var(--muted);
+}
+
+.strip-session .dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+}
+
+@keyframes activity-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--done) 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-working {
+    animation: none;
+  }
 }
 
 .session-link .status {

@@ -415,7 +415,27 @@ Sessions for now. The UI's texts are in English.
   `Tooltip`, the one of the strip's icons, below): a dot of its group's colour, name ·
   status · agents, `Needs you: <the row's line>` in the human's colour, the folder, kits ·
   provider · `mode <permission mode>` when it has one, and for a stopped session `Stopped:
-  open it and press Resume`; all from `SessionInfo`, no CLI commands. The **session**
+  open it and press Resume`; all from `SessionInfo`, no CLI commands. A Running row (a
+  session whose status is `running` and in which nothing waits) also says whether its
+  agents work now (decided 2026-10-08 in feature/session-activity; mockup artifact
+  `feature/session-activity/mockup-list.html`, variant A without the word "working"): a
+  dot before its name, a full `--done` dot with a soft pulse (none under
+  `prefers-reduced-motion: reduce`) while some agent works, else a ring in `--muted` (the
+  team chips' busy and idle shapes), its accessible name `working` or `idle`; its line is
+  `<busy> of <agents> agent(s) · <time>` while some work (`2 of 3 agents · <1 min`), else
+  `<agents> agent(s) · <time>` (`1 agent · 12 min`), the time since `activity_since` by
+  the one formatter (`ChatText.duration`, `<1 min` under a minute), counted on by the
+  minute on the clock of the head's run time (`useNow`, `TICK_MS`), none without
+  `activity_since`. Its card's first line says `name · running · 2 of 3 agents working` or
+  `name · running · idle 12 min · 1 agent`, and its icon in the strip has the same dot,
+  small, in its corner, with `working` or `idle` in its accessible name. The rule is the
+  core's (`state.session_activity`): the agents in `busy` or `starting` work; since the
+  earliest time one of them got its status, or with none working the latest time any agent
+  got its own (their latest `status` or `spawned` event, as `lado ls` says). Its known
+  limits: a worker that takes turns with the supervisor may make the time start again; a
+  Claude agent the human interrupted with Esc stays `busy` until the human's next prompt
+  (BACKLOG.md), so its session shows working; an agent's planned resume after a temporary
+  API error shows idle until it fires. The **session**
   in the middle: its head is the top bar's line (task feature/session-head, 2026-10-05; in
   the top bar since feature/session-head-topbar, 2026-10-08), then the
   tabs **Activity | Agents | Flows |
@@ -856,7 +876,10 @@ Built in the layout task (2026-10-03, schema 14):
   stays; pages since feature/chat-paging: The change feed, Message windows); `SessionInfo.waiting {gates, questions, agents}` counts what waits for the human
   (open gates, open questions, agents in `waiting`), computed in `models.session_info` from
   the tables: the one definition of "needs you" for the session list now and the rail's
-  count later; `AgentInfo` has `run` and `task` (the first line of its task).
+  count later; `SessionInfo.busy` and `activity_since` say whether something moves in it
+  (`state.session_activity`; 0 and null unless its status is `running`, since a dead
+  session's agents may keep their last statuses; feature/session-activity); `AgentInfo`
+  has `run` and `task` (the first line of its task).
 - **Activity**: the team above the feed, a chip per agent, the supervisor first: a status
   dot that differs in colour and shape (busy a full circle, idle a ring, waiting an orange
   diamond, starting a dashed ring, stopped a grey square), its name and role, a tooltip;

@@ -28,6 +28,11 @@ class SessionInfo(BaseModel):
     status: runtime.SessionStatus
     agents: int  # agents the session has now
     waiting: Waiting
+    # Whether something moves in it (state.session_activity), only while it runs, else 0
+    # and None: its agents in `busy` or `starting`, and since when it works (some busy) or
+    # stands still (none) (UTC, ISO 8601); the UI adds the time since.
+    busy: int
+    activity_since: str | None
     # Its settings, as the next resume takes them unless given anew.
     kits: list[str]
     provider: str
@@ -985,12 +990,17 @@ def session_info(sess: state.Session) -> SessionInfo:
     gates, questions, agents = state.waiting_for_human(sess.name)
     status = runtime.session_status(sess)
     ran = runtime.session_time(sess, status)
+    busy, since = (
+        state.session_activity(sess.name) if status == runtime.SessionStatus.RUNNING else (0, None)
+    )
     return SessionInfo(
         name=sess.name,
         repo=sess.repo,
         status=status,
         agents=len(state.list_agents(sess.name)),
         waiting=Waiting(gates=gates, questions=questions, agents=agents),
+        busy=busy,
+        activity_since=_iso(since) if since else None,
         kits=sess.kits,
         provider=sess.provider,
         permission_mode=sess.permission_mode,

@@ -12,6 +12,11 @@
   narrow window), so the tabs and the chat start about 90 px higher; its status is a dot,
   in words only for a session that needs an action. The server's address moved into the
   tooltip of the feed's link on every page.
+- UI: a Running session in the session list says whether its agents work now: a pulsing
+  dot and `2 of 3 agents · 4 min` while some agent is busy, a ring and `1 agent · 12 min`
+  (how long it has stood still) when all wait for the human's next message; its card and
+  its icon in the collapsed list say it too. The API's `SessionInfo` has `busy` and
+  `activity_since`.
 
 ## 0.30.0 (2026-10-08)
 

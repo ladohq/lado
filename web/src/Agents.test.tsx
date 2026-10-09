@@ -20,7 +20,7 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NO_WAITS = { gates: 0, questions: 0, agents: 0 };
-const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null };
+const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, activity_since: null };
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 3, waiting: NO_WAITS, ...SETTINGS },
   { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: NO_WAITS, ...SETTINGS },

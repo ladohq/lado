@@ -2,6 +2,7 @@
 heading folds its group by a click, Enter or Space, remembered over a reload; the open
 session is seen in its folded group; a row shows the session's card under the pointer."""
 
+import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
@@ -74,7 +75,7 @@ def test_a_row_shows_its_sessions_card_under_the_pointer(page: Page, server, rep
     sessions = page.get_by_role("navigation", name="Sessions")
     sessions.get_by_role("link", name=calm).hover()
     card = page.get_by_role("tooltip")
-    expect(card).to_contain_text(f"{calm} · running · 1 agent")
+    expect(card).to_contain_text(f"{calm} · running · idle <1 min · 1 agent")
     expect(card).to_contain_text(str(repo))
     expect(card).to_contain_text("default · fake")
     shot(page, "running")
@@ -84,3 +85,44 @@ def test_a_row_shows_its_sessions_card_under_the_pointer(page: Page, server, rep
     expect(card).to_contain_text(f"{old} · stopped")
     expect(card).to_contain_text("Stopped: open it and press Resume")
     shot(page, "stopped")
+
+
+def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.emulate_media(color_scheme="light", reduced_motion="no-preference")
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions")
+    row = (
+        page.get_by_role("navigation", name="Sessions")
+        .get_by_role("region", name="Running")
+        .get_by_role("link", name=session)
+    )
+    about = row.locator(".session-about")
+    expect(row.get_by_role("img", name="idle")).to_be_visible()
+    expect(about).to_have_text("1 agent · <1 min")
+
+    runtime.write_as_human(session, "pause")  # the fake supervisor's turn goes on till released
+    agent_helpers.wait_for(
+        lambda: agent_helpers.paused(session, "supervisor", 1), "paused", session
+    )
+    working = row.get_by_role("img", name="working")
+    expect(working).to_be_visible()
+    expect(about).to_have_text("1 of 1 agent · <1 min")
+    pulse = "e => getComputedStyle(e).animationName"
+    assert working.evaluate(pulse) == "activity-pulse"
+    page.emulate_media(reduced_motion="reduce")
+    assert working.evaluate(pulse) == "none"
+    shot(page, "working")
+
+    agent_helpers.release(session, "supervisor", 1)
+    expect(row.get_by_role("img", name="idle")).to_be_visible()
+    expect(about).to_have_text("1 agent · <1 min")
+    shot(page, "idle")
+
+    page.get_by_role("button", name="Collapse sessions").click()
+    icon = page.locator("nav.sessions-strip").get_by_role("link", name=f"{session}, idle")
+    expect(icon.locator(".dot")).to_be_visible()
+    shot(page, "strip")

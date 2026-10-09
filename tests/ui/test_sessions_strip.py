@@ -41,7 +41,7 @@ def test_the_list_collapses_to_a_strip_that_gives_the_session_room_and_opens_ses
     icons = strip.get_by_role("link")
     expect(icons).to_have_count(2)
     expect(icons.first).to_have_accessible_name(f"{asking}, needs you")  # the one waiting first
-    expect(icons.nth(1)).to_have_accessible_name(calm)
+    expect(icons.nth(1)).to_have_accessible_name(f"{calm}, idle")
     expect(icons.nth(1)).to_have_attribute("aria-current", "page")
     shot(page, "strip")
 

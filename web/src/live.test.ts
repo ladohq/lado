@@ -20,6 +20,8 @@ const session = (name: string, status: SessionInfo["status"] = "running"): Sessi
   without: [],
   ran_seconds: 0,
   running_since: null,
+  busy: 0,
+  activity_since: null,
   stopped_at: null,
 });
 

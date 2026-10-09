@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.31.1 (unreleased)
+
+- UI: a session's card (the tooltip of its row and of its icon in the collapsed list) no
+  longer has a dot before the name, whose colour differed from the row's own dot.
+
 ## 0.31.0 (2026-10-09)
 
 - An agent's role prompt and its first input (a worker's task, a resumed supervisor's

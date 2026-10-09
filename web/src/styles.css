@@ -601,7 +601,7 @@ h3 {
 }
 
 /* A group's tone (GroupHead.tsx): its colour and ground, for its heading, its rows' stripe
-   and its sessions' cards. Tokens only. */
+   and its rows' stripe. Tokens only. */
 .tone-human {
   --g: var(--human);
   --g-ground: var(--human-ground);
@@ -1424,16 +1424,6 @@ h3 {
 /* What waits for the human, in a session's tooltip. */
 .tooltip-line.waits {
   color: var(--human);
-}
-
-/* A session's card: a dot of its group's colour before its name. */
-.tip-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--g);
 }
 
 .terminals.expanded {

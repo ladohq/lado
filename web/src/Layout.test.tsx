@@ -316,6 +316,13 @@ test("the rows look alike in every group: no dim, no mark of waiting; the status
   );
 });
 
+// The card's first line starts with the session's name in bold, no dot or other mark before it.
+const nameFirst = (shown: HTMLElement) => {
+  const line = shown.querySelector(".tooltip-line")!;
+  const first = line.firstChild!;
+  return first.nodeName === "B" ? first.textContent : `starts with ${first.nodeName}`;
+};
+
 test("a row's card on focus and hover: name · status · agents, what needs the human, the folder, kits · provider · mode", async () => {
   sessions = [
     session("gated", {
@@ -335,23 +342,23 @@ test("a row's card on focus and hover: name · status · agents, what needs the 
     const shown = screen.getByRole("tooltip");
     expect(row.getAttribute("aria-describedby")).toBe(shown.id);
     const lines = [...shown.querySelectorAll(".tooltip-line")].map((line) => line.textContent);
-    const tone = shown.querySelector(".session-tip")!.className;
+    const lead = nameFirst(shown);
     fireEvent.blur(row);
     expect(screen.queryByRole("tooltip")).toBeNull();
-    return { lines, tone };
+    return { lines, lead };
   };
   expect(await card(/^gated/)).toEqual({
     lines: ["gated · running · 3 agents", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude · mode auto"],
-    tone: "session-tip tone-human",
+    lead: "gated",
   });
   expect(await card(/^calm/)).toEqual({
     lines: ["calm · running · idle · 1 agent", "/src/calm", "default · kilo"],
-    tone: "session-tip tone-done",
+    lead: "calm",
   });
   const stopped = await card(/^old/);
   expect(stopped).toEqual({
     lines: ["old · stopped · 0 agents", "/src/old", "default · claude", "Stopped: open it and press Resume"],
-    tone: "session-tip tone-neutral",
+    lead: "old",
   });
   // The pointer resting on a row shows it too.
   vi.useFakeTimers();
@@ -473,6 +480,9 @@ test("a Running row's card and its icon in the strip say whether it works", asyn
   expect(icon("calm").querySelector(".dot")!.className).toContain("activity-idle");
   expect(icon("gated").getAttribute("aria-label")).toBe("gated, needs you");
   expect(icon("gated").querySelector(".dot")).toBeNull();
+  fireEvent.focus(icon("busy"));
+  expect(nameFirst(screen.getByRole("tooltip"))).toBe("busy");
+  expect(screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent).toBe("busy · running · 2 of 3 agents working");
 });
 
 test("the list's width changes with its edge and is remembered", async () => {

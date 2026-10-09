@@ -412,8 +412,8 @@ Sessions for now. The UI's texts are in English.
   run, and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
   Open in new tab; the session's own actions are in its head (Launch and session control,
   below). On hover or keyboard focus a row shows the session's card (`SessionTip` in a
-  `Tooltip`, the one of the strip's icons, below): a dot of its group's colour, name ·
-  status · agents, `Needs you: <the row's line>` in the human's colour, the folder, kits ·
+  `Tooltip`, the one of the strip's icons, below): name · status · agents (no dot before
+  the name: the row has its own; decided 2026-10-09), `Needs you: <the row's line>` in the human's colour, the folder, kits ·
   provider · `mode <permission mode>` when it has one, and for a stopped session `Stopped:
   open it and press Resume`; all from `SessionInfo`, no CLI commands. A Running row (a
   session whose status is `running` and in which nothing waits) also says whether its

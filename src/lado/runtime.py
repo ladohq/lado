@@ -65,7 +65,9 @@ from your current HEAD. Give it the goal, the relevant files and how to check th
 - ask_human: ask the human a question, with choices and, by default, a free answer. It \
 does not wait: the answer or the dismissal comes as a message from human.
 - read_messages: read the full text of the messages you got.
-- list_agents: see the agents, their role, status, branch and worktree.
+- list_agents: see the agents, their role, status, branch and worktree. A status \
+`background`: the agent's turn ended while work it started (e.g. subagents) still runs; a \
+message reaches it at once; it is not done yet.
 - finish_worker: once you merged a worker's branch, end that worker; its window, worktree \
 and branch are removed. A worker of an open flow run only has its window closed: the \
 worktree and branch belong to the run.
@@ -1156,8 +1158,8 @@ def _deliver(session: str, recipient: str, message: int | None = None) -> str:
         with _to_running(session):
             raise state.NotRunning(recipient)
     status = agent.status
-    if status != state.IDLE:
-        return f"queued; {recipient} is {status} and will get it when it is idle"
+    if not state.accepts_input(status):
+        return f"queued; {recipient} is {status} and will get it when it is idle or background"
     if state.has_sent(session, recipient):
         return f"queued; {recipient} has not confirmed the message typed before"
     return "queued"
@@ -1222,7 +1224,8 @@ def _plan(
     the n-th time it was handed over. Then, by its channel (hand_over):
 
     - TYPED: no hook ran since and the agent is busy (a dialog took the text): typed again;
-      a hook ran and the agent is idle (no prompt held its line): back to the queue; after
+      a hook ran and the agent takes input (state.accepts_input: idle or background; no
+      prompt held its line): back to the queue; after
       the last attempt's delay: failed.
     - HOOK_OUTPUT (always its first attempt): no hook ran since (the CLI did not take the
       output, or its turn goes on that long without one): typed in, once, and TYPED from
@@ -1245,16 +1248,16 @@ def _plan(
                 plan.retype = True
         # A hook ran since, yet no prompt held its line: back to the queue, delivered as
         # usual. Its attempts count on.
-        elif agent.status == state.IDLE:
+        elif state.accepts_input(agent.status):
             plan.requeue.append(message.id)
-    # A failure sets a busy or idle agent waiting: it took or confirmed nothing for so long
-    # that typing more would not help, so nothing more is typed into it. What was typed
-    # together with the failed message and is not back in the queue fails with it, though
-    # it has attempts left: the same window did not take it either.
+    # A failure sets a busy agent, or one that takes input, waiting: it took or confirmed
+    # nothing for so long that typing more would not help, so nothing more is typed into
+    # it. What was typed together with the failed message and is not back in the queue
+    # fails with it, though it has attempts left: the same window did not take it either.
     if plan.fail:
         plan.retype = False
         plan.fail = [m.id for m in sent if m.id not in plan.requeue]
-        plan.wait = agent.status in (state.BUSY, state.IDLE)
+        plan.wait = agent.status == state.BUSY or state.accepts_input(agent.status)
     return plan
 
 
@@ -1345,12 +1348,15 @@ def _tell_lead(session: str, agent: str, summary: str, body: str = "") -> None:
         post(session, state.LADO, to, _cut(summary), body)
 
 
-def turn_failed(session: str, agent: str, error: str, transient: bool = False) -> None:
+def turn_failed(
+    session: str, agent: str, error: str, transient: bool = False, background: bool = False
+) -> None:
     """The agent's turn ended on an error (a provider's TURN_END with one): record it. An
     error that passes by itself (`transient`) plans a resume, RESUME_DELAYS[n] after the
     n-th such turn in a row, which sweep carries out, and tells no one; any other error,
     or one after the last resume, goes to the supervisor, or to the human when it is the
-    supervisor's. The agent is idle then (lado.hooks)."""
+    supervisor's. The agent is idle then, or `background` when work it started still runs
+    (lado.hooks), and the line says which."""
     state.add_event(session, agent, state.TURN_ERROR, error)
     if transient and state.schedule_resume(session, agent, time.time(), RESUME_DELAYS):
         return
@@ -1359,7 +1365,12 @@ def turn_failed(session: str, agent: str, error: str, transient: bool = False) -
     if transient:
         count = len(RESUME_DELAYS)
         after = f" after {count} resume{'' if count == 1 else 's'}"
-    _tell_lead(session, agent, f"turn of {agent} ended on an error{after}: {error}; it is idle")
+    now = (
+        f"{state.BACKGROUND}: work it started still runs, and it takes messages"
+        if background
+        else state.IDLE
+    )
+    _tell_lead(session, agent, f"turn of {agent} ended on an error{after}: {error}; it is {now}")
 
 
 def agent_ended(session: str, name: str, reason: str) -> bool:

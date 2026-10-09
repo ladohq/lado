@@ -130,6 +130,18 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
     assert lines[1].index("3h05m") == lines[2].index("-")
 
 
+def test_ls_shows_an_agent_in_background_with_its_time_in_line(repo, fake_tmux, capsys):
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
+    runtime.spawn_worker("s", "task", name="w1")
+    state.set_status("s", "w1", state.BACKGROUND)
+    capsys.readouterr()
+    main(["ls"])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[2].split() == ["w1", "worker", "claude", "background", "0s", "lado/s/w1"]
+    assert lines[1].index(lines[1].split()[4]) == lines[2].index("0s")
+    assert len(lines) == 3  # no reason line, no task count
+
+
 def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsys):
     main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")

@@ -370,7 +370,7 @@ test("the task shows its first lines with Show more", async () => {
   expect(within(task as HTMLElement).getByRole("button", { name: "Show less" })).toBeTruthy();
 });
 
-test("the work is asked again on Refresh and when the agent becomes idle, never by itself", async () => {
+test("the work is asked again on Refresh and when the agent leaves busy, never by itself", async () => {
   serve({ details: { developer: WORK } });
   open("/sessions/lado/agents/developer");
   const region = await page("developer");
@@ -379,11 +379,17 @@ test("the work is asked again on Refresh and when the agent becomes idle, never 
   expect(asks()).toBe(1);
   fireEvent.click(within(region).getByRole("button", { name: "Refresh" }));
   await waitFor(() => expect(asks()).toBe(2));
-  stream().send("change", { kind: "agents", session: "lado", key: "developer", op: "update", item: { ...DEVELOPER, status: "waiting" } }, "11");
-  await act(async () => {});
-  expect(asks()).toBe(2);
-  stream().send("change", { kind: "agents", session: "lado", key: "developer", op: "update", item: { ...DEVELOPER, status: "idle" } }, "12");
+  const now = (status: AgentInfo["status"], id: string) =>
+    stream().send("change", { kind: "agents", session: "lado", key: "developer", op: "update", item: { ...DEVELOPER, status } }, id);
+  // Its turn ended, its subagents still work: the turn's commits are there.
+  now("background", "11");
   await waitFor(() => expect(asks()).toBe(3));
+  now("waiting", "12"); // not from busy
+  now("busy", "13");
+  await act(async () => {});
+  expect(asks()).toBe(3);
+  now("idle", "14");
+  await waitFor(() => expect(asks()).toBe(4));
 });
 
 test("work that git cannot tell is shown as the server says; the supervisor has no work at all", async () => {

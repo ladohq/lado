@@ -144,8 +144,9 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         `summary` is one line (at most 200 characters) and is all the recipient sees at
         first; put the details in `body`, which it reads with read_messages, and attach
         `artifacts` (names as in write_artifact; each as it is now). It is delivered right
-        away if the agent is idle, otherwise as soon as it is idle (when its current turn
-        ends, or once it has started).
+        away if the agent is idle or background (its turn ended while work it started still
+        runs), otherwise as soon as it is (when its current turn ends, or once it has
+        started).
         """
         with _reasons():
             return runtime.send_message(session, agent, to, summary, body, artifacts)

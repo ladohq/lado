@@ -396,6 +396,8 @@ def test_the_toml_writer_refuses_what_it_cannot_write():
         ("SessionStart", {"source": "resume"}, Event(providers.SESSION_START)),
         ("UserPromptSubmit", {"prompt": "hi"}, Event(providers.PROMPT_SUBMIT, "hi")),
         ("Stop", {"stop_hook_active": False}, Event(providers.TURN_END)),
+        # Codex says nothing of work still running: never `background`.
+        ("Stop", {"background_tasks": [{"status": "running"}]}, Event(providers.TURN_END)),
         ("Stop", {"stop_hook_active": True}, Event(providers.TURN_END, continued=True)),
         # Esc, or a refused approval: the turn ends, and Codex ignores the hook's output.
         ("Interrupt", {}, Event(providers.TURN_END, output_ignored=True)),

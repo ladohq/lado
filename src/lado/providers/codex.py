@@ -51,6 +51,11 @@ TESTED_VERSION = "0.162"
 # typed in after it (output_ignored). A turn that ends on a model or API error runs no hook
 # at all (BACKLOG.md): the agent stays busy.
 #
+# No turn's end is Event.background: Stop's input (session, turn, transcript, cwd, model,
+# permission mode, stop_hook_active, last_assistant_message) says nothing of work still
+# running, though Codex can move a shell command to a background terminal; its own
+# subagents are off (BACKLOG.md).
+#
 # PermissionRequest runs just before an approval dialog (a shell command that asks to leave
 # the sandbox, an MCP tool call); its tool call's PostToolUse is the answer. It has no
 # tool_use_id: the key is the tool and its input, which PostToolUse gets the same. A

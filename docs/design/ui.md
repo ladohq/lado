@@ -433,13 +433,18 @@ Sessions for now. The UI's texts are in English.
   `activity_since`. Its card's first line says `name · running · 2 of 3 agents working` or
   `name · running · idle 12 min · 1 agent`, and its icon in the strip has the same dot,
   small, in its corner, with `working` or `idle` in its accessible name. The rule is the
-  core's (`state.session_activity`): the agents in `busy` or `starting` work; since the
+  core's (`state.session_activity`): the agents in `busy`, `starting` or `background` (its
+  turn ended, work it started still runs; the human, 2026-10-09, feature/background-status)
+  work; since the
   earliest time one of them got its status, or with none working the latest time any agent
   got its own (their latest `status` or `spawned` event, as `lado ls` says). Its known
   limits: a worker that takes turns with the supervisor may make the time start again; a
   Claude agent the human interrupted with Esc stays `busy` until the human's next prompt
   (BACKLOG.md), so its session shows working; an agent's planned resume after a temporary
-  API error shows idle until it fires. The **session**
+  API error shows idle until it fires; a background task Claude Code still lists after it
+  ended (killed in `/tasks`) keeps its agent `background`, and the session working, until
+  the agent's next turn's end, which any message to it brings (no timer: AGENTS.md, How
+  agents talk). The **session**
   in the middle: its head is the top bar's line (task feature/session-head, 2026-10-05; in
   the top bar since feature/session-head-topbar, 2026-10-08), then the
   tabs **Activity | Agents | Flows |
@@ -885,8 +890,14 @@ Built in the layout task (2026-10-03, schema 14):
   session's agents may keep their last statuses; feature/session-activity); `AgentInfo`
   has `run` and `task` (the first line of its task).
 - **Activity**: the team above the feed, a chip per agent, the supervisor first: a status
-  dot that differs in colour and shape (busy a full circle, idle a ring, waiting an orange
-  diamond, starting a dashed ring, stopped a grey square), its name and role, a tooltip;
+  dot that differs in colour and shape (busy a full `--done` circle; background, its turn
+  ended while work it started still runs, a `--done` circle filled on its left half with a
+  1.5 px `--done` border; both pulse as a working session's dot, by its one keyframes rule
+  `activity-pulse`, none under `prefers-reduced-motion: reduce`; idle a `--muted` ring;
+  waiting an orange diamond, starting a dashed ring, stopped a grey square; decided
+  2026-10-09 in feature/background-status, mockup artifact
+  `feature/background-status/mockup-dot.html`, version 3; no count of background tasks
+  anywhere), its name and role, a tooltip;
   the chip of the terminal the panel shows is marked. The agents are grouped (decided
   2026-10-07, feature/activity-team), from `AgentInfo.run` only: the supervisor and its
   own workers (no run) come first, as the server lists them; then each run that has an
@@ -1205,7 +1216,9 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   gets a one-line copy from LADO of what the human writes to another agent, How agents
   talk in AGENTS.md) and **Finish…** (not for the supervisor); why it waits, or why it
   stopped ("Stopped: <reason>", its way out is Finish…); Branch,
-  Work (asked when the page opens, when the agent becomes idle and with Refresh; "as of"
+  Work (asked when the page opens, when the agent leaves busy, to any status, the moment a
+  turn's commits exist, and with Refresh; no comparison with `idle` alone, which would miss
+  `background`, `web/src/status.test.ts`; feature/background-status; "as of"
   its time; no polling), Worktree, Task (first lines, Show more); its latest 10 messages
   from and to it, only in its lifetime (a name is used again: one request,
   `agent=<name>&since=<spawned_at>&limit=10`; the server and the feed's rule filter, the

@@ -99,6 +99,7 @@ class FakeProvider(base.Provider):
             transient=error.split(":")[0] in TRANSIENT,
             output_ignored=data.get("output_ignored", False),
             continued=data.get("continued", False),
+            background=data.get("background", False),
         )
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:

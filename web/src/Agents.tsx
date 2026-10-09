@@ -137,8 +137,8 @@ function liveEntry(session: string, agent: AgentInfo, runs: RunInfo[]): Entry {
 
 type Lists = { runs: RunInfo[] };
 
-// Where the work stands in git: asked when the page opens, again when the agent becomes idle
-// (it may have committed) and on Refresh; no polling. The last answer stays while a new one
+// Where the work stands in git: asked when the page opens, again when the agent leaves busy
+// (its turn ended, to whatever status: it may have committed) and on Refresh; no polling. The last answer stays while a new one
 // is asked.
 function useWork(session: string, agent: AgentInfo) {
   const [details, setDetails] = useState<AgentDetails | null>(null);
@@ -166,7 +166,7 @@ function useWork(session: string, agent: AgentInfo) {
   };
   const before = useRef(agent.status);
   useEffect(() => {
-    if (before.current !== agent.status && agent.status === "idle") load();
+    if (before.current === "busy" && agent.status !== "busy") load();
     before.current = agent.status;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent.status]);

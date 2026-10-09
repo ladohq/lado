@@ -394,7 +394,7 @@ class Forgotten(BaseModel):
     worktrees: list[Worktree]
 
 
-AgentStatus = Literal["starting", "busy", "idle", "waiting", "stopped"]
+AgentStatus = Literal["starting", "busy", "idle", "background", "waiting", "stopped"]
 
 
 class AgentInfo(BaseModel):

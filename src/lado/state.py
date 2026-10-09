@@ -450,8 +450,20 @@ MIGRATIONS = {
 STARTING = "starting"
 BUSY = "busy"
 IDLE = "idle"
+# Its turn ended, but work it started still runs (Event.background): it takes input as idle.
+BACKGROUND = "background"
 WAITING = "waiting"  # waiting for the human, e.g. a permission prompt
 STOPPED = "stopped"
+# The statuses that take input: a queue is handed over, a planned resume holds and is told,
+# and a message typed in that no prompt held goes back to the queue only in these. The one
+# way to ask, in Python (accepts_input) and in SQL (ACCEPTS_INPUT_SQL, on `status`).
+ACCEPTS_INPUT = (IDLE, BACKGROUND)
+ACCEPTS_INPUT_SQL = f"status IN ({', '.join(repr(s) for s in ACCEPTS_INPUT)})"
+
+
+def accepts_input(status: str) -> bool:
+    return status in ACCEPTS_INPUT
+
 
 LADO = "lado"  # the sender of LADO's own messages and the actor of its own events
 HUMAN = "human"  # the human as a participant of messages: no agent, no window
@@ -1137,13 +1149,13 @@ def set_status(session: str, name: str, status: str) -> None:
 
 def _set_status(db: sqlite3.Connection, session: str, name: str, status: str) -> None:
     # An agent that waits for nothing in particular has no key; one that stops waiting none.
-    # A planned resume holds only while the agent is idle: busy, it goes on anyway; waiting
-    # or starting, the human acts on it already (schedule_resume).
+    # A planned resume holds only while the agent takes input: busy, it goes on anyway;
+    # waiting or starting, the human acts on it already (schedule_resume).
     cur = db.execute(
         "UPDATE agents SET status = ?, waiting_for = NULL,"
-        " resume_at = CASE WHEN ? = ? THEN resume_at END"
+        f" resume_at = CASE WHEN {int(accepts_input(status))} THEN resume_at END"
         " WHERE session = ? AND name = ? AND status != ?",
-        (status, status, IDLE, session, name, status),
+        (status, session, name, status),
     )
     if cur.rowcount:
         _add_event(db, session, name, STATUS, status)
@@ -1192,18 +1204,36 @@ def block_reasons(session: str) -> dict[str, str]:
 
 def resume(session: str, name: str, key: str) -> None:
     """The human answered request `key`: an agent waiting for it, or for no request in
-    particular, works again. Any other agent stays as it is, so a late answer cannot undo
-    an idle, starting or stopped agent, nor an answer to another request end its wait."""
+    particular, works again: busy, or background again when it waited from background
+    (_waited_from). Any other agent stays as it is, so a late answer cannot undo an idle,
+    starting or stopped agent, nor an answer to another request end its wait."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        status = BACKGROUND if _waited_from(db, session, name) == BACKGROUND else BUSY
         cur = db.execute(
             "UPDATE agents SET status = ?, waiting_for = NULL WHERE session = ? AND name = ?"
             " AND status = ? AND (waiting_for IS NULL OR waiting_for = ?)",
-            (BUSY, session, name, WAITING, key),
+            (status, session, name, WAITING, key),
         )
         if cur.rowcount:
-            _add_event(db, session, name, STATUS, BUSY)
+            _add_event(db, session, name, STATUS, status)
         db.execute("COMMIT")
+
+
+def _waited_from(db: sqlite3.Connection, session: str, name: str) -> str | None:
+    """The status the agent had before its latest status (its wait, for a waiting agent),
+    read from its status events; None when it had none in this launch: a "spawned" event
+    after it means an earlier launch of the name."""
+    row = db.execute(
+        "SELECT p.detail FROM events p WHERE p.session = ? AND p.agent = ? AND p.kind = ?"
+        " AND p.id < (SELECT MAX(id) FROM events WHERE session = p.session"
+        " AND agent = p.agent AND kind = p.kind)"
+        " AND NOT EXISTS (SELECT 1 FROM events s WHERE s.session = p.session"
+        " AND s.agent = p.agent AND s.kind = ? AND s.id > p.id)"
+        " ORDER BY p.id DESC LIMIT 1",
+        (session, name, STATUS, SPAWNED),
+    ).fetchone()
+    return row["detail"] if row else None
 
 
 def schedule_resume(session: str, name: str, now: float, delays: tuple[float, ...]) -> int | None:
@@ -1247,16 +1277,16 @@ def _reset_resumes(db: sqlite3.Connection, session: str, name: str) -> None:
 def take_resume(
     session: str, name: str, now: float, summary: Callable[[int, str], str]
 ) -> int | None:
-    """If the agent is idle and its planned resume is due, queue LADO's message that tells
+    """If the agent takes input and its planned resume is due, queue LADO's message that tells
     it to go on, `summary(resume number, the error its turn ended on)`, and drop the plan,
     in one transaction: a resume is told once, and never lost between the two. Returns the
     message's id, or None for nothing due."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
-            "SELECT resumes FROM agents WHERE session = ? AND name = ? AND status = ?"
+            f"SELECT resumes FROM agents WHERE session = ? AND name = ? AND {ACCEPTS_INPUT_SQL}"
             " AND resume_at <= ?",
-            (session, name, IDLE, now),
+            (session, name, now),
         ).fetchone()
         if row is None:
             db.execute("COMMIT")
@@ -1666,14 +1696,15 @@ def waiting_for_human(session: str) -> tuple[int, int, int]:
 
 
 def session_activity(session: str) -> tuple[int, datetime.datetime | None]:
-    """Whether something moves in the session: its agents in `busy` or `starting`, and
-    since when (UTC, as status_since says): with some, the earliest time one of them got its
-    status; with none, the latest time any agent got its own. None with no such event."""
-    moving = (BUSY, STARTING)
+    """Whether something moves in the session: its agents in `busy`, `starting` or
+    `background`, and since when (UTC, as status_since says): with some, the earliest time
+    one of them got its status; with none, the latest time any agent got its own. None
+    with no such event."""
+    moving = (BUSY, STARTING, BACKGROUND)
     with connect() as db:
         busy, earliest, latest = db.execute(
-            "SELECT COALESCE(SUM(a.status IN (?, ?)), 0),"
-            " MIN(CASE WHEN a.status IN (?, ?) THEN e.created_at END), MAX(e.created_at)"
+            "SELECT COALESCE(SUM(a.status IN (?, ?, ?)), 0),"
+            " MIN(CASE WHEN a.status IN (?, ?, ?) THEN e.created_at END), MAX(e.created_at)"
             f" FROM agents a LEFT JOIN ({STATUS_EVENTS}) e"
             " ON e.session = a.session AND e.agent = a.name WHERE a.session = ?",
             (*moving, *moving, *status_events_args(session), session),
@@ -2078,9 +2109,10 @@ def take_pending(
 ) -> list[Message]:
     """Move all pending messages for `recipient` to `mark`, by `channel`, and return them,
     oldest first; when there are any and `status` is given, set the recipient's status too.
-    `idle_only`: take none unless the recipient is idle and no message handed over to it is
-    unconfirmed. Every hand-over to an agent takes them so (lado.runtime.hand_over): an
-    agent never has more than one batch of sent messages at a time.
+    `idle_only`: take none unless the recipient takes input (ACCEPTS_INPUT: idle or
+    background) and no message handed over to it is unconfirmed. Every hand-over to an
+    agent takes them so (lado.runtime.hand_over): an agent never has more than one batch of
+    sent messages at a time.
 
     Runs in one write transaction, so two concurrent callers never get the same message,
     and no one sees the messages moved without the status that goes with them.
@@ -2090,10 +2122,10 @@ def take_pending(
         if (
             idle_only
             and not db.execute(
-                "SELECT 1 FROM agents WHERE session = ? AND name = ? AND status = ?"
+                f"SELECT 1 FROM agents WHERE session = ? AND name = ? AND {ACCEPTS_INPUT_SQL}"
                 " AND NOT EXISTS (SELECT 1 FROM messages WHERE session = agents.session"
                 " AND recipient = agents.name AND state = ?)",
-                (session, recipient, IDLE, SENT),
+                (session, recipient, SENT),
             ).fetchone()
         ):
             db.execute("ROLLBACK")

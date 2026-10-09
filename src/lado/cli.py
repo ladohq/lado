@@ -399,7 +399,7 @@ def cmd_ls(args: argparse.Namespace) -> int:
         for agent in state.list_agents(sess.name):
             when = since.get(agent.name)
             took = format_duration((now - when).total_seconds()) if when else "-"
-            line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<9}"
+            line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<10}"
             print(f"{line} {took:<6}  {agent.branch or ''}".rstrip())
             if agent.name in reasons:
                 print(f"    {agent.status}: {reasons[agent.name]}")

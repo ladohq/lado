@@ -628,16 +628,40 @@ fixes and docs only: no new feature, no API or schema change.
   `TERM_PROGRAM(_VERSION)`, `TMUX` and `TMUX_PANE`, and execs the agent's CLI, found on the
   resolved `PATH`. `lado doctor` shows the source and how long the shell takes (a warning
   above 2 s).
-- An agent's status (busy / idle / waiting) comes from its hooks, never from screen scraping.
-  Only the end of its process marks it `stopped`. A CLI command that leaves the conversation
-  for another one in the same process (Claude Code's `/clear` and `/resume`) shows it as
-  `starting` until the CLI is ready again; messages to it wait in the queue meanwhile and are
-  typed in when it is `idle` again.
+- An agent's status (busy / idle / background / waiting) comes from its hooks, never from
+  screen scraping. Only the end of its process marks it `stopped`. A CLI command that leaves
+  the conversation for another one in the same process (Claude Code's `/clear` and
+  `/resume`) shows it as `starting` until the CLI is ready again; messages to it wait in the
+  queue meanwhile and are typed in when it is `idle` again.
+- `background`: the agent's turn ended while work it started still runs. A provider says so
+  on its `TURN_END` (`Event.background`), and only there `hooks._idle` sets `background`
+  instead of `idle`. It takes input exactly as `idle`: every check that decides a hand-over,
+  a planned resume, a requeue or a failure's wait asks `state.ACCEPTS_INPUT` (`(idle,
+  background)`), through `state.accepts_input` or its SQL form `state.ACCEPTS_INPUT_SQL`,
+  never `idle` alone (a guard test in `tests/test_state.py`; `web/src/status.test.ts` for
+  the UI, which reloads a worker's git state when it leaves busy). Where this section says
+  an idle agent gets its queue or its resume, a `background` one does too. `state.session_activity`
+  counts it as working, with busy and starting; it is no "needs you" and has no
+  `status_reason`. After a wait that began in `background` (its latest `status` event
+  before the wait, with no `spawned` event after it), the awaited `RESUMED` returns it to
+  `background`, else to `busy` (`state.resume`, read from the events, no column). Claude
+  Code: its `Stop` and `StopFailure` list the session's background tasks,
+  `background_tasks`; a `running` or `pending` one is background work (seen live with
+  2.1.295, `pending` only read in the binary; `providers/claude.py`). The list can be
+  stale: a task killed in `/tasks` stays `running` with no hook after it, so the agent
+  stays `background` until its next turn's end, which any message to it brings; no timer
+  ends it (it would end an honest long `make check` too). Kilo and OpenCode never set it:
+  OpenCode's task tool waits for its subagent (background subagents are its experimental
+  `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), Kilo is not checked (BACKLOG.md). Codex
+  CLI never sets it either: its `Stop` (0.162) says nothing of work still running, though
+  it can move a shell command to a background terminal, and LADO switches its subagents off
+  (BACKLOG.md).
 - A turn that ends on an error is a turn's end: the provider's `TURN_END` carries
-  `Event.error` (one short line), the agent is `idle` and gets its queue as after any turn,
-  a `turn_error` event keeps the error (`lado log`), and `runtime.turn_failed` tells the
-  supervisor in one line from `lado` (`turn of <agent> ended on an error: <error>; it is
-  idle`), or the human when it is the supervisor's turn. An error the provider says passes
+  `Event.error` (one short line), the agent is `idle` (or `background`) and gets its queue
+  as after any turn, a `turn_error` event keeps the error (`lado log`), and
+  `runtime.turn_failed` tells the supervisor in one line from `lado` (`turn of <agent>
+  ended on an error: <error>; it is idle`, or `it is background: work it started still
+  runs, and it takes messages`), or the human when it is the supervisor's turn. An error the provider says passes
   by itself (`Event.transient`) is told to no one at first: LADO resumes the agent.
   `state.schedule_resume` plans the n-th resume in a row `RESUME_DELAYS[n-1]` seconds
   later (30, 120, 480; `LADO_RESUME_DELAYS` replaces them, and their count is the number of
@@ -891,11 +915,11 @@ fixes and docs only: no new feature, no API or schema change.
   the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists
   its tools, and the session-start hook of a provider with `hold_first_turn` waits for it
   (looking every `hooks.MCP_READY_POLL`, 0.02 s, at most `hooks.MCP_READY_TIMEOUT`; giving
-  up is written to `hooks.log`). Verified with
-  Claude Code 2.1.289 (`providers/claude.py`: `TESTED_VERSION`; `lado doctor` warns about
-  others); the live test checks w1's transcript. Codex CLI needs no hold: its first turn
-  waits for a `required` MCP server, which `lado` is in its config, and one that fails to
-  start makes Codex exit (0.162, checked by hand; the window check ends the agent).
+  up is written to `hooks.log`). Verified by hand with Claude Code 2.1.289; the tested
+  version is `providers/claude.py`'s `TESTED_VERSION` (`lado doctor` warns about others);
+  the live test checks w1's transcript. Codex CLI needs no hold: its first turn waits for a
+  `required` MCP server, which `lado` is in its config, and one that fails to start makes
+  Codex exit (0.162, checked by hand; the window check ends the agent).
 
 ## Try it locally
 

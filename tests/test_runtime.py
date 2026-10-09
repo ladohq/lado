@@ -575,6 +575,13 @@ def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
     supervisor = _prompt(fake_tmux[0][-1])
     assert "Do not relay worker or reviewer reports to the human" in supervisor
     assert "lado log" in supervisor
+    # Only the lead reads other agents' statuses.
+    background = (
+        "`background`: the agent's turn ended while work it started (e.g. subagents) still "
+        "runs; a message reaches it at once; it is not done yet."
+    )
+    assert background in " ".join(supervisor.split())
+    assert background not in " ".join(_prompt(fake_tmux[-1][-1]).split())
 
 
 def test_agents_are_told_to_keep_results_as_artifacts_and_attach_them(repo, fake_tmux):
@@ -703,6 +710,45 @@ def test_an_agent_being_typed_into_never_looks_idle(repo, fake_tmux, monkeypatch
     monkeypatch.setattr(state, "take_pending", spy)
     assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
     assert status_once_taken == [state.BUSY]
+
+
+BACKGROUND_TASKS = {"background_tasks": [{"id": "a1", "type": "subagent", "status": "running"}]}
+
+
+def test_a_turn_end_with_background_work_sets_background_and_hands_the_queue_over(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("SessionStart", "w1")  # its task: busy
+    _hook("UserPromptSubmit", "w1", {"prompt": "[from lado] your task"})
+    assert _hook("Stop", "w1", BACKGROUND_TASKS) is None  # nothing queued
+    assert state.get_agent("s", "w1").status == state.BACKGROUND
+    # A message reaches it at once, as an idle agent.
+    assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
+    assert _typed(fake_tmux, "w1") == ["[from supervisor] hi"]
+    assert state.get_agent("s", "w1").status == state.BUSY
+    _hook("UserPromptSubmit", "w1", {"prompt": "[from supervisor] hi"})
+    # At a turn's end the queue goes in the hook's output, as for an idle agent.
+    runtime.send_message("s", "supervisor", "w1", "more")
+    out = _hook("Stop", "w1", BACKGROUND_TASKS)
+    assert out == {"decision": "block", "reason": "[from supervisor] more"}
+    assert state.get_agent("s", "w1").status == state.BUSY
+    # A turn's end with no background work left: idle.
+    _hook("Stop", "w1", CONTINUED)
+    assert state.get_agent("s", "w1").status == state.IDLE
+
+
+def test_a_message_to_an_agent_in_background_is_queued_like_one_to_an_idle_agent(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.BACKGROUND)
+    state.queue_message("s", "supervisor", "w1", "one")
+    runtime.hand_over("s", "w1")
+    state.set_status("s", "w1", state.BACKGROUND)  # its turn ended, the batch unconfirmed
+    assert runtime.send_message("s", "supervisor", "w1", "two") == (
+        "queued; w1 has not confirmed the message typed before"
+    )
+    state.set_status("s", "w1", state.BUSY)
+    assert runtime.send_message("s", "supervisor", "w1", "three") == (
+        "queued; w1 is busy and will get it when it is idle or background"
+    )
 
 
 def test_hand_over_by_hook_output_returns_the_lines_and_types_nothing(repo, fake_tmux):
@@ -1217,6 +1263,7 @@ def test_finish_drops_the_failed_messages_of_the_worker(repo, fake_tmux):
     [
         (state.BUSY, True),
         (state.IDLE, True),
+        (state.BACKGROUND, True),
         (state.WAITING, False),
         (state.STARTING, False),
     ],
@@ -1228,6 +1275,21 @@ def test_a_failure_plans_a_busy_or_idle_agent_waiting(status, wait):
     assert (plan.fail, plan.retype, plan.wait) == ([7], False, wait)
     young = dataclasses.replace(last, attempts=1, sent_at=100.0)
     assert runtime._plan(agent, [young], 100.0, DELAYS) == state.Plan()
+
+
+@pytest.mark.parametrize(
+    ("status", "requeued"),
+    [(state.IDLE, True), (state.BACKGROUND, True), (state.BUSY, False), (state.WAITING, False)],
+)
+def test_a_message_no_prompt_held_goes_back_to_the_queue_of_an_agent_that_takes_input(
+    status, requeued
+):
+    agent = state.Agent(
+        "s", "w1", "worker", "/r", None, None, status, provider="claude", seen_at=90.0
+    )
+    typed = state.Message(7, "supervisor", "hi", "", "w1", state.SENT, attempts=1, sent_at=80.0)
+    plan = runtime._plan(agent, [typed], 100.0, DELAYS)
+    assert plan.requeue == ([7] if requeued else [])
 
 
 def _retry_until_failed(sent, start=0):
@@ -1513,7 +1575,7 @@ def test_session_start_types_in_what_was_queued_while_the_agent_started(repo, fa
     _session_with_worker(repo)
     # Not at its turn's end: as soon as it is idle.
     assert runtime.send_message("s", "w1", "supervisor", "report") == (
-        "queued; supervisor is starting and will get it when it is idle"
+        "queued; supervisor is starting and will get it when it is idle or background"
     )
     _hook("SessionStart", "supervisor", {"source": "startup"})
     assert _typed(fake_tmux) == ["[from w1] report"]

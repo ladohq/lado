@@ -63,6 +63,18 @@ def test_a_failed_turn_of_the_supervisor_is_told_to_the_human(repo, fake_tmux):
     assert _from_lado("supervisor") == []
 
 
+def test_a_failed_turn_whose_background_work_runs_on_says_so(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("SessionStart", "w1")
+    tasks = [{"id": "a1", "type": "subagent", "status": "running"}]
+    _hook("StopFailure", "w1", {"error": "rate_limit", "background_tasks": tasks})
+    assert state.get_agent("s", "w1").status == state.BACKGROUND
+    assert _from_lado("supervisor") == [
+        "turn of w1 ended on an error: rate_limit; it is background: work it started "
+        "still runs, and it takes messages"
+    ]
+
+
 def test_a_turn_end_without_an_error_tells_no_one(repo, fake_tmux):
     _session_with_worker(repo)
     _hook("SessionStart", "w1")

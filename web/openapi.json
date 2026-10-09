@@ -2346,6 +2346,7 @@
               "starting",
               "busy",
               "idle",
+              "background",
               "waiting",
               "stopped"
             ],

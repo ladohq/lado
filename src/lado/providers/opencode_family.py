@@ -44,6 +44,10 @@ EVENTS = {
 # No error is Event.transient: the plugin gets only the error's class name and message (an
 # overloaded API and a refused key are both an APIError), and which ones reach
 # "session.error" is not checked (BACKLOG.md), so LADO resumes none of their agents.
+# No turn's end is Event.background: OpenCode 1.18.35's task tool waits for its subagent
+# (background subagents need its experimental OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS),
+# and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
+# not checked. So their agents are idle at a turn's end, never `background` (BACKLOG.md).
 ABORTED = "MessageAbortedError"
 
 

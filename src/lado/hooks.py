@@ -87,7 +87,7 @@ def handle(
         # Before the agent is idle: a resume planned for it holds while it stays idle, and
         # is dropped when the queue makes it busy now (state.schedule_resume).
         if event.error:
-            runtime.turn_failed(session, agent, event.error, event.transient)
+            runtime.turn_failed(session, agent, event.error, event.transient, event.background)
         else:
             state.reset_resumes(session, agent)
         return _idle(provider, session, agent, event)
@@ -108,8 +108,9 @@ def _idle(
     agent: str,
     turn_end: providers.Event | None = None,
 ) -> str | None:
-    """The agent is idle: hand over its queue. Every switch to idle goes through here, in
-    this order:
+    """The agent is idle, or `background` at a turn's end with work it started still running
+    (Event.background): either takes input, so hand over its queue. Every switch to them
+    goes through here, in this order:
 
     1. At a turn's end (`turn_end`) that went on from the previous turn-end hook's output
        (Event.continued), handle has confirmed the messages in that output already; at
@@ -124,7 +125,8 @@ def _idle(
 
     If the hook fails after 3, or the CLI does not take its output, the messages stay sent
     and sweep deals with them (runtime._plan)."""
-    state.set_status(session, agent, state.IDLE)
+    background = turn_end is not None and turn_end.background
+    state.set_status(session, agent, state.BACKGROUND if background else state.IDLE)
     by_output = (
         turn_end is not None
         and not turn_end.output_ignored

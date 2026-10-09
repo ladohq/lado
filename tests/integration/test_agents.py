@@ -436,6 +436,38 @@ def test_only_the_answer_to_its_request_ends_an_agent_s_wait(repo):
     assert status("supervisor") == state.IDLE
 
 
+@pytest.mark.parametrize("provider", ["fake", "fake-paste"])
+def test_an_agent_whose_work_runs_on_after_its_turn_is_background_and_takes_messages(
+    repo, provider
+):
+    start(repo, provider)
+    assert runtime.send_message(SESSION, "human", "supervisor", "background") == "sent"
+    wait_status("supervisor", state.BACKGROUND)
+    assert lado_cli("ls").stdout.splitlines()[1].split()[3] == state.BACKGROUND
+    # Typed in at once and confirmed, as for an idle agent.
+    assert runtime.send_message(SESSION, "human", "supervisor", "sleep 0") == "sent"
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
+    # That turn ends with no work left running: idle.
+    wait_status("supervisor", state.IDLE)
+    assert inputs("supervisor") == ["[from human] background", "[from human] sleep 0"]
+    statuses = [
+        e.detail
+        for e in state.list_events(SESSION)
+        if e.agent == "supervisor" and e.kind == state.STATUS
+    ]
+    assert statuses[-4:] == [state.BUSY, state.BACKGROUND, state.BUSY, state.IDLE]
+
+
+def test_an_answer_returns_an_agent_that_waited_from_background_to_background(repo):
+    start(repo)
+    runtime.send_message(SESSION, "human", "supervisor", "background")
+    wait_status("supervisor", state.BACKGROUND)
+    run_hook("supervisor", "waiting", "k1")  # e.g. a background subagent's dialog
+    assert status("supervisor") == state.WAITING
+    run_hook("supervisor", "resumed", "k1")
+    assert status("supervisor") == state.BACKGROUND
+
+
 def test_an_agent_waiting_after_failed_messages_gets_them_when_its_turn_ends(
     repo, production_retry_delays
 ):

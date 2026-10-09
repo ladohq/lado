@@ -66,6 +66,10 @@ class Event:
     # CLI took the messages in that output (lado.hooks). Set by a provider whose CLI runs no
     # prompt-submit hook for that output and says so at the turn's end.
     continued: bool = False
+    # For TURN_END: work the agent started still runs after this turn ended (e.g. Claude
+    # Code's background subagents and shells), so it is `background`, not idle (lado.hooks).
+    # A provider that cannot tell leaves it False.
+    background: bool = False
 
 
 ERROR_LIMIT = 160  # characters of an Event.error

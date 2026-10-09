@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.33.0 (unreleased)
+## 0.33.0 (2026-10-10)
 
 - On macOS, agents started over ssh (also by `lado update`) run in the graphical session,
   so Claude Code reads its login from the Keychain; LADO warns when it cannot. `lado doctor`

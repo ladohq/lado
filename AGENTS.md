@@ -97,6 +97,17 @@ Python 3.10 and 3.13, the Node tests, and in one job on Python 3.13 `make dist` 
 built and in both the sdist and the wheel) and the UI e2e tests.
 Live tests are not in CI: run them locally.
 
+A Windows shell for debugging by hand, not CI: the `Windows shell` workflow
+(`.github/workflows/windows-shell.yml`) runs only when started, `gh workflow run
+windows-shell.yml --ref <branch> -f runner=windows-latest -f wsl=true` (`-f minutes=N`, 120 by
+default, at most 360, setup included). With `wsl` it sets up WSL2 Ubuntu 24.04 with tmux, git,
+curl, build-essential and less, and the repo cloned at that ref in `~/lado`. The job's log
+prints an `ssh ...tmate.io` line: connect within 10 minutes (action-tmate's timeout); only the
+GitHub user who started it can, with an SSH key on their GitHub account. The session lands in the runner's MSYS2
+bash (the Windows checkout); `wsl` enters Ubuntu. `touch /continue` (or `touch continue` where
+the session starts) ends it early; everything is wiped when the job ends. `windows-11-arm`
+runs only with `-f wsl=false`: setup-wsl's Ubuntu image is amd64 only.
+
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
 tag against the package version, builds with `make dist` and publishes to PyPI.
 CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; the release

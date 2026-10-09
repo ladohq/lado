@@ -1,0 +1,96 @@
+# A Windows runner, with WSL2 Ubuntu by default, and an SSH shell into it (tmate) for
+# debugging LADO by hand. Not CI: it runs only when started (AGENTS.md, Commands).
+name: Windows shell
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: GitHub-hosted Windows runner
+        type: choice
+        options: [windows-latest, windows-11-arm]
+        default: windows-latest
+      wsl:
+        description: Set up WSL2 with Ubuntu 24.04
+        type: boolean
+        default: true
+      minutes:
+        description: Job length in minutes, setup included (at most 360)
+        type: number
+        default: 120
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.minutes }}
+    steps:
+      - name: Check the length
+        env:
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          if ([int]$env:MINUTES -lt 1 -or [int]$env:MINUTES -gt 360) {
+            Write-Output "::error::minutes must be 1 to 360 (GitHub's cap), not $env:MINUTES"
+            exit 1
+          }
+
+      # setup-wsl's Ubuntu 24.04 is an amd64 image (v7.0.0), which WSL2 on ARM cannot run.
+      - name: No WSL on ARM
+        if: inputs.runner == 'windows-11-arm' && inputs.wsl
+        run: |
+          Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false"
+          exit 1
+
+      # action-tmate runs tmate in MSYS2's bash at C:\msys64.
+      - name: Check MSYS2
+        run: |
+          if (-not (Test-Path C:\msys64\usr\bin\bash.exe)) {
+            Write-Output "::error::no MSYS2 at C:\msys64 on $env:ImageOS ($env:RUNNER_ARCH): action-tmate needs it"
+            exit 1
+          }
+
+      - uses: actions/checkout@v7
+
+      - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
+        if: inputs.wsl
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+          additional-packages: tmux git curl build-essential less
+
+      # Cloned inside Ubuntu, not the Windows checkout under /mnt/d (CRLF, slow).
+      - name: Clone the repo in Ubuntu
+        if: inputs.wsl
+        shell: wsl-bash {0}
+        env:
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          WSLENV: REPO:REF:SHA
+        run: |
+          set -eu
+          git clone --branch "$REF" "https://github.com/$REPO" ~/lado
+          git -C ~/lado reset --hard "$SHA"
+
+      - name: Check WSL
+        if: inputs.wsl
+        env:
+          WSL_UTF8: 1
+        run: |
+          wsl --version
+          $list = wsl -l -v | Out-String
+          Write-Output $list
+          if ($list -notmatch '(?m)Ubuntu-24\.04\s+\S+\s+2\s*$') {
+            Write-Output "::error::Ubuntu-24.04 does not run on WSL2"
+            exit 1
+          }
+          wsl -d Ubuntu-24.04 -- uname -m
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          wsl -d Ubuntu-24.04 -- tmux -V
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113 # v3.24
+        with:
+          limit-access-to-actor: true

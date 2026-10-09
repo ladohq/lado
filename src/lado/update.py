@@ -19,7 +19,9 @@ reads it. Format 1, a JSON object:
 - `sessions_failed`: the sessions that did not resume, each `{name, command}`;
 - `reason`: one line, or null;
 - `database`: `kept`, `restored`, or null (not backed up, or not restored: `reason` says why);
-- `log`: the path of update.log; `tail`: its last lines, a list of strings.
+- `log`: the path of update.log; `tail`: its last lines, a list of strings. An update of
+  the UI that ended before it started (`lado update --id` refused, PyPI unreachable) is
+  `failed` with `log` null and nothing stopped: the server never went away.
 
 Format 1 only grows: a reader passes over keys it does not know, and takes a higher format
 as written by a newer LADO.
@@ -406,7 +408,11 @@ def write_result(result: Result) -> None:
     }
     path = result_path()
     written = path.with_suffix(f".{os.getpid()}.tmp")
-    written.write_text(json.dumps(fields, indent=1))
+    # The owner's only, as update.log: what the update said may name the user's folders.
+    fd = os.open(written, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # also a temporary file left before
+    with os.fdopen(fd, "w") as file:
+        file.write(json.dumps(fields, indent=1))
     written.replace(path)
 
 

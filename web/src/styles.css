@@ -425,11 +425,16 @@ h3 {
   font-size: 12px;
 }
 
+/* It drops 6px under the top bar (useBelow) and ends 8px above the window's bottom; what
+   does not fit scrolls, as the window itself does not. */
 .system-panel {
   width: 320px;
   max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 72px);
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: 13px;
 }
 
@@ -459,12 +464,14 @@ h3 {
   font-size: 13px;
 }
 
-/* "System info copied" drops under the icons, as a copy button's note does. */
+/* "System info copied" shows beside the icon, over the header's own room, never over the
+   rows under it. */
 .system-links > .row-note {
   position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  top: 50%;
+  right: calc(100% + 4px);
   z-index: 6;
+  transform: translateY(-50%);
   white-space: nowrap;
 }
 

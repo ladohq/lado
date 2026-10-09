@@ -384,3 +384,23 @@ test("the browser line and the home folder", () => {
   expect(shortHome("/home/kao")).toBe("~");
   expect(shortHome("/srv/lado")).toBe("/srv/lado");
 });
+
+test("an update that did not start ends the wait on the same server and says why", async () => {
+  update = info({ latest: "99.0.0", available: "99.0.0" });
+  serve();
+  open();
+  fireEvent.click(within(await panel()).getByRole("button", { name: "Update…" }));
+  const dialog = await screen.findByRole("dialog", { name: /Update LADO/ });
+  await within(dialog).findByText(/session/);
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: Date.now() });
+  await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Restart and update" })));
+  // The server never went away: its start is the same.
+  update = info({
+    last: result({ outcome: "failed", log: null, tail: [], database: null, reason: "the update did not start: cannot look up LADO's versions on PyPI" }),
+  });
+  await act(() => vi.advanceTimersByTimeAsync(POLL_MS));
+  expect(screen.queryByRole("status", { name: "Updating LADO" })).toBeNull();
+  expect(screen.getByRole("alert", { name: "Update result" }).textContent).toContain(
+    `The update to 99.0.0 failed: the update did not start: cannot look up LADO's versions on PyPI. LADO ${BUNDLE_VERSION} runs.`,
+  );
+});

@@ -4,6 +4,7 @@ with a fake install (its `bin/lado` a shell script) and tmux replaced by a recor
 import fcntl
 import json
 import sqlite3
+import stat
 import sys
 
 import pytest
@@ -12,6 +13,8 @@ from lado import __version__, self_update, state, update
 from lado.cli import main
 
 NEW = "99.0.0"
+TOKEN = "s3cret-t0ken"
+LOGIN_LINK = f"http://127.0.0.1:8123/?token={TOKEN}"
 BROKEN_NEW = f'$([ "$1" = "{NEW}" ] && echo "$1-broken" || echo "$1")'  # only NEW is wrong
 
 
@@ -38,6 +41,9 @@ class Install:
             "fi\n"
             f'if grep -qx "$1" "{self.failing}"; then echo "$1 failed here"; exit 1; fi\n'
             'echo "ran $1"\n'
+            # `lado ui` prints its login link, token included.
+            f'[ "$1" = "ui" ] && echo "{LOGIN_LINK}"\n'
+            "exit 0\n"
         )
         lado.chmod(0o755)
         self.installer = folder / "installer"
@@ -333,3 +339,48 @@ def test_an_unfinished_updates_mark_goes_once_none_of_its_sessions_is_stopped(
     update.write_pending(update.Pending({"s": sess.repo}, None))
     assert self_update.unfinished() is None  # s runs
     assert not update.pending_path().exists()
+
+
+def test_the_login_token_stays_out_of_the_log_and_the_result(install, session, monkeypatch):
+    """`lado ui` prints its login link: neither update.log nor the result's tail (which the UI
+    shows) keeps the token, and the result is the owner's only."""
+    monkeypatch.setattr(
+        self_update.server_run, "running", lambda: {"host": "127.0.0.1", "port": 8123, "url": "u"}
+    )
+    monkeypatch.setattr(self_update.server_run, "stop", lambda: None)
+    monkeypatch.setattr(self_update.server_run, "health", lambda url: {"version": NEW})
+    assert run()[0] == 0
+    log = (state.home() / "update.log").read_text()
+    assert "http://127.0.0.1:8123/?token=…" in log
+    assert TOKEN not in log
+    assert TOKEN not in "\n".join(result().tail)
+    assert stat.S_IMODE(update.result_path().stat().st_mode) == 0o600
+
+
+def test_a_check_at_the_same_time_is_no_running_update(install):
+    """Two looks at the lock at once (two server threads, the detached update's own check)
+    do not take each other for an update: a look shares the lock, only an update holds it."""
+    with open(state.home() / "update.lock", "a") as looking:
+        fcntl.flock(looking, fcntl.LOCK_SH | fcntl.LOCK_NB)  # another look, now
+        assert self_update.running_pid() is None
+        assert self_update.refusal(update.installer()) is None
+
+
+def test_an_update_of_the_ui_that_does_not_start_says_so_in_its_result(install, session):
+    """The page waits for its id: a detached update that ends before it starts (here PyPI
+    has no such version) writes a failed result with no log, and stops nothing."""
+    assert main(["update", "--yes", "98.0.0", "--id", "u-9"]) == 1
+    done = result()
+    assert (done.id, done.outcome, done.log, done.to) == ("u-9", "failed", None, "98.0.0")
+    assert done.reason == ("the update did not start: PyPI has no LADO 98.0.0; nothing was stopped")
+    assert done.ended_at
+    assert not (state.home() / "update.log").exists()
+    assert not state.get_session(session).stopped_at
+
+
+def test_an_update_of_the_ui_refused_by_a_running_one_writes_no_result(install, session):
+    update.write_result(update.Result("running", __version__, NEW, "2026-10-09T10:00:00+00:00"))
+    with open(state.home() / "update.lock", "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert main(["update", "--yes", NEW, "--id", "u-9"]) == 1
+    assert (result().outcome, result().id) == ("running", None)  # the running one's

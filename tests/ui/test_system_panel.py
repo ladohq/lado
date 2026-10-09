@@ -38,6 +38,7 @@ def test_a_newer_lado_marks_live_and_the_panel_offers_the_update(
     page: Page, published, server, shot
 ):
     published(**{"99.0.0": "2026-10-04"})  # before the server's first look
+    page.set_viewport_size({"width": 1280, "height": 720})  # a laptop's window
     log_in(page, server)
     live = page.get_by_role("button", name="System: LADO 99.0.0 is available")
     expect(live).to_have_text("live↑ 99.0.0")
@@ -50,5 +51,14 @@ def test_a_newer_lado_marks_live_and_the_panel_offers_the_update(
     expect(update).to_contain_text("not a uv tool or pipx install")
     expect(update.get_by_role("button", name="Update…")).to_have_count(0)
     expect(update.locator("pre")).to_contain_text("install lado==99.0.0")
-    expect(page.get_by_role("dialog", name="System").get_by_text("Running")).to_be_visible()
+    panel = page.get_by_role("dialog", name="System")
+    expect(panel.get_by_text("Running")).to_be_visible()
     shot(page)
+    # Taller than the window with the Update block: the panel ends inside the window and
+    # scrolls, so its last line, the check with ↻, is reached.
+    box = panel.bounding_box()
+    assert box["y"] + box["height"] <= 720, box
+    check = panel.get_by_role("button", name="Check for a newer LADO now")
+    check.scroll_into_view_if_needed()
+    expect(check).to_be_in_viewport()
+    shot(page, "scrolled")

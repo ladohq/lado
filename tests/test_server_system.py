@@ -10,7 +10,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import __version__, runtime, self_update, state, update
+from lado import __version__, doctor, runtime, self_update, state, update
 from lado.server import app as server_app
 from lado.server import auth
 from lado.server import run as server_run
@@ -242,3 +242,22 @@ def test_an_update_needs_the_token_and_the_servers_own_origin(client, path, body
 def test_the_system_and_the_plan_need_the_token(client, path):
     client.cookies.clear()
     assert client.get(path).status_code == 401
+
+
+def test_a_cli_whose_version_cannot_be_read_puts_no_path_in_the_report(tmp_path):
+    """`--version` that prints nothing, or does not run, leaves its path in the check's
+    detail: the report says only that the version is unknown."""
+    bin = tmp_path / "bin"
+    bin.mkdir()
+    for name in ("tmux", "claude", "kilo"):
+        (bin / name).write_text("#!/bin/sh\nexit 0\n")  # prints no version
+        (bin / name).chmod(0o755)
+    (bin / "codex").write_text("not runnable")  # `--version` fails
+    found = doctor.system_info(
+        lambda command: str(bin / command) if (bin / command).exists() else None
+    )
+    report = doctor.report(found, False, 60)
+    assert str(tmp_path) not in report
+    assert "- tmux: version unknown, socket" in report
+    assert "  - claude: installed, version unknown\n" in report
+    assert "  - codex: installed, version unknown\n" in report

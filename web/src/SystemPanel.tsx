@@ -71,15 +71,14 @@ const UpdateContext = createContext<UpdateState>({
 
 const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
 
-// Whether the update `waiting` is over: a server started after the one before, and its
-// result, no longer running.
+// Whether the update `waiting` is over: its result, no longer running, and a server started
+// after the one before; or the same server, when the update ended before it started (a
+// failed result with no log: nothing was stopped).
 export function finished(waiting: Waiting, health: Health, update: UpdateInfo): boolean {
   const last = update.last;
-  return (
-    Date.parse(health.started_at) > Date.parse(waiting.before) &&
-    last?.id === waiting.id &&
-    last.outcome !== "running"
-  );
+  if (last?.id !== waiting.id || last.outcome === "running") return false;
+  const notStarted = last.outcome === "failed" && last.log === null;
+  return notStarted || Date.parse(health.started_at) > Date.parse(waiting.before);
 }
 
 // What the update check says and whether a newer LADO is out, asked each time the change

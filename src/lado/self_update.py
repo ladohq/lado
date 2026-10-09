@@ -17,6 +17,7 @@ import contextlib
 import datetime
 import fcntl
 import os
+import re
 import shlex
 import sqlite3
 import subprocess
@@ -58,12 +59,14 @@ class UpdateRefused(runtime.LadoError):
     """An update holds the lock already."""
 
 
-def _take_lock(wait: float = 0) -> IO | None:
+def _take_lock(wait: float = 0, shared: bool = False) -> IO | None:
+    """The update's lock, exclusive for an update; `shared` for a look at it, so two looks
+    at once do not see each other as an update."""
     lock = open(lock_path(), "a+")
     deadline = time.monotonic() + wait
     while True:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
             return lock
         except OSError:
             if time.monotonic() >= deadline:
@@ -77,7 +80,7 @@ def running_pid() -> int | None:
     when none runs."""
     if not lock_path().exists():
         return None
-    lock = _take_lock()
+    lock = _take_lock(shared=True)
     if lock is not None:
         lock.close()
         return None
@@ -237,6 +240,31 @@ def unfinished() -> str | None:
     )
 
 
+def not_started(id: str, to: str, why: str) -> None:
+    """The result of the UI's update `id` that ended before it started (PyPI unreachable, a
+    refusal): `failed` with no log, so the page that waits for its id learns why. Written
+    under the lock, and never over that update's own result or a running update's."""
+    lock = _take_lock(LOCK_WAIT)
+    if lock is None:
+        return
+    with lock:
+        last = update.read_result()
+        if last and last.id == id:
+            return
+        now = _now()
+        update.write_result(
+            update.Result(
+                "failed",
+                lado.__version__,
+                to,
+                now,
+                ended_at=now,
+                id=id,
+                reason=f"the update did not start: {why}",
+            )
+        )
+
+
 def start_detached(to: str, id: str) -> None:
     """`lado update --yes <to> --id <id>` of this LADO as a process of its own, for the UI
     server, which the update stops: in its own session, so it outlives the server, its
@@ -254,15 +282,19 @@ def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
+_TOKEN = re.compile(r"([?&]token=)[^\s&#]+")
+
+
 class _Told:
-    """`say` that also writes each line to update.log."""
+    """`say` that also writes each line to update.log, with the UI's login token cut out of
+    it (`lado ui` prints its link): the log's tail goes into the result, which the UI shows."""
 
     def __init__(self, say: Say, log: IO):
         self.say, self.log = say, log
 
     def __call__(self, text: str = "", *, file=None, end: str = "\n", flush: bool = False):
         self.say(text, file=file, end=end, flush=flush)
-        self.log.write(text + end)
+        self.log.write(_TOKEN.sub(r"\1…", text) + end)
         self.log.flush()
 
 

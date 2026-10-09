@@ -219,7 +219,7 @@ class System:
     home: str
     home_set: bool  # LADO_HOME is set
     schema: int | None  # lado.db's, None without one
-    tmux: str  # its version, or why there is none
+    tmux: str  # its version, "version unknown" or "not installed"
     tmux_socket: str
     providers: list[tuple[providers.Provider, ProviderStatus]]
     kits: list[KitFact]
@@ -289,7 +289,12 @@ def system_info(which: Callable[[str], str | None] = shutil.which) -> System:
         home=str(state.home()),
         home_set=bool(os.environ.get("LADO_HOME")),
         schema=state.schema_version(),
-        tmux=tmux_check.detail.removeprefix("tmux ") if found else tmux_check.detail,
+        # Never the check's detail: it may name tmux's path.
+        tmux=tmux_check.detail.removeprefix("tmux ")
+        if found
+        else "not installed"
+        if tmux_check.level == FAIL
+        else "version unknown",
         tmux_socket=tmux.socket(),
         providers=list(zip(registry, statuses, strict=True)),
         kits=_kit_facts(),
@@ -319,9 +324,12 @@ def report(system: System, open_to_network: bool, up_seconds: float) -> str:
         if not status.installed:
             lines.append(f"  - {provider.name}: not installed")
             continue
+        if not status.version:  # never the check's detail: it may name the CLI's path
+            lines.append(f"  - {provider.name}: installed, version unknown")
+            continue
         tested = f" (tested {status.tested_version})" if status.tested_version else ""
         untested = ": untested version" if status.warning else ""
-        lines.append(f"  - {provider.name}: {status.version or status.detail}{tested}{untested}")
+        lines.append(f"  - {provider.name}: {status.version}{tested}{untested}")
     kits = ", ".join(
         f"{k.name}{' ' + k.version if k.version else ''} ({k.origin})" for k in system.kits
     )

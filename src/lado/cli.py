@@ -420,11 +420,29 @@ def cmd_ls(args: argparse.Namespace) -> int:
 def cmd_update(args: argparse.Namespace) -> int:
     # Everything the update needs from LADO is imported before the installer replaces it
     # (self_update imports the rest), and the version read (lado caches it).
+    from lado import self_update
+
+    if not args.id:
+        return _update(args)
+    # The UI waits for a result of its id: one that ends before it starts says why. A
+    # refusal by a running update leaves that update's result alone.
+    try:
+        return _update(args)
+    except self_update.UpdateRefused:
+        raise
+    except Exception as exc:
+        self_update.not_started(args.id, args.version or "", str(exc))
+        raise
+
+
+def _update(args: argparse.Namespace) -> int:
     from lado import self_update, update
 
     current = lado.__version__
     installer = update.installer()
     refused = self_update.refusal(installer)
+    if refused and refused.kind == self_update.RUNNING:
+        raise self_update.UpdateRefused(refused.why)
     if refused and refused.kind != self_update.NO_INSTALLER:
         raise runtime.LadoError(refused.why)
     _unfinished_update()
@@ -439,16 +457,16 @@ def cmd_update(args: argparse.Namespace) -> int:
     else:
         to = update.latest(index)
         if to is None or not update.newer(to.version, current):
-            print(f"LADO {current} is the latest version.")
-            return 0
+            return _nothing_to_do(args, f"LADO {current} is the latest version.")
     if update.same(to.version, current):
-        print(f"LADO {current} is installed already.")
-        return 0
+        return _nothing_to_do(args, f"LADO {current} is installed already.")
     plan = self_update.plan(to)
     say = _quiet if args.id else print
     self_update.print_plan(plan, say)
     if installer is None:
         self_update.print_by_hand(plan, say)
+        if args.id:
+            raise runtime.LadoError(refused.why)
         return 1
     if not args.yes:
         if not sys.stdin.isatty():
@@ -458,6 +476,15 @@ def cmd_update(args: argparse.Namespace) -> int:
             print("Not updated.")
             return 1
     return self_update.run(plan, say, args.id)
+
+
+def _nothing_to_do(args: argparse.Namespace, said: str) -> int:
+    """No update to run: said on the terminal, or for the UI's update (`--id`) the reason
+    its result gives."""
+    if args.id:
+        raise runtime.LadoError(said.rstrip("."))
+    print(said)
+    return 0
 
 
 def _quiet(*args, **kwargs) -> None:

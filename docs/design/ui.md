@@ -1107,7 +1107,8 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   socket), the providers (a dot: ok, an untested version, not installed; the version, and
   the tested one when it differs), and last the update check: `Up to date · checked 09:12`,
   `checked yesterday`, `Checking…`, `Check failed · 09:12` with the reason in its tooltip,
-  each with ↻ (`POST /api/update/check`). Esc or a press outside closes it.
+  each with ↻ (`POST /api/update/check`). Esc or a press outside closes it. It ends 8 px
+  above the window's bottom and scrolls what does not fit (the window does not scroll).
 - **A newer LADO** (P2): an Update block on top, `0.33.0 is out · 12 Oct`, What's new (the
   GitHub release of its tag) and **Update…**. Without an installer (P3) the block says
   why (`why_not`) and shows the commands by hand with Copy, and no button; with
@@ -1121,8 +1122,9 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   The page polls `/api/health` and `/api/update` every 2 s and ends on both: a server whose
   `started_at` is newer than the one before, and `UpdateInfo.last` with the id the 202
   answered and an outcome other than `running`. So it ends after a rollback too, where the
-  version is the same; when the version changed, the version banner offers the reload.
-  After 5 minutes it says "The server did not come back. See <update.log>; start it with
+  version is the same; when the version changed, the version banner offers the reload. An
+  update that ended before it started (a failed result of that id with no log) ends the
+  wait on the same server. After 5 minutes it says "The server did not come back. See <update.log>; start it with
   `lado ui`" and goes on polling. The page cannot learn the steps while the server is gone.
 - **The result** (U3), under the top bar, from `UpdateInfo.last`, also after a reload:
   ok; partial with the sessions that did not resume and their `lado start`; failed, rolled

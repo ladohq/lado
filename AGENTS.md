@@ -153,8 +153,10 @@ fixes and docs only: no new feature, no API or schema change.
     `print_by_hand`, the API's `UpdatePlan`). `run` holds an exclusive flock on
     `LADO_HOME/update.lock` (its pid in it) for the whole update, so a second one, from the
     CLI or the UI, is refused at once; only then it truncates `LADO_HOME/update.log` (mode
-    600: `lado ui` prints its login link), where each line it says and the output of each
-    command it runs go too, and writes the result `running`. It writes update.json, stops
+    600), where each line it says and the output of each command it runs go too, the UI's
+    login token cut out (`lado ui` prints its link), and writes the result `running` (mode
+    600 too). A look at the lock (`running_pid`, `refusal`) takes it shared, so two looks
+    at once never see each other as an update. It writes update.json, stops
     each session with `runtime.stop_session` and waits for its loop's lock
     (`loop.wait_stopped`; one that does not end stops the update before the installer, and
     the sessions are resumed), stops the server, backs up lado.db with SQLite's backup API
@@ -176,7 +178,9 @@ fixes and docs only: no new feature, no API or schema change.
     one is, `lado ls` and `lado update` name them with their `lado start`. Sessions on
     another tmux socket are not seen (the plan says so). `start_detached` is the UI's way:
     `lado update --yes <to> --id <id>` of this LADO in its own process group, its lines only
-    in update.log (`--id`, hidden from the help).
+    in update.log (`--id`, hidden from the help); one that ends before it starts writes a
+    `failed` result of its id with no log (`not_started`), unless another update holds the
+    lock, so the page waiting for that id learns why.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: does not exist, not inside a git repository, no commits yet), asked

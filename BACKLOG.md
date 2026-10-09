@@ -774,6 +774,12 @@ time the passive supervisor spawned `worker` for the run. Also
 gone" (the supervisor merged and finished w1 early); the rerun passed. Wanted also: a
 stronger free Kilo model for the live test (`LADO_LIVE_KILO_MODEL`), or a check that tells
 a model's failure from LADO's.
+In that run's second verify, `test_an_agent_sees_the_image_the_human_attaches[kilo]` timed
+out twice in a row ("timed out after 180s waiting for w1's reply about colour.png",
+tests/agent_helpers.py:239): w1 and the passive supervisor looked for the image on disk with
+`find /` instead of calling `read_artifact`; the third run skipped as designed (the model
+takes no images). Wanted also: skip when the model cannot see the image on its first try
+instead of waiting 180 s.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

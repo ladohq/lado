@@ -609,6 +609,16 @@ Wanted: on Linux the base PATH a new terminal starts from (e.g. `/etc/environmen
 against a real login shell. To confirm in the WSL VM run (checklist step 2).
 Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
 
+## `test_supervisor_finishes_a_merged_worker` fails on a slower machine: a message still queued at finish
+
+Size: S. Why here: it failed in 2 of 3 runs of the Windows probe in WSL2 (4 vCPU), so the probe is red.
+`tests/integration/test_agents.py:619` expects `w1: finished (merged)` and gets
+`w1: finished (merged; 1 message dropped)`: a message to w1 is still pending when the test
+finishes it (runs 38003394533, 38005117396). Passes on the Mac and in one WSL run.
+Wanted: find which message is still queued (test race or LADO's), then wait for w1's queue to
+be empty before the finish, or fix the race in LADO.
+Found: 2026-10-10, review of fix/windows-probe (Windows probe runs on GitHub).
+
 # P2: when convenient
 
 ## `lado answer` and the popup answer only flow gates, not an agent's question
@@ -1685,6 +1695,27 @@ Size: S. Why here: a fresh Ubuntu (or WSL) cannot run `make test-ui`/`make check
 fresh machine Chromium does not launch (libnss3 and others missing).
 Wanted: say so in AGENTS.md's Commands, or a target that adds `--with-deps` on Linux.
 Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
+
+## LADO does not install on Windows ARM64: cryptography builds from source
+
+Size: S. Why here: seen in the first Windows probe run; native Windows is not supported yet.
+On `windows-11-arm` (run 38003385714, `native.log`) `uv tool install .` fails: uv picks no
+wheel of `cryptography` 50.0.2 (from `mcp[crypto]` → `pyjwt[crypto]`) and builds it, which
+stops at `openssl-sys` (`failed to run custom build command`, no OpenSSL there).
+Wanted: when native Windows is taken on, whether LADO needs `mcp[crypto]`, or a version with a
+win_arm64 wheel.
+Found: 2026-10-10, run fix/windows-probe (session lado-windows).
+
+## A run's end cannot delete a branch that was pushed
+
+Size: S. Why here: met at the end of fix/windows-probe, whose branch was pushed to test a workflow.
+`flow_advance(merged)` ended the run but returned an error: `git branch -d` refused
+(`not deleting branch ... that is not yet merged to 'refs/remotes/origin/<branch>', even though it
+is merged to HEAD`; `The branch ... is not fully merged`), since git checks a branch with an
+upstream against that upstream. The supervisor deleted the remote and local branch by hand.
+Wanted: the run's end checks "merged" against the repo's current branch as `work_state` does and
+deletes with that knowledge (e.g. `git branch -D` after its own check), or says the branch is kept and why.
+Found: 2026-10-10, merge step of fix/windows-probe (session lado-windows).
 
 # P3: maybe never
 

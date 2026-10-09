@@ -1,6 +1,7 @@
-# A Windows runner, with WSL2 Ubuntu by default, and an SSH shell into it (tmate) for
-# debugging LADO by hand. Not CI: it runs only when started (AGENTS.md, Commands).
-name: Windows shell
+# A Windows runner, with WSL2 Ubuntu by default, that runs LADO's checks there and uploads
+# the logs; optionally an SSH shell into WSL Ubuntu (Linux tmate) for debugging by hand.
+# Not CI: it runs only when started (AGENTS.md, Commands).
+name: Windows probe
 
 on:
   workflow_dispatch:
@@ -11,9 +12,13 @@ on:
         options: [windows-latest, windows-11-arm]
         default: windows-latest
       wsl:
-        description: Set up WSL2 with Ubuntu 24.04
+        description: Set up WSL2 with Ubuntu 24.04 and run the checks there
         type: boolean
         default: true
+      shell:
+        description: After the report, an SSH shell into WSL Ubuntu (tmate; needs wsl)
+        type: boolean
+        default: false
       minutes:
         description: Job length in minutes, setup included (at most 360)
         type: number
@@ -23,13 +28,27 @@ permissions:
   contents: read
 
 jobs:
-  shell:
+  probe:
     runs-on: ${{ inputs.runner }}
     # Started through the API (gh workflow run -f minutes=N) an input is a string, which
-    # timeout-minutes refuses; so is wsl, whose 'false' an `if` on the bare input takes as
-    # true: each `if` compares it with both forms (strings compare case-insensitively).
+    # timeout-minutes refuses; so are wsl and shell, whose 'false' an `if` on the bare input
+    # takes as true: each `if` compares them with both forms (strings compare
+    # case-insensitively).
     timeout-minutes: ${{ fromJSON(inputs.minutes) }}
+    # Windows' default; said here so that actionlint does not read the scripts as bash.
+    defaults:
+      run:
+        shell: pwsh
     steps:
+      # Every check appends a line to checks.tsv: name, exit code, `required` (it decides the
+      # verdict) or `expected` (it may fail today; only recorded), and its log's name. First,
+      # so that the report steps find the folder also after a guard below failed.
+      - name: Report folder
+        run: |
+          $probe = Join-Path $env:RUNNER_TEMP probe
+          New-Item -ItemType Directory -Force $probe | Out-Null
+          "PROBE=$probe" | Add-Content $env:GITHUB_ENV
+
       - name: Check the length
         env:
           MINUTES: ${{ inputs.minutes }}
@@ -46,36 +65,50 @@ jobs:
           Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false"
           exit 1
 
-      # action-tmate runs tmate in MSYS2's bash at C:\msys64.
-      - name: Check MSYS2
+      - name: No shell without WSL
+        if: (inputs.shell == true || inputs.shell == 'true') && !(inputs.wsl == true || inputs.wsl == 'true')
         run: |
-          if (-not (Test-Path C:\msys64\usr\bin\bash.exe)) {
-            Write-Output "::error::no MSYS2 at C:\msys64 on $env:ImageOS ($env:RUNNER_ARCH): action-tmate needs it"
-            exit 1
-          }
+          Write-Output "::error::the shell runs in WSL Ubuntu: run shell=true with wsl=true"
+          exit 1
 
       - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.3"
+
+      # LADO does not run on Windows itself yet: each check here is expected to fail.
+      - name: Native probe
+        timeout-minutes: 20
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $log = Join-Path $env:PROBE native.log
+          function Check([string]$Name, [scriptblock]$Command) {
+            "== $Name" | Add-Content $log
+            $global:LASTEXITCODE = 0
+            try {
+              & $Command 2>&1 | Out-String -Width 200 | Add-Content $log
+              $code = $LASTEXITCODE
+            } catch {
+              $_ | Out-String | Add-Content $log
+              $code = 'error'
+            }
+            "== $Name`: exit $code" | Add-Content $log
+            "native $Name`t$code`texpected`tnative.log" | Add-Content (Join-Path $env:PROBE checks.tsv)
+          }
+          # From the checkout, not PyPI: the probe tests this branch.
+          Check 'uv tool install' { uv tool install --force . }
+          Check 'python' { uv run --no-project --with . python -c "import platform,sys; print(platform.machine(), sys.version)" }
+          Check 'lado --version' { & (Join-Path (uv tool dir --bin) lado.exe) --version }
+          Check 'lado doctor' { & (Join-Path (uv tool dir --bin) lado.exe) doctor }
+          exit 0
 
       - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
         if: inputs.wsl == true || inputs.wsl == 'true'
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2
-          additional-packages: tmux git curl build-essential less
-
-      # Cloned inside Ubuntu, not the Windows checkout under /mnt/d (CRLF, slow).
-      - name: Clone the repo in Ubuntu
-        if: inputs.wsl == true || inputs.wsl == 'true'
-        shell: wsl-bash {0}
-        env:
-          REPO: ${{ github.repository }}
-          REF: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
-          WSLENV: REPO:REF:SHA
-        run: |
-          set -eu
-          git clone --branch "$REF" "https://github.com/$REPO" ~/lado
-          git -C ~/lado reset --hard "$SHA"
+          additional-packages: tmux git curl build-essential less xz-utils
 
       - name: Check WSL
         if: inputs.wsl == true || inputs.wsl == 'true'
@@ -89,11 +122,154 @@ jobs:
             Write-Output "::error::Ubuntu-24.04 does not run on WSL2"
             exit 1
           }
-          wsl -d Ubuntu-24.04 -- uname -m
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          wsl -d Ubuntu-24.04 -- tmux -V
-          if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      - uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113 # v3.24
+      # setup-wsl's user is root, which no real user is: the checks and the shell run as lado.
+      - name: Create the user lado
+        if: inputs.wsl == true || inputs.wsl == 'true'
+        shell: wsl-bash {0}
+        run: |
+          set -eu
+          useradd --create-home --shell /bin/bash lado
+          if [ -d /etc/sudoers.d ]; then
+            echo 'lado ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/lado
+            chmod 440 /etc/sudoers.d/lado
+          fi
+
+      # Cloned inside Ubuntu, not the Windows checkout under /mnt/d (CRLF, slow).
+      - name: Clone the repo in Ubuntu
+        if: inputs.wsl == true || inputs.wsl == 'true'
+        shell: wsl-bash {0}
+        env:
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          WSLENV: REPO:REF:SHA
+        run: |
+          set -eu
+          su - lado -c "git clone --branch '$REF' 'https://github.com/$REPO' ~/lado && git -C ~/lado reset --hard '$SHA'"
+
+      # Each check in lado's login shell, under a timeout, so a hang leaves time for the
+      # report; a failing check does not stop the later ones.
+      - name: WSL probe
+        if: inputs.wsl == true || inputs.wsl == 'true'
+        shell: wsl-bash {0}
+        env:
+          UV_VERSION: "0.12.3"
+          WSLENV: PROBE/p:UV_VERSION
+        run: |
+          set -u
+          touch "$PROBE/checks.tsv" || exit 1
+          check() { # check <name> <seconds> <command> [required|expected]
+            local log="wsl-$1.log" code=0
+            timeout --kill-after=30 "$2" su - lado -c "$3" >"$PROBE/$log" 2>&1 || code=$?
+            printf '%s\t%s\t%s\t%s\n' "wsl $1" "$code" "${4:-required}" "$log" >>"$PROBE/checks.tsv" || exit 1
+          }
+          check uname 60 'uname -m'
+          check tmux 60 'tmux -V'
+          check uv-install 300 "curl -LsSf -o ~/uv-install.sh https://astral.sh/uv/$UV_VERSION/install.sh && sh ~/uv-install.sh"
+          # After uv's install, as an agent's PATH would see ~/.local/bin.
+          check path 60 'echo "$PATH"'
+          # The agents' PATH as LADO builds it (agent_env.resolve).
+          check agents-path 60 'env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" SHELL="$SHELL" PATH=/usr/bin:/bin:/usr/sbin:/sbin bash -ilc "echo \$PATH"'
+          check uv-sync 600 'cd ~/lado && uv sync --locked'
+          check lado-version 120 'cd ~/lado && uv run lado --version'
+          # No agent CLI is installed, which doctor reports as a FAIL (exit 1): only recorded.
+          check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected
+          check make-test 1800 'cd ~/lado && make test'
+          check make-test-integration 1800 'cd ~/lado && make test-integration'
+          exit 0
+
+      - name: Summary
+        if: always()
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
+        run: |
+          $checks = Join-Path $env:PROBE checks.tsv
+          $out = @("## Windows probe on $env:RUNNER_LABEL ($env:RUNNER_ARCH)", "")
+          if (-not (Test-Path $checks)) {
+            $out += "No check ran."
+            $out | Add-Content $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          $rows = @(Import-Csv $checks -Delimiter "`t" -Header name, code, kind, log)
+          $out += "| check | exit | counts |", "| --- | --- | --- |"
+          foreach ($r in $rows) {
+            $counts = if ($r.kind -eq 'required') { 'yes' } else { 'no (expected)' }
+            $out += "| $($r.name) | $($r.code) | $counts |"
+          }
+          foreach ($name in 'path', 'agents-path') {
+            $file = Join-Path $env:PROBE "wsl-$name.log"
+            if (Test-Path $file) {
+              $out += "", "${name}: ``$(Get-Content $file -Tail 1)``"
+            }
+          }
+          $failed = $rows | Where-Object { $_.code -ne '0' } | Select-Object -ExpandProperty log -Unique
+          foreach ($log in $failed) {
+            $out += "", "<details><summary>$log (last lines)</summary>", "", '```'
+            $out += Get-Content (Join-Path $env:PROBE $log) -Tail 20
+            $out += '```', "", "</details>"
+          }
+          $out | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
-          limit-access-to-actor: true
+          name: windows-probe-${{ inputs.runner }}
+          path: ${{ env.PROBE }}
+          retention-days: 5
+
+      # Linux tmate in WSL: action-tmate's MSYS2 tmate hung on Windows before its SSH line.
+      - name: Shell
+        if: (inputs.shell == true || inputs.shell == 'true') && (inputs.wsl == true || inputs.wsl == 'true')
+        shell: wsl-bash {0}
+        env:
+          ACTOR: ${{ github.actor }}
+          WSLENV: ACTOR:GITHUB_STEP_SUMMARY/p
+        run: |
+          set -euo pipefail
+          keys=$(curl -fsSL "https://github.com/$ACTOR.keys")
+          if [ -z "$keys" ]; then
+            echo "::error::$ACTOR has no SSH key on GitHub (https://github.com/$ACTOR.keys): no shell is opened"
+            exit 1
+          fi
+          printf '%s\n' "$keys" >~lado/.tmate-keys
+          chown lado:lado ~lado/.tmate-keys
+          chmod 600 ~lado/.tmate-keys
+          curl -fsSL -o /tmp/tmate.tar.xz https://github.com/tmate-io/tmate/releases/download/2.4.0/tmate-2.4.0-static-linux-amd64.tar.xz
+          echo "6e503a1a3b0f9117bce6ff7cc30cf61bdc79e9b32d074cf96deb0264e067a60d  /tmp/tmate.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/tmate.tar.xz -C /usr/local/bin --strip-components=1 tmate-2.4.0-static-linux-amd64/tmate
+          su - lado -c 'tmate -v -a ~/.tmate-keys -S /tmp/tmate.sock new-session -d'
+          if ! timeout 120 su - lado -c 'tmate -S /tmp/tmate.sock wait tmate-ready'; then
+            echo "::error::tmate did not reach its server within 120 seconds"
+            cat ~lado/tmate-*.log || true
+            exit 1
+          fi
+          ssh=$(su - lado -c "tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'")
+          echo "::notice title=SSH into WSL Ubuntu as lado::$ssh"
+          printf '\n## Shell\n\n`%s`, as lado; `touch ~/continue` ends it.\n' "$ssh" >>"$GITHUB_STEP_SUMMARY"
+          while [ ! -e ~lado/continue ] && su - lado -c 'tmate -S /tmp/tmate.sock has-session' 2>/dev/null; do
+            echo "$ssh"
+            sleep 30
+          done
+
+      - name: Verdict
+        if: always()
+        env:
+          WSL: ${{ inputs.wsl }}
+        run: |
+          $checks = Join-Path $env:PROBE checks.tsv
+          if (-not (Test-Path $checks)) {
+            Write-Output "::error::no check ran"
+            exit 1
+          }
+          $rows = @(Import-Csv $checks -Delimiter "`t" -Header name, code, kind, log)
+          # -eq compares strings case-insensitively: true from the form, 'true' from the API.
+          if ($env:WSL -eq 'true' -and -not ($rows | Where-Object { $_.name -match '^wsl ' })) {
+            Write-Output "::error::wsl is on, but no WSL check was recorded"
+            exit 1
+          }
+          $failed = @($rows | Where-Object { $_.kind -eq 'required' -and $_.code -ne '0' })
+          foreach ($r in $failed) {
+            Write-Output "::error::$($r.name) failed (exit $($r.code)): see $($r.log) in the report"
+          }
+          if ($failed) { exit 1 }

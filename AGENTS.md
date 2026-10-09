@@ -220,7 +220,9 @@ fixes and docs only: no new feature, no API or schema change.
     update check, subagents (`features.multi_agent`), analytics and feedback off, LADO's
     hooks with their `trusted_hash` (`hook_hash`, Codex's formula, pinned by a test against
     hashes Codex wrote; keyed by the real path of that config.toml), the MCP servers (`lado`
-    `required` and its tools approved; `env_vars` for a kit's), a permission profile that
+    `required` and its tools approved; each server's `env_vars` names every variable of the
+    agent's environment, Codex's own included, as the other CLIs pass them all), a
+    permission profile that
     lets the sandbox write the git folders but their hooks and config (else a worker cannot
     commit; not with `bypassPermissions`), and what it carries from the user's own Codex
     config (`CODEX_HOME` of the agent's environment, else `~/.codex`; read, never written;
@@ -269,7 +271,9 @@ fixes and docs only: no new feature, no API or schema change.
     only the literals in `env`; the templates are JSON in base64, so no CLI expands them
     (Claude Code expands `${VAR}` in a server's args, OpenCode and Kilo `{env:VAR}` and
     `{file:...}`). The CLI passes its whole environment, the agent's, to a stdio server
-    (checked by hand: providers/claude.py, opencode_family.py); the wrapper fills the
+    (checked by hand: providers/claude.py, opencode_family.py; Codex passes only a few
+    variables and those its `env_vars` names, so codex.py names every variable of the
+    agent's environment there, never a value); the wrapper fills the
     templates from it (`expand`; an unset name is one line on stderr and exit 1) and execs
     the server. Only the standard library; `VARIABLE`, `references` and `expand` are the
     one parser of `${NAME}`, also kits.py's.

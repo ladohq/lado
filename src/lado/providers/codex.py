@@ -157,7 +157,9 @@ class CodexProvider(base.Provider):
                 f"cannot write {', '.join(dropped)} of {user_path} into the config of Codex "
                 f"agent {agent.name}: left out"
             )
-        config["mcp_servers"] = _mcp_servers(spec.mcp)
+        # The variables Codex's own environment has, as the agent's window gets them.
+        environ = [*(spec.environ or os.environ), *base.agent_env(agent), "CODEX_HOME"]
+        config["mcp_servers"] = _mcp_servers(spec.mcp, environ)
         if session.permission_mode != "bypassPermissions" and (profile := _git_profile(cwd)):
             config["default_permissions"] = PROFILE
             config["permissions"] = {PROFILE: profile}
@@ -412,16 +414,22 @@ def _hooks(agent: state.Agent, home: Path) -> dict:
     return hooks
 
 
-def _mcp_servers(servers: dict[str, base.McpServer]) -> dict:
+def _mcp_servers(servers: dict[str, base.McpServer], environ: list[str]) -> dict:
     # Codex starts a stdio server with a few of its variables (HOME, PATH, USER, SHELL,
     # TERM, TMPDIR, ...), the literals of `env` and the variables `env_vars` names (checked
-    # by hand): a kit's secrets reach lado.mcp_exec through env_vars, never this file.
+    # by hand). The other CLIs give a server their whole environment, the agent's, so each
+    # server names all of the agent's variables (`environ`): a kit's server that reads one
+    # itself works here too, and so do `lado mcp` (TMUX_TMPDIR) and lado.mcp_exec. Names
+    # only: no value goes into this file.
     config = {}
     for name, server in servers.items():
-        entry: dict = {"command": server.command[0], "args": server.command[1:], "env": server.env}
-        if server.env_vars:
-            entry["env_vars"] = server.env_vars
-        config[name] = entry
+        names = list(dict.fromkeys([*environ, *server.env_vars]))
+        config[name] = {
+            "command": server.command[0],
+            "args": server.command[1:],
+            "env": server.env,
+            "env_vars": names,
+        }
     if "lado" in config:
         # The first turn waits for a required server, so LADO's tools are there; one that
         # fails makes Codex exit. Each MCP call asks for approval unless the server's tools

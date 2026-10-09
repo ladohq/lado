@@ -193,12 +193,28 @@ def test_a_kit_server_gets_the_variables_it_reads(repo):
     spec = providers.AgentSpec("r", mcp={"lado": base.mcp_server(agent), "db": db})
     _, config = _launch(repo, spec=spec)
     # Codex gives a server only some of its environment, plus these names.
-    assert config["mcp_servers"]["db"] == {
-        "command": "db-server",
-        "args": ["--port", "1"],
-        "env": {"T": "x"},
-        "env_vars": ["TOKEN"],
-    }
+    entry = config["mcp_servers"]["db"]
+    assert (entry["command"], entry["args"], entry["env"]) == (
+        "db-server",
+        ["--port", "1"],
+        {"T": "x"},
+    )
+    assert "TOKEN" in entry["env_vars"]
+
+
+def test_every_server_gets_the_agents_whole_environment_by_name(repo):
+    """Codex starts a stdio server with only a few variables, plus those `env_vars` names:
+    each server gets the agent's environment, as the other CLIs give it, by name only."""
+    agent = _agent(repo)
+    db = providers.McpServer(["db-server"], {"T": "x"}, ["TOKEN"])
+    environ = {"PATH": "/bin", "TMUX_TMPDIR": "/tmp/t", "DB_PROFILE": "s3cr3t-value"}
+    spec = providers.AgentSpec("r", mcp={"lado": base.mcp_server(agent), "db": db}, environ=environ)
+    launch, config = _launch(repo, spec=spec)
+    for server in config["mcp_servers"].values():
+        assert {"PATH", "TMUX_TMPDIR", "DB_PROFILE", "LADO_SESSION"} <= set(server["env_vars"])
+    assert "TOKEN" in config["mcp_servers"]["db"]["env_vars"]
+    text = (Path(launch.env["CODEX_HOME"]) / "config.toml").read_text()
+    assert "s3cr3t-value" not in text
 
 
 def test_skills_are_linked_in_the_codex_home(repo, tmp_path):

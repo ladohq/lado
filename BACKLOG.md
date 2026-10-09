@@ -534,6 +534,20 @@ Wanted: carry the login next to the carried settings (read only; a link or a cop
 600, or the keyring's setting), checked by hand with an account.
 Found: 2026-10-09, design of run feature/codex-provider.
 
+## Codex live worker test fails 3 of 3
+
+Size: M. Why here: the human released 0.32.0 with it red and asked for a fix right after.
+`test_worker_does_a_task_reports_and_gets_a_message[codex]` on `qwen3-coder:30b` failed in
+the full live run and both reruns at the release of 0.32.0. Once the line sent while w1 was
+busy was delivered `typed`, not `hook_output` (tests/live/test_live.py:474: Codex did not
+take the turn-end hook's output, or no Stop hook ran for that turn); twice w1 looped,
+sending "Task complete - final confirmation" to the supervisor many times, and stayed
+`busy` so the line was never delivered within 120 s.
+Wanted: find whether Codex takes LADO's Stop-hook output (a LADO bug) or the model loops
+(then a stronger local model, `LADO_LIVE_CODEX_MODEL`, or a test that holds on a model
+that loops), and make the test pass reliably.
+Found: 2026-10-09, release of 0.32.0.
+
 # P2: when convenient
 
 ## Every Codex agent asks whether to trust a repo the user's Codex does not trust
@@ -853,6 +867,11 @@ passed 1 of 3: once w1 sent its report three times, called Codex's goal tool in 
 although Codex's screen showed the turn done (maybe the same gap as "A Codex agent whose
 turn ends on a model or API error stays busy"); once it did not read the follow-up within
 120 s.
+At the release of 0.32.0 (8d48089, 2026-10-09): `test_a_flow_run_moves_on_when_its_worker_reports[codex]`
+passed 1 of 3 (flow.txt left uncommitted on the run's branch);
+`test_an_agent_sees_the_image_the_human_attaches[kilo]` timed out 2 of 3 (180 s, w1 busy;
+skipped once as designed). The Codex worker test failed 3 of 3: its own P1 entry, "Codex
+live worker test fails 3 of 3".
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
@@ -1520,6 +1539,19 @@ commit), and Claude Code, Kilo and OpenCode do not restrict git at all. So a wor
 Wanted: a worker's writes to refs other than its own branch refused or at least seen (e.g. a
 check of main's tip before a run's merge, or a hook on ref updates).
 Found: 2026-10-09, review of feature/codex-provider (the reviewer's open question).
+
+## Flaky in CI: UI tests of the terminal panel and the gates
+
+Size: S. Why here: a red CI run on the release commit for no code reason.
+CI on 8d48089 (release of 0.32.0) failed the `ui` job twice, one test each time, then passed
+on the second rerun: `test_terminal_panel::test_an_agents_terminal_opens_to_view_with_its_history`
+(the test's `lines 120` and LADO's first pasted input landed on one line of the fake agent,
+`ValueError: invalid literal for int() with base 10: '120\x1b[200~[from'`) and
+`test_gates::test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment`
+("Locator expected to be in viewport").
+Wanted: the terminal test types only after the agent's first input is confirmed; the gates
+test waits for the scroll to end.
+Found: 2026-10-09, release of 0.32.0.
 
 # P3: maybe never
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.30.1 (unreleased)
+## 0.31.0 (2026-10-09)
 
 - An agent's role prompt and its first input (a worker's task, a resumed supervisor's
   messages) are no longer on its process's command line, where `ps` shows them to every

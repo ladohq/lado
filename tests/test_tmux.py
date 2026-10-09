@@ -21,6 +21,20 @@ def test_clean_env_drops_claude_session_vars(monkeypatch):
     assert env["CLAUDE_CONFIG_DIR"] == "/keep"
 
 
+def test_without_agent_vars_drops_the_lado_agent_identity():
+    """A session started by an agent's `lado mcp` must not run as that agent."""
+    env = tmux.without_agent_vars(
+        {
+            "LADO_SESSION": "a",
+            "LADO_AGENT": "supervisor",
+            "LADO_INSTANCE": "i1",
+            "LADO_TMUX_SOCKET": "lado-x",
+            "LADO_HOME": "/h",
+        }
+    )
+    assert env == {"LADO_TMUX_SOCKET": "lado-x", "LADO_HOME": "/h"}
+
+
 def test_send_text_pastes_multiline_text(tmp_path):
     session = f"test-{uuid.uuid4().hex[:6]}"
     out = tmp_path / "out.txt"

@@ -32,6 +32,7 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
         "read_messages",
         "send_message",
         "spawn_worker",
+        "start_session",
         "write_artifact",
     ]
     assert _tools("s", "supervisor") == supervisor_tools
@@ -204,6 +205,29 @@ def test_spawn_worker_without_tmux_says_why_and_what_its_undo_could_not_do(
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
 
 
+def test_start_session_starts_the_session_the_human_approved(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    server = mcp_server.build("s", "supervisor")
+    asyncio.run(server.call_tool("write_artifact", {"name": "brief", "content": "# Fix it"}))
+    choice = runtime.START_CHOICE.format(name="fix-it")
+    asked = runtime.ask_human("s", "supervisor", "Start one?", choices=[choice], attached=["brief"])
+    question = int(asked.split("#")[1].split()[0])
+    with pytest.raises(ToolError, match="the human has not approved starting session fix-it"):
+        asyncio.run(server.call_tool("start_session", {"name": "fix-it", "question": question}))
+    runtime.answer_question("s", question, choice)
+    result = asyncio.run(
+        server.call_tool("start_session", {"name": "fix-it", "question": question})
+    )
+    assert json.loads(result.content[0].text) == {
+        "session": "fix-it",
+        "repo": str(repo),
+        "lead": "lead: supervisor of kit default",
+        "provider": None,
+        "warnings": [],
+    }
+    assert state.get_session("fix-it").repo == str(repo)
+
+
 def test_spawn_worker_refuses_a_provider_without_the_sessions_mode(repo, fake_tmux):
     runtime.start_session(str(repo), "s", "dontAsk", provider="claude")
     server = mcp_server.build("s", "supervisor")
@@ -226,6 +250,7 @@ ACCEPTED = {
     "flow_start": "flow, task, name, human_language",
     "flow_cancel": "run, reason",
     "finish_worker": "name, discard",
+    "start_session": "name, question",
 }
 
 

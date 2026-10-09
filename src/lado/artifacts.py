@@ -326,6 +326,30 @@ def upload(session: str, file_name: str, data: bytes) -> Written:
     )
 
 
+def copy_record(record: Record, to_session: str) -> Written:
+    """`record` (as it was, not its artifact's latest) as an artifact of `to_session`'s
+    scope, of its base name and title, written by LADO, its summary naming where it came
+    from: a brief the human approved for a new session (runtime.start_approved_session)."""
+    found = store().record(record.id)
+    if found is None:
+        raise ArtifactError(f"record {record.id} is gone")
+    artifact, _ = found
+    origin = f"copied from {record.session}/{record.author}: {artifact.full_name}"
+    return store().write(
+        to_session,
+        SESSION_SCOPE,
+        artifact.name,
+        store().content(record.id),
+        record.media_type,
+        author=state.LADO,
+        run=None,
+        state=None,
+        visit=None,
+        summary=origin[:SUMMARY_LIMIT],
+        title=artifact.title,
+    )
+
+
 def upload_name(file_name: str, digest: str) -> str:
     """An upload's artifact name: the file name's stem made a valid name (lower case,
     anything else a `-`, at most STEM_LIMIT characters; `file` when nothing is left), `-`

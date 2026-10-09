@@ -53,6 +53,30 @@ def test_an_artifact_is_written_and_read_back_in_the_session_scope(session):
     assert (read["name"], read["lines"], read["cut"]) == ("plan", 2, False)
 
 
+def test_a_record_is_copied_into_another_sessions_scope_naming_its_author(session, tmp_path):
+    shot = tmp_path / "w1" / "shot.png"
+    shot.parent.mkdir()
+    shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 30)
+    written = artifacts.write(session, "w1", "shot.png", file=str(shot), title="The bug")
+    artifacts.write(session, "w1", "shot.png", content="later")  # not what was attached
+    state.add_session(state.Session("b", str(tmp_path), None, provider="claude"))
+    copy = artifacts.copy_record(written.record, "b")
+    assert (copy.full_name, copy.artifact.session, copy.artifact.title) == (
+        "shot.png",
+        "b",
+        "The bug",
+    )
+    assert (copy.record.media_type, copy.record.author, copy.record.run) == (
+        "image/png",
+        "lado",
+        None,
+    )
+    assert copy.record.summary == "copied from s/w1: feature/x/shot.png"
+    assert artifacts.content(copy.record) == shot.read_bytes()
+    _, source = artifacts.store().latest(session, "feature/x", "shot.png")
+    assert artifacts.content(source) == b"later"  # the source is untouched
+
+
 def test_a_bare_name_is_in_a_run_workers_run_and_in_the_session_for_the_others(session):
     artifacts.write(session, "w1", "design", content="run's")
     artifacts.write(session, "supervisor", "design", content="session's")

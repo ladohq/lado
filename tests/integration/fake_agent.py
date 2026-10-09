@@ -16,7 +16,10 @@ Every input line is a command, after an optional "[from <name>] ":
     artifact_read <name>  call the LADO MCP tool read_artifact; "seen" gets its result and
                        the type (and mimeType) of each content block
     read               call the LADO MCP tool read_messages
-    askhuman <question>[ | <choice>, <choice>...]  call the LADO MCP tool ask_human
+    askhuman <question>[ | <choice>, <choice>...][ --artifacts <name>,<name>...]  call the
+                       LADO MCP tool ask_human
+    start_session <name> <question id>  call the LADO MCP tool start_session; "seen" gets
+                       its result ("start_session") and its text ("start_session_text")
     spawn <task>       call the LADO MCP tool spawn_worker
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
@@ -142,12 +145,12 @@ class LadoMcp:
     """A minimal MCP client of the LADO MCP server: stdio, one JSON-RPC message per line. Not
     the MCP SDK's client, whose import alone takes about a third of a second per launch.
 
-    Like the SDK's stdio client, the server gets only a few variables of the agent's
-    environment (INHERITED) and its config's env; its stderr goes to the agent's terminal.
+    Like Claude Code, Kilo and OpenCode, the server gets the agent's whole environment and
+    its config's env on top (so a session its `lado mcp` starts gets the test's
+    environment, LADO_AGENT_ENV=inherit); its stderr goes to the agent's terminal.
     A tool's error comes back as a result with isError; a JSON-RPC error, or a server that
     did not start or ended, raises McpError."""
 
-    INHERITED = ("HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER")
     PROTOCOL = "2025-06-18"
 
     def __init__(self):
@@ -165,10 +168,9 @@ class LadoMcp:
     def _connect(self) -> None:
         try:
             lado = config["mcp"]["lado"]
-            env = {k: os.environ[k] for k in self.INHERITED if k in os.environ}
             self.server = subprocess.Popen(
                 lado["command"],
-                env={**env, **lado["env"]},
+                env={**os.environ, **lado["env"]},
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 text=True,
@@ -344,11 +346,18 @@ def work(text: str) -> bool:
             kinds = [{"type": b.get("type"), "mimeType": b.get("mimeType")} for b in blocks]
             report(artifact_read=read, artifact_read_blocks=kinds)
         elif command[0] == "askhuman":
-            question, _, choices = " ".join(command[1:]).partition(" | ")
+            asked, _, attached = " ".join(command[1:]).partition(" --artifacts ")
+            question, _, choices = asked.partition(" | ")
             arguments = {"question": question}
             if choices:
                 arguments["choices"] = choices.split(", ")
+            if attached:
+                arguments["artifacts"] = attached.split(",")
             call_tool("ask_human", arguments)
+        elif command[0] == "start_session":
+            started = call_tool("start_session", {"name": command[1], "question": int(command[2])})
+            texts = [c.get("text") for c in lado_mcp.last_content]
+            report(start_session=started, start_session_text=texts)
         elif command[0] == "run":
             run_skill_file(command[1], command[2])
         elif command[0] == "mcp":

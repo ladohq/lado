@@ -392,3 +392,17 @@ def test_the_loop_sweeps_every_interval_and_logs_it(repo, fake_tmux, monkeypatch
     assert sleeps == [0.01]
     log = (lado_home / "loop.log").read_text()
     assert f"s: loop started, pid {os.getpid()}, a pass every 0.01 s" in log
+
+
+def test_start_runs_the_loop_without_the_calling_agents_identity(monkeypatch):
+    """A session the supervisor's `lado mcp` starts gets a loop of its own, not one that
+    runs as that agent."""
+    monkeypatch.setenv("LADO_SESSION", "a")
+    monkeypatch.setenv("LADO_AGENT", "supervisor")
+    monkeypatch.setenv("LADO_INSTANCE", "i1")
+    calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: calls.append(kw))
+    loop.start("b")
+    env = calls[0]["env"]
+    assert not {"LADO_SESSION", "LADO_AGENT", "LADO_INSTANCE"} & set(env)
+    assert env["LADO_HOME"] == os.environ["LADO_HOME"]

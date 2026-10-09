@@ -104,7 +104,9 @@ def test_the_agent_imports_no_mcp_package(tmp_path, lado_home):
     poison.mkdir(parents=True)
     (poison / "__init__.py").write_text("raise ImportError('the fake agent imported mcp')\n")
     env = {**os.environ, "PYTHONPATH": str(poison.parent)}
-    result = run_agent(tmp_path, ["read", "exit"], lado_mcp(lado_home), env)
+    server = lado_mcp(lado_home)
+    server["env"]["PYTHONPATH"] = ""  # the server, which gets the agent's environment, imports it
+    result = run_agent(tmp_path, ["read", "exit"], server, env)
     assert result.returncode == 0, result.stderr
     assert json.loads((tmp_path / "seen.json").read_text())["read"] == []
 

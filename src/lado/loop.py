@@ -124,6 +124,7 @@ def start(session: str) -> None:
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=tmux.clean_env(),  # not as the agent whose `lado mcp` may start the session
         start_new_session=True,  # not ended with the terminal or tmux client that started it
     )
 

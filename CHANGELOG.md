@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.34.0 (unreleased)
+
+- The supervisor can start a new, independent session in the same repository, with its
+  session's kits, provider and settings, for a problem it found or a new ticket: it asks
+  you with the brief attached and the choice `Start session <name>`, and once you pick it,
+  the MCP tool `start_session` starts the session, whose supervisor gets a copy of the
+  brief as its task. Nothing starts without your answer.
+
 ## 0.33.0 (2026-10-10)
 
 - On macOS, agents started over ssh (also by `lado update`) run in the graphical session,

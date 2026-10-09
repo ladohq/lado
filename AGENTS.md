@@ -192,7 +192,11 @@ fixes and docs only: no new feature, no API or schema change.
     the scp form and a local path as they are). `start_session(resume=...)` takes what
     the caller means: `False` a new session (`SessionExists`, with that session's status
     and folder, when the name is taken), `True` a resume (`NoSuchSession` for an unknown
-    name), `None` either, as `lado start`. No provider is the default: a new session
+    name), `None` either, as `lado start`; `first` (a `FirstInput`, only with
+    `resume=False`) copies its records into the new session (`artifacts.copy_record`) and
+    queues the supervisor's first message from `lado` with the copies attached, the copies
+    undone with the session. `start_approved_session` is the supervisor's
+    `start_session` tool (Supervisor-started sessions, below). No provider is the default: a new session
     without one takes `suggested_provider(repo, installed)`, a `Suggestion` (provider and
     reason, `LAST_SESSION` or `ONLY_INSTALLED`; `line()` is what `lado start` prints as
     `provider: ...`): the provider of the folder's last session (`state.last_session`) if
@@ -283,6 +287,12 @@ fixes and docs only: no new feature, no API or schema change.
     never an empty list. A window's name is its agent's: `new_session` and `new_window` set
     `allow-rename off` globally on LADO's server, so no program renames it, also when the
     user's tmux.conf allows that (a human's `rename-window` still would).
+    `without_agent_vars` (`clean_env` for this process) drops a parent Claude Code's
+    variables and the calling agent's LADO identity (`LADO_SESSION`, `LADO_AGENT`,
+    `LADO_INSTANCE`; every other `LADO_*` stays) from every tmux call, the popup, a UI
+    terminal, the session loop's start (`loop.start`) and an agent's environment
+    (`agent_env.resolve`): a session the supervisor's `lado mcp` starts never runs as that
+    agent. `runs._popup` keeps its `env -u`: the tmux server builds the popup's environment.
     `server_running` is the one look at whether a server runs on a socket (`list-sessions`;
     it never starts one). `new_session` sets `exit-empty on` (tmux's default) first in its
     chain and takes `before_attempt`, run before each attempt, also the one after
@@ -442,8 +452,8 @@ fixes and docs only: no new feature, no API or schema change.
     `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to
     attach; `read_artifact` returns an image as MCP image content, the SDK's `Image`, after
     its facts, when `artifacts.read` gives it as `Shown`; the supervisor also gets
-    `spawn_worker`, `finish_worker`, `flow_start` and `flow_cancel`). No tool answers a
-    gate or a question.
+    `spawn_worker`, `finish_worker`, `flow_start`, `flow_cancel` and `start_session`). No
+    tool answers a gate or a question.
   - `artifacts.py`: artifacts, named documents of a session (contract:
     [docs/design/artifacts.md](docs/design/artifacts.md)); the only module the rest of LADO
     calls for them (MCP tools, CLI, runs, runtime, doctor, the UI server): names (`NAME`,
@@ -1100,6 +1110,22 @@ and is checked as before.
 store's `remove_session` first, which also removes content files no record refers to that
 are more than an hour old; the output counts the artifacts); it refuses a running one, and
 one with open runs unless `--force`; worktrees and branches stay on disk and are listed.
+
+Supervisor-started sessions: the supervisor proposes a new, independent session for a
+problem it found or a new ticket by `ask_human` with the brief attached and the choice
+`runtime.START_CHOICE` (`Start session <name>`, the one spelling, also in its
+instructions); once the human picks it in the UI, its MCP tool `start_session(name,
+question)` (`runtime.start_approved_session`) checks that the question is the calling
+supervisor's of its session, answered with exactly that choice, and carries at least one
+attachment (no two of one name), and starts the session with `resume=False` (a taken name
+is `SessionExists`, so one approval starts one session) in the caller's repo with its kits,
+provider, permission mode and without. Each attachment is copied into the new session's
+scope (author `lado`, the summary naming where it came from), and its supervisor's first
+message from `lado` carries them with the question, each artifact's author and the human's
+comment; the brief never goes on argv or into the role. Nothing is stored for a proposal:
+an unanswered one dies with its session's stop (its questions close); an answer stays
+valid for a resumed supervisor, and after `lado forget <name>` it can start the session
+again. The new session reports nothing back.
 
 `lado artifacts list <session> [--run RUN]`, `lado artifacts show <session> <full-name>`
 and `lado artifacts get <session> <full-name> [-o FILE]` list a session's artifacts, print

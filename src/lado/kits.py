@@ -272,7 +272,8 @@ class ResolvedAgent:
             command = list(mcp.command)
             if templates:
                 command = mcp_exec.wrap(name, command, templates)
-            servers[name] = McpServer(command, literals)
+            names = dict.fromkeys(n for v in templates.values() for n in mcp_exec.references(v))
+            servers[name] = McpServer(command, literals, list(names))
         return servers
 
 

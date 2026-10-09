@@ -177,6 +177,8 @@ def test_mcp_variables(project, monkeypatch):
         "db", [f"{kit_dir}/srv", "--x"], {"T": f"${{TOKEN}}-{kit_dir}"}
     )
     assert servers["db"].env == {}
+    # The names it reads, for a CLI that gives a server only the variables it is told of.
+    assert servers["db"].env_vars == ["TOKEN"]
     monkeypatch.delenv("TOKEN", raising=False)
     with pytest.raises(kits.KitError, match="environment variable TOKEN is not set"):
         env.resolve("w").mcp_servers()
@@ -188,6 +190,7 @@ def test_mcp_without_references_is_not_wrapped(project):
     servers = kits.resolve(None, [kits.load(path)]).resolve("w").mcp_servers({})
     assert servers["db"].command == ["srv"]
     assert servers["db"].env == {"MODE": f"{path.resolve()}/ro"}
+    assert servers["db"].env_vars == []
 
 
 def test_mcp_literals_stay_beside_the_templates(project):

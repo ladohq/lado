@@ -20,6 +20,7 @@ from lado.providers.base import (
     lado_command,
 )
 from lado.providers.claude import ClaudeProvider
+from lado.providers.codex import CodexProvider
 from lado.providers.kilo import KiloProvider
 from lado.providers.opencode import OpenCodeProvider
 
@@ -46,7 +47,7 @@ __all__ = [
 ]
 
 _PROVIDERS: dict[str, Provider] = {
-    p.name: p for p in (ClaudeProvider(), KiloProvider(), OpenCodeProvider())
+    p.name: p for p in (ClaudeProvider(), CodexProvider(), KiloProvider(), OpenCodeProvider())
 }
 
 

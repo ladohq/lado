@@ -154,6 +154,9 @@ send_message, ask_human and flow_advance; read_messages names those attached to 
 """
 
 WORKTREES_EXCLUDE = "/.lado/worktrees/"
+# The first input of an agent whose CLI starts its session only then and that has nothing
+# else to start with (Capabilities.session_start_on_first_input): one short turn.
+FIRST_INPUT = "session started; wait for the human or a message"
 REPORT_REMINDER = (
     '\n\nWhen you are done, report back with send_message(to="supervisor"): summary = your '
     "status and a one-line result, body = the full report."
@@ -402,6 +405,7 @@ def start_session(
         # does not touch the running lead's files.
         _write_lead_skills(agent, env.lead_skills())
         launch = _launch_command(agent_cli, agent, sess, spec)
+        started.warnings += launch.warnings
         started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_session(session, SUPERVISOR, repo, _command(agent, base_env, launch))
     except Exception as error:
@@ -505,7 +509,7 @@ def spawn_worker(
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         state.queue_message(session, state.LADO, worker, summary, text)
         launch = _launch_command(agent_cli, agent, sess, spec)
-        held = _first_hook_blocker(agent_cli, agent, base_env, launch)
+        held = launch.warnings + _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
     except Exception as error:
         # The worker never ran: leave nothing that says it did, so the run's step still
@@ -545,10 +549,15 @@ def _launch_command(
     after its start (Capabilities.notice_on_argv) takes the lines of its queue (its task, a
     resumed supervisor's messages from LADO) on its command line, never a body: they are
     handed over now as typed, an attempt like any hand-over (hand_over), and confirmed by
-    its prompt-submit hook as typed text; the agent stays starting."""
+    its prompt-submit hook as typed text; the agent stays starting. A CLI that starts its
+    session only at its first input (Capabilities.session_start_on_first_input) and has
+    nothing in its queue gets FIRST_INPUT from LADO, a message like any other."""
     if not agent_cli.capabilities.notice_on_argv:
         return agent_cli.launch_command(agent, sess, spec)
     taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
+    if not taken and agent_cli.capabilities.session_start_on_first_input:
+        state.queue_message(agent.session, state.LADO, agent.name, FIRST_INPUT)
+        taken = state.take_pending(agent.session, agent.name, state.SENT, channel=state.TYPED)
     notice = format_messages(taken) or None
     return agent_cli.launch_command(agent, sess, spec, notice=notice)
 
@@ -1776,6 +1785,7 @@ def _spec(
         skills=skills,
         mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers(base_env)},
         read=read,
+        environ=base_env,
     )
 
 

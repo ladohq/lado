@@ -15,7 +15,7 @@ from lado import (
     runtime,
     state,
 )
-from lado.providers import claude, kilo, opencode
+from lado.providers import claude, codex, kilo, opencode
 
 
 def _versions(
@@ -24,10 +24,12 @@ def _versions(
     claude_version=f"{claude.TESTED_VERSION} (Claude Code)",
     tmux_version="tmux 3.7c",
     opencode_version=f"{opencode.TESTED_VERSION}.34",
+    codex_version=f"codex-cli {codex.TESTED_VERSION}.0",
 ):
     versions = {
         "kilo": kilo_version,
         "claude": claude_version,
+        "codex": codex_version,
         "tmux": tmux_version,
         "opencode": opencode_version,
     }
@@ -45,6 +47,7 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
         "Agent config folders",
         "Artifacts",
         "Claude Code",
+        "Codex CLI",
         "Kilo CLI",
         "OpenCode",
     ]
@@ -67,12 +70,12 @@ def test_old_tmux_warns_about_gate_popups_and_terminals(monkeypatch, version, hi
     assert hint in tmux.hint
 
 
-@pytest.mark.parametrize("installed", ["claude", "kilo", "opencode"])
+@pytest.mark.parametrize("installed", ["claude", "codex", "kilo", "opencode"])
 def test_a_missing_provider_is_info_when_another_is_installed(monkeypatch, capsys, installed):
     _versions(monkeypatch)
     checks = doctor.run_checks(which=lambda cmd: cmd if cmd in (installed, "tmux") else None)
-    by_name = {c.name: c for c in checks[-3:]}
-    for name in ("claude", "kilo", "opencode"):
+    by_name = {c.name: c for c in checks[-4:]}
+    for name in ("claude", "codex", "kilo", "opencode"):
         provider = providers.get(name)
         check = by_name[provider.title]
         if name == installed:

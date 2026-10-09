@@ -103,12 +103,21 @@ def claude_config(tmp_path, monkeypatch):
     return config
 
 
+@pytest.fixture(autouse=True)
+def codex_home(tmp_path, monkeypatch):
+    """The user's Codex home (CODEX_HOME), never the user's ~/.codex; not made. A Codex agent
+    reads its config.toml (lado.providers.codex)."""
+    folder = tmp_path / "codex-home"
+    monkeypatch.setenv("CODEX_HOME", str(folder))
+    return folder
+
+
 @pytest.fixture
 def fake_clis(tmp_path, monkeypatch, claude_config):
     """Stand-ins for the agent CLIs on PATH, which a launch looks its CLI up on; the folder."""
     folder = tmp_path / "fake-clis"
     folder.mkdir()
-    for name in ("claude", "kilo", "opencode", "noskills"):
+    for name in ("claude", "codex", "kilo", "opencode", "noskills"):
         (folder / name).write_text("#!/bin/sh\n")
         (folder / name).chmod(0o755)
     monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")

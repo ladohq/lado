@@ -244,13 +244,19 @@ def test_kits_are_listed_without_fetching_their_packs(client, repo, monkeypatch)
 def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
     statuses = {
         "claude": doctor.ProviderStatus(True, "2.1.287", "2.1.287 (Claude Code)", "2.1.287", ""),
+        "codex": doctor.ProviderStatus(True, "0.162.0", "codex-cli 0.162.0", "0.162", ""),
         "kilo": doctor.ProviderStatus(False, "", "`kilo` not found on PATH", "7.2", ""),
         "opencode": doctor.ProviderStatus(True, "1.18.34", "1.18.34", "1.18", ""),
     }
     monkeypatch.setattr(doctor, "provider_status", lambda p, which: statuses[p.name])
     answer = client.get("/api/providers").json()
     assert [p["name"] for p in answer] == providers.names()
-    claude, kilo, opencode = answer
+    claude, codex, kilo, opencode = answer
+    assert (codex["title"], codex["version"], codex["tested_version"]) == (
+        "Codex CLI",
+        "0.162.0",
+        "0.162",
+    )
     assert claude == {
         "name": "claude",
         "title": "Claude Code",

@@ -178,7 +178,9 @@ def test_finish_ends_a_worker(repo, fake_tmux, capsys):
 
 def test_start_with_unknown_provider_fails(repo, fake_tmux, capsys):
     assert main(["start", str(repo), "--provider", "nope", "--no-attach"]) == 1
-    assert 'unknown provider "nope"; known: claude, kilo, opencode' in capsys.readouterr().err
+    assert (
+        'unknown provider "nope"; known: claude, codex, kilo, opencode' in capsys.readouterr().err
+    )
 
 
 def test_start_in_a_repository_without_commits_fails(tmp_path, fake_tmux, capsys):

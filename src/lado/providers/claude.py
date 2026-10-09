@@ -3,11 +3,10 @@
 import hashlib
 import json
 import shutil
-import subprocess
 from pathlib import Path
 
 from lado import state
-from lado.providers import base
+from lado.providers import base, gitpaths
 
 # `lado doctor` warns when the installed Claude Code is not this version, the one
 # `make test-live PROVIDER=claude` last passed on. Checked with 2.1.287 (and 2.1.286) by
@@ -209,12 +208,12 @@ class ClaudeProvider(base.Provider):
         try:
             trusted = _trusted(Path(cwd), env)
         except (OSError, ValueError) as error:
-            repo = _main_root(Path(cwd))
+            repo = gitpaths.main_root(Path(cwd))
             return base.Blocker(warning=f"cannot tell whether {self.title} trusts {repo}: {error}")
         if trusted:
             return base.Blocker()
         return base.Blocker(
-            reason=f"{self.title} asks whether to trust {_main_root(Path(cwd))}: in its "
+            reason=f"{self.title} asks whether to trust {gitpaths.main_root(Path(cwd))}: in its "
             'terminal choose "Yes, I trust this folder" (Enter alone answers "No, exit" and '
             "closes the agent)"
         )
@@ -266,35 +265,12 @@ def _trusted(cwd: Path, env: dict[str, str]) -> bool:
         project = projects.get(str(folder))
         return isinstance(project, dict) and project.get("hasTrustDialogAccepted") is True
 
-    if trusts(_main_root(cwd)):
+    if trusts(gitpaths.main_root(cwd)):
         return True
-    root, folder = _git_root(cwd), cwd.resolve()
+    root, folder = gitpaths.git_root(cwd), cwd.resolve()
     while True:
         if trusts(folder):
             return True
         if folder == root or folder == folder.parent:
             return False
         folder = folder.parent
-
-
-def _git(cwd: Path, *args: str) -> str | None:
-    done = subprocess.run(
-        ["git", "-C", str(cwd), "rev-parse", "--path-format=absolute", *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return done.stdout.strip() if done.returncode == 0 else None
-
-
-def _git_root(cwd: Path) -> Path:
-    """The real path of `cwd`'s git work tree, or of the root folder outside git."""
-    top = _git(cwd, "--show-toplevel")
-    return Path(top).resolve() if top else Path(cwd.resolve().anchor)
-
-
-def _main_root(cwd: Path) -> Path:
-    """The real path of the main work tree of `cwd`'s repository (the main repo of a linked
-    worktree); `cwd` itself outside git."""
-    common = _git(cwd, "--git-common-dir")
-    return Path(common).resolve().parent if common else cwd.resolve()

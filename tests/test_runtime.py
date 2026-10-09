@@ -115,7 +115,7 @@ def test_a_new_session_with_several_providers_and_no_history_is_refused(repo, fa
         runtime.start_session(str(repo), "s", None)
     assert str(error.value) == (
         "which agent CLI should the session run? Installed on the agents' PATH: "
-        "claude, kilo, opencode; give one with --provider NAME"
+        "claude, codex, kilo, opencode; give one with --provider NAME"
     )
     assert fake_tmux == []
     assert state.get_session("s") is None
@@ -429,6 +429,82 @@ def test_an_opencode_family_worker_gets_its_first_line_on_its_command_line(
     hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
     assert state.list_messages("s")[0].state == state.DELIVERED
     assert state.get_agent("s", "w1").status == state.BUSY
+
+
+class _FirstInput(providers.Provider):
+    """A CLI that starts its session only when its first input is submitted (Codex CLI)."""
+
+    name = "firstinput"
+    title = "First Input CLI"
+    permission_modes = ()
+    capabilities = providers.Capabilities(
+        status_events=True,
+        permission_event=False,
+        deliver_on_turn_end=True,
+        skills=True,
+        notice_on_argv=True,
+        session_start_on_first_input=True,
+    )
+
+    def launch_command(self, agent, session, spec, notice=None):
+        self.environ = spec.environ
+        return providers.Launch(["firstinput", *([notice] if notice else [])], warnings=["w!"])
+
+    def parse_event(self, native, payload):
+        return None
+
+
+@pytest.fixture
+def first_input(monkeypatch, fake_clis):
+    (fake_clis / "firstinput").write_text("#!/bin/sh\n")
+    (fake_clis / "firstinput").chmod(0o755)
+    cli = _FirstInput()
+    monkeypatch.setitem(providers._PROVIDERS, cli.name, cli)
+    return cli
+
+
+def test_an_agent_that_starts_at_its_first_input_gets_one_from_lado(repo, fake_tmux, first_input):
+    """With nothing in its queue, it would never start its session: LADO queues one line of
+    its own, stored and on the command line like any first line, never a body."""
+    started = runtime.start_session(str(repo), "s", None, provider="firstinput")
+    [hello] = state.list_messages("s")
+    assert (hello.sender, hello.recipient, hello.summary, hello.body) == (
+        "lado",
+        "supervisor",
+        runtime.FIRST_INPUT,
+        "",
+    )
+    assert (hello.state, hello.attempts, hello.channel) == (state.SENT, 1, state.TYPED)
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv == ["firstinput", f"[from lado] {runtime.FIRST_INPUT}"]
+    # The provider's launch warnings reach whoever starts it.
+    assert "w!" in started.warnings
+    # The provider reads the agent's environment, the one its window gets.
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert first_input.environ["PATH"] == env["PATH"]
+
+
+def test_an_agent_that_starts_at_its_first_input_and_has_one_gets_no_other(
+    repo, fake_tmux, first_input
+):
+    runtime.start_session(str(repo), "s", None, provider="firstinput")
+    warnings = []
+    runtime.spawn_worker("s", "fix the bug;", name="w1", warnings=warnings)
+    task = state.list_messages("s")[-1]
+    assert [m.summary for m in state.list_messages("s") if m.recipient == "w1"] == ["your task"]
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv == [
+        "firstinput",
+        f"[from lado] your task (#{task.id}, 3 lines: call read_messages)",
+    ]
+    assert "w!" in warnings
+
+
+def test_other_agents_get_no_first_input_from_lado(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    assert state.list_messages("s") == []
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert "--prompt" not in argv
 
 
 def test_a_failed_spawn_drops_the_first_line_handed_over_on_the_command_line(
@@ -2015,7 +2091,7 @@ def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, tea
     assert env["DB_TOKEN"] == "from-shell"  # the wrapper's CLI gets it from there
 
 
-@pytest.mark.parametrize("provider", ["claude", "kilo", "opencode"])
+@pytest.mark.parametrize("provider", ["claude", "codex", "kilo", "opencode"])
 def test_kit_mcp_secrets_are_in_no_file_lado_leaves(
     repo, fake_tmux, team_kit, monkeypatch, lado_home, provider
 ):
@@ -2032,7 +2108,8 @@ def test_kit_mcp_secrets_are_in_no_file_lado_leaves(
             found.append(path)
     assert found == []
     config = providers.base.config_path(state.get_agent("s", "r"))
-    text = "\n".join(p.read_text() for p in config.glob("*.json") if p.name != "env.json")
+    files = [*config.glob("*.json"), *config.glob("*.toml")]
+    text = "\n".join(p.read_text() for p in files if p.name != "env.json")
     assert "lado.mcp_exec" in text
     assert "${" not in text and "{env:" not in text
     env_files = list((lado_home / "agents").rglob("env.json"))

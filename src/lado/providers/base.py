@@ -40,6 +40,10 @@ class Capabilities:
     # it takes input: its first messages' lines (never a body) go on its command line as
     # the `notice` of launch_command, handed over as typed (lado.runtime).
     notice_on_argv: bool = False
+    # The CLI starts its session (its session-start hook) only when its first input is
+    # submitted: an agent with an empty queue would never be ready, so LADO gives it a line
+    # of its own (lado.runtime). Only with notice_on_argv, which takes that line.
+    session_start_on_first_input: bool = False
 
 
 @dataclass(frozen=True)
@@ -80,6 +84,9 @@ class McpServer:
 
     command: list[str]
     env: dict[str, str] = field(default_factory=dict)
+    # The names of the agent's variables the server reads (lado.mcp_exec fills its env from
+    # them): a CLI that starts a server with only some of its environment passes these on.
+    env_vars: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -92,6 +99,10 @@ class AgentSpec:
     # Folders the agent reads without asking, never loaded as skills (e.g. the skills a
     # lead skill names, lado.runtime).
     read: list[Path] = field(default_factory=list)
+    # The agent's environment before LADO's and the provider's variables (lado.agent_env),
+    # where a CLI that keeps the user's settings in its own home finds that home. Read only:
+    # it holds the user's keys.
+    environ: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)
@@ -101,6 +112,9 @@ class Launch:
 
     argv: list[str]
     env: dict[str, str] = field(default_factory=dict)
+    # What the provider could not do as asked and did otherwise, told whoever starts the
+    # agent (e.g. a user setting it could not read).
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

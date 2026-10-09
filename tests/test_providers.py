@@ -16,11 +16,12 @@ FAMILY = {"kilo": "KILO_CONFIG_CONTENT", "opencode": "OPENCODE_CONFIG_CONTENT"}
 
 def test_registry():
     assert not hasattr(providers, "DEFAULT")  # no provider is privileged
-    assert providers.names() == ["claude", "kilo", "opencode"]
+    assert providers.names() == ["claude", "codex", "kilo", "opencode"]
     claude = providers.get("claude")
     assert (claude.name, claude.command) == ("claude", "claude")
     assert claude.capabilities.deliver_on_turn_end
-    with pytest.raises(ValueError, match='unknown provider "nope"; known: claude, kilo, opencode'):
+    known = "known: claude, codex, kilo, opencode"
+    with pytest.raises(ValueError, match=f'unknown provider "nope"; {known}'):
         providers.get("nope")
 
 
@@ -700,11 +701,11 @@ def test_provider_chosen_per_session_and_worker(repo, fake_tmux):
 
 
 def test_unknown_provider_is_refused(repo, fake_tmux):
-    with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
+    with pytest.raises(runtime.LadoError, match="known: claude, codex, kilo, opencode"):
         runtime.start_session(str(repo), "s", None, "nope")
     assert state.get_session("s") is None
     runtime.start_session(str(repo), "s", None, provider="claude")
-    with pytest.raises(runtime.LadoError, match="known: claude, kilo, opencode"):
+    with pytest.raises(runtime.LadoError, match="known: claude, codex, kilo, opencode"):
         runtime.spawn_worker("s", "task", provider="nope")
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
 

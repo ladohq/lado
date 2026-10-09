@@ -547,6 +547,22 @@ Wanted: find whether Codex takes LADO's Stop-hook output (a LADO bug) or the mod
 (then a stronger local model, `LADO_LIVE_CODEX_MODEL`, or a test that holds on a model
 that loops), and make the test pass reliably.
 Found: 2026-10-09, release of 0.32.0.
+In the verify of feature/macos-gui-session (845cc46, 2026-10-10) it passed on its first
+rerun: once `typed` instead of `hook_output` (tests/live/test_live.py:474);
+`test_a_flow_run_moves_on_when_its_worker_reports[codex]` failed twice (w1 busy after its
+report, the run did not end within 240 s) and passed on the third run.
+
+## Kilo live image test fails 3 of 3
+
+Size: M. Why here: a live test red every time; it hides a real regression of artifact images.
+`test_an_agent_sees_the_image_the_human_attaches[kilo]` on `kilo/kilo-auto/free` failed 3 of
+3 in the verify of feature/macos-gui-session (845cc46): w1 searches the disk with `find` for
+the image instead of reading it with `read_artifact`, and never replies within 180 s. It
+failed 2 of 3 at the 0.32.0 release (the note in "Flaky: Kilo live flow test, the passive
+supervisor acts on its own"). The branch changed nothing in Kilo, artifacts or the MCP server.
+Wanted: find whether the free model gets the image's content at all (then skip a model that
+takes no images, as OpenCode's test does) or pin a Kilo model that sees images.
+Found: 2026-10-10, verify of feature/macos-gui-session.
 
 # P2: when convenient
 
@@ -893,6 +909,10 @@ passed 1 of 3 (flow.txt left uncommitted on the run's branch);
 `test_an_agent_sees_the_image_the_human_attaches[kilo]` timed out 2 of 3 (180 s, w1 busy;
 skipped once as designed). The Codex worker test failed 3 of 3: its own P1 entry, "Codex
 live worker test fails 3 of 3".
+In the verify of feature/macos-gui-session (845cc46, 2026-10-10):
+`test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed once (`flow.txt` missing on
+the run's branch) and passed on the rerun; the Kilo image test failed 3 of 3 (its own P1
+entry, "Kilo live image test fails 3 of 3").
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

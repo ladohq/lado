@@ -170,12 +170,19 @@ def status(agent: str) -> str:
 def check_first_input(recipient: str, summary: str) -> None:
     """The agent's first input, a message from LADO through its queue (no part of its
     command line), was handed over once and taken at the first attempt: a hand-over from
-    its session-start hook works with this CLI."""
-    [first] = [
-        m
-        for m in state.list_messages(SESSION)
-        if (m.sender, m.recipient, m.summary) == (state.LADO, recipient, summary)
-    ]
+    its session-start hook works with this CLI. Its line can show on the agent's screen
+    before the prompt-submit hook confirms it, so wait until it is no longer on its way
+    (pending or sent)."""
+
+    def settled() -> state.Message | None:
+        [first] = [
+            m
+            for m in state.list_messages(SESSION)
+            if (m.sender, m.recipient, m.summary) == (state.LADO, recipient, summary)
+        ]
+        return first if first.state not in (state.PENDING, state.SENT) else None
+
+    first = wait_for(settled, f"{recipient}'s first input {summary!r} to be confirmed", 120)
     assert (first.state, first.attempts) in [(s, 1) for s in RECEIVED], (
         f"{recipient}'s first input {summary!r}: {first.state} after {first.attempts} attempts"
     )

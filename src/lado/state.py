@@ -2110,8 +2110,9 @@ def take_pending(
     """Move all pending messages for `recipient` to `mark`, by `channel`, and return them,
     oldest first; when there are any and `status` is given, set the recipient's status too.
     `idle_only`: take none unless the recipient takes input (ACCEPTS_INPUT: idle or
-    background) and no message handed over to it is unconfirmed. Every hand-over to an agent takes them so (lado.runtime.hand_over): an
-    agent never has more than one batch of sent messages at a time.
+    background) and no message handed over to it is unconfirmed. Every hand-over to an
+    agent takes them so (lado.runtime.hand_over): an agent never has more than one batch of
+    sent messages at a time.
 
     Runs in one write transaction, so two concurrent callers never get the same message,
     and no one sees the messages moved without the status that goes with them.

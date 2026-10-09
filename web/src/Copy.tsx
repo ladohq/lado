@@ -1,5 +1,6 @@
 // Copying a text for the human (docs/design/ui.md, Launch and session control): a session's
-// link from its list row's menu and its head, its folder from its head. The Clipboard API
+// link from its list row's menu and its head, its folder from its head, a kit's address or
+// folder from its card's menu (RowMenu.tsx). The Clipboard API
 // first; without it (a page not served from localhost or https) or when it refuses, the
 // legacy copy (execCommand); what was copied is said for COPIED_MS in the caller's
 // role="status". Only when both fail is the text shown selected, to copy by hand.

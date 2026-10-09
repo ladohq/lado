@@ -1645,7 +1645,9 @@ Size: M. Why here: a desktop app; the phone comes second.
 At a 420 px wide viewport the Kits page (the rail and the page) is wider than the screen:
 a full-page screenshot is 476 px wide, and the Marketplaces block runs past the right edge.
 Wanted: no horizontal page scroll at phone width (the rail collapses, the page fits).
-Found: 2026-10-05, UI e2e screenshot update-narrow of feature/kits-page-polish.
+Found: 2026-10-05, UI e2e screenshot update-narrow of feature/kits-page-polish. Seen again
+2026-10-09 (feature/kits-cards): at 390 px the rail stays expanded and leaves the page
+~140 px; with the rail collapsed by hand the Kits page fits (the e2e test collapses it).
 
 ## The Kits up-to-date window drops the plan's other notes
 

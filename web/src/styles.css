@@ -3500,10 +3500,18 @@ h3 {
   opacity: 0;
 }
 
-.session-row:hover .row-menu,
-.session-row:focus-within .row-menu,
+/* RowMenu's ⋯, of a session row and a kit card alike: on its row's hover and focus, while
+   open or while its note shows, and always on a device without hover. */
+:hover > .row-menu,
+:focus-within > .row-menu,
 .row-menu.shown {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .row-menu {
+    opacity: 1;
+  }
 }
 
 .row-note {
@@ -4492,30 +4500,39 @@ h3 {
   font-size: 12px;
 }
 
-.kit-rows {
+/* The kits as a grid of cards (docs/design/ui.md, Kits: Card), one column on a narrow page
+   by itself; the cards of a row take the same height. */
+.kit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* A card: the mark and the title, the description, the problem, the source and the counts
+   at the bottom; ⋯ in its top-right corner. */
+.kit-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--panel);
 }
 
-/* A kit's card (docs/design/ui.md, Kits: Card): mark, body, actions. */
-.kit-row {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 4px 14px;
-  padding: 14px 16px;
-  border-top: 1px solid var(--line);
-}
-
-.kit-row:first-child {
-  border-top: 0;
+.kit-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 .kit-mark {
+  flex: none;
   display: grid;
   place-items: center;
   width: 36px;
@@ -4531,22 +4548,30 @@ h3 {
   color: var(--muted);
 }
 
-.kit-body {
+.kit-title {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
-.kit-title {
+/* One line, cut with "…"; the whole name in its title. It leaves ⋯ its room (28px and a
+   gap); the version line under it is below ⋯. */
+.kit-name {
+  margin-right: 26px;
+  overflow: hidden;
+  font: 600 14px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The version, the card's action and the badges: what does not fit goes to a next line. */
+.kit-version-line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-}
-
-.kit-name {
-  font: 600 15px var(--mono);
+  gap: 4px 6px;
 }
 
 .kit-version {
@@ -4555,6 +4580,40 @@ h3 {
   border-radius: 4px;
   color: var(--muted);
   font: 500 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.kit-arrow {
+  color: var(--action);
+  font-size: 12px;
+}
+
+.kit-version.kit-newer {
+  border-color: transparent;
+  background: var(--action-ground);
+  color: var(--action);
+  font-weight: 600;
+}
+
+/* ↑ (update to the newer version) or + (install): a small square button. */
+.kit-action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: var(--action);
+  color: var(--on-action);
+  font: 600 13px var(--sans);
+  cursor: pointer;
+}
+
+.kit-action:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
 }
 
 .kit-description,
@@ -4565,6 +4624,10 @@ h3 {
 
 .kit-description {
   color: var(--muted);
+}
+
+.kit-no-description {
+  font-style: italic;
 }
 
 .kit-description.clamped {
@@ -4636,12 +4699,14 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+/* The footer, at the card's bottom whatever its height in the row. */
 .kit-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 16px;
-  margin-top: 2px;
+  gap: 4px 12px;
+  margin-top: auto;
+  padding-top: 2px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -4649,24 +4714,6 @@ h3 {
 .kit-where {
   font-family: var(--mono);
   overflow-wrap: anywhere;
-}
-
-.kit-actions {
-  display: flex;
-  align-items: start;
-  gap: 6px;
-}
-
-/* A narrow page: the actions go under the body. */
-@media (max-width: 600px) {
-  .kit-row {
-    grid-template-columns: 36px minmax(0, 1fr);
-  }
-
-  .kit-actions {
-    grid-column: 2;
-    flex-wrap: wrap;
-  }
 }
 
 .badge {

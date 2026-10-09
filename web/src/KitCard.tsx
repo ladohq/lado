@@ -1,12 +1,20 @@
-// A kit's card in the lists of the Kits page (docs/design/ui.md, Kits: Card): its mark,
-// name and version, the description cut to two lines, the source as a dot with its text, the
-// counts and the address; the actions on the right. Installed and Available rows both use it.
+// A kit's card in the grids of the Kits page (docs/design/ui.md, Kits: Card): its mark, its
+// name on one line (the whole name and its address or folder in its title), the version line
+// with the card's one action and the badges, the description cut to two lines, the problem,
+// and the source as a dot with its text and the counts; ⋯ in the corner. Installed and
+// Available cards both use it.
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+
+import { RowMenu, type RowMenuItem } from "./RowMenu";
 
 // The dot's colour follows the kind of source; its text always says which one.
 export type SourceKind = "official" | "marketplace" | "git" | "folder" | "built-in";
 
 export type Source = { label: string; kind: SourceKind };
+
+// The action by the version: ↑ to the newer version `to` a check found (Update, U2), or +
+// (Install, AV1); `label` is the button's name and title.
+export type CardAction = { symbol: "↑" | "+"; label: string; to?: string; onSelect: () => void };
 
 // "lado-dev" → "LD": the first letters of the first two parts, else the first two letters.
 export function initials(name: string): string {
@@ -29,49 +37,73 @@ export function KitCard(props: {
   name: string;
   builtIn?: boolean;
   version: string | null;
+  action?: CardAction;
   badges?: ReactNode;
   description: string | null;
+  // Said in muted italics when there is no description.
+  noDescription?: string;
   problem?: string | null;
   source: Source;
   agents: number;
   skills: number;
   flows: number;
-  // A git address (shown short, the full one on hover) or a folder (as it is).
-  address?: string | null;
-  folder?: string | null;
-  actions?: ReactNode;
+  // A git address or a folder: in the name's title, and copied from ⋯.
+  where?: string | null;
+  menu?: RowMenuItem[];
 }) {
+  const { action } = props;
   return (
-    <li className="kit-row" aria-label={props.name}>
-      <span className={`kit-mark${props.builtIn ? " built-in" : ""}`} aria-hidden="true">
-        {initials(props.name)}
-      </span>
-      <div className="kit-body">
+    <li className="kit-card" aria-label={props.name}>
+      <div className="kit-top">
+        <span className={`kit-mark${props.builtIn ? " built-in" : ""}`} aria-hidden="true">
+          {initials(props.name)}
+        </span>
         <div className="kit-title">
-          <span className="kit-name">{props.name}</span>
-          {props.version && <span className="kit-version">{props.version}</span>}
-          {props.badges}
-        </div>
-        {props.description && <Description text={props.description} />}
-        {props.problem && (
-          <p className="kit-problem" role="alert">
-            {props.problem}
-          </p>
-        )}
-        <div className="kit-meta">
-          <span className="kit-source" data-source={props.source.kind}>
-            {props.source.label}
+          <span className="kit-name" title={[props.name, props.where].filter(Boolean).join("\n")}>
+            {props.name}
           </span>
-          <Counts agents={props.agents} skills={props.skills} flows={props.flows} />
-          {props.address && (
-            <span className="kit-where" title={props.address}>
-              {shortAddress(props.address)}
-            </span>
-          )}
-          {!props.address && props.folder && <span className="kit-where">{props.folder}</span>}
+          <div className="kit-version-line">
+            {props.version && <span className="kit-version">{props.version}</span>}
+            {action?.to && (
+              <>
+                <span className="kit-arrow" aria-hidden="true">
+                  →
+                </span>
+                <span className="kit-version kit-newer">{action.to}</span>
+              </>
+            )}
+            {action && (
+              <button
+                type="button"
+                className="kit-action"
+                aria-label={action.label}
+                title={action.label}
+                onClick={action.onSelect}
+              >
+                {action.symbol}
+              </button>
+            )}
+            {props.badges}
+          </div>
         </div>
       </div>
-      {props.actions && <div className="kit-actions">{props.actions}</div>}
+      {props.description ? (
+        <Description text={props.description} />
+      ) : (
+        props.noDescription && <p className="kit-description kit-no-description">{props.noDescription}</p>
+      )}
+      {props.problem && (
+        <p className="kit-problem" role="alert">
+          {props.problem}
+        </p>
+      )}
+      <div className="kit-meta">
+        <span className="kit-source" data-source={props.source.kind}>
+          {props.source.label}
+        </span>
+        <Counts agents={props.agents} skills={props.skills} flows={props.flows} />
+      </div>
+      {props.menu && <RowMenu name={props.name} items={props.menu} />}
     </li>
   );
 }

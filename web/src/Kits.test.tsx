@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { InstalledKitInfo, MarketplaceInfo, OfferInfo, OutdatedInfo, PlanInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, stream, stubDialogs } from "./fakes";
+import { FakeEventSource, stream, stubDialogs, stubLegacyCopy, unstubLegacyCopy } from "./fakes";
 
 const GIT = { kind: "git", folder: null, valid: true, problem: null, updated_at: null, missing: false } as const;
 const AT = "2026-10-05T08:00:00Z";
@@ -212,6 +212,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  unstubLegacyCopy();
 });
 
 const page = () => screen.getByRole("main");
@@ -259,31 +261,77 @@ test("/kits/elsewhere is Not found", async () => {
 
 const sourceOfRow = (row: HTMLElement) => row.querySelector("[data-source]")?.getAttribute("data-source");
 
-test("Installed shows each kit with its source; built-in ones have no buttons", async () => {
+// A card's ⋯ and the names of its items.
+async function cardMenu(name: string) {
+  fireEvent.click(within(kitRow(name)).getByRole("button", { name: `Actions for ${name}` }));
+  return screen.findByRole("menu", { name });
+}
+const itemsOf = (menu: HTMLElement) => within(menu).getAllByRole("menuitem").map((item) => item.textContent);
+// The card's own action by its version: ↑ or +.
+const cardAction = (name: string, label: string) => within(kitRow(name)).getByRole("button", { name: label });
+
+test("Installed shows each kit as a card with its source; built-in ones have no buttons", async () => {
   open("/kits");
   const dev = await screen.findByRole("listitem", { name: "lado-dev" });
+  expect(dev.closest("ul")).toBe(kitList());
   expect(within(dev).getByText("LD")).toBeTruthy();
   expect(within(dev).getByText("v0.9.1")).toBeTruthy();
   expect(within(dev).getByText("official")).toBeTruthy();
   expect(within(dev).getByLabelText("4 roles, 12 skills, 2 flows")).toBeTruthy();
-  expect(within(dev).getByRole("button", { name: "Update lado-dev…" })).toBeTruthy();
-  expect(within(dev).getByRole("button", { name: "Remove lado-dev…" })).toBeTruthy();
+  // Its actions are in ⋯; no update was found, so nothing by the version.
+  expect(within(dev).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+    "Actions for lado-dev",
+  ]);
   // A kit of a marketplace removed since says so; the UI counts it from the two lists.
   expect(within(kitRow("jira")).getByText("old (removed)")).toBeTruthy();
   expect(within(kitRow("jira")).getByLabelText("2 skills")).toBeTruthy();
   const mine = kitRow("my-reviewers");
   expect(within(mine).getByText("MR")).toBeTruthy();
   expect(within(mine).getByText("folder")).toBeTruthy();
-  expect(within(mine).getByText("/work/my-reviewers")).toBeTruthy();
+  expect(within(mine).getByText("folder missing")).toBeTruthy();
   expect(within(mine).getByRole("alert").textContent).toContain("is missing");
-  expect(within(mine).queryByRole("button", { name: /Update/ })).toBeNull();
   const builtin = kitRow("default");
   expect(within(builtin).getByText("DE")).toBeTruthy();
   expect(within(builtin).getByText("built-in")).toBeTruthy();
   expect(within(builtin).queryAllByRole("button")).toEqual([]);
 });
 
-test("a kit's dot says the kind of its source; its address is short, the full one on hover", async () => {
+test("a card's ⋯: Update…, Remove… and Copy address of a git kit, Remove… and Copy folder of a folder", async () => {
+  open("/kits");
+  await screen.findByRole("listitem", { name: "lado-dev" });
+  expect(itemsOf(await cardMenu("lado-dev"))).toEqual(["Update…", "Remove…", "Copy address"]);
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  expect(document.activeElement).toBe(within(kitRow("lado-dev")).getByRole("button", { name: "Actions for lado-dev" }));
+  expect(itemsOf(await cardMenu("my-reviewers"))).toEqual(["Remove…", "Copy folder"]);
+});
+
+test("Copy address copies the kit's address and says so on the card", async () => {
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  open("/kits");
+  await screen.findByRole("listitem", { name: "lado-dev" });
+  fireEvent.click(within(await cardMenu("lado-dev")).getByRole("menuitem", { name: "Copy address" }));
+  await waitFor(() => expect(within(kitRow("lado-dev")).getByRole("status").textContent).toBe("Address copied"));
+  expect(writeText).toHaveBeenCalledWith("https://github.com/ladohq/kit-lado-dev.git");
+  expect(screen.queryByRole("menu")).toBeNull();
+  fireEvent.click(within(await cardMenu("my-reviewers")).getByRole("menuitem", { name: "Copy folder" }));
+  await waitFor(() => expect(within(kitRow("my-reviewers")).getByRole("status").textContent).toBe("Folder copied"));
+  expect(writeText).toHaveBeenLastCalledWith("/work/my-reviewers");
+});
+
+test("when copying fails, Copy address shows the address selected", async () => {
+  Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  stubLegacyCopy(false);
+  open("/kits");
+  await screen.findByRole("listitem", { name: "lado-dev" });
+  fireEvent.click(within(await cardMenu("lado-dev")).getByRole("menuitem", { name: "Copy address" }));
+  const asked = await screen.findByRole("dialog", { name: "Address of lado-dev" });
+  expect((within(asked).getByRole("textbox", { name: "Address" }) as HTMLInputElement).value).toBe(
+    "https://github.com/ladohq/kit-lado-dev.git",
+  );
+});
+
+test("a kit's dot says the kind of its source; its address is only in its name's title", async () => {
   const ssh: InstalledKitInfo = {
     ...INSTALLED[0],
     name: "by_ssh",
@@ -298,11 +346,17 @@ test("a kit's dot says the kind of its source; its address is short, the full on
   expect(sourceOfRow(kitRow("by_ssh"))).toBe("git");
   expect(sourceOfRow(kitRow("my-reviewers"))).toBe("folder");
   expect(sourceOfRow(kitRow("default"))).toBe("built-in");
-  expect(within(dev).getByText("github.com/ladohq/kit-lado-dev").getAttribute("title")).toBe(
-    "https://github.com/ladohq/kit-lado-dev.git",
+  // The name, one line, with the address or folder in its title; the face has neither.
+  expect(within(dev).getByText("lado-dev").getAttribute("title")).toBe(
+    "lado-dev\nhttps://github.com/ladohq/kit-lado-dev.git",
   );
+  expect(within(dev).queryByText(/github\.com/)).toBeNull();
+  expect(within(kitRow("my-reviewers")).getByText("my-reviewers").getAttribute("title")).toBe(
+    "my-reviewers\n/work/my-reviewers",
+  );
+  expect(within(kitRow("my-reviewers")).queryByText("/work/my-reviewers")).toBeNull();
+  expect(within(kitRow("default")).getByText("default").getAttribute("title")).toBe("default");
   expect(within(kitRow("by_ssh")).getByText("BS")).toBeTruthy();
-  expect(within(kitRow("by_ssh")).getByText("github.com/acme/kit-ssh")).toBeTruthy();
   cleanup();
   open("/kits/available");
   expect(sourceOfRow(await screen.findByRole("listitem", { name: "reviewers" }))).toBe("official");
@@ -373,9 +427,13 @@ test("Available lists the marketplaces' kits not installed, as many as its count
   const reviewers = await screen.findByRole("listitem", { name: "reviewers" });
   expect(within(reviewers).getByText("Strict reviewers.")).toBeTruthy();
   expect(within(reviewers).getByText("v2.0.0")).toBeTruthy();
-  expect(within(reviewers).getByRole("button", { name: "Install reviewers…" })).toBeTruthy();
-  // Without an index.json entry: its name and address.
-  expect(within(kitRow("wiki")).getByText("github.com/acme/kit-wiki")).toBeTruthy();
+  expect(cardAction("reviewers", "Install reviewers v2.0.0…").getAttribute("title")).toBe("Install reviewers v2.0.0…");
+  expect(itemsOf(await cardMenu("reviewers"))).toEqual(["Install…", "Copy address"]);
+  // Without an index.json entry: its name, its address in the name's title, no version.
+  const wiki = kitRow("wiki");
+  expect(within(wiki).getByText("No description in the index")).toBeTruthy();
+  expect(within(wiki).getByText("wiki").getAttribute("title")).toBe("wiki\nhttps://github.com/acme/kit-wiki.git");
+  expect(cardAction("wiki", "Install wiki…")).toBeTruthy();
   // lado-dev is installed: it is in Installed, not here.
   expect(kitNames()).toEqual(["reviewers", "wiki"]);
   const tabs = screen.getByRole("navigation", { name: "Kits" });
@@ -442,18 +500,48 @@ test("updates are checked only with the button", async () => {
   expect(asked("POST", "/api/kits/check-updates")).toHaveLength(0);
   fireEvent.click(within(page()).getAllByRole("button", { name: "Check for updates" })[0]);
   const dev = await screen.findByRole("listitem", { name: "lado-dev" });
-  expect(within(dev).getByText("v0.10.0 available")).toBeTruthy();
-  expect(screen.queryByRole("listitem", { name: "jira" })).toBeNull();
-  expect(screen.getByText("my-reviewers: local, not checked")).toBeTruthy();
+  expect(within(dev).getByText("v0.10.0")).toBeTruthy();
+  expect(cardAction("lado-dev", "Update lado-dev to v0.10.0…").textContent).toBe("↑");
+  expect(within(dev).queryByText(/available/)).toBeNull();
+  expect(kitNames()).toEqual(["lado-dev"]);
+  // The check's notes are above the grid.
+  const notes = screen.getByText("my-reviewers: local, not checked");
+  expect(notes.compareDocumentPosition(kitList()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByText(/^Updates checked/)).toBeTruthy();
   const tabs = screen.getByRole("navigation", { name: "Kits" });
   expect(within(tabs).getByRole("link", { name: /Updates/ }).textContent).toBe("Updates 1");
-  // The badge is on Installed too, and Update… is the primary action only where it updates.
+  // Installed shows it too, and ⋯ names the version; a kit with no newer one has no ↑.
   fireEvent.click(within(tabs).getByRole("link", { name: /Installed/ }));
-  const installedDev = await screen.findByRole("listitem", { name: "lado-dev" });
-  expect(within(installedDev).getByText("v0.10.0 available")).toBeTruthy();
-  const primary = (name: string) => screen.getByRole("button", { name: `Update ${name}…` }).classList.contains("primary");
-  expect([primary("lado-dev"), primary("jira")]).toEqual([true, false]);
+  await screen.findByRole("listitem", { name: "lado-dev" });
+  expect(cardAction("lado-dev", "Update lado-dev to v0.10.0…")).toBeTruthy();
+  expect(within(kitRow("jira")).queryByRole("button", { name: /^Update/ })).toBeNull();
+  expect(itemsOf(await cardMenu("lado-dev"))).toEqual(["Update to v0.10.0…", "Remove…", "Copy address"]);
+});
+
+test("the ↑ by a found version plans that version, not the latest, with the other versions to choose", async () => {
+  const outdated: OutdatedInfo[] = [
+    { name: "lado-dev", installed: "v0.9.1", latest: "v0.10.0", pre: null, note: "", warnings: [], newer: "v0.10.0" },
+  ];
+  // A newer tag came since the check: the window must plan the one the card named.
+  const versions = ["v0.11.0", "v0.10.0", "v0.9.1"];
+  serve({
+    "POST /api/kits/check-updates": () => outdated,
+    "POST /api/kits/lado-dev/plan-update": (body) => ({
+      ...UPDATE,
+      tag: (body as { tag?: string }).tag ?? "v0.11.0",
+      versions,
+    }),
+  });
+  open("/kits");
+  await screen.findByRole("listitem", { name: "lado-dev" });
+  fireEvent.click(within(page()).getByRole("button", { name: "Check for updates" }));
+  fireEvent.click(await within(kitList()).findByRole("button", { name: "Update lado-dev to v0.10.0…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Update lado-dev" });
+  expect(await within(footer(dialog)).findByRole("button", { name: "Update to v0.10.0" })).toBeTruthy();
+  expect(asked("POST", "/api/kits/lado-dev/plan-update").map((one) => one.body)).toEqual([{ tag: "v0.10.0" }]);
+  const version = within(footer(dialog)).getByRole("combobox", { name: "Version" }) as HTMLSelectElement;
+  expect([...version.options].map((o) => o.textContent)).toEqual(["v0.11.0 (latest)", "v0.10.0", "v0.9.1 (installed)"]);
+  expect(within(dialog).queryByText("latest")).toBeNull(); // v0.10.0 is not the latest
 });
 
 test("a kit updated since the check is no longer an update", async () => {
@@ -472,7 +560,7 @@ test("a kit updated since the check is no longer an update", async () => {
   fireEvent.click(within(tabs).getByRole("link", { name: /Installed/ }));
   const dev = await screen.findByRole("listitem", { name: "lado-dev" });
   expect(within(dev).getByText("v0.10.0")).toBeTruthy();
-  expect(within(dev).queryByText("v0.10.0 available")).toBeNull();
+  expect(within(dev).queryByRole("button", { name: /^Update/ })).toBeNull();
 });
 
 // Install
@@ -578,19 +666,28 @@ test("a refused plan shows the core's words with Back; a 409 asks to look at the
   await waitFor(() => expect(asked("POST", "/api/kits/plan")).toHaveLength(3));
 });
 
-test("Install… on an Available row goes straight to the plan", async () => {
-  serve({ "POST /api/kits/plan": () => PLAN });
+test.each([
+  ["the + by its version", "reviewers", async () => fireEvent.click(cardAction("reviewers", "Install reviewers v2.0.0…"))],
+  [
+    "Install… in its ⋯",
+    "wiki",
+    async () => fireEvent.click(within(await cardMenu("wiki")).getByRole("menuitem", { name: "Install…" })),
+  ],
+])("%s of an Available card goes straight to the plan", async (_, name, click) => {
+  serve({ "POST /api/kits/plan": () => ({ ...PLAN, name }) });
   open("/kits/available");
-  fireEvent.click(await screen.findByRole("button", { name: "Install wiki…" }));
-  expect(await screen.findByRole("dialog", { name: "Install wiki v1.0.0" })).toBeTruthy();
-  expect(asked("POST", "/api/kits/plan")[0].body).toEqual({ spec: "wiki", marketplace: "team", pre: false });
+  await screen.findByRole("listitem", { name });
+  await click();
+  expect(await screen.findByRole("dialog", { name: `Install ${name} v1.0.0` })).toBeTruthy();
+  const market = name === "wiki" ? "team" : "official";
+  expect(asked("POST", "/api/kits/plan")[0].body).toEqual({ spec: name, marketplace: market, pre: false });
 });
 
 test("Esc does not close a dialog while its request runs", async () => {
   let answer: (value: unknown) => void = () => {};
   serve({ "POST /api/kits/plan": () => new Promise((resolve) => (answer = resolve)) });
   open("/kits/available");
-  fireEvent.click(await screen.findByRole("button", { name: "Install wiki…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Install wiki…" })); // the card's +
   const dialog = await screen.findByRole("dialog");
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.getByRole("dialog")).toBeTruthy();
@@ -634,7 +731,8 @@ const CURRENT: PlanInfo = {
 
 async function openUpdate() {
   open("/kits");
-  fireEvent.click(await screen.findByRole("button", { name: "Update lado-dev…" }));
+  await screen.findByRole("listitem", { name: "lado-dev" });
+  fireEvent.click(within(await cardMenu("lado-dev")).getByRole("menuitem", { name: "Update…" }));
   return screen.findByRole("dialog", { name: "Update lado-dev" });
 }
 
@@ -745,7 +843,8 @@ test("Remove names the sessions that use the kit, from the core", async () => {
     "DELETE /api/kits/jira": () => ({ status: 204 }),
   });
   open("/kits");
-  fireEvent.click(await screen.findByRole("button", { name: "Remove jira…" }));
+  await screen.findByRole("listitem", { name: "jira" });
+  fireEvent.click(within(await cardMenu("jira")).getByRole("menuitem", { name: "Remove…" }));
   const dialog = await screen.findByRole("dialog", { name: "Remove jira?" });
   expect(await within(dialog).findByText("running session clens uses kit jira")).toBeTruthy();
   expect(within(dialog).getByText("stopped session crm uses kit jira too: a resume needs it")).toBeTruthy();
@@ -759,7 +858,8 @@ test("Remove of a kit no session uses, and of one whose folder is gone", async (
     "GET /api/kits/my-reviewers/remove-preview": () => ({ running: [], stopped: [], running_line: null, stopped_line: null }),
   });
   open("/kits");
-  fireEvent.click(await screen.findByRole("button", { name: "Remove my-reviewers…" }));
+  await screen.findByRole("listitem", { name: "my-reviewers" });
+  fireEvent.click(within(await cardMenu("my-reviewers")).getByRole("menuitem", { name: "Remove…" }));
   const dialog = await screen.findByRole("dialog", { name: "Remove my-reviewers?" });
   expect(await within(dialog).findByText("No session uses it.")).toBeTruthy();
   expect(within(dialog).getByText(/Its folder \/work\/my-reviewers is gone/)).toBeTruthy();

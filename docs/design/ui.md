@@ -989,12 +989,16 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   icon) copies the session page's address as the list row's Copy link does, and among the
   head's facts **Copy path** its folder (Structure, above); both say what was copied
   ("Link copied", "Path copied") under the button for 2 s, or show the text selected when
-  the copy fails. Copying is one module, `Copy.tsx`, for the head, the row's menu and the
-  artifact panel's Copy link, in one order: the Clipboard API; without it (the page not on
+  the copy fails. Copying is one module, `Copy.tsx`, for the head, the row's menu (and a kit
+  card's), and the artifact panel's Copy link, in one order: the Clipboard API; without it (the page not on
   localhost or https, e.g. `--host` over http) or when it refuses, the legacy copy (a
   hidden read-only field selected, `document.execCommand("copy")`, removed, the focus back
   where it was); only when both fail the text shown selected.
-- **The list row's menu** (`SessionRowMenu.tsx`, on the shared `Menu.tsx`): ⋯ holds
+- **The list row's menu** (`SessionRowMenu.tsx`, a caller of `RowMenu.tsx`, the ⋯ that the
+  Kits page's cards use too; on the shared `Menu.tsx`; decided 2026-10-09,
+  feature/kits-cards): ⋯ shows on its row's hover and focus, while open or while its note
+  shows, and always on a device without hover (`@media (hover: none)`), one CSS rule for
+  every `RowMenu`. It holds
   actions on the entry only, and only ones that work now; no placeholders for features
   that do not exist (no Rename, Pin or colour until they do). **Copy link** copies the
   session page's address (`location.origin` + its path), says "Link copied" in the row
@@ -1429,18 +1433,19 @@ page (LADO has one source of kits, git).
   their look: Look, Tabs),
   a search by name and description and the source chips (All, each marketplace, git,
   folder, built-in; remembered in the browser, `lado.kitsSource`), which filter every tab;
-  then the list. The **Marketplaces** block is on the right on every tab, under the list on
-  a page narrower than 900 px.
+  then the kits as a grid of cards (Card, below). The **Marketplaces** block is on the
+  right on every tab, under the grid on a page narrower than 900 px.
 - **Installed**: the kits of lado.db's `kits` table, then the built-in ones (read only,
-  no buttons); not a project's kits (`<repo>/.lado/kits`: Launch shows them for its
-  folder). A row: the name, its tag or version, `vX available` after a check, the
+  no buttons, no ⋯); not a project's kits (`<repo>/.lado/kits`: Launch shows them for its
+  folder). A card: the name, its tag or version, `→ vX` and ↑ after a check found vX, the
   description, its source (the marketplace it was added from, `<name> (removed)` when that
   one is gone, counted by the UI from the two lists; git; folder; built-in), its roles,
-  skills and flows, its address or folder, the core's problem when it does not load;
-  Update… (a kit from git) and Remove…. A row is a card (below).
+  skills and flows, its address or folder in the name's title, the core's problem when it
+  does not load; in ⋯ Update… (a kit from git) and Remove….
 - **Available**: each kit the enabled marketplaces list that is not installed, from their
   clones (no network): `marketplace.yaml` for the names and addresses, `index.json` for
-  the rest (README, Kits: version 1), only the name and address without an entry; Install….
+  the rest (README, Kits: version 1), only the name and address without an entry
+  ("No description in the index"); + by the version and Install… in ⋯.
   An installed kit is in Installed and a new version of it in Updates, never here: the
   list and the tab's count are one set, the offers whose `installed` (the server's) is
   false, before the search and the source chips. When every listed kit is installed, the
@@ -1448,23 +1453,45 @@ page (LADO has one source of kits, git).
   lists, and links to Installed. A fresh LADO_HOME says no marketplace is fetched yet, with
   a button to update each; nothing is cloned by itself. (Decided with the human, task
   feature/kits-page-polish, 2026-10-05.)
-- **Card** (variant A of that task's mockups, decided 2026-10-05): a list of rows, each a
-  mark, a body and the actions on the right (under the body on a page narrower than
-  600 px). The mark: the first letters of the name's first two parts (split at `-` and
-  `_`; else its first two letters) in mono on `--action-ground` in `--action`, a
-  built-in kit's on `--raised` in `--muted`; its colour says nothing. The body: the name,
-  the version as a tag (Available: the index's `latest`), the badges (`vX available`,
-  `folder missing`); the description cut to two lines by CSS, with **more** only when it
-  is cut (measured, again on a resize) and **less**, the whole text on hover, not
-  remembered; the source as a dot with its text (the dot by its kind: official `--done`,
-  another marketplace, also a removed one, `--action`, git a `--muted` dot, folder a
-  `--muted` ring, built-in an empty circle); the counts, number first ("4 roles 71 skills
-  2 flows", none of a zero); a git address short (no scheme or user, `host:` as `host/`,
-  no `.git`), the whole one on hover, a folder as it is. Update… is the primary button
-  only when a check found a newer version.
+- **Card** (decided with the human 2026-10-09, task feature/kits-cards, in place of the
+  list of rows of feature/kits-page: variant B of the run's `mockup-cards.html`, the update
+  as U2 of `mockup-update.html`, Install as AV1 of `mockup-available.html`): every tab
+  shows its kits as cards in a CSS grid, `repeat(auto-fill, minmax(min(220px, 100%),
+  1fr))` with a 10 px gap, one column on a narrow page by itself; the cards of a row take
+  the same height, the footer at the bottom. A card (`KitCard.tsx`, one component for
+  every tab): `--panel`, a `--line` border, radius 10 px.
+  - Top: the mark: the first letters of the name's first two parts (split at `-` and `_`;
+    else its first two letters) in mono on `--action-ground` in `--action`, a built-in
+    kit's on `--raised` in `--muted`; its colour says nothing. Right of it the name, mono,
+    one line cut with "…", the whole name and the git address or folder in its title;
+    under it the **version line**: the version as a tag (Available: the index's `latest`,
+    none without an entry), the card's action, then the badges (`folder missing`). The
+    line wraps: what does not fit goes to a next line, inside the card at its narrowest.
+  - The card's action, one at most, by the version (`KitCard`'s one `action` prop draws
+    both): **U2**, only when Check for updates found a newer version vX of a git kit:
+    `→`, vX as a tag in `--action` on `--action-ground` and a 22 px square button ↑ in
+    `--action`, named and titled `Update <name> to <vX>…`; it opens the Update window
+    planned for vX (`plan-update` with that tag), not for the latest at that time. **AV1**,
+    on every Available card: the same button with +, named and titled `Install <name>
+    <vX>…` (`Install <name>…` without a version), which opens the Install window at the
+    plan. The `vX available` badge is gone.
+  - The description cut to two lines by CSS, with **more** only when it is cut (measured,
+    again on a resize) and **less**, which makes that card and its row taller; the whole
+    text on hover, not remembered. An offer without a description: "No description in the
+    index" in muted italics. The core's problem, red-edged, under it.
+  - Footer: the source as a dot with its text (the dot by its kind: official `--done`,
+    another marketplace, also a removed one, `--action`, git a `--muted` dot, folder a
+    `--muted` ring, built-in an empty circle) and the counts, number first ("4 roles 71
+    skills 2 flows", none of a zero). The address is not on the card's face.
+  - ⋯ (`RowMenu.tsx`, the session row's too: Launch and session control), `Actions for
+    <name>`, in the top-right corner: a git kit Update… (Update to vX… when a check found
+    vX), Remove…, Copy address; a folder kit Remove…, Copy folder; Available Install…,
+    Copy address; a built-in kit has none. Copy says "Address copied" or "Folder copied"
+    in the card, through `Copy.tsx` (the text shown selected when copying fails).
 - **Updates**: only after Check for updates (`kits.outdated`, the network); the time of
-  the check is kept in the page, not stored; no check in the background. The kits it did
-  not check say why; a moved tag is a warning.
+  the check is kept in the page, not stored; no check in the background. The kits with a
+  newer version, as the same cards with U2; above the grid, the kits it did not check say
+  why and a moved tag is a warning.
 - **Freshness**: the installed kits and the marketplaces are items of the change feed
   (`kits`, `marketplaces`, session `''`), so a change from the CLI shows without a reload;
   Available is asked again whole when either changes. Each item holds only its own row and
@@ -1480,10 +1507,11 @@ page (LADO has one source of kits, git).
   the CLI asks), a warning about its MCP servers and **Install** only after "I checked the
   address and the MCP servers". Install sends the plan's tag and commit (a folder: its MCP
   servers); the server plans again and refuses another one with 409, and the window offers
-  the plan again. Install… on an Available row starts at the plan. A refusal of the core
+  the plan again. An Available card's + and its Install… start at the plan. A refusal of the core
   shows its words with Back.
-- **Update**: the core's plan for the latest version or another one chosen from the
-  repository's tags (`POST /api/kits/{name}/plan-update`). Decided with the human
+- **Update**: the core's plan for the latest version (Update…), the one a card's ↑ or
+  Update to vX… names, or another one chosen from the repository's tags (`POST
+  /api/kits/{name}/plan-update`; the list of versions is the first plan's). Decided with the human
   (feature/kits-page-polish, 2026-10-05, the "No update" window and D1):
   - Nothing to update (`current`): a short window, no contents: "<name> is up to date"
     with a check mark (or "<name> is at vX already" when a newer version exists), the

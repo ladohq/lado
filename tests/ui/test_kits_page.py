@@ -43,7 +43,7 @@ def test_a_kit_is_installed_from_a_marketplace_and_removed(page: Page, server, t
     expect(markets.get_by_role("listitem", name="official")).to_contain_text("not fetched yet")
     shot(page, "available")
 
-    row.get_by_role("button", name="Install wiki…").click()
+    row.get_by_role("button", name="Install wiki v1.0.0…").click()
     plan = page.get_by_role("dialog", name="Install wiki v1.0.0")
     expect(plan).to_contain_text("Not from the official marketplace.")
     expect(plan.get_by_role("list", name="MCP servers")).to_contain_text("wiki-mcp")
@@ -73,7 +73,8 @@ def test_a_kit_is_installed_from_a_marketplace_and_removed(page: Page, server, t
     shot(page, "installed-dark")
     page.emulate_media(color_scheme="light")
 
-    row.get_by_role("button", name="Remove wiki…").click()
+    row.get_by_role("button", name="Actions for wiki").click()
+    page.get_by_role("menu", name="wiki").get_by_role("menuitem", name="Remove…").click()
     remove = page.get_by_role("dialog", name="Remove wiki?")
     expect(remove).to_contain_text("No session uses it.")
     shot(page, "remove")
@@ -82,6 +83,13 @@ def test_a_kit_is_installed_from_a_marketplace_and_removed(page: Page, server, t
     expect(kits.get_by_role("listitem", name="wiki")).to_have_count(0)
     assert state.get_kit("wiki") is None
     assert not (state.home() / "marketplaces" / "official").exists()
+
+
+def open_menu_item(page: Page, kit: str, item: str):
+    """Choose `item` in the ⋯ of kit `kit`'s card."""
+    card = page.get_by_role("list", name="Kits").get_by_role("listitem", name=kit)
+    card.get_by_role("button", name=f"Actions for {kit}").click()
+    page.get_by_role("menu", name=kit).get_by_role("menuitem", name=item).click()
 
 
 SKILL = "---\nname: {0}\ndescription: does {0}\n---\nDo {0}.\n"
@@ -106,7 +114,7 @@ def test_the_update_window_keeps_its_buttons_on_a_short_screen(page: Page, serve
 
     page.set_viewport_size({"width": 1280, "height": 700})
     page.goto(f"{server['url']}/kits?token={server['token']}")
-    page.get_by_role("button", name="Update big…").click()
+    open_menu_item(page, "big", "Update…")
     update = page.get_by_role("dialog", name="Update big")
     expect(update).to_contain_text("+ tester")
     expect(update.get_by_role("group", name="Skills")).to_contain_text("+3")
@@ -122,7 +130,7 @@ def test_the_update_window_keeps_its_buttons_on_a_short_screen(page: Page, serve
     footer.get_by_role("button", name="Update to v1.1.0").click()
     expect(update).to_have_count(0)
     assert state.get_kit("big").tag == "v1.1.0"
-    page.get_by_role("button", name="Update big…").click()
+    open_menu_item(page, "big", "Update…")
     expect(update).to_contain_text("big is up to date")
     expect(update).not_to_contain_text("skill-01")
     shot(page, "up-to-date")
@@ -133,3 +141,112 @@ def test_the_update_window_keeps_its_buttons_on_a_short_screen(page: Page, serve
     box = footer.get_by_role("button", name="Update to v1.0.0").bounding_box()
     assert box is not None and box["x"] + box["width"] <= 420 and box["y"] + box["height"] <= 700
     shot(page, "update-narrow")
+
+
+def small_kit(tmp_path, name, version, newer=None) -> str:
+    """Kit `name` installed from a local git repo at `version`; with `newer` that version
+    tagged after the install."""
+    work = init_repo(tmp_path / f"{name}-kit")
+
+    def files(at):
+        kit_yaml = f"name: {name}\nversion: {at}\ndescription: The {name} kit, at {at}.\n"
+        return {
+            "kit.yaml": kit_yaml,
+            "agents/writer.md": AGENT.replace("mcp: {wiki: {command: [wiki-mcp]}}\n", ""),
+        }
+
+    url = publish(work, files(version), tag=f"v{version}")
+    kit_core.install(kit_core.plan_add(f"{url}@v{version}"))
+    if newer:
+        publish(work, files(newer), tag=f"v{newer}")
+    return url
+
+
+def boxes(locator):
+    return [one.bounding_box() for one in locator.all()]
+
+
+def no_sideways_scroll(page: Page) -> bool:
+    return page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_kits_are_cards_in_a_grid_and_the_up_arrow_plans_the_version_found(
+    page: Page, server, tmp_path, shot
+):
+    local_marketplace(tmp_path)
+    for name in ("alpha", "beta-kit", "gamma"):
+        small_kit(tmp_path, name, "1.0.0")
+    small_kit(tmp_path, "long-version-kit", "10.100.1000", newer="10.100.1001")
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.goto(f"{server['url']}/kits?token={server['token']}")
+    kits = page.get_by_role("list", name="Kits")
+    cards = kits.get_by_role("listitem")
+    expect(cards).to_have_count(5)  # and the built-in default
+    first, second = boxes(cards)[:2]
+    assert first["y"] == second["y"] and first["x"] < second["x"], (first, second)
+    assert no_sideways_scroll(page)
+    shot(page, "installed")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "installed-dark")
+    page.emulate_media(color_scheme="light")
+
+    page.get_by_role("button", name="Check for updates").click()
+    long = kits.get_by_role("listitem", name="long-version-kit")
+    up = long.get_by_role("button", name="Update long-version-kit to v10.100.1001…")
+    expect(up).to_be_visible()
+    expect(long).to_contain_text("v10.100.1001")
+    expect(kits.get_by_role("button", name="Update alpha to", exact=False)).to_have_count(0)
+
+    tabs = page.get_by_role("navigation", name="Kits")
+    tabs.get_by_role("link", name="Updates 1").click()
+    expect(cards).to_have_count(1)
+    shot(page, "updates")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "updates-dark")
+    page.emulate_media(color_scheme="light")
+
+    # The narrowest column a card gets, 220px: the version line wraps inside the card.
+    for width in range(1440, 900, -4):
+        page.set_viewport_size({"width": width, "height": 900})
+        card = long.bounding_box()
+        if card and card["width"] < 228:
+            break
+    assert card is not None and 220 <= card["width"] < 228, card
+    line = long.locator(".kit-version-line")
+    tag, newer = line.locator(".kit-version").all()
+    assert newer.bounding_box()["y"] > tag.bounding_box()["y"]
+    for part in line.locator(":scope > *").all():
+        box = part.bounding_box()
+        assert box["x"] + box["width"] <= card["x"] + card["width"], (
+            part.text_content(),
+            box,
+            card,
+        )
+    shot(page, "narrow-card")
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+    tabs.get_by_role("link", name="Installed 5").click()
+    up.click()
+    update = page.get_by_role("dialog", name="Update long-version-kit")
+    expect(
+        update.locator("footer").get_by_role("button", name="Update to v10.100.1001")
+    ).to_be_visible()
+    shot(page, "update-from-arrow")
+    update.locator("footer").get_by_role("button", name="Cancel").click()
+
+    tabs.get_by_role("link", name="Available 1").click()
+    wiki = kits.get_by_role("listitem", name="wiki")
+    expect(wiki.get_by_role("button", name="Install wiki v1.0.0…")).to_be_visible()
+    shot(page, "available")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "available-dark")
+    page.emulate_media(color_scheme="light")
+
+    tabs.get_by_role("link", name="Installed 5").click()
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.get_by_role("button", name="Collapse menu").click()  # the rail stays open by itself
+    expect(cards).to_have_count(5)
+    assert len({box["x"] for box in boxes(cards)}) == 1
+    shot(page, "installed-phone")
+    assert no_sideways_scroll(page)

@@ -28,6 +28,7 @@ import {
   type PlanInfo,
 } from "./api";
 import { KitCard, type Source, type SourceKind } from "./KitCard";
+import type { RowMenuItem } from "./RowMenu";
 import { PlanContents } from "./KitPlan";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { NotFound } from "./pages";
@@ -67,7 +68,7 @@ function sourceOf(kit: InstalledKitInfo, markets: MarketplaceInfo[] | null): Sou
 
 type Dialog =
   | { kind: "add"; ask?: PlanAsk }
-  | { kind: "update"; kit: InstalledKitInfo }
+  | { kind: "update"; kit: InstalledKitInfo; tag: string | null }
   | { kind: "remove"; kit: InstalledKitInfo }
   | { kind: "add-marketplace" }
   | { kind: "remove-marketplace"; market: MarketplaceInfo };
@@ -247,7 +248,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
                   kit={kit}
                   source={sourceOf(kit, knownMarkets)}
                   newer={newerOf(kit)}
-                  onUpdate={() => setDialog({ kind: "update", kit })}
+                  onUpdate={(tag) => setDialog({ kind: "update", kit, tag })}
                   onRemove={() => setDialog({ kind: "remove", kit })}
                 />
               ))}
@@ -285,6 +286,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
               </div>
             ) : (
               <>
+                <CheckNotes rows={checked.rows} />
                 <KitList loading={false} empty="Every kit is up to date.">
                   {shownUpdates.map((kit) => (
                     <InstalledRow
@@ -292,12 +294,11 @@ function KitsPage({ tab }: { tab: KitsTab }) {
                       kit={kit}
                       source={sourceOf(kit, knownMarkets)}
                       newer={newerOf(kit)}
-                      onUpdate={() => setDialog({ kind: "update", kit })}
+                      onUpdate={(tag) => setDialog({ kind: "update", kit, tag })}
                       onRemove={() => setDialog({ kind: "remove", kit })}
                     />
                   ))}
                 </KitList>
-                <CheckNotes rows={checked.rows} />
               </>
             ))}
         </div>
@@ -320,7 +321,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog?.kind === "update" && <UpdateDialog kit={dialog.kit} onClose={() => setDialog(null)} />}
+      {dialog?.kind === "update" && <UpdateDialog kit={dialog.kit} tag={dialog.tag} onClose={() => setDialog(null)} />}
       {dialog?.kind === "remove" && <RemoveKitDialog kit={dialog.kit} onClose={() => setDialog(null)} />}
       {dialog?.kind === "add-marketplace" && <AddMarketplaceDialog onClose={() => setDialog(null)} />}
       {dialog?.kind === "remove-marketplace" && (
@@ -338,79 +339,81 @@ function KitList({ loading, empty, children }: { loading: boolean; empty: string
   if (loading) return <p className="muted">Loading…</p>;
   if (children.length === 0) return <p className="empty">{empty}</p>;
   return (
-    <ul className="kit-rows" aria-label="Kits">
+    <ul className="kit-grid" aria-label="Kits">
       {children}
     </ul>
   );
 }
 
+// The copy item of a card's ⋯: its address, or its folder.
+function copyWhere(name: string, address: string | null, folder: string | null): RowMenuItem[] {
+  if (address) {
+    const field = { title: `Address of ${name}`, label: "Address" };
+    return [{ label: "Copy address", copy: address, copied: "Address copied", field }];
+  }
+  if (folder) {
+    const field = { title: `Folder of ${name}`, label: "Folder" };
+    return [{ label: "Copy folder", copy: folder, copied: "Folder copied", field }];
+  }
+  return [];
+}
+
+// An installed kit: ↑ by its version when a check found a newer one; Update… (to that
+// version), Remove… and its copy in ⋯; a built-in kit has none.
 function InstalledRow(props: {
   kit: InstalledKitInfo;
   source: Source;
   newer: string | null;
-  onUpdate: () => void;
+  onUpdate: (tag: string | null) => void;
   onRemove: () => void;
 }) {
-  const { kit } = props;
+  const { kit, newer } = props;
+  const git = kit.kind === "git";
+  const menu: RowMenuItem[] = [
+    ...(git ? [{ label: newer ? `Update to ${newer}…` : "Update…", onSelect: () => props.onUpdate(newer) }] : []),
+    { label: "Remove…", onSelect: props.onRemove },
+    ...copyWhere(kit.name, kit.address, kit.folder),
+  ];
   return (
     <KitCard
       name={kit.name}
       builtIn={kit.kind === "built-in"}
       version={kit.tag ?? kit.version}
-      badges={
-        <>
-          {props.newer && <span className="badge badge-new">{props.newer} available</span>}
-          {kit.missing && <span className="badge badge-warn">folder missing</span>}
-        </>
+      action={
+        git && newer
+          ? { symbol: "↑", label: `Update ${kit.name} to ${newer}…`, to: newer, onSelect: () => props.onUpdate(newer) }
+          : undefined
       }
+      badges={kit.missing && <span className="badge badge-warn">folder missing</span>}
       description={kit.description}
       problem={kit.problem}
       source={props.source}
       agents={kit.agents}
       skills={kit.skills}
       flows={kit.flows}
-      address={kit.address}
-      folder={kit.folder}
-      actions={
-        kit.kind !== "built-in" && (
-          <>
-            {kit.kind === "git" && (
-              <button
-                type="button"
-                className={props.newer ? "primary" : "quiet"}
-                aria-label={`Update ${kit.name}…`}
-                onClick={props.onUpdate}
-              >
-                Update…
-              </button>
-            )}
-            <button type="button" className="quiet" aria-label={`Remove ${kit.name}…`} onClick={props.onRemove}>
-              Remove…
-            </button>
-          </>
-        )
-      }
+      where={kit.address ?? kit.folder}
+      menu={kit.kind === "built-in" ? undefined : menu}
     />
   );
 }
 
+// A kit a marketplace offers: + by its version and Install… in ⋯, both to the plan.
 function OfferRow({ offer, official, onInstall }: { offer: OfferInfo; official: boolean; onInstall: () => void }) {
   const entry = offer.index;
+  const latest = entry?.latest ?? null;
   return (
     <KitCard
       name={offer.name}
-      version={entry?.latest ?? null}
+      version={latest}
+      action={{ symbol: "+", label: latest ? `Install ${offer.name} ${latest}…` : `Install ${offer.name}…`, onSelect: onInstall }}
       description={entry?.description ?? null}
+      noDescription="No description in the index"
       source={{ label: offer.marketplace, kind: official ? "official" : "marketplace" }}
       agents={Object.keys(entry?.agents ?? {}).length}
       skills={entry?.skills?.length ?? 0}
       flows={entry?.flows?.length ?? 0}
-      address={offer.address}
-      actions={
-        <button type="button" className="quiet" aria-label={`Install ${offer.name}…`} onClick={onInstall}>
-          Install…
-        </button>
-      }
+      where={offer.address}
+      menu={[{ label: "Install…", onSelect: onInstall }, ...copyWhere(offer.name, offer.address, null)]}
     />
   );
 }
@@ -886,9 +889,10 @@ function PlanStep(props: { plan: PlanInfo; onBack: () => void; onAgain: () => vo
   );
 }
 
-// Update: the core's plan for the latest version or the one chosen, its new MCP servers and
-// who gets it; an update never asks in the CLI, here the plan is shown all the same.
-function UpdateDialog({ kit, onClose }: { kit: InstalledKitInfo; onClose: () => void }) {
+// Update: the core's plan for the latest version, the one a card's ↑ named (`tag`) or the one
+// chosen, its new MCP servers and who gets it; an update never asks in the CLI, here the
+// plan is shown all the same.
+function UpdateDialog({ kit, tag: first, onClose }: { kit: InstalledKitInfo; tag: string | null; onClose: () => void }) {
   const [plan, setPlan] = useState<PlanInfo | null>(null);
   const [versions, setVersions] = useState<string[]>([]);
   const [busy, setBusy] = useState(true);
@@ -900,14 +904,15 @@ function UpdateDialog({ kit, onClose }: { kit: InstalledKitInfo; onClose: () => 
     try {
       const got = await planKitUpdate(kit.name, tag);
       setPlan(got);
-      if (tag === null) setVersions(got.versions);
+      // The repository's tags, the same for any tag planned: kept from the first plan.
+      setVersions((before) => (before.length > 0 ? before : got.versions));
     } catch (error) {
       setFailed(error instanceof ApiError ? error : new ApiError(0, String(error)));
     }
     setBusy(false);
   };
   useEffect(() => {
-    void ask(null);
+    void ask(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

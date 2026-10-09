@@ -2,6 +2,12 @@
 
 ## 0.31.1 (unreleased)
 
+- UI: the Kits page shows its kits as a grid of compact cards instead of a list of rows.
+  A newer version a check found shows as `→ vX` with an ↑ button that opens the update to
+  that version; an Available kit has a + by its version; Update…, Remove…, Install… and
+  Copy address are in each card's ⋯. The session list's ⋯ now also shows on a touch
+  screen.
+
 - UI: a session's card (the tooltip of its row and of its icon in the collapsed list) no
   longer has a dot before the name, whose colour differed from the row's own dot; its
   status word now has its group's colour (green Running, orange Needs you, grey Stopped,

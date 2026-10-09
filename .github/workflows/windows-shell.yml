@@ -40,6 +40,15 @@ jobs:
       run:
         shell: pwsh
     steps:
+      # Every check appends a line to checks.tsv: name, exit code, `required` (it decides the
+      # verdict) or `expected` (it may fail today; only recorded), and its log's name. First,
+      # so that the report steps find the folder also after a guard below failed.
+      - name: Report folder
+        run: |
+          $probe = Join-Path $env:RUNNER_TEMP probe
+          New-Item -ItemType Directory -Force $probe | Out-Null
+          "PROBE=$probe" | Add-Content $env:GITHUB_ENV
+
       - name: Check the length
         env:
           MINUTES: ${{ inputs.minutes }}
@@ -61,14 +70,6 @@ jobs:
         run: |
           Write-Output "::error::the shell runs in WSL Ubuntu: run shell=true with wsl=true"
           exit 1
-
-      # Every check appends a line to checks.tsv: name, exit code, `required` (it decides the
-      # verdict) or `expected` (it may fail today; only recorded), and its log's name.
-      - name: Report folder
-        run: |
-          $probe = Join-Path $env:RUNNER_TEMP probe
-          New-Item -ItemType Directory -Force $probe | Out-Null
-          "PROBE=$probe" | Add-Content $env:GITHUB_ENV
 
       - uses: actions/checkout@v7
 
@@ -157,10 +158,11 @@ jobs:
           WSLENV: PROBE/p:UV_VERSION
         run: |
           set -u
+          touch "$PROBE/checks.tsv" || exit 1
           check() { # check <name> <seconds> <command> [required|expected]
             local log="wsl-$1.log" code=0
             timeout --kill-after=30 "$2" su - lado -c "$3" >"$PROBE/$log" 2>&1 || code=$?
-            printf '%s\t%s\t%s\t%s\n' "wsl $1" "$code" "${4:-required}" "$log" >>"$PROBE/checks.tsv"
+            printf '%s\t%s\t%s\t%s\n' "wsl $1" "$code" "${4:-required}" "$log" >>"$PROBE/checks.tsv" || exit 1
           }
           check uname 60 'uname -m'
           check tmux 60 'tmux -V'
@@ -252,14 +254,21 @@ jobs:
 
       - name: Verdict
         if: always()
+        env:
+          WSL: ${{ inputs.wsl }}
         run: |
           $checks = Join-Path $env:PROBE checks.tsv
           if (-not (Test-Path $checks)) {
             Write-Output "::error::no check ran"
             exit 1
           }
-          $failed = @(Import-Csv $checks -Delimiter "`t" -Header name, code, kind, log |
-            Where-Object { $_.kind -eq 'required' -and $_.code -ne '0' })
+          $rows = @(Import-Csv $checks -Delimiter "`t" -Header name, code, kind, log)
+          # -eq compares strings case-insensitively: true from the form, 'true' from the API.
+          if ($env:WSL -eq 'true' -and -not ($rows | Where-Object { $_.name -match '^wsl ' })) {
+            Write-Output "::error::wsl is on, but no WSL check was recorded"
+            exit 1
+          }
+          $failed = @($rows | Where-Object { $_.kind -eq 'required' -and $_.code -ne '0' })
           foreach ($r in $failed) {
             Write-Output "::error::$($r.name) failed (exit $($r.code)): see $($r.log) in the report"
           }

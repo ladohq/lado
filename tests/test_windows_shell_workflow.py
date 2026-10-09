@@ -68,17 +68,23 @@ def test_job_runs_on_the_chosen_runner_for_the_chosen_minutes(workflow, steps):
     assert job["defaults"] == {"run": {"shell": "pwsh"}}
     guard = step_named(steps, "Check the length")
     assert "-lt 1" in guard["run"] and "-gt 360" in guard["run"]
-    assert steps.index(guard) == 0
+    assert steps.index(guard) == 1
+
+
+def test_report_folder_first_so_the_report_steps_work_after_a_guard(steps):
+    folder = steps[0]
+    assert folder["name"] == "Report folder" and "if" not in folder
+    assert "PROBE=" in folder["run"] and "GITHUB_ENV" in folder["run"]
 
 
 @pytest.mark.parametrize("name, condition", [("wsl", WSL), ("shell", SHELL)])
-def test_boolean_inputs_compared_as_a_boolean_or_a_string(text, name, condition):
+def test_boolean_inputs_compared_as_a_boolean_or_a_string(steps, name, condition):
     # From the API (gh workflow run -f wsl=false) the input may be the string 'false',
     # which a bare `if: inputs.wsl` takes as true.
-    uses = re.findall(rf"inputs\.{name}\b.*", text)
-    assert uses
-    for line in uses:
-        assert line.startswith(condition), line
+    conditions = [s["if"] for s in steps if f"inputs.{name}" in s.get("if", "")]
+    assert conditions
+    for line in conditions:
+        assert f"inputs.{name}" not in line.replace(condition, ""), line
 
 
 def test_reads_contents_only(workflow):
@@ -194,6 +200,18 @@ def test_report_uploaded_always_then_the_verdict_last(steps):
     probes = [steps.index(step_named(steps, n)) for n in ("Native probe", "WSL probe")]
     assert max(probes) < steps.index(summary) < steps.index(upload)
     assert steps[-1] is verdict
+
+
+def test_verdict_red_when_wsl_ran_no_check(steps):
+    """A WSL probe that recorded nothing (a $PROBE it cannot write) is no green."""
+    verdict = step_named(steps, "Verdict")
+    assert verdict["env"]["WSL"] == "${{ inputs.wsl }}"
+    run = verdict["run"]
+    assert "$env:WSL -eq 'true'" in run and "'^wsl '" in run
+    probe = step_named(steps, "WSL probe")["run"]
+    # It fails at once when it cannot write the report, and on a row it cannot append.
+    assert probe.startswith('set -u\ntouch "$PROBE/checks.tsv" || exit 1\n')
+    assert '>>"$PROBE/checks.tsv" || exit 1' in probe
 
 
 def test_shell_after_the_upload_only_with_shell_and_wsl(steps):

@@ -498,6 +498,17 @@ Wanted: LADO makes `LADO_HOME` with mode 700 and tightens an existing one by def
 warns.
 Found: 2026-10-08, design of feature/argv-prompt.
 
+## Integration flake: `test_unmerged_worker_is_finished_only_with_discard` reads w1 busy
+
+Size: S. Why here: a red CI on a release commit with no real error.
+CI on e7c8773 (Python 3.13, `-n auto`) failed at tests/integration/test_agents.py:598,
+`assert state.get_agent(SESSION, "w1").status == state.IDLE` -> `'busy' == 'idle'`; the
+rerun of the failed jobs passed with no change. The test reads w1's status once, right after
+the supervisor's refused finish, while w1 may still be in a turn.
+Wanted: the test waits for w1 to be idle (as the other status checks do) instead of reading
+it once.
+Found: 2026-10-09, CI of the 0.31.0 release (run 37887140737).
+
 # P2: when convenient
 
 ## The commands of a kit's MCP servers are not checked before a start

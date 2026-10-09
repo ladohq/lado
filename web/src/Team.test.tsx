@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "vitest";
 import type { AgentInfo } from "./api";
 import { AGENT_REST } from "./fakes";
 import { ResumeIcon, StopIcon } from "./icons";
-import { teamGroups } from "./Team";
+import { StatusDot, teamGroups } from "./Team";
 
 afterEach(cleanup);
 
@@ -46,6 +46,16 @@ test("two runs come in the order their first agent is listed, each with its agen
       ["feature/a", ["b", "d"]],
     ],
   });
+});
+
+test("each status has its own mark, background too, and the dot itself is hidden from readers", () => {
+  const statuses: AgentInfo["status"][] = ["starting", "busy", "idle", "background", "waiting", "stopped"];
+  for (const status of statuses) {
+    const dot = render(<StatusDot status={status} small />).container.firstElementChild!;
+    expect(dot.className).toBe(`dot dot-small dot-${status}`);
+    expect(dot.getAttribute("aria-hidden")).toBe("true");
+    cleanup();
+  }
 });
 
 test("Stop is a square filled with the text's colour, with no stroke; Resume stays an outline", () => {

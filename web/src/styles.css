@@ -1785,9 +1785,11 @@ h3 {
   border-radius: 12px;
 }
 
-/* An agent's status: colour and shape, so it reads without colour too. busy: a full
-   circle; idle: a ring; waiting (for the human): an orange diamond; starting: a dashed
-   ring; stopped: a small grey square. */
+/* An agent's status: colour and shape, so it reads without colour too. busy: a full green
+   circle; background (its turn ended, work it started still runs): a green circle filled
+   on its left half; both pulse as a working session's dot (activity-pulse). idle: a muted
+   ring; waiting (for the human): an orange diamond; starting: a dashed ring; stopped: a
+   small grey square. */
 .dot {
   --dot: 9px;
   flex: none;
@@ -1802,11 +1804,29 @@ h3 {
 }
 
 .dot-busy {
-  background: var(--action);
+  background: var(--done);
+}
+
+.dot-background {
+  border: 1.5px solid var(--done);
+  background: linear-gradient(90deg, var(--done) 50%, transparent 50%);
+}
+
+.dot-busy,
+.dot-background {
+  animation: activity-pulse 1.6s infinite;
+}
+
+/* After the rule above, which it must win over. */
+@media (prefers-reduced-motion: reduce) {
+  .dot-busy,
+  .dot-background {
+    animation: none;
+  }
 }
 
 .dot-idle {
-  border: 1.5px solid var(--action);
+  border: 1.5px solid var(--muted);
 }
 
 .dot-waiting {

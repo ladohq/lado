@@ -237,11 +237,12 @@ def test_about_an_unknown_session_is_404(client, session):
     assert client.get("/api/sessions/x/about").status_code == 404
 
 
+@pytest.mark.parametrize("working", [state.BUSY, state.BACKGROUND])
 @pytest.mark.parametrize("status", list(runtime.SessionStatus))
 def test_a_session_says_how_many_agents_work_only_while_it_runs(
-    client, session, monkeypatch, status
+    client, session, monkeypatch, status, working
 ):
-    state.set_status("s", "supervisor", state.BUSY)
+    state.set_status("s", "supervisor", working)
     monkeypatch.setattr(runtime, "session_status", lambda sess: status)
     [sess] = client.get("/api/sessions").json()
     if status == runtime.SessionStatus.RUNNING:

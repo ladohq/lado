@@ -258,8 +258,11 @@ function StripIcon({ session }: { session: SessionInfo }) {
 
 // Who a session is, the card of its row and of its icon: its name, status and agents, what
 // waits for the human, its folder, its kits, provider and permission mode; a stopped one,
-// how to bring it back (Resume is in the session's head).
+// how to bring it back (Resume is in the session's head). Its status word explains the
+// colours of the row and the icon: in its group's tone, a session in trouble (tmux gone,
+// loop down) in the danger colour.
 function SessionTip({ session }: { session: SessionInfo }) {
+  const trouble = session.status === "tmux_gone" || session.status === "loop_down";
   const mode = session.permission_mode ? ` · mode ${session.permission_mode}` : "";
   const now = useNow(tracked(session) ? session.activity_since : null);
   const agents = count(session.agents, "agent");
@@ -270,9 +273,10 @@ function SessionTip({ session }: { session: SessionInfo }) {
       ? `${session.busy} of ${agents} working`
       : `idle${since || ""} · ${agents}`;
   return (
-    <div>
+    <div className={`session-tip tone-${TONES[groupOf(session)]}`}>
       <div className="tooltip-line">
-        <b>{session.name}</b> · {STATUS[session.status]} · {work}
+        <b>{session.name}</b> · <span className={trouble ? "danger-text" : "tip-status"}>{STATUS[session.status]}</span> ·{" "}
+        {work}
       </div>
       {waits(session) && <div className="tooltip-line waits">Needs you: {about(session)}</div>}
       <div className="tooltip-line">{session.repo}</div>
@@ -293,7 +297,7 @@ const waits = (session: SessionInfo) => {
 };
 
 // The list's groups, by their ids (prefs.ts): a stopped session is Stopped whatever waits in
-// it. Each has its name and its heading's tone (GroupHead), which its rows take.
+// it. Each has its name and its heading's tone (GroupHead), which its rows and cards take.
 const groupOf = (session: SessionInfo): SessionGroup =>
   !isLive(session) ? "stopped" : waits(session) ? "needs-you" : "running";
 

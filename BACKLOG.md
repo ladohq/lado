@@ -1457,6 +1457,14 @@ Postponed (2026-10-02): low impact. Flows move on flow_advance, not on idle; a m
 pasted meanwhile most likely starts a normal turn (not verified); typing into waiting agents is
 already blocked. The reference orchestrator does not handle it either (screen-based idle).
 Found: 2026-10-02, first flow run `fix/resume-stopped`.
+Seen again (2026-10-09): Claude Code 2.1.29x runs Agent-tool subagents in the background by
+default, so an agent shows idle (up to 85 s seen) while its subagents work. Analysed without
+code changes: every `Stop` payload carries `background_tasks` (running subagents, shells,
+monitors; read in the binary, not yet seen live). Options: A `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`
+(one line, loses background Bash); B keep `idle`, store the snapshot from each Stop and show
+"idle · N in background" (M, schema change; recommended); C busy while tasks run (rejected:
+blocks the queue). Not decided by the human yet. Full report: artifact `analysis-subagent-idle`
+of session `lado`.
 
 ## The running-session check sees one tmux socket
 

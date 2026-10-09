@@ -417,11 +417,11 @@ Sessions for now. The UI's texts are in English.
   (`--done` Running, `--human` Needs you, `--muted` Stopped; tmux gone or loop down in
   `--danger`), which explains the colours of the row and the icon (decided 2026-10-09,
   mockup artifact `fix/session-tip-no-dot/mockup-tip.html`), `Needs you: <the row's
-  line>` in the human's colour, the folder, kits · provider · `mode <permission mode>` when
-  it has one, and for a stopped session `Stopped: open it and press Resume`; all from
-  `SessionInfo`, no CLI commands. A Running row (a
-  session whose status is `running` and in which nothing waits) also says whether its
-  agents work now (decided 2026-10-08 in feature/session-activity; mockup artifact
+  line>` in the human's colour, the folder, kits · provider · `mode <permission mode>`
+  when it has one, and for a stopped session `Stopped: open it and press Resume`; all
+  from `SessionInfo`, no CLI commands. A Running row (a session whose status is `running`
+  and in which nothing waits) also says whether its agents work now (decided 2026-10-08
+  in feature/session-activity; mockup artifact
   `feature/session-activity/mockup-list.html`, variant A without the word "working"): a
   dot before its name, a full `--done` dot with a soft pulse (none under
   `prefers-reduced-motion: reduce`) while some agent works, else a ring in `--muted` (the

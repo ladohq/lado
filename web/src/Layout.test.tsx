@@ -492,7 +492,7 @@ const statusOf = (link: HTMLElement) => {
   const shown = screen.getByRole("tooltip");
   const card = shown.firstElementChild!;
   const word = card.querySelector(".tooltip-line")!.children[1];
-  const seen = { card: card.className, word: `${word.className}: ${word.textContent}`, name: card.querySelector("b")!.className };
+  const seen = { card: card.className, word: `${word?.className}: ${word?.textContent}`, name: card.querySelector("b")!.className };
   fireEvent.blur(link);
   return seen;
 };
@@ -522,6 +522,8 @@ test("a card's status word is in its group's colour, a session in trouble in the
   expect(statusOf(icon("calm"))).toEqual(running);
   expect(statusOf(icon("gated"))).toEqual(needsYou);
   expect(statusOf(icon("stuck"))).toEqual(trouble);
+  // The strip has no icon of a stopped session, so no card of one.
+  expect(within(strip()!).queryByRole("link", { name: /^old/ })).toBeNull();
 });
 
 test("the list's width changes with its edge and is remembered", async () => {

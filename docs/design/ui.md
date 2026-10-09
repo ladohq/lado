@@ -412,10 +412,14 @@ Sessions for now. The UI's texts are in English.
   run, and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
   Open in new tab; the session's own actions are in its head (Launch and session control,
   below). On hover or keyboard focus a row shows the session's card (`SessionTip` in a
-  `Tooltip`, the one of the strip's icons, below): name · status · agents (no dot before
-  the name: the row has its own; decided 2026-10-09), `Needs you: <the row's line>` in the human's colour, the folder, kits ·
-  provider · `mode <permission mode>` when it has one, and for a stopped session `Stopped:
-  open it and press Resume`; all from `SessionInfo`, no CLI commands. A Running row (a
+  `Tooltip`, the one of the strip's icons, below): name · status · agents, with no dot
+  before the name (the row has its own) and the status word in its group's colour
+  (`--done` Running, `--human` Needs you, `--muted` Stopped; tmux gone or loop down in
+  `--danger`), which explains the colours of the row and the icon (decided 2026-10-09,
+  mockup artifact `fix/session-tip-no-dot/mockup-tip.html`), `Needs you: <the row's
+  line>` in the human's colour, the folder, kits · provider · `mode <permission mode>` when
+  it has one, and for a stopped session `Stopped: open it and press Resume`; all from
+  `SessionInfo`, no CLI commands. A Running row (a
   session whose status is `running` and in which nothing waits) also says whether its
   agents work now (decided 2026-10-08 in feature/session-activity; mockup artifact
   `feature/session-activity/mockup-list.html`, variant A without the word "working"): a

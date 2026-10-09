@@ -601,7 +601,7 @@ h3 {
 }
 
 /* A group's tone (GroupHead.tsx): its colour and ground, for its heading, its rows' stripe
-   and its rows' stripe. Tokens only. */
+   and its sessions' cards. Tokens only. */
 .tone-human {
   --g: var(--human);
   --g-ground: var(--human-ground);
@@ -1419,6 +1419,12 @@ h3 {
 
 .tooltip-line + .tooltip-line {
   color: var(--muted);
+}
+
+/* A session's card: its status word in its group's colour (a session in trouble takes
+   .danger-text instead). */
+.tip-status {
+  color: var(--g);
 }
 
 /* What waits for the human, in a session's tooltip. */

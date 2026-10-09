@@ -1687,6 +1687,16 @@ fresh machine Chromium does not launch (libnss3 and others missing).
 Wanted: say so in AGENTS.md's Commands, or a target that adds `--with-deps` on Linux.
 Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
 
+## LADO does not install on Windows ARM64: cryptography builds from source
+
+Size: S. Why here: seen in the first Windows probe run; native Windows is not supported yet.
+On `windows-11-arm` (run 38003385714, `native.log`) `uv tool install .` fails: uv picks no
+wheel of `cryptography` 50.0.2 (from `mcp[crypto]` → `pyjwt[crypto]`) and builds it, which
+stops at `openssl-sys` (`failed to run custom build command`, no OpenSSL there).
+Wanted: when native Windows is taken on, whether LADO needs `mcp[crypto]`, or a version with a
+win_arm64 wheel.
+Found: 2026-10-10, run fix/windows-probe (session lado-windows).
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

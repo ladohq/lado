@@ -989,14 +989,18 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   icon) copies the session page's address as the list row's Copy link does, and among the
   head's facts **Copy path** its folder (Structure, above); both say what was copied
   ("Link copied", "Path copied") under the button for 2 s, or show the text selected when
-  the copy fails. Copying is one module, `Copy.tsx`, for the head and the row's menu.
+  the copy fails. Copying is one module, `Copy.tsx`, for the head, the row's menu and the
+  artifact panel's Copy link, in one order: the Clipboard API; without it (the page not on
+  localhost or https, e.g. `--host` over http) or when it refuses, the legacy copy (a
+  hidden read-only field selected, `document.execCommand("copy")`, removed, the focus back
+  where it was); only when both fail the text shown selected.
 - **The list row's menu** (`SessionRowMenu.tsx`, on the shared `Menu.tsx`): ⋯ holds
   actions on the entry only, and only ones that work now; no placeholders for features
   that do not exist (no Rename, Pin or colour until they do). **Copy link** copies the
   session page's address (`location.origin` + its path), says "Link copied" in the row
-  (`role="status"`, outside the menu, which closes) and goes after 2 s; without the
-  Clipboard API (the page not on localhost or https, e.g. `--host` over http) or when the
-  copy is refused, a popover shows the address selected with "Press ⌘C / Ctrl+C to copy".
+  (`role="status"`, outside the menu, which closes; the focus goes back to ⋯) and goes
+  after 2 s; only when neither the Clipboard API nor the legacy copy works (above) a
+  popover shows the address selected with "Press ⌘C / Ctrl+C to copy".
   **Open in new tab** is a link to the same page (`target="_blank"`, `rel="noopener"`).
   The address has no token: the login is the browser's cookie, so another browser gets
   401 and the Shell's message to open the login link. In a future desktop app (Stage 7) a

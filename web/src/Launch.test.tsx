@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { FolderInfo, KitInfo, ProviderInfo, RecentFolder, SessionAbout, SessionInfo } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeSocket, stubDialogs } from "./fakes";
+import { FakeEventSource, FakeSocket, stubDialogs, stubLegacyCopy, unstubLegacyCopy } from "./fakes";
 import { BUNDLE_VERSION } from "./version";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -642,12 +642,14 @@ test.each([
   try {
     const writeText = vi.fn(async () => {});
     clipboard(writeText);
+    const legacy = stubLegacyCopy();
     sessions = [session("my app")];
     open("/sessions/my%20app?token=secret");
     await screen.findByRole("region", { name: "Session my app" });
     fireEvent.click(within(head()).getByRole("button", { name: label }));
     await waitFor(() => expect(within(head()).getByText(said).getAttribute("role")).toBe("status"));
     expect(writeText).toHaveBeenCalledWith(text());
+    expect(legacy).toEqual([]);
     await act(() => vi.advanceTimersByTimeAsync(1900));
     expect(within(head()).getByText(said)).toBeTruthy();
     await act(() => vi.advanceTimersByTimeAsync(200));
@@ -658,10 +660,41 @@ test.each([
 });
 
 test.each([
+  ["Copy link", "Link copied", (): string => `${window.location.origin}/sessions/my%20app`],
+  ["Copy path", "Path copied", (): string => "/src/my app"],
+] as const)("%s in the head copies without the Clipboard API, as over http from another machine", async (label, said, text) => {
+  const legacy = stubLegacyCopy();
+  sessions = [session("my app")];
+  open("/sessions/my%20app");
+  await screen.findByRole("region", { name: "Session my app" });
+  const button = within(head()).getByRole("button", { name: label });
+  button.focus();
+  fireEvent.click(button);
+  await waitFor(() => expect(within(head()).getByText(said).getAttribute("role")).toBe("status"));
+  expect(legacy).toEqual([text()]);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector("body > textarea")).toBeNull();
+  expect(document.activeElement).toBe(button);
+});
+
+test("a refused Clipboard API copy falls back to the legacy copy", async () => {
+  clipboard(async () => Promise.reject(new Error("not allowed")));
+  const legacy = stubLegacyCopy();
+  open("/sessions/lado");
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(head()).getByRole("button", { name: "Copy path" }));
+  await waitFor(() => expect(within(head()).getByText("Path copied")).toBeTruthy());
+  expect(legacy).toEqual(["/src/lado"]);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector("body > textarea")).toBeNull();
+});
+
+test.each([
   ["Copy link", "Link to lado", "Link", (): string => `${window.location.origin}/sessions/lado`],
   ["Copy path", "Path of lado", "Path", (): string => "/src/lado"],
-] as const)("without the Clipboard API %s in the head shows the text selected", async (label, dialog, name, text) => {
+] as const)("when no copy works %s in the head shows the text selected", async (label, dialog, name, text) => {
   clipboard(async () => Promise.reject(new Error("not allowed")));
+  stubLegacyCopy(false);
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
   fireEvent.click(within(head()).getByRole("button", { name: label }));
@@ -736,7 +769,10 @@ function clipboard(writeText: ((text: string) => Promise<void>) | undefined) {
   });
 }
 
-afterEach(() => clipboard(undefined));
+afterEach(() => {
+  clipboard(undefined);
+  unstubLegacyCopy();
+});
 
 test("Copy link copies the session page's address, without the token, and says so outside the menu", async () => {
   const writeText = vi.fn(async () => {});
@@ -751,11 +787,26 @@ test("Copy link copies the session page's address, without the token, and says s
   expect(screen.queryByRole("menu")).toBeNull();
 });
 
+test("Copy link in the row's menu copies without the Clipboard API, and the focus goes back to ⋯", async () => {
+  const legacy = stubLegacyCopy();
+  open("/sessions");
+  const menu = await openRowMenu("lado");
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy link" }));
+  const status = within(await row("lado")).getByRole("status");
+  await waitFor(() => expect(status.textContent).toBe("Link copied"));
+  expect(legacy).toEqual([`${window.location.origin}/sessions/lado`]);
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector("body > textarea")).toBeNull();
+  expect(document.activeElement).toBe(within(await row("lado")).getByRole("button", { name: "Actions for lado" }));
+});
+
 test.each([
-  ["no Clipboard API", undefined],
-  ["a refused copy", async () => Promise.reject(new Error("not allowed"))],
-] as const)("with %s Copy link shows the address selected, to copy by hand", async (_, writeText) => {
+  ["no Clipboard API and a refused legacy copy", undefined, false],
+  ["a refused copy and a failing legacy copy", async () => Promise.reject(new Error("not allowed")), "throws"],
+] as const)("with %s Copy link shows the address selected, to copy by hand", async (_, writeText, legacy) => {
   clipboard(writeText);
+  stubLegacyCopy(legacy);
   open("/sessions");
   const menu = await openRowMenu("lado");
   fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy link" }));
@@ -766,6 +817,7 @@ test.each([
   await waitFor(() => expect(document.activeElement).toBe(field)); // focused once it is drawn
   expect([field.selectionStart, field.selectionEnd]).toEqual([0, field.value.length]);
   expect(within(asked).getByText("Press ⌘C / Ctrl+C to copy")).toBeTruthy();
+  expect(document.querySelector("body > textarea")).toBeNull();
   expect(within(await row("lado")).getByRole("status").textContent).toBe("");
   fireEvent.keyDown(asked, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Link to lado" })).toBeNull();
@@ -883,6 +935,15 @@ test("Copy URL on the git icon copies the remote's whole URL", async () => {
   fireEvent.click(within(meta()).getByRole("button", { name: "Copy URL" }));
   await waitFor(() => expect(within(meta()).getByText("URL copied")).toBeTruthy());
   expect(writeText).toHaveBeenCalledWith("git@github.com:ladohq/lado.git");
+});
+
+test("Copy URL copies without the Clipboard API", async () => {
+  const legacy = stubLegacyCopy();
+  await openHead(about());
+  fireEvent.click(within(meta()).getByRole("button", { name: "Copy URL" }));
+  await waitFor(() => expect(within(meta()).getByText("URL copied")).toBeTruthy());
+  expect(legacy).toEqual(["git@github.com:ladohq/lado.git"]);
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 test("the git fact is the branch alone without a remote, and none without either", async () => {

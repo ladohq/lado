@@ -184,6 +184,27 @@ export function stubDialogs() {
   };
 }
 
+// The legacy copy (Copy.tsx), `document.execCommand("copy")`, which jsdom lacks: it returns
+// `works` (or throws). Each copy keeps the text selected in the focused field at the call.
+export function stubLegacyCopy(works: boolean | "throws" = true) {
+  const copied: string[] = [];
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: vi.fn((command: string) => {
+      if (command !== "copy") return false;
+      const field = document.activeElement as HTMLTextAreaElement;
+      copied.push(field.value.slice(field.selectionStart, field.selectionEnd));
+      if (works === "throws") throw new Error("not allowed");
+      return works;
+    }),
+  });
+  return copied;
+}
+
+export function unstubLegacyCopy() {
+  delete (document as { execCommand?: unknown }).execCommand;
+}
+
 export const xtermFor = (url: string) =>
   FakeXterm.all[FakeSocket.all.findIndex((socket) => socket.url === url)];
 

@@ -6,6 +6,10 @@
   longer has a dot before the name, whose colour differed from the row's own dot; its
   status word now has its group's colour (green Running, orange Needs you, grey Stopped,
   red for a session whose tmux is gone or whose loop does not run).
+- UI: the copy buttons (a session's link, path and git URL, an artifact's link, the
+  session row's Copy link) copy in one click also on a page served over plain http from
+  another machine (`lado ui --host`), instead of showing the text to copy by hand; that
+  field shows only when the browser refuses every way to copy.
 
 ## 0.31.0 (2026-10-09)
 

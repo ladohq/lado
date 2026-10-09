@@ -8,11 +8,13 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import type { ArtifactInfo } from "./api";
 import { ArtifactView, TEXT_LIMIT } from "./ArtifactView";
-import { artifact } from "./fakes";
+import { artifact, stubLegacyCopy, unstubLegacyCopy } from "./fakes";
+import { artifactPath } from "./paths";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  unstubLegacyCopy();
 });
 
 function serve(content: BodyInit | null, status = 200) {
@@ -44,6 +46,27 @@ test("the head names the artifact, its title, author, change and the ways to tak
   expect(within(head).getByRole("link", { name: "Download" }).getAttribute("href")).toBe(`${CONTENT}?download=1`);
   expect(within(head).getByRole("button", { name: "Copy link" })).toBeTruthy();
   expect(within(head).queryByRole("link", { name: "Open in new tab" })).toBeNull();
+  await screen.findByRole("heading", { name: "Design" });
+});
+
+test("Copy link copies without the Clipboard API, and shows the link only when no copy works", async () => {
+  serve("# Design");
+  const legacy = stubLegacyCopy();
+  show(artifact());
+  const copy = within(screen.getByRole("banner")).getByRole("button", { name: "Copy link" });
+  copy.focus();
+  fireEvent.click(copy);
+  await screen.findByText("Link copied");
+  const link = `${window.location.origin}${artifactPath("lado", "a1")}`;
+  expect(legacy).toEqual([link]);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.querySelector("body > textarea")).toBeNull();
+  expect(document.activeElement).toBe(copy);
+
+  stubLegacyCopy(false);
+  fireEvent.click(copy);
+  const field = await screen.findByRole("dialog", { name: "Link to feature/x/design" });
+  expect((within(field).getByRole("textbox", { name: "Link" }) as HTMLInputElement).value).toBe(link);
   await screen.findByRole("heading", { name: "Design" });
 });
 

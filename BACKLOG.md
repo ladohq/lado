@@ -511,6 +511,19 @@ Found: 2026-10-09, CI of the 0.31.0 release (run 37887140737).
 
 # P2: when convenient
 
+## The artifact panel's "Link copied" is cut by the window's right edge
+
+Size: S. Why here: the human clicks Copy link and barely sees that it worked; seen with and
+without the Clipboard API.
+
+Copy link sits at the artifact panel's right edge; its note (`CopyButton`'s
+`role="status"`, under the button) runs past the window's edge, where only "co" shows, and
+the button's tooltip covers the rest (screenshot of
+test_artifacts_tab::test_copy_link_copies_without_the_clipboard_api).
+Wanted: the note stays inside the window, as the CopyField popover does (`useBelow`, 8px
+from the edge), and is not hidden by the tooltip.
+Found: 2026-10-09, run fix/copy-without-popover.
+
 ## The commands of a kit's MCP servers are not checked before a start
 
 Size: S. Why here: a kit whose MCP server runs through `uvx` or `npx` gets an agent without

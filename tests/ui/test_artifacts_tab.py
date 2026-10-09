@@ -250,17 +250,48 @@ def test_a_wide_table_scrolls_in_its_frame_and_the_panel_does_not(
     shot(page, "wide-table")
 
 
+def test_copy_link_copies_without_the_clipboard_api(page: Page, server, repo, tmp_path, shot):
+    # Over http from another machine there is no Clipboard API: the legacy copy copies.
+    session = designed_session(repo, tmp_path)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=server["url"])
+    page.evaluate("navigator.clipboard.writeText('stale')")
+    page.evaluate(
+        "Object.defineProperty(navigator, 'clipboard', {value: undefined, configurable: true})"
+    )
+    page.get_by_role("button", name="Open artifact ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    copy = panel.get_by_role("button", name="Copy link")
+    copy.click()
+    expect(panel.get_by_role("status")).to_have_text("Link copied")
+    expect(page.get_by_role("dialog", name="Link to ship/x/design")).to_have_count(0)
+    expect(copy).to_be_focused()
+    assert page.evaluate("document.querySelectorAll('body > textarea').length") == 0
+    shot(page)
+    page.evaluate("delete navigator.clipboard")  # the API again, to read what was copied
+    design = artifacts.find(session, "ship/x/design")[0].id
+    assert page.evaluate("navigator.clipboard.readText()") == (
+        f"{server['url']}/sessions/{session}/artifacts/{design}"
+    )
+
+
 @pytest.mark.parametrize("width", [1280, 390])
 def test_the_link_to_copy_by_hand_stays_inside_the_window(
     page: Page, server, repo, tmp_path, shot, width
 ):
-    # Copy link sits at the panel's right edge; without the Clipboard API (http from
-    # another machine) its field opens below it, kept 8px inside the window.
+    # Copy link sits at the panel's right edge; when no copy works (no Clipboard API and a
+    # refused legacy copy) its field opens below it, kept 8px inside the window.
     session = designed_session(repo, tmp_path)
     page.set_viewport_size({"width": width, "height": 844})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    page.evaluate("Object.defineProperty(navigator, 'clipboard', {value: undefined})")
+    page.evaluate(
+        """() => {
+          Object.defineProperty(navigator, 'clipboard', {value: undefined});
+          document.execCommand = () => false;
+        }"""
+    )
     page.get_by_role("button", name="Open artifact ship/x/design").click()
     panel = page.get_by_role("dialog", name="Artifact ship/x/design")
     panel.get_by_role("button", name="Copy link").click()

@@ -1,8 +1,8 @@
 // Copying a text for the human (docs/design/ui.md, Launch and session control): a session's
 // link from its list row's menu and its head, its folder from its head. The Clipboard API
-// first, then what was copied is said for COPIED_MS in the caller's role="status". Without
-// the API (a page not served from localhost or https) or when the copy is refused, the
-// text is shown selected, to copy by hand.
+// first; without it (a page not served from localhost or https) or when it refuses, the
+// legacy copy (execCommand); what was copied is said for COPIED_MS in the caller's
+// role="status". Only when both fail is the text shown selected, to copy by hand.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import { useBelow, useDismiss } from "./Menu";
@@ -20,16 +20,43 @@ export function useCopy() {
     return () => clearTimeout(timer);
   }, [note]);
   const copy = async (text: string, copied: string) => {
-    try {
-      if (!navigator.clipboard) throw new Error("no Clipboard API");
-      await navigator.clipboard.writeText(text);
-      setNote(copied);
-      return true;
-    } catch {
-      return false;
-    }
+    let done = false;
+    // Without the API the legacy copy runs at once, still within the click.
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(text);
+        done = true;
+      } catch {
+        done = legacyCopy(text);
+      }
+    } else done = legacyCopy(text);
+    if (done) setNote(copied);
+    return done;
   };
   return { note, copy };
+}
+
+// document.execCommand("copy") of the text selected in a hidden field, which works also
+// where the Clipboard API does not exist; the focus goes back where it was, and the page
+// does not scroll.
+function legacyCopy(text: string) {
+  const focused = document.activeElement;
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.readOnly = true;
+  field.setAttribute("aria-hidden", "true");
+  Object.assign(field.style, { position: "fixed", top: "0", left: "-9999px", opacity: "0" });
+  document.body.append(field);
+  try {
+    field.focus({ preventScroll: true });
+    field.select();
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    field.remove();
+    if (focused instanceof HTMLElement) focused.focus({ preventScroll: true });
+  }
 }
 
 // The text selected in a field, to copy by hand; Esc closes it.

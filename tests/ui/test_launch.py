@@ -129,9 +129,30 @@ def test_the_session_list_row_has_only_the_entrys_menu(page: Page, server, repo,
     assert page.evaluate("navigator.clipboard.readText()") == link
     shot(page, "copied")
 
-    # Without the Clipboard API (http from another machine) the address is shown to copy by hand.
-    page.evaluate("Object.defineProperty(navigator, 'clipboard', {value: undefined})")
-    row.get_by_role("button", name=f"Actions for {session}").click()
+    # Without the Clipboard API (http from another machine) the legacy copy copies it.
+    page.evaluate("navigator.clipboard.writeText('stale')")
+    page.evaluate(
+        "Object.defineProperty(navigator, 'clipboard', {value: undefined, configurable: true})"
+    )
+    more = row.get_by_role("button", name=f"Actions for {session}")
+    more.click()
+    menu.get_by_role("menuitem", name="Copy link").click()
+    expect(row.get_by_role("status")).to_have_text("Link copied")
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    expect(more).to_be_focused()
+    assert page.evaluate("document.querySelectorAll('body > textarea').length") == 0
+    shot(page, "copied-without-api")
+    page.evaluate("delete navigator.clipboard")  # the API again, to read what was copied
+    assert page.evaluate("navigator.clipboard.readText()") == link
+
+    # When no copy works the address is shown to copy by hand.
+    page.evaluate(
+        """() => {
+          Object.defineProperty(navigator, 'clipboard', {value: undefined, configurable: true});
+          document.execCommand = () => false;
+        }"""
+    )
+    more.click()
     menu.get_by_role("menuitem", name="Copy link").click()
     by_hand = page.get_by_role("dialog", name=f"Link to {session}")
     expect(by_hand.get_by_role("textbox", name="Link")).to_have_value(link)

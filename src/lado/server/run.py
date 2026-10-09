@@ -202,7 +202,7 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
             )
         # No access log: it would write the login link, token included, to server.log.
         config = uvicorn.Config(
-            app.create_app(token, bound),
+            app.create_app(token, bound, host=listens),
             log_level="info",
             access_log=False,
             timeout_graceful_shutdown=SHUTDOWN_GRACE,

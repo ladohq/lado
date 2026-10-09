@@ -6,7 +6,9 @@ never migrates the database: another schema version answers 503.
 """
 
 import datetime
+import ipaddress
 import re
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, TypeVar
@@ -25,7 +27,18 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 import lado
-from lado import artifacts, kits, marketplaces, runs, runtime, state, terminal, update
+from lado import (
+    artifacts,
+    doctor,
+    kits,
+    marketplaces,
+    runs,
+    runtime,
+    self_update,
+    state,
+    terminal,
+    update,
+)
 from lado.server import feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
@@ -43,6 +56,7 @@ from lado.server.models import (
     History,
     InstalledKitInfo,
     InstallKit,
+    KitFactInfo,
     KitInfo,
     KitUsersInfo,
     Launch,
@@ -69,13 +83,19 @@ from lado.server.models import (
     RunInfo,
     Sent,
     SessionAbout,
+    SessionCounts,
     SessionInfo,
     Started,
     Stopped,
     StopPreview,
+    SystemInfo,
     Taken,
+    TmuxInfo,
+    UpdateAsk,
     UpdateInfo,
     UpdateKit,
+    UpdatePlan,
+    UpdateStarted,
     WaitingItem,
 )
 
@@ -87,6 +107,7 @@ BUILD_HINT = "build it with `make web` in a LADO checkout"
 class Health(BaseModel):
     ok: bool
     version: str
+    started_at: str  # when this server started: a restart shows, also of the same version
 
 
 def database() -> bool:
@@ -249,10 +270,48 @@ def contract() -> dict:
     return schema
 
 
-def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
+def update_state(checked: update.Check | None) -> UpdateInfo:
+    installer = update.installer()
+    refused = self_update.refusal(installer)
+    available = checked.available if checked else None
+    by_hand = []
+    if available and refused and refused.kind == self_update.NO_INSTALLER:
+        release = update.Release(available, checked.released or "")
+        by_hand = self_update.plan(release).by_hand()
+    return UpdateInfo(
+        current=lado.__version__,
+        latest=checked.latest if checked else None,
+        available=available,
+        released=checked.released if checked else None,
+        checked_at=checked.checked_at if checked else None,
+        error=checked.error if checked else None,
+        running=self_update.running_pid() is not None,
+        can_update=refused is None,
+        why_not=refused.why if refused else None,
+        by_hand=by_hand,
+        last=models.update_result_info(update.read_result()),
+    )
+
+
+def latest_plan() -> self_update.Plan:
+    """The plan for the latest LADO; 409 when none is newer, 502 when PyPI cannot be read."""
+    try:
+        plan = self_update.latest_plan()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(502, f"cannot look up LADO's versions on PyPI: {exc}") from exc
+    if plan is None:
+        raise HTTPException(409, f"LADO {lado.__version__} is the latest version")
+    return plan
+
+
+def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.0.1") -> FastAPI:
     guard = Guard(token, port)
     hub = feed.Hub(feed.Journal())
     app = FastAPI(title="LADO", version=lado.__version__)
+    # Kept in memory only: /api/health tells a restarted server, also of the same version.
+    started = datetime.datetime.now(datetime.timezone.utc)
+    started_at = started.isoformat(timespec="milliseconds")
+    open_to_network = not ipaddress.ip_address(host).is_loopback
 
     @app.exception_handler(state.SchemaError)
     def another_schema(request: Request, error: state.SchemaError) -> JSONResponse:
@@ -262,22 +321,67 @@ def create_app(token: str, port: int, static: Path = STATIC) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> Health:
-        return Health(ok=True, version=lado.__version__)
+        return Health(ok=True, version=lado.__version__, started_at=started_at)
 
     @app.get("/api/update", dependencies=[Depends(guard)])
     def update_info() -> UpdateInfo:
-        """Whether a newer LADO is out. A plain `def`: FastAPI runs it in a worker thread,
-        so the check's look at PyPI (once a day) holds up no other request."""
-        checked = update.check()
-        if checked is None:
-            return UpdateInfo(
-                current=lado.__version__, latest=None, available=None, checked_at=None
+        """Whether a newer LADO is out, whether this one can update itself now, and the
+        latest update's result. A plain `def`: FastAPI runs it in a worker thread, so the
+        check's look at PyPI (once a day) holds up no other request."""
+        return update_state(update.check())
+
+    @app.post("/api/update/check", dependencies=[Depends(guard.changes)])
+    def check_update() -> UpdateInfo:
+        """The update check now, past the day's cache: it goes to the network."""
+        return update_state(update.check(force=True))
+
+    @app.get("/api/update/plan", dependencies=[Depends(guard)], responses={409: {"model": Refused}})
+    def update_plan() -> UpdatePlan:
+        """What an update to the latest LADO would do, as `lado update` prints it; 409 when
+        no version is newer. A plain `def`: its look at PyPI runs in a worker thread."""
+        return models.update_plan(latest_plan())
+
+    @app.post("/api/update", status_code=202, dependencies=[Depends(guard.changes)])
+    def start_update(given: UpdateAsk) -> UpdateStarted:
+        """Start `lado update --yes <to>` as a process of its own, which stops this server
+        within seconds; 409 when `to` is not the plan's version or this LADO cannot update
+        itself now (an update runs, no installer). Its result carries the id answered."""
+        plan = latest_plan()
+        if plan.to.version != given.to:
+            raise HTTPException(
+                409, f"LADO {plan.to.version} is the version to update to, not {given.to}"
             )
-        return UpdateInfo(
-            current=checked.current,
-            latest=checked.latest,
-            available=checked.available,
-            checked_at=checked.checked_at,
+        refused = self_update.refusal(plan.installer)
+        if refused:
+            raise HTTPException(409, refused.why)
+        id = uuid.uuid4().hex
+        requested = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        self_update.start_detached(given.to, id)
+        return UpdateStarted(id=id, requested_at=requested)
+
+    @app.get("/api/system", dependencies=[Depends(guard)])
+    def system() -> SystemInfo:
+        """The system panel: this LADO, the machine, the providers and kits, and the report
+        to copy into an issue (doctor.system_info, doctor.report)."""
+        facts = doctor.system_info()
+        up = (datetime.datetime.now(datetime.timezone.utc) - started).total_seconds()
+        return SystemInfo(
+            version=facts.version,
+            python=facts.python,
+            os=facts.os,
+            machine=facts.machine,
+            installer=facts.installer,
+            started_at=started_at,
+            open_to_network=open_to_network,
+            home=facts.home,
+            home_set=facts.home_set,
+            schema_=facts.schema,
+            tmux=TmuxInfo(version=facts.tmux, socket=facts.tmux_socket),
+            providers=[launch.provider_info(p, status) for p, status in facts.providers],
+            kits=[KitFactInfo(name=k.name, version=k.version, origin=k.origin) for k in facts.kits],
+            sessions=SessionCounts(**facts.sessions),
+            last=models.update_result_info(facts.last),
+            report=doctor.report(facts, open_to_network, up),
         )
 
     @app.get("/api/sessions", dependencies=[Depends(guard)])

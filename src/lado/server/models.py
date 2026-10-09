@@ -8,7 +8,18 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lado import artifacts, flows, gitcache, kits, marketplaces, runs, runtime, state
+from lado import (
+    artifacts,
+    flows,
+    gitcache,
+    kits,
+    marketplaces,
+    runs,
+    runtime,
+    self_update,
+    state,
+    update,
+)
 
 log = logging.getLogger("lado.server")
 
@@ -270,15 +281,6 @@ class MarketplaceUpdate(BaseModel):
     error: str | None
 
 
-class UpdateInfo(BaseModel):
-    """This LADO's version and what the daily update check found (lado.update.check)."""
-
-    current: str
-    latest: str | None  # the latest release; None before a look found one or with the check off
-    available: str | None  # the latest release when it is newer than this LADO
-    checked_at: str | None  # when the check last looked; None with the check off
-
-
 class ProviderInfo(BaseModel):
     """A provider of LADO's registry and whether its CLI can run here."""
 
@@ -291,6 +293,177 @@ class ProviderInfo(BaseModel):
     detail: str  # its `--version` line, or why there is none
     tested_version: str
     warning: str  # "" unless its version is not the tested one
+
+
+class SessionCommand(BaseModel):
+    name: str
+    command: str  # the `lado start` that resumes it
+
+
+class UpdateResultInfo(BaseModel):
+    """The latest update's outcome, as update-result.json keeps it (lado.update)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str | None  # the id the server gave the update it started
+    outcome: str  # running, ok, partial, failed, rolled_back, rollback_failed; "" unknown
+    from_: str = Field(alias="from")
+    to: str
+    started_at: str
+    ended_at: str | None
+    sessions_failed: list[SessionCommand]
+    reason: str | None
+    database: str | None  # kept, restored, or None
+    log: str | None
+    tail: list[str]
+    problem: str | None  # "written by a newer LADO": nothing else is read
+
+
+def update_result_info(result: update.Result | None) -> UpdateResultInfo | None:
+    if result is None:
+        return None
+    return UpdateResultInfo(
+        id=result.id,
+        outcome=result.outcome,
+        from_=result.from_,
+        to=result.to,
+        started_at=result.started_at,
+        ended_at=result.ended_at,
+        sessions_failed=[SessionCommand(**one) for one in result.sessions_failed],
+        reason=result.reason,
+        database=result.database,
+        log=result.log,
+        tail=result.tail,
+        problem=result.problem,
+    )
+
+
+class UpdateInfo(BaseModel):
+    """This LADO's version, what the update check found (lado.update.check), whether this
+    LADO can update itself now (self_update.refusal) and the latest update's result."""
+
+    current: str
+    latest: str | None  # the latest release; None before a look found one or with the check off
+    available: str | None  # the latest release when it is newer than this LADO
+    released: str | None  # the latest release's day, YYYY-MM-DD
+    checked_at: str | None  # when the check last looked; None with the check off
+    error: str | None  # why the latest look failed
+    running: bool  # an update holds its lock
+    can_update: bool
+    why_not: str | None  # why it cannot
+    by_hand: list[str]  # without an installer: the commands that update to `available`
+    last: UpdateResultInfo | None
+
+
+class PlanAgent(BaseModel):
+    name: str
+    status: str
+
+
+class PlanSession(BaseModel):
+    name: str
+    repo: str
+    agents: list[PlanAgent]
+    open_runs: int
+
+
+class UpdatePlan(BaseModel):
+    """What an update would do, as `lado update` prints it (self_update.plan)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    released: str
+    installer: str | None  # its kind; None: only by hand
+    command: str | None  # the installer's command
+    lost: list[str]  # what that command does not keep of the install
+    downgrade: bool  # an older LADO may refuse lado.db
+    sessions: list[PlanSession]  # restarted
+    gone: list[SessionCommand]  # not stopped, their tmux gone: not restarted
+    server: str | None  # the UI server's url, restarted
+    socket: str  # the tmux socket whose sessions are seen
+    by_hand: list[str]
+
+
+def update_plan(plan: self_update.Plan) -> UpdatePlan:
+    installer = plan.installer
+    return UpdatePlan(
+        from_=plan.current,
+        to=plan.to.version,
+        released=plan.to.date,
+        installer=installer.kind if installer else None,
+        command=plan.command,
+        lost=list(installer.lost) if installer else [],
+        downgrade=plan.downgrade,
+        sessions=[
+            PlanSession(
+                name=sess.name,
+                repo=sess.repo,
+                agents=[
+                    PlanAgent(name=a.name, status=a.status) for a in state.list_agents(sess.name)
+                ],
+                open_runs=self_update.open_runs(sess.name),
+            )
+            for sess in plan.sessions
+        ],
+        gone=[
+            SessionCommand(name=s.name, command=f"lado start {s.repo} --name {s.name}")
+            for s in plan.gone
+        ],
+        server=plan.server["url"] if plan.server else None,
+        socket=plan.socket,
+        by_hand=plan.by_hand(),
+    )
+
+
+class UpdateAsk(BaseModel):
+    to: str  # the plan's version
+
+
+class UpdateStarted(BaseModel):
+    id: str  # the result of this update carries it
+    requested_at: str
+
+
+class TmuxInfo(BaseModel):
+    version: str  # or why there is none
+    socket: str
+
+
+class KitFactInfo(BaseModel):
+    name: str
+    version: str
+    origin: str  # built-in, "<name> marketplace", git or folder
+
+
+class SessionCounts(BaseModel):
+    running: int
+    stopped: int
+    gone: int
+
+
+class SystemInfo(BaseModel):
+    """The system panel's facts (doctor.system_info) and the server's own."""
+
+    version: str
+    python: str
+    os: str
+    machine: str
+    installer: str | None  # its kind, None without one (UpdateInfo.why_not says why)
+    started_at: str  # the server's start
+    open_to_network: bool  # it listens beyond loopback
+    home: str
+    home_set: bool  # LADO_HOME is set
+    schema_: int | None = Field(alias="schema")
+    tmux: TmuxInfo
+    providers: list[ProviderInfo]
+    kits: list[KitFactInfo]
+    sessions: SessionCounts
+    last: UpdateResultInfo | None
+    report: str  # Markdown for an issue: no address, path, session name or token
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RepoInfo(BaseModel):

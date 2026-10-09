@@ -134,9 +134,12 @@ def provider_infos() -> list[models.ProviderInfo]:
         return list(pool.map(provider_info, registry))
 
 
-def provider_info(provider: providers.Provider) -> models.ProviderInfo:
-    """The provider and its CLI as the server finds it, checked anew (`<cli> --version`)."""
-    status = doctor.provider_status(provider, shutil.which)
+def provider_info(
+    provider: providers.Provider, status: doctor.ProviderStatus | None = None
+) -> models.ProviderInfo:
+    """The provider and its CLI as the server finds it, checked anew (`<cli> --version`)
+    unless `status` is that check."""
+    status = status or doctor.provider_status(provider, shutil.which)
     return models.ProviderInfo(
         name=provider.name,
         title=provider.title,

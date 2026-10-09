@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import IO
 
 import lado
-from lado import loop, runtime, state, tmux, update
+from lado import loop, providers, runtime, state, tmux, update
 from lado.server import run as server_run
 
 DEFAULT_HOST = "127.0.0.1"  # `lado server --host`'s default
@@ -234,6 +234,19 @@ def unfinished() -> str | None:
     return (
         f"lado: an update did not finish: sessions {names} may be stopped; "
         f"resume them with {commands}"
+    )
+
+
+def start_detached(to: str, id: str) -> None:
+    """`lado update --yes <to> --id <id>` of this LADO as a process of its own, for the UI
+    server, which the update stops: in its own session, so it outlives the server, its
+    lines in update.log (`--id`); what it cannot say there (a traceback) goes where the
+    server's own output goes."""
+    subprocess.Popen(
+        providers.lado_command("update", "--yes", to, "--id", id),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        start_new_session=True,
     )
 
 

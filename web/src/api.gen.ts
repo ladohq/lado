@@ -30,10 +30,79 @@ export interface paths {
         };
         /**
          * Update Info
-         * @description Whether a newer LADO is out. A plain `def`: FastAPI runs it in a worker thread,
-         *     so the check's look at PyPI (once a day) holds up no other request.
+         * @description Whether a newer LADO is out, whether this one can update itself now, and the
+         *     latest update's result. A plain `def`: FastAPI runs it in a worker thread, so the
+         *     check's look at PyPI (once a day) holds up no other request.
          */
         get: operations["update_info_api_update_get"];
+        put?: never;
+        /**
+         * Start Update
+         * @description Start `lado update --yes <to>` as a process of its own, which stops this server
+         *     within seconds; 409 when `to` is not the plan's version or this LADO cannot update
+         *     itself now (an update runs, no installer). Its result carries the id answered.
+         */
+        post: operations["start_update_api_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/update/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Update
+         * @description The update check now, past the day's cache: it goes to the network.
+         */
+        post: operations["check_update_api_update_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/update/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Update Plan
+         * @description What an update to the latest LADO would do, as `lado update` prints it; 409 when
+         *     no version is newer. A plain `def`: its look at PyPI runs in a worker thread.
+         */
+        get: operations["update_plan_api_update_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System
+         * @description The system panel: this LADO, the machine, the providers and kits, and the report
+         *     to copy into an issue (doctor.system_info, doctor.report).
+         */
+        get: operations["system_api_system_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1184,6 +1253,8 @@ export interface components {
             ok: boolean;
             /** Version */
             version: string;
+            /** Started At */
+            started_at: string;
         };
         /** History */
         History: {
@@ -1294,6 +1365,15 @@ export interface components {
             flows: string[];
             /** Mcp */
             mcp: string[];
+        };
+        /** KitFactInfo */
+        KitFactInfo: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Origin */
+            origin: string;
         };
         /**
          * KitInfo
@@ -1567,6 +1647,13 @@ export interface components {
             /** Newer */
             newer: string | null;
         };
+        /** PlanAgent */
+        PlanAgent: {
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+        };
         /** PlanAsk */
         PlanAsk: {
             /** Spec */
@@ -1626,6 +1713,17 @@ export interface components {
             notes: string[];
             users: components["schemas"]["KitUsersInfo"] | null;
             before: components["schemas"]["KitContentsInfo"] | null;
+        };
+        /** PlanSession */
+        PlanSession: {
+            /** Name */
+            name: string;
+            /** Repo */
+            repo: string;
+            /** Agents */
+            agents: components["schemas"]["PlanAgent"][];
+            /** Open Runs */
+            open_runs: number;
         };
         /** PlanUpdateAsk */
         PlanUpdateAsk: {
@@ -1832,6 +1930,22 @@ export interface components {
             kits: components["schemas"]["SessionKitInfo"][];
             provider: components["schemas"]["ProviderInfo"];
         };
+        /** SessionCommand */
+        SessionCommand: {
+            /** Name */
+            name: string;
+            /** Command */
+            command: string;
+        };
+        /** SessionCounts */
+        SessionCounts: {
+            /** Running */
+            running: number;
+            /** Stopped */
+            stopped: number;
+            /** Gone */
+            gone: number;
+        };
         /** SessionInfo */
         SessionInfo: {
             /** Name */
@@ -1914,6 +2028,41 @@ export interface components {
             dropped: number;
         };
         /**
+         * SystemInfo
+         * @description The system panel's facts (doctor.system_info) and the server's own.
+         */
+        SystemInfo: {
+            /** Version */
+            version: string;
+            /** Python */
+            python: string;
+            /** Os */
+            os: string;
+            /** Machine */
+            machine: string;
+            /** Installer */
+            installer: string | null;
+            /** Started At */
+            started_at: string;
+            /** Open To Network */
+            open_to_network: boolean;
+            /** Home */
+            home: string;
+            /** Home Set */
+            home_set: boolean;
+            /** Schema */
+            schema: number | null;
+            tmux: components["schemas"]["TmuxInfo"];
+            /** Providers */
+            providers: components["schemas"]["ProviderInfo"][];
+            /** Kits */
+            kits: components["schemas"]["KitFactInfo"][];
+            sessions: components["schemas"]["SessionCounts"];
+            last: components["schemas"]["UpdateResultInfo"] | null;
+            /** Report */
+            report: string;
+        };
+        /**
          * Taken
          * @description The detail of a 409 to a new session: the session that has the name.
          */
@@ -1923,6 +2072,13 @@ export interface components {
             status: components["schemas"]["SessionStatus"];
             /** Repo */
             repo: string;
+        };
+        /** TmuxInfo */
+        TmuxInfo: {
+            /** Version */
+            version: string;
+            /** Socket */
+            socket: string;
         };
         /**
          * Transition
@@ -1936,9 +2092,15 @@ export interface components {
             /** To State */
             to_state: string;
         };
+        /** UpdateAsk */
+        UpdateAsk: {
+            /** To */
+            to: string;
+        };
         /**
          * UpdateInfo
-         * @description This LADO's version and what the daily update check found (lado.update.check).
+         * @description This LADO's version, what the update check found (lado.update.check), whether this
+         *     LADO can update itself now (self_update.refusal) and the latest update's result.
          */
         UpdateInfo: {
             /** Current */
@@ -1947,8 +2109,21 @@ export interface components {
             latest: string | null;
             /** Available */
             available: string | null;
+            /** Released */
+            released: string | null;
             /** Checked At */
             checked_at: string | null;
+            /** Error */
+            error: string | null;
+            /** Running */
+            running: boolean;
+            /** Can Update */
+            can_update: boolean;
+            /** Why Not */
+            why_not: string | null;
+            /** By Hand */
+            by_hand: string[];
+            last: components["schemas"]["UpdateResultInfo"] | null;
         };
         /** UpdateKit */
         UpdateKit: {
@@ -1956,6 +2131,73 @@ export interface components {
             tag: string;
             /** Commit */
             commit: string;
+        };
+        /**
+         * UpdatePlan
+         * @description What an update would do, as `lado update` prints it (self_update.plan).
+         */
+        UpdatePlan: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Released */
+            released: string;
+            /** Installer */
+            installer: string | null;
+            /** Command */
+            command: string | null;
+            /** Lost */
+            lost: string[];
+            /** Downgrade */
+            downgrade: boolean;
+            /** Sessions */
+            sessions: components["schemas"]["PlanSession"][];
+            /** Gone */
+            gone: components["schemas"]["SessionCommand"][];
+            /** Server */
+            server: string | null;
+            /** Socket */
+            socket: string;
+            /** By Hand */
+            by_hand: string[];
+        };
+        /**
+         * UpdateResultInfo
+         * @description The latest update's outcome, as update-result.json keeps it (lado.update).
+         */
+        UpdateResultInfo: {
+            /** Id */
+            id: string | null;
+            /** Outcome */
+            outcome: string;
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Started At */
+            started_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** Sessions Failed */
+            sessions_failed: components["schemas"]["SessionCommand"][];
+            /** Reason */
+            reason: string | null;
+            /** Database */
+            database: string | null;
+            /** Log */
+            log: string | null;
+            /** Tail */
+            tail: string[];
+            /** Problem */
+            problem: string | null;
+        };
+        /** UpdateStarted */
+        UpdateStarted: {
+            /** Id */
+            id: string;
+            /** Requested At */
+            requested_at: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2085,6 +2327,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+        };
+    };
+    start_update_api_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_update_api_update_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+        };
+    };
+    update_plan_api_update_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdatePlan"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refused"];
+                };
+            };
+        };
+    };
+    system_api_system_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInfo"];
                 };
             };
         };

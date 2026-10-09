@@ -25,7 +25,7 @@
     "/api/update": {
       "get": {
         "summary": "Update Info",
-        "description": "Whether a newer LADO is out. A plain `def`: FastAPI runs it in a worker thread,\nso the check's look at PyPI (once a day) holds up no other request.",
+        "description": "Whether a newer LADO is out, whether this one can update itself now, and the\nlatest update's result. A plain `def`: FastAPI runs it in a worker thread, so the\ncheck's look at PyPI (once a day) holds up no other request.",
         "operationId": "update_info_api_update_get",
         "responses": {
           "200": {
@@ -34,6 +34,110 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Start Update",
+        "description": "Start `lado update --yes <to>` as a process of its own, which stops this server\nwithin seconds; 409 when `to` is not the plan's version or this LADO cannot update\nitself now (an update runs, no installer). Its result carries the id answered.",
+        "operationId": "start_update_api_update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAsk"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/update/check": {
+      "post": {
+        "summary": "Check Update",
+        "description": "The update check now, past the day's cache: it goes to the network.",
+        "operationId": "check_update_api_update_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/update/plan": {
+      "get": {
+        "summary": "Update Plan",
+        "description": "What an update to the latest LADO would do, as `lado update` prints it; 409 when\nno version is newer. A plain `def`: its look at PyPI runs in a worker thread.",
+        "operationId": "update_plan_api_update_plan_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatePlan"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refused"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system": {
+      "get": {
+        "summary": "System",
+        "description": "The system panel: this LADO, the machine, the providers and kits, and the report\nto copy into an issue (doctor.system_info, doctor.report).",
+        "operationId": "system_api_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInfo"
                 }
               }
             }
@@ -3077,12 +3181,17 @@
           "version": {
             "type": "string",
             "title": "Version"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
           }
         },
         "type": "object",
         "required": [
           "ok",
-          "version"
+          "version",
+          "started_at"
         ],
         "title": "Health"
       },
@@ -3479,6 +3588,29 @@
         ],
         "title": "KitContentsInfo",
         "description": "What a version of a kit holds, by name: an update plan's installed version."
+      },
+      "KitFactInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "origin": {
+            "type": "string",
+            "title": "Origin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "origin"
+        ],
+        "title": "KitFactInfo"
       },
       "KitInfo": {
         "properties": {
@@ -4262,6 +4394,24 @@
         "title": "OutdatedInfo",
         "description": "An installed kit against its repository's tags now (kits.Outdated)."
       },
+      "PlanAgent": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "PlanAgent"
+      },
       "PlanAsk": {
         "properties": {
           "spec": {
@@ -4473,6 +4623,37 @@
         ],
         "title": "PlanInfo",
         "description": "What an add or update would do (kits.Install), as the CLI shows it before it asks."
+      },
+      "PlanSession": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/PlanAgent"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "open_runs": {
+            "type": "integer",
+            "title": "Open Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "repo",
+          "agents",
+          "open_runs"
+        ],
+        "title": "PlanSession"
       },
       "PlanUpdateAsk": {
         "properties": {
@@ -5028,6 +5209,47 @@
         "title": "SessionAbout",
         "description": "What the session's head shows besides its settings: read from git, the kits and\nthe provider's CLI when asked, never in the change feed (docs/design/ui.md, Session\nhead)."
       },
+      "SessionCommand": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "command"
+        ],
+        "title": "SessionCommand"
+      },
+      "SessionCounts": {
+        "properties": {
+          "running": {
+            "type": "integer",
+            "title": "Running"
+          },
+          "stopped": {
+            "type": "integer",
+            "title": "Stopped"
+          },
+          "gone": {
+            "type": "integer",
+            "title": "Gone"
+          }
+        },
+        "type": "object",
+        "required": [
+          "running",
+          "stopped",
+          "gone"
+        ],
+        "title": "SessionCounts"
+      },
       "SessionInfo": {
         "properties": {
           "name": {
@@ -5286,6 +5508,119 @@
         ],
         "title": "Stopped"
       },
+      "SystemInfo": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "python": {
+            "type": "string",
+            "title": "Python"
+          },
+          "os": {
+            "type": "string",
+            "title": "Os"
+          },
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "installer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installer"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "open_to_network": {
+            "type": "boolean",
+            "title": "Open To Network"
+          },
+          "home": {
+            "type": "string",
+            "title": "Home"
+          },
+          "home_set": {
+            "type": "boolean",
+            "title": "Home Set"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "tmux": {
+            "$ref": "#/components/schemas/TmuxInfo"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderInfo"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "kits": {
+            "items": {
+              "$ref": "#/components/schemas/KitFactInfo"
+            },
+            "type": "array",
+            "title": "Kits"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/SessionCounts"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateResultInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report": {
+            "type": "string",
+            "title": "Report"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "python",
+          "os",
+          "machine",
+          "installer",
+          "started_at",
+          "open_to_network",
+          "home",
+          "home_set",
+          "schema",
+          "tmux",
+          "providers",
+          "kits",
+          "sessions",
+          "last",
+          "report"
+        ],
+        "title": "SystemInfo",
+        "description": "The system panel's facts (doctor.system_info) and the server's own."
+      },
       "Taken": {
         "properties": {
           "message": {
@@ -5308,6 +5643,24 @@
         ],
         "title": "Taken",
         "description": "The detail of a 409 to a new session: the session that has the name."
+      },
+      "TmuxInfo": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "socket": {
+            "type": "string",
+            "title": "Socket"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "socket"
+        ],
+        "title": "TmuxInfo"
       },
       "Transition": {
         "properties": {
@@ -5332,6 +5685,19 @@
         ],
         "title": "Transition",
         "description": "A flow event's move, as state.transition reads its detail."
+      },
+      "UpdateAsk": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "title": "To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "title": "UpdateAsk"
       },
       "UpdateInfo": {
         "properties": {
@@ -5361,6 +5727,17 @@
             ],
             "title": "Available"
           },
+          "released": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released"
+          },
           "checked_at": {
             "anyOf": [
               {
@@ -5371,6 +5748,53 @@
               }
             ],
             "title": "Checked At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "running": {
+            "type": "boolean",
+            "title": "Running"
+          },
+          "can_update": {
+            "type": "boolean",
+            "title": "Can Update"
+          },
+          "why_not": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Not"
+          },
+          "by_hand": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "By Hand"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateResultInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -5378,10 +5802,17 @@
           "current",
           "latest",
           "available",
-          "checked_at"
+          "released",
+          "checked_at",
+          "error",
+          "running",
+          "can_update",
+          "why_not",
+          "by_hand",
+          "last"
         ],
         "title": "UpdateInfo",
-        "description": "This LADO's version and what the daily update check found (lado.update.check)."
+        "description": "This LADO's version, what the update check found (lado.update.check), whether this\nLADO can update itself now (self_update.refusal) and the latest update's result."
       },
       "UpdateKit": {
         "properties": {
@@ -5400,6 +5831,243 @@
           "commit"
         ],
         "title": "UpdateKit"
+      },
+      "UpdatePlan": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          },
+          "released": {
+            "type": "string",
+            "title": "Released"
+          },
+          "installer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installer"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command"
+          },
+          "lost": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lost"
+          },
+          "downgrade": {
+            "type": "boolean",
+            "title": "Downgrade"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/PlanSession"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "gone": {
+            "items": {
+              "$ref": "#/components/schemas/SessionCommand"
+            },
+            "type": "array",
+            "title": "Gone"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          },
+          "socket": {
+            "type": "string",
+            "title": "Socket"
+          },
+          "by_hand": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "By Hand"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "released",
+          "installer",
+          "command",
+          "lost",
+          "downgrade",
+          "sessions",
+          "gone",
+          "server",
+          "socket",
+          "by_hand"
+        ],
+        "title": "UpdatePlan",
+        "description": "What an update would do, as `lado update` prints it (self_update.plan)."
+      },
+      "UpdateResultInfo": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "sessions_failed": {
+            "items": {
+              "$ref": "#/components/schemas/SessionCommand"
+            },
+            "type": "array",
+            "title": "Sessions Failed"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "database": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database"
+          },
+          "log": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log"
+          },
+          "tail": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tail"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "outcome",
+          "from",
+          "to",
+          "started_at",
+          "ended_at",
+          "sessions_failed",
+          "reason",
+          "database",
+          "log",
+          "tail",
+          "problem"
+        ],
+        "title": "UpdateResultInfo",
+        "description": "The latest update's outcome, as update-result.json keeps it (lado.update)."
+      },
+      "UpdateStarted": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "requested_at": {
+            "type": "string",
+            "title": "Requested At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "requested_at"
+        ],
+        "title": "UpdateStarted"
       },
       "ValidationError": {
         "properties": {

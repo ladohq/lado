@@ -144,6 +144,7 @@ class Check:
     latest: str | None  # the latest release; None before a look found one
     checked_at: str  # ISO time of that look, UTC
     error: str | None  # why the latest look failed
+    released: str | None = None  # the latest release's day, YYYY-MM-DD
 
     @property
     def available(self) -> str | None:
@@ -155,26 +156,31 @@ def cache_path() -> Path:
     return state.home() / "update-check.json"
 
 
-def check(now: datetime.datetime | None = None) -> Check | None:
+def check(now: datetime.datetime | None = None, force: bool = False) -> Check | None:
     """The latest release, looked up at most once per CHECK_EVERY seconds for every caller
-    (`lado ls`, `lado doctor`, the UI server), at most CHECK_TIMEOUT seconds; a failure is
-    kept in the cache too, so it is not tried again before then. None with
-    LADO_NO_UPDATE_CHECK=1: no look and nothing to say."""
+    (`lado ls`, `lado doctor`, the UI server), or now with `force` (the UI's "check now"),
+    at most CHECK_TIMEOUT seconds; a failure is kept in the cache too, so it is not tried
+    again before then. None with LADO_NO_UPDATE_CHECK=1: no look and nothing to say."""
     if os.environ.get("LADO_NO_UPDATE_CHECK") == "1":
         return None
     now = now or datetime.datetime.now(datetime.timezone.utc)
     cached = _cached()
-    if cached and _age(cached, now) < CHECK_EVERY:
+    if cached and not force and _age(cached, now) < CHECK_EVERY:
         return Check(
-            lado.__version__, cached.get("latest"), cached["checked_at"], cached.get("error")
+            lado.__version__,
+            cached.get("latest"),
+            cached["checked_at"],
+            cached.get("error"),
+            cached.get("released"),
         )
     newest, error = cached.get("latest") if cached else None, None
+    released = cached.get("released") if cached else None
     try:
         found = latest(fetch_index(CHECK_TIMEOUT))
-        newest = found.version if found else None
+        newest, released = (found.version, found.date) if found else (None, None)
     except (OSError, ValueError) as exc:
         error = f"cannot look up LADO's latest version: {exc}"
-    checked = Check(lado.__version__, newest, now.isoformat(timespec="seconds"), error)
+    checked = Check(lado.__version__, newest, now.isoformat(timespec="seconds"), error, released)
     _write_cache(checked)
     return checked
 
@@ -195,7 +201,12 @@ def _age(cached: dict, now: datetime.datetime) -> float:
 
 
 def _write_cache(checked: Check) -> None:
-    fields = {"checked_at": checked.checked_at, "latest": checked.latest, "error": checked.error}
+    fields = {
+        "checked_at": checked.checked_at,
+        "latest": checked.latest,
+        "released": checked.released,
+        "error": checked.error,
+    }
     with contextlib.suppress(OSError):
         path = cache_path()
         path.parent.mkdir(parents=True, exist_ok=True)

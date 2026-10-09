@@ -43,7 +43,8 @@ def test_the_token_is_kept_in_lado_home_for_the_owner_only():
 def test_health_needs_no_token(client):
     answer = client.get("/api/health")
     assert answer.status_code == 200
-    assert answer.json() == {"ok": True, "version": __version__}
+    said = answer.json()
+    assert (said["ok"], said["version"]) == (True, __version__)
 
 
 def test_the_api_refuses_a_request_without_the_token(client):
@@ -675,12 +676,13 @@ def test_update_of_the_latest_version_and_with_the_check_off(client, published, 
     assert (answer["latest"], answer["available"]) == (__version__, None)
     monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
     (state.home() / "update-check.json").unlink()
-    assert client.get("/api/update").json() == {
-        "current": __version__,
-        "latest": None,
-        "available": None,
-        "checked_at": None,
-    }
+    off = client.get("/api/update").json()
+    assert (off["current"], off["latest"], off["available"], off["checked_at"]) == (
+        __version__,
+        None,
+        None,
+        None,
+    )
 
 
 def test_update_needs_the_token(client):

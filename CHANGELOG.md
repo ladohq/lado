@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.32.0 (unreleased)
+## 0.32.0 (2026-10-09)
 
 - The UI's `live` opens a system panel: LADO's version, the server, how long it runs, its
   home, tmux, the providers and the update check (with a check now), and one click to copy

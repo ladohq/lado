@@ -25,7 +25,10 @@ permissions:
 jobs:
   shell:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: ${{ inputs.minutes }}
+    # Started through the API (gh workflow run -f minutes=N) an input is a string, which
+    # timeout-minutes refuses; so is wsl, whose 'false' an `if` on the bare input takes as
+    # true: each `if` compares it with both forms (strings compare case-insensitively).
+    timeout-minutes: ${{ fromJSON(inputs.minutes) }}
     steps:
       - name: Check the length
         env:
@@ -38,7 +41,7 @@ jobs:
 
       # setup-wsl's Ubuntu 24.04 is an amd64 image (v7.0.0), which WSL2 on ARM cannot run.
       - name: No WSL on ARM
-        if: inputs.runner == 'windows-11-arm' && inputs.wsl
+        if: inputs.runner == 'windows-11-arm' && (inputs.wsl == true || inputs.wsl == 'true')
         run: |
           Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false"
           exit 1
@@ -54,7 +57,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
-        if: inputs.wsl
+        if: inputs.wsl == true || inputs.wsl == 'true'
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2
@@ -62,7 +65,7 @@ jobs:
 
       # Cloned inside Ubuntu, not the Windows checkout under /mnt/d (CRLF, slow).
       - name: Clone the repo in Ubuntu
-        if: inputs.wsl
+        if: inputs.wsl == true || inputs.wsl == 'true'
         shell: wsl-bash {0}
         env:
           REPO: ${{ github.repository }}
@@ -75,7 +78,7 @@ jobs:
           git -C ~/lado reset --hard "$SHA"
 
       - name: Check WSL
-        if: inputs.wsl
+        if: inputs.wsl == true || inputs.wsl == 'true'
         env:
           WSL_UTF8: 1
         run: |

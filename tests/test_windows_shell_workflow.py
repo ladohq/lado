@@ -8,6 +8,8 @@ import yaml
 
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-shell.yml"
+# The wsl input as GitHub's web form gives it (a boolean) or the API (a string).
+WSL = "inputs.wsl == true || inputs.wsl == 'true'"
 
 
 @pytest.fixture(scope="module")
@@ -51,7 +53,17 @@ def test_inputs(workflow):
 def test_job_runs_on_the_chosen_runner_for_the_chosen_minutes(workflow):
     (job,) = workflow["jobs"].values()
     assert job["runs-on"] == "${{ inputs.runner }}"
-    assert "inputs.minutes" in str(job["timeout-minutes"])
+    # Started through the API (gh workflow run -f minutes=120), the input is the string
+    # '120', which timeout-minutes refuses; fromJSON makes it a number either way.
+    assert job["timeout-minutes"] == "${{ fromJSON(inputs.minutes) }}"
+
+
+def test_wsl_steps_run_only_when_wsl_is_true_as_a_boolean_or_a_string(text):
+    # From the API (gh workflow run -f wsl=false) the input may be the string 'false',
+    # which a bare `if: inputs.wsl` takes as true.
+    assert re.findall(r"inputs\.wsl\b.*", text)
+    for line in re.findall(r"inputs\.wsl\b.*", text):
+        assert line.startswith(WSL), line
 
 
 def test_reads_contents_only(workflow):
@@ -72,7 +84,7 @@ def test_third_party_actions_pinned_to_a_commit_with_its_version(text):
 
 def test_wsl2_ubuntu_with_the_tools(steps):
     step = step_using(steps, "Vampire/setup-wsl")
-    assert step["if"] == "inputs.wsl"
+    assert step["if"] == WSL
     assert step["with"]["distribution"] == "Ubuntu-24.04"
     assert str(step["with"]["wsl-version"]) == "2"
     packages = step["with"]["additional-packages"].split()
@@ -96,9 +108,7 @@ def test_wsl_on_arm_fails_before_setup(steps):
 def test_wsl_checked_before_the_shell(steps):
     tmate = steps.index(step_using(steps, "mxschmitt/action-tmate"))
     checks = [
-        i
-        for i, s in enumerate(steps)
-        if s.get("if") == "inputs.wsl" and "wsl -l -v" in s.get("run", "")
+        i for i, s in enumerate(steps) if s.get("if") == WSL and "wsl -l -v" in s.get("run", "")
     ]
     assert checks and checks[0] < tmate
     run = steps[checks[0]]["run"]

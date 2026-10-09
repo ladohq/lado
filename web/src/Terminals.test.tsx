@@ -16,6 +16,7 @@ import {
   wideColumn,
 } from "./fakes";
 import { RETRY_MS } from "./terminalLink";
+import { HINT_MS } from "./Terminals";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -43,7 +44,6 @@ const AGENTS: AgentInfo[] = [
 ];
 const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 
-let history: { text: string; alternate: boolean } = { text: "line 1\nline 2", alternate: false };
 let narrow = false;
 
 beforeEach(() => {
@@ -52,7 +52,6 @@ beforeEach(() => {
   FakeXterm.all = [];
   FakeEventSource.all = [];
   FakeEventSource.autoStart = true;
-  history = { text: "line 1\nline 2", alternate: false };
   narrow = false;
   stubDialogs();
   vi.stubGlobal("WebSocket", FakeSocket);
@@ -69,13 +68,11 @@ beforeEach(() => {
       if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       const body = path.endsWith("/agents")
         ? AGENTS
-        : path.includes("/history")
-          ? history
-          : path === "/api/sessions"
-            ? [SESSION]
-            : path.includes("/messages?")
-              ? { items: [], earlier: false }
-              : [];
+        : path === "/api/sessions"
+          ? [SESSION]
+          : path.includes("/messages?")
+            ? { items: [], earlier: false }
+            : [];
       return new Response(JSON.stringify(body), { status: 200 });
     }),
   );
@@ -542,24 +539,82 @@ test("in a narrow window the panel is narrowed to leave the session its room, an
 
 // Inside a terminal
 
-test("in view the wheel up opens the read-only history; Back to live closes it", async () => {
+const HINT = "Scrolling works after Take control.";
+const hintsIn = (view: HTMLElement) => within(view).queryAllByText(HINT);
+const wheel = (xterm: FakeXterm, deltaY: number) => {
+  let taken = true;
+  act(() => {
+    taken = xterm.wheel(deltaY);
+  });
+  return taken;
+};
+
+test("in view the wheel up points at Take control, once, and asks the server for nothing", async () => {
   const { view } = await w1Terminal();
+  const asked = vi.mocked(fetch).mock.calls.length;
   const xterm = FakeXterm.all[1];
-  expect(xterm.wheel(+100)).toBe(false); // down: nothing, and never to the agent
-  expect(within(view).queryByRole("region", { name: "History (read only)" })).toBeNull();
-  expect(xterm.wheel(-100)).toBe(false);
-  const layer = await within(view).findByRole("region", { name: "History (read only)" });
-  expect(await within(layer).findByText(/line 1\s+line 2/)).toBeTruthy();
-  fireEvent.click(within(layer).getByRole("button", { name: "Back to live ↓" }));
+  expect(wheel(xterm, +100)).toBe(false); // down: nothing, and never to the agent
+  expect(hintsIn(view)).toHaveLength(0);
+  expect(wheel(xterm, -100)).toBe(false);
+  expect(wheel(xterm, -100)).toBe(false);
+  const [hint] = hintsIn(view);
+  expect(hintsIn(view)).toHaveLength(1);
+  expect(hint.getAttribute("role")).toBe("status");
+  const takes = within(view).getAllByRole("button", { name: "Take control" });
+  expect(takes).toHaveLength(1);
+  expect(takes[0].classList).toContain("attention");
+  expect(vi.mocked(fetch).mock.calls.slice(asked).map(([path]) => String(path))).toEqual([]);
   expect(within(view).queryByRole("region", { name: "History (read only)" })).toBeNull();
 });
 
-test("the history of a full-screen agent says where it is instead of an empty layer", async () => {
-  history = { text: "", alternate: true };
+test("the hint goes HINT_MS after the last wheel up, and the button's highlight with it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   const { view } = await w1Terminal();
-  FakeXterm.all[1].wheel(-1);
-  const layer = await within(view).findByRole("region", { name: "History (read only)" });
-  expect((await within(layer).findByText(/inside its CLI/)).textContent).toContain("Take control");
+  const xterm = FakeXterm.all[1];
+  wheel(xterm, -100);
+  act(() => vi.advanceTimersByTime(HINT_MS - 1000));
+  wheel(xterm, -100); // the hint stays longer
+  act(() => vi.advanceTimersByTime(HINT_MS - 1000));
+  expect(hintsIn(view)).toHaveLength(1);
+  act(() => vi.advanceTimersByTime(1000));
+  expect(hintsIn(view)).toHaveLength(0);
+  expect(within(view).getByRole("button", { name: "Take control" }).classList).not.toContain("attention");
+});
+
+test("pressing Take control closes the hint", async () => {
+  const { view } = await w1Terminal();
+  wheel(FakeXterm.all[1], -100);
+  expect(hintsIn(view)).toHaveLength(1);
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  expect(hintsIn(view)).toHaveLength(0);
+});
+
+test("another agent's tab closes the hint", async () => {
+  const { view } = await w1Terminal();
+  wheel(FakeXterm.all[1], -100);
+  expect(hintsIn(view)).toHaveLength(1);
+  fireEvent.click(tab("supervisor"));
+  fireEvent.click(tab("w1"));
+  expect(hintsIn(view)).toHaveLength(0);
+});
+
+test("while the panel itself scrolls up (a font at its least), the wheel scrolls it and shows no hint", async () => {
+  const { view } = await w1Terminal();
+  const screenBox = view.querySelector<HTMLElement>(".term-screen")!;
+  screenBox.scrollTop = 40;
+  expect(wheel(FakeXterm.all[1], -100)).toBe(false); // the browser scrolls the panel
+  expect(hintsIn(view)).toHaveLength(0);
+  screenBox.scrollTop = 0;
+  wheel(FakeXterm.all[1], -100);
+  expect(hintsIn(view)).toHaveLength(1);
+});
+
+test("in control the wheel goes to tmux and shows no hint", async () => {
+  localStorage.setItem("lado.askControl", "never");
+  const { view } = await w1Terminal();
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  expect(wheel(FakeXterm.all[2], -100)).toBe(true);
+  expect(hintsIn(view)).toHaveLength(0);
 });
 
 test("an agent with no terminal says why in its tab and does not reconnect; any other close reconnects", async () => {

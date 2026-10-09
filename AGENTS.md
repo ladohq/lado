@@ -354,7 +354,7 @@ fixes and docs only: no new feature, no API or schema change.
     one parser of `${NAME}`, also kits.py's.
   - `terminal.py`: an agent's terminal for the UI (design in
     [docs/design/ui.md](docs/design/ui.md), section Terminal): `open` (a viewer tmux session
-    with the agent's window linked in and a `tmux attach` on a pty), `history`, `NoTerminal`,
+    with the agent's window linked in and a `tmux attach` on a pty), `NoTerminal`,
     and `close_viewers`, which `lado stop` and the UI server's start use; viewers are found
     by their tmux labels (`@lado-viewer`, `@lado-home`, `@lado-session`) only. Never a
     read-only tmux client: tmux would refuse LADO's own `send-keys` while one is attached.
@@ -587,7 +587,7 @@ fixes and docs only: no new feature, no API or schema change.
     `models.py`: the API's models, one form for REST and the stream's items;
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
-    backpressure, close codes; the agents, history, messages, run events
+    backpressure, close codes; the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), runs and notes
     endpoints are in `app.py`, and the artifacts' (docs/design/artifacts.md, The human's
     side): `GET …/artifacts`, `…/artifacts/{id}`, `…/records/{record}` and

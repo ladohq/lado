@@ -493,14 +493,11 @@ def check_human() -> None:
 
 
 def check_terminal(term: terminal.Terminal) -> None:
-    """The terminal showed the agent's screen; its history answers, full screen or not."""
+    """The terminal showed the agent's screen."""
     shown = b""
     while (chunk := term.read(0.5)) not in (None, b""):
         shown += chunk
     assert shown, "the terminal showed nothing"
-    found = terminal.history(SESSION, term.agent, 200)
-    assert found.alternate or found.text.strip()
-    print(f"{term.agent}: full screen {found.alternate}")
     term.close()
 
 

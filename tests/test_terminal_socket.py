@@ -1,6 +1,6 @@
 """An agent's terminal through the UI server (lado.server.terminals): who may open the
-WebSocket (token and Origin), its frames, backpressure and how it ends; the history and the
-agents endpoints. In process with FastAPI's test client and a made-up terminal; with real tmux
+WebSocket (token and Origin), its frames, backpressure and how it ends; the agents
+endpoints. In process with FastAPI's test client and a made-up terminal; with real tmux
 and the fake agent: tests/integration/test_agent_terminal_socket.py."""
 
 import asyncio
@@ -325,25 +325,10 @@ def test_the_next_read_waits_until_the_last_output_was_sent():
     asyncio.run(scenario())
 
 
-def test_history_gives_the_lines_and_whether_the_agent_is_full_screen(client, session, monkeypatch):
-    asked = []
-
-    def history(session, agent, lines):
-        terminal._check(session, agent)
-        asked.append((session, agent, lines))
-        return terminal.History("line 1\nline 2\n", False)
-
-    monkeypatch.setattr(terminal, "history", history)
-    client = logged_in(client)
-    answer = client.get("/api/sessions/s/agents/supervisor/history?lines=500")
-    assert answer.json() == {"text": "line 1\nline 2\n", "alternate": False}
-    assert asked == [("s", "supervisor", 500)]
-    assert client.get("/api/sessions/s/agents/supervisor/history?lines=0").status_code == 422
-    missing = client.get("/api/sessions/s/agents/w9/history")
-    assert (missing.status_code, missing.json()["detail"]) == (404, 'no agent "w9" in session "s"')
-    assert (
-        TestClient(client.app).get("/api/sessions/s/agents/supervisor/history").status_code == 401
-    )
+def test_there_is_no_history_endpoint(client, session):
+    # The UI's read-only history is gone: full-screen CLIs keep theirs inside them.
+    answer = logged_in(client).get("/api/sessions/s/agents/supervisor/history")
+    assert (answer.status_code, answer.json()) == (404, {"detail": "Not Found"})  # no such route
 
 
 def test_the_agents_of_a_session(client, session):

@@ -1,4 +1,4 @@
-"""An agent's terminal for the UI: the stream of its tmux window, and its history.
+"""An agent's terminal for the UI: the stream of its tmux window.
 
 A viewer is a tmux session of its own whose only window is the agent's, linked into it
 (`link-window`), and one `tmux attach` client to it on a pty: whoever reads the stream
@@ -29,7 +29,6 @@ import struct
 import subprocess
 import termios
 import uuid
-from dataclasses import dataclass
 
 from lado import state, tmux
 
@@ -46,12 +45,6 @@ class NoTerminal(Exception):
 
 class ReadOnly(Exception):
     """Input to a terminal opened to view."""
-
-
-@dataclass
-class History:
-    text: str  # the window's history and screen, oldest line first
-    alternate: bool  # a full-screen program: its history is inside it, not in tmux's
 
 
 def _check(session: str, agent: str) -> None:
@@ -216,16 +209,6 @@ def ended(session: str, agent: str) -> NoTerminal | None:
     if agent not in tmux.window_names(session):
         return NoTerminal(f'agent "{agent}" has no window')
     return None
-
-
-def history(session: str, agent: str, lines: int) -> History:
-    """The last `lines` lines of the agent's window, for the UI's read-only history."""
-    _check(session, agent)
-    try:
-        text, alternate = tmux.history(session, agent, lines)
-    except tmux.TmuxError as error:
-        raise NoTerminal(f'agent "{agent}" has no window: {error}') from error
-    return History(text, alternate)
 
 
 def close_viewers(session: str | None = None) -> list[str]:

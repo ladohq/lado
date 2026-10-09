@@ -7,6 +7,9 @@
   you with the brief attached and the choice `Start session <name>`, and once you pick it,
   the MCP tool `start_session` starts the session, whose supervisor gets a copy of the
   brief as its task. Nothing starts without your answer.
+- In an agent's terminal in view, the wheel up shows that scrolling needs Take control
+  instead of a read-only History layer, which full-screen CLIs never filled. The API's
+  `GET /api/sessions/{name}/agents/{agent}/history` is gone.
 
 ## 0.33.0 (2026-10-10)
 

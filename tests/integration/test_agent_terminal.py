@@ -1,6 +1,7 @@
 """An agent's terminal for the UI (lado.terminal) with real tmux and the fake agent: the
-viewer session, input and sizes, history, and that `lado stop` and finishing a worker leave
-no viewer and no agent behind. Through the UI server's WebSocket: test_agent_terminal_socket.py."""
+viewer session, input and sizes, the wheel in control, and that `lado stop` and finishing a
+worker leave no viewer and no agent behind. Through the UI server's WebSocket:
+test_agent_terminal_socket.py."""
 
 import json
 import os
@@ -176,18 +177,6 @@ def test_the_wheel_in_control_goes_to_a_full_screen_cli_that_reads_the_mouse(rep
     term.write(WHEEL_UP + b"\r")
     wait_for(lambda: any("\x1b[<64;" in str(i) for i in inputs("supervisor")), "the wheel")
     assert pane(f"={SESSION}:=supervisor", "#{pane_in_mode}") == "0"
-
-
-def test_history_gives_the_windows_past_lines_and_says_when_it_is_full_screen(repo):
-    start(repo)
-    tmux.send_text(SESSION, "supervisor", "lines 300")
-    wait_for(lambda: "line 300" in tmux.capture(SESSION, "supervisor"), "line 300")
-    found = terminal.history(SESSION, "supervisor", 1000)
-    assert not found.alternate
-    assert "line 1\nline 2\n" in found.text and "line 300" in found.text
-    assert "line 1\n" not in terminal.history(SESSION, "supervisor", 20).text
-    tmux.send_text(SESSION, "supervisor", "fullscreen")
-    wait_for(lambda: terminal.history(SESSION, "supervisor", 10).alternate, "the alternate screen")
 
 
 def test_closing_a_terminal_leaves_no_viewer_and_no_client(repo, opened):

@@ -182,7 +182,6 @@ function serve(data: Data = {}) {
     if (url.pathname.endsWith("/messages")) return of(agentPage(messages, url.searchParams));
     if (path.endsWith("/runs")) return of(runs);
     if (["/events", "/notes", "/gates"].some((end) => path.endsWith(end))) return of([]);
-    if (path.includes("/history")) return of({ text: "", alternate: false });
     return of({}, 404);
   });
   vi.stubGlobal("fetch", fetch);

@@ -53,7 +53,6 @@ from lado.server.models import (
     Forgotten,
     GateAnswer,
     GateInfo,
-    History,
     InstalledKitInfo,
     InstallKit,
     KitFactInfo,
@@ -870,23 +869,6 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         """The human dismisses an agent's open question; the agent hears of it."""
         known(name, has_db)
         return Sent(result=core(runtime.dismiss_question, name, question))
-
-    @app.get("/api/sessions/{name}/agents/{agent}/history", dependencies=[Depends(guard)])
-    def history(
-        name: str,
-        agent: str,
-        lines: int = Query(2000, ge=1, le=50000),
-        has_db: bool = Depends(database),
-    ) -> History:
-        """The agent's window: its last `lines` lines, for the UI's read-only history, and
-        whether the agent shows a full-screen program, whose history is inside it."""
-        if not has_db:
-            raise HTTPException(404, f'unknown session "{name}"')
-        try:
-            found = terminal.history(name, agent, lines)
-        except terminal.NoTerminal as none:
-            raise HTTPException(404, str(none)) from none
-        return History(text=found.text, alternate=found.alternate)
 
     @app.websocket("/api/sessions/{name}/agents/{agent}/terminal")
     async def terminal_socket(ws: WebSocket, name: str, agent: str, mode: str = terminal.VIEW):

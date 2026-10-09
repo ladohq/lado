@@ -20,8 +20,7 @@ With a load average of 150-420 (other agents of the session running), three full
 `make check` runs failed on different timeouts each time, and every failed test passed on
 its own: test_event_stream::test_the_server_stops_with_a_stream_open (STOP_TIMEOUT/2),
 test_fake_agent::test_the_agent_ends_its_process_on_exit, test_agent_terminal's
-test_the_humans_tmux_session_is_left_as_it_was and
-test_history_gives_the_windows_past_lines_and_says_when_it_is_full_screen,
+test_the_humans_tmux_session_is_left_as_it_was (and a history test removed since),
 test_flow_runs::test_a_worker_gets_a_step_far_longer_than_a_tmux_command, the UI tests
 test_chat::test_a_long_chat_opens_with_its_latest_page… and
 test_layout::test_a_chip_opens_its_agents_terminal…, and vitest `findBy…` waits.
@@ -1174,7 +1173,7 @@ Found: 2026-10-01, Kilo provider review.
 
 ## Agents load the human's own global plugins, skills and settings
 
-Size: M. Why here: reproducibility of runs; one environment-isolation topic (with fullscreen set, the UI's history breaks).
+Size: M. Why here: reproducibility of runs; one environment-isolation topic.
 
 ### Claude agents load the user's global Claude Code plugins
 
@@ -1205,12 +1204,11 @@ Found: 2026-10-05, design of run feature/opencode-provider.
 ### Agents read the human's own Claude Code settings, which change how they behave
 
 LADO gives Claude Code its settings with `--settings`, but Claude Code still reads the
-human's `~/.claude/settings.json`. With `"tui": "fullscreen"` there, every LADO agent runs
-full screen (alternate screen, mouse tracking): its output is not in tmux's history, and the
-UI's history layer can only say so. Hooks and permissions set there apply to agents as well.
+human's `~/.claude/settings.json`: its `"tui"` picks the renderer (Claude Code 2.1.296 runs
+full screen by default anyway, docs/design/ui.md, What each CLI does), and hooks and
+permissions set there apply to agents as well.
 Wanted: decide which of the human's settings an agent should get, and say so in
-`lado doctor` (e.g. warn that agents run full screen), or pin what LADO depends on (the
-renderer) in the agent's own settings.
+`lado doctor`, or pin what LADO depends on in the agent's own settings.
 Found: 2026-10-03, prototype of the history in implement of feature/ui-agent-terminal.
 
 ## A marketplace's clone has no lock: an update from the UI and the CLI at once race
@@ -1649,6 +1647,7 @@ Found: 2026-10-09, review of feature/codex-provider (the reviewer's open questio
 Size: S. Why here: a red CI run on the release commit for no code reason.
 CI on 8d48089 (release of 0.32.0) failed the `ui` job twice, one test each time, then passed
 on the second rerun: `test_terminal_panel::test_an_agents_terminal_opens_to_view_with_its_history`
+(now `test_an_agents_terminal_opens_to_view_and_its_wheel_points_at_take_control`)
 (the test's `lines 120` and LADO's first pasted input landed on one line of the fake agent,
 `ValueError: invalid literal for int() with base 10: '120\x1b[200~[from'`) and
 `test_gates::test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment`

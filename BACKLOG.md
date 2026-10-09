@@ -565,6 +565,9 @@ In the verify of feature/macos-gui-session (845cc46, 2026-10-10) it passed on it
 rerun: once `typed` instead of `hook_output` (tests/live/test_live.py:474);
 `test_a_flow_run_moves_on_when_its_worker_reports[codex]` failed twice (w1 busy after its
 report, the run did not end within 240 s) and passed on the third run.
+Again 3 of 3 on 2026-10-10 (verify of feature/session-start-tool, which changes nothing in
+providers/, hooks.py or the delivery): twice w1 sent its report again and again and stayed
+busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
 
 ## Kilo live image test fails 3 of 3
 
@@ -938,6 +941,12 @@ In the verify of feature/macos-gui-session (845cc46, 2026-10-10):
 `test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed once (`flow.txt` missing on
 the run's branch) and passed on the rerun; the Kilo image test failed 3 of 3 (its own P1
 entry, "Kilo live image test fails 3 of 3").
+Again on 2026-10-10 (verify of feature/session-start-tool): the worker test failed the
+same way: `test_worker_does_a_task_reports_and_gets_a_message[kilo]` 2 of 3 and `[opencode]`
+1 of 2, the supervisor merged w1's branch and called `finish_worker(name="w1")` ("agent w1
+is gone"); and the Codex supervisor (qwen3-coder) did the flow step's work itself in
+`test_a_flow_run_moves_on_when_its_worker_reports[codex]` (2 of 3): it committed flow.txt
+on main and called flow_advance, so the run's branch could not fast-forward.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

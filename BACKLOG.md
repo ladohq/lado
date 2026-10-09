@@ -610,6 +610,16 @@ Wanted: on Linux the base PATH a new terminal starts from (e.g. `/etc/environmen
 against a real login shell. To confirm in the WSL VM run (checklist step 2).
 Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
 
+## `test_supervisor_finishes_a_merged_worker` fails on a slower machine: a message still queued at finish
+
+Size: S. Why here: it failed in 2 of 3 runs of the Windows probe in WSL2 (4 vCPU), so the probe is red.
+`tests/integration/test_agents.py:619` expects `w1: finished (merged)` and gets
+`w1: finished (merged; 1 message dropped)`: a message to w1 is still pending when the test
+finishes it (runs 38003394533, 38005117396). Passes on the Mac and in one WSL run.
+Wanted: find which message is still queued (test race or LADO's), then wait for w1's queue to
+be empty before the finish, or fix the race in LADO.
+Found: 2026-10-10, review of fix/windows-probe (Windows probe runs on GitHub).
+
 # P2: when convenient
 
 ## `lado answer` and the popup answer only flow gates, not an agent's question

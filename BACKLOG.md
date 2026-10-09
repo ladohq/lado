@@ -154,6 +154,18 @@ timeout of the UI tests, or a wait on the message in lado.db first), so it fails
 the question never comes.
 Found: 2026-10-05, merge step of feature/session-list-groups.
 
+### UI e2e test of the status marks reads the Team buttons before they render
+
+Size: S.
+
+`tests/ui/test_status_marks.py::test_busy_and_background_are_green_and_pulse_and_background_is_half_filled`
+failed in 3 of 3 full `make test-ui` runs (2 on feature/session-start-tool, 1 on main at
+f9d3739) with `ValueError: not enough values to unpack (expected 2, got 0)` at
+`supervisor, w1 = team.get_by_role("button").all()`, and passed alone: Playwright's `.all()`
+does not wait, so the list is empty while the Team group has not rendered its buttons.
+Wanted: wait for the two buttons first (`expect(team.get_by_role("button")).to_have_count(2)`).
+Found: 2026-10-10, implement step of feature/session-start-tool.
+
 ### Launch vitest tests fail now and then under the load of a full run
 
 Size: S: check whether there is a race in the product (`touched`).
@@ -327,7 +339,9 @@ variables. An OpenCode or Kilo agent's `OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_
 (the whole config, with hooks `--session … --agent …`) and `*_DISABLE_AUTOUPDATE` go on to
 an agent started from its shell with `LADO_AGENT_ENV=inherit` (the tests), and to an
 `opencode` or `kilo` the agent runs itself: that nested CLI's plugin would report hooks as
-the outer agent.
+the outer agent. Under `LADO_AGENT_ENV=inherit` they also reach the agents of a session an
+OpenCode or Kilo supervisor starts with `start_session` (its `lado mcp` has them; LADO's
+own identity variables are dropped since feature/session-start-tool).
 Wanted: drop the OpenCode family's agent variables as Claude Code's are, with a unit test in
 test_tmux / agent_env.
 Found: 2026-10-05, review of feature/opencode-provider (Found on the way).
@@ -551,6 +565,9 @@ In the verify of feature/macos-gui-session (845cc46, 2026-10-10) it passed on it
 rerun: once `typed` instead of `hook_output` (tests/live/test_live.py:474);
 `test_a_flow_run_moves_on_when_its_worker_reports[codex]` failed twice (w1 busy after its
 report, the run did not end within 240 s) and passed on the third run.
+Again 3 of 3 on 2026-10-10 (verify of feature/session-start-tool, which changes nothing in
+providers/, hooks.py or the delivery): twice w1 sent its report again and again and stayed
+busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
 
 ## Kilo live image test fails 3 of 3
 
@@ -594,6 +611,17 @@ against a real login shell. To confirm in the WSL VM run (checklist step 2).
 Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
 
 # P2: when convenient
+
+## `lado answer` and the popup answer only flow gates, not an agent's question
+
+Size: M. Why here: friction; the UI answers questions, but a human in the terminal expects
+`lado answer` to, e.g. for the supervisor's `Start session <name>` proposal.
+An agent's `ask_human` question (`runtime.answer_question`, `dismiss_question`) can be
+answered only in the UI's chat; `lado answer` lists and answers gates only, and no popup
+opens for a question.
+Wanted: `lado answer` lists the open questions beside the gates and answers one by a choice
+or a text, through `runtime.answer_question`; maybe a popup as for a gate.
+Found: 2026-10-09, design of feature/session-start-tool (the human, the architect).
 
 ## macOS: Codex with `cli_auth_credentials_store = "keyring"` is not warned about
 
@@ -942,6 +970,12 @@ In the verify of feature/macos-gui-session (845cc46, 2026-10-10):
 `test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed once (`flow.txt` missing on
 the run's branch) and passed on the rerun; the Kilo image test failed 3 of 3 (its own P1
 entry, "Kilo live image test fails 3 of 3").
+Again on 2026-10-10 (verify of feature/session-start-tool): the worker test failed the
+same way: `test_worker_does_a_task_reports_and_gets_a_message[kilo]` 2 of 3 and `[opencode]`
+1 of 2, the supervisor merged w1's branch and called `finish_worker(name="w1")` ("agent w1
+is gone"); and the Codex supervisor (qwen3-coder) did the flow step's work itself in
+`test_a_flow_run_moves_on_when_its_worker_reports[codex]` (2 of 3): it committed flow.txt
+on main and called flow_advance, so the run's branch could not fast-forward.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

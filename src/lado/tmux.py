@@ -24,7 +24,17 @@ POPUP_BORDER_VERSION = (3, 3)  # its -b and -S; older tmux refuses the popup wit
 
 # Set by Claude Code in its child processes. A `claude` started with them believes it is
 # nested inside another Claude Code session, so the LADO tmux server must not inherit them.
-_INHERITED_AGENT_VARS = ("CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT")
+# LADO's own identity of the calling agent goes too: a session the supervisor's `lado mcp`
+# starts (runtime.start_approved_session) must not run as that agent.
+_INHERITED_AGENT_VARS = (
+    "CLAUDECODE",
+    "CLAUDE_PID",
+    "CLAUDE_EFFORT",
+    "AI_AGENT",
+    "LADO_SESSION",
+    "LADO_AGENT",
+    "LADO_INSTANCE",
+)
 _INHERITED_AGENT_PREFIXES = (
     "CLAUDE_CODE_ENTRYPOINT",
     "CLAUDE_CODE_EXECPATH",

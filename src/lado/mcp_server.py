@@ -365,6 +365,26 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                 "dropped_messages": finished.dropped,
             }
 
+        @server.tool()
+        def start_session(name: str, question: int) -> dict:
+            """Start a new, independent LADO session `name` in this repository, with this
+            session's kits, provider, permission mode and without, once the human approved
+            it: `question` is the id of your ask_human question with the brief attached,
+            answered with the choice "Start session <name>". Its supervisor gets the
+            attached artifacts, copied, as its task; nothing comes back to this session.
+
+            `warnings` names what the new session's agent waits for in its terminal (e.g.
+            its CLI's folder trust): tell the human."""
+            with _reasons():
+                started = runtime.start_approved_session(session, agent, name, question)
+            return {
+                "session": started.session.name,
+                "repo": started.session.repo,
+                "lead": started.lead,
+                "provider": started.chosen.line() if started.chosen else None,
+                "warnings": started.warnings,
+            }
+
     return server
 
 

@@ -580,6 +580,19 @@ Kilo's live tests, or a notice it follows) or LADO's notice reaches Kilo differe
 the test pass reliably.
 Found: 2026-10-10, release of 0.33.0.
 
+## Agents' PATH on Ubuntu is not a new terminal's
+
+Size: M. Why here: breaks the "as a new terminal sees it" contract on every Ubuntu and WSL2.
+`agent_env.from_shell` starts `$SHELL -ilc` with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`
+(`agent_env.SHELL_PATH`), which on macOS `/etc/profile`'s `path_helper` rebuilds; Ubuntu's
+`/etc/profile` sets no PATH (it comes from PAM's `/etc/environment`, and in WSL from WSL
+itself), so agents lose `/usr/local/bin`, `/usr/lib/wsl/lib` and WSL's Windows PATH. A CLI in
+`/usr/local/bin` is refused as not on the agents' PATH, while `lado doctor` and the UI (the
+process PATH) see it. No test runs a real Linux login shell (all use `inherit` or fake shells).
+Wanted: on Linux the base PATH a new terminal starts from (e.g. `/etc/environment`), and a test
+against a real login shell. To confirm in the WSL VM run (checklist step 2).
+Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
+
 # P2: when convenient
 
 ## macOS: Codex with `cli_auth_credentials_store = "keyring"` is not warned about
@@ -1623,6 +1636,22 @@ supervisor called Codex's `read_mcp_resource` (`unknown MCP server 'default'`, t
 Wanted: find whether LADO's MCP server lists resources Codex then offers, and either serve
 them or list none, so the model takes LADO's tools.
 Found: 2026-10-10, release of 0.33.0.
+
+## `lado ui` says "Opening" when no browser opened
+
+Size: S. Why here: a small silent drop, seen in the WSL audit.
+`cli.py` ignores `webbrowser.open`'s False result (WSL, a server without a browser) and prints
+`Opening <url>` anyway.
+Wanted: on False, say no browser opened and to open the link by hand.
+Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
+
+## `make browser` installs Chromium without its system libraries
+
+Size: S. Why here: a fresh Ubuntu (or WSL) cannot run `make test-ui`/`make check`.
+`make browser` runs `playwright install chromium` without `--with-deps`, which CI adds; on a
+fresh machine Chromium does not launch (libnss3 and others missing).
+Wanted: say so in AGENTS.md's Commands, or a target that adds `--with-deps` on Linux.
+Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
 
 # P3: maybe never
 

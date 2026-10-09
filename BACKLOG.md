@@ -765,6 +765,15 @@ in the live kit, or tolerate extra workers).
 Again on 2026-10-07 (verify of fix/merge-origin-main): OpenCode's supervisor merged w1's
 branch and called `finish_worker(name="w1")` while the test waited for w1's reply to the
 human ("agent w1 is gone", tests/live/test_live.py:162); the rerun passed.
+Again on 2026-10-09 (verify of feature/background-status, which does not change Kilo):
+`test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed 3 of 3, a new way twice:
+w1 called `flow_advance(done)` without committing flow.txt ("fatal: path 'flow.txt' does
+not exist", tests/live/test_live.py:613; once it wrote other text than `OK`); the third
+time the passive supervisor spawned `worker` for the run. Also
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once with "agent w1 is
+gone" (the supervisor merged and finished w1 early); the rerun passed. Wanted also: a
+stronger free Kilo model for the live test (`LADO_LIVE_KILO_MODEL`), or a check that tells
+a model's failure from LADO's.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 

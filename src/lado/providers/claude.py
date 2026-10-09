@@ -21,7 +21,7 @@ from lado.providers import base
 # AgentSpec.read (the lead's lead-files, lado.runtime) checked by hand with 2.1.289 in mode
 # default (`claude -p`): a SKILL.md folder in an --add-dir directory without .claude/skills
 # is not listed as a skill, and the Read tool reads it with no permission denial.
-TESTED_VERSION = "2.1.289"
+TESTED_VERSION = "2.1.295"
 
 # Claude Code hook events and the neutral events they stand for.
 #
@@ -183,13 +183,21 @@ class ClaudeProvider(base.Provider):
             kind = data.get("error") or "unknown"
             error = base.error_line(kind, data.get("error_details", ""))
             return base.Event(
-                base.TURN_END, error=error, transient=kind in TRANSIENT, output_ignored=True
+                base.TURN_END,
+                error=error,
+                transient=kind in TRANSIENT,
+                output_ignored=True,
+                background=_background(data),
             )
         neutral = EVENTS[native]
         if neutral in (base.WAITING, base.RESUMED):
             return base.Event(neutral, key=_request_key(data))
         if native == "Stop":
-            return base.Event(neutral, continued=bool(data.get("stop_hook_active")))
+            return base.Event(
+                neutral,
+                continued=bool(data.get("stop_hook_active")),
+                background=_background(data),
+            )
         return base.Event(neutral, data.get("prompt", ""))
 
     def continue_output(self, text: str) -> str | None:
@@ -218,6 +226,23 @@ class ClaudeProvider(base.Provider):
             'terminal choose "Yes, I trust this folder" (Enter alone answers "No, exit" and '
             "closes the agent)"
         )
+
+
+# Background work after a turn's end. Seen live with 2.1.295 (haiku): every Stop payload has
+# `background_tasks`, the session's background tasks, the ones its subagents started too,
+# e.g. {"id", "type": "subagent", "status": "running", "description", "agent_type"} and
+# {"id", "type": "shell", "status": "running", "description", "command"}; only `running`
+# was seen, `pending` was read in the binary only. Each result wakes the agent with a new
+# turn, whose Stop lists fewer. The list can be stale: a task killed in /tasks stays
+# `running`, with no hook after it, until the next turn's end. SubagentStop is not used: it
+# carries the same session-wide list and fires for Claude Code's own side agents too
+# (agent_type "").
+BACKGROUND_RUNNING = ("running", "pending")
+
+
+def _background(data: dict) -> bool:
+    tasks = data.get("background_tasks") or []
+    return any(isinstance(t, dict) and t.get("status") in BACKGROUND_RUNNING for t in tasks)
 
 
 def _request_key(data: dict) -> str:

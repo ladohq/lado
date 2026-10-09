@@ -49,6 +49,8 @@ Every input line is a command, after an optional "[from <name>] ":
                        stays down
     lose               pause, then drop what the turn-end hook prints, as a CLI that does
                        not take it
+    background         end this turn with work it started still running: its turn-end
+                       hook says so, as Claude Code's Stop with background_tasks
 With FAKE_AGENT_CRASH_AT_START=1 in its environment it exits before its first hook, as a
 CLI that fails at once (a bad flag). With FAKE_AGENT_ASKS_FIRST=1 in its environment it asks
 the human before any hook, like Claude Code's "trust this folder?": a typed "yes" goes on,
@@ -293,18 +295,21 @@ holds = 0  # how often `hold` ran
 turn_error = ""  # the error the turn ends on (`fail`)
 always_error = ""  # the error every turn ends on (`failing`)
 lose_output = False  # drop what the turn-end hook prints (`lose`)
+in_background = False  # work goes on after this turn (`background`)
 
 
 def work(text: str) -> bool:
     """Act on the commands in `text`. Returns True for exit."""
-    global holds, turn_error, always_error, lose_output
+    global holds, turn_error, always_error, lose_output, in_background
     for line in text.splitlines():
         command = re.sub(r"^\[from [^\]]*\] ", "", line.strip()).split(" ", 2)
         if command[0] == "exit":
             return True
         if command[0] == "die":
             os._exit(3)
-        if command[0] == "fail":
+        if command[0] == "background":
+            in_background = True
+        elif command[0] == "fail":
             turn_error = " ".join(command[1:])
         elif command[0] == "failing":
             always_error = " ".join(command[1:])
@@ -392,7 +397,7 @@ def hung_up(*_) -> None:
 
 
 def main() -> None:
-    global turn_error, lose_output
+    global turn_error, lose_output, in_background
     if os.environ.get("FAKE_AGENT_CRASH_AT_START") == "1":
         os._exit(3)
     signal.signal(signal.SIGHUP, hung_up)
@@ -441,11 +446,17 @@ def main() -> None:
         except Exception:
             traceback.print_exc()
         turn_error = turn_error or always_error
+        background, in_background = in_background, False
         if turn_error:
-            hook("turn_end", error=turn_error, output_ignored=True)  # its output goes nowhere
+            # Its output goes nowhere.
+            hook("turn_end", error=turn_error, output_ignored=True, background=background)
             turn_error, text, continued = "", None, False
             continue
-        output = hook("turn_end", continued=continued and config.get("says_continued", False))
+        output = hook(
+            "turn_end",
+            continued=continued and config.get("says_continued", False),
+            background=background,
+        )
         if lose_output:
             output, lose_output = "", False
         text = output if output and config["continue_on_turn_end"] else None

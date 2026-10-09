@@ -94,6 +94,31 @@ def test_claude_says_which_turn_errors_pass_by_themselves(kind, transient):
     assert event.transient is transient
 
 
+SUBAGENT = {"id": "a1", "type": "subagent", "status": "running", "agent_type": "general-purpose"}
+SHELL = {"id": "b1", "type": "shell", "status": "running", "command": "sleep 60"}
+
+
+@pytest.mark.parametrize("native", ["Stop", "StopFailure"])
+@pytest.mark.parametrize(
+    ("tasks", "background"),
+    [
+        ([SUBAGENT], True),
+        ([SHELL], True),
+        ([{**SHELL, "status": "completed"}, {**SUBAGENT, "status": "pending"}], True),
+        ([{**SHELL, "status": "completed"}, {**SUBAGENT, "status": "failed"}], False),
+        ([], False),
+        (None, False),  # no list at all
+    ],
+)
+def test_claude_says_whether_background_work_runs_after_the_turn(native, tasks, background):
+    """Every Stop lists the session's background tasks (2.1.295): a running or pending one
+    is work that goes on after the turn."""
+    payload = {} if tasks is None else {"background_tasks": tasks}
+    event = providers.get("claude").parse_event(native, json.dumps(payload))
+    assert event.kind == providers.TURN_END
+    assert event.background is background
+
+
 def test_a_turn_that_ends_as_usual_is_no_transient_error():
     assert providers.get("claude").parse_event("Stop", "{}").transient is False
 

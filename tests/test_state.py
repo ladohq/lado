@@ -1,8 +1,10 @@
+import ast
 import dataclasses
 import datetime
 import json
 import re
 import sqlite3
+from pathlib import Path
 
 import agent_helpers
 import pytest
@@ -498,6 +500,116 @@ def test_resume_of_an_agent_not_waiting_changes_nothing(lado_home, status):
     state.resume("s", "w1", "")
     assert state.get_agent("s", "w1").status == status
     assert _status_events() == []
+
+
+def test_an_answer_returns_an_agent_that_waited_from_background_to_background(lado_home):
+    """E.g. a background subagent's permission dialog after the main turn ended."""
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(_agent(status=state.BUSY))
+    state.set_status("s", "w1", state.BACKGROUND)
+    state.wait("s", "w1", "k1")
+    state.resume("s", "w1", "k1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.status, agent.waiting_for) == (state.BACKGROUND, None)
+    assert _status_events() == ["background", "waiting", "background"]
+    # From background, then busy before the wait: back to busy.
+    state.set_status("s", "w1", state.BUSY)
+    state.wait("s", "w1", "k2")
+    state.resume("s", "w1", "k2")
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_a_wait_of_a_new_launch_never_resumes_to_an_earlier_launchs_background(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(_agent(status=state.BUSY))
+    state.set_status("s", "w1", state.BACKGROUND)
+    state.delete_agent("s", "w1")
+    state.add_agent(_agent(status=state.STARTING))  # its first status: waiting
+    state.add_event("s", "w1", state.SPAWNED, "")
+    state.wait("s", "w1", "k1")
+    state.resume("s", "w1", "k1")
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+@pytest.mark.parametrize("status", [state.IDLE, state.BACKGROUND])
+def test_both_statuses_that_take_input_keep_a_planned_resume_and_get_it(lado_home, status):
+    _session_with(_agent(status=state.BUSY))
+    state.add_event("s", "w1", state.TURN_ERROR, "overloaded")
+    state.schedule_resume("s", "w1", 100.0, (30.0,))
+    state.set_status("s", "w1", status)
+    assert state.get_agent("s", "w1").resume_at == 130.0
+    assert state.take_resume("s", "w1", 130.0, lambda n, error: "go on") is not None
+
+
+@pytest.mark.parametrize(
+    ("status", "taken"),
+    [
+        (state.IDLE, True),
+        (state.BACKGROUND, True),
+        (state.BUSY, False),
+        (state.WAITING, False),
+        (state.STARTING, False),
+    ],
+)
+def test_only_an_agent_that_takes_input_has_its_queue_taken(lado_home, status, taken):
+    assert state.accepts_input(status) is taken
+    _session_with(_agent(status=status))
+    state.queue_message("s", "supervisor", "w1", "hi", "")
+    moved = state.take_pending("s", "w1", state.SENT, state.BUSY, idle_only=True)
+    assert bool(moved) is taken
+
+
+# Where `idle` may be named in LADO's code (file, the function or module-level name around
+# it): its definitions, the one setter, the API's list of statuses and the text of a failed
+# turn. Anywhere else, asking for idle would leave `background` out: ask accepts_input or
+# ACCEPTS_INPUT_SQL.
+IDLE_NAMED = {
+    ("state.py", "IDLE"),
+    ("state.py", "ACCEPTS_INPUT"),
+    ("hooks.py", "_idle"),
+    ("server/models.py", "AgentStatus"),
+    ("runtime.py", "turn_failed"),
+}
+
+
+def _idle_named(path):
+    """(the scope's name, line) of each use of IDLE or the literal "idle" in the file."""
+    found = []
+
+    def visit(node, scope):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            scope = scope or node.name
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and scope is None:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            scope = next((t.id for t in targets if isinstance(t, ast.Name)), None)
+        named = (isinstance(node, ast.Name) and node.id == "IDLE") or (
+            isinstance(node, ast.Attribute) and node.attr == "IDLE"
+        )
+        if named or (isinstance(node, ast.Constant) and node.value == "idle"):
+            found.append((scope, node.lineno))
+        for child in ast.iter_child_nodes(node):
+            visit(child, scope)
+
+    visit(ast.parse(path.read_text()), None)
+    return found
+
+
+def test_only_the_predicate_asks_whether_an_agent_takes_input():
+    root = Path(state.__file__).parent
+    stray = [
+        f"{rel}:{line} ({scope})"
+        for path in sorted(root.rglob("*.py"))
+        for rel in [path.relative_to(root).as_posix()]
+        for scope, line in _idle_named(path)
+        if (rel, scope) not in IDLE_NAMED
+    ]
+    assert stray == []
+
+
+def test_the_guard_finds_a_new_comparison_with_idle(tmp_path):
+    code = tmp_path / "x.py"
+    code.write_text('def f(a):\n    return a.status == state.IDLE or a.status == "idle"\n')
+    assert _idle_named(code) == [("f", 2), ("f", 2)]
 
 
 @pytest.mark.parametrize("status", [state.IDLE, state.BUSY, state.STARTING, state.STOPPED])
@@ -1324,3 +1436,11 @@ def test_session_activity_counts_busy_and_starting_since_the_earliest_of_them(la
         datetime.datetime(2026, 10, 1, 10, 30, 0, 500000, tzinfo=utc),
     )
     assert state.session_activity("other") == (0, None)
+
+
+def test_session_activity_counts_an_agent_in_background_as_working(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    _agent_at("w1", state.IDLE, (state.STATUS, "2026-10-01 10:00:00.000"))
+    _agent_at("w2", state.BACKGROUND, (state.STATUS, "2026-10-01 10:05:00.000"))
+    utc = datetime.timezone.utc
+    assert state.session_activity("s") == (1, datetime.datetime(2026, 10, 1, 10, 5, tzinfo=utc))

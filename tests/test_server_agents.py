@@ -54,6 +54,13 @@ def test_an_agent_says_its_branch_worktree_and_since_when(client, session):
     assert supervisor["spawned_at"] == utc(state.agent_times("s", "supervisor")[0])
 
 
+def test_an_agent_in_background_is_served_with_its_status_and_no_reason(client, session):
+    state.set_status("s", "w1", state.BACKGROUND)
+    worker = client.get(AGENTS).json()[1]
+    assert (worker["status"], worker["status_reason"]) == ("background", None)
+    assert worker["since"] == utc(state.status_since("s")["w1"])
+
+
 def test_details_give_the_whole_task_and_the_state_of_the_work(client, session):
     w1 = state.get_agent("s", "w1")
     commit(w1.cwd)

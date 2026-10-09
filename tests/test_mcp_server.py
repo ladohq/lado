@@ -73,6 +73,17 @@ def test_list_agents_says_since_when_and_how_long_each_has_its_status(repo, fake
     assert 90 <= worker["status_for_seconds"] < 100
 
 
+def test_list_agents_shows_an_agent_in_background_with_its_time_and_nothing_more(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task", name="w1")
+    state.set_status("s", "w1", state.BACKGROUND)
+    result = asyncio.run(mcp_server.build("s", "supervisor").call_tool("list_agents", {}))
+    worker = result.structured_content["result"][1]
+    assert (worker["status"], worker["status_reason"]) == (state.BACKGROUND, None)
+    assert worker["status_since"] == state.status_since("s")["w1"].isoformat()
+    assert not [key for key in worker if "task" in key and key != "task"]  # no task count
+
+
 def test_list_agents_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
@@ -420,6 +431,13 @@ def test_the_tools_tell_agents_about_the_human(repo, fake_tmux):
     tools = {t.name: t for t in asyncio.run(mcp_server.build("s", "supervisor").list_tools())}
     assert 'to="human"' in tools["send_message"].description
     assert "message from human" in tools["ask_human"].description
+
+
+def test_send_message_says_an_agent_in_background_gets_a_message_at_once(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    tools = {t.name: t for t in asyncio.run(mcp_server.build("s", "supervisor").list_tools())}
+    description = " ".join(tools["send_message"].description.split())
+    assert "right away if the agent is idle or background" in description
 
 
 def test_a_worker_writes_a_file_of_its_worktree_as_an_artifact_and_others_read_it(

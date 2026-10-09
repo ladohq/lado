@@ -959,7 +959,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "starting" | "busy" | "idle" | "waiting" | "stopped";
+            status: "starting" | "busy" | "idle" | "background" | "waiting" | "stopped";
             /** Run */
             run: string | null;
             /** Task */

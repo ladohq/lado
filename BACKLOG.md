@@ -563,6 +563,22 @@ supervisor acts on its own"). The branch changed nothing in Kilo, artifacts or t
 Wanted: find whether the free model gets the image's content at all (then skip a model that
 takes no images, as OpenCode's test does) or pin a Kilo model that sees images.
 Found: 2026-10-10, verify of feature/macos-gui-session.
+At the release of 0.33.0 (f9d3739, 2026-10-10) it failed 2 of 3 the same way (the third run
+skipped: the model did not see the image).
+
+## Kilo live flow test fails 3 of 3: w1 never reads its step
+
+Size: M. Why here: a live test red every time at a release; it was a flake before.
+`test_a_flow_run_moves_on_when_its_worker_reports[kilo]` on `kilo/kilo-auto/free` failed 3 of
+3 at the release of 0.33.0 (f9d3739): twice `fatal: path 'flow.txt' does not exist in
+'lado/live/tiny-add-flow-txt-for-the'` (test_live.py:638), once the run did not end within
+240 s. In all three w1 never called `read_messages`: its step message stayed `delivered`,
+and it acted on the one-line notice alone. Earlier flakes of this test are in "Flaky: Kilo
+live flow test, the passive supervisor acts on its own".
+Wanted: find whether the free model ignores "call read_messages" (then a stronger model for
+Kilo's live tests, or a notice it follows) or LADO's notice reaches Kilo differently, and make
+the test pass reliably.
+Found: 2026-10-10, release of 0.33.0.
 
 # P2: when convenient
 
@@ -1593,6 +1609,20 @@ on the second rerun: `test_terminal_panel::test_an_agents_terminal_opens_to_view
 Wanted: the terminal test types only after the agent's first input is confirmed; the gates
 test waits for the scroll to end.
 Found: 2026-10-09, release of 0.32.0.
+Again at the release of 0.33.0 (f9d3739): the terminal panel test, the same `ValueError`;
+passed on the first rerun.
+
+## Codex agents call `read_mcp_resource` instead of LADO's tools
+
+Size: S. Why here: a live-test flake with a cause in what Codex offers the model.
+At the release of 0.33.0 (f9d3739) `test_worker_does_a_task_reports_and_gets_a_message[codex]`
+on `qwen3-coder:30b` failed once (`timed out after 60s waiting for w1 to be idle`): the
+supervisor called Codex's `read_mcp_resource` (`unknown MCP server 'default'`, then
+`resources/read failed for lado (artifact://…, message://…)`) instead of `read_messages` and
+`read_artifact`; the rerun passed.
+Wanted: find whether LADO's MCP server lists resources Codex then offers, and either serve
+them or list none, so the model takes LADO's tools.
+Found: 2026-10-10, release of 0.33.0.
 
 # P3: maybe never
 

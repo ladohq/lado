@@ -1,6 +1,7 @@
-""".github/workflows/windows-shell.yml: the Windows (+ WSL2) probe, weekly on main and by
-hand."""
+""".github/workflows/windows-shell.yml: the Windows (+ WSL2) probe, weekly on main, by hand,
+and called by live.yml once per provider."""
 
+import importlib.util
 import os
 import re
 import subprocess
@@ -9,15 +10,26 @@ from pathlib import Path
 import pytest
 import yaml
 
-from lado.providers import kilo, opencode
-
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-shell.yml"
 # The run's settings, as the settings job gives them: always the strings 'true' or 'false'.
 SETTINGS = "needs.settings.outputs"
 WSL = f"{SETTINGS}.wsl == 'true'"
 LIVE = f"{SETTINGS}.live == 'true'"
-INPUTS = ["runner", "wsl", "tests", "live", "minutes"]
+NO_TESTS = f"{SETTINGS}.tests == 'false'"
+INPUTS = ["runner", "wsl", "tests", "live", "minutes", "provider"]
+SECRET = "LADO_LIVE_CLAUDE_TOKEN"
+SCRUBBED = "always() && steps.scrub.outcome == 'success'"
+
+
+def _pins() -> dict:
+    spec = importlib.util.spec_from_file_location("live_ci", ROOT / "scripts" / "live_ci.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.PINS
+
+
+PINS = _pins()
 
 
 @pytest.fixture(scope="module")
@@ -68,10 +80,10 @@ def step_named(steps, name: str) -> dict:
     return step
 
 
-def test_started_by_hand_and_weekly(workflow):
+def test_started_by_hand_called_and_weekly(workflow):
     # PyYAML reads the key `on` as True.
     triggers = workflow[True]
-    assert list(triggers) == ["workflow_dispatch", "schedule"]
+    assert list(triggers) == ["workflow_dispatch", "workflow_call", "schedule"]
     # Once a week (a schedule runs on the default branch), at an off-peak minute.
     assert triggers["schedule"] == [{"cron": "17 3 * * 1"}]
 
@@ -89,7 +101,23 @@ def test_inputs(workflow):
     assert inputs["live"]["default"] is False
     assert inputs["minutes"]["type"] == "number"
     assert inputs["minutes"]["default"] == 120
+    # The cloud providers of scripts/live_ci.py, or all of them.
+    assert inputs["provider"]["type"] == "choice"
+    assert inputs["provider"]["options"] == ["all", *PINS]
+    assert inputs["provider"]["default"] == "all"
     assert list(inputs) == INPUTS
+
+
+def test_a_call_takes_the_same_inputs_with_the_same_defaults_and_the_token(workflow):
+    """workflow_call has no choice type: a choice is a string there, checked by settings."""
+    by_hand = workflow[True]["workflow_dispatch"]["inputs"]
+    called = workflow[True]["workflow_call"]
+    assert list(called["inputs"]) == INPUTS
+    for name in INPUTS:
+        kind = by_hand[name]["type"]
+        assert called["inputs"][name]["type"] == ("string" if kind == "choice" else kind)
+        assert called["inputs"][name]["default"] == by_hand[name]["default"]
+    assert called["secrets"] == {SECRET: {"required": False}}
 
 
 def test_settings_job_reads_each_input_once_and_gives_each_setting(settings_job, probe_job):
@@ -122,6 +150,7 @@ def test_a_run_without_inputs_takes_the_defaults_of_a_run_by_hand(workflow, sett
         "tests": "true",
         "live": "false",
         "minutes": "120",
+        "provider": "all",
     }
 
 
@@ -152,12 +181,25 @@ def test_settings_take_a_boolean_in_either_form(settings_job, tmp_path, given, s
         ({"minutes": "361"}, "minutes must be 1 to 360 (GitHub's cap), not 361"),
         ({"minutes": "ten"}, "minutes must be 1 to 360 (GitHub's cap), not ten"),
         ({"minutes": "1.5"}, "minutes must be 1 to 360 (GitHub's cap), not 1.5"),
+        ({"provider": "codex"}, "provider must be all, opencode, kilo or claude, not codex"),
+        ({"provider": "Kilo"}, "provider must be all, opencode, kilo or claude, not Kilo"),
     ],
 )
 def test_settings_refuse_a_wrong_input(settings_job, tmp_path, inputs, error):
     code, outputs, printed = run_settings(settings_job, tmp_path, **inputs)
     assert code == 1 and outputs == {}
     assert f"::error::{error}" in printed
+
+
+@pytest.mark.parametrize("provider", ["all", *PINS])
+def test_settings_take_each_cloud_provider_or_all(settings_job, tmp_path, provider):
+    code, outputs, _ = run_settings(settings_job, tmp_path, provider=provider)
+    assert code == 0 and outputs["provider"] == provider
+
+
+def test_settings_name_the_cloud_providers_of_the_script(settings_job):
+    (step,) = settings_job["steps"]
+    assert f"all | {' | '.join(PINS)})" in step["run"]
 
 
 def test_minutes_given_as_a_string_become_a_plain_number(settings_job, tmp_path):
@@ -181,7 +223,7 @@ def test_report_folder_first_so_the_report_steps_work_after_a_guard(steps):
     assert "PROBE=" in folder["run"] and "GITHUB_ENV" in folder["run"]
 
 
-@pytest.mark.parametrize("name, condition", [("wsl", WSL), ("live", LIVE)])
+@pytest.mark.parametrize("name, condition", [("wsl", WSL), ("live", LIVE), ("tests", NO_TESTS)])
 def test_boolean_settings_compared_as_a_string(steps, name, condition):
     # A job's output is a string: a bare `if: needs.settings.outputs.wsl` takes 'false'
     # as true.
@@ -247,9 +289,10 @@ def test_live_without_wsl_fails_before_setup(steps):
     assert steps.index(guard) < steps.index(step_using(steps, "Vampire/setup-wsl"))
 
 
-def test_native_probe_installs_lado_from_the_checkout_on_every_runner(steps):
+def test_native_probe_installs_lado_from_the_checkout_but_for_a_live_only_run(steps):
     step = step_named(steps, "Native probe")
-    assert "if" not in step
+    # A live-only call (live.yml) wants only its provider's verdict.
+    assert step["if"] == f"!({LIVE} && {NO_TESTS})"
     run = step["run"]
     assert "uv tool install" in run and "uv tool install lado" not in run
     for command in ("platform.machine(), sys.version", "--version", "doctor", "native.log"):
@@ -282,32 +325,32 @@ def test_wsl_probe_runs_as_a_non_root_user_in_a_login_shell(steps):
         assert command in run, command
     # Each check under a timeout, so a hang leaves time for the report.
     assert "timeout" in run
-    # Only doctor and Kilo may fail: with no agent CLI installed doctor reports a FAIL,
-    # and Kilo is only recorded.
+    # Only doctor may fail: with no agent CLI installed it reports a FAIL.
     assert '"${4:-required}"' in run
     expected = [line.strip() for line in run.splitlines() if line.endswith(" expected")]
-    assert expected[0] == "check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected"
-    assert all("kilo" in line for line in expected[1:]), expected
+    assert expected == ["check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected"]
     check = step_named(steps, "Check WSL")
     assert check["if"] == WSL and "wsl -l -v" in check["run"]
     order = [steps.index(s) for s in (check, user, clone, probe)]
     assert order == sorted(order)
 
 
-# The stub of `timeout`: it records the command and runs nothing; for a live test it prints
-# the pytest summary line of LIVE_<PROVIDER> and exits with LIVE_<PROVIDER>_CODE.
-TIMEOUT_STUB = """#!/bin/sh
+# The stub of `timeout`: it records the command and runs nothing; asked for the cloud
+# providers it names those of scripts/live_ci.py; for a provider's live cell it exits with
+# LIVE_<PROVIDER>_CODE.
+TIMEOUT_STUB = f"""#!/bin/sh
 printf '%s\\n' "$*" >>"$PROBE/ran"
 case "$*" in
-  *'-m live'*opencode*) printf '%s\\n' "$LIVE_OPENCODE"; exit "${LIVE_OPENCODE_CODE:-0}" ;;
-  *'-m live'*kilo*) printf '%s\\n' "$LIVE_KILO"; exit "${LIVE_KILO_CODE:-0}" ;;
+  *'live_ci.py providers'*) echo '{" ".join(PINS)}' ;;
+  *'live_ci.py run opencode'*) exit "${{LIVE_OPENCODE_CODE:-0}}" ;;
+  *'live_ci.py run kilo'*) exit "${{LIVE_KILO_CODE:-0}}" ;;
+  *'live_ci.py run claude'*) exit "${{LIVE_CLAUDE_CODE:-0}}" ;;
 esac
 """
-PASSED = "============ 3 passed in 412.20s (0:06:52) ============"
 
 
 def run_wsl_probe(
-    steps, tmp_path, tests="true", live="false", stub=TIMEOUT_STUB, **env
+    steps, tmp_path, tests="true", live="false", provider="all", stub=TIMEOUT_STUB, **env
 ) -> dict[str, list]:
     """Run the WSL probe's script with a stub `timeout`: its checks.tsv rows by name."""
     bin_dir = tmp_path / "bin"
@@ -322,12 +365,9 @@ def run_wsl_probe(
         "PROBE": str(probe),
         "TMPDIR": str(tmp_path / "tmp"),
         "UV_VERSION": "0",
-        "OPENCODE_VERSION": "0",
-        "KILO_VERSION": "0",
         "TESTS": tests,
         "LIVE": live,
-        "LIVE_OPENCODE": PASSED,
-        "LIVE_KILO": PASSED,
+        "PROVIDER": provider,
         **env,
     }
     script = step_named(steps, "WSL probe")["run"]
@@ -381,20 +421,41 @@ def test_a_skipped_check_neither_passes_nor_fails(steps):
     assert "$_.kind -eq 'required' -and $_.code -ne '0'" in verdict
 
 
-def test_report_uploaded_always_then_the_verdict_last(steps):
+def test_report_scrubbed_then_shown_and_uploaded_then_the_verdict_last(steps):
+    scrub = step_named(steps, "Scrub")
+    assert scrub["id"] == "scrub" and scrub["if"] == "always()"
+    # All of the report, on the Windows host: no project sync there (LADO does not install
+    # natively), the script is standard library only.
+    assert scrub["run"] == "uv run --no-project python scripts/live_ci.py scrub $env:PROBE"
     summary = step_named(steps, "Summary")
-    assert summary["if"] == "always()"
+    assert summary["if"] == SCRUBBED
     assert "GITHUB_STEP_SUMMARY" in summary["run"]
     upload = step_using(steps, "actions/upload-artifact")
-    assert upload["if"] == "always()"
-    assert upload["with"]["name"] == "windows-probe-${{ needs.settings.outputs.runner }}"
+    assert upload["if"] == SCRUBBED
+    # One name per call of live.yml (a live-only run: its provider), else `tests`.
+    assert upload["with"]["name"] == (
+        "windows-probe-${{ needs.settings.outputs.runner }}-${{ "
+        f"({LIVE} && {NO_TESTS}) && {SETTINGS}.provider || 'tests' }}}}"
+    )
     assert 1 <= upload["with"]["retention-days"] <= 7
     verdict = step_named(steps, "Verdict")
     assert verdict["if"] == "always()"
     assert "required" in verdict["run"] and "exit 1" in verdict["run"]
     probes = [steps.index(step_named(steps, n)) for n in ("Native probe", "WSL probe")]
-    assert max(probes) < steps.index(summary) < steps.index(upload)
+    order = [steps.index(s) for s in (scrub, summary, upload)]
+    assert max(probes) < order[0] and order == sorted(order)
     assert steps[-1] is verdict
+
+
+def test_the_token_only_in_the_wsl_probe_and_the_scrub(text, steps):
+    assert "secrets: inherit" not in text
+    for step in steps:
+        has = SECRET in str(step.get("env", {}))
+        assert has == (step.get("name") in ("WSL probe", "Scrub")), step.get("name")
+    probe = step_named(steps, "WSL probe")["env"]
+    # Only for a live run: the weekly probe's checks never see it.
+    assert probe[SECRET] == f"${{{{ {LIVE} && secrets.{SECRET} || '' }}}}"
+    assert step_named(steps, "Scrub")["env"][SECRET] == f"${{{{ secrets.{SECRET} }}}}"
 
 
 def test_verdict_red_when_wsl_ran_no_check(steps):
@@ -409,80 +470,70 @@ def test_verdict_red_when_wsl_ran_no_check(steps):
     assert '>>"$PROBE/checks.tsv" || exit 1' in probe
 
 
-def test_wsl_probe_gets_the_live_input_and_the_pinned_cli_versions(steps):
-    probe = step_named(steps, "WSL probe")
-    env = probe["env"]
+def test_wsl_probe_gets_the_live_settings_and_no_cli_version(text, steps):
+    env = step_named(steps, "WSL probe")["env"]
     assert env["LIVE"] == "${{ needs.settings.outputs.live }}"
-    # The versions LADO is tested with (`lado doctor` warns about others).
-    assert env["OPENCODE_VERSION"].startswith(opencode.TESTED_VERSION + ".")
-    assert env["KILO_VERSION"].startswith(kilo.TESTED_VERSION + ".")
-    for version in (env["OPENCODE_VERSION"], env["KILO_VERSION"]):
-        assert re.fullmatch(r"\d+\.\d+\.\d+", version), version
-    assert {"LIVE", "OPENCODE_VERSION", "KILO_VERSION"} <= set(env["WSLENV"].split(":"))
+    assert env["PROVIDER"] == "${{ needs.settings.outputs.provider }}"
+    assert {"LIVE", "PROVIDER", SECRET} <= set(env["WSLENV"].split(":"))
+    # scripts/live_ci.py's PINS is the one place of a cloud CLI's version.
+    for package, version, _ in PINS.values():
+        assert package not in text and version not in text, package
+    assert "_VERSION" not in str(env).replace("UV_VERSION", "")
 
 
 def test_no_live_test_without_live(steps, tmp_path):
     rows = run_wsl_probe(steps, tmp_path, live="false")
-    assert not [name for name in rows if "live" in name or "opencode" in name]
-    assert "test-live" not in (tmp_path / "probe" / "ran").read_text()
+    assert not [name for name in rows if "live" in name or "node" in name]
+    assert "live_ci.py" not in (tmp_path / "probe" / "ran").read_text()
 
 
-def test_live_installs_the_pinned_clis_and_runs_opencode_required_kilo_recorded(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true", OPENCODE_VERSION="1.18.35")
-    assert rows["wsl live-opencode"][1:] == ["0", "required", "wsl-live-opencode.log"]
-    assert rows["wsl live-kilo"][1:] == ["0", "expected", "wsl-live-kilo.log"]
-    ran = (tmp_path / "probe" / "ran").read_text().splitlines()
+def test_live_runs_a_required_cell_of_the_script_for_each_cloud_provider(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true")
     names = list(rows)
-    # After the other checks; each CLI installed before its test.
-    assert names.index("wsl make-test-integration") < names.index("wsl opencode-install")
-    assert names.index("wsl opencode-install") < names.index("wsl live-opencode")
-    assert names.index("wsl kilo-install") < names.index("wsl live-kilo")
-    assert rows["wsl opencode-install"][2] == "required"
-    assert rows["wsl kilo-install"][2] == "expected"
-    (install,) = [line for line in ran if "opencode-ai@" in line]
-    assert "opencode-ai@1.18.35" in install and "su - lado -c" in install
-    assert [line for line in ran if "@kilocode/cli@" in line]
-    # The live tests as `make test-live PROVIDER=...` runs them, but the image test: the
-    # free models take no image input, and that test skips.
-    live = [line for line in ran if "-m live" in line]
-    assert [line.split("cd ~/lado && ")[1] for line in live] == [
-        "uv run pytest -m live -n0 -v -k 'opencode and not image'",
-        "uv run pytest -m live -n0 -v -k 'kilo and not image'",
+    # Node and npm from Ubuntu first, a check of its own that counts.
+    assert rows["wsl node"][1:3] == ["0", "required"]
+    for provider in PINS:
+        assert rows[f"wsl live-{provider}"][1:] == ["0", "required", f"wsl-live-{provider}.log"]
+        assert names.index("wsl node") < names.index(f"wsl live-{provider}")
+    assert names.index("wsl make-test-integration") < names.index("wsl node")
+    ran = (tmp_path / "probe" / "ran").read_text().splitlines()
+    cells = [line for line in ran if "live_ci.py run" in line]
+    out = tmp_path / "tmp" / "lado-live-out"
+    assert [line.split("cd ~/lado && ")[1] for line in cells] == [
+        f"uv run python scripts/live_ci.py run {p} {out}/{p}" for p in PINS
     ]
-    # Never a paid provider, nor one without a model there.
-    assert not [line for line in ran if "claude" in line or "codex" in line]
+    # As lado, the token let through su's login shell (never on argv, never in a file).
+    for line in cells:
+        assert f"su - lado -w {SECRET} -c" in line
+    assert [line for line in ran if "live_ci.py providers" in line]
 
 
-@pytest.mark.parametrize(
-    "summary, code",
-    [
-        (PASSED, "0"),
-        ("====== 2 passed, 1 skipped in 300.00s (0:05:00) ======", "not-passed"),
-        ("====== 3 skipped in 1.00s ======", "not-passed"),
-        ("====== 3 deselected in 1.00s ======", "not-passed"),
-        ("", "not-passed"),
-    ],
-)
-def test_a_live_check_passes_only_when_a_test_passed_and_none_skipped(
-    steps, tmp_path, summary, code
-):
-    rows = run_wsl_probe(steps, tmp_path, live="true", LIVE_OPENCODE=summary)
-    assert rows["wsl live-opencode"][1] == code
+def test_a_live_run_with_no_provider_listed_is_red(steps, tmp_path):
+    stub = TIMEOUT_STUB.replace(f"echo '{' '.join(PINS)}'", "exit 1")
+    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true", stub=stub)
+    assert rows["wsl live-providers"][1:3] == ["none", "required"]
 
 
-def test_a_failing_live_test_keeps_its_code_and_its_evidence(steps, tmp_path):
-    evidence = tmp_path / "tmp" / "lado-live-evidence" / "20261010-test_worker"
-    # The live test writes its evidence while it runs (the script clears the folder first).
+@pytest.mark.parametrize("provider", list(PINS))
+def test_a_live_call_runs_only_its_provider(steps, tmp_path, provider):
+    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true", provider=provider)
+    assert [name for name in rows if name.startswith("wsl live-")] == [f"wsl live-{provider}"]
+
+
+def test_a_cells_exit_code_is_its_verdict(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path, live="true", LIVE_KILO_CODE="1")
+    assert rows["wsl live-kilo"][1:3] == ["1", "required"]
+    assert rows["wsl live-opencode"][1:3] == ["0", "required"]
+
+
+def test_a_failing_cell_keeps_its_code_and_its_evidence(steps, tmp_path):
+    evidence = tmp_path / "tmp" / "lado-live-out" / "opencode" / "evidence" / "20261010-test_w"
+    # The script copies a failing cell's evidence into its out folder.
     writes = f'mkdir -p "{evidence}" && echo "w1 never reported" >"{evidence}/lado-log.txt"'
-    stub = TIMEOUT_STUB.replace("*'-m live'*opencode*) ", f"*'-m live'*opencode*) {writes}; ")
-    rows = run_wsl_probe(
-        steps,
-        tmp_path,
-        live="true",
-        stub=stub,
-        LIVE_OPENCODE="====== 1 failed, 2 passed in 600.00s ======",
-        LIVE_OPENCODE_CODE="1",
+    stub = TIMEOUT_STUB.replace(
+        "*'live_ci.py run opencode'*) ", f"*'live_ci.py run opencode'*) {writes}; "
     )
+    rows = run_wsl_probe(steps, tmp_path, live="true", stub=stub, LIVE_OPENCODE_CODE="1")
     assert rows["wsl live-opencode"][1:3] == ["1", "required"]
     kept = tmp_path / "probe" / "live-evidence-opencode" / evidence.name / "lado-log.txt"
     assert kept.read_text() == "w1 never reported\n"

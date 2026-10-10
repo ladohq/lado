@@ -22,7 +22,7 @@ on:
         type: boolean
         default: true
       live:
-        description: Run the live tests in WSL (needs wsl; Claude Code needs the secret LADO_LIVE_CLAUDE_TOKEN)
+        description: Run the live tests in WSL with OpenCode and Kilo on free models (needs wsl)
         type: boolean
         default: false
       minutes:
@@ -32,7 +32,7 @@ on:
       provider:
         description: The live tests' provider, or all of them (only with live)
         type: choice
-        options: [all, opencode, kilo, claude]
+        options: [all, opencode, kilo]
         default: all
   # The same inputs; a choice is a string here, checked by the settings job.
   workflow_call:
@@ -55,9 +55,6 @@ on:
       provider:
         type: string
         default: all
-    secrets:
-      LADO_LIVE_CLAUDE_TOKEN:
-        required: false
   # On the default branch, Monday at an off-peak minute, with the inputs' defaults (no
   # live tests: the free models are flaky). A red run mails the maintainers.
   schedule:
@@ -114,8 +111,8 @@ jobs:
           fi
           # scripts/live_ci.py's PINS (a test keeps both the same).
           case $provider in
-            all | opencode | kilo | claude) ;;
-            *) fail "provider must be all, opencode, kilo or claude, not $provider" ;;
+            all | opencode | kilo) ;;
+            *) fail "provider must be all, opencode or kilo, not $provider" ;;
           esac
           {
             echo "runner=$runner"
@@ -246,10 +243,7 @@ jobs:
           TESTS: ${{ needs.settings.outputs.tests }}
           LIVE: ${{ needs.settings.outputs.live }}
           PROVIDER: ${{ needs.settings.outputs.provider }}
-          # Claude Code's cell's token, only for a live run; into lado's login shell by
-          # `su -w`, never on argv or in a file.
-          LADO_LIVE_CLAUDE_TOKEN: ${{ needs.settings.outputs.live == 'true' && secrets.LADO_LIVE_CLAUDE_TOKEN || '' }}
-          WSLENV: PROBE/p:UV_VERSION:TESTS:LIVE:PROVIDER:LADO_LIVE_CLAUDE_TOKEN
+          WSLENV: PROBE/p:UV_VERSION:TESTS:LIVE:PROVIDER
         run: |
           set -u
           touch "$PROBE/checks.tsv" || exit 1
@@ -266,7 +260,7 @@ jobs:
           live() { # live <provider>: one cell of scripts/live_ci.py, its exit code the verdict
             local log="wsl-live-$1.log" code=0
             rm -rf "${out:?}/$1"
-            timeout --kill-after=30 2400 su - lado -w LADO_LIVE_CLAUDE_TOKEN -c "cd ~/lado && uv run python scripts/live_ci.py run $1 $out/$1" >"$PROBE/$log" 2>&1 || code=$?
+            timeout --kill-after=30 2400 su - lado -c "cd ~/lado && uv run python scripts/live_ci.py run $1 $out/$1" >"$PROBE/$log" 2>&1 || code=$?
             printf '%s\t%s\t%s\t%s\n' "wsl live-$1" "$code" required "$log" >>"$PROBE/checks.tsv" || exit 1
             if [ -d "$out/$1/evidence" ]; then
               cp -r "$out/$1/evidence" "$PROBE/live-evidence-$1"
@@ -290,7 +284,8 @@ jobs:
             skip make-test
             skip make-test-integration
           fi
-          # The cloud providers (never Codex: its model is local), each a cell of its own.
+          # The cloud providers, each a cell of its own: free models only (OpenCode's and
+          # Kilo's, no login), never Claude Code or Codex (scripts/live_ci.py, LOCAL_ONLY).
           # Node and npm from Ubuntu; the script installs each CLI into ~/.local/bin, on the
           # agents' PATH.
           if [ "$LIVE" = true ]; then
@@ -308,18 +303,8 @@ jobs:
           fi
           exit 0
 
-      # Before anything of the report is shown or uploaded: each file that holds the token
-      # goes. On the Windows host, no project sync (LADO does not install natively); the
-      # script is standard library only. A scrub that fails or never ran: no upload.
-      - name: Scrub
-        id: scrub
-        if: always()
-        env:
-          LADO_LIVE_CLAUDE_TOKEN: ${{ secrets.LADO_LIVE_CLAUDE_TOKEN }}
-        run: uv run --no-project python scripts/live_ci.py scrub $env:PROBE
-
       - name: Summary
-        if: always() && steps.scrub.outcome == 'success'
+        if: always()
         env:
           RUNNER_LABEL: ${{ needs.settings.outputs.runner }}
         run: |
@@ -355,7 +340,7 @@ jobs:
           $out | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always() && steps.scrub.outcome == 'success'
+        if: always()
         with:
           # One per call of live.yml, which runs three at once.
           name: windows-probe-${{ needs.settings.outputs.runner }}-${{ (needs.settings.outputs.live == 'true' && needs.settings.outputs.tests == 'false') && needs.settings.outputs.provider || 'tests' }}

@@ -1,8 +1,7 @@
 """scripts/live_ci.py: one cell of the live tests in GitHub Actions (live.yml, the Windows
-probe), and the scrub before every upload."""
+probe)."""
 
 import importlib.util
-import json
 import os
 import subprocess
 import sys
@@ -10,12 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from lado.providers import claude, kilo, opencode
+from lado.providers import kilo, opencode
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "scripts" / "live_ci.py"
 LIVE_CONFTEST = ROOT / "tests" / "live" / "conftest.py"
-TOKEN = "sk-ant-oat01-secret-of-the-test"
 
 
 def _load(name: str, path: Path):
@@ -29,7 +27,7 @@ live_ci = _load("live_ci", SCRIPT)
 
 
 def test_the_script_imports_only_the_standard_library():
-    """On the Windows host it runs with `uv run --no-project`: no LADO, no dependency."""
+    """It imports nothing of LADO: the tests compare it with LADO."""
     code = (
         "import sys; sys.path.insert(0, 'scripts'); before = set(sys.modules); "
         "import live_ci; "
@@ -47,20 +45,23 @@ def test_the_script_imports_only_the_standard_library():
 
 def test_every_live_provider_runs_in_the_cloud_or_only_locally():
     classes = _load("live_conftest", LIVE_CONFTEST).CLASSES
-    assert set(classes) == set(live_ci.PINS) | live_ci.LOCAL_ONLY
-    assert not set(live_ci.PINS) & live_ci.LOCAL_ONLY
-    assert live_ci.LOCAL_ONLY == {"codex"}
+    assert set(classes) == set(live_ci.PINS) | set(live_ci.LOCAL_ONLY)
+    assert not set(live_ci.PINS) & set(live_ci.LOCAL_ONLY)
+
+
+def test_claude_and_codex_run_only_locally_each_with_its_reason():
+    assert set(live_ci.PINS) == {"opencode", "kilo"}
+    assert set(live_ci.LOCAL_ONLY) == {"claude", "codex"}
+    assert all(reason.strip() for reason in live_ci.LOCAL_ONLY.values())
 
 
 def test_providers_names_the_cloud_providers(capsys):
     """The Windows probe's provider `all`."""
-    assert live_ci.main(["providers"], {}) == 0
+    assert live_ci.main(["providers"]) == 0
     assert capsys.readouterr().out == " ".join(live_ci.PINS) + "\n"
 
 
-@pytest.mark.parametrize(
-    "provider, module", [("opencode", opencode), ("kilo", kilo), ("claude", claude)]
-)
+@pytest.mark.parametrize("provider, module", [("opencode", opencode), ("kilo", kilo)])
 def test_each_pin_is_its_providers_tested_version(provider, module):
     _, version, _ = live_ci.PINS[provider]
     tested = module.TESTED_VERSION.split(".")
@@ -106,103 +107,21 @@ def test_the_summary_is_pytests_last_summary_line():
     assert live_ci.summary("no summary\n") == ""
 
 
-# The scrub before every upload (AC-7).
-
-
-def test_scrub_deletes_every_file_that_holds_the_token_and_names_it(tmp_path, capsys):
-    out = tmp_path / "out"
-    (out / "evidence" / "deep" / "er").mkdir(parents=True)
-    (out / "live-claude.log").write_text(f"env: CLAUDE_CODE_OAUTH_TOKEN={TOKEN}\n")
-    (out / "evidence" / "deep" / "er" / "env.json").write_text(json.dumps({"t": TOKEN}))
-    (out / "evidence" / "screen.bin").write_bytes(b"\x00\xff" + TOKEN.encode() + b"\x00")
-    (out / "evidence" / "clean.txt").write_text("nothing here\n")
-    assert live_ci.main(["scrub", str(out)], {"LADO_LIVE_CLAUDE_TOKEN": TOKEN}) == 0
-    left = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
-    assert left == ["evidence/clean.txt"]
-    printed = capsys.readouterr()
-    assert TOKEN not in printed.out + printed.err
-    for name in ("live-claude.log", "evidence/deep/er/env.json", "evidence/screen.bin"):
-        assert f"{name}: held the token" in printed.out
-
-
-def test_scrub_without_a_token_deletes_nothing(tmp_path):
-    (tmp_path / "a.log").write_text("anything\n")
-    assert live_ci.main(["scrub", str(tmp_path)], {}) == 0
-    assert (tmp_path / "a.log").exists()
-
-
-def test_scrub_of_a_missing_folder_fails(tmp_path, capsys):
-    assert live_ci.main(["scrub", str(tmp_path / "gone")], {"LADO_LIVE_CLAUDE_TOKEN": TOKEN}) != 0
-    assert "scrub:" in capsys.readouterr().err
-
-
-@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any file")
-def test_scrub_fails_closed_on_a_file_it_cannot_read(tmp_path, capsys):
-    locked = tmp_path / "locked.log"
-    locked.write_text(TOKEN)
-    locked.chmod(0)
-    try:
-        assert live_ci.main(["scrub", str(tmp_path)], {"LADO_LIVE_CLAUDE_TOKEN": TOKEN}) != 0
-    finally:
-        locked.chmod(0o600)
-    printed = capsys.readouterr()
-    assert "locked.log" in printed.err and TOKEN not in printed.out + printed.err
-
-
-@pytest.mark.skipif(os.geteuid() == 0, reason="root walks any folder")
-def test_scrub_fails_closed_on_a_folder_it_cannot_walk(tmp_path):
-    shut = tmp_path / "shut"
-    shut.mkdir()
-    (shut / "a.log").write_text(TOKEN)
-    shut.chmod(0)
-    try:
-        assert live_ci.main(["scrub", str(tmp_path)], {"LADO_LIVE_CLAUDE_TOKEN": TOKEN}) != 0
-    finally:
-        shut.chmod(0o700)
-
-
-# The onboarding seed of a fresh CI home.
-
-
-def test_onboarding_is_seeded_in_a_fresh_home(tmp_path):
-    live_ci.seed_onboarding(tmp_path)
-    assert json.loads((tmp_path / ".claude.json").read_text()) == {"hasCompletedOnboarding": True}
-
-
-def test_onboarding_keeps_what_the_config_has(tmp_path):
-    config = tmp_path / ".claude.json"
-    config.write_text(json.dumps({"projects": {"/x": {}}}))
-    live_ci.seed_onboarding(tmp_path)
-    assert json.loads(config.read_text()) == {
-        "projects": {"/x": {}},
-        "hasCompletedOnboarding": True,
-    }
-
-
-def test_onboarding_never_changes_a_config_that_has_the_key(tmp_path):
-    config = tmp_path / ".claude.json"
-    config.write_text('{"hasCompletedOnboarding": false}')
-    live_ci.seed_onboarding(tmp_path)
-    assert config.read_text() == '{"hasCompletedOnboarding": false}'
-
-
 # A cell's run, with npm, the CLI and uv stubbed on PATH.
 
 NPM = """#!/bin/sh
 printf 'npm %s\\n' "$*" >>"$CELL_RAN"
 [ -n "$NPM_FAILS" ] && exit 1
 mkdir -p "$HOME/.local/bin"
-for cli in opencode kilo claude; do
+for cli in opencode kilo; do
   printf '#!/bin/sh\\necho %s 9.9.9\\n' "$cli" >"$HOME/.local/bin/$cli"
   chmod +x "$HOME/.local/bin/$cli"
 done
 """
-# uv stands in for `uv run pytest ...`: it records its argv and the tokens it sees, writes
-# evidence as a failing live test would, prints the summary and exits with its code.
+# uv stands in for `uv run pytest ...`: it records its argv, writes evidence as a failing
+# live test would, prints the summary and exits with its code.
 UV = """#!/bin/sh
 printf 'uv %s\\n' "$*" >>"$CELL_RAN"
-printf 'oauth=%s lado=%s\\n' \\
-  "${CLAUDE_CODE_OAUTH_TOKEN:-}" "${LADO_LIVE_CLAUDE_TOKEN:-}" >>"$CELL_RAN"
 command -v opencode >>"$CELL_RAN"
 if [ -n "$EVIDENCE_WRITES" ]; then
   mkdir -p "$TMPDIR/lado-live-evidence/20261010-test_w"
@@ -294,33 +213,15 @@ def test_evidence_of_an_earlier_run_is_cleared_first(tmp_path):
     assert not (out / "evidence" / "old").exists()
 
 
-def test_a_claude_cell_without_the_token_is_red_and_says_so(tmp_path):
-    for token in ({}, {"LADO_LIVE_CLAUDE_TOKEN": ""}):
-        done, _, ran = run_cell(tmp_path, "claude", **token)
-        assert done.returncode != 0
-        assert "LADO_LIVE_CLAUDE_TOKEN is not set: add the repository secret" in done.stderr
-        assert "uv run" not in ran
-
-
-def test_a_claude_cell_hands_the_token_to_the_tests_and_never_prints_it(tmp_path):
-    done, _, ran = run_cell(tmp_path, "claude", LADO_LIVE_CLAUDE_TOKEN=TOKEN)
-    assert done.returncode == 0, done.stdout + done.stderr
-    # As Claude Code's OAuth token; LADO's own name of it stays out of the tests.
-    assert f"oauth={TOKEN} lado=\n" in ran
-    assert TOKEN not in done.stdout + done.stderr
-    assert TOKEN not in [line for line in ran.splitlines() if line.startswith(("npm", "uv"))]
-    config = json.loads((tmp_path / "home" / ".claude.json").read_text())
-    assert config["hasCompletedOnboarding"] is True
-
-
-def test_another_cell_gets_no_claude_token(tmp_path):
-    done, _, ran = run_cell(tmp_path, "opencode", LADO_LIVE_CLAUDE_TOKEN=TOKEN)
-    assert done.returncode == 0
-    assert "oauth= lado=\n" in ran
-    assert not (tmp_path / "home" / ".claude.json").exists()
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_a_local_only_provider_is_refused_with_its_reason(tmp_path, provider):
+    done, _, ran = run_cell(tmp_path, provider)
+    assert done.returncode != 0
+    assert f"{provider}: {live_ci.LOCAL_ONLY[provider]}" in done.stderr
+    assert ran == ""
 
 
 def test_an_unknown_provider_is_refused(tmp_path):
-    done, _, ran = run_cell(tmp_path, "codex")
-    assert done.returncode != 0 and "codex" in done.stderr
+    done, _, ran = run_cell(tmp_path, "gemini")
+    assert done.returncode != 0 and "gemini: no cloud provider" in done.stderr
     assert ran == ""

@@ -18,8 +18,6 @@ WSL = f"{SETTINGS}.wsl == 'true'"
 LIVE = f"{SETTINGS}.live == 'true'"
 NO_TESTS = f"{SETTINGS}.tests == 'false'"
 INPUTS = ["runner", "wsl", "tests", "live", "minutes", "provider"]
-SECRET = "LADO_LIVE_CLAUDE_TOKEN"
-SCRUBBED = "always() && steps.scrub.outcome == 'success'"
 
 
 def _pins() -> dict:
@@ -108,7 +106,7 @@ def test_inputs(workflow):
     assert list(inputs) == INPUTS
 
 
-def test_a_call_takes_the_same_inputs_with_the_same_defaults_and_the_token(workflow):
+def test_a_call_takes_the_same_inputs_with_the_same_defaults(workflow):
     """workflow_call has no choice type: a choice is a string there, checked by settings."""
     by_hand = workflow[True]["workflow_dispatch"]["inputs"]
     called = workflow[True]["workflow_call"]
@@ -117,7 +115,7 @@ def test_a_call_takes_the_same_inputs_with_the_same_defaults_and_the_token(workf
         kind = by_hand[name]["type"]
         assert called["inputs"][name]["type"] == ("string" if kind == "choice" else kind)
         assert called["inputs"][name]["default"] == by_hand[name]["default"]
-    assert called["secrets"] == {SECRET: {"required": False}}
+    assert "secrets" not in called
 
 
 def test_settings_job_reads_each_input_once_and_gives_each_setting(settings_job, probe_job):
@@ -181,8 +179,9 @@ def test_settings_take_a_boolean_in_either_form(settings_job, tmp_path, given, s
         ({"minutes": "361"}, "minutes must be 1 to 360 (GitHub's cap), not 361"),
         ({"minutes": "ten"}, "minutes must be 1 to 360 (GitHub's cap), not ten"),
         ({"minutes": "1.5"}, "minutes must be 1 to 360 (GitHub's cap), not 1.5"),
-        ({"provider": "codex"}, "provider must be all, opencode, kilo or claude, not codex"),
-        ({"provider": "Kilo"}, "provider must be all, opencode, kilo or claude, not Kilo"),
+        ({"provider": "codex"}, "provider must be all, opencode or kilo, not codex"),
+        ({"provider": "claude"}, "provider must be all, opencode or kilo, not claude"),
+        ({"provider": "Kilo"}, "provider must be all, opencode or kilo, not Kilo"),
     ],
 )
 def test_settings_refuse_a_wrong_input(settings_job, tmp_path, inputs, error):
@@ -344,7 +343,6 @@ case "$*" in
   *'live_ci.py providers'*) echo '{" ".join(PINS)}' ;;
   *'live_ci.py run opencode'*) exit "${{LIVE_OPENCODE_CODE:-0}}" ;;
   *'live_ci.py run kilo'*) exit "${{LIVE_KILO_CODE:-0}}" ;;
-  *'live_ci.py run claude'*) exit "${{LIVE_CLAUDE_CODE:-0}}" ;;
 esac
 """
 
@@ -421,17 +419,12 @@ def test_a_skipped_check_neither_passes_nor_fails(steps):
     assert "$_.kind -eq 'required' -and $_.code -ne '0'" in verdict
 
 
-def test_report_scrubbed_then_shown_and_uploaded_then_the_verdict_last(steps):
-    scrub = step_named(steps, "Scrub")
-    assert scrub["id"] == "scrub" and scrub["if"] == "always()"
-    # All of the report, on the Windows host: no project sync there (LADO does not install
-    # natively), the script is standard library only.
-    assert scrub["run"] == "uv run --no-project python scripts/live_ci.py scrub $env:PROBE"
+def test_report_uploaded_always_then_the_verdict_last(steps):
     summary = step_named(steps, "Summary")
-    assert summary["if"] == SCRUBBED
+    assert summary["if"] == "always()"
     assert "GITHUB_STEP_SUMMARY" in summary["run"]
     upload = step_using(steps, "actions/upload-artifact")
-    assert upload["if"] == SCRUBBED
+    assert upload["if"] == "always()"
     # One name per call of live.yml (a live-only run: its provider), else `tests`.
     assert upload["with"]["name"] == (
         "windows-probe-${{ needs.settings.outputs.runner }}-${{ "
@@ -442,20 +435,8 @@ def test_report_scrubbed_then_shown_and_uploaded_then_the_verdict_last(steps):
     assert verdict["if"] == "always()"
     assert "required" in verdict["run"] and "exit 1" in verdict["run"]
     probes = [steps.index(step_named(steps, n)) for n in ("Native probe", "WSL probe")]
-    order = [steps.index(s) for s in (scrub, summary, upload)]
-    assert max(probes) < order[0] and order == sorted(order)
+    assert max(probes) < steps.index(summary) < steps.index(upload)
     assert steps[-1] is verdict
-
-
-def test_the_token_only_in_the_wsl_probe_and_the_scrub(text, steps):
-    assert "secrets: inherit" not in text
-    for step in steps:
-        has = SECRET in str(step.get("env", {}))
-        assert has == (step.get("name") in ("WSL probe", "Scrub")), step.get("name")
-    probe = step_named(steps, "WSL probe")["env"]
-    # Only for a live run: the weekly probe's checks never see it.
-    assert probe[SECRET] == f"${{{{ {LIVE} && secrets.{SECRET} || '' }}}}"
-    assert step_named(steps, "Scrub")["env"][SECRET] == f"${{{{ secrets.{SECRET} }}}}"
 
 
 def test_verdict_red_when_wsl_ran_no_check(steps):
@@ -474,7 +455,7 @@ def test_wsl_probe_gets_the_live_settings_and_no_cli_version(text, steps):
     env = step_named(steps, "WSL probe")["env"]
     assert env["LIVE"] == "${{ needs.settings.outputs.live }}"
     assert env["PROVIDER"] == "${{ needs.settings.outputs.provider }}"
-    assert {"LIVE", "PROVIDER", SECRET} <= set(env["WSLENV"].split(":"))
+    assert {"LIVE", "PROVIDER"} <= set(env["WSLENV"].split(":"))
     # scripts/live_ci.py's PINS is the one place of a cloud CLI's version.
     for package, version, _ in PINS.values():
         assert package not in text and version not in text, package
@@ -502,9 +483,8 @@ def test_live_runs_a_required_cell_of_the_script_for_each_cloud_provider(steps, 
     assert [line.split("cd ~/lado && ")[1] for line in cells] == [
         f"uv run python scripts/live_ci.py run {p} {out}/{p}" for p in PINS
     ]
-    # As lado, the token let through su's login shell (never on argv, never in a file).
     for line in cells:
-        assert f"su - lado -w {SECRET} -c" in line
+        assert "su - lado -c" in line
     assert [line for line in ran if "live_ci.py providers" in line]
 
 

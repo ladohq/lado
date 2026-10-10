@@ -1,7 +1,8 @@
 # LADO's live tests in GitHub Actions, started by hand at each release (AGENTS.md, Release):
 # one cell per (system, provider), all in parallel. Linux and macOS here; Windows/WSL2 through
-# the Windows probe, called once per provider. The providers are scripts/live_ci.py's PINS
-# (tests/test_live_workflow.py keeps both matrices the same); Codex stays local.
+# the Windows probe, called once per provider. The providers are scripts/live_ci.py's PINS,
+# free models with no login and no secret (tests/test_live_workflow.py keeps both matrices
+# the same); the others run only locally (its LOCAL_ONLY).
 name: Live tests
 
 on:
@@ -21,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        provider: [opencode, kilo, claude]
+        provider: [opencode, kilo]
     steps:
       - uses: actions/checkout@v7
 
@@ -54,25 +55,14 @@ jobs:
         id: live
         env:
           PROVIDER: ${{ matrix.provider }}
-          LADO_LIVE_CLAUDE_TOKEN: ${{ matrix.provider == 'claude' && secrets.LADO_LIVE_CLAUDE_TOKEN || '' }}
         run: |
           code=0
           uv run python scripts/live_ci.py run "$PROVIDER" "$OUT" || code=$?
           echo "code=$code" >>"$GITHUB_OUTPUT"
           exit "$code"
 
-      # Before anything of the cell is shown or uploaded: each file that holds the token goes.
-      - name: Scrub
-        id: scrub
-        if: always()
-        env:
-          LADO_LIVE_CLAUDE_TOKEN: ${{ matrix.provider == 'claude' && secrets.LADO_LIVE_CLAUDE_TOKEN || '' }}
-        run: |
-          mkdir -p "$OUT"
-          uv run python scripts/live_ci.py scrub "$OUT"
-
       - name: Summary
-        if: always() && steps.scrub.outcome == 'success'
+        if: always()
         env:
           CELL: ${{ matrix.os }} ${{ matrix.provider }}
           CODE: ${{ steps.live.outputs.code }}
@@ -89,7 +79,7 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always() && steps.scrub.outcome == 'success'
+        if: always()
         with:
           name: live-${{ matrix.os }}-${{ matrix.provider }}
           path: ${{ env.OUT }}
@@ -99,11 +89,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [opencode, kilo, claude]
+        provider: [opencode, kilo]
     uses: ./.github/workflows/windows-shell.yml
     with:
       tests: false
       live: true
       provider: ${{ matrix.provider }}
-    secrets:
-      LADO_LIVE_CLAUDE_TOKEN: ${{ matrix.provider == 'claude' && secrets.LADO_LIVE_CLAUDE_TOKEN || '' }}

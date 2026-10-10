@@ -95,30 +95,24 @@ Claude agents get a Claude config of their own (`claude_config` in `tests/confte
 CI runs `ruff format --check`, `ruff check`, the unit and integration tests (in parallel) on
 Python 3.10 and 3.13, the Node tests, and in one job on Python 3.13 `make dist` (the web UI
 built and in both the sdist and the wheel) and the UI e2e tests.
-Live tests are not in the per-push CI: they run in the `Live tests` workflow at each release
-(below), and locally only Codex's (`make test-live PROVIDER=codex`: its Ollama model does
-not fit a runner).
+Live tests are not in the per-push CI: OpenCode's and Kilo's run in the `Live tests`
+workflow at each release (below); Claude Code's (the human's rule) and Codex's (its Ollama
+model does not fit a runner) run only locally.
 
 The `Live tests` workflow (`.github/workflows/live.yml`), only started by hand, `gh
-workflow run live.yml --ref <branch>` (no push, pull request or schedule: a fork's pull
-request never gets the secret), runs one cell per (system, provider), all in parallel, none
-stopping the others: Linux and macOS in its job `cell`, Windows/WSL2 in its job `windows`,
-which calls the Windows probe once per provider (`tests: false`, `live: true`, `provider`).
-The providers are the keys of `scripts/live_ci.py`'s `PINS` (OpenCode, Kilo, Claude Code),
-the one place of each cloud CLI's npm version (its provider's `TESTED_VERSION`, by parts),
-and `LOCAL_ONLY` (`{codex}`); `tests/test_live_ci.py` fails on a live provider in neither
-and on a matrix that differs from `PINS`. `live_ci.py run <provider> <out>` is a cell:
-it installs the CLI with `npm install -g --prefix ~/.local`, runs `uv run pytest -m live
--n0 -v -k <provider>` (as `make test-live PROVIDER=<provider>`, nothing deselected) into
-`<out>/live-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
-a failing cell's evidence goes to `<out>/evidence`. Claude Code's cells read the token of
-`claude setup-token` from the repository secret `LADO_LIVE_CLAUDE_TOKEN` (missing: the cell
-is red, never a skip), hand it to the tests as `CLAUDE_CODE_OAUTH_TOKEN` (the tests'
-`LADO_AGENT_ENV=inherit` passes it on), and mark Claude Code's onboarding done in the
-runner's fresh `~/.claude.json`. The secret goes only to Claude's cells (named, never
-`secrets: inherit`), and into WSL by `su - lado -w`. Before any upload, `live_ci.py scrub
-<dir>` deletes each file that holds the token's bytes and names it; it fails closed, and
-each upload and step summary runs only after its success. The artifacts are
+workflow run live.yml --ref <branch>` (no push, pull request or schedule; no secret), runs
+one cell per (system, provider), all in parallel, none stopping the others: Linux and macOS
+in its job `cell`, Windows/WSL2 in its job `windows`, which calls the Windows probe once per
+provider (`tests: false`, `live: true`, `provider`). The cloud providers are the keys of
+`scripts/live_ci.py`'s `PINS` (OpenCode, Kilo: free models, no login), the one place of each
+cloud CLI's npm version (its provider's `TESTED_VERSION`, by parts); the others are in its
+`LOCAL_ONLY`, each with its reason. `tests/test_live_ci.py` fails on a live provider in
+neither or both, and `tests/test_live_workflow.py` on a matrix that differs from `PINS`.
+`live_ci.py run <provider> <out>` is a cell (a local-only provider is refused with its
+reason): it installs the CLI with `npm install -g --prefix ~/.local`, runs `uv run pytest
+-m live -n0 -v -k <provider>` (as `make test-live PROVIDER=<provider>`, nothing deselected)
+into `<out>/live-<provider>.log`, and passes only on exit 0 with a test passed and none
+skipped; a failing cell's evidence goes to `<out>/evidence`. The artifacts are
 `live-<os>-<provider>` and `windows-probe-windows-latest-<provider>`.
 
 A Windows probe, not in the per-push CI (a run takes 20-25 minutes): the `Windows probe`
@@ -127,9 +121,9 @@ workflow (`.github/workflows/windows-shell.yml`) runs weekly on main (Monday 03:
 any failed workflow does) and when started, `gh workflow run windows-shell.yml --ref <branch> -f
 runner=windows-latest` (`-f wsl=false`: native only; `-f tests=false`: no `make test` and
 `make test-integration`, both then `skipped`, neither passed nor failed; `-f live=true`: the
-live tests too; `-f provider=opencode|kilo|claude`, `all` by default: whose live tests;
+live tests too; `-f provider=opencode|kilo`, `all` by default: whose live tests;
 `-f minutes=N`, 120 by default, at most 360, setup included). live.yml calls it with the
-same inputs (`workflow_call`) and the secret `LADO_LIVE_CLAUDE_TOKEN`. Its first job,
+same inputs (`workflow_call`). Its first job,
 `settings`, is the only one that reads the inputs: a scheduled run has none, and each takes
 its input's default (`tests/test_windows_shell_workflow.py` keeps both the same). It installs LADO
 from the checkout on Windows itself (`native.log`: Python, `lado --version`, `lado doctor`;
@@ -140,9 +134,8 @@ own `agent_env.from_shell` (`wsl-agents-path.log`), `lado --version`, `lado doct
 `make test-integration`. With `live`, then: Node and npm from Ubuntu (the check `node`), and
 for each chosen provider a cell of `live_ci.py run` (`wsl-live-<provider>.log`), every one
 required; a failing one's evidence folder is in the report as `live-evidence-<provider>`.
-Never Codex. The quick live-only run: `-f tests=false -f live=true`. The job is red when one
-of the required WSL checks fails. On the Windows host `live_ci.py scrub` (with `uv run
---no-project`) goes over the whole report before the summary and the upload. The logs are
+Never Claude Code or Codex. The quick live-only run: `-f tests=false -f live=true`. The job
+is red when one of the required WSL checks fails. The logs are
 the artifact `windows-probe-<runner>-<provider>` of a live-only run, else
 `windows-probe-<runner>-tests` (`gh run download <id>`), and the job's
 summary has each check's exit code, the PATH lines and the end of each failing log (`gh run
@@ -155,7 +148,8 @@ the live tests and the Windows probe on it (`gh workflow run live.yml --ref main
 workflow run windows-shell.yml --ref main -f runner=windows-latest`) and wait for both to be
 green (`gh run watch <id> --exit-status`); every cell counts, and a failed one is rerun up
 to 2 times (`gh run rerun <id> --failed`; a free model's 429 is a flake) before it counts as
-red. Run Codex's live tests locally (`make test-live PROVIDER=codex`), then push tag
+red. Run locally `make test-live PROVIDER=codex` and, with the human's yes, `make test-live
+PROVIDER=claude` (declined: the human decides), then push tag
 `vX.Y.Z`. The Release workflow checks the
 tag against the package version, builds with `make dist` and publishes to PyPI.
 CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; the release
@@ -725,8 +719,8 @@ fixes and docs only: no new feature, no API or schema change.
 - `scripts/check_lock.py`: the Makefile's machine-wide test-run lock (Commands).
   `scripts/check_groups.py`: `make check`'s test groups, one after another (Commands).
   `scripts/live_ci.py`: a cell of the `Live tests` workflow and the Windows probe's live
-  part, the cloud providers' pins and the scrub before every upload (Commands); standard
-  library only.
+  part, the cloud providers' pins and the local-only ones (Commands); standard library
+  only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk
@@ -1299,9 +1293,9 @@ Five layers; each change gets tests at the lowest layer that can catch its bugs:
 5. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
    message; then the session stops and no process is left. Never in the default run and
-   not in the per-push CI: at release the `Live tests` workflow runs OpenCode's, Kilo's and
-   Claude Code's on Linux, macOS and WSL2; locally run Codex's, and any provider's after
-   changing it.
+   not in the per-push CI: at release the `Live tests` workflow runs OpenCode's and Kilo's
+   on Linux, macOS and WSL2; Claude Code's (with the human's yes) and Codex's run only
+   locally, and any provider's after changing it.
    When a live test fails, its report names a folder
    `<temp dir>/lado-live-evidence/<time>-<test>` that keeps the test session's `lado log`,
    `hooks.log`, each agent's config folder and cwd, and each tmux window's screen, taken
@@ -1311,7 +1305,8 @@ Five layers; each change gets tests at the lowest layer that can catch its bugs:
 Before a release, on main at the release commit: CI is green (main got its `make check` at
 each merge), and so are the `Live tests` workflow (`gh workflow run live.yml --ref main`)
 and the Windows probe (`gh workflow run windows-shell.yml --ref main -f
-runner=windows-latest`); `make test-live PROVIDER=codex` passes locally (Release, above).
+runner=windows-latest`); locally `make test-live PROVIDER=codex` passes, and so does
+`make test-live PROVIDER=claude` with the human's yes (Release, above).
 
 ## Design principles
 

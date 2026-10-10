@@ -10,19 +10,17 @@ import yaml
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "live.yml"
 PROBE = ROOT / ".github" / "workflows" / "windows-shell.yml"
-SECRET = "LADO_LIVE_CLAUDE_TOKEN"
-GUARDED = f"${{{{ matrix.provider == 'claude' && secrets.{SECRET} || '' }}}}"
-SCRUBBED = "always() && steps.scrub.outcome == 'success'"
 
 
-def _pins() -> dict:
+def _live_ci():
     spec = importlib.util.spec_from_file_location("live_ci", ROOT / "scripts" / "live_ci.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.PINS
+    return module
 
 
-PINS = _pins()
+PINS = _live_ci().PINS
+LOCAL_ONLY = _live_ci().LOCAL_ONLY
 
 
 @pytest.fixture(scope="module")
@@ -56,8 +54,7 @@ def step_using(steps, action: str) -> dict:
 
 
 def test_started_by_hand_only(workflow):
-    # PyYAML reads the key `on` as True. No push, pull request or schedule: only users with
-    # write access start it, and a fork's pull request never gets the secret.
+    # PyYAML reads the key `on` as True. No push, pull request or schedule.
     assert workflow[True] == {"workflow_dispatch": None}
 
 
@@ -83,23 +80,36 @@ def test_windows_calls_the_probe_once_per_provider_live_only(workflow):
     assert windows["strategy"] == {"fail-fast": False, "matrix": {"provider": list(PINS)}}
     assert windows["uses"] == "./.github/workflows/windows-shell.yml"
     assert windows["with"] == {"tests": False, "live": True, "provider": "${{ matrix.provider }}"}
-    # A named secret, guarded by the provider: never `secrets: inherit`.
-    assert windows["secrets"] == {SECRET: GUARDED}
+    assert "secrets" not in windows
     assert set(workflow["jobs"]) == {"cell", "windows"}
 
 
 def test_the_probe_takes_the_call(workflow):
     called = yaml.safe_load(PROBE.read_text())[True]["workflow_call"]
     assert set(workflow["jobs"]["windows"]["with"]) <= set(called["inputs"])
-    assert called["secrets"] == {SECRET: {"required": False}}
+
+
+def test_no_secret_and_no_local_only_provider_in_the_cloud(workflow):
+    """Claude Code runs only locally (the human's rule), Codex too (its local model)."""
+    for path in (WORKFLOW, PROBE):
+        assert "secrets" not in path.read_text(), path.name
+    probe = yaml.safe_load(PROBE.read_text())
+    named = [
+        *workflow["jobs"]["cell"]["strategy"]["matrix"]["provider"],
+        *workflow["jobs"]["windows"]["strategy"]["matrix"]["provider"],
+        *probe[True]["workflow_dispatch"]["inputs"]["provider"]["options"],
+    ]
+    assert not set(named) & set(LOCAL_ONLY)
+    probe_settings = probe["jobs"]["settings"]["steps"][0]["run"]
+    for provider in LOCAL_ONLY:
+        assert provider not in probe_settings, provider
 
 
 def test_a_cell_sets_up_then_runs_its_provider(steps):
     names = [s.get("name") or s["uses"].split("@")[0] for s in steps]
     assert names[:2] == ["actions/checkout", "astral-sh/setup-uv"]
     order = [
-        names.index(n)
-        for n in ("tmux", "actions/setup-node", "uv sync", "Live tests", "Scrub", "Summary")
+        names.index(n) for n in ("tmux", "actions/setup-node", "uv sync", "Live tests", "Summary")
     ]
     assert order == sorted(order)
     assert names[-1] == "actions/upload-artifact"
@@ -107,37 +117,21 @@ def test_a_cell_sets_up_then_runs_its_provider(steps):
     assert "apt-get install -y tmux" in step_named(steps, "tmux")["run"]
     assert step_named(steps, "uv sync")["run"] == "uv sync --locked"
     live = step_named(steps, "Live tests")
-    assert "uv run python scripts/live_ci.py run" in live["run"]
-    assert live["env"]["PROVIDER"] == "${{ matrix.provider }}"
+    assert 'uv run python scripts/live_ci.py run "$PROVIDER" "$OUT"' in live["run"]
+    assert live["env"] == {"PROVIDER": "${{ matrix.provider }}"}
 
 
-def test_the_token_only_in_guarded_expressions_of_the_run_and_the_scrub(text, steps):
-    assert text.count(f"secrets.{SECRET}") == text.count(GUARDED) == 3
-    assert "secrets: inherit" not in text
-    for step in steps:
-        has = SECRET in str(step.get("env", {}))
-        assert has == (step.get("name") in ("Live tests", "Scrub")), step
-        if has:
-            assert step["env"][SECRET] == GUARDED
-
-
-def test_scrub_runs_always_on_the_cells_out_and_the_upload_needs_it(steps):
-    scrub = step_named(steps, "Scrub")
-    assert scrub["id"] == "scrub" and scrub["if"] == "always()"
-    assert 'uv run python scripts/live_ci.py scrub "$OUT"' in scrub["run"]
+def test_the_cells_out_is_uploaded_always(steps):
     upload = step_using(steps, "actions/upload-artifact")
-    assert upload["if"] == SCRUBBED
+    assert upload["if"] == "always()"
     assert upload["with"]["name"] == "live-${{ matrix.os }}-${{ matrix.provider }}"
     assert upload["with"]["path"] == "${{ env.OUT }}"
     assert 1 <= upload["with"]["retention-days"] <= 7
-    live = step_named(steps, "Live tests")
-    assert '"$OUT"' in live["run"]
 
 
 def test_summary_names_the_cell_its_exit_and_its_logs_end(steps):
     summary = step_named(steps, "Summary")
-    # It shows the log's end: only once the scrub went through.
-    assert summary["if"] == SCRUBBED
+    assert summary["if"] == "always()"
     assert "GITHUB_STEP_SUMMARY" in summary["run"] and "tail" in summary["run"]
     assert summary["env"]["CODE"] == "${{ steps.live.outputs.code }}"
     live = step_named(steps, "Live tests")

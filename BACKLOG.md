@@ -634,6 +634,21 @@ Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
 # P2: when convenient
 
+## Claude Code's first-run onboarding blocks an agent before any hook, unseen
+
+Size: S. Why here: on a user's fresh machine the first Claude agent looks stuck in
+`starting` with no reason given.
+
+On a fresh home, a `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`) without
+`hasCompletedOnboarding` makes Claude Code show its first-run screens (theme, login) before
+its first hook. `Provider.first_hook_blocker` (providers/claude.py) detects only the folder
+trust dialog, so the agent is not set `waiting` with a reason, as it is for the trust
+dialog. Read in the code, not confirmed by a run: the cloud run that might have shown it
+(feature/live-cloud-matrix, run 38079358309) was cancelled when Claude left the cloud.
+Wanted: `first_hook_blocker` names that wait too, with what to do (finish the onboarding in
+the agent's window), and a unit test with a config without the key.
+Found: 2026-10-10, design review of feature/live-cloud-matrix (architect, Found on the way).
+
 ## styles.css writes 20 selectors twice; some may style two components
 
 Size: S. Why here: the team chips' bug came from exactly this, a later rule of one

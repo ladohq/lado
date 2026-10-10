@@ -108,9 +108,10 @@ def test_actions_pinned_to_a_commit_with_its_version(text):
         assert re.fullmatch(r"\s*# v\d+(\.\d+)*", rest), (action, rest)
 
 
-def test_no_action_tmate_and_no_msys2(steps):
-    """action-tmate hung on Windows after installing MSYS2's tmate (run 38001793230)."""
-    assert not [s for s in steps if "action-tmate" in s.get("uses", "")]
+def test_no_tmate_and_no_msys2(text, steps):
+    """action-tmate hung on Windows after installing MSYS2's tmate (run 38001793230);
+    every *.tmate.io name is NXDOMAIN since (runs 38006655138, 38007048750)."""
+    assert "tmate" not in text.lower()
     assert not [s for s in steps if "msys64" in s.get("run", "").lower()]
 
 
@@ -121,9 +122,8 @@ def test_wsl2_ubuntu_with_the_tools(steps):
     assert str(step["with"]["wsl-version"]) == "2"
     packages = step["with"]["additional-packages"].split()
     assert {"tmux", "git", "curl", "build-essential", "less"} <= set(packages)
-    # Ubuntu's own, dynamically linked tmate: the static release's resolver never found
-    # ssh.tmate.io in WSL (run 38005117396); xz-utils only unpacked that release.
-    assert "tmate" in packages and "xz-utils" not in packages
+    # jq reads upterm's JSON; xz-utils only unpacked a tmate release.
+    assert "jq" in packages and "xz-utils" not in packages
     assert all("continue-on-error" not in s for s in steps)
 
 
@@ -283,17 +283,36 @@ def test_shell_after_the_upload_only_with_shell_and_wsl(steps):
     assert steps.index(shell) == len(steps) - 2
 
 
-def test_shell_is_ubuntus_tmate_and_only_for_the_starter(steps):
+def test_shell_is_a_pinned_and_checked_upterm(steps):
+    shell = step_named(steps, "Shell")
+    env, run = shell["env"], shell["run"]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", env["UPTERM_VERSION"])
+    assert re.fullmatch(r"[0-9a-f]{64}", env["UPTERM_SHA256"])
+    assert {"UPTERM_VERSION", "UPTERM_SHA256"} <= set(env["WSLENV"].split(":"))
+    url = (
+        "https://github.com/owenthereal/upterm/releases/download/"
+        "v$UPTERM_VERSION/upterm_linux_amd64.tar.gz"
+    )
+    assert url in run
+    assert '"$UPTERM_SHA256  /tmp/upterm.tar.gz" | sha256sum -c -' in run
+    # Checked before it is unpacked.
+    assert run.index("sha256sum -c") < run.index("tar -xzf /tmp/upterm.tar.gz")
+
+
+def test_shell_only_for_the_starter_as_lado_within_a_bounded_wait(steps):
     shell = step_named(steps, "Shell")
     run = shell["run"]
-    # Ubuntu's package (setup-wsl's additional-packages), no static release.
-    assert "releases/download" not in run and "sha256sum" not in run
-    assert "/usr/local/bin" not in run
-    assert "https://github.com/$ACTOR.keys" in run
     assert shell["env"]["ACTOR"] == "${{ github.actor }}"
     # No keys: no session open to anyone.
-    assert '[ -z "$keys" ]' in run
-    assert "-a ~/.tmate-keys" in run and "su - lado -c" in run
-    assert re.search(r"timeout \d+ su - lado -c '[^']*wait tmate-ready", run)
-    assert "#{tmate_ssh}" in run and "GITHUB_STEP_SUMMARY" in run
+    assert "https://github.com/$ACTOR.keys" in run and '[ -z "$keys" ]' in run
+    host = re.search(r"timeout (\d+) su - lado -c \"upterm host ([^\"]*)\"", run)
+    assert host, run
+    assert int(host[1]) <= 300
+    assert "--detach" in host[2] and "--github-user '$ACTOR'" in host[2]
+    assert "--name probe" in host[2] and "-o json" in host[2]
+    assert "jq -r '.sshCommand // empty'" in run
+    assert "::notice title=SSH into WSL Ubuntu as lado::$ssh" in run
+    assert "GITHUB_STEP_SUMMARY" in run
+    # Ends at `touch ~/continue` or with the session; the job's minutes bound it too.
     assert "~lado/continue" in run
+    assert "su - lado -c 'upterm session info probe -o json'" in run

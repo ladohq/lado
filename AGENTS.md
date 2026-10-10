@@ -110,8 +110,9 @@ tests=false` both are `skipped`, neither passed nor failed). The job is red when
 WSL checks but doctor fails. The logs are the artifact
 `windows-probe-<runner>` (`gh run download <id>`), and the job's summary has each check's exit
 code, the PATH lines and the end of each failing log (`gh run view <id>`, `--log` for all).
-With `shell`, after the upload, an `ssh ...tmate.io` line (the step's log and a notice) opens
-a shell in WSL as `lado` (Ubuntu's `tmate` package), only for the GitHub user who started it,
+With `shell`, after the upload, an `ssh ...@uptermd.upterm.dev` line (the step's log and a
+notice) opens a shell in WSL as `lado` (upterm, a pinned release checked by its sha256; the
+public tmate servers are gone from DNS), only for the GitHub user who started it,
 by the SSH keys on their GitHub account; `touch ~/continue` ends it, and everything is wiped
 when the job ends. The quick shell, without the ~20 minutes of make checks: `-f shell=true -f
 tests=false`.

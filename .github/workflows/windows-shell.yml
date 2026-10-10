@@ -1,5 +1,5 @@
 # A Windows runner, with WSL2 Ubuntu by default, that runs LADO's checks there and uploads
-# the logs; optionally an SSH shell into WSL Ubuntu (Linux tmate) for debugging by hand.
+# the logs; optionally an SSH shell into WSL Ubuntu (upterm) for debugging by hand.
 # Not CI: it runs only when started (AGENTS.md, Commands).
 name: Windows probe
 
@@ -16,7 +16,7 @@ on:
         type: boolean
         default: true
       shell:
-        description: After the report, an SSH shell into WSL Ubuntu (tmate; needs wsl)
+        description: After the report, an SSH shell into WSL Ubuntu (upterm; needs wsl)
         type: boolean
         default: false
       tests:
@@ -112,7 +112,7 @@ jobs:
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2
-          additional-packages: tmux git curl build-essential less tmate
+          additional-packages: tmux git curl build-essential less jq
 
       - name: Check WSL
         if: inputs.wsl == true || inputs.wsl == 'true'
@@ -235,15 +235,16 @@ jobs:
           path: ${{ env.PROBE }}
           retention-days: 5
 
-      # Linux tmate in WSL: action-tmate's MSYS2 tmate hung on Windows before its SSH line.
-      # Ubuntu's package (setup-wsl above): the static release's own resolver never found
-      # ssh.tmate.io in WSL (run 38005117396).
+      # upterm in WSL, through its public server uptermd.upterm.dev. Not on Windows itself:
+      # an MSYS2 terminal relay hung there before its SSH line (run 38001793230).
       - name: Shell
         if: (inputs.shell == true || inputs.shell == 'true') && (inputs.wsl == true || inputs.wsl == 'true')
         shell: wsl-bash {0}
         env:
           ACTOR: ${{ github.actor }}
-          WSLENV: ACTOR:GITHUB_STEP_SUMMARY/p
+          UPTERM_VERSION: "0.31.0"
+          UPTERM_SHA256: 4788c2ece0fa8fd2a5253d22d4715f711da777f0a2d7cb763a1e0e2e75d1d76a
+          WSLENV: ACTOR:UPTERM_VERSION:UPTERM_SHA256:GITHUB_STEP_SUMMARY/p
         run: |
           set -euo pipefail
           keys=$(curl -fsSL "https://github.com/$ACTOR.keys")
@@ -251,19 +252,25 @@ jobs:
             echo "::error::$ACTOR has no SSH key on GitHub (https://github.com/$ACTOR.keys): no shell is opened"
             exit 1
           fi
-          printf '%s\n' "$keys" >~lado/.tmate-keys
-          chown lado:lado ~lado/.tmate-keys
-          chmod 600 ~lado/.tmate-keys
-          su - lado -c 'tmate -v -a ~/.tmate-keys -S /tmp/tmate.sock new-session -d'
-          if ! timeout 120 su - lado -c 'tmate -S /tmp/tmate.sock wait tmate-ready'; then
-            echo "::error::tmate did not reach its server within 120 seconds"
-            cat ~lado/tmate-*.log || true
+          curl -fsSL -o /tmp/upterm.tar.gz "https://github.com/owenthereal/upterm/releases/download/v$UPTERM_VERSION/upterm_linux_amd64.tar.gz"
+          echo "$UPTERM_SHA256  /tmp/upterm.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/upterm.tar.gz -C /usr/local/bin upterm
+          # --detach returns once the session is up, or fails; the timeout bounds it.
+          # --skip-host-key-check takes the server's key on first use (ssh's accept-new).
+          if ! info=$(timeout 120 su - lado -c "upterm host --detach --accept --skip-host-key-check --name probe --github-user '$ACTOR' -o json"); then
+            echo "::error::upterm did not start a session within 120 seconds"
             exit 1
           fi
-          ssh=$(su - lado -c "tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'")
+          ssh=$(jq -r '.sshCommand // empty' <<<"$info")
+          if [ -z "$ssh" ]; then
+            echo "::error::upterm started no session with an SSH command"
+            exit 1
+          fi
           echo "::notice title=SSH into WSL Ubuntu as lado::$ssh"
           printf '\n## Shell\n\n`%s`, as lado; `touch ~/continue` ends it.\n' "$ssh" >>"$GITHUB_STEP_SUMMARY"
-          while [ ! -e ~lado/continue ] && su - lado -c 'tmate -S /tmp/tmate.sock has-session' 2>/dev/null; do
+          # Until ~/continue, or the session ends (no answer counts as ended).
+          while [ ! -e ~lado/continue ] &&
+            su - lado -c 'upterm session info probe -o json' 2>/dev/null | jq -e '.status != "ended"' >/dev/null; do
             echo "$ssh"
             sleep 30
           done

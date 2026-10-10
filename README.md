@@ -46,6 +46,9 @@ lado start <repo>       # a supervisor for a git repository (with at least one c
 lado ui                 # the web UI in your browser
 ```
 
+On Windows, LADO runs only inside WSL2 (Ubuntu), where it runs as on Linux; native Windows
+is refused with a pointer to WSL2.
+
 `lado start --help` lists the options (`--provider`, `--kit`, `--permission-mode`). `lado ls`
 shows the sessions and their agents, `lado attach <session>` their tmux windows, `lado stop
 <session>` ends one (`lado start` resumes it).

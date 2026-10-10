@@ -10,6 +10,8 @@
 - In an agent's terminal in view, the wheel up shows that scrolling needs Take control
   instead of a read-only History layer, which full-screen CLIs never filled. The API's
   `GET /api/sessions/{name}/agents/{agent}/history` is gone.
+- On native Windows, `lado` says in one line that it runs only inside WSL2 instead of
+  failing with a traceback (`No module named 'termios'`).
 
 ## 0.33.0 (2026-10-10)
 

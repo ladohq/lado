@@ -199,9 +199,9 @@ jobs:
           check uv-install 300 "curl -LsSf -o ~/uv-install.sh https://astral.sh/uv/$UV_VERSION/install.sh && sh ~/uv-install.sh"
           # After uv's install, as an agent's PATH would see ~/.local/bin.
           check path 60 'echo "$PATH"'
-          # The agents' PATH as LADO builds it (agent_env.resolve).
-          check agents-path 60 'env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" SHELL="$SHELL" PATH=/usr/bin:/bin:/usr/sbin:/sbin bash -ilc "echo \$PATH"'
           check uv-sync 600 'cd ~/lado && uv sync --locked'
+          # The agents' PATH as LADO builds it: its own code, from lado's login shell.
+          check agents-path 60 'cd ~/lado && env -u LADO_AGENT_ENV uv run python -c "from lado import agent_env; print(agent_env.from_shell()[\"PATH\"])"'
           check lado-version 120 'cd ~/lado && uv run lado --version'
           # No agent CLI is installed, which doctor reports as a FAIL (exit 1): only recorded.
           check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected

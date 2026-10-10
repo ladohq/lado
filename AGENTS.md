@@ -105,8 +105,8 @@ live tests too; `-f minutes=N`, 120 by default, at most 360, setup included). It
 from the checkout on Windows itself (`native.log`: Python, `lado --version`, `lado doctor`;
 expected to fail, only recorded) and, with `wsl`, in WSL2 Ubuntu 24.04 as the user `lado`
 (the repo at the run's commit in `~/lado`), runs each check in its login shell: `uname -m`,
-`tmux -V`, uv's install, its `PATH` and the agents' (`wsl-path.log`, `wsl-agents-path.log`),
-`uv sync`, `lado --version`, `lado doctor` (recorded only: no agent CLI there), `make test`,
+`tmux -V`, uv's install, its `PATH` (`wsl-path.log`), `uv sync`, the agents' PATH by LADO's
+own `agent_env.from_shell` (`wsl-agents-path.log`), `lado --version`, `lado doctor` (recorded only: no agent CLI there), `make test`,
 `make test-integration`. With `live`, then: Node from Ubuntu, OpenCode and Kilo from npm at
 their tested versions into `~/.local/bin`, and the live tests of each but the image one (the
 free models take no image input) on its free model, OpenCode's required
@@ -696,9 +696,16 @@ fixes and docs only: no new feature, no API or schema change.
   server, an agent's `spawn_worker`) and whoever started LADO's tmux server
   (`agent_env.resolve`). For each launch (start, resume, spawn) LADO runs
   `$SHELL -ilc` with a dump of the environment, started from a terminal's few variables
-  (`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `LANG`, `SSH_AUTH_SOCK`, a system `PATH`) in
-  a new session, no cache; the dump is JSON between markers, so what the startup files print
-  does not matter; LADO waits for the end marker and the shell's exit, not for its output to
+  (`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `LANG`, `SSH_AUTH_SOCK`, and the `PATH` a
+  login gives before the shell runs, `agent_env.base_path`) in a new session, no cache. That
+  `PATH`: on macOS a fixed system one, which `/etc/profile`'s `path_helper` rebuilds; on
+  Linux the `PATH` of `/etc/environment` (pam_env's simple form; one with a `$` is taken as
+  a mistake, LADO's choice), else the login default
+  `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`; on WSL (`agent_env.is_wsl`:
+  its interop file or `/proc/version`) the same, plus `/usr/lib/wsl/lib`, never the Windows
+  PATH (the human's decision; a folder the startup files add stays). `lado doctor` names
+  where it came from, why the default, and on WSL that the Windows PATH is left out. The
+  dump is JSON between markers, so what the startup files print does not matter; LADO waits for the end marker and the shell's exit, not for its output to
   close (a program the startup files leave in the background may hold it). No `$SHELL`, a
   failing shell or one slower than `agent_env.TIMEOUT` (10 s) stops the launch before
   anything starts, with the command and the end of its stderr; so does an agent CLI that is

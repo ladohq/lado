@@ -598,19 +598,6 @@ Found: 2026-10-10, release of 0.33.0. Again in WSL2 Ubuntu on GitHub's windows-l
 probe, run 38029389159, Kilo 7.8.8): the same `flow.txt` error; w1's step stayed `delivered`,
 it wrote flow.txt without committing it and advanced (the run ended with uncommitted changes).
 
-## Agents' PATH on Ubuntu is not a new terminal's
-
-Size: M. Why here: breaks the "as a new terminal sees it" contract on every Ubuntu and WSL2.
-`agent_env.from_shell` starts `$SHELL -ilc` with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`
-(`agent_env.SHELL_PATH`), which on macOS `/etc/profile`'s `path_helper` rebuilds; Ubuntu's
-`/etc/profile` sets no PATH (it comes from PAM's `/etc/environment`, and in WSL from WSL
-itself), so agents lose `/usr/local/bin`, `/usr/lib/wsl/lib` and WSL's Windows PATH. A CLI in
-`/usr/local/bin` is refused as not on the agents' PATH, while `lado doctor` and the UI (the
-process PATH) see it. No test runs a real Linux login shell (all use `inherit` or fake shells).
-Wanted: on Linux the base PATH a new terminal starts from (e.g. `/etc/environment`), and a test
-against a real login shell. To confirm in the WSL VM run (checklist step 2).
-Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
-
 ## `test_supervisor_finishes_a_merged_worker` fails on a slower machine: a message still queued at finish
 
 Size: S. Why here: it failed in 2 of 3 runs of the Windows probe in WSL2 (4 vCPU), so the probe is red.

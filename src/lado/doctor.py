@@ -125,25 +125,41 @@ def check_tmux(which: Callable[[str], str | None]) -> Check:
     return check
 
 
-def check_agent_env() -> Check:
-    """Where agents' environment comes from; the login shell must give it, and soon."""
+def check_agent_env() -> list[Check]:
+    """Where agents' environment comes from; the login shell must give it, and soon. Also
+    the PATH it starts from, and on WSL that the Windows PATH is left out of it."""
     name = "Agent environment"
     try:
         if agent_env.source() == agent_env.INHERIT:
             detail = f"from the process that starts each agent ({agent_env.SOURCE_VAR}=inherit)"
-            return Check(name, OK, detail)
+            return [Check(name, OK, detail)]
         _, seconds = agent_env.timed()
     except agent_env.AgentEnvError as exc:
-        return Check(name, FAIL, str(exc))
+        return [Check(name, FAIL, str(exc))]
+    base = agent_env.base_path()
+    start = "the default" if base.source == "default" else base.source
+    if base.reason:
+        start += f" ({base.reason})"
     check = Check(
-        name, OK, f"from your login shell {os.environ['SHELL']}, resolved in {seconds:.1f} s"
+        name,
+        OK,
+        f"from your login shell {os.environ['SHELL']}, resolved in {seconds:.1f} s; "
+        f"starting PATH from {start}",
     )
     if seconds > agent_env.SLOW:
         check.level = WARN
         check.hint = (
             "each agent's start waits for your shell this long; make its startup files faster"
         )
-    return check
+    if not base.wsl:
+        return [check]
+    windows = Check(
+        "Windows PATH",
+        INFO,
+        "not passed to agents",
+        "add a Windows folder to PATH in ~/.profile to give it to them",
+    )
+    return [check, windows]
 
 
 def check_config_folders() -> Check:
@@ -421,7 +437,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
         *([graphical] if graphical else []),
-        check_agent_env(),
+        *check_agent_env(),
         check_config_folders(),
         check_artifacts(),
         *check_providers(which),

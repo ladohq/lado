@@ -399,8 +399,20 @@ def test_open_in_new_tab_shows_the_record_alone_in_the_uis_theme(
     expect(code.locator(".line-number")).to_have_text(["1", "2"])
     shot(tab, "text-dark")
     tab.evaluate("localStorage.setItem('lado.theme', 'light')")
-    table = artifacts.write(session, "supervisor", "review", content=WIDE)
+    table = artifacts.write(session, "supervisor", "review", content=TABLES)
     tab.goto(f"{server['url']}/view/{session}/{table.record.id}")
-    expect(tab.get_by_role("columnheader")).to_have_text(["finding", "where", "what to do"])
+    frames = tab.locator(".md-table")
+    expect(frames.first.get_by_role("columnheader")).to_have_text(
+        ["finding", "where", "what to do"]
+    )
     expect(tab.locator(".artifact-head")).to_have_count(0)
+    # The tables take the reading column's width (a size container in a column that shrank
+    # to its content would collapse): the prose one wraps to fit, the matrix scrolls.
+    column = tab.locator(".artifact-markdown").evaluate("(one) => one.clientWidth")
+    assert column >= 700, column
+    prose, many = tab.locator(".artifact-tab").evaluate(MEASURE_TABLES, ".artifact-tab")
+    assert prose["client"] >= column - 2, (prose, column)
+    assert prose["scroll"] <= prose["client"] and prose["sticking"] == 0, prose
+    assert many["client"] >= column - 2 and many["scroll"] > many["client"], many
+    assert prose["sideways"] == many["sideways"] == [], (prose, many)
     shot(tab, "table-light")

@@ -32,6 +32,17 @@ def release(session: str, agent: str, n: int) -> None:
     (fake_logs(session, agent) / f"release-{n}").touch()
 
 
+def unreceived(session: str, agent: str) -> int:
+    """How many messages to the agent it has not received yet (state.UNRECEIVED): what a
+    finish or stop now would drop."""
+    with state.connect() as db:
+        return db.execute(
+            "SELECT count(*) FROM messages WHERE session = ? AND recipient = ?"
+            f" AND {state.UNRECEIVED}",
+            (session, agent, *state.UNRECEIVED_ARGS),
+        ).fetchone()[0]
+
+
 def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
     """The environment and the command of an agent's window, from a recorded
     `tmux.new_session` or `tmux.new_window` call (the `fake_tmux` fixture)."""

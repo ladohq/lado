@@ -595,9 +595,14 @@ def supervisor_runs(command: str) -> None:
 
 
 def worker_commits() -> state.Agent:
-    """Spawn w1 and commit a file on its branch, as the worker would."""
+    """Spawn w1 and commit a file on its branch, as the worker would, once it has done its
+    task: it has read it, and is idle after that. Idle alone is no proof: its session start
+    makes it idle before its queue, the task, is handed over."""
     worker = runtime.spawn_worker(SESSION, "sleep 0", name="w1")
-    wait_status("w1", state.IDLE)
+    wait_for(
+        lambda: not agent_helpers.unreceived(SESSION, "w1") and status("w1") == state.IDLE,
+        "w1 to be idle with its task read",
+    )
     Path(worker.cwd, "work.txt").write_text("done\n")
     runtime.git(worker.cwd, "add", "work.txt")
     runtime.git(worker.cwd, "commit", "-q", "-m", "work")
@@ -616,7 +621,7 @@ def test_supervisor_finishes_a_merged_worker(repo):
     assert (repo / "work.txt").read_text() == "done\n"
     result = lado_cli("log", SESSION, "--agent", "w1")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.splitlines()[-1].endswith(" w1: finished (merged)")
+    assert result.stdout.splitlines()[-1].endswith(" w1: finished (merged)"), result.stdout
     agents = [line.split()[0] for line in lado_cli("ls").stdout.splitlines()[1:]]
     assert agents == ["supervisor"]  # not the line with the repo: its path can hold "w1"
 

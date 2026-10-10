@@ -607,16 +607,6 @@ Found: 2026-10-10, release of 0.33.0. Again in WSL2 Ubuntu on GitHub's windows-l
 probe, run 38029389159, Kilo 7.8.8): the same `flow.txt` error; w1's step stayed `delivered`,
 it wrote flow.txt without committing it and advanced (the run ended with uncommitted changes).
 
-## `test_supervisor_finishes_a_merged_worker` fails on a slower machine: a message still queued at finish
-
-Size: S. Why here: it failed in 2 of 3 runs of the Windows probe in WSL2 (4 vCPU), so the probe is red.
-`tests/integration/test_agents.py:619` expects `w1: finished (merged)` and gets
-`w1: finished (merged; 1 message dropped)`: a message to w1 is still pending when the test
-finishes it (runs 38003394533, 38005117396). Passes on the Mac and in one WSL run.
-Wanted: find which message is still queued (test race or LADO's), then wait for w1's queue to
-be empty before the finish, or fix the race in LADO.
-Found: 2026-10-10, review of fix/windows-probe (Windows probe runs on GitHub).
-
 ## Live: a Codex supervisor commits on main by itself
 
 Size: S. Why here: a live test fails twice of three on it.
@@ -644,6 +634,20 @@ Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
 # P2: when convenient
 
+## Integration tests take a new worker's first idle as its task done
+
+Size: S. Why here: latent flakes; one of them failed 2 of 3 Windows probe runs.
+A spawned agent's session-start hook sets it idle and then hands over its queue (its task),
+so `wait_status("w1", state.IDLE)` right after `spawn_worker` can return before w1 has its
+task. `test_supervisor_finishes_a_merged_worker` failed on it (it dropped the task at the
+finish) and now waits with `agent_helpers.unreceived` (`worker_commits`). The same wait
+stays in test_agents.py (the artifact test, `test_stop_kills_agents_and_keeps_worktrees`),
+test_agent_liveness.py (the human writes to a worker, finishing tells no one) and
+test_flow_runs.py (`test_the_supervisor_hears_when_a_worker_ends_the_run`); none asserts on
+a drop today, so they pass, but each acts on a worker that may still be about to start.
+Wanted: one helper, "spawned and its task done" (nothing unreceived, then idle), used by
+each.
+Found: 2026-10-10, fix/flaky-finish-merged-worker.
 ## UI: buttons have two unrelated sizes
 
 Size: M. Why here: looks only; every place that mixes the two classes shows two heights.

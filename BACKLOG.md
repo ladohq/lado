@@ -1720,6 +1720,18 @@ test waits for the scroll to end.
 Found: 2026-10-09, release of 0.32.0.
 Again at the release of 0.33.0 (f9d3739): the terminal panel test, the same `ValueError`;
 passed on the first rerun.
+Again in CI on 99b22f3 (push of main, 2026-10-10, run 38046763270): the same `ValueError`;
+passed on the rerun. Third time: worth fixing before the next release.
+
+## Flaky in CI: `test_stopping_a_session_tells_no_one_and_counts_what_it_dropped` on 3.10
+
+Size: S. Why here: a red CI run on main for no code reason.
+CI on 99b22f3 (run 38046763270, job check (3.10)): `tests/integration/test_agent_liveness.py`
+`Failed: timed out after 30s waiting for supervisor's hook; agents: none; messages: lado → w1
+[read] 'your task', supervisor → w1 [dropped] 'queued'`; passed on the rerun.
+Wanted: find what the test waits for after the stop (the agents are gone already) and wait
+for that, not the supervisor's hook.
+Found: 2026-10-10, CI after the push of main.
 
 ## Codex agents call `read_mcp_resource` instead of LADO's tools
 

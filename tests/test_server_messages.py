@@ -128,6 +128,15 @@ def test_the_human_answers_and_dismisses_questions(client, session):
     assert again.json()["detail"] == f"question #{ship.id} is answered"
 
 
+def test_a_dismissal_takes_the_humans_comment(client, session):
+    runtime.ask_human("s", "w1", "Port?")
+    (port,) = state.list_messages("s")
+    path = f"/api/sessions/s/questions/{port.id}/dismiss"
+    assert client.post(path, json={"text": "not now"}).status_code == 200
+    dismissal = state.list_messages("s")[-1]
+    assert (dismissal.summary, dismissal.body) == (f"Dismissed #{port.id}", "not now")
+
+
 @pytest.mark.parametrize(
     "path",
     [MESSAGES, "/api/sessions/s/questions/1/answer", "/api/sessions/s/questions/1/dismiss"],

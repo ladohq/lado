@@ -54,8 +54,8 @@ test("an own answer of more lines is its body, which holds the whole text, the f
 
 test("a dismissal is told by its question; without the question in the window, by the core's summary", () => {
   const dismissal = answer({ summary: "Dismissed #5" });
-  expect(replyOf(dismissal, question({ question_state: "dismissed", answered_by: 6 }))).toEqual({ dismissed: true });
-  expect(replyOf(dismissal)).toEqual({ dismissed: true });
+  expect(replyOf(dismissal, question({ question_state: "dismissed", answered_by: 6 }))).toEqual({ dismissed: true, comment: "" });
+  expect(replyOf(dismissal)).toEqual({ dismissed: true, comment: "" });
   // An own answer of one line has no choice and no body either: it is no dismissal.
   expect(replyOf(answer({ summary: "Answer to #5: no" }))).toEqual({ text: "no", comment: "" });
   // The question says it was answered by this message: no dismissal, whatever its text.
@@ -63,4 +63,11 @@ test("a dismissal is told by its question; without the question in the window, b
     text: "Dismissed #5",
     comment: "",
   });
+});
+
+test("a dismissal carries the human's comment, its body, also without the question in the window", () => {
+  const dismissal = answer({ summary: "Dismissed #5", body: "not now:\nafter the release" });
+  const expected = { dismissed: true, comment: "not now:\nafter the release" };
+  expect(replyOf(dismissal, question({ question_state: "dismissed", answered_by: 6 }))).toEqual(expected);
+  expect(replyOf(dismissal)).toEqual(expected);
 });

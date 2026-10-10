@@ -187,7 +187,7 @@ def test_lado_check_of_the_latest_version_and_with_the_check_off(published, monk
 
 
 def test_agent_environment_inherited():
-    check = doctor.check_agent_env()  # the tests run with LADO_AGENT_ENV=inherit
+    (check,) = doctor.check_agent_env()  # the tests run with LADO_AGENT_ENV=inherit
     assert check.level == doctor.OK
     assert "LADO_AGENT_ENV=inherit" in check.detail
 
@@ -202,24 +202,58 @@ def login_shell(tmp_path, monkeypatch):
     return shell
 
 
-def test_agent_environment_from_the_login_shell(login_shell):
-    check = doctor.check_agent_env()
+def _base(monkeypatch, *, source="path_helper", reason="", wsl=False):
+    base = agent_env.BasePath("/usr/bin:/bin", source, reason, wsl)
+    monkeypatch.setattr(agent_env, "base_path", lambda: base)
+
+
+def test_agent_environment_from_the_login_shell(login_shell, monkeypatch):
+    _base(monkeypatch, source="/etc/environment")
+    (check,) = doctor.check_agent_env()
     assert check.level == doctor.OK
     assert re.fullmatch(
-        rf"from your login shell {login_shell}, resolved in \d+\.\d s", check.detail
+        rf"from your login shell {login_shell}, resolved in \d+\.\d s; "
+        r"starting PATH from /etc/environment",
+        check.detail,
     )
 
 
+def test_agent_environment_names_why_the_path_starts_from_the_default(login_shell, monkeypatch):
+    _base(monkeypatch, source="default", reason="no PATH in /etc/environment")
+    (check,) = doctor.check_agent_env()
+    assert check.level == doctor.OK
+    assert check.detail.endswith("; starting PATH from the default (no PATH in /etc/environment)")
+
+
+def test_on_wsl_doctor_says_the_windows_path_is_not_passed(login_shell, monkeypatch):
+    _base(monkeypatch, source="/etc/environment", wsl=True)
+    check, windows = doctor.check_agent_env()
+    assert check.level == doctor.OK
+    assert windows == doctor.Check(
+        "Windows PATH",
+        doctor.INFO,
+        "not passed to agents",
+        "add a Windows folder to PATH in ~/.profile to give it to them",
+    )
+
+
+def test_an_inherited_environment_on_wsl_says_nothing_of_the_windows_path(monkeypatch):
+    _base(monkeypatch, wsl=True)
+    (check,) = doctor.check_agent_env()
+    assert "LADO_AGENT_ENV=inherit" in check.detail
+
+
 def test_a_slow_login_shell_warns(login_shell, monkeypatch):
+    _base(monkeypatch)
     monkeypatch.setattr(agent_env, "SLOW", 0)
-    check = doctor.check_agent_env()
+    (check,) = doctor.check_agent_env()
     assert check.level == doctor.WARN
     assert "each agent's start waits for your shell" in check.hint
 
 
 def test_a_failing_login_shell_fails(login_shell):
     login_shell.write_text("#!/bin/sh\necho 'rc is broken' >&2\nexit 2\n")
-    check = doctor.check_agent_env()
+    (check,) = doctor.check_agent_env()
     assert check.level == doctor.FAIL
     assert "exit status 2" in check.detail and "rc is broken" in check.detail
 

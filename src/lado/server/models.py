@@ -867,6 +867,10 @@ class Answer(BaseModel):
     text: str | None = None
 
 
+class Dismissal(BaseModel):
+    text: str | None = None  # the human's comment, the reply's body
+
+
 class Sent(BaseModel):
     result: str  # what became of it: delivered, sent or queued, and why
 

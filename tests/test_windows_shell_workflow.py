@@ -176,8 +176,6 @@ def test_wsl_probe_runs_as_a_non_root_user_in_a_login_shell(steps):
     for command in (
         "uname -m",
         "tmux -V",
-        "env -i HOME",
-        "PATH=/usr/bin:/bin:/usr/sbin:/sbin bash -ilc",
         "astral.sh/uv",
         "uv sync",
         "uv run lado --version",
@@ -254,6 +252,18 @@ def test_wsl_probe_runs_the_make_checks_with_tests(steps, tmp_path):
     assert rows["wsl make-test-integration"][1:3] == ["0", "required"]
     ran = (tmp_path / "probe" / "ran").read_text()
     assert "cd ~/lado && make test\n" in ran and "make test-integration" in ran
+
+
+def test_the_agents_path_is_lados_own_after_uv_sync(steps):
+    run = step_named(steps, "WSL probe")["run"]
+    lines = [line.strip() for line in run.splitlines()]
+    (agents,) = [line for line in lines if line.startswith("check agents-path ")]
+    (sync,) = [line for line in lines if line.startswith("check uv-sync ")]
+    assert lines.index(sync) < lines.index(agents)
+    assert "env -u LADO_AGENT_ENV uv run python" in agents
+    assert "agent_env.from_shell()" in agents
+    # No PATH built by hand: LADO is the one source of it.
+    assert "/usr/bin:/bin:/usr/sbin:/sbin" not in run and "env -i" not in run
 
 
 def test_wsl_probe_skips_the_make_checks_without_tests(steps, tmp_path):

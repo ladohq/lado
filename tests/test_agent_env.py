@@ -182,3 +182,112 @@ def test_the_dump_is_json_between_markers():
     inner = out.stdout.split(begin, 1)[1].split(end, 1)[0]
     assert json.loads(inner)["PATH"] == os.environ["PATH"]
     assert sys.executable in script
+
+
+@pytest.fixture
+def linux(tmp_path, monkeypatch):
+    """A Linux machine of temporary files: no /etc/environment yet, not WSL, with a
+    /usr/lib/wsl/lib folder (that alone makes no WSL)."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(agent_env, "ENVIRONMENT_FILE", tmp_path / "environment")
+    monkeypatch.setattr(agent_env, "WSL_INTEROP", tmp_path / "WSLInterop")
+    version = tmp_path / "version"
+    version.write_text("Linux version 6.8.0-45-generic (buildd@lcy02-amd64-075) #45-Ubuntu\n")
+    monkeypatch.setattr(agent_env, "PROC_VERSION", version)
+    wsl_lib = tmp_path / "wsl-lib"
+    wsl_lib.mkdir()
+    monkeypatch.setattr(agent_env, "WSL_LIB", wsl_lib)
+    return agent_env.ENVIRONMENT_FILE
+
+
+def test_on_macos_the_path_starts_as_path_helper_rebuilds_it(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert agent_env.base_path() == agent_env.BasePath(
+        agent_env.SHELL_PATH, "path_helper", "", False
+    )
+
+
+def test_on_linux_the_path_starts_from_etc_environment(linux):
+    linux.write_text('PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin"\n')
+    assert agent_env.base_path() == agent_env.BasePath(
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin", str(linux), "", False
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "path"),
+    [
+        ("PATH=/a:/b\n", "/a:/b"),
+        ('PATH="/a:/b"\n', "/a:/b"),
+        ("export PATH=/a\n", "/a"),
+        ('export PATH="/a"\n', "/a"),
+        ("# PATH=/commented\n\n  \nLANG=C\nPATH=/a\n", "/a"),
+        ("PATH=/first\nPATH=/last\n", "/last"),
+    ],
+)
+def test_etc_environment_is_read_as_pam_env_reads_its_simple_form(linux, text, path):
+    linux.write_text(text)
+    assert agent_env.base_path().path == path
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("LANG=C.UTF-8\n", "no PATH in {file}"),
+        ('PATH=""\n', "no PATH in {file}"),
+        ("# PATH=/a\n", "no PATH in {file}"),
+        ('PATH="/opt/bin:$PATH"\n', "a `$` in the PATH of {file}"),
+    ],
+)
+def test_without_a_usable_path_there_the_linux_login_default_is_taken(linux, text, reason):
+    linux.write_text(text)
+    assert agent_env.base_path() == agent_env.BasePath(
+        agent_env.LINUX_PATH, "default", reason.format(file=linux), False
+    )
+
+
+def test_a_missing_etc_environment_gives_the_default(linux):
+    base = agent_env.base_path()
+    assert (base.path, base.source) == (agent_env.LINUX_PATH, "default")
+    assert base.reason == f"no {linux}"
+
+
+def test_an_unreadable_etc_environment_gives_the_default_with_the_error(linux):
+    linux.mkdir()  # reading a folder fails
+    base = agent_env.base_path()
+    assert (base.path, base.source) == (agent_env.LINUX_PATH, "default")
+    assert base.reason.startswith(f"cannot read {linux}: ")
+
+
+def test_wsl_is_told_by_its_interop_file_or_proc_version(linux):
+    assert not agent_env.is_wsl()
+    agent_env.WSL_INTEROP.write_text("enabled\n")
+    assert agent_env.is_wsl()
+    agent_env.WSL_INTEROP.unlink()
+    agent_env.PROC_VERSION.write_text("Linux version 5.15.153.1-microsoft-standard-WSL2\n")
+    assert agent_env.is_wsl()
+
+
+def test_on_wsl_its_lib_folder_is_added_and_no_windows_path(linux, monkeypatch):
+    agent_env.WSL_INTEROP.write_text("enabled\n")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin:/mnt/c/Windows/system32")  # the caller's
+    linux.write_text('PATH="/usr/local/bin:/usr/bin:/bin"\n')
+    assert agent_env.base_path() == agent_env.BasePath(
+        f"/usr/local/bin:/usr/bin:/bin:{agent_env.WSL_LIB}", str(linux), "", True
+    )
+    linux.unlink()
+    base = agent_env.base_path()
+    assert base.path == f"{agent_env.LINUX_PATH}:{agent_env.WSL_LIB}" and base.wsl
+    assert "/mnt/c" not in base.path
+
+
+def test_on_wsl_a_missing_lib_folder_is_not_added(linux):
+    agent_env.WSL_INTEROP.write_text("enabled\n")
+    agent_env.WSL_LIB.rmdir()
+    assert agent_env.base_path().path == agent_env.LINUX_PATH
+
+
+def test_the_shell_starts_from_the_base_path(shell, linux, monkeypatch):
+    linux.write_text("PATH=/opt/from-etc:/usr/bin:/bin\n")
+    shell()
+    assert agent_env.resolve()["PATH"] == "/opt/from-etc:/usr/bin:/bin"

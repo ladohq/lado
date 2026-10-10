@@ -1069,10 +1069,14 @@ def answer_question(
     return _reply(session, question, summary, body, choice, state.ANSWERED)
 
 
-def dismiss_question(session: str, question_id: int) -> str:
-    """The human dismisses an open question; the agent that asked hears of it."""
+def dismiss_question(session: str, question_id: int, text: str | None = None) -> str:
+    """The human dismisses an open question; the agent that asked hears of it, with the
+    human's `text` as the body when they wrote one."""
     question = _open_question(session, question_id)
-    return _reply(session, question, f"Dismissed #{question_id}", "", None, state.DISMISSED)
+    body = (text or "").strip()
+    if len(body) > MAX_MESSAGE:
+        raise LadoError(f"the message is {len(body)} characters, the limit is {MAX_MESSAGE}")
+    return _reply(session, question, f"Dismissed #{question_id}", body, None, state.DISMISSED)
 
 
 def _open_question(session: str, question_id: int) -> state.Message:

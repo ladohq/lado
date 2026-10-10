@@ -567,6 +567,12 @@ report, the run did not end within 240 s) and passed on the third run.
 Again 3 of 3 on 2026-10-10 (verify of feature/session-start-tool, which changes nothing in
 providers/, hooks.py or the delivery): twice w1 sent its report again and again and stayed
 busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
+Again 3 of 3 on 2026-10-10 (verify of feature/linux-agents-path, e1dd5cc), in new ways: a
+window `worker` left after `finish_worker`, the flow branch not fast-forwardable onto main,
+flow.txt missing, or flow.txt holding prose instead of `OK`.
+Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
+instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
+stayed busy.
 
 ## Kilo live image test fails 3 of 3
 
@@ -598,19 +604,6 @@ Found: 2026-10-10, release of 0.33.0. Again in WSL2 Ubuntu on GitHub's windows-l
 probe, run 38029389159, Kilo 7.8.8): the same `flow.txt` error; w1's step stayed `delivered`,
 it wrote flow.txt without committing it and advanced (the run ended with uncommitted changes).
 
-## Agents' PATH on Ubuntu is not a new terminal's
-
-Size: M. Why here: breaks the "as a new terminal sees it" contract on every Ubuntu and WSL2.
-`agent_env.from_shell` starts `$SHELL -ilc` with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`
-(`agent_env.SHELL_PATH`), which on macOS `/etc/profile`'s `path_helper` rebuilds; Ubuntu's
-`/etc/profile` sets no PATH (it comes from PAM's `/etc/environment`, and in WSL from WSL
-itself), so agents lose `/usr/local/bin`, `/usr/lib/wsl/lib` and WSL's Windows PATH. A CLI in
-`/usr/local/bin` is refused as not on the agents' PATH, while `lado doctor` and the UI (the
-process PATH) see it. No test runs a real Linux login shell (all use `inherit` or fake shells).
-Wanted: on Linux the base PATH a new terminal starts from (e.g. `/etc/environment`), and a test
-against a real login shell. To confirm in the WSL VM run (checklist step 2).
-Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
-
 ## `test_supervisor_finishes_a_merged_worker` fails on a slower machine: a message still queued at finish
 
 Size: S. Why here: it failed in 2 of 3 runs of the Windows probe in WSL2 (4 vCPU), so the probe is red.
@@ -631,8 +624,41 @@ folder holds many such runs (2026-10-09/10).
 Wanted: a supervisor role in the live kit that the local model follows, or a test that does
 not depend on main staying untouched.
 Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
+Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): `fatal: Not possible
+to fast-forward`, `untracked working tree files would be overwritten by merge`, and once the
+supervisor spawned an extra `worker` whose Codex (not on the test's model) failed with
+`input[0]: unknown input item type: "additional_tools"`.
+
+## OpenCode live image test fails 3 of 3
+
+Size: M. Why here: a live test red every time; it hides a real regression of artifact images.
+`test_an_agent_sees_the_image_the_human_attaches[opencode]` on `opencode/nemotron-3-ultra-free`:
+w1 stays busy after the human's PNG and never replies within 180 s, in the full run and 2
+reruns. No API error was seen (the earlier 503 was at 0.29.0).
+Wanted: find whether the free model takes images at all (then skip it, as for Codex) or
+LADO's image does not reach it.
+Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
 # P2: when convenient
+
+## UI: buttons have two unrelated sizes
+
+Size: M. Why here: looks only; every place that mixes the two classes shows two heights.
+`.primary` is 32 px, radius 6; `.quiet` is 28 px, 13 px font (`web/src/styles.css`). Only
+the question and gate cards share one scale, by a rule scoped to `form.answer`
+(feature/question-answer); dialogs, toolbars and rows elsewhere still mix them.
+Wanted: one button scale for the whole UI (docs/design/ui.md, Look), applied in one pass,
+and the scoped `.answer .primary, .answer .quiet` rule dropped.
+Found: 2026-10-10, design of feature/question-answer.
+
+## Mockups: a dark sample in a light page is unreadable when `color` is inherited
+
+Size: S. Why here: only mockup authors meet it; it cost one round of review.
+In LADO's HTML viewer the frame follows the system theme; a mockup that forces
+`color-scheme: dark` on a block without setting `color` there keeps the light page's ink.
+Wanted: one line in the design guidance for mockups (docs/design/ui.md or the lado-dev
+kit): set `color` together with `color-scheme`.
+Found: 2026-10-10, design of feature/question-answer.
 
 ## `lado answer` and the popup answer only flow gates, not an agent's question
 
@@ -998,6 +1024,10 @@ same way: `test_worker_does_a_task_reports_and_gets_a_message[kilo]` 2 of 3 and 
 is gone"); and the Codex supervisor (qwen3-coder) did the flow step's work itself in
 `test_a_flow_run_moves_on_when_its_worker_reports[codex]` (2 of 3): it committed flow.txt
 on main and called flow_advance, so the run's branch could not fast-forward.
+Again on 2026-10-10 (verify of feature/question-answer, d5f95c2):
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once: the passive
+supervisor called `finish_worker(name="w1")`, then with `discard=true` after w1's report, so
+the line sent while w1 was busy was `dropped`; the rerun passed.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
@@ -1755,6 +1785,16 @@ is made (`getComputedStyle`), while `--term-ground` is `light-dark(...)`: after 
 changes, the xterm canvas keeps the old shade and the rest of `.term-screen` takes the new one.
 Wanted: update `term.options.theme` when `prefers-color-scheme` or `data-theme` changes.
 Found: 2026-10-10, review of feature/terminal-scroll-hint.
+
+## ask_human's doc calls a multi-line answer's body a comment
+
+Size: S. Why here: agents read the tool's doc as the contract.
+`src/lado/mcp_server.py` (`ask_human`) says `"Answer to #<id>: ..." or "Dismissed #<id>",
+either with the human's comment as its body when they wrote one`; for an own answer of
+several lines the body is the rest of the answer (`runtime._human_text`), not a comment.
+Wanted: e.g. `"Answer to #<id>: ..." (the rest, or the comment on a choice, in the body) or
+"Dismissed #<id>" (the human's comment, if any, in the body)`.
+Found: 2026-10-10, review of feature/question-answer (Minor 1).
 
 # P3: maybe never
 

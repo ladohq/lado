@@ -364,13 +364,73 @@ test("a question takes an own answer, or is dismissed", async () => {
   open();
   const [first, second] = within(await chat()).getAllByRole("article", { name: "Question from w1" });
   fireEvent.change(within(first).getByRole("textbox", { name: "Your answer" }), { target: { value: "after the release" } });
-  fireEvent.click(within(first).getByRole("button", { name: "Submit" }));
+  fireEvent.click(within(first).getByRole("button", { name: "Send" }));
   fireEvent.click(within(second).getByRole("button", { name: "Dismiss" }));
   await waitFor(() => expect(posted).toHaveLength(2));
   expect(posted).toEqual([
     { path: "/api/sessions/lado/questions/5/answer", body: { text: "after the release" } },
     { path: "/api/sessions/lado/questions/7/dismiss", body: undefined },
   ]);
+});
+
+test("Dismiss takes what the human wrote in the field along as a comment, and says so", async () => {
+  const { posted } = serve([question(5)]);
+  open();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  const field = within(card).getByRole("textbox", { name: "Your answer" });
+  fireEvent.change(field, { target: { value: "  " } });
+  expect(within(card).getByRole("button", { name: "Dismiss" })).toBeTruthy();
+  fireEvent.change(field, { target: { value: "not now" } });
+  expect(within(card).queryByRole("button", { name: "Dismiss" })).toBeNull();
+  fireEvent.click(within(card).getByRole("button", { name: "Dismiss with comment" }));
+  await waitFor(() =>
+    expect(posted).toEqual([{ path: "/api/sessions/lado/questions/5/dismiss", body: { text: "not now" } }]),
+  );
+});
+
+test("an open question's card: choices, the field, then Send at the left and Dismiss at the right", async () => {
+  serve([question(5)]);
+  open();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  const form = card.querySelector("form.answer") as HTMLElement;
+  const field = within(form).getByRole("textbox", { name: "Your answer" }) as HTMLTextAreaElement;
+  expect(field.placeholder).toBe("Your answer or a comment: it goes with a choice, Send or Dismiss");
+  expect([...form.children].map((one) => one.className || one.tagName)).toEqual(["choices", "TEXTAREA", "answer-actions"]);
+  const choices = within(form.querySelector(".choices") as HTMLElement).getAllByRole("button");
+  expect(choices.map((one) => [one.textContent, one.className])).toEqual([
+    ["yes", "primary"],
+    ["later", "quiet"],
+  ]);
+  const actions = within(form.querySelector(".answer-actions") as HTMLElement).getAllByRole("button");
+  expect(actions.map((one) => [one.textContent, one.className])).toEqual([
+    ["Send", "quiet"],
+    ["Dismiss", "quiet subdued"],
+  ]);
+  expect((actions[0] as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(field, { target: { value: "after the release" } });
+  const send = within(form).getByRole("button", { name: "Send" }) as HTMLButtonElement;
+  expect([send.className, send.disabled]).toEqual(["primary", false]);
+});
+
+test("a dismissal's comment shows in the card, in its late line and in its line without the question", async () => {
+  serve([
+    question(5, { question_state: "dismissed", answered_by: 6 }),
+    message(6, "human", "w1", "Dismissed #5", { reply_to: 5, body: "not now:\nafter the release" }),
+    question(9, { question_state: "dismissed", answered_by: 11 }),
+    message(10, "supervisor", "human", "in between"),
+    message(11, "human", "w1", "Dismissed #9", { reply_to: 9, body: "wrong\nquestion" }),
+    message(7, "human", "w1", "Dismissed #4", { reply_to: 4, body: "asked twice" }),
+  ].map((one, i) => ({ ...one, created_at: `2026-10-03T12:0${i}:00.000Z` })));
+  open();
+  const log = await chat();
+  const [first] = await within(log).findAllByRole("article", { name: "Question from w1" });
+  const given = first.querySelector(".question-answer.dismissed") as HTMLElement;
+  expect(given.textContent).toContain("not now:");
+  expect(given.querySelectorAll("br")).toHaveLength(1);
+  const late = within(log).getByRole("article", { name: "You dismissed question #9" });
+  expect(late.querySelector(".late-text")?.textContent).toMatch(/dismissed question #9 ↑ · wrong question$/);
+  const alone = within(log).getByRole("article", { name: "You dismissed question #4" });
+  expect(alone.textContent).toContain("asked twice");
 });
 
 test("a choice takes what the human wrote in the field along as a comment", async () => {
@@ -391,7 +451,7 @@ test("a question with only choices has no field for an own answer", async () => 
   open();
   const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
   expect(within(card).queryByRole("textbox")).toBeNull();
-  expect(within(card).queryByRole("button", { name: "Submit" })).toBeNull();
+  expect(within(card).queryByRole("button", { name: "Send" })).toBeNull();
 });
 
 test.each([

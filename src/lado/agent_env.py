@@ -24,6 +24,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
+from typing import NamedTuple
 
 from lado import interpreter, tmux
 
@@ -35,7 +36,18 @@ STDERR_LINES = 5  # of the shell's stderr in an error
 
 # What a new terminal starts the shell with; its startup files do the rest.
 SHELL_BASE = ("HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "SSH_AUTH_SOCK")
+# The PATH a new terminal has before its shell starts (`base_path`). On macOS
+# /etc/profile's path_helper builds the system PATH from any start; on Linux what logs
+# the user in sets it: pam_env from /etc/environment, else the login default.
 SHELL_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+ENVIRONMENT_FILE = Path("/etc/environment")
+LINUX_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# WSL: told by these files, never by variables. Its init also puts the Windows PATH in a
+# new terminal's; agents do not get it (a Windows node.exe or git.exe found first breaks
+# tools, and lookups through /mnt/c are slow), only WSL's own libraries.
+WSL_INTEROP = Path("/proc/sys/fs/binfmt_misc/WSLInterop")
+PROC_VERSION = Path("/proc/version")
+WSL_LIB = Path("/usr/lib/wsl/lib")
 # Not taken from the source: the tmux server of the caller, if any, and the source shell's
 # own (an agent's working directory and depth are its window's).
 EXCLUDED = ("TMUX", "TMUX_PANE")
@@ -79,6 +91,64 @@ def timed() -> tuple[dict[str, str], float]:
     return env, time.monotonic() - began
 
 
+class BasePath(NamedTuple):
+    """The PATH the login shell starts from, where it came from (`path_helper`, the
+    environment file, `default`), why the default was taken, and whether this is WSL."""
+
+    path: str
+    source: str
+    reason: str
+    wsl: bool
+
+
+def base_path() -> BasePath:
+    if sys.platform == "darwin":
+        return BasePath(SHELL_PATH, "path_helper", "", False)
+    path, reason = _environment_path()
+    source = str(ENVIRONMENT_FILE) if path else "default"
+    path = path or LINUX_PATH
+    wsl = is_wsl()
+    if wsl and WSL_LIB.is_dir():
+        path = f"{path}:{WSL_LIB}"
+    return BasePath(path, source, reason, wsl)
+
+
+def _environment_path() -> tuple[str, str]:
+    """The PATH of ENVIRONMENT_FILE in pam_env's simple form (`[export ]KEY=value`, the
+    value maybe in double quotes, `#` comments, the last one wins), or "" and why not."""
+    try:
+        text = ENVIRONMENT_FILE.read_text(errors="replace")
+    except FileNotFoundError:
+        return "", f"no {ENVIRONMENT_FILE}"
+    except OSError as exc:
+        return "", f"cannot read {ENVIRONMENT_FILE}: {exc}"
+    path = ""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        if sep and key == "PATH":
+            if len(value) >= 2 and value[0] == value[-1] == '"':
+                value = value[1:-1]
+            path = value
+    if not path:
+        return "", f"no PATH in {ENVIRONMENT_FILE}"
+    # pam_env expands nothing here; LADO's choice: a `$` is taken as a mistake.
+    if "$" in path:
+        return "", f"a `$` in the PATH of {ENVIRONMENT_FILE}"
+    return path, ""
+
+
+def is_wsl() -> bool:
+    if WSL_INTEROP.exists():
+        return True
+    try:
+        return "microsoft" in PROC_VERSION.read_text(errors="replace").lower()
+    except OSError:
+        return False
+
+
 def dump_script() -> tuple[str, str, str]:
     """A shell command that prints the environment as JSON between two markers, and the
     markers. The command holds them only in halves, so a shell that echoes its commands
@@ -102,7 +172,7 @@ def from_shell() -> dict[str, str]:
     script, begin, end = dump_script()
     argv = [shell, "-ilc", script]
     base = {k: os.environ[k] for k in SHELL_BASE if k in os.environ}
-    base.update(PATH=SHELL_PATH, TERM="dumb")
+    base.update(PATH=base_path().path, TERM="dumb")
     command = shlex.join(argv)
     # stderr goes to a file: a program the startup files leave running in the background
     # may keep the shell's outputs open, so neither is read to its end.

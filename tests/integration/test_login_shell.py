@@ -2,12 +2,16 @@
 
 import json
 import os
+import re
 import shlex
+import shutil
+import sys
+from pathlib import Path
 
 import agent_helpers
 import pytest
 
-from lado import runtime, state
+from lado import agent_env, runtime, state
 
 pytestmark = pytest.mark.integration
 
@@ -67,3 +71,33 @@ def test_the_supervisor_and_a_spawned_worker_get_the_login_shells_environment(
     assert worker["FROM_SHELL"] == "yes"
     assert "ONLY_IN_CALLER" not in worker
     assert worker["LADO_AGENT"] == "worker"
+
+
+def _profile_sets_path() -> bool:
+    """Debian's /etc/profile sets PATH itself, from any start; Ubuntu's (CI's) does not."""
+    try:
+        text = Path("/etc/profile").read_text(errors="replace")
+    except OSError:
+        return False
+    return re.search(r"^\s*(export\s+)?PATH=", text, re.MULTILINE) is not None
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux only: its PATH starts from pam_env's"
+)
+def test_a_real_login_bash_on_linux_starts_from_etc_environment(tmp_path, monkeypatch):
+    if _profile_sets_path():
+        pytest.skip("this system's /etc/profile sets PATH itself, whatever the start")
+    bash = shutil.which("bash")
+    assert bash, "bash is on every Linux this runs on"
+    home = tmp_path / "home"
+    home.mkdir()
+    listed = tmp_path / "listed-bin"
+    listed.mkdir()
+    environment = tmp_path / "environment"
+    environment.write_text(f'PATH="{listed}:/usr/sbin:/usr/bin:/sbin:/bin"\n')
+    monkeypatch.setattr(agent_env, "ENVIRONMENT_FILE", environment)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("SHELL", bash)
+    monkeypatch.delenv("LADO_AGENT_ENV")
+    assert str(listed) in agent_env.from_shell()["PATH"].split(":")

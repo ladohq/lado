@@ -2277,7 +2277,7 @@
     "/api/sessions/{name}/questions/{question}/dismiss": {
       "post": {
         "summary": "Dismiss",
-        "description": "The human dismisses an agent's open question; the agent hears of it.",
+        "description": "The human dismisses an agent's open question, with an optional comment; the agent\nhears of it.",
         "operationId": "dismiss_api_sessions__name__questions__question__dismiss_post",
         "parameters": [
           {
@@ -2299,6 +2299,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Dismissal"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Given"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2636,6 +2653,23 @@
           "at"
         ],
         "title": "CommitInfo"
+      },
+      "Dismissal": {
+        "properties": {
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "title": "Dismissal"
       },
       "Finish": {
         "properties": {

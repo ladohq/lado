@@ -167,6 +167,8 @@ f9d3739) with `ValueError: not enough values to unpack (expected 2, got 0)` at
 does not wait, so the list is empty while the Team group has not rendered its buttons.
 Wanted: wait for the two buttons first (`expect(team.get_by_role("button")).to_have_count(2)`).
 Found: 2026-10-10, implement step of feature/session-start-tool.
+Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85): the same `ValueError` in
+`make check`; passed on both reruns.
 
 ### Launch vitest tests fail now and then under the load of a full run
 
@@ -713,6 +715,18 @@ Leads (session artifacts `codex-free-model-research`, `codex-free-model-research
   its timeout ("A Codex agent whose turn ends on a model or API error stays busy").
 Wanted: every live test passes reliably locally on one documented local setup.
 Found: 2026-10-10, design of feature/live-cloud-matrix (decision 4).
+Evidence from the verify of feature/live-cloud-matrix (c8aca85, 2026-10-11; the same on a
+`git archive` of main d7c5daa):
+- `test_an_agent_sees_the_image_the_human_attaches[kilo]` failed 3 of 3: kilo-auto/free does
+  not handle the image, w1 stays busy and never replies (the supervisor told the human "This
+  model cannot read images directly"), so the test times out instead of skipping.
+- `test_a_flow_run_moves_on_when_its_worker_reports[opencode]` failed 3 of 3, each time
+  otherwise: flow.txt holding other text than `OK`, `agent w1 is gone`, and once the run's
+  worktree still there after `finish_worker` (seen once; worth a look on its own).
+- Kilo's worker test (the supervisor finished w1 before the test checked it) and flow test
+  (`flow.txt` not committed) failed twice, then passed.
+Until this lands, the checker's live rule for merges should not hinge on the free-model
+tests (the lado-dev kit, after feature/live-cloud-matrix).
 
 ## styles.css writes 20 selectors twice; some may style two components
 
@@ -1817,6 +1831,8 @@ Again at the release of 0.33.0 (f9d3739): the terminal panel test, the same `Val
 passed on the first rerun.
 Again in CI on 99b22f3 (push of main, 2026-10-10, run 38046763270): the same `ValueError`;
 passed on the rerun. Third time: worth fixing before the next release.
+Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85, `make check`): the
+terminal panel test, the same `ValueError`; passed on both reruns.
 
 ## Flaky in CI: `test_stopping_a_session_tells_no_one_and_counts_what_it_dropped` on 3.10
 

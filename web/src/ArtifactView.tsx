@@ -1,7 +1,8 @@
 // An artifact's record as the human sees it (docs/design/ui.md, Artifacts): one component
 // for the artifact's page in the Artifacts tab and for the panel a chip opens. Its head
 // names the artifact, who wrote the record when and what changed, with Download and Copy
-// link; its body by media type (artifacts.kindOf): Markdown as the chat shows it (no raw
+// link, and Open in new tab for what the browser can show (the bare page of ArtifactTab, or
+// HTML's content address); its body, ArtifactBody, by media type (artifacts.kindOf): Markdown as the chat shows it (no raw
 // HTML), text and code with line numbers, an image (a click shows it at full size), HTML in
 // a frame sandboxed without the UI's origin, anything else as facts and a download. Text is
 // read up to TEXT_LIMIT bytes and no more. The content comes from the server under its
@@ -25,7 +26,7 @@ import {
   OpenTabIcon,
   ShieldIcon,
 } from "./icons";
-import { artifactPath } from "./paths";
+import { artifactPath, viewPath } from "./paths";
 
 // The bytes of a text the viewer reads at most; the rest is a download.
 export const TEXT_LIMIT = 1024 * 1024;
@@ -74,6 +75,9 @@ export function ArtifactView({
   const download = contentPath(session, record.id, true);
   const link = `${window.location.origin}${artifactPath(session, artifact.id, record.id === artifact.latest.id ? undefined : record.id)}`;
   const where = record.run ? `${record.state ?? ""}` : "session";
+  // The record shown alone: HTML at its content address, under the server's sandbox; the
+  // other kinds the browser shows in the bare page; `other` only downloads, as Download does.
+  const tab = kind === "html" ? contentPath(session, record.id) : viewPath(session, record.id);
   return (
     <div className="artifact-view">
       <header className="artifact-head">
@@ -83,8 +87,8 @@ export function ArtifactView({
             <FullName scope={artifact.scope} name={artifact.name} />
           </span>
           <span className="artifact-actions">
-            {kind === "html" && (
-              <a className="quiet" href={contentPath(session, record.id)} target="_blank" rel="noopener noreferrer">
+            {kind !== "other" && (
+              <a className="quiet" href={tab} target="_blank" rel="noopener noreferrer">
                 <OpenTabIcon />
                 Open in new tab
               </a>
@@ -135,13 +139,15 @@ export function ArtifactView({
         </p>
       )}
       <div className="artifact-body">
-        <Content session={session} artifact={artifact} record={record} kind={kind} />
+        <ArtifactBody session={session} artifact={artifact} record={record} />
       </div>
     </div>
   );
 }
 
-function Content({ session, artifact, record, kind }: { session: string; artifact: ArtifactInfo; record: RecordInfo; kind: Kind }) {
+// A record's content by its kind, the one renderer of the viewer and of the artifact's tab.
+export function ArtifactBody({ session, artifact, record }: { session: string; artifact: ArtifactInfo; record: RecordInfo }) {
+  const kind = kindOf(record.media_type);
   const src = contentPath(session, record.id);
   if (kind === "image") return <Picture src={src} alt={artifact.title ?? artifact.full_name} name={artifact.full_name} />;
   if (kind === "html") {

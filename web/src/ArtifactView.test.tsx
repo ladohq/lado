@@ -45,8 +45,39 @@ test("the head names the artifact, its title, author, change and the ways to tak
   expect(head.textContent).toContain("the panel is wider");
   expect(within(head).getByRole("link", { name: "Download" }).getAttribute("href")).toBe(`${CONTENT}?download=1`);
   expect(within(head).getByRole("button", { name: "Copy link" })).toBeTruthy();
-  expect(within(head).queryByRole("link", { name: "Open in new tab" })).toBeNull();
   await screen.findByRole("heading", { name: "Design" });
+});
+
+test.each([
+  ["text/markdown", "/view/lado/r1"],
+  ["text/x-python", "/view/lado/r1"],
+  ["image/png", "/view/lado/r1"],
+  ["text/html", CONTENT],
+])("Open in new tab for %s opens the record shown alone", (media_type, href) => {
+  serve("x");
+  show(artifact({}, { media_type }));
+  const open = within(screen.getByRole("banner")).getByRole("link", { name: "Open in new tab" });
+  expect(open.getAttribute("href")).toBe(href);
+  expect(open.getAttribute("target")).toBe("_blank");
+  expect(open.getAttribute("rel")).toBe("noopener noreferrer");
+});
+
+test("Open in new tab links the record shown, not the latest", () => {
+  serve("# Old");
+  const shown = artifact();
+  render(
+    <MemoryRouter>
+      <ArtifactView session="my app" artifact={{ ...shown, latest: { ...shown.latest, id: "r2" } }} record={shown.latest} latest={() => {}} />
+    </MemoryRouter>,
+  );
+  const open = within(screen.getByRole("banner")).getByRole("link", { name: "Open in new tab" });
+  expect(open.getAttribute("href")).toBe("/view/my%20app/r1");
+});
+
+test("a type the browser cannot show has no Open in new tab: Download does that", () => {
+  serve(null);
+  show(artifact({}, { media_type: "application/zip" }));
+  expect(screen.queryByRole("link", { name: "Open in new tab" })).toBeNull();
 });
 
 test("Copy link copies without the Clipboard API, and shows the link only when no copy works", async () => {

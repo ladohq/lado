@@ -12,6 +12,8 @@
   `GET /api/sessions/{name}/agents/{agent}/history` is gone.
 - On native Windows, `lado` says in one line that it runs only inside WSL2 instead of
   failing with a traceback (`No module named 'termios'`).
+- Open in new tab for Markdown, text and images too: the artifact opens alone, without
+  the UI around it.
 
 ## 0.33.0 (2026-10-10)
 

@@ -41,6 +41,10 @@ export const artifactPath = (session: string, id: string, record?: string) =>
     record ? `?${RECORD_PARAM}=${encodeURIComponent(record)}` : ""
   }`;
 
+// One record alone in a bare page outside the Shell (ArtifactTab): /view/<session>/<record>.
+export const viewPath = (session: string, record: string) =>
+  `/view/${encodeURIComponent(session)}/${encodeURIComponent(record)}`;
+
 // The address's parameter of the panel over a session's tab that shows a record (a chip
 // opens the one an attachment keeps, a row of the Artifacts tab the latest): ?view=<record id>.
 export const VIEW_PARAM = "view";

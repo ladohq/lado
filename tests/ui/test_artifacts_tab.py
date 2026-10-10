@@ -1,7 +1,8 @@
 """Artifacts in a browser (docs/design/ui.md, Artifacts): the session's Artifacts tab and an
 artifact's page, a gate's chip that opens the attached record in a panel and says when the
 artifact changed since, an HTML artifact that runs sandboxed (in its frame and in a tab of
-its own), and the panel on a phone's screen."""
+its own), any other record alone in a tab of its own in the UI's theme, and the panel on a
+phone's screen."""
 
 import base64
 import uuid
@@ -302,3 +303,56 @@ def test_the_link_to_copy_by_hand_stays_inside_the_window(
     assert box is not None
     assert box["x"] >= 8 and box["x"] + box["width"] <= width - 8, box
     shot(page, f"copy-field-{width}")
+
+
+def test_open_in_new_tab_shows_the_record_alone_in_the_uis_theme(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.get_by_role("button", name="Open artifact ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    with page.context.expect_page() as opened:
+        panel.get_by_role("link", name="Open in new tab").click()
+    tab = opened.value
+    record = artifacts.find(session, "ship/x/design")[1].id
+    expect(tab).to_have_url(f"{server['url']}/view/{session}/{record}")
+    expect(tab.get_by_role("heading", name="Design v1")).to_be_visible()
+    expect(tab).to_have_title("ship/x/design")
+    for chrome in [".rail", ".topbar", ".artifact-head", ".artifact-meta"]:
+        expect(tab.locator(chrome)).to_have_count(0)
+    expect(tab.get_by_text("supervisor")).to_have_count(0)
+    assert tab.evaluate("document.documentElement.dataset.theme") is None
+    light = tab.evaluate("getComputedStyle(document.body).backgroundColor")
+    shot(tab, "markdown-light")
+
+    # The UI's stored theme reaches the tab.
+    tab.evaluate("localStorage.setItem('lado.theme', 'dark')")
+    tab.reload()
+    expect(tab.get_by_role("heading", name="Design v1")).to_be_visible()
+    assert tab.evaluate("document.documentElement.dataset.theme") == "dark"
+    assert tab.evaluate("getComputedStyle(document.body).backgroundColor") not in (light, "")
+    shot(tab, "markdown-dark")
+
+    # An image alone, fitted to the tab.
+    image = artifacts.find(session, "ship/x/shot.png")[1].id
+    tab.goto(f"{server['url']}/view/{session}/{image}")
+    expect(tab.get_by_role("img", name="The login form")).to_be_visible()
+    expect(tab).to_have_title("ship/x/shot.png")
+    expect(tab.locator(".rail")).to_have_count(0)
+    shot(tab, "image-dark")
+
+    # Text with its line numbers over the tab's width, and a Markdown table in light.
+    tool = artifacts.write(session, "supervisor", "ship/x/tool.py", content="a = 1\nb = 2\n")
+    tab.goto(f"{server['url']}/view/{session}/{tool.record.id}")
+    code = tab.get_by_role("table", name="ship/x/tool.py")
+    expect(code.locator(".line-number")).to_have_text(["1", "2"])
+    shot(tab, "text-dark")
+    tab.evaluate("localStorage.setItem('lado.theme', 'light')")
+    table = artifacts.write(session, "supervisor", "review", content=WIDE)
+    tab.goto(f"{server['url']}/view/{session}/{table.record.id}")
+    expect(tab.get_by_role("columnheader")).to_have_text(["finding", "where", "what to do"])
+    expect(tab.locator(".artifact-head")).to_have_count(0)
+    shot(tab, "table-light")

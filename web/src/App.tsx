@@ -1,6 +1,8 @@
-// The UI's addresses (docs/design/ui.md, Structure), all inside the shell.
+// The UI's addresses (docs/design/ui.md, Structure): the Shell's pages, and bare pages
+// outside it (one record alone, /view/<session>/<record>).
 import { Navigate, Route, Routes } from "react-router";
 
+import { ArtifactTabPage } from "./ArtifactTab";
 import { Kits } from "./Kits";
 import { NeedsYou } from "./NeedsYou";
 import { Home, NotFound, Projects } from "./pages";
@@ -11,6 +13,7 @@ import { Shell } from "./Shell";
 export function App() {
   return (
     <Routes>
+      <Route path="view/:session/:record" element={<ArtifactTabPage />} />
       <Route element={<Shell />}>
         <Route index element={<Home />} />
         <Route path="needs-you" element={<NeedsYou />} />

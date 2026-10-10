@@ -396,6 +396,9 @@ Sessions for now. The UI's texts are in English.
   expanded terminals, so what drops from it (the copy notes, the Stop popover) shows over
   them, and under the narrow window's fixed terminals, the artifact panel and the
   lightbox. Its content sets its height (at least 52 px).
+- **Bare pages** outside the Shell: `/view/<session>/<record>`, one record alone
+  (Artifacts, The artifact's tab, below); no rail, top bar, feed or Needs-you title. A
+  later bare page follows this one.
 - **Sessions** (the Layout task, 2026-10-03): three columns under the top bar, each the
   window's height. The **list** on the left: "+" in its head (it opens the New session
   window, as Launch), the
@@ -1452,8 +1455,11 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   over it. An unknown id says "No artifact <id> in this session".
 - **The viewer** (`ArtifactView.tsx`, one component for the page and the panel): its head
   is the type's icon and the full name, Download (the content with `?download=1`), Copy
-  link (the page's address, with `?record=` when it is not the latest), for HTML Open in
-  new tab (the content address, under the server's sandbox); the title; the author, how
+  link (the page's address, with `?record=` when it is not the latest), Open in new tab
+  (`target="_blank"`, `rel="noopener noreferrer"`) for every kind but other: for Markdown,
+  text and an image the artifact's tab of the record shown (`paths.viewPath`, below), never
+  the latest, so the link never changes; for HTML the content address, under the server's
+  sandbox; for other none, as Download does what a tab would; the title; the author, how
   long ago, the run's state or "session", the media type and size; the record's summary.
   The body by `artifacts.kindOf`: Markdown (GFM: tables, task lists, strikethrough
   with `~~`, autolinks, footnotes; no raw HTML) as the chat's `Body` (Markdown in Look of
@@ -1467,7 +1473,25 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   server's 500) is a red block that says so and points to `lado doctor`; another failure
   is its message. A record that is not the artifact's latest by content says
   "<full name> changed since this record: <its summary>" with Open latest, in
-  `--action-ground`.
+  `--action-ground`. The body is `ArtifactBody`, the one renderer of the viewer and of the
+  artifact's tab.
+- **The artifact's tab** (`ArtifactTab.tsx`; decided with the human 2026-10-10, run
+  feature/artifact-new-tab, mockup artifact `feature/artifact-new-tab/mockup-artifact-tab.html`):
+  `/view/<session>/<record>`, a bare page outside the Shell (Structure) that shows only the
+  record's body by `ArtifactBody`: no rail, top bar, name line, author, summary or
+  buttons. It reads `GET …/records/{record}` once (a record never changes: no feed, no
+  polling), says "Loading…" meanwhile, and its `document.title` is the artifact's full
+  name. A refusal (an unknown record's 404, a 401, any other) shows the server's message
+  in `<p class="problem" role="alert">`; it registers no `onDenied`, the Shell stays the one
+  listener for a 401. Markdown in a reading column (at most 760 px, centred, padding
+  32 px 24 px, 16 px at a phone's width); text and code with their line numbers and Wrap
+  lines over the tab's width; an image centred and fitted to the tab, never upscaled, a
+  click shows it at full size; HTML: the page goes on with `location.replace` to the
+  content address, under the server's sandbox headers, with no frame inside a frame (the
+  viewer links HTML there directly: only an address typed by hand comes this way); other:
+  its facts and Download. Its theme is the UI's (`main.tsx` applies the stored one first),
+  on the UI's ground and ink. Its login is the browser's cookie, as for the session row's
+  Open in new tab; the Desktop stage decides for both (Session list, the row's menu).
 - **Chips** (`Attachments.tsx`): on a message (also one without a body: its summary and
   its chips), an agent's question, a gate card's note and a note in a run's history.
   A chip is the type's icon, the name and the size; in the chat the full name with its run

@@ -1803,6 +1803,14 @@ Wanted: e.g. `"Answer to #<id>: ..." (the rest, or the comment on a choice, in t
 "Dismissed #<id>" (the human's comment, if any, in the body)`.
 Found: 2026-10-10, review of feature/question-answer (Minor 1).
 
+## The artifact tab's image fit is not tested
+
+Size: S. Why here: a layout claim of the bare tab with no test.
+`tests/ui/test_artifacts_tab.py` opens an image in `/view/<session>/<record>` with a 1×1 PNG,
+so nothing checks that a large image is fitted to the tab (`object-fit: contain`, never upscaled).
+Wanted: a large image whose box stays within the viewport, and a small one not upscaled.
+Found: 2026-10-10, review of feature/artifact-new-tab (Minor 1).
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

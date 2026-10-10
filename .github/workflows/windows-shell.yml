@@ -32,6 +32,8 @@ on:
   # live tests: the free models are flaky). A red run mails the maintainers.
   schedule:
     - cron: '17 3 * * 1'
+  push:
+    branches: [lado/lado-windows/fix-windows-probe-weekly]
 
 permissions:
   contents: read

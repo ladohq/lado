@@ -974,7 +974,8 @@ export interface paths {
         put?: never;
         /**
          * Dismiss
-         * @description The human dismisses an agent's open question; the agent hears of it.
+         * @description The human dismisses an agent's open question, with an optional comment; the agent
+         *     hears of it.
          */
         post: operations["dismiss_api_sessions__name__questions__question__dismiss_post"];
         delete?: never;
@@ -1082,6 +1083,11 @@ export interface components {
             subject: string;
             /** At */
             at: string;
+        };
+        /** Dismissal */
+        Dismissal: {
+            /** Text */
+            text?: string | null;
         };
         /** Finish */
         Finish: {
@@ -3937,7 +3943,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Dismissal"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

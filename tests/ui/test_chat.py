@@ -116,6 +116,44 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     shot(page, "narrow")
 
 
+def test_the_question_and_gate_cards_buttons_are_one_height_in_light_and_dark(
+    page: Page, server, repo, shot
+):
+    """An open question's choices, Send and Dismiss, and an open gate's Approve and Reject:
+    one height (docs/design/ui.md, Questions); Dismiss says it takes the typed text along."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship today?", None, ["yes, today", "after the tag"])
+    page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    card = chat.get_by_role("article", name="Question from supervisor")
+    gate = chat.get_by_role("article", name="Gate #1", exact=True)
+    expect(card.get_by_role("button", name="Dismiss", exact=True)).to_be_visible()
+    expect(gate.get_by_role("button")).not_to_have_count(0)
+    field = card.get_by_role("textbox", name="Your answer")
+
+    def heights() -> list:
+        buttons = (
+            card.locator("form.answer button").all() + gate.locator("form.answer button").all()
+        )
+        return [round(button.bounding_box()["height"]) for button in buttons]
+
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        field.fill("")
+        assert set(heights()) == {32}, heights()
+        card.scroll_into_view_if_needed()
+        shot(page, f"{theme}-blank")
+        field.fill("on the dark theme the text blends in")
+        expect(card.get_by_role("button", name="Dismiss with comment")).to_be_visible()
+        expect(card.get_by_role("button", name="Send")).to_be_enabled()
+        assert set(heights()) == {32}, heights()
+        card.scroll_into_view_if_needed()
+        shot(page, f"{theme}-typed")
+    page.emulate_media(color_scheme="light")
+
+
 REPORT = """\
 ## Report
 

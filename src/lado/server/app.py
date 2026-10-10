@@ -46,6 +46,7 @@ from lado.server.models import (
     AgentInfo,
     Answer,
     ArtifactInfo,
+    Dismissal,
     Finish,
     FinishPreviewInfo,
     FolderInfo,
@@ -865,10 +866,17 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
     @app.post(
         "/api/sessions/{name}/questions/{question}/dismiss", dependencies=[Depends(guard.changes)]
     )
-    def dismiss(name: str, question: int, has_db: bool = Depends(database)) -> Sent:
-        """The human dismisses an agent's open question; the agent hears of it."""
+    def dismiss(
+        name: str,
+        question: int,
+        given: Dismissal | None = None,
+        has_db: bool = Depends(database),
+    ) -> Sent:
+        """The human dismisses an agent's open question, with an optional comment; the agent
+        hears of it."""
         known(name, has_db)
-        return Sent(result=core(runtime.dismiss_question, name, question))
+        text = given.text if given else None
+        return Sent(result=core(runtime.dismiss_question, name, question, text))
 
     @app.websocket("/api/sessions/{name}/agents/{agent}/terminal")
     async def terminal_socket(ws: WebSocket, name: str, agent: str, mode: str = terminal.VIEW):

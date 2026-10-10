@@ -634,6 +634,25 @@ Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on th
 
 # P2: when convenient
 
+## UI: buttons have two unrelated sizes
+
+Size: M. Why here: looks only; every place that mixes the two classes shows two heights.
+`.primary` is 32 px, radius 6; `.quiet` is 28 px, 13 px font (`web/src/styles.css`). Only
+the question and gate cards share one scale, by a rule scoped to `form.answer`
+(feature/question-answer); dialogs, toolbars and rows elsewhere still mix them.
+Wanted: one button scale for the whole UI (docs/design/ui.md, Look), applied in one pass,
+and the scoped `.answer .primary, .answer .quiet` rule dropped.
+Found: 2026-10-10, design of feature/question-answer.
+
+## Mockups: a dark sample in a light page is unreadable when `color` is inherited
+
+Size: S. Why here: only mockup authors meet it; it cost one round of review.
+In LADO's HTML viewer the frame follows the system theme; a mockup that forces
+`color-scheme: dark` on a block without setting `color` there keeps the light page's ink.
+Wanted: one line in the design guidance for mockups (docs/design/ui.md or the lado-dev
+kit): set `color` together with `color-scheme`.
+Found: 2026-10-10, design of feature/question-answer.
+
 ## `lado answer` and the popup answer only flow gates, not an agent's question
 
 Size: M. Why here: friction; the UI answers questions, but a human in the terminal expects

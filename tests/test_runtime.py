@@ -3063,6 +3063,33 @@ def test_the_human_dismisses_a_question_and_the_agent_hears_of_it(repo, fake_tmu
     assert fake_tmux[-1] == ("send_text", "s", "w1", f"[from human] Dismissed #{question.id}")
 
 
+def test_a_dismissal_carries_the_humans_comment_as_its_body(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.dismiss_question("s", question.id, "  not now:\nask after the release  ")
+    asked, dismissal = state.list_messages("s")
+    assert (dismissal.summary, dismissal.body) == (
+        f"Dismissed #{question.id}",
+        "not now:\nask after the release",
+    )
+    assert (dismissal.reply_to, dismissal.choice) == (question.id, None)
+    assert (asked.question_state, asked.answered_by) == (state.DISMISSED, dismissal.id)
+    assert fake_tmux[-1][3].startswith(f"[from human] Dismissed #{question.id} (#{dismissal.id}, ")
+
+
+def test_a_blank_comment_leaves_the_dismissal_without_a_body(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.dismiss_question("s", question.id, " \n ")
+    assert state.list_messages("s")[-1].body == ""
+
+
+def test_a_too_long_comment_is_refused_and_the_question_stays_open(repo, fake_tmux):
+    question = _asked(repo)
+    long = "x" * (runtime.MAX_MESSAGE + 1)
+    with pytest.raises(runtime.LadoError, match=f"the limit is {runtime.MAX_MESSAGE}"):
+        runtime.dismiss_question("s", question.id, long)
+    assert [m.question_state for m in state.list_messages("s")] == [state.OPEN_QUESTION]
+
+
 @pytest.mark.parametrize(
     ("choices", "free", "choice", "text", "reason"),
     [

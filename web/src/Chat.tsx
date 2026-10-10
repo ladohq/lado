@@ -486,7 +486,8 @@ function LateReply({ reply, question, go }: { reply: MessageInfo; question?: Mes
       <MiniAvatar who={HUMAN} />
       <span className="late-text">
         <span className="run-actor">You</span> {verb} {link}
-        {"text" in said && ` · ${[said.text, said.comment].filter(Boolean).join(" · ").replace(/\s+/g, " ")}`}
+        {("text" in said || said.comment) &&
+          ` · ${["text" in said ? said.text : "", said.comment].filter(Boolean).join(" · ").replace(/\s+/g, " ")}`}
       </span>
       <time dateTime={reply.created_at}>{clock(reply.created_at)}</time>
     </article>
@@ -503,7 +504,8 @@ function DayDivider({ at }: { at: string }) {
   );
 }
 
-// The human's reply to a question not in the window: a dismissal, one quiet line; an answer,
+// The human's reply to a question not in the window: a dismissal, one quiet line with the
+// comment under it; an answer,
 // the human's row with the answer (the choice, else the own words) and the comment under a
 // choice.
 function Answer({
@@ -520,8 +522,13 @@ function Answer({
   const asked = message.reply_to ?? 0;
   if ("dismissed" in reply) {
     return (
-      <article className="chat-quiet" id={messageAnchor(message.id)} aria-label={`You dismissed question #${asked}`}>
+      <article
+        className={`chat-quiet${reply.comment ? " commented" : ""}`}
+        id={messageAnchor(message.id)}
+        aria-label={`You dismissed question #${asked}`}
+      >
         <span>You dismissed question #{asked}</span> <time dateTime={message.created_at}>{clock(message.created_at)}</time>
+        {reply.comment && <Body text={reply.comment} breaks />}
       </article>
     );
   }

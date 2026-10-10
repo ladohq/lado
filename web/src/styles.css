@@ -2508,6 +2508,16 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* A dismissal whose question is not in the window, with the human's comment under it. */
+.chat-quiet.commented {
+  flex-wrap: wrap;
+}
+
+.chat-quiet.commented .chat-body {
+  flex-basis: 100%;
+  color: var(--ink);
+}
+
 /* The comment of the human's answer to a gate, under the move it made. */
 .run-comment {
   margin: 2px 0 4px 26px;
@@ -3043,11 +3053,32 @@ h3 {
   gap: 8px;
 }
 
+/* The question and gate cards' buttons: one height, the main action blue, the rest quiet;
+   only here (a UI-wide button scale: BACKLOG.md). */
+.answer .primary,
+.answer .quiet {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Dismiss: a button, but muted, at the row's right. */
+.quiet.subdued {
+  border-color: color-mix(in srgb, var(--muted) 45%, transparent);
+  background: transparent;
+  color: var(--muted);
+}
+
+.answer-actions .subdued {
+  margin-left: auto;
+}
+
 .answer textarea {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--panel);
   color: var(--ink);
   font: inherit;

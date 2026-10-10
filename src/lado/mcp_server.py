@@ -165,7 +165,8 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         are shown with it. `choices` (at most 6, each one short line) are buttons; with
         `free_answer` the human may also answer in their own words. It does not wait: the
         answer, or that the human dismissed the question, comes as a message from human:
-        "Answer to #<id>: ..." or "Dismissed #<id>".
+        "Answer to #<id>: ..." or "Dismissed #<id>", either with the human's comment as its
+        body when they wrote one.
         """
         with _reasons():
             return runtime.ask_human(

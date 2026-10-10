@@ -579,6 +579,11 @@ itself in 2 of 2 runs: LADO's lead instructions come after the `passive` role an
 and finish, and the model follows them. The test needs a supervisor that cannot do that (deny
 its `finish_worker` or git) or a check that tolerates a finished w1; also behind "Flaky: Kilo
 live flow test, the passive supervisor acts on its own".
+Another lead, 2026-10-11 (round 2 of that research): through a LiteLLM Responses→Chat bridge
+to the same local qwen3-coder:30b, the worker test passed 2 of 3 and the flow test 2 of 3;
+Ollama's own `/v1/responses` (stateless, no custom tool-call replay) may be part of the
+failures. Also seen there: a `/responses` server that refuses Codex's `namespace` tool type
+(422, OVHcloud), and a non-retryable 4xx makes Codex spend all its `request_max_retries`.
 Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
 instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
 stayed busy.

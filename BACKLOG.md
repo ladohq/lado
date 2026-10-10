@@ -619,6 +619,17 @@ Wanted: find which message is still queued (test race or LADO's), then wait for 
 be empty before the finish, or fix the race in LADO.
 Found: 2026-10-10, review of fix/windows-probe (Windows probe runs on GitHub).
 
+## Live: a Codex supervisor commits on main by itself
+
+Size: S. Why here: a live test fails twice of three on it.
+`test_a_flow_run_moves_on_when_its_worker_reports[codex]` on `qwen3-coder:30b`: the
+supervisor ignores "wait" and commits its own flow.txt on the test repo's main, so the run's
+`merge --ff-only` fails (`fatal: Not possible to fast-forward, aborting.`). The evidence
+folder holds many such runs (2026-10-09/10).
+Wanted: a supervisor role in the live kit that the local model follows, or a test that does
+not depend on main staying untouched.
+Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
+
 # P2: when convenient
 
 ## `lado answer` and the popup answer only flow gates, not an agent's question
@@ -1577,6 +1588,9 @@ Claude Code proves that an attached image reaches the model.
 Wanted: a free OpenCode model with image input for that test (e.g. a separate
 `LADO_LIVE_OPENCODE_IMAGE_MODEL`), or the gap named in AGENTS.md (Testing, Live e2e).
 Found: 2026-10-08, verify of feature/chat-attachments.
+In the verify of feature/terminal-scroll-hint (7f91295, 2026-10-10) it timed out twice
+(180 s, w1 looping on read_messages) before it skipped on the third run.
+Wanted too: detect that the model takes no images before the test, so it skips every time.
 
 ## A traceback in hooks.log when the tmux server is gone at an agent's end
 
@@ -1716,6 +1730,25 @@ upstream against that upstream. The supervisor deleted the remote and local bran
 Wanted: the run's end checks "merged" against the repo's current branch as `work_state` does and
 deletes with that knowledge (e.g. `git branch -D` after its own check), or says the branch is kept and why.
 Found: 2026-10-10, merge step of fix/windows-probe (session lado-windows).
+
+## Live: free models loop on read_messages and miss the report
+
+Size: S. Why here: flaky live tests; each passes on a rerun.
+In the verify of feature/terminal-scroll-hint (7f91295)
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` timed out after 240 s with w1
+busy, and in `test_an_agent_sees_the_image_the_human_attaches[opencode]` w1 called
+`lado_read_messages` again and again and never replied.
+Wanted: a steadier free model, or a retry policy for the live suite.
+Found: 2026-10-10, verify of feature/terminal-scroll-hint.
+
+## The terminal keeps its colours when the theme changes while it is open
+
+Size: S. Why here: a visible glitch in the UI, no lost work.
+`web/src/Terminals.tsx` reads xterm's `theme.background/foreground` once, when the terminal
+is made (`getComputedStyle`), while `--term-ground` is `light-dark(...)`: after the OS theme
+changes, the xterm canvas keeps the old shade and the rest of `.term-screen` takes the new one.
+Wanted: update `term.options.theme` when `prefers-color-scheme` or `data-theme` changes.
+Found: 2026-10-10, review of feature/terminal-scroll-hint.
 
 # P3: maybe never
 

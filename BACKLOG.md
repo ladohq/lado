@@ -573,6 +573,12 @@ busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
 Again 3 of 3 on 2026-10-10 (verify of feature/linux-agents-path, e1dd5cc), in new ways: a
 window `worker` left after `finish_worker`, the flow branch not fast-forwardable onto main,
 flow.txt missing, or flow.txt holding prose instead of `OK`.
+Likely cause, found 2026-10-11 (research of a free cloud model for Codex): on Kilo's
+free gateway (nemotron) the passive supervisor merged w1's branch and called `finish_worker`
+itself in 2 of 2 runs: LADO's lead instructions come after the `passive` role and say to merge
+and finish, and the model follows them. The test needs a supervisor that cannot do that (deny
+its `finish_worker` or git) or a check that tolerates a finished w1; also behind "Flaky: Kilo
+live flow test, the passive supervisor acts on its own".
 Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
 instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
 stayed busy.
@@ -1837,6 +1843,15 @@ Size: S. Why here: a layout claim of the bare tab with no test.
 so nothing checks that a large image is fitted to the tab (`object-fit: contain`, never upscaled).
 Wanted: a large image whose box stays within the viewport, and a small one not upscaled.
 Found: 2026-10-10, review of feature/artifact-new-tab (Minor 1).
+
+## Live-test evidence of a Codex agent is not kept: symlinks in its CODEX_HOME
+
+Size: S. Why here: a failed Codex live test loses the evidence that explains it.
+When a Codex live test fails, `agent_helpers.keep_evidence` copies each agent's config folder
+(Codex's home) and fails on the `.tmp/plugins` symlinks there; the report says only "could not
+keep it in …".
+Wanted: the copy keeps links as links or skips what it cannot copy, naming it, and keeps the rest.
+Found: 2026-10-11, research of a free cloud model for Codex (session lado-windows).
 
 # P3: maybe never
 

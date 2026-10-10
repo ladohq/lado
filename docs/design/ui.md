@@ -784,10 +784,16 @@ Built in the chat task (2026-10-03):
     viewer's 15 px step alike: headings h1–h4 in steps, h1 with a rule under it; lists
     indented, task items without bullets; inline `code` on `--raised` in `--mono`; quotes
     muted with a `--line` bar; `del` muted; links `--action`. A table sits in a
-    `.md-table` frame (`--line`, radius 6) that scrolls sideways when the table is wider,
-    so neither the chat nor the panel ever does: the table `max-content` wide and at least
-    the frame's, the head row on `--raised` in 600 without wrapping, cells 6×10 px whose
-    words are never split letter by letter, each column aligned as its `:---:` says.
+    `.md-table` frame (`--line`, radius 6) and fills its width (task fix/md-tables-wrap,
+    2026-10-10: a short table spans the frame too, so its border and the frame's meet):
+    its cells, the head row too, wrap by words, and a token with no place to break (a
+    path, a URL, a hash) breaks anywhere (`overflow-wrap: anywhere`), so a table of a
+    few columns of prose fits the column. Each column keeps a minimum, 7em with its
+    padding but at most a third of the frame (`min(7em, 33cqi)`, the frame a size
+    container), so three columns fit also in a phone's chat; a table whose columns cannot
+    fit at that minimum scrolls sideways in its frame, so neither the chat nor the panel
+    ever does. The head row on `--raised` in 600, cells 6×10 px, each column aligned as
+    its `:---:` says.
   - An **agent's message to the human**: the summary in Inter 600, the whole body under
     it (Markdown: agents wrap lines by width, so no `breaks`). The summary is not drawn
     when it only repeats the body (`repeatsSummary`, only for agents' messages): the

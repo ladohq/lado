@@ -216,39 +216,87 @@ def test_on_a_phone_the_panel_takes_the_screen(page: Page, server, repo, tmp_pat
     )
 
 
-LONG_NAME = "very-long-file-name-" * 3
+LONG_NAME = "VeryLongFileName" * 4  # no hyphen, no space: no place to break but `anywhere`
 TODO = "rename it and check it again " * 4
-WIDE = "# Review\n\n| finding | where | what to do |\n| :--- | :---: | ---: |\n" + "".join(
+# A few columns of prose and an unbroken path: it fits its frame, its cells wrapping.
+PROSE = "| finding | where | what to do |\n| :--- | :---: | ---: |\n" + "".join(
     f"| finding {i} | web/src/{LONG_NAME}{i}.tsx | {TODO} |\n" for i in range(3)
 )
+# More columns than fit even wrapped: it scrolls in its own frame.
+MANY = (
+    "| " + " | ".join(f"column {i}" for i in range(14)) + " |\n"
+    "|" + " --- |" * 14 + "\n"
+    "| " + " | ".join(f"value of column {i}" for i in range(14)) + " |\n"
+)
+TABLES = f"# Review\n\n{PROSE}\nAnd the matrix:\n\n{MANY}"
+
+# Per .md-table frame in `root`: its widths, the widest word of its cells against the
+# cell's own width (a word that sticks out was not wrapped), and each element between the
+# frame and `stop` that scrolls sideways (none may: only the frame does).
+MEASURE_TABLES = """(root, stop) => [...root.querySelectorAll(".md-table")].map((frame) => {
+  const sideways = [];
+  for (let one = frame.parentElement; one && one !== document.body; one = one.parentElement) {
+    if (one.scrollWidth > one.clientWidth) sideways.push(one.className || one.tagName);
+    if (one.matches(stop)) break;
+  }
+  const sticking = [...frame.querySelectorAll("th, td")].filter((cell) => {
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    return [...range.getClientRects()].some(
+      (rect) => rect.right > cell.getBoundingClientRect().right + 0.5
+    );
+  }).length;
+  const head = getComputedStyle(frame.querySelector("thead th"));
+  // The narrowest column's width, padding included, in ems of its cells.
+  const narrowest = Math.min(...[...frame.querySelectorAll("thead th")].map(
+    (cell) => cell.getBoundingClientRect().width / parseFloat(getComputedStyle(cell).fontSize)
+  ));
+  return {
+    narrowest,
+    scroll: frame.scrollWidth,
+    client: frame.clientWidth,
+    sideways,
+    sticking,
+    headWrap: head.whiteSpace,
+    headLook: [head.backgroundColor, head.fontWeight, head.padding, head.borderBottomWidth],
+  };
+})"""
 
 
-def test_a_wide_table_scrolls_in_its_frame_and_the_panel_does_not(
-    page: Page, server, repo, tmp_path, shot
+@pytest.mark.parametrize("width", [1280, 390])
+def test_a_table_wraps_its_cells_and_one_too_wide_scrolls_in_its_frame(
+    page: Page, server, repo, tmp_path, shot, width
 ):
     session = designed_session(repo, tmp_path)
-    artifacts.write(session, "supervisor", "ship/x/design", content=WIDE, summary="a table")
+    artifacts.write(session, "supervisor", "ship/x/design", content=TABLES, summary="tables")
+    page.set_viewport_size({"width": width, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     page.get_by_role("button", name="Open artifact ship/x/design").click()
     panel = page.get_by_role("dialog", name="Artifact ship/x/design")
     panel.get_by_role("button", name="Open latest").click()
-    frame = panel.locator(".md-table")
-    expect(frame.get_by_role("columnheader")).to_have_text(["finding", "where", "what to do"])
-    expect(frame.get_by_role("row")).to_have_count(4)
-    widths = frame.evaluate(
-        """(frame) => {
-          const sideways = [];
-          for (let one = frame.parentElement; one; one = one.parentElement) {
-            if (one.scrollWidth > one.clientWidth) sideways.push(one.className || one.tagName);
-            if (one.getAttribute("role") === "dialog") break;
-          }
-          return { scroll: frame.scrollWidth, client: frame.clientWidth, sideways };
-        }"""
+    frames = panel.locator(".md-table")
+    expect(frames.first.get_by_role("columnheader")).to_have_text(
+        ["finding", "where", "what to do"]
     )
-    assert widths["scroll"] > widths["client"], widths  # the table scrolls in its frame
-    assert widths["sideways"] == [], widths  # and nothing around it does
-    shot(page, "wide-table")
+    expect(frames.first.get_by_role("row")).to_have_count(4)
+    prose, many = panel.evaluate(MEASURE_TABLES, "[role=dialog]")
+    assert prose["scroll"] <= prose["client"], prose  # it fits: no sideways scroll
+    assert prose["sticking"] == 0, prose  # every cell's text, the path too, wraps inside it
+    assert prose["headWrap"] != "nowrap", prose  # the head wraps by words too
+    background, weight, padding, border = prose["headLook"]  # and keeps its look
+    assert (weight, padding, border) == ("600", "6px 10px", "1px"), prose
+    assert background != "rgba(0, 0, 0, 0)", prose
+    assert many["scroll"] > many["client"], many  # too many columns: it scrolls in its frame,
+    assert many["narrowest"] >= 6.95, many  # each column kept at its minimum, 7em
+    assert prose["sideways"] == many["sideways"] == [], (prose, many)  # and nothing around
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        frames.first.scroll_into_view_if_needed()
+        shot(page, f"{theme}-prose")
+        frames.last.scroll_into_view_if_needed()
+        shot(page, f"{theme}-many")
+    page.emulate_media(color_scheme="light")
 
 
 def test_copy_link_copies_without_the_clipboard_api(page: Page, server, repo, tmp_path, shot):

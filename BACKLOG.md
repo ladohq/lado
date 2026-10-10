@@ -570,6 +570,9 @@ busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
 Again 3 of 3 on 2026-10-10 (verify of feature/linux-agents-path, e1dd5cc), in new ways: a
 window `worker` left after `finish_worker`, the flow branch not fast-forwardable onto main,
 flow.txt missing, or flow.txt holding prose instead of `OK`.
+Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
+instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
+stayed busy.
 
 ## Kilo live image test fails 3 of 3
 
@@ -621,6 +624,10 @@ folder holds many such runs (2026-10-09/10).
 Wanted: a supervisor role in the live kit that the local model follows, or a test that does
 not depend on main staying untouched.
 Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
+Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): `fatal: Not possible
+to fast-forward`, `untracked working tree files would be overwritten by merge`, and once the
+supervisor spawned an extra `worker` whose Codex (not on the test's model) failed with
+`input[0]: unknown input item type: "additional_tools"`.
 
 ## OpenCode live image test fails 3 of 3
 
@@ -1017,6 +1024,10 @@ same way: `test_worker_does_a_task_reports_and_gets_a_message[kilo]` 2 of 3 and 
 is gone"); and the Codex supervisor (qwen3-coder) did the flow step's work itself in
 `test_a_flow_run_moves_on_when_its_worker_reports[codex]` (2 of 3): it committed flow.txt
 on main and called flow_advance, so the run's branch could not fast-forward.
+Again on 2026-10-10 (verify of feature/question-answer, d5f95c2):
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once: the passive
+supervisor called `finish_worker(name="w1")`, then with `discard=true` after w1's report, so
+the line sent while w1 was busy was `dropped`; the rerun passed.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
@@ -1774,6 +1785,16 @@ is made (`getComputedStyle`), while `--term-ground` is `light-dark(...)`: after 
 changes, the xterm canvas keeps the old shade and the rest of `.term-screen` takes the new one.
 Wanted: update `term.options.theme` when `prefers-color-scheme` or `data-theme` changes.
 Found: 2026-10-10, review of feature/terminal-scroll-hint.
+
+## ask_human's doc calls a multi-line answer's body a comment
+
+Size: S. Why here: agents read the tool's doc as the contract.
+`src/lado/mcp_server.py` (`ask_human`) says `"Answer to #<id>: ..." or "Dismissed #<id>",
+either with the human's comment as its body when they wrote one`; for an own answer of
+several lines the body is the rest of the answer (`runtime._human_text`), not a comment.
+Wanted: e.g. `"Answer to #<id>: ..." (the rest, or the comment on a choice, in the body) or
+"Dismissed #<id>" (the human's comment, if any, in the body)`.
+Found: 2026-10-10, review of feature/question-answer (Minor 1).
 
 # P3: maybe never
 

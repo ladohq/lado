@@ -321,12 +321,8 @@ def test_no_live_test_without_live(steps, tmp_path):
     assert "test-live" not in (tmp_path / "probe" / "ran").read_text()
 
 
-def test_live_installs_the_pinned_clis_and_runs_opencode_required_kilo_recorded(
-    steps, tmp_path
-):
-    rows = run_wsl_probe(
-        steps, tmp_path, tests="false", live="true", OPENCODE_VERSION="1.18.35"
-    )
+def test_live_installs_the_pinned_clis_and_runs_opencode_required_kilo_recorded(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true", OPENCODE_VERSION="1.18.35")
     assert rows["wsl live-opencode"][1:] == ["0", "required", "wsl-live-opencode.log"]
     assert rows["wsl live-kilo"][1:] == ["0", "expected", "wsl-live-kilo.log"]
     ran = (tmp_path / "probe" / "ran").read_text().splitlines()
@@ -386,4 +382,3 @@ def test_a_failing_live_test_keeps_its_code_and_its_evidence(steps, tmp_path):
     assert kept.read_text() == "w1 never reported\n"
     # A passing one keeps none.
     assert not (tmp_path / "probe" / "live-evidence-kilo").exists()
-

@@ -595,7 +595,9 @@ live flow test, the passive supervisor acts on its own".
 Wanted: find whether the free model ignores "call read_messages" (then a stronger model for
 Kilo's live tests, or a notice it follows) or LADO's notice reaches Kilo differently, and make
 the test pass reliably.
-Found: 2026-10-10, release of 0.33.0.
+Found: 2026-10-10, release of 0.33.0. Again in WSL2 Ubuntu on GitHub's windows-latest (Windows
+probe, run 38029389159, Kilo 7.8.8): the same `flow.txt` error; w1's step stayed `delivered`,
+it wrote flow.txt without committing it and advanced (the run ended with uncommitted changes).
 
 ## Agents' PATH on Ubuntu is not a new terminal's
 

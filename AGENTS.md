@@ -99,23 +99,25 @@ Live tests are not in CI: run them locally.
 
 A Windows probe, not CI: the `Windows probe` workflow (`.github/workflows/windows-shell.yml`)
 runs only when started, `gh workflow run windows-shell.yml --ref <branch> -f
-runner=windows-latest [-f shell=true]` (`-f wsl=false`: native only; `-f minutes=N`, 120 by
-default, at most 360, setup included). It installs LADO from the checkout on Windows itself
-(`native.log`: Python, `lado --version`, `lado doctor`; expected to fail, only recorded) and,
-with `wsl`, in WSL2 Ubuntu 24.04 as the user `lado` (the repo at the run's commit in
-`~/lado`), runs each check in its login shell: `uname -m`, `tmux -V`, uv's install, its `PATH`
-and the agents' (`wsl-path.log`, `wsl-agents-path.log`), `uv sync`, `lado --version`, `lado
-doctor` (recorded only: no agent CLI there), `make test`, `make test-integration` (with `-f
-tests=false` both are `skipped`, neither passed nor failed). The job is red when one of the
-WSL checks but doctor fails. The logs are the artifact
-`windows-probe-<runner>` (`gh run download <id>`), and the job's summary has each check's exit
-code, the PATH lines and the end of each failing log (`gh run view <id>`, `--log` for all).
-With `shell`, after the upload, an `ssh ...@uptermd.upterm.dev` line (the step's log and a
-notice) opens a shell in WSL as `lado` (upterm, a pinned release checked by its sha256; the
-public tmate servers are gone from DNS), only for the GitHub user who started it,
-by the SSH keys on their GitHub account; `touch ~/continue` ends it, and everything is wiped
-when the job ends. The quick shell, without the ~20 minutes of make checks: `-f shell=true -f
-tests=false`.
+runner=windows-latest` (`-f wsl=false`: native only; `-f tests=false`: no `make test` and
+`make test-integration`, both then `skipped`, neither passed nor failed; `-f live=true`: the
+live tests too; `-f minutes=N`, 120 by default, at most 360, setup included). It installs LADO
+from the checkout on Windows itself (`native.log`: Python, `lado --version`, `lado doctor`;
+expected to fail, only recorded) and, with `wsl`, in WSL2 Ubuntu 24.04 as the user `lado`
+(the repo at the run's commit in `~/lado`), runs each check in its login shell: `uname -m`,
+`tmux -V`, uv's install, its `PATH` and the agents' (`wsl-path.log`, `wsl-agents-path.log`),
+`uv sync`, `lado --version`, `lado doctor` (recorded only: no agent CLI there), `make test`,
+`make test-integration`. With `live`, then: Node from Ubuntu, OpenCode and Kilo from npm at
+their tested versions into `~/.local/bin`, and the live tests of each but the image one (the
+free models take no image input) on its free model, OpenCode's required
+(`wsl-live-opencode.log`), Kilo's only recorded (`wsl-live-kilo.log`); a live check passes
+only when a test passed and none skipped, and a failing one's evidence folder is in the
+report as `live-evidence-<provider>`. Never Claude Code or Codex. The quick live-only run:
+`-f tests=false -f live=true`. The job is red when one of the required WSL checks fails. The
+logs are the artifact `windows-probe-<runner>` (`gh run download <id>`), and the job's
+summary has each check's exit code, the PATH lines and the end of each failing log (`gh run
+view <id>`, `--log` for all). No shell into the runner: the public tmate servers are gone
+from DNS.
 `windows-11-arm` runs only with `-f wsl=false`: setup-wsl's Ubuntu image is amd64 only.
 
 Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the

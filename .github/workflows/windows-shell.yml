@@ -1,5 +1,5 @@
 # A Windows runner, with WSL2 Ubuntu by default, that runs LADO's checks there and uploads
-# the logs; optionally an SSH shell into WSL Ubuntu (upterm) for debugging by hand.
+# the logs; optionally LADO's live tests there, with free models.
 # Not CI: it runs only when started (AGENTS.md, Commands).
 name: Windows probe
 
@@ -15,14 +15,14 @@ on:
         description: Set up WSL2 with Ubuntu 24.04 and run the checks there
         type: boolean
         default: true
-      shell:
-        description: After the report, an SSH shell into WSL Ubuntu (upterm; needs wsl)
-        type: boolean
-        default: false
       tests:
-        description: Run make test and make test-integration in WSL (false reaches the shell sooner)
+        description: Run make test and make test-integration in WSL
         type: boolean
         default: true
+      live:
+        description: Run the live tests in WSL with OpenCode and Kilo on free models (needs wsl)
+        type: boolean
+        default: false
       minutes:
         description: Job length in minutes, setup included (at most 360)
         type: number
@@ -35,8 +35,8 @@ jobs:
   probe:
     runs-on: ${{ inputs.runner }}
     # Started through the API (gh workflow run -f minutes=N) an input is a string, which
-    # timeout-minutes refuses; so are wsl and shell, whose 'false' an `if` on the bare input
-    # takes as true: each `if` compares them with both forms (strings compare
+    # timeout-minutes refuses; so are the booleans, whose 'false' an `if` on the bare input
+    # takes as true: each expression compares them with both forms (strings compare
     # case-insensitively).
     timeout-minutes: ${{ fromJSON(inputs.minutes) }}
     # Windows' default; said here so that actionlint does not read the scripts as bash.
@@ -69,10 +69,10 @@ jobs:
           Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false"
           exit 1
 
-      - name: No shell without WSL
-        if: (inputs.shell == true || inputs.shell == 'true') && !(inputs.wsl == true || inputs.wsl == 'true')
+      - name: No live agents without WSL
+        if: (inputs.live == true || inputs.live == 'true') && !(inputs.wsl == true || inputs.wsl == 'true')
         run: |
-          Write-Output "::error::the shell runs in WSL Ubuntu: run shell=true with wsl=true"
+          Write-Output "::error::the live tests run in WSL Ubuntu: run live=true with wsl=true"
           exit 1
 
       - uses: actions/checkout@v7
@@ -112,7 +112,7 @@ jobs:
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2
-          additional-packages: tmux git curl build-essential less jq
+          additional-packages: tmux git curl build-essential less
 
       - name: Check WSL
         if: inputs.wsl == true || inputs.wsl == 'true'
@@ -127,7 +127,7 @@ jobs:
             exit 1
           }
 
-      # setup-wsl's user is root, which no real user is: the checks and the shell run as lado.
+      # setup-wsl's user is root, which no real user is: the checks run as lado.
       - name: Create the user lado
         if: inputs.wsl == true || inputs.wsl == 'true'
         shell: wsl-bash {0}
@@ -160,7 +160,11 @@ jobs:
         env:
           UV_VERSION: "0.12.3"
           TESTS: ${{ inputs.tests == true || inputs.tests == 'true' }}
-          WSLENV: PROBE/p:UV_VERSION:TESTS
+          LIVE: ${{ inputs.live == true || inputs.live == 'true' }}
+          # The versions LADO is tested with (providers/opencode.py, kilo.py: TESTED_VERSION).
+          OPENCODE_VERSION: "1.18.35"
+          KILO_VERSION: "7.8.8"
+          WSLENV: PROBE/p:UV_VERSION:TESTS:LIVE:OPENCODE_VERSION:KILO_VERSION
         run: |
           set -u
           touch "$PROBE/checks.tsv" || exit 1
@@ -171,6 +175,24 @@ jobs:
           }
           skip() { # skip <name>: recorded, neither passed nor failed
             printf '%s\tskipped\tskipped\t-\n' "wsl $1" >>"$PROBE/checks.tsv" || exit 1
+          }
+          # Where a failing live test keeps its evidence (tests/live/conftest.py, EVIDENCE).
+          evidence="${TMPDIR:-/tmp}/lado-live-evidence"
+          live() { # live <provider> required|expected
+            local log="wsl-live-$1.log" code=0 summary
+            rm -rf "$evidence"
+            # As `make test-live PROVIDER=<provider>`, but the image test: the free models
+            # take no image input, and that test then skips.
+            timeout --kill-after=30 1200 su - lado -c "cd ~/lado && uv run pytest -m live -n0 -v -k '$1 and not image'" >"$PROBE/$log" 2>&1 || code=$?
+            # A pass needs a test passed and none skipped (a missing CLI or model skips).
+            summary=$(grep -E '^=+ .* in [0-9.]+s' "$PROBE/$log" | tail -n 1)
+            if [ "$code" = 0 ] && { [[ $summary != *" passed"* ]] || [[ $summary == *" skipped"* ]]; }; then
+              code=not-passed
+            fi
+            printf '%s\t%s\t%s\t%s\n' "wsl live-$1" "$code" "$2" "$log" >>"$PROBE/checks.tsv" || exit 1
+            if [ "$code" != 0 ] && [ -d "$evidence" ]; then
+              cp -r "$evidence" "$PROBE/live-evidence-$1"
+            fi
           }
           check uname 60 'uname -m'
           check tmux 60 'tmux -V'
@@ -189,6 +211,15 @@ jobs:
           else
             skip make-test
             skip make-test-integration
+          fi
+          # Free models only (OpenCode's and Kilo's, no login): never Claude Code or Codex.
+          # Node from Ubuntu; the CLIs from npm into ~/.local/bin, on the agents' PATH.
+          if [ "$LIVE" = true ]; then
+            check node 600 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm && node --version'
+            check opencode-install 600 "npm install -g --prefix ~/.local opencode-ai@$OPENCODE_VERSION && opencode --version"
+            live opencode required
+            check kilo-install 600 "npm install -g --prefix ~/.local @kilocode/cli@$KILO_VERSION && kilo --version" expected
+            live kilo expected
           fi
           exit 0
 
@@ -234,46 +265,6 @@ jobs:
           name: windows-probe-${{ inputs.runner }}
           path: ${{ env.PROBE }}
           retention-days: 5
-
-      # upterm in WSL, through its public server uptermd.upterm.dev. Not on Windows itself:
-      # an MSYS2 terminal relay hung there before its SSH line (run 38001793230).
-      - name: Shell
-        if: (inputs.shell == true || inputs.shell == 'true') && (inputs.wsl == true || inputs.wsl == 'true')
-        shell: wsl-bash {0}
-        env:
-          ACTOR: ${{ github.actor }}
-          UPTERM_VERSION: "0.31.0"
-          UPTERM_SHA256: 4788c2ece0fa8fd2a5253d22d4715f711da777f0a2d7cb763a1e0e2e75d1d76a
-          WSLENV: ACTOR:UPTERM_VERSION:UPTERM_SHA256:GITHUB_STEP_SUMMARY/p
-        run: |
-          set -euo pipefail
-          keys=$(curl -fsSL "https://github.com/$ACTOR.keys")
-          if [ -z "$keys" ]; then
-            echo "::error::$ACTOR has no SSH key on GitHub (https://github.com/$ACTOR.keys): no shell is opened"
-            exit 1
-          fi
-          curl -fsSL -o /tmp/upterm.tar.gz "https://github.com/owenthereal/upterm/releases/download/v$UPTERM_VERSION/upterm_linux_amd64.tar.gz"
-          echo "$UPTERM_SHA256  /tmp/upterm.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/upterm.tar.gz -C /usr/local/bin upterm
-          # --detach returns once the session is up, or fails; the timeout bounds it.
-          # --skip-host-key-check takes the server's key on first use (ssh's accept-new).
-          if ! info=$(timeout 120 su - lado -c "upterm host --detach --accept --skip-host-key-check --name probe --github-user '$ACTOR' -o json"); then
-            echo "::error::upterm did not start a session within 120 seconds"
-            exit 1
-          fi
-          ssh=$(jq -r '.sshCommand // empty' <<<"$info")
-          if [ -z "$ssh" ]; then
-            echo "::error::upterm started no session with an SSH command"
-            exit 1
-          fi
-          echo "::notice title=SSH into WSL Ubuntu as lado::$ssh"
-          printf '\n## Shell\n\n`%s`, as lado; `touch ~/continue` ends it.\n' "$ssh" >>"$GITHUB_STEP_SUMMARY"
-          # Until ~/continue, or the session ends (no answer counts as ended).
-          while [ ! -e ~lado/continue ] &&
-            su - lado -c 'upterm session info probe -o json' 2>/dev/null | jq -e '.status != "ended"' >/dev/null; do
-            echo "$ssh"
-            sleep 30
-          done
 
       - name: Verdict
         if: always()

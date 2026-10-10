@@ -8,12 +8,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from lado.providers import kilo, opencode
+
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-shell.yml"
 # A boolean input as GitHub's web form gives it (a boolean) or the API (a string).
 WSL = "inputs.wsl == true || inputs.wsl == 'true'"
-SHELL = "inputs.shell == true || inputs.shell == 'true'"
 TESTS = "inputs.tests == true || inputs.tests == 'true'"
+LIVE = "inputs.live == true || inputs.live == 'true'"
 
 
 @pytest.fixture(scope="module")
@@ -55,12 +57,13 @@ def test_inputs(workflow):
     assert inputs["runner"]["default"] == "windows-latest"
     assert inputs["wsl"]["type"] == "boolean"
     assert inputs["wsl"]["default"] is True
-    assert inputs["shell"]["type"] == "boolean"
-    assert inputs["shell"]["default"] is False
     assert inputs["tests"]["type"] == "boolean"
     assert inputs["tests"]["default"] is True
+    assert inputs["live"]["type"] == "boolean"
+    assert inputs["live"]["default"] is False
     assert inputs["minutes"]["type"] == "number"
     assert inputs["minutes"]["default"] == 120
+    assert list(inputs) == ["runner", "wsl", "tests", "live", "minutes"]
 
 
 def test_job_runs_on_the_chosen_runner_for_the_chosen_minutes(workflow, steps):
@@ -82,7 +85,7 @@ def test_report_folder_first_so_the_report_steps_work_after_a_guard(steps):
     assert "PROBE=" in folder["run"] and "GITHUB_ENV" in folder["run"]
 
 
-@pytest.mark.parametrize("name, condition", [("wsl", WSL), ("shell", SHELL)])
+@pytest.mark.parametrize("name, condition", [("wsl", WSL), ("live", LIVE)])
 def test_boolean_inputs_compared_as_a_boolean_or_a_string(steps, name, condition):
     # From the API (gh workflow run -f wsl=false) the input may be the string 'false',
     # which a bare `if: inputs.wsl` takes as true.
@@ -108,11 +111,12 @@ def test_actions_pinned_to_a_commit_with_its_version(text):
         assert re.fullmatch(r"\s*# v\d+(\.\d+)*", rest), (action, rest)
 
 
-def test_no_tmate_and_no_msys2(text, steps):
-    """action-tmate hung on Windows after installing MSYS2's tmate (run 38001793230);
+def test_no_shell(text, steps):
+    """No SSH shell into the runner: action-tmate hung on Windows (run 38001793230), and
     every *.tmate.io name is NXDOMAIN since (runs 38006655138, 38007048750)."""
-    assert "tmate" not in text.lower()
-    assert not [s for s in steps if "msys64" in s.get("run", "").lower()]
+    for word in ("tmate", "upterm", ".keys", "~/continue", "inputs.shell", "msys64"):
+        assert word not in text.lower(), word
+    assert not [s for s in steps if "shell" in s.get("name", "").lower()]
 
 
 def test_wsl2_ubuntu_with_the_tools(steps):
@@ -122,8 +126,8 @@ def test_wsl2_ubuntu_with_the_tools(steps):
     assert str(step["with"]["wsl-version"]) == "2"
     packages = step["with"]["additional-packages"].split()
     assert {"tmux", "git", "curl", "build-essential", "less"} <= set(packages)
-    # jq reads upterm's JSON; xz-utils only unpacked a tmate release.
-    assert "jq" in packages and "xz-utils" not in packages
+    # xz-utils only unpacked a tmate release.
+    assert "xz-utils" not in packages
     assert all("continue-on-error" not in s for s in steps)
 
 
@@ -140,9 +144,9 @@ def test_wsl_on_arm_fails_before_setup(steps):
     assert guards and guards[0] < setup
 
 
-def test_a_shell_without_wsl_fails_before_setup(steps):
-    guard = step_named(steps, "No shell without WSL")
-    assert guard["if"] == f"({SHELL}) && !({WSL})"
+def test_live_without_wsl_fails_before_setup(steps):
+    guard = step_named(steps, "No live agents without WSL")
+    assert guard["if"] == f"({LIVE}) && !({WSL})"
     assert "exit 1" in guard["run"]
     assert steps.index(guard) < steps.index(step_using(steps, "Vampire/setup-wsl"))
 
@@ -184,35 +188,58 @@ def test_wsl_probe_runs_as_a_non_root_user_in_a_login_shell(steps):
         assert command in run, command
     # Each check under a timeout, so a hang leaves time for the report.
     assert "timeout" in run
-    # Only doctor may fail: with no agent CLI installed it reports a FAIL.
+    # Only doctor and Kilo may fail: with no agent CLI installed doctor reports a FAIL,
+    # and Kilo is only recorded.
     assert '"${4:-required}"' in run
-    expected = [line for line in run.splitlines() if line.endswith(" expected")]
-    assert expected == ["check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected"]
+    expected = [line.strip() for line in run.splitlines() if line.endswith(" expected")]
+    assert expected[0] == "check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected"
+    assert all("kilo" in line for line in expected[1:]), expected
     check = step_named(steps, "Check WSL")
     assert check["if"] == WSL and "wsl -l -v" in check["run"]
     order = [steps.index(s) for s in (check, user, clone, probe)]
     assert order == sorted(order)
 
 
-def run_wsl_probe(steps, tmp_path, tests: str) -> list[list[str]]:
-    """Run the WSL probe's script with a `timeout` that runs nothing: its checks.tsv rows."""
+# The stub of `timeout`: it records the command and runs nothing; for a live test it prints
+# the pytest summary line of LIVE_<PROVIDER> and exits with LIVE_<PROVIDER>_CODE.
+TIMEOUT_STUB = """#!/bin/sh
+printf '%s\\n' "$*" >>"$PROBE/ran"
+case "$*" in
+  *'-m live'*opencode*) printf '%s\\n' "$LIVE_OPENCODE"; exit "${LIVE_OPENCODE_CODE:-0}" ;;
+  *'-m live'*kilo*) printf '%s\\n' "$LIVE_KILO"; exit "${LIVE_KILO_CODE:-0}" ;;
+esac
+"""
+PASSED = "============ 3 passed in 412.20s (0:06:52) ============"
+
+
+def run_wsl_probe(
+    steps, tmp_path, tests="true", live="false", stub=TIMEOUT_STUB, **env
+) -> dict[str, list]:
+    """Run the WSL probe's script with a stub `timeout`: its checks.tsv rows by name."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    stub = bin_dir / "timeout"
-    stub.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >>"$PROBE/ran"\n')
-    stub.chmod(0o755)
+    (bin_dir / "timeout").write_text(stub)
+    (bin_dir / "timeout").chmod(0o755)
     probe = tmp_path / "probe"
     probe.mkdir()
+    (tmp_path / "tmp").mkdir()
     env = {
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "PROBE": str(probe),
+        "TMPDIR": str(tmp_path / "tmp"),
         "UV_VERSION": "0",
+        "OPENCODE_VERSION": "0",
+        "KILO_VERSION": "0",
         "TESTS": tests,
+        "LIVE": live,
+        "LIVE_OPENCODE": PASSED,
+        "LIVE_KILO": PASSED,
+        **env,
     }
     script = step_named(steps, "WSL probe")["run"]
     subprocess.run(["bash", "-c", script], env=env, check=True)
     rows = (probe / "checks.tsv").read_text().splitlines()
-    return [row.split("\t") for row in rows]
+    return {row.split("\t")[0]: row.split("\t") for row in rows}
 
 
 def test_wsl_probe_gets_the_tests_input_as_a_boolean(steps):
@@ -222,7 +249,7 @@ def test_wsl_probe_gets_the_tests_input_as_a_boolean(steps):
 
 
 def test_wsl_probe_runs_the_make_checks_with_tests(steps, tmp_path):
-    rows = {row[0]: row for row in run_wsl_probe(steps, tmp_path, "true")}
+    rows = run_wsl_probe(steps, tmp_path, tests="true")
     assert rows["wsl make-test"][1:] == ["0", "required", "wsl-make-test.log"]
     assert rows["wsl make-test-integration"][1:3] == ["0", "required"]
     ran = (tmp_path / "probe" / "ran").read_text()
@@ -230,7 +257,7 @@ def test_wsl_probe_runs_the_make_checks_with_tests(steps, tmp_path):
 
 
 def test_wsl_probe_skips_the_make_checks_without_tests(steps, tmp_path):
-    rows = {row[0]: row for row in run_wsl_probe(steps, tmp_path, "false")}
+    rows = run_wsl_probe(steps, tmp_path, tests="false")
     for name in ("wsl make-test", "wsl make-test-integration"):
         assert rows[name][1:3] == ["skipped", "skipped"], rows[name]
     # The other checks still run.
@@ -276,43 +303,87 @@ def test_verdict_red_when_wsl_ran_no_check(steps):
     assert '>>"$PROBE/checks.tsv" || exit 1' in probe
 
 
-def test_shell_after_the_upload_only_with_shell_and_wsl(steps):
-    shell = step_named(steps, "Shell")
-    assert shell["if"] == f"({SHELL}) && ({WSL})"
-    assert steps.index(step_using(steps, "actions/upload-artifact")) < steps.index(shell)
-    assert steps.index(shell) == len(steps) - 2
+def test_wsl_probe_gets_the_live_input_and_the_pinned_cli_versions(steps):
+    probe = step_named(steps, "WSL probe")
+    env = probe["env"]
+    assert env["LIVE"] == "${{ " + LIVE + " }}"
+    # The versions LADO is tested with (`lado doctor` warns about others).
+    assert env["OPENCODE_VERSION"].startswith(opencode.TESTED_VERSION + ".")
+    assert env["KILO_VERSION"].startswith(kilo.TESTED_VERSION + ".")
+    for version in (env["OPENCODE_VERSION"], env["KILO_VERSION"]):
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), version
+    assert {"LIVE", "OPENCODE_VERSION", "KILO_VERSION"} <= set(env["WSLENV"].split(":"))
 
 
-def test_shell_is_a_pinned_and_checked_upterm(steps):
-    shell = step_named(steps, "Shell")
-    env, run = shell["env"], shell["run"]
-    assert re.fullmatch(r"\d+\.\d+\.\d+", env["UPTERM_VERSION"])
-    assert re.fullmatch(r"[0-9a-f]{64}", env["UPTERM_SHA256"])
-    assert {"UPTERM_VERSION", "UPTERM_SHA256"} <= set(env["WSLENV"].split(":"))
-    url = (
-        "https://github.com/owenthereal/upterm/releases/download/"
-        "v$UPTERM_VERSION/upterm_linux_amd64.tar.gz"
+def test_no_live_test_without_live(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path, live="false")
+    assert not [name for name in rows if "live" in name or "opencode" in name]
+    assert "test-live" not in (tmp_path / "probe" / "ran").read_text()
+
+
+def test_live_installs_the_pinned_clis_and_runs_opencode_required_kilo_recorded(
+    steps, tmp_path
+):
+    rows = run_wsl_probe(
+        steps, tmp_path, tests="false", live="true", OPENCODE_VERSION="1.18.35"
     )
-    assert url in run
-    assert '"$UPTERM_SHA256  /tmp/upterm.tar.gz" | sha256sum -c -' in run
-    # Checked before it is unpacked.
-    assert run.index("sha256sum -c") < run.index("tar -xzf /tmp/upterm.tar.gz")
+    assert rows["wsl live-opencode"][1:] == ["0", "required", "wsl-live-opencode.log"]
+    assert rows["wsl live-kilo"][1:] == ["0", "expected", "wsl-live-kilo.log"]
+    ran = (tmp_path / "probe" / "ran").read_text().splitlines()
+    names = list(rows)
+    # After the other checks; each CLI installed before its test.
+    assert names.index("wsl make-test-integration") < names.index("wsl opencode-install")
+    assert names.index("wsl opencode-install") < names.index("wsl live-opencode")
+    assert names.index("wsl kilo-install") < names.index("wsl live-kilo")
+    assert rows["wsl opencode-install"][2] == "required"
+    assert rows["wsl kilo-install"][2] == "expected"
+    (install,) = [line for line in ran if "opencode-ai@" in line]
+    assert "opencode-ai@1.18.35" in install and "su - lado -c" in install
+    assert [line for line in ran if "@kilocode/cli@" in line]
+    # The live tests as `make test-live PROVIDER=...` runs them, but the image test: the
+    # free models take no image input, and that test skips.
+    live = [line for line in ran if "-m live" in line]
+    assert [line.split("cd ~/lado && ")[1] for line in live] == [
+        "uv run pytest -m live -n0 -v -k 'opencode and not image'",
+        "uv run pytest -m live -n0 -v -k 'kilo and not image'",
+    ]
+    # Never a paid provider, nor one without a model there.
+    assert not [line for line in ran if "claude" in line or "codex" in line]
 
 
-def test_shell_only_for_the_starter_as_lado_within_a_bounded_wait(steps):
-    shell = step_named(steps, "Shell")
-    run = shell["run"]
-    assert shell["env"]["ACTOR"] == "${{ github.actor }}"
-    # No keys: no session open to anyone.
-    assert "https://github.com/$ACTOR.keys" in run and '[ -z "$keys" ]' in run
-    host = re.search(r"timeout (\d+) su - lado -c \"upterm host ([^\"]*)\"", run)
-    assert host, run
-    assert int(host[1]) <= 300
-    assert "--detach" in host[2] and "--github-user '$ACTOR'" in host[2]
-    assert "--name probe" in host[2] and "-o json" in host[2]
-    assert "jq -r '.sshCommand // empty'" in run
-    assert "::notice title=SSH into WSL Ubuntu as lado::$ssh" in run
-    assert "GITHUB_STEP_SUMMARY" in run
-    # Ends at `touch ~/continue` or with the session; the job's minutes bound it too.
-    assert "~lado/continue" in run
-    assert "su - lado -c 'upterm session info probe -o json'" in run
+@pytest.mark.parametrize(
+    "summary, code",
+    [
+        (PASSED, "0"),
+        ("====== 2 passed, 1 skipped in 300.00s (0:05:00) ======", "not-passed"),
+        ("====== 3 skipped in 1.00s ======", "not-passed"),
+        ("====== 3 deselected in 1.00s ======", "not-passed"),
+        ("", "not-passed"),
+    ],
+)
+def test_a_live_check_passes_only_when_a_test_passed_and_none_skipped(
+    steps, tmp_path, summary, code
+):
+    rows = run_wsl_probe(steps, tmp_path, live="true", LIVE_OPENCODE=summary)
+    assert rows["wsl live-opencode"][1] == code
+
+
+def test_a_failing_live_test_keeps_its_code_and_its_evidence(steps, tmp_path):
+    evidence = tmp_path / "tmp" / "lado-live-evidence" / "20261010-test_worker"
+    # The live test writes its evidence while it runs (the script clears the folder first).
+    writes = f'mkdir -p "{evidence}" && echo "w1 never reported" >"{evidence}/lado-log.txt"'
+    stub = TIMEOUT_STUB.replace("*'-m live'*opencode*) ", f"*'-m live'*opencode*) {writes}; ")
+    rows = run_wsl_probe(
+        steps,
+        tmp_path,
+        live="true",
+        stub=stub,
+        LIVE_OPENCODE="====== 1 failed, 2 passed in 600.00s ======",
+        LIVE_OPENCODE_CODE="1",
+    )
+    assert rows["wsl live-opencode"][1:3] == ["1", "required"]
+    kept = tmp_path / "probe" / "live-evidence-opencode" / evidence.name / "lado-log.txt"
+    assert kept.read_text() == "w1 never reported\n"
+    # A passing one keeps none.
+    assert not (tmp_path / "probe" / "live-evidence-kilo").exists()
+

@@ -47,12 +47,6 @@ def test_the_pins_are_exactly_lados_providers():
     assert sorted(smoke_ci.PINS) == sorted(providers.names())
 
 
-def test_providers_names_every_pinned_provider(capsys):
-    """The Windows probe's provider `all`."""
-    assert smoke_ci.main(["providers"]) == 0
-    assert capsys.readouterr().out == " ".join(smoke_ci.PINS) + "\n"
-
-
 @pytest.mark.parametrize(
     "provider, module",
     [("claude", claude), ("codex", codex), ("opencode", opencode), ("kilo", kilo)],

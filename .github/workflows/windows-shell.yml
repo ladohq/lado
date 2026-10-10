@@ -45,17 +45,17 @@ jobs:
   # The run's settings, the only job that reads an input. A scheduled run has none: each
   # empty input takes its default above (a test keeps both the same). The booleans come
   # as true/false from the web form, as a string in any case from the API (gh workflow
-  # run -f wsl=False): each setting is 'true' or 'false', compared as such below.
+  # run -f wsl=False): each setting is 'true' or 'false', compared as such below. tests,
+  # smoke and provider become the parts, a JSON list: `tests`, and `smoke-<provider>` for
+  # each provider chosen; each part is a job of its own, all at once.
   settings:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       runner: ${{ steps.settings.outputs.runner }}
       wsl: ${{ steps.settings.outputs.wsl }}
-      tests: ${{ steps.settings.outputs.tests }}
-      smoke: ${{ steps.settings.outputs.smoke }}
       minutes: ${{ steps.settings.outputs.minutes }}
-      provider: ${{ steps.settings.outputs.provider }}
+      parts: ${{ steps.settings.outputs.parts }}
     steps:
       - id: settings
         name: Settings
@@ -88,21 +88,38 @@ jobs:
             fail "minutes must be 1 to 360 (GitHub's cap), not $minutes"
           fi
           # scripts/smoke_ci.py's PINS (a test keeps both the same).
+          providers='claude codex opencode kilo'
           case $provider in
             all | claude | codex | opencode | kilo) ;;
             *) fail "provider must be all, claude, codex, opencode or kilo, not $provider" ;;
           esac
+          if [ "$smoke" = true ] && [ "$wsl" != true ]; then
+            fail "the smoke tests run in WSL Ubuntu: run wsl=false with smoke=false"
+          fi
+          if [ "$tests" != true ] && [ "$smoke" != true ]; then
+            fail "nothing to run: tests and smoke are both off"
+          fi
+          [ "$provider" = all ] || providers=$provider
+          parts=()
+          if [ "$tests" = true ]; then parts+=(tests); fi
+          if [ "$smoke" = true ]; then
+            for p in $providers; do parts+=("smoke-$p"); done
+          fi
           {
             echo "runner=$runner"
             echo "wsl=$wsl"
-            echo "tests=$tests"
-            echo "smoke=$smoke"
             echo "minutes=$((10#$minutes))"
-            echo "provider=$provider"
+            printf 'parts=[%s]\n' "$(printf '"%s",' "${parts[@]}" | sed 's/,$//')"
           } >>"$GITHUB_OUTPUT"
 
+  # One job per part, each on a runner of its own with its own WSL, all at once.
   probe:
     needs: settings
+    name: probe ${{ matrix.part }}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJSON(needs.settings.outputs.parts) }}
     runs-on: ${{ needs.settings.outputs.runner }}
     timeout-minutes: ${{ fromJSON(needs.settings.outputs.minutes) }}
     # Windows' default; said here so that actionlint does not read the scripts as bash.
@@ -126,12 +143,6 @@ jobs:
           Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false smoke=false"
           exit 1
 
-      - name: No smoke without WSL
-        if: (needs.settings.outputs.smoke == 'true') && !(needs.settings.outputs.wsl == 'true')
-        run: |
-          Write-Output "::error::the smoke tests run in WSL Ubuntu: run wsl=false with smoke=false"
-          exit 1
-
       - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -140,6 +151,7 @@ jobs:
 
       # LADO does not run on Windows itself yet: each check here is expected to fail.
       - name: Native probe
+        if: matrix.part == 'tests'
         timeout-minutes: 20
         run: |
           $ErrorActionPreference = 'Continue'
@@ -216,10 +228,8 @@ jobs:
         shell: wsl-bash {0}
         env:
           UV_VERSION: "0.12.3"
-          TESTS: ${{ needs.settings.outputs.tests }}
-          SMOKE: ${{ needs.settings.outputs.smoke }}
-          PROVIDER: ${{ needs.settings.outputs.provider }}
-          WSLENV: PROBE/p:UV_VERSION:TESTS:SMOKE:PROVIDER
+          PART: ${{ matrix.part }}
+          WSLENV: PROBE/p:UV_VERSION:PART
         run: |
           set -u
           touch "$PROBE/checks.tsv" || exit 1
@@ -227,9 +237,6 @@ jobs:
             local log="wsl-$1.log" code=0
             timeout --kill-after=30 "$2" su - lado -c "$3" >"$PROBE/$log" 2>&1 || code=$?
             printf '%s\t%s\t%s\t%s\n' "wsl $1" "$code" "${4:-required}" "$log" >>"$PROBE/checks.tsv" || exit 1
-          }
-          skip() { # skip <name>: recorded, neither passed nor failed
-            printf '%s\tskipped\tskipped\t-\n' "wsl $1" >>"$PROBE/checks.tsv" || exit 1
           }
           # Each cell's out folder, outside $PROBE: only its evidence is copied there.
           out="${TMPDIR:-/tmp}/lado-smoke-out"
@@ -251,41 +258,35 @@ jobs:
           # The agents' PATH as LADO builds it: its own code, from lado's login shell.
           check agents-path 60 'cd ~/lado && env -u LADO_AGENT_ENV uv run python -c "from lado import agent_env; print(agent_env.from_shell()[\"PATH\"])"'
           check lado-version 120 'cd ~/lado && uv run lado --version'
-          # No agent CLI is installed, which doctor reports as a FAIL (exit 1): only recorded.
-          check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected
-          if [ "$TESTS" = true ]; then
-            check make-test 1800 'cd ~/lado && make test'
-            check make-test-integration 1800 'cd ~/lado && make test-integration'
-          else
-            skip make-test
-            skip make-test-integration
-          fi
-          # The smoke of each provider, one after another, each a check of its own: the real
-          # CLI against a local endpoint that answers 401, no model and no account. Node and
-          # npm from Ubuntu; the script installs each CLI into ~/.local/bin, on the agents'
-          # PATH.
-          if [ "$SMOKE" = true ]; then
-            check node 600 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm && node --version && npm --version'
-            providers=$PROVIDER
-            if [ "$providers" = all ]; then
-              providers=$(timeout 120 su - lado -c 'cd ~/lado && uv run python scripts/smoke_ci.py providers')
-            fi
-            if [ -z "$providers" ]; then # no cell to run is no green
-              printf '%s\t%s\t%s\t%s\n' "wsl smoke-providers" none required - >>"$PROBE/checks.tsv" || exit 1
-            fi
-            for provider in $providers; do
-              smoke "$provider"
-            done
-          fi
+          case $PART in
+            tests)
+              # No agent CLI is installed, which doctor reports as a FAIL (exit 1): only
+              # recorded.
+              check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected
+              check make-test 1800 'cd ~/lado && make test'
+              check make-test-integration 1800 'cd ~/lado && make test-integration'
+              ;;
+            smoke-?*)
+              # The real CLI against a local endpoint that answers 401, no model and no
+              # account. Node and npm from Ubuntu; the script installs the CLI into
+              # ~/.local/bin, on the agents' PATH.
+              check node 600 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm && node --version && npm --version'
+              smoke "${PART#smoke-}"
+              ;;
+            *) # a part this script does not know is no green
+              printf '%s\t%s\t%s\t%s\n' "wsl part" unknown required - >>"$PROBE/checks.tsv" || exit 1
+              ;;
+          esac
           exit 0
 
       - name: Summary
         if: always()
         env:
           RUNNER_LABEL: ${{ needs.settings.outputs.runner }}
+          PART: ${{ matrix.part }}
         run: |
           $checks = Join-Path $env:PROBE checks.tsv
-          $out = @("## Windows probe on $env:RUNNER_LABEL ($env:RUNNER_ARCH)", "")
+          $out = @("## Windows probe on $env:RUNNER_LABEL ($env:RUNNER_ARCH): $env:PART", "")
           if (-not (Test-Path $checks)) {
             $out += "No check ran."
             $out | Add-Content $env:GITHUB_STEP_SUMMARY
@@ -294,11 +295,7 @@ jobs:
           $rows = @(Import-Csv $checks -Delimiter "`t" -Header name, code, kind, log)
           $out += "| check | exit | counts |", "| --- | --- | --- |"
           foreach ($r in $rows) {
-            $counts = switch ($r.kind) {
-              'required' { 'yes' }
-              'skipped' { 'no (skipped: tests=false)' }
-              default { 'no (expected)' }
-            }
+            $counts = if ($r.kind -eq 'required') { 'yes' } else { 'no (expected)' }
             $out += "| $($r.name) | $($r.code) | $counts |"
           }
           foreach ($name in 'path', 'agents-path') {
@@ -307,7 +304,7 @@ jobs:
               $out += "", "${name}: ``$(Get-Content $file -Tail 1)``"
             }
           }
-          $failed = $rows | Where-Object { $_.kind -ne 'skipped' -and $_.code -ne '0' } | Select-Object -ExpandProperty log -Unique
+          $failed = $rows | Where-Object { $_.code -ne '0' -and $_.log -ne '-' } | Select-Object -ExpandProperty log -Unique
           foreach ($log in $failed) {
             $out += "", "<details><summary>$log (last lines)</summary>", "", '```'
             $out += Get-Content (Join-Path $env:PROBE $log) -Tail 20
@@ -318,7 +315,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: windows-probe-${{ needs.settings.outputs.runner }}
+          name: windows-probe-${{ needs.settings.outputs.runner }}-${{ matrix.part }}
           path: ${{ env.PROBE }}
           retention-days: 5
 

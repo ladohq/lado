@@ -1,7 +1,6 @@
 """One cell of LADO's smoke tests in CI: a provider's CLI on one system, no model.
 
     python scripts/smoke_ci.py run <provider> <out>
-    python scripts/smoke_ci.py providers
 
 `run` does one (system, provider) cell of ci.yml's job `smoke` or of the Windows probe's WSL
 part: it installs the provider's CLI at its pin from npm into ~/.local (first on PATH from
@@ -10,8 +9,6 @@ PROVIDER=<provider>` does. Its output goes to the terminal and to
 `<out>/smoke-<provider>.log`. The cell passes only when pytest exits 0 and its last summary
 line has a `passed` and no `skipped` (a missing CLI skips). A failing cell copies the
 test's evidence into `<out>/evidence`.
-
-`providers` prints every pinned provider, the Windows probe's `all`.
 
 Standard library only: it imports nothing of LADO, and tests/test_smoke_ci.py compares it
 with LADO.
@@ -37,7 +34,7 @@ PINS = {
 
 # pytest's last line, e.g. `===== 1 failed, 2 passed in 10.00s (0:00:10) =====`.
 SUMMARY = re.compile(r"^=+ .* in [0-9.]+s\b.*=+$")
-USAGE = "usage: smoke_ci.py run <provider> <out> | providers"
+USAGE = "usage: smoke_ci.py run <provider> <out>"
 
 
 def summary(log: str) -> str:
@@ -98,9 +95,6 @@ def main(argv: list[str]) -> int:
             print(f"{argv[1]}: no provider (one of {', '.join(PINS)})", file=sys.stderr)
             return 2
         return run(argv[1], Path(argv[2]))
-    if argv == ["providers"]:
-        print(" ".join(PINS))
-        return 0
     print(USAGE, file=sys.stderr)
     return 2
 

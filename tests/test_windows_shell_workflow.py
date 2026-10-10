@@ -2,6 +2,7 @@
 hand, with the smoke tests of every provider in WSL."""
 
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -15,8 +16,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "windows-shell.yml"
 # The run's settings, as the settings job gives them: always the strings 'true' or 'false'.
 SETTINGS = "needs.settings.outputs"
 WSL = f"{SETTINGS}.wsl == 'true'"
-SMOKE = f"{SETTINGS}.smoke == 'true'"
 INPUTS = ["runner", "wsl", "tests", "smoke", "minutes", "provider"]
+OUTPUTS = ["runner", "wsl", "minutes", "parts"]
+PART = "matrix.part == 'tests'"
 
 
 def _pins() -> dict:
@@ -116,8 +118,9 @@ def test_settings_job_reads_each_input_once_and_gives_each_setting(settings_job,
     (step,) = settings_job["steps"]
     assert step["shell"] == "bash" and settings_job["runs-on"] == "ubuntu-latest"
     assert step["env"] == {name.upper(): "${{ inputs." + name + " }}" for name in INPUTS}
+    # tests, smoke and provider become the parts, the probe job's matrix.
     assert settings_job["outputs"] == {
-        name: "${{ steps." + step["id"] + ".outputs." + name + " }}" for name in INPUTS
+        name: "${{ steps." + step["id"] + ".outputs." + name + " }}" for name in OUTPUTS
     }
     assert probe_job["needs"] == "settings"
 
@@ -129,26 +132,40 @@ def test_no_job_but_settings_reads_an_input(workflow, settings_job):
     assert set(workflow["jobs"]) == {"settings", "probe"}
 
 
+def parts(outputs: dict) -> list[str]:
+    return json.loads(outputs["parts"])
+
+
 def test_a_run_without_inputs_takes_the_defaults_of_a_run_by_hand(workflow, settings_job, tmp_path):
     """A scheduled run has no inputs: each setting is its input's default."""
     code, outputs, _ = run_settings(settings_job, tmp_path)
     assert code == 0
     inputs = workflow[True]["workflow_dispatch"]["inputs"]
-    defaults = {name: str(inputs[name]["default"]).lower() for name in INPUTS}
-    assert outputs == defaults
-    assert outputs == {
-        "runner": "windows-latest",
-        "wsl": "true",
-        "tests": "true",
-        "smoke": "true",
-        "minutes": "120",
-        "provider": "all",
-    }
+    for name in ("runner", "wsl", "minutes"):
+        assert outputs[name] == str(inputs[name]["default"]).lower()
+    assert (outputs["runner"], outputs["wsl"], outputs["minutes"]) == (
+        "windows-latest",
+        "true",
+        "120",
+    )
+    # tests, smoke and provider `all`: the tests and the smoke of every provider, in parallel.
+    assert parts(outputs) == ["tests", *(f"smoke-{p}" for p in PINS)]
 
 
-def test_the_smoke_of_every_provider_on_the_schedule(workflow, settings_job, tmp_path):
-    _, outputs, _ = run_settings(settings_job, tmp_path)
-    assert (outputs["smoke"], outputs["provider"]) == ("true", "all")
+@pytest.mark.parametrize(
+    "inputs, expected",
+    [
+        ({"tests": "false"}, [f"smoke-{p}" for p in PINS]),
+        ({"smoke": "false"}, ["tests"]),
+        ({"provider": "kilo"}, ["tests", "smoke-kilo"]),
+        ({"tests": "false", "provider": "codex"}, ["smoke-codex"]),
+        # Native only: the smoke needs WSL.
+        ({"wsl": "false", "smoke": "false"}, ["tests"]),
+    ],
+)
+def test_the_parts_follow_the_inputs(settings_job, tmp_path, inputs, expected):
+    code, outputs, _ = run_settings(settings_job, tmp_path, **inputs)
+    assert code == 0 and parts(outputs) == expected
 
 
 @pytest.mark.parametrize(
@@ -158,9 +175,11 @@ def test_the_smoke_of_every_provider_on_the_schedule(workflow, settings_job, tmp
     [("true", "true"), ("false", "false"), ("True", "true"), ("FALSE", "false")],
 )
 def test_settings_take_a_boolean_in_either_form(settings_job, tmp_path, given, setting):
-    code, outputs, _ = run_settings(settings_job, tmp_path, wsl=given, tests=given, smoke=given)
+    code, outputs, _ = run_settings(settings_job, tmp_path, tests=given, provider="kilo")
     assert code == 0
-    assert (outputs["wsl"], outputs["tests"], outputs["smoke"]) == (setting,) * 3
+    assert parts(outputs) == (["tests", "smoke-kilo"] if setting == "true" else ["smoke-kilo"])
+    code, outputs, _ = run_settings(settings_job, tmp_path, wsl=given, smoke=given)
+    assert code == 0 and outputs["wsl"] == setting
 
 
 @pytest.mark.parametrize(
@@ -177,6 +196,9 @@ def test_settings_take_a_boolean_in_either_form(settings_job, tmp_path, given, s
             "provider must be all, claude, codex, opencode or kilo, not gemini",
         ),
         ({"provider": "Kilo"}, "provider must be all, claude, codex, opencode or kilo, not Kilo"),
+        # The smoke runs in WSL: no silent drop of it.
+        ({"wsl": "false"}, "the smoke tests run in WSL Ubuntu: run wsl=false with smoke=false"),
+        ({"tests": "false", "smoke": "false"}, "nothing to run: tests and smoke are both off"),
     ],
 )
 def test_settings_refuse_a_wrong_input(settings_job, tmp_path, inputs, error):
@@ -185,15 +207,24 @@ def test_settings_refuse_a_wrong_input(settings_job, tmp_path, inputs, error):
     assert f"::error::{error}" in printed
 
 
-@pytest.mark.parametrize("provider", ["all", *PINS])
-def test_settings_take_each_provider_or_all(settings_job, tmp_path, provider):
-    code, outputs, _ = run_settings(settings_job, tmp_path, provider=provider)
-    assert code == 0 and outputs["provider"] == provider
+@pytest.mark.parametrize("provider", list(PINS))
+def test_settings_take_each_provider(settings_job, tmp_path, provider):
+    code, outputs, _ = run_settings(settings_job, tmp_path, tests="false", provider=provider)
+    assert code == 0 and parts(outputs) == [f"smoke-{provider}"]
 
 
 def test_settings_name_the_providers_of_the_script(settings_job):
     (step,) = settings_job["steps"]
     assert f"all | {' | '.join(PINS)})" in step["run"]
+    assert f"providers='{' '.join(PINS)}'" in step["run"]
+
+
+def test_the_probe_is_a_matrix_of_the_parts(probe_job):
+    assert probe_job["strategy"] == {
+        "fail-fast": False,
+        "matrix": {"part": "${{ fromJSON(needs.settings.outputs.parts) }}"},
+    }
+    assert probe_job["name"] == "probe ${{ matrix.part }}"
 
 
 def test_minutes_given_as_a_string_become_a_plain_number(settings_job, tmp_path):
@@ -217,7 +248,7 @@ def test_report_folder_first_so_the_report_steps_work_after_a_guard(steps):
     assert "PROBE=" in folder["run"] and "GITHUB_ENV" in folder["run"]
 
 
-@pytest.mark.parametrize("name, condition", [("wsl", WSL), ("smoke", SMOKE)])
+@pytest.mark.parametrize("name, condition", [("wsl", WSL)])
 def test_boolean_settings_compared_as_a_string(steps, name, condition):
     # A job's output is a string: a bare `if: needs.settings.outputs.wsl` takes 'false'
     # as true.
@@ -276,19 +307,14 @@ def test_wsl_on_arm_fails_before_setup(steps):
     assert guards and guards[0] < setup
 
 
-def test_smoke_without_wsl_fails_before_setup(steps):
-    """The smoke runs in WSL: a run without WSL says so, never drops it in silence."""
-    guard = step_named(steps, "No smoke without WSL")
-    assert guard["if"] == f"({SMOKE}) && !({WSL})"
-    assert "exit 1" in guard["run"] and "wsl=false with smoke=false" in guard["run"]
-    assert steps.index(guard) < steps.index(step_using(steps, "Vampire/setup-wsl"))
+def test_arm_says_to_run_without_wsl_and_smoke(steps):
     arm = step_named(steps, "No WSL on ARM")
     assert "wsl=false smoke=false" in arm["run"]
 
 
-def test_native_probe_installs_lado_from_the_checkout_on_every_runner(steps):
+def test_native_probe_installs_lado_from_the_checkout_in_the_tests_part(steps):
     step = step_named(steps, "Native probe")
-    assert "if" not in step
+    assert step["if"] == PART
     run = step["run"]
     assert "uv tool install" in run and "uv tool install lado" not in run
     for command in ("platform.machine(), sys.version", "--version", "doctor", "native.log"):
@@ -331,24 +357,17 @@ def test_wsl_probe_runs_as_a_non_root_user_in_a_login_shell(steps):
     assert order == sorted(order)
 
 
-# The stub of `timeout`: it records the command and runs nothing; asked for the providers it
-# names those of scripts/smoke_ci.py; for a provider's smoke cell it exits with
-# SMOKE_<PROVIDER>_CODE.
-TIMEOUT_STUB = f"""#!/bin/sh
+# The stub of `timeout`: it records the command and runs nothing; for a provider's smoke cell
+# it exits with SMOKE_CODE.
+TIMEOUT_STUB = """#!/bin/sh
 printf '%s\\n' "$*" >>"$PROBE/ran"
 case "$*" in
-  *'smoke_ci.py providers'*) echo '{" ".join(PINS)}' ;;
-  *'smoke_ci.py run claude'*) exit "${{SMOKE_CLAUDE_CODE:-0}}" ;;
-  *'smoke_ci.py run codex'*) exit "${{SMOKE_CODEX_CODE:-0}}" ;;
-  *'smoke_ci.py run opencode'*) exit "${{SMOKE_OPENCODE_CODE:-0}}" ;;
-  *'smoke_ci.py run kilo'*) exit "${{SMOKE_KILO_CODE:-0}}" ;;
+  *'smoke_ci.py run'*) exit "${SMOKE_CODE:-0}" ;;
 esac
 """
 
 
-def run_wsl_probe(
-    steps, tmp_path, tests="true", smoke="true", provider="all", stub=TIMEOUT_STUB, **env
-) -> dict[str, list]:
+def run_wsl_probe(steps, tmp_path, part="tests", stub=TIMEOUT_STUB, **env) -> dict[str, list]:
     """Run the WSL probe's script with a stub `timeout`: its checks.tsv rows by name."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -362,9 +381,7 @@ def run_wsl_probe(
         "PROBE": str(probe),
         "TMPDIR": str(tmp_path / "tmp"),
         "UV_VERSION": "0",
-        "TESTS": tests,
-        "SMOKE": smoke,
-        "PROVIDER": provider,
+        "PART": part,
         **env,
     }
     script = step_named(steps, "WSL probe")["run"]
@@ -373,18 +390,25 @@ def run_wsl_probe(
     return {row.split("\t")[0]: row.split("\t") for row in rows}
 
 
-def test_wsl_probe_gets_the_tests_input_as_a_boolean(steps):
-    probe = step_named(steps, "WSL probe")
-    assert probe["env"]["TESTS"] == "${{ needs.settings.outputs.tests }}"
-    assert "TESTS" in probe["env"]["WSLENV"].split(":")
+def test_wsl_probe_gets_its_part_and_no_cli_version(text, steps):
+    env = step_named(steps, "WSL probe")["env"]
+    assert env["PART"] == "${{ matrix.part }}"
+    assert "PART" in env["WSLENV"].split(":")
+    # scripts/smoke_ci.py's PINS is the one place of a CLI's version.
+    for package, version, _ in PINS.values():
+        assert package not in text and version not in text, package
+    assert "_VERSION" not in str(env).replace("UV_VERSION", "")
 
 
-def test_wsl_probe_runs_the_make_checks_with_tests(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, tests="true")
+def test_the_tests_part_runs_doctor_and_the_make_checks_and_no_smoke(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path, part="tests")
+    assert rows["wsl lado-doctor"][1:3] == ["0", "expected"]
     assert rows["wsl make-test"][1:] == ["0", "required", "wsl-make-test.log"]
     assert rows["wsl make-test-integration"][1:3] == ["0", "required"]
+    assert not [name for name in rows if "smoke" in name or "node" in name]
     ran = (tmp_path / "probe" / "ran").read_text()
     assert "cd ~/lado && make test\n" in ran and "make test-integration" in ran
+    assert "smoke_ci.py" not in ran
 
 
 def test_the_agents_path_is_lados_own_after_uv_sync(steps):
@@ -399,32 +423,22 @@ def test_the_agents_path_is_lados_own_after_uv_sync(steps):
     assert "/usr/bin:/bin:/usr/sbin:/sbin" not in run and "env -i" not in run
 
 
-def test_wsl_probe_skips_the_make_checks_without_tests(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, tests="false")
-    for name in ("wsl make-test", "wsl make-test-integration"):
-        assert rows[name][1:3] == ["skipped", "skipped"], rows[name]
-    # The other checks still run.
-    assert rows["wsl uv-sync"][1:3] == ["0", "required"]
-    ran = (tmp_path / "probe" / "ran").read_text()
-    assert "make test" not in ran and "uv sync" in ran
-
-
-def test_a_skipped_check_neither_passes_nor_fails(steps):
-    summary = step_named(steps, "Summary")["run"]
-    # The summary names it, and lists no log for it as a failure.
-    assert "'skipped'" in summary and "skipped" in summary.split("$failed")[1]
+def test_only_required_checks_decide(steps):
     verdict = step_named(steps, "Verdict")["run"]
-    # Only `required` rows decide; a skipped row is not one.
     assert "$_.kind -eq 'required' -and $_.code -ne '0'" in verdict
 
 
 def test_report_uploaded_always_then_the_verdict_last(steps):
     summary = step_named(steps, "Summary")
     assert summary["if"] == "always()"
-    assert "GITHUB_STEP_SUMMARY" in summary["run"]
+    assert "GITHUB_STEP_SUMMARY" in summary["run"] and "$env:PART" in summary["run"]
+    assert summary["env"]["PART"] == "${{ matrix.part }}"
     upload = step_using(steps, "actions/upload-artifact")
     assert upload["if"] == "always()"
-    assert upload["with"]["name"] == "windows-probe-${{ needs.settings.outputs.runner }}"
+    # One per part: the parts of a run do not collide.
+    assert upload["with"]["name"] == (
+        "windows-probe-${{ needs.settings.outputs.runner }}-${{ matrix.part }}"
+    )
     assert 1 <= upload["with"]["retention-days"] <= 7
     verdict = step_named(steps, "Verdict")
     assert verdict["if"] == "always()"
@@ -446,71 +460,51 @@ def test_verdict_red_when_wsl_ran_no_check(steps):
     assert '>>"$PROBE/checks.tsv" || exit 1' in probe
 
 
-def test_wsl_probe_gets_the_smoke_settings_and_no_cli_version(text, steps):
-    env = step_named(steps, "WSL probe")["env"]
-    assert env["SMOKE"] == "${{ needs.settings.outputs.smoke }}"
-    assert env["PROVIDER"] == "${{ needs.settings.outputs.provider }}"
-    assert {"SMOKE", "PROVIDER"} <= set(env["WSLENV"].split(":"))
-    # scripts/smoke_ci.py's PINS is the one place of a CLI's version.
-    for package, version, _ in PINS.values():
-        assert package not in text and version not in text, package
-    assert "_VERSION" not in str(env).replace("UV_VERSION", "")
-
-
-def test_no_smoke_without_smoke(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, smoke="false")
-    assert not [name for name in rows if "smoke" in name or "node" in name]
-    assert "smoke_ci.py" not in (tmp_path / "probe" / "ran").read_text()
-
-
-def test_the_smoke_of_each_provider_is_a_required_check(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path)
+@pytest.mark.parametrize("provider", list(PINS))
+def test_a_smoke_part_runs_node_then_its_providers_smoke_as_a_required_check(
+    steps, tmp_path, provider
+):
+    rows = run_wsl_probe(steps, tmp_path, part=f"smoke-{provider}")
     names = list(rows)
     # Node and npm from Ubuntu first, a check of its own that counts.
     assert rows["wsl node"][1:3] == ["0", "required"]
-    for provider in PINS:
-        assert rows[f"wsl smoke-{provider}"][1:] == ["0", "required", f"wsl-smoke-{provider}.log"]
-        assert names.index("wsl node") < names.index(f"wsl smoke-{provider}")
-    assert names.index("wsl make-test-integration") < names.index("wsl node")
+    assert rows[f"wsl smoke-{provider}"][1:] == ["0", "required", f"wsl-smoke-{provider}.log"]
+    assert (
+        names.index("wsl uv-sync") < names.index("wsl node") < names.index(f"wsl smoke-{provider}")
+    )
+    # Only its own provider; no doctor, no make checks.
+    assert [n for n in names if n.startswith("wsl smoke-")] == [f"wsl smoke-{provider}"]
+    assert not [n for n in names if "make-test" in n or "doctor" in n]
     ran = (tmp_path / "probe" / "ran").read_text().splitlines()
-    cells = [line for line in ran if "smoke_ci.py run" in line]
+    (cell,) = [line for line in ran if "smoke_ci.py run" in line]
     out = tmp_path / "tmp" / "lado-smoke-out"
-    assert [line.split("cd ~/lado && ")[1] for line in cells] == [
-        f"uv run python scripts/smoke_ci.py run {p} {out}/{p}" for p in PINS
-    ]
-    for line in cells:
-        assert "su - lado -c" in line
-    assert [line for line in ran if "smoke_ci.py providers" in line]
+    assert "su - lado -c" in cell
+    assert cell.split("cd ~/lado && ")[1] == (
+        f"uv run python scripts/smoke_ci.py run {provider} {out}/{provider}"
+    )
 
 
-def test_a_smoke_with_no_provider_listed_is_red(steps, tmp_path):
-    stub = TIMEOUT_STUB.replace(f"echo '{' '.join(PINS)}'", "exit 1")
-    rows = run_wsl_probe(steps, tmp_path, stub=stub)
-    assert rows["wsl smoke-providers"][1:3] == ["none", "required"]
-
-
-@pytest.mark.parametrize("provider", list(PINS))
-def test_a_run_for_one_provider_runs_only_its_smoke(steps, tmp_path, provider):
-    rows = run_wsl_probe(steps, tmp_path, provider=provider)
-    assert [n for n in rows if n.startswith("wsl smoke-")] == [f"wsl smoke-{provider}"]
+def test_an_unknown_part_is_red(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path, part="smoke-")
+    assert rows["wsl part"][1:3] == ["unknown", "required"]
 
 
 def test_a_cells_exit_code_is_its_verdict(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, SMOKE_KILO_CODE="1")
+    rows = run_wsl_probe(steps, tmp_path, part="smoke-kilo", SMOKE_CODE="1")
     assert rows["wsl smoke-kilo"][1:3] == ["1", "required"]
-    assert rows["wsl smoke-opencode"][1:3] == ["0", "required"]
 
 
 def test_a_failing_cell_keeps_its_code_and_its_evidence(steps, tmp_path):
     evidence = tmp_path / "tmp" / "lado-smoke-out" / "codex" / "evidence" / "20261010-test_w"
     # The script copies a failing cell's evidence into its out folder.
     writes = f'mkdir -p "{evidence}" && echo "w1 never started" >"{evidence}/lado-log.txt"'
-    stub = TIMEOUT_STUB.replace(
-        "*'smoke_ci.py run codex'*) ", f"*'smoke_ci.py run codex'*) {writes}; "
-    )
-    rows = run_wsl_probe(steps, tmp_path, stub=stub, SMOKE_CODEX_CODE="1")
+    stub = TIMEOUT_STUB.replace("*'smoke_ci.py run'*) ", f"*'smoke_ci.py run'*) {writes}; ")
+    rows = run_wsl_probe(steps, tmp_path, part="smoke-codex", stub=stub, SMOKE_CODE="1")
     assert rows["wsl smoke-codex"][1:3] == ["1", "required"]
     kept = tmp_path / "probe" / "smoke-evidence-codex" / evidence.name / "lado-log.txt"
     assert kept.read_text() == "w1 never started\n"
-    # A passing one keeps none.
+
+
+def test_a_passing_cell_keeps_no_evidence(steps, tmp_path):
+    run_wsl_probe(steps, tmp_path, part="smoke-kilo")
     assert not (tmp_path / "probe" / "smoke-evidence-kilo").exists()

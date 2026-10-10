@@ -134,25 +134,29 @@ workflow (`.github/workflows/windows-shell.yml`) runs weekly on main (Monday 03:
 `schedule`, with the defaults: WSL, tests, smoke; a red run mails the maintainers as any
 failed workflow does) and when started, `gh workflow run windows-shell.yml --ref <branch> -f
 runner=windows-latest` (`-f wsl=false -f smoke=false`: native only, as the smoke needs WSL;
-`-f tests=false`: no `make test` and `make test-integration`, both then `skipped`, neither
-passed nor failed; `-f smoke=false`: no smoke; `-f provider=claude|codex|opencode|kilo`,
-`all` by default: whose smoke; `-f minutes=N`, 120 by default, at most 360, setup
-included). Its first job,
-`settings`, is the only one that reads the inputs: a scheduled run has none, and each takes
-its input's default (`tests/test_windows_shell_workflow.py` keeps both the same). It installs LADO
-from the checkout on Windows itself (`native.log`: Python, `lado --version`, `lado doctor`;
-expected to fail, only recorded) and, with `wsl`, in WSL2 Ubuntu 24.04 as the user `lado`
-(the repo at the run's commit in `~/lado`), runs each check in its login shell: `uname -m`,
-`tmux -V`, uv's install, its `PATH` (`wsl-path.log`), `uv sync`, the agents' PATH by LADO's
-own `agent_env.from_shell` (`wsl-agents-path.log`), `lado --version`, `lado doctor` (recorded only: no agent CLI there), `make test`,
-`make test-integration`. With `smoke`, then: Node and npm from Ubuntu (the check `node`),
-and for each chosen provider, one after another, a cell of `smoke_ci.py run`
-(`wsl-smoke-<provider>.log`), each a required check `wsl smoke-<provider>`; a failing one's
-evidence folder is in the report as `smoke-evidence-<provider>`. The quick smoke-only run:
-`-f tests=false`. The job is red when one of the required WSL checks fails. The logs are the
-artifact `windows-probe-<runner>` (`gh run download <id>`), and the job's
-summary has each check's exit code, the PATH lines and the end of each failing log (`gh run
-view <id>`, `--log` for all). No shell into the runner: the public tmate servers are gone
+`-f tests=false`: no tests part; `-f smoke=false`: no smoke;
+`-f provider=claude|codex|opencode|kilo`, `all` by default: whose smoke; `-f minutes=N`,
+120 by default, at most 360, setup included, per part). Its first job, `settings`, is the
+only one that reads the inputs: a scheduled run has none, and each takes its input's default
+(`tests/test_windows_shell_workflow.py` keeps both the same). It refuses the smoke without
+WSL and a run with neither tests nor smoke, and makes the parts, a JSON list: `tests`, and
+`smoke-<provider>` per chosen provider (its list is `smoke_ci.py`'s `PINS`, kept the same by
+a test). The job `probe` is a matrix of the parts (`fail-fast: false`): each part runs on a
+runner of its own with its own WSL, all at once, so a weekly run is 5 jobs. Each part, with
+`wsl`, sets up WSL2 Ubuntu 24.04, the user `lado` and the repo at the run's commit in
+`~/lado`, and runs each check in `lado`'s login shell: `uname -m`, `tmux -V`, uv's install,
+its `PATH` (`wsl-path.log`), `uv sync`, the agents' PATH by LADO's own
+`agent_env.from_shell` (`wsl-agents-path.log`), `lado --version`. Then the part `tests`
+installs LADO from the checkout on Windows itself (`native.log`: Python, `lado --version`,
+`lado doctor`; expected to fail, only recorded) and runs in WSL `lado doctor` (recorded
+only: no agent CLI there), `make test` and `make test-integration`; a part
+`smoke-<provider>` installs Node and npm from Ubuntu (the check `node`) and runs a cell of
+`smoke_ci.py run` (`wsl-smoke-<provider>.log`), the required check `wsl smoke-<provider>`;
+a failing one's evidence folder is in the report as `smoke-evidence-<provider>`. The quick
+smoke-only run: `-f tests=false`. A part is red when one of its required WSL checks fails.
+The logs are the artifact `windows-probe-<runner>-<part>` (`gh run download <id>`), and each
+part's summary has each check's exit code, the PATH lines and the end of each failing log
+(`gh run view <id>`, `--log` for all). No shell into the runner: the public tmate servers are gone
 from DNS.
 `windows-11-arm` runs only with `-f wsl=false -f smoke=false`: setup-wsl's Ubuntu image is
 amd64 only.
@@ -1308,7 +1312,7 @@ Six layers; each change gets tests at the lowest layer that can catch its bugs:
    (Commands): the platform half of the live tests, without their model half. Needed for a
    change in how LADO starts, configures or talks to a CLI on some system. Never in the
    default run or `make check` (it needs the CLIs); in CI on Linux and macOS (job `smoke`),
-   and in WSL2 in the Windows probe.
+   and in WSL2 in the Windows probe, a job per provider.
 6. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
    message; then the session stops and no process is left. Never in the default run and

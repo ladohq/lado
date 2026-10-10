@@ -94,6 +94,9 @@ Earlier single failures of the same kind, each passing alone and on the next run
 - `src/App.test.tsx` > "the Agents tab follows the agents' changes; a reset loads them
   again": `Unable to find role="navigation" and name "Agents"` at load average 238
   (2026-10-05, review of feature/kit-marketplaces-core).
+- `src/Launch.test.tsx` > "a refused start shows the core's whole reason and keeps the
+  window": `Unable to find role="alert"` (1257 ms) in one `make web` at load average about
+  8 (2026-10-10, fix/md-tables-wrap, a CSS-only change); 561 of 561 passed on the next run.
 Wanted: one setting for the whole suite (a `testTimeout` and an `asyncUtilTimeout` that
 hold under load), so a test fails only when what it waits for never comes.
 Found: 2026-10-04..06, the tests above; this entry 2026-10-06, investigation of why

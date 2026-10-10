@@ -133,7 +133,8 @@ fixes and docs only: no new feature, no API or schema change.
 ## Layout
 
 - `src/lado/`: the Python package.
-  - `cli.py`: the `lado` command. `doctor.py`: environment checks; a provider's state
+  - `cli.py`: the `lado` command; its console script is `console.py`, which refuses native
+    Windows in one line (WSL2) before importing `cli.py` (termios, fcntl). `doctor.py`: environment checks; a provider's state
     (installed, version, tested version, warning) is `doctor.provider_status`, which
     `lado doctor` formats and the UI's `GET /api/providers` serves. A `doctor.Check` has
     one `level` (`OK`, `INFO`, `WARN`, `FAIL`; printed `[ok  ]`, `[info]`, `[warn]`,

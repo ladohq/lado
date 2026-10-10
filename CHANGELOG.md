@@ -14,6 +14,8 @@
   (else the Linux login default), so a CLI in `/usr/local/bin` is found; on WSL with
   `/usr/lib/wsl/lib` but not the Windows PATH (add a Windows folder in `~/.profile` to give
   it to agents). `lado doctor` says where the agents' PATH starts from.
+- On native Windows, `lado` says in one line that it runs only inside WSL2 instead of
+  failing with a traceback (`No module named 'termios'`).
 
 ## 0.33.0 (2026-10-10)
 

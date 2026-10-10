@@ -27,7 +27,7 @@ Homepage = "https://github.com/ladohq/lado"
 Repository = "https://github.com/ladohq/lado"
 
 [project.scripts]
-lado = "lado.cli:main"
+lado = "lado.console:main"
 
 [build-system]
 requires = ["hatchling"]

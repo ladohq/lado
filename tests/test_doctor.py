@@ -244,6 +244,7 @@ def test_an_inherited_environment_on_wsl_says_nothing_of_the_windows_path(monkey
 
 
 def test_a_slow_login_shell_warns(login_shell, monkeypatch):
+    _base(monkeypatch)
     monkeypatch.setattr(agent_env, "SLOW", 0)
     (check,) = doctor.check_agent_env()
     assert check.level == doctor.WARN

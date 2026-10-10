@@ -634,6 +634,21 @@ Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
 # P2: when convenient
 
+## styles.css writes 20 selectors twice; some may style two components
+
+Size: S. Why here: the team chips' bug came from exactly this, a later rule of one
+component overriding an earlier one of another; no reported symptom yet.
+
+`web/src/styles.css` is one global file. fix/team-chip gave each component's chips their
+own classes, and `web/src/chips.test.ts` fails when a selector with `chip` in it is written
+twice at the top level. Other selectors are still written twice, some far apart, e.g.
+`.needs-you` (l. ~1413, ~2193), `.link-button` (~2536, ~3790), `.feed-who` (~2303, ~4740),
+`.feed-label` (~4750, ~5521), `.composer` (~2150, ~3088), `.kit-problem`; some are a rule
+and its later refinement on purpose, others may be two components sharing a name.
+Wanted: look at each pair; give a component its own class where two share one, merge the
+rest, then widen the guard in `chips.test.ts` to every top-level selector.
+Found: 2026-10-10, implement of fix/team-chip (developer).
+
 ## Integration tests take a new worker's first idle as its task done
 
 Size: S. Why here: latent flakes; one of them failed 2 of 3 Windows probe runs.
@@ -1720,6 +1735,18 @@ test waits for the scroll to end.
 Found: 2026-10-09, release of 0.32.0.
 Again at the release of 0.33.0 (f9d3739): the terminal panel test, the same `ValueError`;
 passed on the first rerun.
+Again in CI on 99b22f3 (push of main, 2026-10-10, run 38046763270): the same `ValueError`;
+passed on the rerun. Third time: worth fixing before the next release.
+
+## Flaky in CI: `test_stopping_a_session_tells_no_one_and_counts_what_it_dropped` on 3.10
+
+Size: S. Why here: a red CI run on main for no code reason.
+CI on 99b22f3 (run 38046763270, job check (3.10)): `tests/integration/test_agent_liveness.py`
+`Failed: timed out after 30s waiting for supervisor's hook; agents: none; messages: lado → w1
+[read] 'your task', supervisor → w1 [dropped] 'queued'`; passed on the rerun.
+Wanted: find what the test waits for after the stop (the agents are gone already) and wait
+for that, not the supervisor's hook.
+Found: 2026-10-10, CI after the push of main.
 
 ## Codex agents call `read_mcp_resource` instead of LADO's tools
 

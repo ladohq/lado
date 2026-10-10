@@ -939,15 +939,17 @@ Built in the layout task (2026-10-03, schema 14):
   waiting an orange diamond, starting a dashed ring, stopped a grey square; decided
   2026-10-09 in feature/background-status, mockup artifact
   `feature/background-status/mockup-dot.html`, version 3; no count of background tasks
-  anywhere), its name and role, a tooltip;
+  anywhere), its name, a tooltip; every chip alike and compact (24 px high, a pill), with
+  no role on any: the role is in the tooltip and the accessible name (decided 2026-10-10,
+  fix/team-chip, mockup `fix/team-chip/mockup-team-chip.html`, variant B; its classes
+  are the team's own, `team-chip`, as each component's chips have theirs);
   the chip of the terminal the panel shows is marked. The agents are grouped (decided
   2026-10-07, feature/activity-team), from `AgentInfo.run` only: the supervisor and its
   own workers (no run) come first, as the server lists them; then each run that has an
   agent, in the order its first agent is listed, as a dashed frame (`role="group"`,
-  `run <name>`) with the run's name, a link to its page in Flows, and its agents as compact
-  chips (lower, no role: the role is in the tooltip and the accessible name), all in the
-  team's one wrapping row. The frame shows no state of the run (Flows and Agents do).
-  A compact chip's accessible name, pressed state, tooltip and click are a chip's. The tooltip (the UI polish, the
+  `run <name>`) with the run's name, a link to its page in Flows, and its agents' chips, all
+  in the team's one wrapping row. The frame shows no state of the run (Flows and Agents
+  do). The tooltip (the UI polish, the
   human's decision, 2026-10-03) is the UI's own (`Tooltip.tsx`, one component for the
   chips and the terminal tabs), not the browser's `title`: compact, from `AgentInfo`
   only: `name · role · provider` (the role left out when it is the name), and

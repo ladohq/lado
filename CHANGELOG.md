@@ -2,6 +2,8 @@
 
 ## 0.34.0 (unreleased)
 
+- The team chips above a session's Activity all look the same, compact and without the
+  role (it is in the tooltip); the supervisor's chip no longer looks unlike the others.
 - Markdown tables wrap their cells to fit the column; they scroll sideways only when their
   columns cannot fit.
 - Dismissing an agent's question in the UI no longer loses what you typed: the button

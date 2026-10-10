@@ -226,7 +226,7 @@ function KitsPage({ tab }: { tab: KitsTab }) {
                 <button
                   key={value}
                   type="button"
-                  className="chip"
+                  className="source-chip"
                   aria-pressed={source === value}
                   onClick={() => chooseSource(value)}
                 >

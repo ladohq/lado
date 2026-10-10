@@ -619,7 +619,7 @@ function KitsField({
         {kits.map((name) => {
           const info = known.find((one) => one.name === name);
           return (
-            <span key={name} className={`chip${info && !info.valid ? " invalid" : ""}`} title={info?.problem ?? undefined}>
+            <span key={name} className={`kits-box-chip${info && !info.valid ? " invalid" : ""}`} title={info?.problem ?? undefined}>
               <span>{name}</span>
               {info?.version && <span className="muted"> {info.version}</span>}
               <button

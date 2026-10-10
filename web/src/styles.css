@@ -1997,39 +1997,37 @@ h3 {
   text-transform: uppercase;
 }
 
-.chip {
+/* An agent's chip, the same for every agent: its dot and name, no role (decided 2026-10-10,
+   fix/team-chip, mockup-team-chip.html variant B). */
+.team-chip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 12px;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
   border: 1px solid var(--line);
-  border-radius: 15px;
+  border-radius: 12px;
   background: var(--panel);
   color: var(--ink);
   font-size: 13px;
 }
 
-.chip:hover {
+.team-chip:hover {
   background: var(--raised);
 }
 
-.chip[aria-pressed="true"] {
+.team-chip[aria-pressed="true"] {
   border-color: var(--action);
   background: var(--raised);
   box-shadow: inset 0 0 0 1px var(--action);
 }
 
-.chip-name {
+.team-chip-name {
   font: 600 13px var(--mono);
 }
 
-.chip-role {
-  color: var(--muted);
-}
-
 /* A flow run's agents: a dashed frame, the run's name (a link to its page in Flows), then
-   its agents as compact chips, in the team's row. */
+   its agents' chips, in the team's row. */
 .team-run {
   display: inline-flex;
   align-items: center;
@@ -2050,13 +2048,6 @@ h3 {
 
 .team-run-name:hover {
   text-decoration: underline;
-}
-
-.chip.chip-compact {
-  gap: 6px;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 12px;
 }
 
 /* An agent's status: colour and shape, so it reads without colour too. busy: a full green
@@ -3720,7 +3711,8 @@ h3 {
   border-radius: 6px;
 }
 
-.chip {
+/* A kit chosen for the session: its name, version and ×. */
+.kits-box-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -3731,11 +3723,11 @@ h3 {
   font-size: 13px;
 }
 
-.chip.invalid {
+.kits-box-chip.invalid {
   text-decoration: line-through;
 }
 
-.chip button {
+.kits-box-chip button {
   width: 22px;
   height: 22px;
   padding: 0;
@@ -3745,7 +3737,7 @@ h3 {
   color: var(--muted);
 }
 
-.chip button:hover {
+.kits-box-chip button:hover {
   color: var(--ink);
 }
 
@@ -4824,10 +4816,30 @@ h3 {
   gap: 6px;
 }
 
-.kits-chips .chip {
+/* A source to filter by; the one chosen is pressed. Its look is the one it had while it took
+   the rules of other components' chips (fix/team-chip), now its own. */
+.source-chip {
+  display: inline-flex;
+  align-items: center;
   height: 26px;
   padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
   font-size: 12px;
+  cursor: pointer;
+}
+
+.source-chip[aria-pressed="true"] {
+  border-color: var(--action);
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--action);
+}
+
+.source-chip:hover {
+  border-color: var(--action);
+  background: var(--action-ground);
 }
 
 /* The kits as a grid of cards (docs/design/ui.md, Kits: Card), one column on a narrow page

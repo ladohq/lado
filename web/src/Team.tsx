@@ -1,7 +1,8 @@
 // The team above a session's Activity feed: a chip per agent, with its status (a dot whose
-// colour and shape differ), name and role. The supervisor and its own workers come first;
-// the agents of each flow run follow in a dashed frame named by the run, a link to its page
-// in Flows, as compact chips without the role, all in the same row (decided 2026-10-07,
+// colour and shape differ) and name; every chip alike, compact, the role only in the tooltip
+// and the accessible name (decided 2026-10-10, fix/team-chip). The supervisor and its own
+// workers come first; the agents of each flow run follow in a dashed frame named by the run,
+// a link to its page in Flows, all in the same row (decided 2026-10-07,
 // feature/activity-team; no state of the run: Flows and Agents show it). A chip opens the
 // agent's terminal in the panel on the right, or selects it; the chip of the terminal shown
 // is marked. Its tooltip (Tooltip.tsx): name · role · provider, and the flow run it works for.
@@ -77,7 +78,7 @@ export function Team({ session }: { session: string }) {
             {run}
           </Link>
           {agents.map((agent) => (
-            <AgentChip key={agent.name} agent={agent} shown={shown} open={open} compact />
+            <AgentChip key={agent.name} agent={agent} shown={shown} open={open} />
           ))}
         </div>
       ))}
@@ -85,31 +86,19 @@ export function Team({ session }: { session: string }) {
   );
 }
 
-// One agent's chip; a compact one, in a run's frame, leaves its role to the tooltip and its
-// name for assistive technology.
-function AgentChip({
-  agent,
-  shown,
-  open,
-  compact = false,
-}: {
-  agent: AgentInfo;
-  shown: string | null;
-  open: (name: string) => void;
-  compact?: boolean;
-}) {
+// One agent's chip: its role is left to the tooltip and its name for assistive technology.
+export function AgentChip({ agent, shown, open }: { agent: AgentInfo; shown: string | null; open: (name: string) => void }) {
   return (
     <Tooltip tip={<AgentTip name={agent.name} info={agent} />}>
       <button
         type="button"
-        className={compact ? "chip chip-compact" : "chip"}
+        className="team-chip"
         aria-label={`${agent.name}, ${agent.role}, ${agent.status}`}
         aria-pressed={agent.name === shown}
         onClick={() => open(agent.name)}
       >
         <StatusDot status={agent.status} />
-        <span className="chip-name">{agent.name}</span>
-        {!compact && agent.role !== agent.name && <span className="chip-role">{agent.role}</span>}
+        <span className="team-chip-name">{agent.name}</span>
       </button>
     </Tooltip>
   );

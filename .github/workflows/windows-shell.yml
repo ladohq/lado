@@ -236,7 +236,8 @@ jobs:
           retention-days: 5
 
       # Linux tmate in WSL: action-tmate's MSYS2 tmate hung on Windows before its SSH line.
-      # Ubuntu's package (setup-wsl above).
+      # Ubuntu's package (setup-wsl above): the static release's own resolver never found
+      # ssh.tmate.io in WSL (run 38005117396).
       - name: Shell
         if: (inputs.shell == true || inputs.shell == 'true') && (inputs.wsl == true || inputs.wsl == 'true')
         shell: wsl-bash {0}
@@ -253,18 +254,6 @@ jobs:
           printf '%s\n' "$keys" >~lado/.tmate-keys
           chown lado:lado ~lado/.tmate-keys
           chmod 600 ~lado/.tmate-keys
-          # tmate looks its server up with libevent's own resolver, which never found
-          # ssh.tmate.io in WSL (runs 38005117396, 38006655138: static and Ubuntu's tmate);
-          # glibc does. tmate checks the server by its key's fingerprint, not by its name.
-          cat /etc/resolv.conf || true
-          server=$(getent ahostsv4 ssh.tmate.io | awk 'NR == 1 { print $1 }')
-          if [ -z "$server" ]; then
-            echo "::error::ssh.tmate.io does not resolve in WSL"
-            exit 1
-          fi
-          echo "ssh.tmate.io: $server"
-          echo "set -g tmate-server-host $server" >~lado/.tmate.conf
-          chown lado:lado ~lado/.tmate.conf
           su - lado -c 'tmate -v -a ~/.tmate-keys -S /tmp/tmate.sock new-session -d'
           if ! timeout 120 su - lado -c 'tmate -S /tmp/tmate.sock wait tmate-ready'; then
             echo "::error::tmate did not reach its server within 120 seconds"

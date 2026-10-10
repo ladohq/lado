@@ -289,11 +289,6 @@ def test_shell_is_ubuntus_tmate_and_only_for_the_starter(steps):
     # Ubuntu's package (setup-wsl's additional-packages), no static release.
     assert "releases/download" not in run and "sha256sum" not in run
     assert "/usr/local/bin" not in run
-    # tmate resolves its server with libevent's own resolver, which never found
-    # ssh.tmate.io in WSL (runs 38005117396, 38006655138), static or Ubuntu's: glibc
-    # resolves it, and tmate gets the address.
-    assert "getent ahostsv4 ssh.tmate.io" in run
-    assert "set -g tmate-server-host" in run and "~lado/.tmate.conf" in run
     assert "https://github.com/$ACTOR.keys" in run
     assert shell["env"]["ACTOR"] == "${{ github.actor }}"
     # No keys: no session open to anyone.

@@ -97,11 +97,15 @@ Python 3.10 and 3.13, the Node tests, and in one job on Python 3.13 `make dist` 
 built and in both the sdist and the wheel) and the UI e2e tests.
 Live tests are not in CI: run them locally.
 
-A Windows probe, not CI: the `Windows probe` workflow (`.github/workflows/windows-shell.yml`)
-runs only when started, `gh workflow run windows-shell.yml --ref <branch> -f
+A Windows probe, not in the per-push CI (a run takes 20-25 minutes): the `Windows probe`
+workflow (`.github/workflows/windows-shell.yml`) runs weekly on main (Monday 03:17 UTC, its
+`schedule`, with the defaults: WSL, tests, no live tests; a red run mails the maintainers as
+any failed workflow does) and when started, `gh workflow run windows-shell.yml --ref <branch> -f
 runner=windows-latest` (`-f wsl=false`: native only; `-f tests=false`: no `make test` and
 `make test-integration`, both then `skipped`, neither passed nor failed; `-f live=true`: the
-live tests too; `-f minutes=N`, 120 by default, at most 360, setup included). It installs LADO
+live tests too; `-f minutes=N`, 120 by default, at most 360, setup included). Its first job,
+`settings`, is the only one that reads the inputs: a scheduled run has none, and each takes
+its input's default (`tests/test_windows_shell_workflow.py` keeps both the same). It installs LADO
 from the checkout on Windows itself (`native.log`: Python, `lado --version`, `lado doctor`;
 expected to fail, only recorded) and, with `wsl`, in WSL2 Ubuntu 24.04 as the user `lado`
 (the repo at the run's commit in `~/lado`), runs each check in its login shell: `uname -m`,
@@ -120,7 +124,9 @@ view <id>`, `--log` for all). No shell into the runner: the public tmate servers
 from DNS.
 `windows-11-arm` runs only with `-f wsl=false`: setup-wsl's Ubuntu image is amd64 only.
 
-Release: `uv version <X.Y.Z>`, commit, then push tag `vX.Y.Z`. The Release workflow checks the
+Release: `uv version <X.Y.Z>`, commit on main, run the Windows probe on that commit (`gh
+workflow run windows-shell.yml --ref main -f runner=windows-latest`) and wait for it to be
+green, then push tag `vX.Y.Z`. The Release workflow checks the
 tag against the package version, builds with `make dist` and publishes to PyPI.
 CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; the release
 commit puts the date in its place.
@@ -1267,7 +1273,7 @@ Five layers; each change gets tests at the lowest layer that can catch its bugs:
    before teardown. A passing test keeps nothing; the folder is never cleaned by the tests.
    A timed-out wait names what it waited for and the agents' statuses and last messages.
 
-Before a release: `make test-live` passes on main, and CI is green on the release commit (main got its `make check` at each merge).
+Before a release: `make test-live` passes on main, CI is green on the release commit (main got its `make check` at each merge), and so is the Windows probe (`gh workflow run windows-shell.yml --ref main -f runner=windows-latest`, on main at the release commit).
 
 ## Design principles
 

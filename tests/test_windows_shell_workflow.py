@@ -1,4 +1,5 @@
-""".github/workflows/windows-shell.yml: the Windows (+ WSL2) probe, started by hand."""
+""".github/workflows/windows-shell.yml: the Windows (+ WSL2) probe, weekly on main and by
+hand."""
 
 import os
 import re
@@ -12,10 +13,11 @@ from lado.providers import kilo, opencode
 
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-shell.yml"
-# A boolean input as GitHub's web form gives it (a boolean) or the API (a string).
-WSL = "inputs.wsl == true || inputs.wsl == 'true'"
-TESTS = "inputs.tests == true || inputs.tests == 'true'"
-LIVE = "inputs.live == true || inputs.live == 'true'"
+# The run's settings, as the settings job gives them: always the strings 'true' or 'false'.
+SETTINGS = "needs.settings.outputs"
+WSL = f"{SETTINGS}.wsl == 'true'"
+LIVE = f"{SETTINGS}.live == 'true'"
+INPUTS = ["runner", "wsl", "tests", "live", "minutes"]
 
 
 @pytest.fixture(scope="module")
@@ -29,9 +31,31 @@ def workflow(text) -> dict:
 
 
 @pytest.fixture(scope="module")
-def steps(workflow) -> list[dict]:
-    (job,) = workflow["jobs"].values()
-    return job["steps"]
+def settings_job(workflow) -> dict:
+    return workflow["jobs"]["settings"]
+
+
+@pytest.fixture(scope="module")
+def probe_job(workflow) -> dict:
+    return workflow["jobs"]["probe"]
+
+
+@pytest.fixture(scope="module")
+def steps(probe_job) -> list[dict]:
+    return probe_job["steps"]
+
+
+def run_settings(settings_job, tmp_path, **inputs) -> tuple[int, dict, str]:
+    """Run the settings script with the inputs given (the others empty, as GitHub renders
+    an input a run does not have): its exit code, its outputs and what it printed."""
+    (step,) = settings_job["steps"]
+    output = tmp_path / "github_output"
+    output.touch()
+    env = {"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(output)}
+    env.update({name.upper(): str(inputs.get(name, "")) for name in INPUTS})
+    done = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True)
+    lines = output.read_text().splitlines()
+    return done.returncode, dict(line.split("=", 1) for line in lines), done.stdout
 
 
 def step_using(steps, action: str) -> dict:
@@ -44,10 +68,12 @@ def step_named(steps, name: str) -> dict:
     return step
 
 
-def test_started_only_by_hand(workflow):
+def test_started_by_hand_and_weekly(workflow):
     # PyYAML reads the key `on` as True.
     triggers = workflow[True]
-    assert list(triggers) == ["workflow_dispatch"]
+    assert list(triggers) == ["workflow_dispatch", "schedule"]
+    # Once a week (a schedule runs on the default branch), at an off-peak minute.
+    assert triggers["schedule"] == [{"cron": "17 3 * * 1"}]
 
 
 def test_inputs(workflow):
@@ -63,20 +89,90 @@ def test_inputs(workflow):
     assert inputs["live"]["default"] is False
     assert inputs["minutes"]["type"] == "number"
     assert inputs["minutes"]["default"] == 120
-    assert list(inputs) == ["runner", "wsl", "tests", "live", "minutes"]
+    assert list(inputs) == INPUTS
 
 
-def test_job_runs_on_the_chosen_runner_for_the_chosen_minutes(workflow, steps):
-    (job,) = workflow["jobs"].values()
-    assert job["runs-on"] == "${{ inputs.runner }}"
-    # Started through the API (gh workflow run -f minutes=120), the input is the string
-    # '120', which timeout-minutes refuses; fromJSON makes it a number either way.
-    assert job["timeout-minutes"] == "${{ fromJSON(inputs.minutes) }}"
+def test_settings_job_reads_each_input_once_and_gives_each_setting(settings_job, probe_job):
+    (step,) = settings_job["steps"]
+    assert step["shell"] == "bash" and settings_job["runs-on"] == "ubuntu-latest"
+    assert step["env"] == {name.upper(): "${{ inputs." + name + " }}" for name in INPUTS}
+    assert settings_job["outputs"] == {
+        name: "${{ steps." + step["id"] + ".outputs." + name + " }}" for name in INPUTS
+    }
+    assert probe_job["needs"] == "settings"
+
+
+def test_no_job_but_settings_reads_an_input(workflow, settings_job):
+    jobs = dict(workflow["jobs"])
+    jobs.pop("settings")
+    assert "inputs." not in yaml.safe_dump(jobs)
+    assert set(workflow["jobs"]) == {"settings", "probe"}
+
+
+def test_a_run_without_inputs_takes_the_defaults_of_a_run_by_hand(workflow, settings_job, tmp_path):
+    """A scheduled run has no inputs: each setting is its input's default."""
+    code, outputs, _ = run_settings(settings_job, tmp_path)
+    assert code == 0
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    defaults = {name: str(inputs[name]["default"]).lower() for name in INPUTS}
+    assert outputs == defaults
+    assert outputs == {
+        "runner": "windows-latest",
+        "wsl": "true",
+        "tests": "true",
+        "live": "false",
+        "minutes": "120",
+    }
+
+
+def test_no_live_tests_on_the_schedule(workflow, settings_job, tmp_path):
+    _, outputs, _ = run_settings(settings_job, tmp_path)
+    assert outputs["live"] == "false"
+    assert workflow[True]["workflow_dispatch"]["inputs"]["live"]["default"] is False
+
+
+@pytest.mark.parametrize(
+    "given, setting",
+    # From GitHub's web form a boolean input is a boolean (rendered true or false), from
+    # the API a string, whose case GitHub ignores when it compares.
+    [("true", "true"), ("false", "false"), ("True", "true"), ("FALSE", "false")],
+)
+def test_settings_take_a_boolean_in_either_form(settings_job, tmp_path, given, setting):
+    code, outputs, _ = run_settings(settings_job, tmp_path, wsl=given, tests=given, live=given)
+    assert code == 0
+    assert (outputs["wsl"], outputs["tests"], outputs["live"]) == (setting,) * 3
+
+
+@pytest.mark.parametrize(
+    "inputs, error",
+    [
+        ({"wsl": "yes"}, "wsl must be true or false, not yes"),
+        ({"live": "1"}, "live must be true or false, not 1"),
+        ({"minutes": "0"}, "minutes must be 1 to 360 (GitHub's cap), not 0"),
+        ({"minutes": "361"}, "minutes must be 1 to 360 (GitHub's cap), not 361"),
+        ({"minutes": "ten"}, "minutes must be 1 to 360 (GitHub's cap), not ten"),
+        ({"minutes": "1.5"}, "minutes must be 1 to 360 (GitHub's cap), not 1.5"),
+    ],
+)
+def test_settings_refuse_a_wrong_input(settings_job, tmp_path, inputs, error):
+    code, outputs, printed = run_settings(settings_job, tmp_path, **inputs)
+    assert code == 1 and outputs == {}
+    assert f"::error::{error}" in printed
+
+
+def test_minutes_given_as_a_string_become_a_plain_number(settings_job, tmp_path):
+    # From the API (gh workflow run -f minutes=090) the input is a string, which fromJSON
+    # would refuse with a leading zero.
+    code, outputs, _ = run_settings(settings_job, tmp_path, minutes="090")
+    assert code == 0 and outputs["minutes"] == "90"
+
+
+def test_job_runs_on_the_chosen_runner_for_the_chosen_minutes(probe_job):
+    assert probe_job["runs-on"] == "${{ needs.settings.outputs.runner }}"
+    # An output is a string, which timeout-minutes refuses; fromJSON makes it a number.
+    assert probe_job["timeout-minutes"] == "${{ fromJSON(needs.settings.outputs.minutes) }}"
     # The steps without a shell are PowerShell, also to actionlint.
-    assert job["defaults"] == {"run": {"shell": "pwsh"}}
-    guard = step_named(steps, "Check the length")
-    assert "-lt 1" in guard["run"] and "-gt 360" in guard["run"]
-    assert steps.index(guard) == 1
+    assert probe_job["defaults"] == {"run": {"shell": "pwsh"}}
 
 
 def test_report_folder_first_so_the_report_steps_work_after_a_guard(steps):
@@ -86,13 +182,13 @@ def test_report_folder_first_so_the_report_steps_work_after_a_guard(steps):
 
 
 @pytest.mark.parametrize("name, condition", [("wsl", WSL), ("live", LIVE)])
-def test_boolean_inputs_compared_as_a_boolean_or_a_string(steps, name, condition):
-    # From the API (gh workflow run -f wsl=false) the input may be the string 'false',
-    # which a bare `if: inputs.wsl` takes as true.
-    conditions = [s["if"] for s in steps if f"inputs.{name}" in s.get("if", "")]
+def test_boolean_settings_compared_as_a_string(steps, name, condition):
+    # A job's output is a string: a bare `if: needs.settings.outputs.wsl` takes 'false'
+    # as true.
+    conditions = [s["if"] for s in steps if f"{SETTINGS}.{name}" in s.get("if", "")]
     assert conditions
     for line in conditions:
-        assert f"inputs.{name}" not in line.replace(condition, ""), line
+        assert f"{SETTINGS}.{name}" not in line.replace(condition, ""), line
 
 
 def test_reads_contents_only(workflow):
@@ -138,7 +234,7 @@ def test_wsl_on_arm_fails_before_setup(steps):
         i
         for i, s in enumerate(steps)
         if "windows-11-arm" in s.get("if", "")
-        and "inputs.wsl" in s.get("if", "")
+        and f"{SETTINGS}.wsl" in s.get("if", "")
         and "exit 1" in s.get("run", "")
     ]
     assert guards and guards[0] < setup
@@ -242,7 +338,7 @@ def run_wsl_probe(
 
 def test_wsl_probe_gets_the_tests_input_as_a_boolean(steps):
     probe = step_named(steps, "WSL probe")
-    assert probe["env"]["TESTS"] == "${{ " + TESTS + " }}"
+    assert probe["env"]["TESTS"] == "${{ needs.settings.outputs.tests }}"
     assert "TESTS" in probe["env"]["WSLENV"].split(":")
 
 
@@ -291,7 +387,7 @@ def test_report_uploaded_always_then_the_verdict_last(steps):
     assert "GITHUB_STEP_SUMMARY" in summary["run"]
     upload = step_using(steps, "actions/upload-artifact")
     assert upload["if"] == "always()"
-    assert upload["with"]["name"] == "windows-probe-${{ inputs.runner }}"
+    assert upload["with"]["name"] == "windows-probe-${{ needs.settings.outputs.runner }}"
     assert 1 <= upload["with"]["retention-days"] <= 7
     verdict = step_named(steps, "Verdict")
     assert verdict["if"] == "always()"
@@ -304,7 +400,7 @@ def test_report_uploaded_always_then_the_verdict_last(steps):
 def test_verdict_red_when_wsl_ran_no_check(steps):
     """A WSL probe that recorded nothing (a $PROBE it cannot write) is no green."""
     verdict = step_named(steps, "Verdict")
-    assert verdict["env"]["WSL"] == "${{ inputs.wsl }}"
+    assert verdict["env"]["WSL"] == "${{ needs.settings.outputs.wsl }}"
     run = verdict["run"]
     assert "$env:WSL -eq 'true'" in run and "'^wsl '" in run
     probe = step_named(steps, "WSL probe")["run"]
@@ -316,7 +412,7 @@ def test_verdict_red_when_wsl_ran_no_check(steps):
 def test_wsl_probe_gets_the_live_input_and_the_pinned_cli_versions(steps):
     probe = step_named(steps, "WSL probe")
     env = probe["env"]
-    assert env["LIVE"] == "${{ " + LIVE + " }}"
+    assert env["LIVE"] == "${{ needs.settings.outputs.live }}"
     # The versions LADO is tested with (`lado doctor` warns about others).
     assert env["OPENCODE_VERSION"].startswith(opencode.TESTED_VERSION + ".")
     assert env["KILO_VERSION"].startswith(kilo.TESTED_VERSION + ".")

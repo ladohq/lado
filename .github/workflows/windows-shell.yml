@@ -1,6 +1,7 @@
 # A Windows runner, with WSL2 Ubuntu by default, that runs LADO's checks there and uploads
 # the logs; optionally LADO's live tests there, with free models.
-# Not CI: it runs only when started (AGENTS.md, Commands).
+# Not in the per-push CI (a run takes 20-25 minutes): weekly on main, and by hand, also
+# before each release (AGENTS.md, Commands).
 name: Windows probe
 
 on:
@@ -27,18 +28,69 @@ on:
         description: Job length in minutes, setup included (at most 360)
         type: number
         default: 120
+  # On the default branch, Monday at an off-peak minute, with the inputs' defaults (no
+  # live tests: the free models are flaky). A red run mails the maintainers.
+  schedule:
+    - cron: '17 3 * * 1'
 
 permissions:
   contents: read
 
 jobs:
+  # The run's settings, the only job that reads an input. A scheduled run has none: each
+  # empty input takes its default above (a test keeps both the same). The booleans come
+  # as true/false from the web form, as a string in any case from the API (gh workflow
+  # run -f wsl=False): each setting is 'true' or 'false', compared as such below.
+  settings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      runner: ${{ steps.settings.outputs.runner }}
+      wsl: ${{ steps.settings.outputs.wsl }}
+      tests: ${{ steps.settings.outputs.tests }}
+      live: ${{ steps.settings.outputs.live }}
+      minutes: ${{ steps.settings.outputs.minutes }}
+    steps:
+      - id: settings
+        name: Settings
+        shell: bash
+        env:
+          RUNNER: ${{ inputs.runner }}
+          WSL: ${{ inputs.wsl }}
+          TESTS: ${{ inputs.tests }}
+          LIVE: ${{ inputs.live }}
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          set -eu
+          fail() { echo "::error::$1"; exit 1; }
+          lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+          runner=${RUNNER:-windows-latest}
+          wsl=$(lower "${WSL:-true}")
+          tests=$(lower "${TESTS:-true}")
+          live=$(lower "${LIVE:-false}")
+          minutes=${MINUTES:-120}
+          for name in wsl tests live; do
+            case ${!name} in
+              true | false) ;;
+              *) fail "$name must be true or false, not ${!name}" ;;
+            esac
+          done
+          # A whole number (fromJSON refuses a leading zero), within GitHub's cap.
+          if [[ ! $minutes =~ ^[0-9]{1,3}$ ]] || ((10#$minutes < 1 || 10#$minutes > 360)); then
+            fail "minutes must be 1 to 360 (GitHub's cap), not $minutes"
+          fi
+          {
+            echo "runner=$runner"
+            echo "wsl=$wsl"
+            echo "tests=$tests"
+            echo "live=$live"
+            echo "minutes=$((10#$minutes))"
+          } >>"$GITHUB_OUTPUT"
+
   probe:
-    runs-on: ${{ inputs.runner }}
-    # Started through the API (gh workflow run -f minutes=N) an input is a string, which
-    # timeout-minutes refuses; so are the booleans, whose 'false' an `if` on the bare input
-    # takes as true: each expression compares them with both forms (strings compare
-    # case-insensitively).
-    timeout-minutes: ${{ fromJSON(inputs.minutes) }}
+    needs: settings
+    runs-on: ${{ needs.settings.outputs.runner }}
+    timeout-minutes: ${{ fromJSON(needs.settings.outputs.minutes) }}
     # Windows' default; said here so that actionlint does not read the scripts as bash.
     defaults:
       run:
@@ -53,24 +105,15 @@ jobs:
           New-Item -ItemType Directory -Force $probe | Out-Null
           "PROBE=$probe" | Add-Content $env:GITHUB_ENV
 
-      - name: Check the length
-        env:
-          MINUTES: ${{ inputs.minutes }}
-        run: |
-          if ([int]$env:MINUTES -lt 1 -or [int]$env:MINUTES -gt 360) {
-            Write-Output "::error::minutes must be 1 to 360 (GitHub's cap), not $env:MINUTES"
-            exit 1
-          }
-
       # setup-wsl's Ubuntu 24.04 is an amd64 image (v7.0.0), which WSL2 on ARM cannot run.
       - name: No WSL on ARM
-        if: inputs.runner == 'windows-11-arm' && (inputs.wsl == true || inputs.wsl == 'true')
+        if: needs.settings.outputs.runner == 'windows-11-arm' && needs.settings.outputs.wsl == 'true'
         run: |
           Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false"
           exit 1
 
       - name: No live agents without WSL
-        if: (inputs.live == true || inputs.live == 'true') && !(inputs.wsl == true || inputs.wsl == 'true')
+        if: (needs.settings.outputs.live == 'true') && !(needs.settings.outputs.wsl == 'true')
         run: |
           Write-Output "::error::the live tests run in WSL Ubuntu: run live=true with wsl=true"
           exit 1
@@ -108,14 +151,14 @@ jobs:
           exit 0
 
       - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
-        if: inputs.wsl == true || inputs.wsl == 'true'
+        if: needs.settings.outputs.wsl == 'true'
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2
           additional-packages: tmux git curl build-essential less
 
       - name: Check WSL
-        if: inputs.wsl == true || inputs.wsl == 'true'
+        if: needs.settings.outputs.wsl == 'true'
         env:
           WSL_UTF8: 1
         run: |
@@ -129,7 +172,7 @@ jobs:
 
       # setup-wsl's user is root, which no real user is: the checks run as lado.
       - name: Create the user lado
-        if: inputs.wsl == true || inputs.wsl == 'true'
+        if: needs.settings.outputs.wsl == 'true'
         shell: wsl-bash {0}
         run: |
           set -eu
@@ -141,7 +184,7 @@ jobs:
 
       # Cloned inside Ubuntu, not the Windows checkout under /mnt/d (CRLF, slow).
       - name: Clone the repo in Ubuntu
-        if: inputs.wsl == true || inputs.wsl == 'true'
+        if: needs.settings.outputs.wsl == 'true'
         shell: wsl-bash {0}
         env:
           REPO: ${{ github.repository }}
@@ -155,12 +198,12 @@ jobs:
       # Each check in lado's login shell, under a timeout, so a hang leaves time for the
       # report; a failing check does not stop the later ones.
       - name: WSL probe
-        if: inputs.wsl == true || inputs.wsl == 'true'
+        if: needs.settings.outputs.wsl == 'true'
         shell: wsl-bash {0}
         env:
           UV_VERSION: "0.12.3"
-          TESTS: ${{ inputs.tests == true || inputs.tests == 'true' }}
-          LIVE: ${{ inputs.live == true || inputs.live == 'true' }}
+          TESTS: ${{ needs.settings.outputs.tests }}
+          LIVE: ${{ needs.settings.outputs.live }}
           # The versions LADO is tested with (providers/opencode.py, kilo.py: TESTED_VERSION).
           OPENCODE_VERSION: "1.18.35"
           KILO_VERSION: "7.8.8"
@@ -226,7 +269,7 @@ jobs:
       - name: Summary
         if: always()
         env:
-          RUNNER_LABEL: ${{ inputs.runner }}
+          RUNNER_LABEL: ${{ needs.settings.outputs.runner }}
         run: |
           $checks = Join-Path $env:PROBE checks.tsv
           $out = @("## Windows probe on $env:RUNNER_LABEL ($env:RUNNER_ARCH)", "")
@@ -262,14 +305,14 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: windows-probe-${{ inputs.runner }}
+          name: windows-probe-${{ needs.settings.outputs.runner }}
           path: ${{ env.PROBE }}
           retention-days: 5
 
       - name: Verdict
         if: always()
         env:
-          WSL: ${{ inputs.wsl }}
+          WSL: ${{ needs.settings.outputs.wsl }}
         run: |
           $checks = Join-Path $env:PROBE checks.tsv
           if (-not (Test-Path $checks)) {
@@ -277,7 +320,6 @@ jobs:
             exit 1
           }
           $rows = @(Import-Csv $checks -Delimiter "`t" -Header name, code, kind, log)
-          # -eq compares strings case-insensitively: true from the form, 'true' from the API.
           if ($env:WSL -eq 'true' -and -not ($rows | Where-Object { $_.name -match '^wsl ' })) {
             Write-Output "::error::wsl is on, but no WSL check was recorded"
             exit 1

@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "vitest";
 import type { AgentInfo } from "./api";
 import { AGENT_REST } from "./fakes";
 import { ResumeIcon, StopIcon } from "./icons";
-import { StatusDot, teamGroups } from "./Team";
+import { AgentChip, StatusDot, teamGroups } from "./Team";
 
 afterEach(cleanup);
 
@@ -66,4 +66,21 @@ test("Stop is a square filled with the text's colour, with no stroke; Resume sta
   const resume = render(<ResumeIcon />).container.querySelector("path")!;
   expect(resume.getAttribute("fill")).toBeNull();
   expect(resume.closest("svg")!.getAttribute("fill")).toBe("none");
+});
+
+test("every chip is one chip: the supervisor's, a worker's and a run's alike, with no role shown", () => {
+  const chips = [agent("supervisor"), agent("w1"), agent("dev", "feature/x")].map((one) => {
+    const { container } = render(<AgentChip agent={one} shown={null} open={() => {}} />);
+    return container.querySelector("button")!;
+  });
+  for (const chip of chips) {
+    expect(chip.className).toBe("team-chip");
+    expect(chip.textContent).toBe(chip.querySelector(".team-chip-name")!.textContent); // the name only
+    expect(chip.querySelector(".chip-role")).toBeNull();
+  }
+  expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual([
+    "supervisor, developer, idle",
+    "w1, developer, idle",
+    "dev, developer, idle",
+  ]); // the role stays for the ear
 });

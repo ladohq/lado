@@ -94,7 +94,19 @@ states:
 """
 
 
-def test_a_runs_worker_is_a_compact_chip_in_the_runs_frame_which_links_to_flows(
+def chip_box(chip) -> dict:
+    """What makes a team chip's look: its box and its name's font."""
+    return chip.evaluate(
+        """c => {
+          const s = getComputedStyle(c);
+          const name = getComputedStyle(c.querySelector('.team-chip-name'));
+          return {height: c.getBoundingClientRect().height, radius: s.borderRadius,
+                  padding: s.padding, gap: s.gap, name: name.fontWeight + ' ' + name.fontSize};
+        }"""
+    )
+
+
+def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_to_flows(
     page: Page, server, repo, shot
 ):
     kit = repo / ".lado" / "kits" / "uibuild"
@@ -126,9 +138,12 @@ def test_a_runs_worker_is_a_compact_chip_in_the_runs_frame_which_links_to_flows(
     expect(chip).to_have_accessible_name("dev, worker, idle")
     expect(frame).to_have_text("build/xdev")  # no state, no role
     shot(page, "team")
+    # Every chip alike, the supervisor's, its worker's and the run's: no role on any.
+    expect(team.get_by_role("button")).to_have_text(["supervisor", "w1", "dev"])
+    one = {"height": 24, "radius": "12px", "padding": "0px 9px", "gap": "6px", "name": "600 13px"}
+    for each in team.get_by_role("button").all():
+        assert chip_box(each) == one
     plain = team.get_by_role("button").first.bounding_box()
-    compact = chip.bounding_box()
-    assert compact["height"] < plain["height"]
     # In the team's own wrapping row, after the supervisor's chips.
     assert frame.evaluate("e => e.parentElement.getAttribute('aria-label')") == "Team"
     assert frame.bounding_box()["y"] >= plain["y"]

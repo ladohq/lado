@@ -1,8 +1,7 @@
-# A Windows runner, with WSL2 Ubuntu by default, that runs LADO's checks there and uploads
-# the logs; optionally LADO's live tests there (scripts/live_ci.py's cloud providers).
-# Not in the per-push CI (a run takes 20-25 minutes): weekly on main, and by hand, also
-# before each release; live.yml calls it once per provider, live tests only (AGENTS.md,
-# Commands).
+# A Windows runner, with WSL2 Ubuntu by default, that runs LADO's checks there, the smoke
+# tests of every provider among them (tests/smoke/: real CLIs, no model), and uploads the
+# logs. Not in the per-push CI (a run takes 20-25 minutes): weekly on main, and by hand,
+# also before each release (AGENTS.md, Commands).
 name: Windows probe
 
 on:
@@ -21,42 +20,21 @@ on:
         description: Run make test and make test-integration in WSL
         type: boolean
         default: true
-      live:
-        description: Run the live tests in WSL with OpenCode and Kilo on free models (needs wsl)
+      smoke:
+        description: Run the smoke tests in WSL, the real CLIs with no model (needs wsl)
         type: boolean
-        default: false
+        default: true
       minutes:
         description: Job length in minutes, setup included (at most 360)
         type: number
         default: 120
       provider:
-        description: The live tests' provider, or all of them (only with live)
+        description: The smoke tests' provider, or all of them, one after another
         type: choice
-        options: [all, opencode, kilo]
+        options: [all, claude, codex, opencode, kilo]
         default: all
-  # The same inputs; a choice is a string here, checked by the settings job.
-  workflow_call:
-    inputs:
-      runner:
-        type: string
-        default: windows-latest
-      wsl:
-        type: boolean
-        default: true
-      tests:
-        type: boolean
-        default: true
-      live:
-        type: boolean
-        default: false
-      minutes:
-        type: number
-        default: 120
-      provider:
-        type: string
-        default: all
-  # On the default branch, Monday at an off-peak minute, with the inputs' defaults (no
-  # live tests: the free models are flaky). A red run mails the maintainers.
+  # On the default branch, Monday at an off-peak minute, with the inputs' defaults. A red
+  # run mails the maintainers.
   schedule:
     - cron: '17 3 * * 1'
 
@@ -75,7 +53,7 @@ jobs:
       runner: ${{ steps.settings.outputs.runner }}
       wsl: ${{ steps.settings.outputs.wsl }}
       tests: ${{ steps.settings.outputs.tests }}
-      live: ${{ steps.settings.outputs.live }}
+      smoke: ${{ steps.settings.outputs.smoke }}
       minutes: ${{ steps.settings.outputs.minutes }}
       provider: ${{ steps.settings.outputs.provider }}
     steps:
@@ -86,7 +64,7 @@ jobs:
           RUNNER: ${{ inputs.runner }}
           WSL: ${{ inputs.wsl }}
           TESTS: ${{ inputs.tests }}
-          LIVE: ${{ inputs.live }}
+          SMOKE: ${{ inputs.smoke }}
           MINUTES: ${{ inputs.minutes }}
           PROVIDER: ${{ inputs.provider }}
         run: |
@@ -96,10 +74,10 @@ jobs:
           runner=${RUNNER:-windows-latest}
           wsl=$(lower "${WSL:-true}")
           tests=$(lower "${TESTS:-true}")
-          live=$(lower "${LIVE:-false}")
+          smoke=$(lower "${SMOKE:-true}")
           minutes=${MINUTES:-120}
           provider=${PROVIDER:-all}
-          for name in wsl tests live; do
+          for name in wsl tests smoke; do
             case ${!name} in
               true | false) ;;
               *) fail "$name must be true or false, not ${!name}" ;;
@@ -109,16 +87,16 @@ jobs:
           if [[ ! $minutes =~ ^[0-9]{1,3}$ ]] || ((10#$minutes < 1 || 10#$minutes > 360)); then
             fail "minutes must be 1 to 360 (GitHub's cap), not $minutes"
           fi
-          # scripts/live_ci.py's PINS (a test keeps both the same).
+          # scripts/smoke_ci.py's PINS (a test keeps both the same).
           case $provider in
-            all | opencode | kilo) ;;
-            *) fail "provider must be all, opencode or kilo, not $provider" ;;
+            all | claude | codex | opencode | kilo) ;;
+            *) fail "provider must be all, claude, codex, opencode or kilo, not $provider" ;;
           esac
           {
             echo "runner=$runner"
             echo "wsl=$wsl"
             echo "tests=$tests"
-            echo "live=$live"
+            echo "smoke=$smoke"
             echo "minutes=$((10#$minutes))"
             echo "provider=$provider"
           } >>"$GITHUB_OUTPUT"
@@ -145,13 +123,13 @@ jobs:
       - name: No WSL on ARM
         if: needs.settings.outputs.runner == 'windows-11-arm' && needs.settings.outputs.wsl == 'true'
         run: |
-          Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false"
+          Write-Output "::error::setup-wsl installs only amd64 distributions: run windows-11-arm with wsl=false smoke=false"
           exit 1
 
-      - name: No live agents without WSL
-        if: (needs.settings.outputs.live == 'true') && !(needs.settings.outputs.wsl == 'true')
+      - name: No smoke without WSL
+        if: (needs.settings.outputs.smoke == 'true') && !(needs.settings.outputs.wsl == 'true')
         run: |
-          Write-Output "::error::the live tests run in WSL Ubuntu: run live=true with wsl=true"
+          Write-Output "::error::the smoke tests run in WSL Ubuntu: run wsl=false with smoke=false"
           exit 1
 
       - uses: actions/checkout@v7
@@ -160,10 +138,8 @@ jobs:
         with:
           version: "0.12.3"
 
-      # LADO does not run on Windows itself yet: each check here is expected to fail. Not in
-      # a live-only call (live.yml), which wants only its provider's verdict.
+      # LADO does not run on Windows itself yet: each check here is expected to fail.
       - name: Native probe
-        if: "!(needs.settings.outputs.live == 'true' && needs.settings.outputs.tests == 'false')"
         timeout-minutes: 20
         run: |
           $ErrorActionPreference = 'Continue'
@@ -241,9 +217,9 @@ jobs:
         env:
           UV_VERSION: "0.12.3"
           TESTS: ${{ needs.settings.outputs.tests }}
-          LIVE: ${{ needs.settings.outputs.live }}
+          SMOKE: ${{ needs.settings.outputs.smoke }}
           PROVIDER: ${{ needs.settings.outputs.provider }}
-          WSLENV: PROBE/p:UV_VERSION:TESTS:LIVE:PROVIDER
+          WSLENV: PROBE/p:UV_VERSION:TESTS:SMOKE:PROVIDER
         run: |
           set -u
           touch "$PROBE/checks.tsv" || exit 1
@@ -256,14 +232,14 @@ jobs:
             printf '%s\tskipped\tskipped\t-\n' "wsl $1" >>"$PROBE/checks.tsv" || exit 1
           }
           # Each cell's out folder, outside $PROBE: only its evidence is copied there.
-          out="${TMPDIR:-/tmp}/lado-live-out"
-          live() { # live <provider>: one cell of scripts/live_ci.py, its exit code the verdict
-            local log="wsl-live-$1.log" code=0
+          out="${TMPDIR:-/tmp}/lado-smoke-out"
+          smoke() { # smoke <provider>: one cell of scripts/smoke_ci.py, its exit code the verdict
+            local log="wsl-smoke-$1.log" code=0
             rm -rf "${out:?}/$1"
-            timeout --kill-after=30 2400 su - lado -c "cd ~/lado && uv run python scripts/live_ci.py run $1 $out/$1" >"$PROBE/$log" 2>&1 || code=$?
-            printf '%s\t%s\t%s\t%s\n' "wsl live-$1" "$code" required "$log" >>"$PROBE/checks.tsv" || exit 1
+            timeout --kill-after=30 900 su - lado -c "cd ~/lado && uv run python scripts/smoke_ci.py run $1 $out/$1" >"$PROBE/$log" 2>&1 || code=$?
+            printf '%s\t%s\t%s\t%s\n' "wsl smoke-$1" "$code" required "$log" >>"$PROBE/checks.tsv" || exit 1
             if [ -d "$out/$1/evidence" ]; then
-              cp -r "$out/$1/evidence" "$PROBE/live-evidence-$1"
+              cp -r "$out/$1/evidence" "$PROBE/smoke-evidence-$1"
             fi
           }
           check uname 60 'uname -m'
@@ -284,21 +260,21 @@ jobs:
             skip make-test
             skip make-test-integration
           fi
-          # The cloud providers, each a cell of its own: free models only (OpenCode's and
-          # Kilo's, no login), never Claude Code or Codex (scripts/live_ci.py, LOCAL_ONLY).
-          # Node and npm from Ubuntu; the script installs each CLI into ~/.local/bin, on the
-          # agents' PATH.
-          if [ "$LIVE" = true ]; then
+          # The smoke of each provider, one after another, each a check of its own: the real
+          # CLI against a local endpoint that answers 401, no model and no account. Node and
+          # npm from Ubuntu; the script installs each CLI into ~/.local/bin, on the agents'
+          # PATH.
+          if [ "$SMOKE" = true ]; then
             check node 600 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm && node --version && npm --version'
             providers=$PROVIDER
             if [ "$providers" = all ]; then
-              providers=$(timeout 120 su - lado -c 'cd ~/lado && uv run python scripts/live_ci.py providers')
+              providers=$(timeout 120 su - lado -c 'cd ~/lado && uv run python scripts/smoke_ci.py providers')
             fi
             if [ -z "$providers" ]; then # no cell to run is no green
-              printf '%s\t%s\t%s\t%s\n' "wsl live-providers" none required - >>"$PROBE/checks.tsv" || exit 1
+              printf '%s\t%s\t%s\t%s\n' "wsl smoke-providers" none required - >>"$PROBE/checks.tsv" || exit 1
             fi
             for provider in $providers; do
-              live "$provider"
+              smoke "$provider"
             done
           fi
           exit 0
@@ -342,8 +318,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          # One per call of live.yml, which runs three at once.
-          name: windows-probe-${{ needs.settings.outputs.runner }}-${{ (needs.settings.outputs.live == 'true' && needs.settings.outputs.tests == 'false') && needs.settings.outputs.provider || 'tests' }}
+          name: windows-probe-${{ needs.settings.outputs.runner }}
           path: ${{ env.PROBE }}
           retention-days: 5
 

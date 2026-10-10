@@ -14,6 +14,7 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
+from real_clis import agent_processes, answer_dialogs, check_gone
 
 from lado import artifacts, loop, providers, runs, runtime, state, terminal, tmux
 from lado.providers import base
@@ -28,8 +29,6 @@ TASK = (
     'send_message, attaching it with artifacts=["report"]. Do nothing else.'
 )
 RECEIVED = (state.DELIVERED, state.READ)
-CLAUDE_TRUST = "Yes, I trust this folder"
-CODEX_TRUST = "Trust this folder?"
 # The follow-up has a body, so w1 must call read_messages to get it.
 FOLLOW_UP = "Thanks, one last note for you"
 FOLLOW_UP_BODY = (
@@ -196,63 +195,6 @@ def messages(sender: str, recipient: str) -> list[tuple[str, str]]:
         for m in state.list_messages(SESSION)
         if (m.sender, m.recipient) == (sender, recipient)
     ]
-
-
-def agent_processes(target: str = "") -> set[int]:
-    """The test tmux server and every process below it: agents, hooks, MCP servers. With
-    `target`, that window's process and every process below it."""
-    if target:
-        root = tmux.run("display-message", "-p", "-t", target, "#{pane_pid}").strip()
-    else:
-        root = tmux.run("display-message", "-p", "#{pid}").strip()
-    table = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True)
-    children: dict[int, list[int]] = {}
-    for line in table.stdout.splitlines():
-        pid, ppid = map(int, line.split())
-        children.setdefault(ppid, []).append(pid)
-    found, todo = set(), [int(root)]
-    while todo:
-        pid = todo.pop()
-        found.add(pid)
-        todo += children.get(pid, [])
-    return found
-
-
-def alive(pids: set[int]) -> set[int]:
-    living = set()
-    for pid in pids:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            continue
-        except PermissionError:
-            pass
-        living.add(pid)
-    return living
-
-
-def answer_dialogs(provider: str, session: str, window: str) -> None:
-    """Answer the dialogs a human answers once per repo, before the agent can start. The
-    first time, the agent (named as its window) waits for the human and says why: LADO saw
-    the trust dialog coming (Provider.first_hook_blocker)."""
-    if provider == "claude" and CLAUDE_TRUST in tmux.capture(session, window):
-        if (session, window) not in TRUST_ASKED:
-            TRUST_ASKED.add((session, window))
-            assert status(window) == state.WAITING
-            reason = runtime.status_reason(session, window) or ""
-            assert reason.startswith("Claude Code asks whether to trust "), reason
-        tmux.run("send-keys", "-t", f"{session}:{window}", "Down", "Enter")
-    if provider == "codex" and CODEX_TRUST in tmux.capture(session, window):
-        if (session, window) not in TRUST_ASKED:
-            TRUST_ASKED.add((session, window))
-            assert status(window) == state.WAITING
-            reason = runtime.status_reason(session, window) or ""
-            assert reason.startswith("Codex CLI asks whether to trust "), reason
-        # "Trust and continue" is the first choice; the prompt on its command line follows.
-        tmux.run("send-keys", "-t", f"{session}:{window}", "Enter")
-
-
-TRUST_ASKED: set[tuple[str, str]] = set()  # the agents answer_dialogs checked
 
 
 def answering(provider: str, agent: str, check):
@@ -589,19 +531,6 @@ def finish_worker(repo, worker: state.Agent) -> None:
     # w1's late hooks add nothing after `finished`; the supervisor may still change status.
     event = [e for e in state.list_events(SESSION) if e.agent == "w1"][-1]
     assert (event.kind, event.detail) == (state.FINISHED, "merged")
-
-
-def check_gone(processes: set[int], after: str) -> None:
-    deadline = time.monotonic() + 30
-    while (left := alive(processes)) and time.monotonic() < deadline:
-        time.sleep(0.5)
-    if left:
-        ps = subprocess.run(
-            ["ps", "-o", "pid,ppid,command", "-p", ",".join(map(str, left))],
-            capture_output=True,
-            text=True,
-        )
-        pytest.fail(f"processes left after {after}:\n{ps.stdout}")
 
 
 def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):

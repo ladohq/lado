@@ -15,31 +15,24 @@ Environment:
 
 Claude Code asks whether to trust a new workspace and records the answer in its own config;
 no option skips that. So the Claude test always uses the same repo path, and the test answers
-the dialog like the human would (see test_live.answer_dialogs): Claude Code keeps one entry for it.
+the dialog like the human would (see real_clis.answer_dialogs): Claude Code keeps one entry for it.
 
 A failed test keeps its evidence in a folder under EVIDENCE, named in the failure report.
 """
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
-import time
-import uuid
 from pathlib import Path
 
-import agent_helpers
 import pytest
-from agent_helpers import init_repo, refuse_unless_isolated
+import real_clis
+from agent_helpers import init_repo
+from real_clis import CLASSES, EVIDENCE, isolated, with_model  # noqa: F401 (fixture, names)
 
 from lado import providers
-from lado.providers import base
-from lado.providers.claude import ClaudeProvider
-from lado.providers.codex import CodexProvider
-from lado.providers.kilo import KiloProvider
-from lado.providers.opencode import OpenCodeProvider
 
 MODELS = {
     "claude": os.environ.get("LADO_LIVE_CLAUDE_MODEL") or "haiku",
@@ -47,24 +40,6 @@ MODELS = {
     "opencode": os.environ.get("LADO_LIVE_OPENCODE_MODEL") or "opencode/nemotron-3-ultra-free",
     "codex": os.environ.get("LADO_LIVE_CODEX_MODEL") or "qwen3-coder:30b",
 }
-
-
-def with_model(provider_class: type[base.Provider], model: str) -> base.Provider:
-    """The provider, with `--model` added to its agents' argv.
-
-    LADO has no model option yet; this is test-only. Hooks run in their own processes and
-    look up the real provider by name, which parses events the same way.
-    """
-
-    class WithModel(provider_class):
-        def launch_command(self, *args, **kwargs) -> base.Launch:
-            launch = super().launch_command(*args, **kwargs)
-            argv = [launch.argv[0], "--model", self.model, *launch.argv[1:]]
-            return base.Launch(argv, launch.env, launch.warnings)
-
-    provider = WithModel()
-    provider.model = model  # also for checks that run the CLI themselves
-    return provider
 
 
 def _claude_unusable() -> str | None:
@@ -88,12 +63,6 @@ def _codex_unusable() -> str | None:
     return None
 
 
-CLASSES = {
-    "claude": ClaudeProvider,
-    "codex": CodexProvider,
-    "kilo": KiloProvider,
-    "opencode": OpenCodeProvider,
-}
 # Kilo's and OpenCode's free models need no login, nor does Codex on a local model.
 UNUSABLE = {
     "claude": _claude_unusable,
@@ -115,7 +84,7 @@ def live_provider(request, monkeypatch, codex_home) -> str:
     if name == "codex":
         # The user's Codex config of the test, which LADO carries into each agent's own: the
         # model's provider, as a user of a local model has it. It trusts no folder, so each
-        # agent asks (test_live.answer_dialogs). Not `--oss`: in a new home that shows
+        # agent asks (real_clis.answer_dialogs). Not `--oss`: in a new home that shows
         # Codex's login screen (0.162.0).
         codex_home.mkdir(parents=True, exist_ok=True)
         (codex_home / "config.toml").write_text('model_provider = "ollama"\n')
@@ -135,34 +104,7 @@ def live_repo(live_provider, tmp_path):
     shutil.rmtree(CLAUDE_REPO.parent, ignore_errors=True)
 
 
-EVIDENCE = Path(tempfile.gettempdir(), "lado-live-evidence")
-
-
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    """When a live test fails, keep what shows why (agent_helpers.keep_evidence) in a folder
-    of its own under EVIDENCE, before teardown kills its tmux server and removes its LADO
-    home, and name the folder in the failure report. A passing test keeps nothing."""
     outcome = yield
-    report = outcome.get_result()
-    if not report.failed or report.when == "teardown":
-        return
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    folder = EVIDENCE / f"{stamp}-{re.sub(r'[^A-Za-z0-9_.-]', '_', item.name)}"
-    try:
-        agent_helpers.keep_evidence(item.module.SESSION, folder)
-        kept = f"kept in {folder}"
-    except Exception as exc:  # the test's own failure must still be reported
-        kept = f"could not keep it in {folder}: {exc!r}"
-    report.sections.append(("LADO evidence", kept))
-
-
-@pytest.fixture(autouse=True)
-def isolated(lado_home, monkeypatch, kill_tmux_server):
-    if shutil.which("tmux") is None:
-        pytest.skip("tmux not installed")
-    socket = f"lado-test-{uuid.uuid4().hex[:8]}"  # a tmux server of its own for each test
-    monkeypatch.setenv("LADO_TMUX_SOCKET", socket)
-    refuse_unless_isolated()
-    yield
-    kill_tmux_server(socket)
+    real_clis.keep_evidence(item, outcome.get_result())

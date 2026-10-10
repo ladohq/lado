@@ -1,4 +1,4 @@
-.PHONY: help lint fmt test test-integration test-js test-live test-ui web web-types dist browser check _check _test-ui
+.PHONY: help lint fmt test test-integration test-js test-live test-smoke test-ui web web-types dist browser check _check _test-ui
 
 # Unit and integration tests run on one pytest worker per CPU (pytest-xdist). To debug a
 # test serially, with its output in order: make test PYTEST_ARGS=-n0 (or any pytest options).
@@ -31,6 +31,9 @@ test-js: ## Node tests of the OpenCode-family plugin (Kilo, OpenCode)
 
 test-live: ## live e2e tests with real agent CLIs and models, serially; PROVIDER=claude|codex|kilo|opencode picks one
 	uv run pytest -m live -n0 $(if $(PROVIDER),-k $(PROVIDER)) -v
+
+test-smoke: ## smoke tests: real agent CLIs, a local endpoint instead of a model, serially; PROVIDER=claude|codex|kilo|opencode picks one
+	uv run pytest -m smoke -n0 $(if $(PROVIDER),-k $(PROVIDER)) -v
 
 test-ui: ## UI end-to-end tests: Chromium against a real lado server, fake agent
 	$(LOCK) $(MAKE) --no-print-directory _test-ui

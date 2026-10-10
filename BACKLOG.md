@@ -634,20 +634,61 @@ Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
 # P2: when convenient
 
-## Claude Code's first-run onboarding blocks an agent before any hook, unseen
+## Claude Code's first-run screens block an agent before any hook, unseen
 
 Size: S. Why here: on a user's fresh machine the first Claude agent looks stuck in
 `starting` with no reason given.
 
-On a fresh home, a `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`) without
-`hasCompletedOnboarding` makes Claude Code show its first-run screens (theme, login) before
-its first hook. `Provider.first_hook_blocker` (providers/claude.py) detects only the folder
-trust dialog, so the agent is not set `waiting` with a reason, as it is for the trust
-dialog. Read in the code, not confirmed by a run: the cloud run that might have shown it
-(feature/live-cloud-matrix, run 38079358309) was cancelled when Claude left the cloud.
-Wanted: `first_hook_blocker` names that wait too, with what to do (finish the onboarding in
-the agent's window), and a unit test with a config without the key.
-Found: 2026-10-10, design review of feature/live-cloud-matrix (architect, Found on the way).
+`Provider.first_hook_blocker` (providers/claude.py) detects only the folder trust dialog.
+Three more screens of Claude Code 2.1.296 come before its first hook, each seen in the smoke
+test (tests/smoke/, a fresh `CLAUDE_CONFIG_DIR`) with the agent left `starting` and no
+reason in `lado ls`:
+- the first-run screens (theme first), while `.claude.json` has no `hasCompletedOnboarding`;
+- the bypass permissions mode's disclaimer ("No, exit" / "Yes, I accept"), with
+  `--permission-mode bypassPermissions` while `.claude.json` has no
+  `bypassPermissionsModeAccepted` (nor `skipDangerousModePermissionPrompt` in the user's
+  settings);
+- "Detected a custom API key in your environment", for an `ANTHROPIC_API_KEY` whose last 20
+  characters are in neither list of `customApiKeyResponses`.
+The smoke answers all three ahead in its own config.
+Wanted: `first_hook_blocker` names each wait, with what to do in the agent's window, as it
+does for the trust dialog, with unit tests on configs without the keys.
+Found: 2026-10-10, design review of feature/live-cloud-matrix (architect, Found on the way);
+the three screens confirmed by the smoke test on 2026-10-11.
+
+## A fake model server for the smoke tests
+
+Size: M. Why here: the smoke stops at the model; a full turn (a tool call, a reply) would
+cover the rest of the CLI's plumbing in CI with no model (the human's decision 5 of
+feature/live-cloud-matrix).
+The smoke's `fake_endpoint` (tests/smoke/conftest.py) answers every request with 401. A
+server that answers with canned replies in each API's shape (Anthropic's Messages, OpenAI's
+Responses for Codex, Chat Completions for OpenCode and Kilo), streaming and with tool calls,
+would let the smoke run a whole turn: call `send_message` or `flow_advance`, end the turn,
+take the queue at the turn's end (`hook_output`). It grows from the same fixture and the same
+per-provider endpoint config.
+Found: 2026-10-10, design of feature/live-cloud-matrix (decision 5).
+
+## Make the local live tests stable on a local model
+
+Size: L. Why here: the live tests run only locally at release, every provider; on free or
+local models they fail on model behaviour more often than on LADO (the human's decision 4 of
+feature/live-cloud-matrix).
+Today Codex runs on Ollama's `qwen3-coder:30b`, OpenCode and Kilo on free cloud models, and
+the cloud run of all of them (run 38081211658) was red in 5 of 6 cells on model behaviour.
+Leads (session artifacts `codex-free-model-research`, `codex-free-model-research-2`):
+- OpenCode, Kilo and Codex on one local Ollama model, Codex through a Responses→Chat bridge:
+  LiteLLM 1.104.2 (`use_chat_completions_api: true`) carried all of LADO's Codex live tests,
+  167 of 167 requests answered; through it `qwen3-coder:30b` passed the worker test 2 of 3,
+  which fails most runs through Ollama's own `/v1/responses` (see "Codex live worker test
+  fails 3 of 3").
+- The `passive` supervisor: LADO's lead instructions come after its role and tell it to
+  merge and finish, which models follow ("Never use any tool" loses); the test needs a
+  supervisor that cannot act (its tools denied) or that tolerates a finished w1.
+- Codex 0.162 runs no hook on a turn that ends on an API error, so a 429 hangs a test until
+  its timeout ("A Codex agent whose turn ends on a model or API error stays busy").
+Wanted: every live test passes reliably locally on one documented local setup.
+Found: 2026-10-10, design of feature/live-cloud-matrix (decision 4).
 
 ## styles.css writes 20 selectors twice; some may style two components
 

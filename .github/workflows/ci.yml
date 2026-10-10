@@ -51,3 +51,45 @@ jobs:
       - run: make dist
       - run: uv run playwright install --with-deps chromium
       - run: uv run pytest -m ui -n auto
+
+  # Each provider's real CLI with LADO on Linux and macOS, no model: the smoke tests
+  # (tests/smoke/), one cell per (system, provider), the CLI at its pin
+  # (scripts/smoke_ci.py's PINS; tests/test_ci_workflow.py keeps the matrix the same).
+  smoke:
+    name: smoke ${{ matrix.os }} ${{ matrix.provider }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        provider: [claude, codex, opencode, kilo]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.3"
+          python-version: "3.13"
+      - name: tmux
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y tmux
+          else
+            brew install tmux
+          fi
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: lts/*
+      - name: uv sync
+        run: uv sync --locked
+      # Red unless the test passed and none skipped (a missing CLI skips).
+      - name: Smoke test
+        env:
+          PROVIDER: ${{ matrix.provider }}
+        run: uv run python scripts/smoke_ci.py run "$PROVIDER" "$RUNNER_TEMP/smoke"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: smoke-${{ matrix.os }}-${{ matrix.provider }}
+          path: ${{ runner.temp }}/smoke
+          retention-days: 5

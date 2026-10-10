@@ -1,5 +1,5 @@
-""".github/workflows/windows-shell.yml: the Windows (+ WSL2) probe, weekly on main, by hand,
-and called by live.yml once per provider."""
+""".github/workflows/windows-shell.yml: the Windows (+ WSL2) probe, weekly on main and by
+hand, with the smoke tests of every provider in WSL."""
 
 import importlib.util
 import os
@@ -15,13 +15,12 @@ WORKFLOW = ROOT / ".github" / "workflows" / "windows-shell.yml"
 # The run's settings, as the settings job gives them: always the strings 'true' or 'false'.
 SETTINGS = "needs.settings.outputs"
 WSL = f"{SETTINGS}.wsl == 'true'"
-LIVE = f"{SETTINGS}.live == 'true'"
-NO_TESTS = f"{SETTINGS}.tests == 'false'"
-INPUTS = ["runner", "wsl", "tests", "live", "minutes", "provider"]
+SMOKE = f"{SETTINGS}.smoke == 'true'"
+INPUTS = ["runner", "wsl", "tests", "smoke", "minutes", "provider"]
 
 
 def _pins() -> dict:
-    spec = importlib.util.spec_from_file_location("live_ci", ROOT / "scripts" / "live_ci.py")
+    spec = importlib.util.spec_from_file_location("smoke_ci", ROOT / "scripts" / "smoke_ci.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.PINS
@@ -78,10 +77,10 @@ def step_named(steps, name: str) -> dict:
     return step
 
 
-def test_started_by_hand_called_and_weekly(workflow):
+def test_started_by_hand_and_weekly(workflow):
     # PyYAML reads the key `on` as True.
     triggers = workflow[True]
-    assert list(triggers) == ["workflow_dispatch", "workflow_call", "schedule"]
+    assert list(triggers) == ["workflow_dispatch", "schedule"]
     # Once a week (a schedule runs on the default branch), at an off-peak minute.
     assert triggers["schedule"] == [{"cron": "17 3 * * 1"}]
 
@@ -95,27 +94,22 @@ def test_inputs(workflow):
     assert inputs["wsl"]["default"] is True
     assert inputs["tests"]["type"] == "boolean"
     assert inputs["tests"]["default"] is True
-    assert inputs["live"]["type"] == "boolean"
-    assert inputs["live"]["default"] is False
+    assert inputs["smoke"]["type"] == "boolean"
+    assert inputs["smoke"]["default"] is True
     assert inputs["minutes"]["type"] == "number"
     assert inputs["minutes"]["default"] == 120
-    # The cloud providers of scripts/live_ci.py, or all of them.
+    # The providers of scripts/smoke_ci.py, or all of them.
     assert inputs["provider"]["type"] == "choice"
     assert inputs["provider"]["options"] == ["all", *PINS]
     assert inputs["provider"]["default"] == "all"
     assert list(inputs) == INPUTS
 
 
-def test_a_call_takes_the_same_inputs_with_the_same_defaults(workflow):
-    """workflow_call has no choice type: a choice is a string there, checked by settings."""
-    by_hand = workflow[True]["workflow_dispatch"]["inputs"]
-    called = workflow[True]["workflow_call"]
-    assert list(called["inputs"]) == INPUTS
-    for name in INPUTS:
-        kind = by_hand[name]["type"]
-        assert called["inputs"][name]["type"] == ("string" if kind == "choice" else kind)
-        assert called["inputs"][name]["default"] == by_hand[name]["default"]
-    assert "secrets" not in called
+def test_no_live_input_no_call_no_secret(workflow, text):
+    """The live tests run only locally; no model and no account here."""
+    assert "live" not in workflow[True]["workflow_dispatch"]["inputs"]
+    assert "workflow_call" not in workflow[True]
+    assert "secrets" not in text
 
 
 def test_settings_job_reads_each_input_once_and_gives_each_setting(settings_job, probe_job):
@@ -146,16 +140,15 @@ def test_a_run_without_inputs_takes_the_defaults_of_a_run_by_hand(workflow, sett
         "runner": "windows-latest",
         "wsl": "true",
         "tests": "true",
-        "live": "false",
+        "smoke": "true",
         "minutes": "120",
         "provider": "all",
     }
 
 
-def test_no_live_tests_on_the_schedule(workflow, settings_job, tmp_path):
+def test_the_smoke_of_every_provider_on_the_schedule(workflow, settings_job, tmp_path):
     _, outputs, _ = run_settings(settings_job, tmp_path)
-    assert outputs["live"] == "false"
-    assert workflow[True]["workflow_dispatch"]["inputs"]["live"]["default"] is False
+    assert (outputs["smoke"], outputs["provider"]) == ("true", "all")
 
 
 @pytest.mark.parametrize(
@@ -165,23 +158,25 @@ def test_no_live_tests_on_the_schedule(workflow, settings_job, tmp_path):
     [("true", "true"), ("false", "false"), ("True", "true"), ("FALSE", "false")],
 )
 def test_settings_take_a_boolean_in_either_form(settings_job, tmp_path, given, setting):
-    code, outputs, _ = run_settings(settings_job, tmp_path, wsl=given, tests=given, live=given)
+    code, outputs, _ = run_settings(settings_job, tmp_path, wsl=given, tests=given, smoke=given)
     assert code == 0
-    assert (outputs["wsl"], outputs["tests"], outputs["live"]) == (setting,) * 3
+    assert (outputs["wsl"], outputs["tests"], outputs["smoke"]) == (setting,) * 3
 
 
 @pytest.mark.parametrize(
     "inputs, error",
     [
         ({"wsl": "yes"}, "wsl must be true or false, not yes"),
-        ({"live": "1"}, "live must be true or false, not 1"),
+        ({"smoke": "1"}, "smoke must be true or false, not 1"),
         ({"minutes": "0"}, "minutes must be 1 to 360 (GitHub's cap), not 0"),
         ({"minutes": "361"}, "minutes must be 1 to 360 (GitHub's cap), not 361"),
         ({"minutes": "ten"}, "minutes must be 1 to 360 (GitHub's cap), not ten"),
         ({"minutes": "1.5"}, "minutes must be 1 to 360 (GitHub's cap), not 1.5"),
-        ({"provider": "codex"}, "provider must be all, opencode or kilo, not codex"),
-        ({"provider": "claude"}, "provider must be all, opencode or kilo, not claude"),
-        ({"provider": "Kilo"}, "provider must be all, opencode or kilo, not Kilo"),
+        (
+            {"provider": "gemini"},
+            "provider must be all, claude, codex, opencode or kilo, not gemini",
+        ),
+        ({"provider": "Kilo"}, "provider must be all, claude, codex, opencode or kilo, not Kilo"),
     ],
 )
 def test_settings_refuse_a_wrong_input(settings_job, tmp_path, inputs, error):
@@ -191,12 +186,12 @@ def test_settings_refuse_a_wrong_input(settings_job, tmp_path, inputs, error):
 
 
 @pytest.mark.parametrize("provider", ["all", *PINS])
-def test_settings_take_each_cloud_provider_or_all(settings_job, tmp_path, provider):
+def test_settings_take_each_provider_or_all(settings_job, tmp_path, provider):
     code, outputs, _ = run_settings(settings_job, tmp_path, provider=provider)
     assert code == 0 and outputs["provider"] == provider
 
 
-def test_settings_name_the_cloud_providers_of_the_script(settings_job):
+def test_settings_name_the_providers_of_the_script(settings_job):
     (step,) = settings_job["steps"]
     assert f"all | {' | '.join(PINS)})" in step["run"]
 
@@ -222,7 +217,7 @@ def test_report_folder_first_so_the_report_steps_work_after_a_guard(steps):
     assert "PROBE=" in folder["run"] and "GITHUB_ENV" in folder["run"]
 
 
-@pytest.mark.parametrize("name, condition", [("wsl", WSL), ("live", LIVE), ("tests", NO_TESTS)])
+@pytest.mark.parametrize("name, condition", [("wsl", WSL), ("smoke", SMOKE)])
 def test_boolean_settings_compared_as_a_string(steps, name, condition):
     # A job's output is a string: a bare `if: needs.settings.outputs.wsl` takes 'false'
     # as true.
@@ -281,17 +276,19 @@ def test_wsl_on_arm_fails_before_setup(steps):
     assert guards and guards[0] < setup
 
 
-def test_live_without_wsl_fails_before_setup(steps):
-    guard = step_named(steps, "No live agents without WSL")
-    assert guard["if"] == f"({LIVE}) && !({WSL})"
-    assert "exit 1" in guard["run"]
+def test_smoke_without_wsl_fails_before_setup(steps):
+    """The smoke runs in WSL: a run without WSL says so, never drops it in silence."""
+    guard = step_named(steps, "No smoke without WSL")
+    assert guard["if"] == f"({SMOKE}) && !({WSL})"
+    assert "exit 1" in guard["run"] and "wsl=false with smoke=false" in guard["run"]
     assert steps.index(guard) < steps.index(step_using(steps, "Vampire/setup-wsl"))
+    arm = step_named(steps, "No WSL on ARM")
+    assert "wsl=false smoke=false" in arm["run"]
 
 
-def test_native_probe_installs_lado_from_the_checkout_but_for_a_live_only_run(steps):
+def test_native_probe_installs_lado_from_the_checkout_on_every_runner(steps):
     step = step_named(steps, "Native probe")
-    # A live-only call (live.yml) wants only its provider's verdict.
-    assert step["if"] == f"!({LIVE} && {NO_TESTS})"
+    assert "if" not in step
     run = step["run"]
     assert "uv tool install" in run and "uv tool install lado" not in run
     for command in ("platform.machine(), sys.version", "--version", "doctor", "native.log"):
@@ -334,21 +331,23 @@ def test_wsl_probe_runs_as_a_non_root_user_in_a_login_shell(steps):
     assert order == sorted(order)
 
 
-# The stub of `timeout`: it records the command and runs nothing; asked for the cloud
-# providers it names those of scripts/live_ci.py; for a provider's live cell it exits with
-# LIVE_<PROVIDER>_CODE.
+# The stub of `timeout`: it records the command and runs nothing; asked for the providers it
+# names those of scripts/smoke_ci.py; for a provider's smoke cell it exits with
+# SMOKE_<PROVIDER>_CODE.
 TIMEOUT_STUB = f"""#!/bin/sh
 printf '%s\\n' "$*" >>"$PROBE/ran"
 case "$*" in
-  *'live_ci.py providers'*) echo '{" ".join(PINS)}' ;;
-  *'live_ci.py run opencode'*) exit "${{LIVE_OPENCODE_CODE:-0}}" ;;
-  *'live_ci.py run kilo'*) exit "${{LIVE_KILO_CODE:-0}}" ;;
+  *'smoke_ci.py providers'*) echo '{" ".join(PINS)}' ;;
+  *'smoke_ci.py run claude'*) exit "${{SMOKE_CLAUDE_CODE:-0}}" ;;
+  *'smoke_ci.py run codex'*) exit "${{SMOKE_CODEX_CODE:-0}}" ;;
+  *'smoke_ci.py run opencode'*) exit "${{SMOKE_OPENCODE_CODE:-0}}" ;;
+  *'smoke_ci.py run kilo'*) exit "${{SMOKE_KILO_CODE:-0}}" ;;
 esac
 """
 
 
 def run_wsl_probe(
-    steps, tmp_path, tests="true", live="false", provider="all", stub=TIMEOUT_STUB, **env
+    steps, tmp_path, tests="true", smoke="true", provider="all", stub=TIMEOUT_STUB, **env
 ) -> dict[str, list]:
     """Run the WSL probe's script with a stub `timeout`: its checks.tsv rows by name."""
     bin_dir = tmp_path / "bin"
@@ -364,7 +363,7 @@ def run_wsl_probe(
         "TMPDIR": str(tmp_path / "tmp"),
         "UV_VERSION": "0",
         "TESTS": tests,
-        "LIVE": live,
+        "SMOKE": smoke,
         "PROVIDER": provider,
         **env,
     }
@@ -425,11 +424,7 @@ def test_report_uploaded_always_then_the_verdict_last(steps):
     assert "GITHUB_STEP_SUMMARY" in summary["run"]
     upload = step_using(steps, "actions/upload-artifact")
     assert upload["if"] == "always()"
-    # One name per call of live.yml (a live-only run: its provider), else `tests`.
-    assert upload["with"]["name"] == (
-        "windows-probe-${{ needs.settings.outputs.runner }}-${{ "
-        f"({LIVE} && {NO_TESTS}) && {SETTINGS}.provider || 'tests' }}}}"
-    )
+    assert upload["with"]["name"] == "windows-probe-${{ needs.settings.outputs.runner }}"
     assert 1 <= upload["with"]["retention-days"] <= 7
     verdict = step_named(steps, "Verdict")
     assert verdict["if"] == "always()"
@@ -451,71 +446,71 @@ def test_verdict_red_when_wsl_ran_no_check(steps):
     assert '>>"$PROBE/checks.tsv" || exit 1' in probe
 
 
-def test_wsl_probe_gets_the_live_settings_and_no_cli_version(text, steps):
+def test_wsl_probe_gets_the_smoke_settings_and_no_cli_version(text, steps):
     env = step_named(steps, "WSL probe")["env"]
-    assert env["LIVE"] == "${{ needs.settings.outputs.live }}"
+    assert env["SMOKE"] == "${{ needs.settings.outputs.smoke }}"
     assert env["PROVIDER"] == "${{ needs.settings.outputs.provider }}"
-    assert {"LIVE", "PROVIDER"} <= set(env["WSLENV"].split(":"))
-    # scripts/live_ci.py's PINS is the one place of a cloud CLI's version.
+    assert {"SMOKE", "PROVIDER"} <= set(env["WSLENV"].split(":"))
+    # scripts/smoke_ci.py's PINS is the one place of a CLI's version.
     for package, version, _ in PINS.values():
         assert package not in text and version not in text, package
     assert "_VERSION" not in str(env).replace("UV_VERSION", "")
 
 
-def test_no_live_test_without_live(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, live="false")
-    assert not [name for name in rows if "live" in name or "node" in name]
-    assert "live_ci.py" not in (tmp_path / "probe" / "ran").read_text()
+def test_no_smoke_without_smoke(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path, smoke="false")
+    assert not [name for name in rows if "smoke" in name or "node" in name]
+    assert "smoke_ci.py" not in (tmp_path / "probe" / "ran").read_text()
 
 
-def test_live_runs_a_required_cell_of_the_script_for_each_cloud_provider(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true")
+def test_the_smoke_of_each_provider_is_a_required_check(steps, tmp_path):
+    rows = run_wsl_probe(steps, tmp_path)
     names = list(rows)
     # Node and npm from Ubuntu first, a check of its own that counts.
     assert rows["wsl node"][1:3] == ["0", "required"]
     for provider in PINS:
-        assert rows[f"wsl live-{provider}"][1:] == ["0", "required", f"wsl-live-{provider}.log"]
-        assert names.index("wsl node") < names.index(f"wsl live-{provider}")
+        assert rows[f"wsl smoke-{provider}"][1:] == ["0", "required", f"wsl-smoke-{provider}.log"]
+        assert names.index("wsl node") < names.index(f"wsl smoke-{provider}")
     assert names.index("wsl make-test-integration") < names.index("wsl node")
     ran = (tmp_path / "probe" / "ran").read_text().splitlines()
-    cells = [line for line in ran if "live_ci.py run" in line]
-    out = tmp_path / "tmp" / "lado-live-out"
+    cells = [line for line in ran if "smoke_ci.py run" in line]
+    out = tmp_path / "tmp" / "lado-smoke-out"
     assert [line.split("cd ~/lado && ")[1] for line in cells] == [
-        f"uv run python scripts/live_ci.py run {p} {out}/{p}" for p in PINS
+        f"uv run python scripts/smoke_ci.py run {p} {out}/{p}" for p in PINS
     ]
     for line in cells:
         assert "su - lado -c" in line
-    assert [line for line in ran if "live_ci.py providers" in line]
+    assert [line for line in ran if "smoke_ci.py providers" in line]
 
 
-def test_a_live_run_with_no_provider_listed_is_red(steps, tmp_path):
+def test_a_smoke_with_no_provider_listed_is_red(steps, tmp_path):
     stub = TIMEOUT_STUB.replace(f"echo '{' '.join(PINS)}'", "exit 1")
-    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true", stub=stub)
-    assert rows["wsl live-providers"][1:3] == ["none", "required"]
+    rows = run_wsl_probe(steps, tmp_path, stub=stub)
+    assert rows["wsl smoke-providers"][1:3] == ["none", "required"]
 
 
 @pytest.mark.parametrize("provider", list(PINS))
-def test_a_live_call_runs_only_its_provider(steps, tmp_path, provider):
-    rows = run_wsl_probe(steps, tmp_path, tests="false", live="true", provider=provider)
-    assert [name for name in rows if name.startswith("wsl live-")] == [f"wsl live-{provider}"]
+def test_a_run_for_one_provider_runs_only_its_smoke(steps, tmp_path, provider):
+    rows = run_wsl_probe(steps, tmp_path, provider=provider)
+    assert [n for n in rows if n.startswith("wsl smoke-")] == [f"wsl smoke-{provider}"]
 
 
 def test_a_cells_exit_code_is_its_verdict(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, live="true", LIVE_KILO_CODE="1")
-    assert rows["wsl live-kilo"][1:3] == ["1", "required"]
-    assert rows["wsl live-opencode"][1:3] == ["0", "required"]
+    rows = run_wsl_probe(steps, tmp_path, SMOKE_KILO_CODE="1")
+    assert rows["wsl smoke-kilo"][1:3] == ["1", "required"]
+    assert rows["wsl smoke-opencode"][1:3] == ["0", "required"]
 
 
 def test_a_failing_cell_keeps_its_code_and_its_evidence(steps, tmp_path):
-    evidence = tmp_path / "tmp" / "lado-live-out" / "opencode" / "evidence" / "20261010-test_w"
+    evidence = tmp_path / "tmp" / "lado-smoke-out" / "codex" / "evidence" / "20261010-test_w"
     # The script copies a failing cell's evidence into its out folder.
-    writes = f'mkdir -p "{evidence}" && echo "w1 never reported" >"{evidence}/lado-log.txt"'
+    writes = f'mkdir -p "{evidence}" && echo "w1 never started" >"{evidence}/lado-log.txt"'
     stub = TIMEOUT_STUB.replace(
-        "*'live_ci.py run opencode'*) ", f"*'live_ci.py run opencode'*) {writes}; "
+        "*'smoke_ci.py run codex'*) ", f"*'smoke_ci.py run codex'*) {writes}; "
     )
-    rows = run_wsl_probe(steps, tmp_path, live="true", stub=stub, LIVE_OPENCODE_CODE="1")
-    assert rows["wsl live-opencode"][1:3] == ["1", "required"]
-    kept = tmp_path / "probe" / "live-evidence-opencode" / evidence.name / "lado-log.txt"
-    assert kept.read_text() == "w1 never reported\n"
+    rows = run_wsl_probe(steps, tmp_path, stub=stub, SMOKE_CODEX_CODE="1")
+    assert rows["wsl smoke-codex"][1:3] == ["1", "required"]
+    kept = tmp_path / "probe" / "smoke-evidence-codex" / evidence.name / "lado-log.txt"
+    assert kept.read_text() == "w1 never started\n"
     # A passing one keeps none.
-    assert not (tmp_path / "probe" / "live-evidence-kilo").exists()
+    assert not (tmp_path / "probe" / "smoke-evidence-kilo").exists()

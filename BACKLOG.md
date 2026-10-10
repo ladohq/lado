@@ -20,8 +20,7 @@ With a load average of 150-420 (other agents of the session running), three full
 `make check` runs failed on different timeouts each time, and every failed test passed on
 its own: test_event_stream::test_the_server_stops_with_a_stream_open (STOP_TIMEOUT/2),
 test_fake_agent::test_the_agent_ends_its_process_on_exit, test_agent_terminal's
-test_the_humans_tmux_session_is_left_as_it_was and
-test_history_gives_the_windows_past_lines_and_says_when_it_is_full_screen,
+test_the_humans_tmux_session_is_left_as_it_was (and a history test removed since),
 test_flow_runs::test_a_worker_gets_a_step_far_longer_than_a_tmux_command, the UI tests
 test_chat::test_a_long_chat_opens_with_its_latest_page… and
 test_layout::test_a_chip_opens_its_agents_terminal…, and vitest `findBy…` waits.
@@ -622,6 +621,17 @@ Wanted: find which message is still queued (test race or LADO's), then wait for 
 be empty before the finish, or fix the race in LADO.
 Found: 2026-10-10, review of fix/windows-probe (Windows probe runs on GitHub).
 
+## Live: a Codex supervisor commits on main by itself
+
+Size: S. Why here: a live test fails twice of three on it.
+`test_a_flow_run_moves_on_when_its_worker_reports[codex]` on `qwen3-coder:30b`: the
+supervisor ignores "wait" and commits its own flow.txt on the test repo's main, so the run's
+`merge --ff-only` fails (`fatal: Not possible to fast-forward, aborting.`). The evidence
+folder holds many such runs (2026-10-09/10).
+Wanted: a supervisor role in the live kit that the local model follows, or a test that does
+not depend on main staying untouched.
+Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
+
 # P2: when convenient
 
 ## `lado answer` and the popup answer only flow gates, not an agent's question
@@ -1186,7 +1196,7 @@ Found: 2026-10-01, Kilo provider review.
 
 ## Agents load the human's own global plugins, skills and settings
 
-Size: M. Why here: reproducibility of runs; one environment-isolation topic (with fullscreen set, the UI's history breaks).
+Size: M. Why here: reproducibility of runs; one environment-isolation topic.
 
 ### Claude agents load the user's global Claude Code plugins
 
@@ -1217,12 +1227,11 @@ Found: 2026-10-05, design of run feature/opencode-provider.
 ### Agents read the human's own Claude Code settings, which change how they behave
 
 LADO gives Claude Code its settings with `--settings`, but Claude Code still reads the
-human's `~/.claude/settings.json`. With `"tui": "fullscreen"` there, every LADO agent runs
-full screen (alternate screen, mouse tracking): its output is not in tmux's history, and the
-UI's history layer can only say so. Hooks and permissions set there apply to agents as well.
+human's `~/.claude/settings.json`: its `"tui"` picks the renderer (Claude Code 2.1.296 runs
+full screen by default anyway, docs/design/ui.md, What each CLI does), and hooks and
+permissions set there apply to agents as well.
 Wanted: decide which of the human's settings an agent should get, and say so in
-`lado doctor` (e.g. warn that agents run full screen), or pin what LADO depends on (the
-renderer) in the agent's own settings.
+`lado doctor`, or pin what LADO depends on in the agent's own settings.
 Found: 2026-10-03, prototype of the history in implement of feature/ui-agent-terminal.
 
 ## A marketplace's clone has no lock: an update from the UI and the CLI at once race
@@ -1581,6 +1590,9 @@ Claude Code proves that an attached image reaches the model.
 Wanted: a free OpenCode model with image input for that test (e.g. a separate
 `LADO_LIVE_OPENCODE_IMAGE_MODEL`), or the gap named in AGENTS.md (Testing, Live e2e).
 Found: 2026-10-08, verify of feature/chat-attachments.
+In the verify of feature/terminal-scroll-hint (7f91295, 2026-10-10) it timed out twice
+(180 s, w1 looping on read_messages) before it skipped on the third run.
+Wanted too: detect that the model takes no images before the test, so it skips every time.
 
 ## A traceback in hooks.log when the tmux server is gone at an agent's end
 
@@ -1661,6 +1673,7 @@ Found: 2026-10-09, review of feature/codex-provider (the reviewer's open questio
 Size: S. Why here: a red CI run on the release commit for no code reason.
 CI on 8d48089 (release of 0.32.0) failed the `ui` job twice, one test each time, then passed
 on the second rerun: `test_terminal_panel::test_an_agents_terminal_opens_to_view_with_its_history`
+(now `test_an_agents_terminal_opens_to_view_and_its_wheel_points_at_take_control`)
 (the test's `lines 120` and LADO's first pasted input landed on one line of the fake agent,
 `ValueError: invalid literal for int() with base 10: '120\x1b[200~[from'`) and
 `test_gates::test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment`
@@ -1716,9 +1729,32 @@ Size: S. Why here: met at the end of fix/windows-probe, whose branch was pushed 
 (`not deleting branch ... that is not yet merged to 'refs/remotes/origin/<branch>', even though it
 is merged to HEAD`; `The branch ... is not fully merged`), since git checks a branch with an
 upstream against that upstream. The supervisor deleted the remote and local branch by hand.
+The run's workers stayed too (the end stopped before closing them): `finish_worker` closed the
+developer and reviewer, but the checker cannot be finished at all once the branch and worktree
+are gone: `cannot read its work: fatal: ambiguous argument 'HEAD...<branch>'`, and with
+`discard=true`: `'<worktree>' is not a working tree`. It stays in `list_agents`.
 Wanted: the run's end checks "merged" against the repo's current branch as `work_state` does and
 deletes with that knowledge (e.g. `git branch -D` after its own check), or says the branch is kept and why.
 Found: 2026-10-10, merge step of fix/windows-probe (session lado-windows).
+
+## Live: free models loop on read_messages and miss the report
+
+Size: S. Why here: flaky live tests; each passes on a rerun.
+In the verify of feature/terminal-scroll-hint (7f91295)
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` timed out after 240 s with w1
+busy, and in `test_an_agent_sees_the_image_the_human_attaches[opencode]` w1 called
+`lado_read_messages` again and again and never replied.
+Wanted: a steadier free model, or a retry policy for the live suite.
+Found: 2026-10-10, verify of feature/terminal-scroll-hint.
+
+## The terminal keeps its colours when the theme changes while it is open
+
+Size: S. Why here: a visible glitch in the UI, no lost work.
+`web/src/Terminals.tsx` reads xterm's `theme.background/foreground` once, when the terminal
+is made (`getComputedStyle`), while `--term-ground` is `light-dark(...)`: after the OS theme
+changes, the xterm canvas keeps the old shade and the rest of `.term-screen` takes the new one.
+Wanted: update `term.options.theme` when `prefers-color-scheme` or `data-theme` changes.
+Found: 2026-10-10, review of feature/terminal-scroll-hint.
 
 # P3: maybe never
 

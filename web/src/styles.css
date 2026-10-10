@@ -1924,45 +1924,42 @@ h3 {
   display: none;
 }
 
-/* The history, read only, over the live terminal. */
-.term-history {
+/* In view, the wheel up points at Take control: a callout under the button, its arrow at
+   the button, over the top right of the terminal; the button is ringed while it shows. */
+.term-take {
+  position: relative;
+  margin-left: auto;
+}
+
+.term-tools .attention {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--action) 35%, transparent);
+}
+
+.term-hint {
   position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-}
-
-.term-history-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--raised);
-}
-
-.term-history-bar h4 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.term-history pre {
-  flex: 1;
-  margin: 0;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 2;
   padding: 8px 12px;
-  overflow: auto;
-  overscroll-behavior: contain;
-  font: 13px/1.45 var(--mono);
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px var(--shadow);
 }
 
-.term-history-note,
-.term-history .muted {
-  margin: 0;
-  padding: 16px 12px;
-  max-width: 68ch;
+.term-hint::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: 32px;
+  width: 12px;
+  height: 12px;
+  background: var(--raised);
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  transform: rotate(45deg);
 }
 
 /* Activity: the team and the switch, then the feed, oldest first, which takes the rest of

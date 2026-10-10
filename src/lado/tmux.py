@@ -372,13 +372,3 @@ def window_size(target: str) -> tuple[int, int]:
     size = run("display-message", "-p", "-t", target, "#{window_width} #{window_height}")
     cols, rows = size.split()
     return int(cols), int(rows)
-
-
-def history(session: str, window: str, lines: int) -> tuple[str, bool]:
-    """The last `lines` lines of the window's history and its screen, wrapped lines joined,
-    and whether the program shows the alternate screen (a full-screen program: its history
-    is not in tmux's)."""
-    target = f"={session}:={window}"
-    alternate = run("display-message", "-p", "-t", target, "#{alternate_on}").strip() == "1"
-    text = run("capture-pane", "-p", "-J", "-S", f"-{lines}", "-t", target)
-    return text, alternate

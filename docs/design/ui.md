@@ -275,9 +275,7 @@ Decided in the agent terminal task (2026-10-03).
 
 - **The core** (`lado/terminal.py`): `open(session, agent, mode)` gives a `Terminal` (read
   its output, write input, resize, follow the window's size, close; blocking, so the server
-  reads it in a thread), `history(session, agent, lines)` the window's last lines and
-  whether it shows the alternate screen, and both raise `NoTerminal` with the reason when
-  there is none (unknown agent, session stopped, window gone; later an agent over ACP).
+  reads it in a thread), which raises `NoTerminal` with the reason when there is none (unknown agent, session stopped, window gone; later an agent over ACP).
   `ended()` tells whether a terminal that ended is gone for good. tmux commands only in
   `tmux.py`; in `server/` only the endpoints (`terminals.py`: the socket's protocol).
 - **A viewer per terminal**: a tmux session of its own whose only window is the agent's,
@@ -332,21 +330,25 @@ Decided in the agent terminal task (2026-10-03).
   from 13 px until the whole window fits the panel (the fit addon tells how many cells fit);
   below 8 px the panel scrolls, kept at the bottom, where the live lines are. tmux's ignore-size flag also keeps a view out while
   another client is attached.
-- **History**: in view the wheel up opens a read-only layer over the terminal (`GET
-  /api/sessions/{name}/agents/{agent}/history?lines=N`, tmux's history and the screen,
-  wrapped lines joined) with **Back to live ↓**; xterm.js keeps no scrollback. For an agent
-  whose CLI shows the alternate screen (`#{alternate_on}`: a full-screen TUI) the layer
-  says that its history is inside its CLI and to take control to scroll it. In control the
-  wheel goes to tmux: into copy-mode for a CLI that does not read the mouse (visible in the
-  human's tmux too; LADO's next delivered message leaves copy-mode, `tmux.send_text`), and
-  to the CLI itself when it reads the mouse (its own scrolling). Only shown: statuses still
-  come from hooks.
-- **What each CLI does** (checked by hand 2026-10-03, tmux 3.7): the fake agent and
-  Claude Code (2.1.288) with its default renderer write to the main screen, so their output
-  is in tmux's history: the layer shows it, the wheel in control scrolls in copy-mode.
-  Claude Code with `"tui": "fullscreen"` in the human's own settings (LADO's agents read
-  them too) and Kilo (7.8.1) run full screen and read the mouse: the layer shows the note,
-  the wheel in control goes to the CLI.
+- **Scrolling in view** (task feature/terminal-scroll-hint, 2026-10-10): xterm.js keeps no
+  scrollback, and nothing in view scrolls the agent's CLI. The wheel up first scrolls the
+  panel itself while it can (a window too big for it at 8 px); once the panel is at its top
+  (or has nothing to scroll), a callout under **Take control** in the bar, its arrow at the
+  button, says "Scrolling works after Take control." (`role="status"`), and the button is
+  ringed (`.attention`) while it shows. Each wheel up keeps it 4 s more (`HINT_MS`), never
+  a second one; it closes on its timer, on pressing Take control, on another mode, or when
+  another tab is shown. Esc, a click elsewhere and the mouse leaving do not close it. The
+  wheel down does nothing. It replaced a read-only History layer over the terminal (tmux's
+  history), which full-screen CLIs never filled. In control the wheel goes to tmux: into
+  copy-mode for a CLI that does not read the mouse (visible in the human's tmux too; LADO's
+  next delivered message leaves copy-mode, `tmux.send_text`), and to the CLI itself when it
+  reads the mouse (its own scrolling). Only shown: statuses still come from hooks.
+- **What each CLI does** (tmux 3.7): Claude Code 2.1.296 runs full screen by default
+  (checked 2026-10-10: every agent window `#{alternate_on}` 1, `#{history_size}` 0, with no
+  `"tui"` setting) and reads the mouse: the wheel in control goes to the CLI. Kilo 7.8.1
+  runs full screen and reads the mouse too (checked 2026-10-03). The fake agent writes to
+  the main screen: the wheel in control scrolls in copy-mode. Codex CLI and OpenCode: not
+  checked.
 - **Tabs** (the human's additions to the UI polish, 2026-10-03): left of its agent's name
   a tab shows the agent's status as the team chip's dot, smaller (`StatusDot`, one
   component, `dot-small`), from the session's agents list, live; an agent not in the list
@@ -566,7 +568,7 @@ Sessions for now. The UI's texts are in English.
 - **The window never scrolls** on a wide window: `html` and `body` do not scroll or bounce
   (`overflow: hidden`, `overscroll-behavior: none`) and the frame is the window's height;
   only regions inside scroll (the session list, the feed, the session's column, a page's
-  content, a terminal and its history), each without passing its scroll on. Below 900 px
+  content, a terminal), each without passing its scroll on. Below 900 px
   the columns stack and the page scrolls, as before.
   `/sessions` with no name says "Select a session" (nothing is selected for the human); a
   name `/api/sessions` does not know says "Session <name> not found" with a link to the

@@ -983,27 +983,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sessions/{name}/agents/{agent}/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * History
-         * @description The agent's window: its last `lines` lines, for the UI's read-only history, and
-         *     whether the agent shows a full-screen program, whose history is inside it.
-         */
-        get: operations["history_api_sessions__name__agents__agent__history_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1266,13 +1245,6 @@ export interface components {
             version: string;
             /** Started At */
             started_at: string;
-        };
-        /** History */
-        History: {
-            /** Text */
-            text: string;
-            /** Alternate */
-            alternate: boolean;
         };
         /**
          * IndexEntryInfo
@@ -3974,40 +3946,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sent"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    history_api_sessions__name__agents__agent__history_get: {
-        parameters: {
-            query?: {
-                lines?: number;
-            };
-            header?: never;
-            path: {
-                name: string;
-                agent: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["History"];
                 };
             };
             /** @description Validation Error */

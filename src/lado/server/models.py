@@ -808,11 +808,6 @@ class GateAnswer(BaseModel):
     comment: str = ""
 
 
-class History(BaseModel):
-    text: str  # the window's last lines, its screen included, oldest first
-    alternate: bool  # a full-screen program: its history is inside it, not here
-
-
 class MessageInfo(BaseModel):
     """A message, a question to the human (kind "question") or an answer to one."""
 

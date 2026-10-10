@@ -41,7 +41,6 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export type AgentInfo = components["schemas"]["AgentInfo"];
-export type History = components["schemas"]["History"];
 
 export const getSessions = () => get<SessionInfo[]>("/api/sessions");
 
@@ -84,10 +83,6 @@ const agentsPath = (session: string) => `${sessionPath(session)}/agents`;
 export const getAgents = (session: string) => get<AgentInfo[]>(agentsPath(session));
 
 const agentPath = (session: string, agent: string) => `${agentsPath(session)}/${encodeURIComponent(agent)}`;
-
-// The agent's window: its last lines and whether it shows a full-screen program.
-export const getHistory = (session: string, agent: string, lines = 2000) =>
-  get<History>(`${agentPath(session, agent)}/history?lines=${lines}`);
 
 export type AgentDetails = components["schemas"]["AgentDetails"];
 export type WorkInfo = components["schemas"]["WorkInfo"];

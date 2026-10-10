@@ -10,7 +10,8 @@
 // strip with a dot per open terminal (remembered; at first on a narrow window), its width is dragged on its edge
 // (remembered; narrowed while the window leaves the session too little room), and Expand
 // shows it over the whole page with the same terminals. Every terminal opens to view: the
-// wheel opens the window's history, read only; Take control asks first in a dialog (until
+// wheel up, once the panel has nothing more to scroll, points at Take control (scrolling the
+// agent's CLI needs control); Take control asks first in a dialog (until
 // the human says not to ask again), then types into the agent; Release goes back. A terminal
 // closed for good has Reconnect, and opens again by itself when its agent comes back.
 import { FitAddon } from "@xterm/addon-fit";
@@ -28,7 +29,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router";
 
-import { getHistory, type AgentInfo, type History } from "./api";
+import type { AgentInfo } from "./api";
 import { CollapsePanelIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
 import { TERMINAL_PARAM } from "./paths";
@@ -61,11 +62,11 @@ export function useShownTerminal(): string | null {
   return useTerminals().active;
 }
 
-// Esc on an expanded panel puts it back, except where Esc is someone else's: a dialog, the
-// history layer, and the terminal of an agent the human controls (Esc goes to the agent).
+// Esc on an expanded panel puts it back, except where Esc is someone else's: a dialog and
+// the terminal of an agent the human controls (Esc goes to the agent).
 function escapeIsOurs(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true;
-  if (target.closest("dialog, .term-history")) return false;
+  if (target.closest("dialog")) return false;
   return !(target.closest(".term-xterm") && target.closest('[data-mode="control"]'));
 }
 
@@ -315,7 +316,8 @@ export function TerminalPanel({ session, children }: { session: string; children
   );
 }
 
-type Layer = { loading: true } | History | { error: string };
+// How long the hint at Take control stays after the last wheel up.
+export const HINT_MS = 4000;
 
 const FONT = { usual: 13, least: 8 }; // pixels
 
@@ -380,19 +382,28 @@ function AgentTerminal({
   }, [link.phase, info]);
   const [notice, setNotice] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
-  const [layer, setLayer] = useState<Layer | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const fitNow = useRef<() => void>(() => {});
   const visibleNow = useRef(visible);
   visibleNow.current = visible;
 
-  const showHistory = useCallback(() => {
-    setLayer((now) => now ?? { loading: true });
-    getHistory(session, agent).then(
-      (found) => setLayer(found),
-      (error: unknown) => setLayer({ error: String(error instanceof Error ? error.message : error) }),
-    );
-  }, [session, agent]);
+  // The hint at Take control: each wheel up shows it for HINT_MS more; Take control, another
+  // mode or another tab closes it.
+  const [hint, setHint] = useState(false);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const closeHint = useCallback(() => {
+    clearTimeout(hintTimer.current);
+    setHint(false);
+  }, []);
+  const showHint = useCallback(() => {
+    clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHint(false), HINT_MS);
+    setHint(true);
+  }, []);
+  useEffect(() => {
+    if (!visible) closeHint();
+  }, [visible, closeHint]);
+  useEffect(() => closeHint, [mode, closeHint]);
 
   useEffect(() => {
     const element = box.current!;
@@ -400,7 +411,7 @@ function AgentTerminal({
     const term = new Terminal({
       fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
       fontSize: FONT.usual,
-      scrollback: 0, // the history is tmux's: the wheel goes to tmux, or the history layer
+      scrollback: 0, // the history is tmux's or the CLI's: in control the wheel goes there
       disableStdin: mode === "view",
       theme: { background: colours.backgroundColor, foreground: colours.color, cursor: colours.color },
     });
@@ -441,7 +452,9 @@ function AgentTerminal({
     const typed = mode === "control" ? term.onData((data) => socket.input(data)) : null;
     term.attachCustomWheelEventHandler((event) => {
       if (mode === "control") return true; // to tmux: copy-mode, or the CLI's own scrolling
-      if (event.deltaY < 0) showHistory();
+      // In view the wheel scrolls the panel (a window too big for it at the least font); once
+      // the panel is at its top, only control scrolls further.
+      if (event.deltaY < 0 && (element.parentElement?.scrollTop ?? 0) <= 0) showHint();
       return false;
     });
     const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => fitNow.current());
@@ -454,7 +467,7 @@ function AgentTerminal({
       socket.stop();
       term.dispose();
     };
-  }, [session, agent, mode, showHistory, attempt]);
+  }, [session, agent, mode, showHint, attempt]);
 
   useEffect(() => {
     if (visible) fitNow.current();
@@ -467,7 +480,6 @@ function AgentTerminal({
 
   const takeControl = () => {
     setAsking(false);
-    setLayer(null);
     setMode("control");
   };
 
@@ -493,20 +505,30 @@ function AgentTerminal({
             Release
           </button>
         ) : (
-          <button
-            type="button"
-            className="quiet"
-            title={controlText(agent)}
-            onClick={() => (storedAskControl() ? setAsking(true) : takeControl())}
-          >
-            Take control
-          </button>
+          <span className="term-take">
+            <button
+              type="button"
+              className={hint ? "quiet attention" : "quiet"}
+              title={controlText(agent)}
+              onClick={() => {
+                closeHint();
+                if (storedAskControl()) setAsking(true);
+                else takeControl();
+              }}
+            >
+              Take control
+            </button>
+            {hint && (
+              <span role="status" className="term-hint">
+                Scrolling works after Take control.
+              </span>
+            )}
+          </span>
         )}
       </div>
       {asking && <ControlDialog agent={agent} onTake={takeControl} onCancel={() => setAsking(false)} />}
       <div className="term-screen">
         <div ref={box} className="term-xterm" />
-        {layer && <HistoryLayer layer={layer} onClose={() => setLayer(null)} />}
       </div>
     </div>
   );
@@ -558,43 +580,5 @@ function ControlDialog({ agent, onTake, onCancel }: { agent: string; onTake: () 
         </button>
       </div>
     </dialog>
-  );
-}
-
-function HistoryLayer({ layer, onClose }: { layer: Layer; onClose: () => void }) {
-  const text = useRef<HTMLPreElement>(null);
-  useEffect(() => {
-    if (text.current) text.current.scrollTop = text.current.scrollHeight; // the latest lines
-  }, [layer]);
-  return (
-    <section
-      className="term-history"
-      aria-label="History (read only)"
-      onKeyDown={(event) => event.key === "Escape" && onClose()}
-    >
-      <div className="term-history-bar">
-        <h4>History (read only)</h4>
-        <button type="button" className="quiet" onClick={onClose} autoFocus>
-          Back to live ↓
-        </button>
-      </div>
-      {"loading" in layer && <p className="muted">Loading…</p>}
-      {"error" in layer && (
-        <p className="problem" role="alert">
-          {layer.error}
-        </p>
-      )}
-      {"alternate" in layer && layer.alternate && (
-        <p className="term-history-note">
-          This agent's history is inside its CLI, which runs full screen. To scroll it, press Take control and
-          scroll there.
-        </p>
-      )}
-      {"alternate" in layer && !layer.alternate && (
-        <pre ref={text} tabIndex={0}>
-          {layer.text}
-        </pre>
-      )}
-    </section>
   );
 }

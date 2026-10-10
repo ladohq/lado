@@ -2322,67 +2322,6 @@
           }
         }
       }
-    },
-    "/api/sessions/{name}/agents/{agent}/history": {
-      "get": {
-        "summary": "History",
-        "description": "The agent's window: its last `lines` lines, for the UI's read-only history, and\nwhether the agent shows a full-screen program, whose history is inside it.",
-        "operationId": "history_api_sessions__name__agents__agent__history_get",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Name"
-            }
-          },
-          {
-            "name": "agent",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Agent"
-            }
-          },
-          {
-            "name": "lines",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 50000,
-              "minimum": 1,
-              "default": 2000,
-              "title": "Lines"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/History"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -3220,24 +3159,6 @@
           "started_at"
         ],
         "title": "Health"
-      },
-      "History": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "title": "Text"
-          },
-          "alternate": {
-            "type": "boolean",
-            "title": "Alternate"
-          }
-        },
-        "type": "object",
-        "required": [
-          "text",
-          "alternate"
-        ],
-        "title": "History"
       },
       "IndexEntryInfo": {
         "properties": {

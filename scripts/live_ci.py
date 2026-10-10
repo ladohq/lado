@@ -76,9 +76,12 @@ def run(provider: str, out: Path) -> int:
     log = out / f"live-{provider}.log"
     tests = ["uv", "run", "pytest", "-m", "live", "-n0", "-v", "-k", provider]
     print("$", " ".join(tests), flush=True)
-    with log.open("w") as kept, subprocess.Popen(
-        tests, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    ) as pytest:
+    with (
+        log.open("w") as kept,
+        subprocess.Popen(
+            tests, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        ) as pytest,
+    ):
         for line in pytest.stdout:
             sys.stdout.write(line)
             sys.stdout.flush()

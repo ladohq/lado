@@ -2,6 +2,12 @@
 
 ## 0.34.0 (unreleased)
 
+- Markdown tables wrap their cells to fit the column; they scroll sideways only when their
+  columns cannot fit.
+- Dismissing an agent's question in the UI no longer loses what you typed: the button
+  reads "Dismiss with comment" and the agent gets your text with the dismissal. The
+  question and gate cards' buttons are now one height; "Submit" is called "Send".
+
 - The supervisor can start a new, independent session in the same repository, with its
   session's kits, provider and settings, for a problem it found or a new ticket: it asks
   you with the brief attached and the choice `Start session <name>`, and once you pick it,

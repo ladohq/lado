@@ -21,16 +21,17 @@ export const answerPrefix = (id: number) => `Answer to #${id}: `;
 export const dismissedSummary = (id: number) => `Dismissed #${id}`;
 
 // The human's reply to a question as the chat shows it: a dismissal, or the answer's text
-// (the choice, else the own words) and a comment (the text that came with a choice).
-export type Reply = { dismissed: true } | { text: string; comment: string };
+// (the choice, else the own words); and a comment (the text that came with a choice or a
+// dismissal).
+export type Reply = { dismissed: true; comment: string } | { text: string; comment: string };
 
 // `question` when it is in the window: it says whether this reply dismissed it.
 export function replyOf(reply: MessageInfo, question?: MessageInfo): Reply {
   const id = reply.reply_to ?? 0;
   const dismissed = question
     ? question.question_state === "dismissed" && question.answered_by === reply.id
-    : !reply.choice && !reply.body && reply.summary === dismissedSummary(id);
-  if (dismissed) return { dismissed: true };
+    : !reply.choice && reply.summary === dismissedSummary(id);
+  if (dismissed) return { dismissed: true, comment: reply.body };
   if (reply.choice) return { text: reply.choice, comment: reply.body };
   // The body, when there is one, is the whole text (runtime._human_text).
   if (reply.body.trim()) return { text: reply.body, comment: "" };
@@ -55,6 +56,8 @@ export function Question({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const open = question.question_state === "open";
+  // What the human wrote goes along with a choice, Send or Dismiss.
+  const written = text.trim() !== "";
 
   async function act(call: () => Promise<unknown>) {
     setBusy(true);
@@ -70,7 +73,7 @@ export function Question({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (text.trim()) void act(() => answerQuestion(session, question.id, { text }));
+    if (written) void act(() => answerQuestion(session, question.id, { text }));
   }
 
   return (
@@ -86,15 +89,15 @@ export function Question({
         <form className="answer" onSubmit={submit}>
           {question.choices && (
             <div className="choices">
-              {question.choices.map((choice) => (
+              {question.choices.map((choice, i) => (
                 <button
                   key={choice}
                   type="button"
-                  className="primary"
+                  className={i === 0 ? "primary" : "quiet"}
                   disabled={busy}
                   onClick={() =>
                     // What the human wrote in the field goes along as a comment.
-                    void act(() => answerQuestion(session, question.id, text.trim() ? { choice, text } : { choice }))
+                    void act(() => answerQuestion(session, question.id, written ? { choice, text } : { choice }))
                   }
                 >
                   {choice}
@@ -105,7 +108,7 @@ export function Question({
           {question.free_answer && (
             <textarea
               aria-label="Your answer"
-              placeholder="Your answer"
+              placeholder="Your answer or a comment: it goes with a choice, Send or Dismiss"
               rows={2}
               value={text}
               onChange={(event) => setText(event.target.value)}
@@ -113,17 +116,17 @@ export function Question({
           )}
           <div className="answer-actions">
             {question.free_answer && (
-              <button type="submit" className="quiet" disabled={busy || !text.trim()}>
-                Submit
+              <button type="submit" className={written ? "primary" : "quiet"} disabled={busy || !written}>
+                Send
               </button>
             )}
             <button
               type="button"
-              className="quiet"
+              className="quiet subdued"
               disabled={busy}
-              onClick={() => void act(() => dismissQuestion(session, question.id))}
+              onClick={() => void act(() => dismissQuestion(session, question.id, written ? text : undefined))}
             >
-              Dismiss
+              {written ? "Dismiss with comment" : "Dismiss"}
             </button>
           </div>
           {problem && (
@@ -159,7 +162,7 @@ export function Question({
 }
 
 // The human's reply in the question's card: who and when, and the answer (the choice and
-// the comment, else the own words) as the human typed it; a dismissal, only that.
+// the comment, else the own words) as the human typed it; a dismissal, its comment if any.
 function Given({ question, answer, anchored }: { question: MessageInfo; answer?: MessageInfo; anchored: boolean }) {
   const dismissed = question.question_state === "dismissed";
   const reply = answer && replyOf(answer, question);
@@ -182,6 +185,7 @@ function Given({ question, answer, anchored }: { question: MessageInfo; answer?:
         ) : (
           <Body text={reply.text} breaks />
         ))}
+      {reply && "dismissed" in reply && reply.comment && <Body text={reply.comment} breaks />}
     </div>
   );
 }

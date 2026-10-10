@@ -892,7 +892,8 @@ fixes and docs only: no new feature, no API or schema change.
   `human wrote to <agent>: <summary> (#<id>[, <k> files])`, without the attachments, queued
   in the same transaction (answers and dismissals get none), and
   only while the supervisor runs: a stopped one would never get it, so there is none. An answer
-  (`Answer to #<id>: ...`) or dismissal (`Dismissed #<id>`) comes to the agent the same way.
+  (`Answer to #<id>: ...`) or dismissal (`Dismissed #<id>`, with the human's comment as its
+  body when they wrote one) comes to the agent the same way.
   No agent may be named `human` or `lado` (`state.RESERVED`). Messages to `human` are never
   dropped (stop, finish), and a forgotten agent's open questions are `closed`. LADO's
   instructions tell the supervisor to answer where the human asked: a `[from human]`

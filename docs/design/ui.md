@@ -640,7 +640,8 @@ reaches the feed. LADO takes the model and builds it on what it has:
   retries (no raw paste into a working agent). No second notification system.
 - **Questions with options**: an `ask_human` tool (a question, optional choices, an optional
   free answer). The answer, or that the human dismissed it, comes back to the agent as a
-  normal message; a dismissal is never silent.
+  normal message; a dismissal is never silent, and carries what the human typed as its
+  comment.
 - **Flow gates** are cards in the same feed, answered through `runs.answer` (the flow engine
   opens them, an agent cannot forget to). Built (Gates task, gates in the chat): the server
   lists a session's gates (`GET /api/sessions/{name}/gates`, `GateInfo`: the question, the
@@ -704,7 +705,8 @@ Built in the chat task (2026-10-03):
   answer is refused. A question is a message of kind `question` to `human` with its
   `choices`, `free_answer` and `question_state` (`open`, `answered`, `dismissed`,
   `closed`). The answer (`Answer to #<id>: <choice or the first line>`, the rest in the
-  body) or the dismissal (`Dismissed #<id>`) is a message from `human` to the agent with
+  body) or the dismissal (`Dismissed #<id>`, the human's comment as its body when they
+  wrote one; feature/question-answer, 2026-10-10) is a message from `human` to the agent with
   `reply_to` and `choice`, queued in the transaction that sets the question's outcome and
   `answered_by`; a question not `open` refuses both. When the agent is forgotten
   (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn; `lado stop`), its
@@ -722,7 +724,8 @@ Built in the chat task (2026-10-03):
   the `messages` triggers.
 - **API**: `GET /api/sessions/{name}/messages?with=human` (`MessageInfo`, oldest first);
   `POST /api/sessions/{name}/messages` `{to?, text}` (default to the supervisor);
-  `POST /api/sessions/{name}/questions/{id}/answer` `{choice?, text?}` and `…/dismiss`.
+  `POST /api/sessions/{name}/questions/{id}/answer` `{choice?, text?}` and `…/dismiss`
+  (an optional body `{text?}`, the comment).
   The POSTs need the server's own Origin (`Guard.changes`), answer 503 under another
   schema, 404 for an unknown session and 400 with the core's reason for what it refuses
   (a stopped session, an agent that is not running, a question not open). They return
@@ -778,10 +781,16 @@ Built in the chat task (2026-10-03):
     viewer's 15 px step alike: headings h1–h4 in steps, h1 with a rule under it; lists
     indented, task items without bullets; inline `code` on `--raised` in `--mono`; quotes
     muted with a `--line` bar; `del` muted; links `--action`. A table sits in a
-    `.md-table` frame (`--line`, radius 6) that scrolls sideways when the table is wider,
-    so neither the chat nor the panel ever does: the table `max-content` wide and at least
-    the frame's, the head row on `--raised` in 600 without wrapping, cells 6×10 px whose
-    words are never split letter by letter, each column aligned as its `:---:` says.
+    `.md-table` frame (`--line`, radius 6) and fills its width (task fix/md-tables-wrap,
+    2026-10-10: a short table spans the frame too, so its border and the frame's meet):
+    its cells, the head row too, wrap by words, and a token with no place to break (a
+    path, a URL, a hash) breaks anywhere (`overflow-wrap: anywhere`), so a table of a
+    few columns of prose fits the column. Each column keeps a minimum, 7em with its
+    padding but at most a third of the frame (`min(7em, 33cqi)`, the frame a size
+    container), so three columns fit also in a phone's chat; a table whose columns cannot
+    fit at that minimum scrolls sideways in its frame, so neither the chat nor the panel
+    ever does. The head row on `--raised` in 600, cells 6×10 px, each column aligned as
+    its `:---:` says.
   - An **agent's message to the human**: the summary in Inter 600, the whole body under
     it (Markdown: agents wrap lines by width, so no `breaks`). The summary is not drawn
     when it only repeats the body (`repeatsSummary`, only for agents' messages): the
@@ -800,7 +809,7 @@ Built in the chat task (2026-10-03):
     chat's messages (`.chat-message`); the shared `.chat-body` of a gate's card, Flows and
     an agent's task keeps its size; code 13 px mono.
 - **A question**: open, an orange card (a 4 px band on its left) "Question #N · waits for
-  you", its choices, field and Dismiss as before; closed, a neutral card "Question #N",
+  you"; closed, a neutral card "Question #N",
   its choices faded, the chosen one marked "✓" in `--done`, and the human's reply in the
   card (Answer in the question card); "Closed: the agent left" when its agent was
   forgotten. The reply's text comes from the answer's fields, never from parsing the
@@ -808,19 +817,31 @@ Built in the chat task (2026-10-03):
   that is not empty (the whole text, `runtime._human_text`); else the summary without
   `Answer to #N: ` (as `runtime.answer_question` writes it). A dismissal is told by its
   question (`dismissed` and `answered_by` this message; with no question in the window, by
-  the summary `Dismissed #N` of `runtime.dismiss_question`).
+  the summary `Dismissed #N` of `runtime.dismiss_question` and no `choice`), its body is
+  its comment.
+- **The open question's card** (decided 2026-10-10, feature/question-answer, mockup
+  `feature/question-answer/mockup-question-buttons-v3.html`, B v3), top to bottom: the
+  choices in a row (the first `.primary`, the others `.quiet`; a choice takes the field's
+  text along as its comment); the field, full width, "Your answer or a comment: it goes
+  with a choice, Send or Dismiss" (none for a question without a free answer); one row
+  with **Send** at the left (disabled and quiet while the field is blank, primary once it
+  has text) and **Dismiss** at the right, a muted button (`.quiet.subdued`) that reads
+  "Dismiss with comment" while the field has text and then sends it: nothing the human
+  typed is lost.
 - **Answer in the question card** (decided 2026-10-07, feature/chat-message-text, mockup
   `question-answer.html`): with its question in the window, the reply is drawn in the
   question's card under the choices, on the human's ground: a small "Y", "You ·
   answered" (or "You · dismissed", quieter), its time, and the answer (the choice in
-  bold "✓", the comment under it; else the own words) as Markdown with `breaks`. Without
+  bold "✓", the comment under it; else the own words; a dismissal's comment) as Markdown
+  with `breaks`. Without
   the reply in the window, the block says only "You · answered" or "You · dismissed".
   When the reply is the row right under its question, it is no row; when other rows came
   between, one quiet line stands where it was given (it ends a group): "Y", "You answered
   question #N ↑" (a link up to the card, `#message-N`) and the answer's start on one line
-  cut with an ellipsis, or "You dismissed question #N ↑". A reply whose question is not in
+  cut with an ellipsis, or "You dismissed question #N ↑" (with ` · ` and its comment's
+  start, cut the same way, when it has one). A reply whose question is not in
   the window (pages not loaded) is the human's row "answer to #N" as before, a dismissal
-  the line "You dismissed question #N". The reply's anchor `#message-<id>` is its late
+  the line "You dismissed question #N", its comment under it. The reply's anchor `#message-<id>` is its late
   line when there is one, else its block in the card.
 - **Flow events** (decided 2026-10-07, feature/chat-message-text, mockup
   `flow-events-a.html`): a run's events in a row, with no other row between (whatever the
@@ -1688,6 +1709,14 @@ trigger's horizontal centre (`--arrow-x`), also when the window's edge pushes th
 and stays 16 px from the card's ends, off its rounded corners; for a narrow trigger the
 card starts left of it so the arrow still reaches its centre. The card is 11 px from its
 trigger, so the arrow never touches it.
+
+**The cards' buttons** (feature/question-answer, 2026-10-10, mockup B v3): in the form of
+a question's and a gate's card (`form.answer`, only those two) every `.primary` and
+`.quiet` is 32 px high, 14 px, radius 8, by one rule (`.answer .primary, .answer .quiet`),
+and the field takes radius 8 with them; the global `.primary` (32 px, radius 6) and
+`.quiet` (28 px, 13 px) stay as they are elsewhere (one UI-wide scale: BACKLOG.md). The
+main action is `.primary`, the others `.quiet`; Dismiss is `.quiet.subdued`: muted text on
+no ground, a frame of `--muted` at 45 %.
 
 **Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
 "h23"`), whatever the browser's locale.

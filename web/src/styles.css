@@ -2508,6 +2508,16 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* A dismissal whose question is not in the window, with the human's comment under it. */
+.chat-quiet.commented {
+  flex-wrap: wrap;
+}
+
+.chat-quiet.commented .chat-body {
+  flex-basis: 100%;
+  color: var(--ink);
+}
+
 /* The comment of the human's answer to a gate, under the move it made. */
 .run-comment {
   margin: 2px 0 4px 26px;
@@ -2981,24 +2991,30 @@ h3 {
   color: var(--muted);
 }
 
-/* A table scrolls sideways in its frame and never widens the body. */
+/* A table fits its frame, its cells wrapping; only one whose columns cannot fit even at
+   their minimum scrolls sideways in its frame, and it never widens the body. */
 .md-table {
+  container-type: inline-size;
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
 }
 
 .md-table table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   border-collapse: collapse;
   font-size: 0.93em;
 }
 
+/* `anywhere` lets a path or a hash break too, and so leaves a column no minimum of its
+   own: min-width gives it one, 7em with the padding (a short phrase a line), so many
+   columns overflow the frame instead of shrinking to a letter; at most a third of the
+   frame, so three columns fit also in a phone's chat. */
 .md-table :is(th, td) {
+  min-width: min(7em, 33cqi);
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   text-align: left;
   vertical-align: top;
 }
@@ -3010,7 +3026,6 @@ h3 {
 .md-table thead th {
   background: var(--raised);
   font-weight: 600;
-  white-space: nowrap;
 }
 
 .md-table tbody tr:last-child td {
@@ -3043,11 +3058,32 @@ h3 {
   gap: 8px;
 }
 
+/* The question and gate cards' buttons: one height, the main action blue, the rest quiet;
+   only here (a UI-wide button scale: BACKLOG.md). */
+.answer .primary,
+.answer .quiet {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Dismiss: a button, but muted, at the row's right. */
+.quiet.subdued {
+  border-color: color-mix(in srgb, var(--muted) 45%, transparent);
+  background: transparent;
+  color: var(--muted);
+}
+
+.answer-actions .subdued {
+  margin-left: auto;
+}
+
 .answer textarea {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--panel);
   color: var(--ink);
   font: inherit;

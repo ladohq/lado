@@ -8,6 +8,7 @@ import re
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_artifacts_tab import MANY, MEASURE_TABLES
 from test_gates import gated_session
 from test_images import png
 from test_main_screen import log_in, running_session
@@ -116,6 +117,44 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     shot(page, "narrow")
 
 
+def test_the_question_and_gate_cards_buttons_are_one_height_in_light_and_dark(
+    page: Page, server, repo, shot
+):
+    """An open question's choices, Send and Dismiss, and an open gate's Approve and Reject:
+    one height (docs/design/ui.md, Questions); Dismiss says it takes the typed text along."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship today?", None, ["yes, today", "after the tag"])
+    page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    card = chat.get_by_role("article", name="Question from supervisor")
+    gate = chat.get_by_role("article", name="Gate #1", exact=True)
+    expect(card.get_by_role("button", name="Dismiss", exact=True)).to_be_visible()
+    expect(gate.get_by_role("button")).not_to_have_count(0)
+    field = card.get_by_role("textbox", name="Your answer")
+
+    def heights() -> list:
+        buttons = (
+            card.locator("form.answer button").all() + gate.locator("form.answer button").all()
+        )
+        return [round(button.bounding_box()["height"]) for button in buttons]
+
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        field.fill("")
+        assert set(heights()) == {32}, heights()
+        card.scroll_into_view_if_needed()
+        shot(page, f"{theme}-blank")
+        field.fill("on the dark theme the text blends in")
+        expect(card.get_by_role("button", name="Dismiss with comment")).to_be_visible()
+        expect(card.get_by_role("button", name="Send")).to_be_enabled()
+        assert set(heights()) == {32}, heights()
+        card.scroll_into_view_if_needed()
+        shot(page, f"{theme}-typed")
+    page.emulate_media(color_scheme="light")
+
+
 REPORT = """\
 ## Report
 
@@ -131,22 +170,29 @@ REPORT = """\
 """
 
 
-def test_a_message_with_a_wide_table_shows_it_in_a_frame_and_the_chat_does_not_scroll(
-    page: Page, server, repo, shot
+@pytest.mark.parametrize("width", [900, 390])
+def test_a_message_s_table_wraps_one_too_wide_scrolls_in_its_frame_and_the_chat_does_not(
+    page: Page, server, repo, shot, width
 ):
     session = running_session(repo)
     state.queue_message(session, "supervisor", "human", "DONE", REPORT, mark=state.DELIVERED)
     noted = "Merged.[^1]\n\n[^1]: after the review"
     state.queue_message(session, "supervisor", "human", "merged", noted, mark=state.DELIVERED)
-    page.set_viewport_size({"width": 900, "height": 900})
+    state.queue_message(session, "supervisor", "human", "matrix", MANY, mark=state.DELIVERED)
+    page.set_viewport_size({"width": width, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     chat = page.get_by_role("log", name="Chat with the session")
-    frame = chat.locator(".md-table")
-    expect(frame.get_by_role("columnheader")).to_have_text(["AC", "status", "test"])
+    frames = chat.locator(".md-table")
+    expect(frames.first.get_by_role("columnheader")).to_have_text(["AC", "status", "test"])
+    expect(frames).to_have_count(2)
     expect(chat.locator("input[type=checkbox]")).to_have_count(2)
     expect(chat.locator("del")).to_have_text("single tilde")
-    assert frame.evaluate("frame => frame.scrollWidth > frame.clientWidth")
+    report, many = chat.evaluate(MEASURE_TABLES, "[role=log]")
+    assert report["scroll"] <= report["client"], report  # it fits, its cells wrapping
+    assert report["sticking"] == 0, report
+    assert many["scroll"] > many["client"], many  # too many columns: it scrolls in its frame
+    assert report["sideways"] == many["sideways"] == [], (report, many)
     assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")
     # A body ends at its text: its last block has no margin under it.
     expect(chat.locator(".chat-body blockquote")).to_have_css("margin-bottom", "0px")
@@ -154,7 +200,13 @@ def test_a_message_with_a_wide_table_shows_it_in_a_frame_and_the_chat_does_not_s
     label = chat.get_by_role("heading", name="Footnotes")
     expect(label).to_have_count(1)
     assert label.bounding_box()["height"] <= 1
-    shot(page)
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        frames.first.scroll_into_view_if_needed()
+        shot(page, f"{theme}-report")
+        frames.last.scroll_into_view_if_needed()
+        shot(page, f"{theme}-many")
+    page.emulate_media(color_scheme="light")
 
 
 def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_card(

@@ -94,6 +94,9 @@ Earlier single failures of the same kind, each passing alone and on the next run
 - `src/App.test.tsx` > "the Agents tab follows the agents' changes; a reset loads them
   again": `Unable to find role="navigation" and name "Agents"` at load average 238
   (2026-10-05, review of feature/kit-marketplaces-core).
+- `src/Launch.test.tsx` > "a refused start shows the core's whole reason and keeps the
+  window": `Unable to find role="alert"` (1257 ms) in one `make web` at load average about
+  8 (2026-10-10, fix/md-tables-wrap, a CSS-only change); 561 of 561 passed on the next run.
 Wanted: one setting for the whole suite (a `testTimeout` and an `asyncUtilTimeout` that
 hold under load), so a test fails only when what it waits for never comes.
 Found: 2026-10-04..06, the tests above; this entry 2026-10-06, investigation of why
@@ -570,6 +573,9 @@ busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
 Again 3 of 3 on 2026-10-10 (verify of feature/linux-agents-path, e1dd5cc), in new ways: a
 window `worker` left after `finish_worker`, the flow branch not fast-forwardable onto main,
 flow.txt missing, or flow.txt holding prose instead of `OK`.
+Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
+instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
+stayed busy.
 
 ## Kilo live image test fails 3 of 3
 
@@ -611,6 +617,10 @@ folder holds many such runs (2026-10-09/10).
 Wanted: a supervisor role in the live kit that the local model follows, or a test that does
 not depend on main staying untouched.
 Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
+Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): `fatal: Not possible
+to fast-forward`, `untracked working tree files would be overwritten by merge`, and once the
+supervisor spawned an extra `worker` whose Codex (not on the test's model) failed with
+`input[0]: unknown input item type: "additional_tools"`.
 
 ## OpenCode live image test fails 3 of 3
 
@@ -638,6 +648,24 @@ a drop today, so they pass, but each acts on a worker that may still be about to
 Wanted: one helper, "spawned and its task done" (nothing unreceived, then idle), used by
 each.
 Found: 2026-10-10, fix/flaky-finish-merged-worker.
+## UI: buttons have two unrelated sizes
+
+Size: M. Why here: looks only; every place that mixes the two classes shows two heights.
+`.primary` is 32 px, radius 6; `.quiet` is 28 px, 13 px font (`web/src/styles.css`). Only
+the question and gate cards share one scale, by a rule scoped to `form.answer`
+(feature/question-answer); dialogs, toolbars and rows elsewhere still mix them.
+Wanted: one button scale for the whole UI (docs/design/ui.md, Look), applied in one pass,
+and the scoped `.answer .primary, .answer .quiet` rule dropped.
+Found: 2026-10-10, design of feature/question-answer.
+
+## Mockups: a dark sample in a light page is unreadable when `color` is inherited
+
+Size: S. Why here: only mockup authors meet it; it cost one round of review.
+In LADO's HTML viewer the frame follows the system theme; a mockup that forces
+`color-scheme: dark` on a block without setting `color` there keeps the light page's ink.
+Wanted: one line in the design guidance for mockups (docs/design/ui.md or the lado-dev
+kit): set `color` together with `color-scheme`.
+Found: 2026-10-10, design of feature/question-answer.
 
 ## `lado answer` and the popup answer only flow gates, not an agent's question
 
@@ -1003,6 +1031,10 @@ same way: `test_worker_does_a_task_reports_and_gets_a_message[kilo]` 2 of 3 and 
 is gone"); and the Codex supervisor (qwen3-coder) did the flow step's work itself in
 `test_a_flow_run_moves_on_when_its_worker_reports[codex]` (2 of 3): it committed flow.txt
 on main and called flow_advance, so the run's branch could not fast-forward.
+Again on 2026-10-10 (verify of feature/question-answer, d5f95c2):
+`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once: the passive
+supervisor called `finish_worker(name="w1")`, then with `discard=true` after w1's report, so
+the line sent while w1 was busy was `dropped`; the rerun passed.
 
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
@@ -1760,6 +1792,16 @@ is made (`getComputedStyle`), while `--term-ground` is `light-dark(...)`: after 
 changes, the xterm canvas keeps the old shade and the rest of `.term-screen` takes the new one.
 Wanted: update `term.options.theme` when `prefers-color-scheme` or `data-theme` changes.
 Found: 2026-10-10, review of feature/terminal-scroll-hint.
+
+## ask_human's doc calls a multi-line answer's body a comment
+
+Size: S. Why here: agents read the tool's doc as the contract.
+`src/lado/mcp_server.py` (`ask_human`) says `"Answer to #<id>: ..." or "Dismissed #<id>",
+either with the human's comment as its body when they wrote one`; for an own answer of
+several lines the body is the rest of the answer (`runtime._human_text`), not a comment.
+Wanted: e.g. `"Answer to #<id>: ..." (the rest, or the comment on a choice, in the body) or
+"Dismissed #<id>" (the human's comment, if any, in the body)`.
+Found: 2026-10-10, review of feature/question-answer (Minor 1).
 
 # P3: maybe never
 

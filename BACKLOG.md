@@ -656,6 +656,19 @@ does for the trust dialog, with unit tests on configs without the keys.
 Found: 2026-10-10, design review of feature/live-cloud-matrix (architect, Found on the way);
 the three screens confirmed by the smoke test on 2026-10-11.
 
+## Flaky in WSL: a message of the turn-end output delivered `typed`
+
+Size: S. Why here: one red `make test-integration` in the Windows probe with no change near it.
+`tests/integration/test_agents.py::test_messages_in_the_turn_end_output_are_delivered_once_confirmed[fake-stop]`
+failed once in WSL2 on GitHub's windows-latest (Windows probe run 38088374082, part `tests`,
+ca887cc, which changes nothing in src/): `assert channels("supervisor") == [state.TYPED] +
+[state.HOOK_OUTPUT] * 3` got `typed` at index 1, so a batch the turn-end hook carried was
+typed in again by the sweep's rule. It passed in the run before (38084298408) and after
+(38088913146) on the same runner type.
+Wanted: find which timing makes the sweep type the batch (its retry delay under a slow
+runner, the hook not seen in time) and make the test hold.
+Found: 2026-10-11, feature/live-cloud-matrix (developer).
+
 ## A fake model server for the smoke tests
 
 Size: M. Why here: the smoke stops at the model; a full turn (a tool call, a reply) would

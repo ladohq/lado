@@ -567,6 +567,9 @@ report, the run did not end within 240 s) and passed on the third run.
 Again 3 of 3 on 2026-10-10 (verify of feature/session-start-tool, which changes nothing in
 providers/, hooks.py or the delivery): twice w1 sent its report again and again and stayed
 busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
+Again 3 of 3 on 2026-10-10 (verify of feature/linux-agents-path, e1dd5cc), in new ways: a
+window `worker` left after `finish_worker`, the flow branch not fast-forwardable onto main,
+flow.txt missing, or flow.txt holding prose instead of `OK`.
 
 ## Kilo live image test fails 3 of 3
 
@@ -618,6 +621,16 @@ folder holds many such runs (2026-10-09/10).
 Wanted: a supervisor role in the live kit that the local model follows, or a test that does
 not depend on main staying untouched.
 Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
+
+## OpenCode live image test fails 3 of 3
+
+Size: M. Why here: a live test red every time; it hides a real regression of artifact images.
+`test_an_agent_sees_the_image_the_human_attaches[opencode]` on `opencode/nemotron-3-ultra-free`:
+w1 stays busy after the human's PNG and never replies within 180 s, in the full run and 2
+reruns. No API error was seen (the earlier 503 was at 0.29.0).
+Wanted: find whether the free model takes images at all (then skip it, as for Codex) or
+LADO's image does not reach it.
+Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
 # P2: when convenient
 

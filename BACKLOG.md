@@ -567,6 +567,9 @@ report, the run did not end within 240 s) and passed on the third run.
 Again 3 of 3 on 2026-10-10 (verify of feature/session-start-tool, which changes nothing in
 providers/, hooks.py or the delivery): twice w1 sent its report again and again and stayed
 busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
+Again 3 of 3 on 2026-10-10 (verify of feature/linux-agents-path, e1dd5cc), in new ways: a
+window `worker` left after `finish_worker`, the flow branch not fast-forwardable onto main,
+flow.txt missing, or flow.txt holding prose instead of `OK`.
 
 ## Kilo live image test fails 3 of 3
 
@@ -598,19 +601,6 @@ Found: 2026-10-10, release of 0.33.0. Again in WSL2 Ubuntu on GitHub's windows-l
 probe, run 38029389159, Kilo 7.8.8): the same `flow.txt` error; w1's step stayed `delivered`,
 it wrote flow.txt without committing it and advanced (the run ended with uncommitted changes).
 
-## Agents' PATH on Ubuntu is not a new terminal's
-
-Size: M. Why here: breaks the "as a new terminal sees it" contract on every Ubuntu and WSL2.
-`agent_env.from_shell` starts `$SHELL -ilc` with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`
-(`agent_env.SHELL_PATH`), which on macOS `/etc/profile`'s `path_helper` rebuilds; Ubuntu's
-`/etc/profile` sets no PATH (it comes from PAM's `/etc/environment`, and in WSL from WSL
-itself), so agents lose `/usr/local/bin`, `/usr/lib/wsl/lib` and WSL's Windows PATH. A CLI in
-`/usr/local/bin` is refused as not on the agents' PATH, while `lado doctor` and the UI (the
-process PATH) see it. No test runs a real Linux login shell (all use `inherit` or fake shells).
-Wanted: on Linux the base PATH a new terminal starts from (e.g. `/etc/environment`), and a test
-against a real login shell. To confirm in the WSL VM run (checklist step 2).
-Found: 2026-10-10, read-only Windows/WSL audit (session lado-windows).
-
 ## `test_supervisor_finishes_a_merged_worker` fails on a slower machine: a message still queued at finish
 
 Size: S. Why here: it failed in 2 of 3 runs of the Windows probe in WSL2 (4 vCPU), so the probe is red.
@@ -631,6 +621,16 @@ folder holds many such runs (2026-10-09/10).
 Wanted: a supervisor role in the live kit that the local model follows, or a test that does
 not depend on main staying untouched.
 Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
+
+## OpenCode live image test fails 3 of 3
+
+Size: M. Why here: a live test red every time; it hides a real regression of artifact images.
+`test_an_agent_sees_the_image_the_human_attaches[opencode]` on `opencode/nemotron-3-ultra-free`:
+w1 stays busy after the human's PNG and never replies within 180 s, in the full run and 2
+reruns. No API error was seen (the earlier 503 was at 0.29.0).
+Wanted: find whether the free model takes images at all (then skip it, as for Codex) or
+LADO's image does not reach it.
+Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
 # P2: when convenient
 

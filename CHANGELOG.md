@@ -14,6 +14,10 @@
 - In an agent's terminal in view, the wheel up shows that scrolling needs Take control
   instead of a read-only History layer, which full-screen CLIs never filled. The API's
   `GET /api/sessions/{name}/agents/{agent}/history` is gone.
+- On Linux and WSL2, agents' PATH starts as a new terminal's: from `/etc/environment`
+  (else the Linux login default), so a CLI in `/usr/local/bin` is found; on WSL with
+  `/usr/lib/wsl/lib` but not the Windows PATH (add a Windows folder in `~/.profile` to give
+  it to agents). `lado doctor` says where the agents' PATH starts from.
 - On native Windows, `lado` says in one line that it runs only inside WSL2 instead of
   failing with a traceback (`No module named 'termios'`).
 

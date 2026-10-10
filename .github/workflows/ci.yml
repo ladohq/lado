@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, lado/lado-windows/feature-live-cloud-matrix]
   pull_request:
 
 jobs:

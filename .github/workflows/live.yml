@@ -6,6 +6,8 @@ name: Live tests
 
 on:
   workflow_dispatch:
+  push:
+    branches: [lado/lado-windows/feature-live-cloud-matrix]
 
 permissions:
   contents: read

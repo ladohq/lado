@@ -114,6 +114,31 @@ def test_keep_evidence_of_a_stopped_session_keeps_what_is_left(
     assert (folder / "agents" / "w1" / "kilo.json").exists()
 
 
+def test_keep_evidence_keeps_links_as_links_and_notes_what_it_cannot_copy(
+    failed_session, tmp_path, lado_home
+):
+    """A Codex agent's config folder is its CODEX_HOME: links into Codex's install, and
+    clones Codex changes while the copy runs."""
+    home = lado_home / "agents" / "s" / "w1"
+    (home / "tmp" / "arg0").mkdir(parents=True)
+    (home / "tmp" / "arg0" / "apply_patch").symlink_to("/nowhere/codex")
+    (home / "plugins").mkdir()
+    (home / "plugins" / "linked").symlink_to(tmp_path)  # a folder
+    (home / "plugins" / "locked.json").write_text("{}")
+    (home / "plugins" / "locked.json").chmod(0)
+    try:
+        folder = agent_helpers.keep_evidence(failed_session, tmp_path / "evidence")
+    finally:
+        (home / "plugins" / "locked.json").chmod(0o600)
+    kept = folder / "agents" / "w1"
+    assert os.readlink(kept / "tmp" / "arg0" / "apply_patch") == "/nowhere/codex"
+    assert os.readlink(kept / "plugins" / "linked") == str(tmp_path)
+    assert (kept / "kilo.json").read_text() == "{}"
+    note = (folder / "agents-not-copied.txt").read_text()
+    assert "locked.json" in note
+    assert (folder / "screens" / "w1.txt").exists()  # the rest goes on
+
+
 def test_a_timed_out_wait_says_what_it_waited_for_and_the_last_state(failed_session):
     with pytest.raises(pytest.fail.Exception) as failed:
         agent_helpers.wait_for(lambda: False, "w1's report", failed_session, timeout=0)

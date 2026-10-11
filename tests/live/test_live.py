@@ -2,6 +2,7 @@
 and is finished after its branch is merged; and a flow run's worker does its step and
 reports the outcome, which ends the run."""
 
+import asyncio
 import json
 import os
 import re
@@ -14,10 +15,16 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
+from local_models import CONFIG_VARIABLES
 from real_clis import agent_processes, answer_dialogs, check_gone
 
-from lado import artifacts, loop, providers, runs, runtime, state, terminal, tmux
+from lado import artifacts, loop, mcp_server, providers, runs, runtime, state, terminal, tmux
 from lado.providers import base
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 pytestmark = pytest.mark.live
 
@@ -37,11 +44,15 @@ FOLLOW_UP_BODY = (
 # Sent while w1 works on the follow-up: it goes in w1's turn-end hook's output.
 WHILE_BUSY = "No reply needed to this line"
 # The test merges and finishes w1 itself, so the supervisor must not: the default
-# supervisor role merges what a worker reports and may then finish the worker.
+# supervisor role merges what a worker reports and may then finish the worker. Read-only:
+# models follow LADO's lines over a role's text, so it has no tool to act with
+# (check_supervisor_tools), and a change it makes in the repository fails the test
+# (check_supervisor_kept_still).
 PASSIVE_SUPERVISOR = """\
 ---
 name: passive
 description: Only acknowledges messages; for the live test.
+read_only: true
 ---
 You are a passive supervisor in an automated test. When a message arrives, reply with the
 single word ACK. Never use any tool: no spawn_worker, finish_worker or send_message, no
@@ -134,6 +145,7 @@ def start_session(repo, provider: str, monkeypatch=None) -> None:
     )
     assert started.lead == "lead: passive of kit live"
     assert state.get_agent(SESSION, "supervisor").role == "passive"
+    check_supervisor_tools()
     if provider == "claude" and not any("whether to trust" in w for w in started.warnings):
         # The fixed repo path is trusted from an earlier run: no dialog to check.
         print("Claude Code trusts the repo already: the wait for its trust dialog is not checked")
@@ -148,6 +160,28 @@ def start_session(repo, provider: str, monkeypatch=None) -> None:
     assert loop.running(SESSION)
     if monkeypatch:
         check_mcp_token(repo)
+
+
+def check_supervisor_tools() -> None:
+    """The passive supervisor is read-only: its `lado mcp` lists none of LADO's command
+    tools, whatever its CLI."""
+    assert state.get_agent(SESSION, "supervisor").read_only
+    tools = asyncio.run(mcp_server.build(SESSION, "supervisor").list_tools())
+    listed = {t.name for t in tools}
+    assert "send_message" in listed
+    assert not listed & set(mcp_server.COMMAND_TOOLS), sorted(listed)
+
+
+def check_supervisor_kept_still() -> None:
+    """No turn of the passive supervisor changed the repository (lado.fingerprint)."""
+    changed = [
+        e
+        for e in state.list_events(SESSION)
+        if (e.agent, e.kind) == ("supervisor", state.REPO_CHANGED)
+    ]
+    assert not changed, "the passive supervisor changed the repository:\n" + "\n".join(
+        f"{e.created_at}: {e.detail}" for e in changed
+    )
 
 
 def check_loop_ended() -> None:
@@ -267,6 +301,26 @@ def claude_tools(repo, settings: str, permission_mode: str) -> list[str]:
     pytest.fail("claude printed no init event")
 
 
+def check_models(provider: str, model: str) -> None:
+    """Every agent of the session, the lead too, runs on the test model, from the one place
+    its CLI reads it: Codex the `model` of its config.toml (carried from the test's user
+    config), OpenCode and Kilo the file of OPENCODE_CONFIG / KILO_CONFIG every agent
+    inherits, which LADO's own config of the agent does not override. Claude Code: --model
+    (real_clis.with_model)."""
+    agents = state.list_agents(SESSION)
+    assert {a.name for a in agents} >= {"supervisor", "w1"}
+    for agent in agents:
+        folder = base.config_dir(agent)
+        if provider == "codex":
+            config = tomllib.loads((folder / "config.toml").read_text())
+            assert config["model"] == model, (agent.name, config.get("model"))
+        elif provider in CONFIG_VARIABLES:
+            given = json.loads(Path(os.environ[CONFIG_VARIABLES[provider]]).read_text())
+            assert given["model"] == model
+            own = json.loads((folder / providers.get(provider).config_file_name).read_text())
+            assert "model" not in own, (agent.name, own["model"])
+
+
 def check_agent_config(provider: str, repo, worker: state.Agent) -> None:
     """Claude Code: w1 does not see Claude Code's own tools for messaging agents, only
     LADO's send_message, which carried its report."""
@@ -344,7 +398,9 @@ def cli_version(provider: str) -> str:
     return subprocess.run([command, "--version"], capture_output=True, text=True).stdout
 
 
-def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider, monkeypatch):
+def test_worker_does_a_task_reports_and_gets_a_message(
+    live_repo, live_provider, live_model, monkeypatch
+):
     repo = live_repo
     started, since = time.monotonic(), time.time()
     version = cli_version(live_provider)
@@ -368,6 +424,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider,
     hello = runtime.git(str(repo), "show", f"{worker.branch}:hello.txt")
     assert hello.strip() == "OK"
     check_agent_config(live_provider, repo, worker)
+    check_models(live_provider, live_model)
     check_no_snapshots(live_provider, repo)
 
     # The UI's terminal on w1, open while LADO delivers to it: a viewer must not stop that.
@@ -396,6 +453,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(live_repo, live_provider,
     check_terminal_ended(supervisor)
     check_loop_ended()
     check_resume(live_provider, repo)
+    check_supervisor_kept_still()
     # Kilo and OpenCode update themselves unless told not to; LADO's agents must not (the
     # providers switch it off, so the test needs no *_DISABLE_AUTOUPDATE from outside).
     if live_provider in ("kilo", "opencode"):
@@ -533,7 +591,7 @@ def finish_worker(repo, worker: state.Agent) -> None:
     assert (event.kind, event.detail) == (state.FINISHED, "merged")
 
 
-def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
+def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider, live_model):
     """The run's worker gets its step as its task, does it and reports the outcome with
     flow_advance; the run ends. Its branch is not merged yet, so LADO keeps the worktree,
     the branch and the worker and tells the supervisor; finishing the worker after the
@@ -570,7 +628,11 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
         30,
     )
     assert state.get_agent(SESSION, "w1") is not None
+    # The read-only lead is told what waits and the human's way, not to merge or finish.
+    [told] = [m for m in state.list_messages(SESSION) if m.summary == kept]
+    assert "Your role is read-only" in told.body and "finish_worker" not in told.body
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 120)
+    check_models(live_provider, live_model)
 
     # The human merges; finishing the run's last worker takes the worktree and branch.
     runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
@@ -586,6 +648,7 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider):
     check_gone(processes, "stop")
     hooks_log = state.home() / "hooks.log"
     assert not hooks_log.exists(), hooks_log.read_text()
+    check_supervisor_kept_still()
     print(f"{live_provider} flow: {time.monotonic() - started:.0f}s")
 
 
@@ -635,53 +698,30 @@ def ask_about_image(name: str, data: bytes, ask: str) -> str:
     return messages("w1", "human")[-1][0]
 
 
-def ollama_sees_images(model: str) -> bool:
-    """Whether Ollama lists `vision` among the model's capabilities."""
-    shown = subprocess.run(["ollama", "show", model], capture_output=True, text=True)
-    lines = shown.stdout.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == "Capabilities"), None)
-    if start is None:
-        return False
-    capabilities = []
-    for line in lines[start + 1 :]:
-        if not line.strip():
-            break
-        capabilities.append(line.strip())
-    return "vision" in capabilities
-
-
-def test_an_agent_sees_the_image_the_human_attaches(live_repo, live_provider):
+def test_an_agent_sees_the_image_the_human_attaches(live_repo, live_provider, declared_vision):
     """The human's PNG reaches the model as an image through read_artifact: w1 names the
     colour of a solid red one. A screenshot-sized one over 1 MB and one just under
     artifacts.IMAGE_LIMIT do not end its turn on an error (an image the API refuses would
-    fail every later turn). A model that takes no images is named and skipped, never a
-    pass."""
-    if live_provider == "codex" and not ollama_sees_images(providers.get("codex").model):
-        # Codex runs no hook when the model fails on the image: w1 would look busy forever
-        # (BACKLOG.md), so a model that takes no images is skipped before it gets one.
-        pytest.skip(f"{providers.get('codex').model} takes no images (`ollama show`)")
+    fail every later turn). A model that does not declare image input is skipped before it
+    gets one (`declared_vision`): Codex runs no hook when the model fails on an image, so w1
+    would look busy forever (BACKLOG.md), and a skip after a timeout would hide a broken
+    image path. A model that declares it and does not see the image fails. On a failure the
+    evidence is kept with the session still running; teardown ends it."""
     repo = live_repo
     start_session(repo, live_provider)
     runtime.spawn_worker(SESSION, IMAGE_WORKER, name="w1")
-    try:
-        idle = answering(live_provider, "w1", lambda: status("w1") == state.IDLE)
-        wait_for(idle, "w1 to be idle", 120)
-        colour = ask_about_image(
-            "colour.png",
-            solid_png(64, 64, b"\xff\x00\x00"),
-            'Read the attached image "{name}" with read_artifact. Then reply to me with '
-            'send_message(to="human", summary=<its colour in one lower-case English word>) '
-            "and nothing else.",
-        )
-        print(f"{live_provider}: the colour: {colour!r}")
-        if "red" not in colour.lower():
-            if live_provider == "claude":
-                pytest.fail(f"Claude Code did not see the image: {colour!r}")
-            pytest.skip(
-                f"{live_provider}'s model did not see the image (no image input?): {colour!r}"
-            )
-        if live_provider != "claude":
-            return  # the sizes are Claude's API's limits (artifacts.IMAGE_LIMIT)
+    idle = answering(live_provider, "w1", lambda: status("w1") == state.IDLE)
+    wait_for(idle, "w1 to be idle", 120)
+    colour = ask_about_image(
+        "colour.png",
+        solid_png(64, 64, b"\xff\x00\x00"),
+        'Read the attached image "{name}" with read_artifact. Then reply to me with '
+        'send_message(to="human", summary=<its colour in one lower-case English word>) '
+        "and nothing else.",
+    )
+    print(f"{live_provider}: the colour: {colour!r}")
+    assert "red" in colour.lower(), f"{live_provider}'s model did not see the image: {colour!r}"
+    if live_provider == "claude":  # the sizes are Claude's API's limits (artifacts.IMAGE_LIMIT)
         seen = (
             'Read the attached image "{name}" with read_artifact, then reply to me with '
             'send_message(to="human", summary="SEEN") and nothing else.'
@@ -692,5 +732,5 @@ def test_an_agent_sees_the_image_the_human_attaches(live_repo, live_provider):
         largest = noise_png(1440, 900)
         assert artifacts.IMAGE_LIMIT - 100_000 < len(largest) <= artifacts.IMAGE_LIMIT
         assert "SEEN" in ask_about_image("largest.png", largest, seen)
-    finally:
-        runtime.stop_session(SESSION)
+    check_supervisor_kept_still()
+    runtime.stop_session(SESSION)

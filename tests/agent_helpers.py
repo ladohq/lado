@@ -303,7 +303,13 @@ def keep_evidence(session: str, folder: Path) -> Path:
         shutil.copy(hooks_log, folder / "hooks.log")
     configs = state.home() / "agents" / session
     if configs.is_dir():
-        shutil.copytree(configs, folder / "agents", symlinks=True)
+        # A Codex agent's folder is its CODEX_HOME: links into Codex's install (kept as
+        # links), and clones Codex may change while the copy runs (named, the rest kept).
+        try:
+            shutil.copytree(configs, folder / "agents", symlinks=True)
+        except shutil.Error as exc:
+            missed = "".join(f"{src}: {why}\n" for src, _, why in exc.args[0])
+            (folder / "agents-not-copied.txt").write_text(missed)
     (folder / "agents.txt").write_text(
         "".join(
             f"{a.name} {a.role} {a.status} cwd {a.cwd} branch {a.branch} "

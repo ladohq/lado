@@ -1,17 +1,11 @@
-"""Live end-to-end tests: real agent CLIs and real models, one short scenario per provider.
+"""Live end-to-end tests: real agent CLIs and real models, short scenarios per provider.
 
-Run them with `uv run pytest -m live` (or `make test-live`, `make test-live PROVIDER=kilo`).
-They cost tokens (Claude Code) or depend on free models (Kilo, OpenCode), so they never run by
-default.
-
-Environment:
-- LADO_LIVE_CLAUDE_MODEL: model for Claude Code agents, default "haiku" (cheap and quick).
-- LADO_LIVE_KILO_MODEL: model for Kilo agents, default "kilo/kilo-auto/free" (no login).
-- LADO_LIVE_OPENCODE_MODEL: model for OpenCode agents, default "opencode/nemotron-3-ultra-free"
-  (no login; "opencode/big-pickle" is often rate-limited).
-- LADO_LIVE_CODEX_MODEL: a local Ollama model for Codex CLI agents, default "qwen3-coder:30b"
-  (no login; the test skips without `ollama` or the model). It goes in the user's Codex
-  config of the test (CODEX_HOME), which LADO carries into each agent's own.
+Run them with `make test-live` (`PROVIDER=codex|opencode|kilo|claude`). They never run by
+default. The models, the local setup (LM Studio, the bridge the Codex tests start), the
+variables that override them and why a test skips are in AGENTS.md, Testing (Live e2e).
+In short: Codex, OpenCode and Kilo run on LM Studio's `local_models.MODEL`, one source of
+the model per provider in the environment every LADO process of the test inherits; Claude
+Code on haiku (`--model`), paid: only with the human's yes.
 
 Claude Code asks whether to trust a new workspace and records the answer in its own config;
 no option skips that. So the Claude test always uses the same repo path, and the test answers
@@ -27,6 +21,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import local_models
 import pytest
 import real_clis
 from agent_helpers import init_repo
@@ -34,12 +29,27 @@ from real_clis import CLASSES, EVIDENCE, isolated, with_model  # noqa: F401 (fix
 
 from lado import providers
 
+# The test model of each provider. OpenCode and Kilo name LM Studio's as `lmstudio/<id>`.
 MODELS = {
     "claude": os.environ.get("LADO_LIVE_CLAUDE_MODEL") or "haiku",
-    "kilo": os.environ.get("LADO_LIVE_KILO_MODEL") or "kilo/kilo-auto/free",
-    "opencode": os.environ.get("LADO_LIVE_OPENCODE_MODEL") or "opencode/nemotron-3-ultra-free",
-    "codex": os.environ.get("LADO_LIVE_CODEX_MODEL") or "qwen3-coder:30b",
+    "codex": os.environ.get("LADO_LIVE_CODEX_MODEL") or local_models.MODEL,
+    "kilo": os.environ.get("LADO_LIVE_KILO_MODEL") or f"lmstudio/{local_models.MODEL}",
+    "opencode": os.environ.get("LADO_LIVE_OPENCODE_MODEL") or f"lmstudio/{local_models.MODEL}",
 }
+# Another Responses endpoint for Codex: no bridge, no LM Studio check.
+CODEX_BASE_URL = os.environ.get("LADO_LIVE_CODEX_BASE_URL")
+BRIDGE_KEY = "LADO_LIVE_BRIDGE_KEY"  # the variable Codex reads the bridge's key from
+CONFIG_VARIABLES = local_models.CONFIG_VARIABLES
+
+
+def lmstudio_model(provider: str) -> str | None:
+    """The LM Studio model id the provider's test model is, or None for another endpoint."""
+    model = MODELS[provider]
+    if provider == "codex":
+        return None if CODEX_BASE_URL else model
+    if provider in CONFIG_VARIABLES and model.startswith("lmstudio/"):
+        return model.split("/", 1)[1]
+    return None
 
 
 def _claude_unusable() -> str | None:
@@ -53,42 +63,91 @@ def _claude_unusable() -> str | None:
     return None if logged_in else "Claude Code is not logged in (`claude auth status`)"
 
 
-def _codex_unusable() -> str | None:
-    if shutil.which("ollama") is None:
-        return "ollama not installed (Codex CLI runs on a local model)"
-    listed = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=False)
-    names = [line.split()[0] for line in listed.stdout.splitlines()[1:] if line.split()]
-    if MODELS["codex"] not in names:
-        return f"ollama has no {MODELS['codex']} (`ollama pull {MODELS['codex']}`)"
-    return None
+def _local_unusable(provider: str) -> str | None:
+    model = lmstudio_model(provider)
+    return local_models.lmstudio_problem(model, local_models.lmstudio_url()) if model else None
 
 
-# Kilo's and OpenCode's free models need no login, nor does Codex on a local model.
 UNUSABLE = {
     "claude": _claude_unusable,
-    "codex": _codex_unusable,
-    "kilo": lambda: None,
-    "opencode": lambda: None,
+    "codex": lambda: _local_unusable("codex"),
+    "kilo": lambda: _local_unusable("kilo"),
+    "opencode": lambda: _local_unusable("opencode"),
 }
 
 
+@pytest.fixture(scope="session")
+def codex_bridge(tmp_path_factory):
+    """The LiteLLM bridge Codex reaches LM Studio through, once per test run."""
+    if shutil.which("uvx") is None:
+        pytest.skip("uvx not installed: Codex reaches LM Studio through a LiteLLM bridge it runs")
+    folder = tmp_path_factory.mktemp("bridge")
+    try:
+        bridge = local_models.Bridge.start(folder, local_models.lmstudio_url(), MODELS["codex"])
+    except local_models.BridgeError as error:
+        pytest.fail(str(error))
+    BRIDGES.append(bridge)
+    yield bridge
+    bridge.stop()
+
+
+BRIDGES: list[local_models.Bridge] = []  # its log goes with a failed test's evidence
+
+
 @pytest.fixture(params=["claude", "codex", "kilo", "opencode"])
-def live_provider(request, monkeypatch, codex_home) -> str:
+def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
     """The name of a provider whose CLI is installed and usable, set up with its test model."""
     name = request.param
     if shutil.which(CLASSES[name].command) is None:
         pytest.skip(f"{CLASSES[name].command} not installed")
     if reason := UNUSABLE[name]():
         pytest.skip(reason)
-    monkeypatch.setitem(providers._PROVIDERS, name, with_model(CLASSES[name], MODELS[name]))
-    if name == "codex":
-        # The user's Codex config of the test, which LADO carries into each agent's own: the
-        # model's provider, as a user of a local model has it. It trusts no folder, so each
-        # agent asks (real_clis.answer_dialogs). Not `--oss`: in a new home that shows
-        # Codex's login screen (0.162.0).
+    if name == "claude":
+        monkeypatch.setitem(providers._PROVIDERS, name, with_model(CLASSES[name], MODELS[name]))
+    elif name == "codex":
+        # The user's Codex config of the test, which LADO carries into each agent's own. It
+        # trusts no folder, so each agent asks (real_clis.answer_dialogs).
+        base_url, key = CODEX_BASE_URL, None
+        if not base_url:
+            bridge = request.getfixturevalue("codex_bridge")
+            base_url, key = bridge.base_url, BRIDGE_KEY
+            monkeypatch.setenv(BRIDGE_KEY, bridge.key)
         codex_home.mkdir(parents=True, exist_ok=True)
-        (codex_home / "config.toml").write_text('model_provider = "ollama"\n')
+        config = local_models.codex_config(MODELS[name], base_url, key)
+        (codex_home / "config.toml").write_text(config)
+    else:
+        config = tmp_path / f"{name}-config.json"
+        config.write_text(
+            json.dumps(local_models.opencode_config(MODELS[name], local_models.lmstudio_url()))
+        )
+        monkeypatch.setenv(CONFIG_VARIABLES[name], str(config))
     return name
+
+
+@pytest.fixture
+def live_model(live_provider) -> str:
+    """The test model of the provider, as its CLI gets it."""
+    return MODELS[live_provider]
+
+
+@pytest.fixture
+def declared_vision(live_provider) -> None:
+    """Skip, before any image is sent, a model that does not declare image input: Claude's
+    models do, an LM Studio model when LM Studio lists it as `vlm`, another endpoint's when
+    LADO_LIVE_IMAGE=1."""
+    if live_provider == "claude":
+        return
+    if model := lmstudio_model(live_provider):
+        if not local_models.lmstudio_sees_images(model, local_models.lmstudio_url()):
+            pytest.skip(f"LM Studio does not list {model} as a vision model (type vlm)")
+        return
+    declared = os.environ.get("LADO_LIVE_IMAGE")
+    if declared is None:
+        pytest.skip(
+            f"whether {MODELS[live_provider]} takes images is unknown: set LADO_LIVE_IMAGE=1 or 0"
+        )
+    if declared != "1":
+        pytest.skip(f"{MODELS[live_provider]} takes no images (LADO_LIVE_IMAGE={declared})")
 
 
 CLAUDE_REPO = Path(tempfile.gettempdir(), "lado-live-claude", "My Repo")
@@ -107,4 +166,4 @@ def live_repo(live_provider, tmp_path):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
-    real_clis.keep_evidence(item, outcome.get_result())
+    real_clis.keep_evidence(item, outcome.get_result(), tuple(b.log for b in BRIDGES))

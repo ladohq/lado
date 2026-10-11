@@ -65,17 +65,21 @@ def isolated(lado_home, monkeypatch, kill_tmux_server):
     kill_tmux_server(socket)
 
 
-def keep_evidence(item, report) -> None:
-    """When a test fails, keep what shows why (agent_helpers.keep_evidence) in a folder of its
-    own under EVIDENCE, before teardown kills its tmux server and removes its LADO home, and
-    name the folder in the failure report. A passing test keeps nothing. For a conftest's
-    pytest_runtest_makereport; the test's module names its session as SESSION."""
+def keep_evidence(item, report, files: tuple[Path, ...] = ()) -> None:
+    """When a test fails, keep what shows why (agent_helpers.keep_evidence, and `files`, e.g.
+    a log of the test's own) in a folder of its own under EVIDENCE, before teardown kills its
+    tmux server and removes its LADO home, and name the folder in the failure report. A
+    passing test keeps nothing. For a conftest's pytest_runtest_makereport; the test's module
+    names its session as SESSION."""
     if not report.failed or report.when == "teardown":
         return
     stamp = time.strftime("%Y%m%d-%H%M%S")
     folder = EVIDENCE / f"{stamp}-{re.sub(r'[^A-Za-z0-9_.-]', '_', item.name)}"
     try:
         agent_helpers.keep_evidence(item.module.SESSION, folder)
+        for file in files:
+            if file.exists():
+                shutil.copy(file, folder / file.name)
         kept = f"kept in {folder}"
     except Exception as exc:  # the test's own failure must still be reported
         kept = f"could not keep it in {folder}: {exc!r}"

@@ -1881,6 +1881,25 @@ Codex the claim depends on the model.
 Wanted: the resume text names who it means; the comment says where the claim depends on the model.
 Found: 2026-10-11, review of feature/stable-local-live (Minor, left open).
 
+## An image in the artifact's tab is sized by `vh` while the tab is `dvh`
+
+Size: S. Why here: a few pixels of scroll on mobile, no loss.
+`.artifact-tab-image .image-frame img { max-height: calc(100vh - 32px) }` (styles.css): on a
+mobile browser with its toolbar showing, 100dvh < 100vh, so a tall image overflows the tab
+by the toolbar's height and the tab scrolls a little.
+Wanted: size the image by the tab (`100dvh` or the frame's height), so a tall image fits.
+Found: 2026-10-11, review of fix/artifact-tab-scroll.
+
+## A long text record's horizontal scrollbar sits after its last line in the artifact's tab
+
+Size: S. Why here: Wrap lines and shift+wheel work around it.
+`.artifact-tab-text .code-scroll` has `max-height: none` and `overflow: auto`, so a record
+with long lines shows its sideways scrollbar only at the end: to scroll sideways at the top
+one scrolls to the end first.
+Wanted: decide whether that is acceptable, or make the sideways scroll reachable where the
+reader is.
+Found: 2026-10-11, review of fix/artifact-tab-scroll.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

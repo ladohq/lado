@@ -278,15 +278,17 @@ function Work({ work }: { work: ReturnType<typeof useWork> }) {
   if (details === null) {
     text = problem ?? "Loading…";
   } else if (found) {
-    // A branch or worktree deleted outside LADO holds no work; finishing removes the rest.
+    // A branch or worktree deleted outside LADO; with the branch gone, the commits are its
+    // worktree's HEAD's (none when both are gone). Finishing removes what is left.
     const last = found.last_commit;
+    const parts = [
+      ...found.gone.map((what) => `${what} gone`).sort(),
+      ...(last ? [`${plural(found.ahead, "commit")} ahead of ${found.base} · ${found.behind} behind`] : []),
+      ...(found.gone.includes("worktree") ? [] : [`${plural(found.uncommitted, "file")} not committed`]),
+    ];
     text = (
       <>
-        {found.gone.includes("branch")
-          ? "branch gone"
-          : `${plural(found.ahead, "commit")} ahead of ${found.base} · ${found.behind} behind`}
-        {" · "}
-        {found.gone.includes("worktree") ? "worktree gone" : `${plural(found.uncommitted, "file")} not committed`}
+        {parts.join(" · ")}
         {last && (
           <>
             {" "}
@@ -424,14 +426,14 @@ function FinishDialog({ session, agent, onClose }: { session: string; agent: str
           {work && (
             <ul className="consequences">
               {!work.gone.includes("branch") && (
-                <>
-                  <li>
-                    branch <code>{work.branch}</code> is deleted
-                  </li>
-                  <li>
-                    {plural(work.ahead, "commit")} not in {work.base} {work.ahead === 1 ? "is" : "are"} lost
-                  </li>
-                </>
+                <li>
+                  branch <code>{work.branch}</code> is deleted
+                </li>
+              )}
+              {work.last_commit && (
+                <li>
+                  {plural(work.ahead, "commit")} not in {work.base} {work.ahead === 1 ? "is" : "are"} lost
+                </li>
               )}
               <li>
                 {plural(work.uncommitted, "uncommitted file")} {work.uncommitted === 1 ? "is" : "are"} lost

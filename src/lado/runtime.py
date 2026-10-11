@@ -817,6 +817,17 @@ def gone(repo: str, worktree: str, branch: str) -> list[str]:
     return missing
 
 
+def tip(repo: str, worktree: str, branch: str, missing: list[str]) -> str | None:
+    """The commit the work stands on: its branch, or, with the branch gone, its worktree's
+    HEAD (a branch checked out in a worktree is deleted only after a detach, and the
+    detached HEAD keeps the commits); None when both are gone."""
+    if BRANCH not in missing:
+        return branch
+    if WORKTREE not in missing:
+        return git(worktree, "rev-parse", "HEAD")
+    return None
+
+
 def named(which: list[str], worktree: str, branch: str) -> list[str]:
     """`worktree <path>` and `branch <name>` for each of WORKTREE, BRANCH in `which`."""
     return [f"worktree {worktree}" if n == WORKTREE else f"branch {branch}" for n in which]
@@ -924,15 +935,16 @@ class Commit:
 @dataclass
 class WorkState:
     """Where a worker's work stands now: its branch against the repo's current branch
-    (`base`) and its worktree. A branch or worktree that is gone holds no work: no commits
-    ahead or behind, no last commit, no changes."""
+    (`base`) and its worktree. With its branch gone, the commits are counted from its
+    worktree's HEAD (tip()); a worktree that is gone has no changes, and with both gone
+    there is no work: nothing ahead or behind, no last commit."""
 
     branch: str
     base: str
     ahead: int  # commits on the branch that are not in base: 0 means merged
     behind: int  # commits in base that are not on the branch
     changes: list[str]  # `git status --porcelain` lines of its worktree
-    last_commit: Commit | None  # None when the branch is gone
+    last_commit: Commit | None  # None when the branch and the worktree are gone
     gone: list[str]  # of WORKTREE, BRANCH: those no longer there (gone())
 
     @property
@@ -957,12 +969,13 @@ def _work_state(repo: str, worker: state.Agent) -> WorkState:
     branch = worker.branch
     missing = gone(repo, worker.cwd, branch)
     behind, ahead, last = "0", "0", None
-    if BRANCH not in missing:
-        counts = git(repo, "rev-list", "--left-right", "--count", f"HEAD...{branch}")
+    commit = tip(repo, worker.cwd, branch, missing)
+    if commit:
+        counts = git(repo, "rev-list", "--left-right", "--count", f"HEAD...{commit}")
         behind, ahead = counts.split()
         # The commit time as seconds: git's ISO form ends in "Z" for UTC (git 2.45+), which
         # Python 3.10's fromisoformat does not read.
-        log = git(repo, "log", "-1", "--format=%H%x00%ct%x00%s", branch)
+        log = git(repo, "log", "-1", "--format=%H%x00%ct%x00%s", commit)
         sha, at, subject = log.split("\0", 2)
         last = Commit(sha, subject, datetime.fromtimestamp(int(at), timezone.utc))
     changes = [] if WORKTREE in missing else git(worker.cwd, "status", "--porcelain").splitlines()
@@ -979,6 +992,13 @@ def _work_state(repo: str, worker: state.Agent) -> WorkState:
 
 def _refusal(worker: state.Agent, work: WorkState, repo: str) -> str | None:
     """Why the worker cannot finish without discarding its work, or None."""
+    if work.ahead and BRANCH in work.gone:
+        commits = f"{work.ahead} commit{'s' if work.ahead > 1 else ''}"
+        return (
+            f"branch {work.branch} is gone, but its worktree {worker.cwd} holds {commits} not "
+            f"in {work.base} (the current branch of {repo}); merge it first, or finish with "
+            "discard to throw its work away"
+        )
     if work.ahead:
         return (
             f"branch {work.branch} is not merged into {work.base} (the current branch of "

@@ -626,7 +626,9 @@ class WorkInfo(BaseModel):
     ahead: int  # commits not in base: 0 means merged
     behind: int
     uncommitted: int  # paths with changes in its worktree
-    last_commit: CommitInfo | None  # None when its branch is gone
+    # With its branch gone, ahead, behind and the last commit are its worktree's HEAD's;
+    # None when both are gone
+    last_commit: CommitInfo | None
     # "worktree", "branch": those no longer there (deleted by hand, or by an end that
     # stopped half way); finishing the worker removes what is left
     gone: list[str]

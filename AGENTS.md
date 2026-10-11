@@ -1142,9 +1142,10 @@ the worker anyway and throws that work away. "Merged" is LADO's own check agains
 repo's current branch, the one gate: the branch then goes with `git branch -D`, as `-d`
 would check a pushed branch against its upstream instead (`runtime.remove_work`, also a
 run's end). A worktree or branch already gone (deleted by hand, an end that stopped half
-way; `runtime.gone`) holds no work: the finish removes what is left and says what was
-gone (`work_state`'s `gone`, the UI's Agents tab), but a gone branch whose worktree has
-uncommitted changes is still refused without `--discard`. The supervisor does the same
+way; `runtime.gone`) is no reason to refuse: the finish removes what is left and says
+what was gone (`work_state`'s `gone`, the UI's Agents tab). With the branch gone, the work
+is the worktree's HEAD (`runtime.tip`): commits there not in the current branch, or
+uncommitted changes, are still refused without `--discard`. The supervisor does the same
 with the MCP tool `finish_worker`. A worker of a flow run only has its window closed while
 the run is open: the worktree and branch belong to the run; the run's end removes them by
 the same rules, so a gone worktree or branch never keeps it from closing its workers.

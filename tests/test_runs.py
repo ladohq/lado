@@ -790,14 +790,28 @@ def test_end_closes_the_workers_when_the_worktree_or_branch_is_gone(session, rep
     assert [a.name for a in state.list_agents(session)] == ["supervisor"]
     assert not Path(run.worktree).exists()
     assert runtime.git(str(repo), "branch", "--list", run.branch) == ""
-    already = {
-        "worktree": f"worktree {run.worktree}",
-        "branch": f"branch {run.branch}",
-        "both": f"worktree {run.worktree}, branch {run.branch}",
+    body = {
+        "worktree": f"Removed: branch {run.branch}. Already gone: worktree {run.worktree}.",
+        "branch": f"Removed: worktree {run.worktree}. Already gone: branch {run.branch}.",
+        "both": f"Already gone: worktree {run.worktree}, branch {run.branch}.",
     }[gone]
-    assert notices == [
-        f"flow feature/login: ended at done; worktree and branch removed\nAlready gone: {already}."
-    ]
+    assert notices == [f"flow feature/login: ended at done; worktree and branch gone\n{body}"]
+
+
+def test_end_keeps_a_run_whose_branch_is_gone_with_unmerged_commits(session, repo):
+    run = to_merge(session)
+    commit(run)
+    runtime.git(run.worktree, "checkout", "-q", "--detach")
+    runtime.git(str(repo), "branch", "-D", run.branch)
+    runs.advance(session, "supervisor", "feature/login", "merged")
+    told = messages("supervisor")[-1]
+    assert told.summary == "flow feature/login: ended at done; kept its worktree and branch"
+    assert (
+        f"Branch {run.branch} is gone, but its worktree holds commits not merged into main."
+        in told.body
+    )
+    assert Path(run.worktree).exists()
+    assert [a.name for a in state.list_agents(session)] == ["supervisor", "developer", "reviewer"]
 
 
 def test_end_keeps_a_run_whose_branch_is_gone_with_uncommitted_changes(session, repo):

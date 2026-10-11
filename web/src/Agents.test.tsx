@@ -364,6 +364,16 @@ test("an agent's work says what of it is gone", async () => {
   expect(region.textContent).not.toContain("last commit");
 });
 
+test("an agent whose branch is gone shows the commits its worktree still holds", async () => {
+  const detached = { ...WORK.work!, ahead: 1, uncommitted: 0, gone: ["branch"] };
+  serve({ details: { developer: { ...WORK, work: detached } } });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(
+    await within(region).findByText(/branch gone · 1 commit ahead of main · 0 behind · 0 files not committed/),
+  ).toBeTruthy();
+});
+
 test("the task shows its first lines with Show more", async () => {
   serve({ details: { developer: WORK } });
   open("/sessions/lado/agents/developer");

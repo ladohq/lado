@@ -2564,9 +2564,12 @@ def test_a_worker_whose_branch_is_gone_finishes(repo, fake_tmux):
     _session_with_worker(repo)
     worker = state.get_agent("s", "w1")
     _commit(worker.cwd)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
     _detach_and_delete_branch(repo, worker)
     work = runtime.work_state("s", "w1")
-    assert (work.gone, work.ahead, work.last_commit, work.uncommitted) == (["branch"], 0, None, 0)
+    assert (work.gone, work.ahead, work.uncommitted) == (["branch"], 0, 0)
+    # The work stands on its worktree's HEAD now.
+    assert work.last_commit.sha == runtime.git(worker.cwd, "rev-parse", "HEAD")
     preview = runtime.finish_preview("s", "w1")
     assert (preview.removes_worktree, preview.refused, preview.work.gone) == (
         True,
@@ -2582,6 +2585,26 @@ def test_a_worker_whose_branch_is_gone_finishes(repo, fake_tmux):
     assert not Path(worker.cwd).exists()
     assert ("kill_window", "s", "w1") in fake_tmux
     assert state.get_agent("s", "w1") is None
+
+
+def test_a_worker_whose_branch_is_gone_keeps_unmerged_commits_without_discard(repo, fake_tmux):
+    # The worktree's detached HEAD still holds commits the repo's branch does not have.
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    _detach_and_delete_branch(repo, worker)
+    assert runtime.work_state("s", "w1").ahead == 1
+    refused = (
+        f"branch lado/s/w1 is gone, but its worktree {worker.cwd} holds 1 commit not in main "
+        f"(the current branch of {repo}); merge it first, or finish with discard to throw "
+        "its work away"
+    )
+    assert runtime.finish_preview("s", "w1").refused == refused
+    with pytest.raises(runtime.LadoError, match=re.escape(refused)):
+        runtime.finish_worker("s", "w1")
+    assert state.get_agent("s", "w1") is not None and Path(worker.cwd).exists()
+    assert runtime.finish_worker("s", "w1", discard=True).how == "discarded"
+    assert not Path(worker.cwd).exists()
 
 
 def test_a_worker_whose_branch_is_gone_keeps_uncommitted_changes_without_discard(repo, fake_tmux):

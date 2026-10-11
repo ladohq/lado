@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.34.0 (unreleased)
+## 0.34.0 (2026-10-11)
 
 - Read-only roles: `read_only: true` in a role's frontmatter takes its agent's file
   editing tools away (Claude Code, OpenCode, Kilo; Codex CLI on a model it has no metadata

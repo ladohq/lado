@@ -606,6 +606,15 @@ Wanted: a drag from the expanded panel starts where it is (start from `min(width
 the expanded case's max be the room), with a vitest case.
 Found: 2026-10-11, review of feature/artifact-panel-width (Minor).
 
+## 0.34.0 went out without live tests: run them for every provider
+
+Size: S. Why here: a released version no live test has checked.
+The human decided to release 0.34.0 with no `make test-live` at all: no local model made the
+Codex live tests pass (session lado-windows), and the release was blocking that work.
+Wanted: `make test-live` on v0.34.0 for every provider (Claude Code with the human's yes); a
+failure goes through `fix` and a patch release.
+Found: 2026-10-11, release of 0.34.0 (the human's decision).
+
 # P2: when convenient
 
 ## Kilo and OpenCode: a failed `promptAsync` waits the first retry delay

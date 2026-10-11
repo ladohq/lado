@@ -315,13 +315,37 @@ Decided in the agent terminal task (2026-10-03).
   by itself when its agent comes back or changes in the session's agents (the panel
   follows them on every tab): a stopped session's supervisor is live again after
   `lado start`, with no reload. The agent as it was at the close is kept, so an agent that
-  still has no terminal is not asked again until it changes.
+  still has no terminal is not asked again until it changes. Reconnect always opens in
+  view. The reason shows once: the error frame the server sends before such a close is
+  not shown again as a notice beside it (a notice with another text still shows).
+- **Connection** (task feature/terminal-control-bar, 2026-10-11): the bar names the
+  socket's state only while it is not open: `connecting…` and `reconnecting: <reason>`
+  with a small turning ring (still under `prefers-reduced-motion: reduce`), `closed:
+  <reason>` with Reconnect. While it is open the status (`role="status"`, kept in the page)
+  is empty: no `live`, which is the change feed's word in the top bar. `.term` carries
+  `data-link` (`connecting`, `open`, `retrying`, `closed`). **Take control** is disabled
+  (`No connection to the terminal yet`) while the socket is not open, and gone when it is
+  closed for good.
 - **Modes**: every terminal opens in view, the supervisor's too (the Layout task: the human
   writes to agents in the chat, and a window is never resized without the human's own
   step); **Take control** asks first in a modal dialog (`<dialog>`, Esc is Cancel) with
   **Don't ask again**, remembered in the browser (`lado.askControl`) for every agent; there
   is no setting for it, and the button's tooltip always has the explanation. Without
-  browser storage it asks every time. **Release** goes back. In control tmux
+  browser storage it asks every time. **Release** goes back. Control is the state to see
+  and ends by itself (task feature/terminal-control-bar, 2026-10-11; mockup artifact
+  `feature/terminal-control-bar/mockup-terminal.html`, variant C, with the human's text):
+  view shows an eye and `Viewing` in muted ink, Take control a keyboard; in control the
+  bar is on `--action-ground` and says `You're typing into <agent>` in `--action` (on a
+  narrow panel only the name is cut, the whole text in its title), Release is ringed in
+  `--action`, the screen has a 2 px inset `--action` frame, and the agent's tab a keyboard
+  (`In control`), seen from any tab. Blue, never orange: orange is what waits for the
+  human. The panel (`TerminalPanel`) is the one owner of which agents are in control; it
+  goes back to view, silently and exactly as Release, when the page is hidden
+  (`visibilitychange`), when the panel is folded, when its tab is closed, after 10 minutes
+  without input to it (`IDLE_MS`; any data the terminal sends in control, from Take
+  control on), and when its socket goes from open to retrying or closed (not while the new
+  control socket connects). The Take control dialog closes when the socket leaves open.
+  The human's unsent draft in the agent's CLI is not covered (ROADMAP stage 8). In control tmux
   sizes the window by the client active last (`window-size latest`, tmux's default): the
   human's `lado attach` sees the window resized when the browser is the latest, and the
   other way round. In view the client never sizes it: its pty always has the window's size,
@@ -507,7 +531,8 @@ Sessions for now. The UI's texts are in English.
   price: each session page opened with the panel open makes one viewer (a tmux session) on
   the server, closed with the page. **Collapse terminals** leaves a strip with a
   **Terminals** button that opens it again; collapsed, its terminals keep their sockets
-  but are hidden, so nothing is resized (in control too), and a panel collapsed when the
+  but are hidden, so nothing is resized, and go back to view (folded control is
+  forgotten control, Terminal, Modes), and a panel collapsed when the
   page opens opens no socket until it is opened. A chip opens a collapsed panel. Collapsed
   is remembered in the browser (`lado.terminals`) and is the default below 900 px.
 - **The list collapsed to a strip** (decided 2026-10-05, task

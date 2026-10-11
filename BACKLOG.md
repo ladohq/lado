@@ -1530,17 +1530,6 @@ Wanted: `flow_start` can name the repo a run works on (a registered kit source o
 and the run's worktree, `make check` and merge happen there.
 Found: 2026-10-02, task lado-dev architecture (kit changes in lado-kits).
 
-## A terminal closed for good shows its reason twice
-
-Size: S. Why here: seen on every stopped session's page.
-
-A terminal whose socket closes for good (e.g. a stopped session) shows the reason in its
-status ("closed: session "x" is stopped") and again as the error notice beside it: the
-server sends an error frame and then closes with the same reason. Now that the
-supervisor's tab is always shown, every stopped session's page shows it twice.
-Wanted: one line with the reason (the notice left out when it repeats the close reason).
-Found: 2026-10-03, UI e2e screenshots of feature/ui-polish.
-
 ## A sent batch of a busy agent that a hook ran after waits without a limit
 
 Size: S. Why here: no loss, but the agent shows busy with an unconfirmed batch until the human types; rare.

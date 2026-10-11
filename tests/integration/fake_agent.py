@@ -20,6 +20,10 @@ Every input line is a command, after an optional "[from <name>] ":
                        LADO MCP tool ask_human
     start_session <name> <question id>  call the LADO MCP tool start_session; "seen" gets
                        its result ("start_session") and its text ("start_session_text")
+    sh <command>       run a shell command in its folder, as an agent's shell tool (logged
+                       as {"sh": {command, code}} in "seen")
+    tools              write the names of the LADO MCP tools it listed at start to "seen"
+                       ("tools")
     spawn <task>       call the LADO MCP tool spawn_worker
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
@@ -159,6 +163,7 @@ class LadoMcp:
         self.server: subprocess.Popen | None = None
         self.last_id = 0
         self.last_content: list[dict] = []  # the content blocks of the latest tool call
+        self.tools: list[str] = []  # the names of the tools it listed
 
     def connect(self) -> None:
         """Start the server, initialize the session and list the tools, in a thread (as the
@@ -179,7 +184,8 @@ class LadoMcp:
             params = {"protocolVersion": self.PROTOCOL, "capabilities": {}, "clientInfo": client}
             self._request("initialize", params)
             self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
-            self._request("tools/list", {})
+            listed = self._request("tools/list", {})
+            self.tools = [tool["name"] for tool in listed.get("tools", [])]
         except BaseException as exc:
             self.error = exc
         self.ready.set()
@@ -366,6 +372,13 @@ def work(text: str) -> bool:
             print("\n".join(f"line {n}" for n in range(1, int(command[1]) + 1)), flush=True)
         elif command[0] == "fullscreen":
             print("\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[Hfull screen", flush=True)
+        elif command[0] == "sh":
+            shell = " ".join(command[1:])
+            done = subprocess.run(shell, shell=True, capture_output=True, text=True)
+            report(sh={"command": shell, "code": done.returncode})
+        elif command[0] == "tools":
+            lado_mcp.ready.wait()
+            report(tools=lado_mcp.tools)
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
         elif command[0] == "finish":

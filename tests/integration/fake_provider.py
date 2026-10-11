@@ -53,6 +53,9 @@ class FakeProvider(base.Provider):
             deliver_on_turn_end=deliver_on_turn_end,
             skills=True,
             hold_first_turn=True,
+            # It has no edit tools to take away: read-only agents run on it for the
+            # repository check and LADO's command tools.
+            deny_edit_tools=True,
         )
 
     def launch_command(

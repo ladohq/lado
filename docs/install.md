@@ -19,6 +19,7 @@ missing. The short version of this guide is in [README.md](../README.md#install)
 - [Windows](#windows)
 - [Agent CLIs](#agent-clis)
 - [Your first session](#your-first-session)
+- [Common problems](#common-problems)
 
 ## macOS
 
@@ -203,11 +204,11 @@ agent terminals in the web UI.
 
 ### `Agent CLI: no agent CLI installed`
 
-No agent CLI is on the `PATH` of your login shell, which is where LADO looks. Install one
-([Agent CLIs](#agent-clis)), open a new terminal and run `lado doctor` again. A CLI that
-works in one terminal but not for LADO is usually added to `PATH` only in a file your
-login shell does not read; `lado doctor`'s `Agent environment` line says where LADO's
-`PATH` comes from.
+No agent CLI is on the `PATH` of the terminal you ran `lado doctor` in, which is where it
+looks. Install one ([Agent CLIs](#agent-clis)), open a new terminal and run `lado doctor`
+again. LADO starts agents with the `PATH` of your login shell, so a CLI that works in one
+terminal but not for LADO is usually added to `PATH` only in a file your login shell does
+not read; `lado doctor`'s `Agent environment` line says where LADO's `PATH` comes from.
 
 ### Without uv
 

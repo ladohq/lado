@@ -2168,11 +2168,12 @@ def take_pending(
             (session, recipient, PENDING),
         ).fetchall()
         # Sent, it is an attempt (lado.runtime.sweep); handed over another way, it is
-        # delivered and needs none.
+        # delivered and needs none. An earlier hand-over's print mark goes: only this one's
+        # hook may set it (output_printed).
         attempt = 1 if mark == SENT else 0
         db.executemany(
-            "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + ?, channel = ?"
-            " WHERE id = ?",
+            "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + ?, channel = ?,"
+            " printed_at = NULL WHERE id = ?",
             [(mark, time.time(), attempt, channel, r["id"]) for r in rows],
         )
         if rows and status:
@@ -2230,7 +2231,7 @@ def sweep(
             rows = db.execute(query.format("?, ?"), (session, name, SENT, PENDING)).fetchall()
             db.executemany(
                 "UPDATE messages SET state = ?, sent_at = ?, attempts = attempts + 1,"
-                " channel = ? WHERE id = ?",
+                " channel = ?, printed_at = NULL WHERE id = ?",
                 [(SENT, now, TYPED, r["id"]) for r in rows],
             )
             typed = [_message(r, state=SENT, channel=TYPED) for r in rows]

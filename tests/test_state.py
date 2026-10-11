@@ -218,6 +218,31 @@ def test_output_printed_marks_only_the_hook_output_handed_over_since(lado_home, 
     assert printed == {early: None, typed: None, batch: 110.0}
 
 
+def _printed_and_requeued(message):
+    state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
+    state.output_printed("s", "w1", since=0)
+    assert state.get_message("s", message).printed_at is not None
+    state.sweep("s", "w1", 200.0, lambda agent, sent: state.Plan(requeue=[m.id for m in sent]))
+    assert state.get_message("s", message).state == state.PENDING
+
+
+def test_a_hand_over_clears_the_print_mark_of_an_earlier_one(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    message = state.queue_message("s", "supervisor", "w1", "report")
+    _printed_and_requeued(message)
+    state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
+    assert state.get_message("s", message).printed_at is None
+
+
+def test_the_sweeps_retype_clears_the_print_mark_of_an_earlier_hand_over(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    message = state.queue_message("s", "supervisor", "w1", "report")
+    _printed_and_requeued(message)
+    state.sweep("s", "w1", 300.0, lambda agent, sent: state.Plan(retype=True))
+    retyped = state.get_message("s", message)
+    assert (retyped.state, retyped.printed_at) == (state.SENT, None)
+
+
 def test_the_migration_gives_agents_their_resumes(lado_home):
     _session_with(_agent(status=state.BUSY))
     agent_helpers.schema_before(20)

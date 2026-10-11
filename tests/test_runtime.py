@@ -1593,6 +1593,29 @@ def test_a_long_turn_from_the_hook_output_gets_it_typed_in_once_and_never_fails(
     assert state.list_messages("s")[0].state == state.DELIVERED
 
 
+def test_a_batch_printed_once_and_handed_over_again_unprinted_waits_only_the_hook_limit(
+    repo, fake_tmux
+):
+    """Printed, back in the queue, then in the output of a Stop hook that dies before its
+    print: the old mark must not make it wait for the backstop."""
+    first = _handed_over_in_the_stop_hook(repo)
+    state.sweep(
+        "s", "supervisor", first + 1, lambda agent, sent: state.Plan(requeue=[m.id for m in sent])
+    )
+    assert state.list_messages("s")[0].state == state.PENDING
+    assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel, report.printed_at) == (
+        state.SENT,
+        state.HOOK_OUTPUT,
+        None,
+    )
+    runtime.sweep("s", now=report.sent_at + runtime.HOOK_OUTPUT_WAIT - 1, delays=DELAYS)
+    assert _typed(fake_tmux) == []
+    runtime.sweep("s", now=report.sent_at + runtime.HOOK_OUTPUT_WAIT, delays=DELAYS)
+    assert _typed(fake_tmux) == ["[from w1] report"]
+
+
 def test_typed_in_after_the_hook_output_it_is_retried_and_fails_as_any_typed(repo, fake_tmux):
     sent = _handed_over_in_the_stop_hook(repo)
     _retry_until_failed(sent + runtime.HOOK_OUTPUT_BACKSTOP - DELAYS[0])

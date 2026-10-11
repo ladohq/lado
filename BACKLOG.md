@@ -670,16 +670,6 @@ Wanted: find whether the free model takes images at all (then skip it, as for Co
 LADO's image does not reach it.
 Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
-## A re-handed-over hook_output batch keeps an old printed_at
-
-Size: S. Why here: a one-line fix to the rule just merged; until then a lost batch can wait 600 s instead of 75 s.
-`state.hand_over` (the UPDATE in `take_pending`) and the sweep's requeue do not reset
-`messages.printed_at`. A message printed once, put back in the queue and handed over again
-by a turn-end hook that dies before its print keeps the old mark, so `_plan` waits
-`HOOK_OUTPUT_BACKSTOP` (600 s) instead of `HOOK_OUTPUT_WAIT` (75 s) before typing it in.
-Wanted: every hand-over sets `printed_at = NULL`; a unit test of that case.
-Found: 2026-10-11, review of feature/hook-output-retry (Minor).
-
 ## A Claude turn that goes on from the hook's output and ends on Esc is not fingerprinted
 
 Size: S. Why here: a read-only agent's change in that turn goes unreported (R3 of feature/read-only-roles).

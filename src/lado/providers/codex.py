@@ -68,8 +68,9 @@ EVENTS = {
     "PermissionRequest": base.WAITING,
     "PostToolUse": base.RESUMED,
 }
-# Codex gives Interrupt's hook 1 s by default, at most 3 s; it hands the queue over.
-HOOK_TIMEOUTS = {"Interrupt": 3}
+# Codex gives Interrupt's hook 1 s by default, at most 3 s; it hands the queue over. Stop
+# gets LADO's limit for a turn-end hook (600 s by default).
+HOOK_TIMEOUTS = {"Interrupt": 3, "Stop": base.TURN_END_HOOK_TIMEOUT}
 
 # How Codex names each hook event in a hook's trust key and hash (its hook_event_key_label).
 LABELS = {
@@ -119,6 +120,7 @@ class CodexProvider(base.Provider):
         skills=True,
         notice_on_argv=True,
         session_start_on_first_input=True,
+        output_taken_when_printed=True,
     )
     # No mode: Codex's own approvals (on-request in a trusted folder) and LADO's permission
     # profile. `default` asks for approvals as Codex's on-request does.

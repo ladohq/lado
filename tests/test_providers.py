@@ -25,6 +25,11 @@ def test_registry():
         providers.get("nope")
 
 
+def test_the_cli_takes_the_turn_end_hook_output_once_printed_for_claude_and_codex_only():
+    taken = {n: providers.get(n).capabilities.output_taken_when_printed for n in providers.names()}
+    assert taken == {"claude": True, "codex": True, "kilo": False, "opencode": False}
+
+
 @pytest.mark.parametrize(
     ("native", "payload", "expected"),
     [
@@ -214,6 +219,16 @@ def test_claude_reports_dialogs_at_once_and_their_answers_without_holding_tools(
         assert answered["hooks"][0]["async"] is True
         assert answered["hooks"][0]["command"].split()[-7] == native
     assert "Notification" not in hooks_ and "PreToolUse" not in hooks_
+
+
+def test_claude_gives_its_turn_end_hooks_lados_limit_and_no_other_hook_one(repo):
+    hooks_ = _claude_settings(repo)
+    for native, groups in hooks_.items():
+        [command] = groups[0]["hooks"]
+        if native in ("Stop", "StopFailure"):
+            assert command["timeout"] == base.TURN_END_HOOK_TIMEOUT == 60
+        else:
+            assert "timeout" not in command
 
 
 def test_providers_that_report_a_wait_report_its_end():

@@ -27,6 +27,7 @@ from lado import (
     state,
     tmux,
 )
+from lado.providers import base
 
 
 def test_slug():
@@ -1383,6 +1384,87 @@ def test_a_message_no_prompt_held_goes_back_to_the_queue_of_an_agent_that_takes_
     assert plan.requeue == ([7] if requeued else [])
 
 
+WAITS = (75.0, 600.0)  # a hook_output batch's (not printed, printed), as LADO's own
+
+
+def _output_batch(status, seen_at=0.0, printed=True):
+    """w1's batch handed over at 100 in its turn-end hook's output, its first attempt."""
+    agent = state.Agent(
+        "s", "w1", "worker", "/r", None, None, status, provider="claude", seen_at=seen_at
+    )
+    message = state.Message(
+        7,
+        "supervisor",
+        "hi",
+        "",
+        "w1",
+        state.SENT,
+        attempts=1,
+        sent_at=100.0,
+        channel=state.HOOK_OUTPUT,
+        printed_at=100.5 if printed else None,
+    )
+    return agent, [message]
+
+
+def test_a_printed_batch_waits_for_its_turn_however_long_up_to_the_backstop():
+    agent, sent = _output_batch(state.BUSY)  # no hook since: a long model step
+    for later in (DELAYS[0] + 5, WAITS[0] + 1, WAITS[1] - 1):
+        assert runtime._plan(agent, sent, 100.0 + later, DELAYS, WAITS) == state.Plan()
+    # The CLI broke its promise to take it: typed in once, and it never fails.
+    assert runtime._plan(agent, sent, 100.0 + WAITS[1], DELAYS, WAITS) == state.Plan(retype=True)
+    assert runtime._plan(agent, sent, 100.0 + 100 * WAITS[1], DELAYS, WAITS) == state.Plan(
+        retype=True
+    )
+
+
+def test_a_batch_never_printed_is_typed_in_once_the_hook_is_surely_dead():
+    agent, sent = _output_batch(state.BUSY, printed=False)
+    assert runtime._plan(agent, sent, 100.0 + WAITS[0] - 1, DELAYS, WAITS) == state.Plan()
+    assert runtime._plan(agent, sent, 100.0 + WAITS[0], DELAYS, WAITS) == state.Plan(retype=True)
+
+
+def test_a_printed_batch_of_a_turn_that_runs_hooks_waits_for_its_end():
+    agent, sent = _output_batch(state.BUSY, seen_at=130.0)  # a tool call's hook
+    assert runtime._plan(agent, sent, 100.0 + 10 * WAITS[1], DELAYS, WAITS) == state.Plan()
+
+
+@pytest.mark.parametrize("printed", [True, False])
+def test_a_batch_whose_turn_ended_meanwhile_goes_back_to_the_queue_after_its_wait(printed):
+    agent, sent = _output_batch(state.IDLE, seen_at=130.0, printed=printed)
+    wait = WAITS[1] if printed else WAITS[0]
+    assert runtime._plan(agent, sent, 100.0 + wait - 1, DELAYS, WAITS) == state.Plan()
+    assert runtime._plan(agent, sent, 100.0 + wait, DELAYS, WAITS).requeue == [7]
+
+
+def test_without_the_cli_taking_printed_output_a_batch_waits_the_first_delay():
+    agent, sent = _output_batch(state.BUSY)
+    assert runtime._plan(agent, sent, 100.0 + DELAYS[0] - 1, DELAYS) == state.Plan()
+    assert runtime._plan(agent, sent, 100.0 + DELAYS[0], DELAYS) == state.Plan(retype=True)
+
+
+def test_the_hook_output_waits_are_lados_unless_the_environment_gives_others():
+    assert (runtime.HOOK_OUTPUT_WAIT, runtime.HOOK_OUTPUT_BACKSTOP) == WAITS
+    assert runtime.HOOK_OUTPUT_WAIT == base.TURN_END_HOOK_TIMEOUT + 15
+    assert runtime.seconds_from(None, 75.0) == 75.0
+    assert runtime.seconds_from("", 75.0) == 75.0
+    assert runtime.seconds_from("2.5", 75.0) == 2.5
+
+
+@pytest.mark.parametrize(("provider", "waits"), [("claude", WAITS), ("kilo", None), ("x", None)])
+def test_the_sweep_gives_the_plan_the_hook_output_waits_of_a_cli_that_takes_it_printed(
+    provider, waits, lado_home, monkeypatch
+):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(
+        state.Agent("s", "w1", "worker", "/r", None, None, state.BUSY, provider=provider)
+    )
+    planned = []
+    monkeypatch.setattr(runtime, "_plan", lambda *args: planned.append(args[4:]) or state.Plan())
+    runtime.sweep("s", "w1", now=100.0, delays=DELAYS)
+    assert planned == [(waits,)]
+
+
 def _retry_until_failed(sent, start=0):
     """Sweep at the end of each delay, from the `start`-th one on, until the message fails."""
     at = sent
@@ -1475,19 +1557,31 @@ def test_a_turn_that_went_on_confirms_no_message_typed_in(repo, fake_tmux):
     assert (report.state, report.channel) == (state.SENT, state.TYPED)
 
 
-def _handed_over_in_the_stop_hook(repo):
-    """w1's report in the busy supervisor's Stop hook output. Returns when it was handed
-    over."""
+def _handed_over_in_the_stop_hook(repo, printed=True):
+    """w1's report in the busy supervisor's Stop hook output, marked printed as hooks.main
+    marks it unless not `printed`. Returns when it was handed over."""
     _session_with_worker(repo)
     _hook("UserPromptSubmit", "supervisor")
     runtime.send_message("s", "w1", "supervisor", "report")
     assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
-    return state.list_messages("s")[0].sent_at
+    sent = state.list_messages("s")[0].sent_at
+    if printed:
+        state.output_printed("s", "supervisor", since=sent)
+    return sent
 
 
-def test_a_long_turn_from_the_hook_output_gets_it_typed_in_once_and_never_fails(repo, fake_tmux):
-    sent = _handed_over_in_the_stop_hook(repo)
-    for at in range(DELAYS[0] - 1, DELAYS[0] + DELAYS[1]):  # each second, no hook
+@pytest.mark.parametrize(
+    ("printed", "wait"),
+    [(True, runtime.HOOK_OUTPUT_BACKSTOP), (False, runtime.HOOK_OUTPUT_WAIT)],
+)
+def test_a_long_turn_from_the_hook_output_gets_it_typed_in_once_and_never_fails(
+    repo, fake_tmux, printed, wait
+):
+    sent = _handed_over_in_the_stop_hook(repo, printed)
+    for at in (DELAYS[0], DELAYS[0] + DELAYS[1], wait - 1):  # no hook
+        runtime.sweep("s", now=sent + at, delays=DELAYS)
+    assert _typed(fake_tmux) == []
+    for at in range(int(wait), int(wait) + DELAYS[1]):  # each second, until a typed retry
         runtime.sweep("s", now=sent + at, delays=DELAYS)
     assert _typed(fake_tmux) == ["[from w1] report"]
     [report] = state.list_messages("s")
@@ -1501,7 +1595,7 @@ def test_a_long_turn_from_the_hook_output_gets_it_typed_in_once_and_never_fails(
 
 def test_typed_in_after_the_hook_output_it_is_retried_and_fails_as_any_typed(repo, fake_tmux):
     sent = _handed_over_in_the_stop_hook(repo)
-    _retry_until_failed(sent)
+    _retry_until_failed(sent + runtime.HOOK_OUTPUT_BACKSTOP - DELAYS[0])
     assert _typed(fake_tmux) == ["[from w1] report"] * len(DELAYS)
     assert state.list_messages("s")[0].state == state.FAILED
     assert state.get_agent("s", "supervisor").status == state.WAITING
@@ -1867,6 +1961,67 @@ def test_a_stop_hook_that_fails_after_the_hand_over_loses_no_message(
     # No output, so no hook follows: the sweep types it in after the first delay.
     runtime.sweep("s", now=report.sent_at + DELAYS[0], delays=DELAYS)
     assert _typed(fake_tmux) == ["[from w1] report"]
+
+
+def _stop_hook_with_report(repo, monkeypatch):
+    """w1's report queued for the busy supervisor; returns a Stop hook of its, run by
+    hooks.main."""
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "report")
+    instance = state.get_agent("s", "supervisor").instance
+    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
+    return lambda: hooks.main("Stop", "s", "supervisor", instance)
+
+
+def test_the_stop_hook_marks_its_output_printed_after_printing_it(
+    repo, fake_tmux, monkeypatch, capsys
+):
+    stop = _stop_hook_with_report(repo, monkeypatch)
+    mark = state.output_printed
+    printed_before = []
+
+    def marked(*args, **kwargs):
+        printed_before.append(capsys.readouterr().out)
+        mark(*args, **kwargs)
+
+    monkeypatch.setattr(state, "output_printed", marked)
+    assert stop() == 0
+    assert [json.loads(out)["reason"] for out in printed_before] == ["[from w1] report"]
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel) == (state.SENT, state.HOOK_OUTPUT)
+    assert report.printed_at is not None and report.printed_at >= report.sent_at
+
+
+def test_no_print_mark_for_a_cli_that_may_not_take_the_printed_output(
+    repo, fake_tmux, monkeypatch, capsys
+):
+    stop = _stop_hook_with_report(repo, monkeypatch)
+    claude = providers.get("claude")
+    untaken = dataclasses.replace(claude.capabilities, output_taken_when_printed=False)
+    monkeypatch.setattr(claude, "capabilities", untaken)
+    assert stop() == 0
+    assert json.loads(capsys.readouterr().out)["reason"] == "[from w1] report"
+    [report] = state.list_messages("s")
+    assert (report.channel, report.printed_at) == (state.HOOK_OUTPUT, None)
+
+
+def test_a_print_mark_that_fails_leaves_the_printed_output_to_its_turn(
+    repo, fake_tmux, lado_home, monkeypatch, capsys
+):
+    """The output went out: the CLI has it, so it is not made TYPED, which would type it
+    in again after the first delay; it waits as output not marked printed (runtime._plan)."""
+    stop = _stop_hook_with_report(repo, monkeypatch)
+    monkeypatch.setattr(state, "output_printed", lambda *args, **kwargs: 1 / 0)
+    assert stop() == 0
+    assert json.loads(capsys.readouterr().out)["reason"] == "[from w1] report"
+    assert "ZeroDivisionError" in (lado_home / "hooks.log").read_text()
+    [report] = state.list_messages("s")
+    assert (report.state, report.channel, report.printed_at) == (
+        state.SENT,
+        state.HOOK_OUTPUT,
+        None,
+    )
 
 
 def test_a_turn_another_stop_hook_went_on_with_confirms_no_output_never_printed(

@@ -1,6 +1,6 @@
 // The session page's layout (docs/design/ui.md, Structure): the team chips, the session
 // list's groups and "+", the rail with Launch and the top bar.
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, MemoryRouter, Route, Routes } from "react-router";
@@ -29,11 +29,13 @@ function agent(name: string, role: string, status: AgentInfo["status"], more: Pa
 
 let sessions: SessionInfo[] = [];
 let agents: AgentInfo[] = [];
+let runs: { name: string; status: string; created_at: string }[] | "pending" = []; // the session's runs, newest first
 
 beforeEach(() => {
   localStorage.clear();
   sessions = [session("lado")];
   agents = [];
+  runs = [];
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: false,
     media: query,
@@ -45,6 +47,7 @@ beforeEach(() => {
     vi.fn(async (path: string) => {
       if (path === "/api/sessions") return new Response(JSON.stringify(sessions));
       if (path.endsWith("/agents")) return new Response(JSON.stringify(agents));
+      if (path.endsWith("/runs")) return runs === "pending" ? new Promise<Response>(() => {}) : new Response(JSON.stringify(runs));
       if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
       return new Response("[]");
@@ -119,7 +122,7 @@ test("a chip's tooltip: name · role · provider, and its flow run on a second l
   expect(await tip("supervisor")).toEqual(["supervisor · claude"]); // the role is its name
 });
 
-test("a run's agents are chips in a frame named by the run, a link to its page in Flows", async () => {
+test("a run's agents are chips in a frame coloured by the run, with a link to its page in Flows", async () => {
   agents = [
     agent("dev", "developer", "busy", { run: "feature/x" }),
     agent("supervisor", "supervisor", "idle"),
@@ -127,15 +130,23 @@ test("a run's agents are chips in a frame named by the run, a link to its page i
     agent("rev", "reviewer", "waiting", { run: "feature/x" }),
     agent("dev-2", "developer", "starting", { run: "fix/y" }),
   ];
+  // Newest first, as the server serves them: fix/y started third, feature/x first.
+  runs = [
+    { name: "fix/y", status: "active", created_at: "2026-10-04T10:03:00.000Z" },
+    { name: "old/z", status: "ended", created_at: "2026-10-04T10:02:00.000Z" },
+    { name: "feature/x", status: "active", created_at: "2026-10-04T10:01:00.000Z" },
+  ];
   open();
   const team = await screen.findByRole("group", { name: "Team" });
   await within(team).findAllByRole("button");
   const frames = within(team).getAllByRole("group");
   expect(frames.map((frame) => frame.getAttribute("aria-label"))).toEqual(["run feature/x", "run fix/y"]);
   const [x, y] = frames;
-  const link = within(x).getByRole("link", { name: "feature/x" });
+  await waitFor(() => expect(x.getAttribute("data-colour")).toBe("1"));
+  expect(y.getAttribute("data-colour")).toBe("3");
+  const link = within(x).getByRole("link", { name: "run feature/x in Flows" });
   expect(link.getAttribute("href")).toBe(`/sessions/lado/flows/${encodeURIComponent("feature/x")}`);
-  expect(x.textContent).toBe("feature/xdevrev"); // no state of the run, no roles
+  expect(x.textContent).toBe("devrev"); // no name, no state of the run, no roles
   const inX = within(x).getAllByRole("button");
   expect(inX.map((chip) => chip.getAttribute("aria-label"))).toEqual(["dev, developer, busy", "rev, reviewer, waiting"]);
   expect(within(y).getAllByRole("button").map((chip) => chip.getAttribute("aria-label"))).toEqual([
@@ -153,6 +164,16 @@ test("a run's agents are chips in a frame named by the run, a link to its page i
   fireEvent.click(inX[1]);
   expect(inX[1].getAttribute("aria-pressed")).toBe("true");
   expect(chips[0].getAttribute("aria-pressed")).toBe("false");
+});
+
+test("until the session's runs are loaded, a run's frame has no colour", async () => {
+  agents = [agent("supervisor", "supervisor", "idle"), agent("dev", "developer", "busy", { run: "feature/x" })];
+  runs = "pending";
+  open();
+  const team = await screen.findByRole("group", { name: "Team" });
+  const frame = await within(team).findByRole("group", { name: "run feature/x" });
+  expect(frame.hasAttribute("data-colour")).toBe(false);
+  expect(within(frame).getByRole("link", { name: "run feature/x in Flows" })).toBeTruthy();
 });
 
 test("a chip follows its agent's changes", async () => {

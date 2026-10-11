@@ -10,6 +10,9 @@
   does it).
 - UI: the artifact panel's width is yours: drag its left edge (a grip in its middle), or
   Expand it to almost the whole window; the browser remembers it.
+- UI: in Activity's Team, a flow run's frame no longer spells out the run's name: its
+  dashes are in the run's own colour (one of four, kept for the run's whole life), and a
+  small Flows icon links to the run, its tooltip naming it.
 - A Claude Code or Codex agent told at its turn's end to `read_messages` now gets the
   message's body in the turn that follows, where it used to get nothing until a later
   turn ended. A message an agent has read is never typed into its window again.

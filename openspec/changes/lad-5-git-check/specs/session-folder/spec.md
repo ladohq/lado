@@ -1,3 +1,9 @@
+## Purpose
+
+Whether a folder can hold a LADO session, and when it cannot, what it lacks and what the
+human can do about it: the one folder check behind `lado start` and the UI's New session
+window, and how LADO's own git calls behave when git cannot run.
+
 ## ADDED Requirements
 
 ### Requirement: The folder check names what a folder lacks
@@ -55,7 +61,8 @@ A refusal of kind `no_git`, `git_broken`, `not_repo` or `no_commits` SHALL carry
 one sentence and one command to copy, the same in the CLI and the UI. `no_git` SHALL name
 this OS's install command (macOS: `xcode-select --install`; Linux and WSL:
 `sudo apt install git`, the sentence naming the distribution's package manager as the
-other way); `git_broken` on macOS `xcode-select --install`; `not_repo`
+other way); `git_broken` on macOS `xcode-select --install`, on Linux and WSL
+`sudo apt install --reinstall git`; `not_repo`
 `git init && git add -A && git commit -m 'First commit'`; `no_commits`
 `git add -A && git commit -m 'First commit'`, both "in that folder". Other kinds SHALL
 carry none.

@@ -1,3 +1,8 @@
+## Purpose
+
+What `lado doctor` and the UI's System panel check and show about the machine LADO runs
+on, so the human sees what is missing before a session fails on it.
+
 ## ADDED Requirements
 
 ### Requirement: lado doctor checks git

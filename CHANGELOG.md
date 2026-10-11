@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.35.1 (unreleased)
+
+- Install guide for macOS, Linux and Windows (WSL2): README's Install section and
+  docs/install.md.
+
 ## 0.35.0 (2026-10-11)
 
 - Codex CLI runs read-only agents: their worktree tool is off, and on a model Codex has no

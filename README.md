@@ -37,17 +37,49 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 - **ACP runtime.** Agents driven over the Agent Client Protocol instead of tmux.
 - **Task trackers** (YouGile, Jira) as kits.
 
+## Install
+
+LADO needs tmux, git, [uv](https://docs.astral.sh/uv/) and one agent CLI: Claude Code,
+Codex, Kilo or OpenCode.
+
+**macOS**
+
+```bash
+brew install tmux uv
+uv tool install lado
+```
+
+**Linux** (Debian, Ubuntu)
+
+```bash
+sudo apt install -y git tmux curl
+curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.local/bin/env
+uv tool install lado
+```
+
+**Windows**: LADO runs inside WSL2. In cmd, as administrator:
+
+```
+wsl --install -d Ubuntu-24.04
+```
+
+then open Ubuntu and follow the Linux steps.
+
+Then install an agent CLI, log in to it once, and check:
+
+```bash
+lado doctor             # says what is missing, with the command to install it
+```
+
+Step by step for each system, agent CLIs included, and what to do when something fails:
+[docs/install.md](docs/install.md). Without uv, `pip install lado` works too.
+
 ## Quick start
 
 ```bash
-uv tool install lado    # or: pip install lado
-lado doctor             # checks tmux and the agent CLIs: any of Claude Code, Codex, Kilo, OpenCode
 lado start <repo>       # a supervisor for a git repository (with at least one commit), in tmux
 lado ui                 # the web UI in your browser
 ```
-
-On Windows, LADO runs only inside WSL2 (Ubuntu), where it runs as on Linux; native Windows
-is refused with a pointer to WSL2.
 
 `lado start --help` lists the options (`--provider`, `--kit`, `--permission-mode`). `lado ls`
 shows the sessions and their agents, `lado attach <session>` their tmux windows, `lado stop

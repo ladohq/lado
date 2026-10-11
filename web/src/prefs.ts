@@ -128,6 +128,22 @@ export const storedSessionsList = (): ColumnPrefs => storedColumn(SESSIONS_LIST,
 
 export const storeSessionsList = (list: ColumnPrefs): void => storeColumn(SESSIONS_LIST, list);
 
+// The artifact panel over a session's page: the width the human chose, and whether it is
+// expanded to all the room there is. One value for every session.
+const ARTIFACT_PANEL = "lado.artifactPanel";
+export const ARTIFACT_PANEL_WIDTH: Bounds = { initial: 620, min: 400, max: 2400 };
+
+export type ArtifactPanelPrefs = { width: number; expanded: boolean };
+
+export function storedArtifactPanel(): ArtifactPanelPrefs {
+  const stored = readJson(ARTIFACT_PANEL);
+  return { width: widthIn(stored?.width, ARTIFACT_PANEL_WIDTH), expanded: stored?.expanded === true };
+}
+
+export function storeArtifactPanel(panel: ArtifactPanelPrefs): void {
+  write(ARTIFACT_PANEL, JSON.stringify(panel));
+}
+
 // Whether Take control asks first (until the human says not to ask again).
 const ASK_CONTROL = "lado.askControl";
 

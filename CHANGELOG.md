@@ -8,6 +8,9 @@
   the repository changed during one of the agent's turns. Running sessions must be
   restarted after the upgrade (database schema 25).
 
+- UI: the artifact panel's width is yours: drag its left edge (a grip in its middle), or
+  Expand it to almost the whole window; the browser remembers it.
+
 - A Claude Code or Codex agent told at its turn's end to `read_messages` now gets the
   message's body in the turn that follows, where it used to get nothing until a later
   turn ended. A message an agent has read is never typed into its window again.

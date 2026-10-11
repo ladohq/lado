@@ -197,6 +197,85 @@ def test_an_html_artifact_runs_sandboxed_and_never_reaches_the_ui(
     assert status == 200
 
 
+def panel_width(page: Page) -> float:
+    box = page.get_by_role("dialog").bounding_box()
+    assert box is not None
+    return box["width"]
+
+
+def test_the_panels_edge_sets_its_width_which_survives_a_reload_and_expand_fills_the_room(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.get_by_role("button", name="Open artifact ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    assert panel_width(page) == 620
+    edge = panel.get_by_role("separator", name="Artifact panel width")
+    page.mouse.move(0, 0)
+    shot(page, "grip")
+    box = edge.bounding_box()
+    assert box is not None
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    shot(page, "grip-hover")
+    page.mouse.down()
+    page.mouse.move(x - 150, y, steps=5)
+    page.mouse.move(x - 300, y, steps=5)
+    page.mouse.up()
+    assert panel_width(page) == 920
+    page.reload()
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    assert panel_width(page) == 920
+    panel.get_by_role("button", name="Expand").click()
+    expect(panel.get_by_role("button", name="Restore width")).to_be_visible()
+    page.wait_for_function("document.querySelector('[role=dialog]').offsetWidth === 1280 - 64")
+    shot(page, "expanded")
+    panel.get_by_role("button", name="Restore width").click()
+    page.wait_for_function("document.querySelector('[role=dialog]').offsetWidth === 920")
+
+
+def test_a_drag_over_an_html_artifact_still_resizes_and_ends_on_release(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    mockup = artifacts.find(session, "ship/y/mockup.html")[1]
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}?view={mockup.id}")
+    panel = page.get_by_role("dialog", name="Artifact ship/y/mockup.html")
+    frame = panel.locator("iframe")
+    expect(page.frame_locator("iframe").get_by_role("heading", name="Logout")).to_be_visible()
+    edge = panel.get_by_role("separator", name="Artifact panel width")
+    box, inside = edge.bounding_box(), frame.bounding_box()
+    assert box is not None and inside is not None
+    x, y = box["x"] + box["width"] / 2, inside["y"] + inside["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + 100, y, steps=10)  # the frame is under the pointer now
+    page.mouse.move(x + 200, y, steps=10)
+    assert panel_width(page) == 420
+    page.mouse.up()
+    expect(edge).not_to_have_attribute("data-dragging", "true")
+    page.mouse.move(x, y, steps=10)
+    assert panel_width(page) == 420  # let go: the pointer moves nothing
+
+
+def test_a_700_px_window_shows_the_panels_edge(page: Page, server, repo, tmp_path, shot):
+    session = designed_session(repo, tmp_path)
+    page.set_viewport_size({"width": 700, "height": 844})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.get_by_role("button", name="Open artifact ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    expect(panel.get_by_role("separator", name="Artifact panel width")).to_be_visible()
+    expect(panel.get_by_role("button", name="Expand")).to_be_visible()
+    assert panel_width(page) == 620
+    shot(page, "narrow")
+
+
 def test_on_a_phone_the_panel_takes_the_screen(page: Page, server, repo, tmp_path, shot):
     session = designed_session(repo, tmp_path)
     page.set_viewport_size({"width": 390, "height": 844})
@@ -207,6 +286,8 @@ def test_on_a_phone_the_panel_takes_the_screen(page: Page, server, repo, tmp_pat
     expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
     box = panel.bounding_box()
     assert box is not None and (box["x"], box["width"]) == (0, 390)
+    expect(panel.get_by_role("separator")).to_have_count(0)
+    expect(panel.get_by_role("button", name="Expand")).to_have_count(0)
     shot(page, "phone")
     panel.get_by_role("link", name="Open in Artifacts tab").click()
     expect(page).to_have_url(

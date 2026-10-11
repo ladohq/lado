@@ -54,13 +54,47 @@ test("on a left edge, left widens", () => {
 test("dragging moves the edge with the pointer, within the bounds", () => {
   render(<Column edge="left" />);
   fireEvent.pointerDown(splitter(), { clientX: 1000 });
-  fireEvent.pointerMove(window, { clientX: 950 });
+  fireEvent.pointerMove(splitter(), { clientX: 950 });
   expect(width()).toBe(350);
-  fireEvent.pointerMove(window, { clientX: 100 });
+  fireEvent.pointerMove(splitter(), { clientX: 100 });
   expect(width()).toBe(500);
-  fireEvent.pointerUp(window);
-  fireEvent.pointerMove(window, { clientX: 1000 });
+  fireEvent.pointerUp(splitter());
+  fireEvent.pointerMove(splitter(), { clientX: 1000 });
   expect(width()).toBe(500); // let go: the pointer moves nothing
+});
+
+// The pointer is captured by the separator, so the moves and the release come to it even
+// over an iframe; jsdom has no capture, so the test sends them to it.
+test("a drag captures the pointer, says it is dragging, and ends on the release or a cancel", () => {
+  const captured: number[] = [];
+  HTMLElement.prototype.setPointerCapture = function (id: number) {
+    captured.push(id);
+  };
+  try {
+    render(<Column edge="left" />);
+    expect(splitter().dataset.dragging).toBeUndefined();
+    fireEvent.pointerDown(splitter(), { clientX: 1000, pointerId: 7 });
+    expect(captured).toEqual([7]);
+    expect(splitter().dataset.dragging).toBe("true");
+    fireEvent.pointerMove(window, { clientX: 900 });
+    expect(width()).toBe(300); // not on the window: the separator has the pointer
+    fireEvent.pointerCancel(splitter());
+    expect(splitter().dataset.dragging).toBeUndefined();
+    fireEvent.pointerMove(splitter(), { clientX: 900 });
+    expect(width()).toBe(300);
+  } finally {
+    delete (HTMLElement.prototype as Partial<HTMLElement>).setPointerCapture;
+  }
+});
+
+test("a splitter has no grip unless it asks for one", () => {
+  render(<Column edge="left" />);
+  expect(splitter().querySelector(".splitter-grip")).toBeNull();
+  cleanup();
+  render(<Splitter label="Resize the column" edge="left" width={300} bounds={BOUNDS} onChange={() => {}} grip />);
+  const grip = splitter().querySelector(".splitter-grip");
+  expect(grip?.getAttribute("aria-hidden")).toBe("true");
+  expect(grip?.querySelectorAll(".splitter-grip-dot")).toHaveLength(3);
 });
 
 test("the keys stop at the bounds", () => {

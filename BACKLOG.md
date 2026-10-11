@@ -169,6 +169,8 @@ Wanted: wait for the two buttons first (`expect(team.get_by_role("button")).to_h
 Found: 2026-10-10, implement step of feature/session-start-tool.
 Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85): the same `ValueError` in
 `make check`; passed on both reruns.
+Again on 2026-10-11 (verify of feature/artifact-panel-width, 211f4c8): the same `ValueError`
+in `make test-ui`; passed on its first rerun alone.
 
 ### Launch vitest tests fail now and then under the load of a full run
 
@@ -697,6 +699,28 @@ schema 25. The hook_output item also lost the blank line before it.
 Wanted: one sentence about schema 25 and the restart, even spacing between items; fix it
 with the release commit at the latest.
 Found: 2026-10-11, review of feature/read-only-roles (Minor 4).
+## The needs-you notification UI test can hang `make test-ui` for good
+
+Size: S. Why here: a hang holds the machine-wide check lock until someone kills pytest.
+`tests/ui/test_needs_you.py::test_a_new_question_notifies_a_hidden_tab_and_its_click_leads_to_it`
+(its `notifying` fixture launches full Chromium, `channel="chromium"`) stopped the ui group of
+one `make check` at 91 of 92 tests for about 14 minutes; killing that Chromium did not help,
+only SIGINT to pytest ended it (`91 passed in 902.73s`). It passed in the next `make test-ui`.
+Wanted: a hang becomes a failure with a traceback (timeouts on the launch and the fixture's
+steps, or a pytest timeout for the ui group), and find where it hangs (launch,
+`grant_permissions`, `browser.close()`).
+Found: 2026-10-11, verify of feature/artifact-panel-width.
+
+## Expanding the artifact panel on a window over 2464 px, then dragging, jumps it narrower
+
+Size: S. Why here: a small fix in the code just merged; harmless but visible on ultrawide screens.
+Expand shows the panel at the room (window − 64 px), while the edge's `bounds.max` stays 2400:
+on a wider room `aria-valuenow` exceeds `aria-valuemax`, and the first pixel of a drag clamps
+the start width to 2400, so the panel jumps narrower by `room − 2400` px under the pointer
+(`web/src/ArtifactPanel.tsx`).
+Wanted: a drag from the expanded panel starts where it is (start from `min(width, max)` or let
+the expanded case's max be the room), with a vitest case.
+Found: 2026-10-11, review of feature/artifact-panel-width (Minor).
 
 # P2: when convenient
 

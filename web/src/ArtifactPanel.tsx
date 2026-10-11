@@ -1,9 +1,12 @@
 // The panel a chip or a row of the Artifacts tab opens (docs/design/ui.md, Artifacts): the
 // record an attachment keeps, or an artifact's latest, on the right over the session's
-// page, min(620px, 100%) wide, the whole screen on a narrow one; the page stays where it
-// was. Its address is the page's with ?view=<record>. Esc, its close button or a click
-// beside it close it, and the focus goes back where it was (the chip, the row's link).
-// "Open in Artifacts tab" leads to the artifact's page with that record.
+// page; the page stays where it was. Its width is the human's: they drag its left edge (the
+// shared Splitter, with a grip) between 400 px and the window's width less ROOM_GAP, or
+// Expand it to all that room; both are remembered (prefs.ts, lado.artifactPanel). A window
+// with less room than 400 px shows it on the whole screen, with no edge or Expand. Its
+// address is the page's with ?view=<record>. Esc, its close button or a click beside it
+// close it, and the focus goes back where it was (the chip, the row's link). "Open in
+// Artifacts tab" leads to the artifact's page with that record.
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -11,9 +14,25 @@ import { ApiError, getRecord, type RecordView } from "./api";
 import { changed } from "./artifacts";
 import { ArtifactView } from "./ArtifactView";
 import { useView } from "./Attachments";
-import { CloseIcon } from "./icons";
+import { CloseIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
 import { artifactPath, VIEW_PARAM } from "./paths";
+import { ARTIFACT_PANEL_WIDTH, type ArtifactPanelPrefs, storeArtifactPanel, storedArtifactPanel } from "./prefs";
+import { fitWidth, Splitter } from "./Splitter";
+
+// The strip of the page the panel always leaves on its left: a click there closes it.
+const ROOM_GAP = 64;
+
+// The room the window leaves the panel, read again when the window is resized.
+function useRoom(): number {
+  const [room, setRoom] = useState(() => window.innerWidth - ROOM_GAP);
+  useEffect(() => {
+    const resized = () => setRoom(window.innerWidth - ROOM_GAP);
+    window.addEventListener("resize", resized);
+    return () => window.removeEventListener("resize", resized);
+  }, []);
+  return room;
+}
 
 export function ArtifactPanel({ session, record }: { session: string; record: string }) {
   const live = useLiveStore();
@@ -24,6 +43,14 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
   const [found, setFound] = useState<RecordView | { error: string } | null>(null);
   const opener = useRef<Element | null>(document.activeElement);
   const panel = useRef<HTMLElement>(null);
+  const room = useRoom();
+  const [prefs, setPrefs] = useState(storedArtifactPanel);
+  const choose = (next: ArtifactPanelPrefs) => {
+    setPrefs(next);
+    storeArtifactPanel(next);
+  };
+  const narrow = room < ARTIFACT_PANEL_WIDTH.min;
+  const width = prefs.expanded ? room : fitWidth(prefs.width, ARTIFACT_PANEL_WIDTH, room);
 
   useEffect(() => {
     let current = true;
@@ -64,12 +91,40 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
   return (
     <>
       <div className="panel-scrim" aria-hidden="true" onClick={close} />
-      <aside className="artifact-panel" role="dialog" aria-label={`Artifact ${name}`} tabIndex={-1} ref={panel}>
+      <aside
+        className="artifact-panel"
+        role="dialog"
+        aria-label={`Artifact ${name}`}
+        tabIndex={-1}
+        ref={panel}
+        style={narrow ? undefined : { width }}
+      >
+        {!narrow && (
+          <Splitter
+            label="Artifact panel width"
+            edge="left"
+            width={width}
+            bounds={{ ...ARTIFACT_PANEL_WIDTH, max: Math.min(room, ARTIFACT_PANEL_WIDTH.max) }}
+            onChange={(chosen) => choose({ width: chosen, expanded: false })}
+            grip
+          />
+        )}
         <div className="panel-top">
           {artifact && (
             <Link className="quiet" to={artifactPath(session, artifact.id, record)}>
               Open in Artifacts tab
             </Link>
+          )}
+          {!narrow && (
+            <button
+              type="button"
+              className="icon-button panel-expand"
+              aria-label={prefs.expanded ? "Restore width" : "Expand"}
+              title={prefs.expanded ? "Restore width" : "Expand"}
+              onClick={() => choose({ ...prefs, expanded: !prefs.expanded })}
+            >
+              <ExpandIcon expanded={prefs.expanded} />
+            </button>
           )}
           <button type="button" className="icon-button panel-close" aria-label="Close" onClick={close}>
             <CloseIcon />

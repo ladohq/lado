@@ -3613,7 +3613,10 @@ h3 {
     height: auto;
   }
 
-  .splitter {
+  /* The page's columns stack: their edges go. The artifact panel, drawn inside the session
+     page, keeps its own. */
+  .terminals > .splitter,
+  .sessions > .splitter {
     display: none;
   }
 }
@@ -6463,10 +6466,73 @@ del.kit-mcp-name {
   border-left: 1px solid var(--line);
   background: var(--panel);
   box-shadow: -10px 0 30px var(--shadow);
+  transition: width 0.12s ease;
+}
+
+/* While its edge is dragged, the width follows the pointer at once. */
+.artifact-panel:has(> .splitter[data-dragging]) {
+  transition: none;
 }
 
 .artifact-panel:focus {
   outline: none;
+}
+
+.artifact-panel > .splitter {
+  left: -4px;
+}
+
+/* The grip in the middle of the panel's edge (Splitter's `grip`): it only shows that the
+   edge can be dragged; the whole edge is the handle. */
+.splitter-grip {
+  position: absolute;
+  top: 50%;
+  left: -1px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 10px;
+  height: 34px;
+  margin-top: -17px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  box-shadow: 0 1px 3px var(--shadow);
+  pointer-events: none;
+}
+
+.splitter-grip-dot {
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+
+.artifact-panel > .splitter[data-dragging]::after {
+  background: var(--action);
+}
+
+.splitter:hover .splitter-grip,
+.splitter:focus-visible .splitter-grip,
+.splitter[data-dragging] .splitter-grip {
+  border-color: var(--action);
+}
+
+.splitter:hover .splitter-grip-dot,
+.splitter:focus-visible .splitter-grip-dot,
+.splitter[data-dragging] .splitter-grip-dot {
+  background: var(--action);
+}
+
+.panel-expand {
+  margin-left: auto;
+}
+
+.panel-expand + .panel-close {
+  margin-left: 0;
 }
 
 .panel-top {

@@ -1034,8 +1034,14 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   `{kind: "folder", path}`; another kind is refused, so Projects can add theirs). The path
   is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
   under the field "✓ git repository · branch X", or the core's reason from
-  `runtime.check_repo` (does not exist, not inside a git repository, no commits yet), and
-  Start stays off until it will do. Subfolders are suggested from the folder up to the last
+  `runtime.check_repo` (`FolderInfo.problem_kind`: does not exist, a file, git not
+  installed, git does not run, not inside a git repository, git cannot read it, no commits
+  yet), and Start stays off until it will do. When the human can fix it (`FolderInfo.hint`:
+  no git, a git that does not run, no repository, no commits) the core's sentence follows
+  in muted text and its one command in a code field with **Copy** (`useCopy`; "Command
+  copied", or, when no copy works, the command selected with "Press ⌘C / Ctrl+C to copy";
+  LAD-5's mockup `mockup-folder-check.html`, variant 2). The window makes no repository
+  or commit itself: the human runs the command. Subfolders are suggested from the folder up to the last
   `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
   (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
   **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
@@ -1169,7 +1175,8 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   user agent; "System info copied") and GitHub ↗. Then Server (the page's origin), Running
   (how long only; the start in its tooltip, F3), Home (shortened with `~`; the folder icon
   on its left copies the full path, the session head's `CopyButton`), tmux (version ·
-  socket), on a Mac Graphical session (`process remote · server gui`, or `no tmux
+  socket), git (`SystemInfo.git`: its version, `not installed` or `does not run`, by the
+  folder check's own `runtime.git_version`; never its path), on a Mac Graphical session (`process remote · server gui`, or `no tmux
   server`: `SystemInfo.gui_session`, where the server's process and LADO's tmux server run,
   lado.gui_session), the providers (a dot: ok, an untested version, not installed; the version, and
   the tested one when it differs), and last the update check: `Up to date · checked 09:12`,

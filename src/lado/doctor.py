@@ -125,6 +125,39 @@ def check_tmux(which: Callable[[str], str | None]) -> Check:
     return check
 
 
+def _git_numbers(version: str) -> tuple[int, int] | None:
+    """(major, minor) of `git version X.Y[.Z]...` (Apple's suffix and all); None else."""
+    found = re.match(r"git version (\d+)\.(\d+)", version)
+    return (int(found[1]), int(found[2])) if found else None
+
+
+def check_git() -> Check:
+    """git is required, by the folder check's own look (`runtime.git_version`, on this
+    process's PATH); an old one breaks the providers' folder-trust lookup."""
+    try:
+        version = runtime.git_version()
+    except runtime.FolderProblem as problem:
+        return Check("git", FAIL, str(problem), problem.hint.line() if problem.hint else "")
+    found = _git_numbers(version)
+    if found and found < runtime.GIT_MIN:
+        need = ".".join(map(str, runtime.GIT_MIN))
+        hint = (
+            f"LADO needs git {need} or newer: before it, the providers' folder-trust lookup "
+            "(`git rev-parse --path-format=absolute`) does not work"
+        )
+        return Check("git", WARN, version, hint)
+    return Check("git", OK, version)
+
+
+def _git_fact() -> str:
+    """git's version for the System panel and the report: never a path."""
+    try:
+        version = runtime.git_version()
+    except runtime.FolderProblem as problem:
+        return "not installed" if problem.kind == "no_git" else "does not run"
+    return version.removeprefix("git version ")
+
+
 def check_agent_env() -> list[Check]:
     """Where agents' environment comes from; the login shell must give it, and soon. Also
     the PATH it starts from, and on WSL that the Windows PATH is left out of it."""
@@ -277,6 +310,7 @@ class System:
     home_set: bool  # LADO_HOME is set
     schema: int | None  # lado.db's, None without one
     tmux: str  # its version, "version unknown" or "not installed"
+    git: str  # its version, "not installed" or "does not run"
     tmux_socket: str
     # Where this process and LADO's tmux server are on a Mac (gui_places); None elsewhere.
     gui_session: tuple[gui_session.Place, gui_session.Place | None] | None
@@ -355,6 +389,7 @@ def system_info(which: Callable[[str], str | None] = shutil.which) -> System:
         if tmux_check.level == FAIL
         else "version unknown",
         tmux_socket=tmux.socket(),
+        git=_git_fact(),
         gui_session=gui_places(),
         providers=list(zip(registry, statuses, strict=True)),
         kits=_kit_facts(),
@@ -378,6 +413,7 @@ def report(system: System, open_to_network: bool, up_seconds: float) -> str:
         f"up {_duration(up_seconds)}, schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",
         f"- tmux: {system.tmux}, socket {system.tmux_socket}",
+        f"- git: {system.git}",
     ]
     if system.gui_session:
         process, server = system.gui_session
@@ -436,6 +472,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_lado(),
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
+        check_git(),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

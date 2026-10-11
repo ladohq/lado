@@ -2862,9 +2862,35 @@
             ],
             "title": "Branch"
           },
-          "has_commits": {
-            "type": "boolean",
-            "title": "Has Commits"
+          "problem_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "missing",
+                  "not_folder",
+                  "no_git",
+                  "git_broken",
+                  "not_repo",
+                  "git_refused",
+                  "no_commits"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem Kind"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HintInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "subfolders": {
             "items": {
@@ -2919,7 +2945,8 @@
           "problem",
           "root",
           "branch",
-          "has_commits",
+          "problem_kind",
+          "hint",
           "subfolders",
           "default_name",
           "name_state",
@@ -3193,6 +3220,25 @@
           "started_at"
         ],
         "title": "Health"
+      },
+      "HintInfo": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "command"
+        ],
+        "title": "HintInfo",
+        "description": "What the human can do about a folder's problem (runtime.Hint)."
       },
       "IndexEntryInfo": {
         "properties": {
@@ -5536,6 +5582,10 @@
           "tmux": {
             "$ref": "#/components/schemas/TmuxInfo"
           },
+          "git": {
+            "type": "string",
+            "title": "Git"
+          },
           "gui_session": {
             "anyOf": [
               {
@@ -5591,6 +5641,7 @@
           "home_set",
           "schema",
           "tmux",
+          "git",
           "gui_session",
           "providers",
           "kits",

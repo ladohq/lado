@@ -7,11 +7,11 @@ What LADO needs on every system:
 
 - **tmux** (3.3 or newer for the best experience; 3.2 works, see
   [tmux older than 3.3](#lado-doctor-warns-about-tmux-older-than-33)),
-- **git**,
+- **git** (2.31 or newer, see [git older than 2.31](#lado-doctor-warns-about-git-older-than-231)),
 - **[uv](https://docs.astral.sh/uv/)**, which installs LADO and the Python it runs on,
 - **one agent CLI**: Claude Code, Codex, Kilo or OpenCode, logged in once.
 
-`lado doctor` checks tmux and the agent CLIs and prints the command to install what is
+`lado doctor` checks tmux, git and the agent CLIs and prints the command to install what is
 missing. The short version of this guide is in [README.md](../README.md#install).
 
 - [macOS](#macos)
@@ -201,6 +201,26 @@ A new folder needs `git init` and a first commit before `lado start`.
 Ubuntu 22.04 has tmux 3.2a. LADO works; gate popups have no coloured border. Ubuntu 24.04
 has a newer tmux. Before 3.2 there are no gate popups (gates show only in `lado ls`) and no
 agent terminals in the web UI.
+
+### `git is not installed or not on PATH`
+
+LADO runs git itself (`lado start`, the UI's New session window, `lado kits add`), on the
+`PATH` of the terminal or of the server you started it from. On macOS install the Xcode
+command line tools, `xcode-select --install` (or `brew install git`); on Linux and WSL
+`sudo apt install git` (or your distribution's package manager). Then run `lado doctor`
+again: its `git` line names the version it found.
+
+### `git does not run: xcrun: error: invalid active developer path`
+
+On a Mac without the Xcode command line tools, `/usr/bin/git` is only a stub that asks for
+them. Run `xcode-select --install`, then `lado doctor` again. Before LADO 0.36 this showed
+as "not inside a git repository".
+
+### `lado doctor` warns about git older than 2.31
+
+LADO works, but its look at whether an agent CLI trusts the folder (`git rev-parse
+--path-format=absolute`) needs git 2.31: with an older git LADO may not foresee a CLI's
+"trust this folder?" question, or expect one that does not come. Install a newer git.
 
 ### `Agent CLI: no agent CLI installed`
 

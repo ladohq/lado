@@ -165,3 +165,11 @@ def test_clone_branch_and_refresh_follow_the_main_branch(work, tmp_path):
     with pytest.raises(gitcache.GitError, match="cannot clone file:///nowhere.git: "):
         gitcache.clone_branch("file:///nowhere.git", tmp_path / "other")
     assert not (tmp_path / "other").exists()
+
+
+def test_no_git_is_a_git_error_not_a_crash(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(
+        gitcache.GitError, match=rf"git is not installed or not on PATH \({tmp_path}\)"
+    ):
+        gitcache.remote_tags("https://example.invalid/kit.git")

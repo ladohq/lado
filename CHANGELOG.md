@@ -1,9 +1,17 @@
 # Changelog
 
-## 0.35.1 (unreleased)
+## 0.36.0 (unreleased)
 
 - Install guide for macOS, Linux and Windows (WSL2): README's Install section and
   docs/install.md.
+- `lado start` and the UI's New session window say what a folder lacks: a file, git not
+  installed, git that does not run (the macOS stub without the Xcode tools), not a
+  repository, git refusing to read it, no commits; with the command that fixes it, which
+  the window copies. No traceback or server error without git, also in `lado kits add`.
+- `lado doctor` checks git (missing, not running, older than 2.31), and the System panel
+  and its report show git's version.
+- API: `FolderInfo.has_commits` is replaced by `problem_kind` and `hint`; `SystemInfo`
+  has `git`.
 
 ## 0.35.0 (2026-10-11)
 

@@ -199,9 +199,58 @@ def test_start_in_a_repository_without_commits_fails(tmp_path, fake_tmux, capsys
     empty = tmp_path / "empty"
     subprocess.run(["git", "init", "-q", str(empty)], check=True)
     assert main(["start", str(empty), "--no-attach"]) == 1
-    assert f"{empty} has no commits yet: make a first commit, then start" in (
-        capsys.readouterr().err
-    )
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {empty} has no commits yet",
+        "lado: Make a first commit, in that folder: git add -A && git commit -m 'First commit'",
+    ]
+
+
+def test_start_outside_git_prints_the_reason_and_the_hint(tmp_path, fake_tmux, capsys):
+    assert main(["start", str(tmp_path), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {tmp_path} is not inside a git repository",
+        "lado: Make it a repository with a first commit, in that folder: "
+        "git init && git add -A && git commit -m 'First commit'",
+    ]
+
+
+def _no_git(tmp_path, monkeypatch) -> Path:
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Darwin")
+    return empty
+
+
+def test_start_without_git_says_so_with_no_traceback(repo, fake_tmux, capsys, monkeypatch):
+    empty = _no_git(repo.parent, monkeypatch)
+    assert main(["start", str(repo), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: git is not installed or not on PATH ({empty})",
+        "lado: Install the Xcode command line tools (or `brew install git`): "
+        "xcode-select --install",
+    ]
+
+
+def test_start_with_a_git_that_does_not_run(repo, fake_tmux, capsys, monkeypatch):
+    bin_dir = _no_git(repo.parent, monkeypatch)
+    git = bin_dir / "git"
+    git.write_text("#!/bin/sh\necho 'xcrun: error: invalid active developer path' >&2\nexit 1\n")
+    git.chmod(0o755)
+    assert main(["start", str(repo), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: git does not run: xcrun: error: invalid active developer path",
+        "lado: Install the Xcode command line tools, which this git needs: xcode-select --install",
+    ]
+
+
+def test_kits_add_without_git_says_so_with_no_traceback(tmp_path, capsys, monkeypatch):
+    empty = _no_git(tmp_path, monkeypatch)
+    assert main(["kits", "add", "https://example.invalid/kit.git", "--yes"]) == 1
+    err = capsys.readouterr().err
+    assert f"git is not installed or not on PATH ({empty})" in err
+    assert err.startswith("lado: ")
+    assert "Traceback" not in err
 
 
 def test_start_help_lists_each_providers_permission_modes(capsys):

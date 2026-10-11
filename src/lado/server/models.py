@@ -63,6 +63,7 @@ class Where(BaseModel):
 
 
 NameState = Literal["free", "running", "stopped_here", "taken_elsewhere"]
+FolderProblemKind = runtime.FolderProblemKind
 
 
 class FolderInfo(BaseModel):
@@ -73,7 +74,8 @@ class FolderInfo(BaseModel):
     problem: str | None  # why not, as the core says it (runtime.check_repo)
     root: str | None  # its git repository's root
     branch: str | None  # the repository's current branch
-    has_commits: bool
+    problem_kind: FolderProblemKind | None  # the problem's kind (runtime.FolderProblem)
+    hint: "HintInfo | None"  # what the human can do about it, when they can
     subfolders: list[str]  # its folders' names, no hidden ones, at most SUBFOLDERS
     default_name: str | None  # the name a session started here gets
     # free; running: a session of that name runs; stopped_here: one of this folder can be
@@ -81,6 +83,13 @@ class FolderInfo(BaseModel):
     name_state: NameState | None
     # the provider a new session here takes (runtime.suggested_provider); none: the human picks
     provider: "ProviderSuggestion | None"
+
+
+class HintInfo(BaseModel):
+    """What the human can do about a folder's problem (runtime.Hint)."""
+
+    text: str  # a sentence
+    command: str  # one command to copy
 
 
 class ProviderSuggestion(BaseModel):
@@ -478,6 +487,7 @@ class SystemInfo(BaseModel):
     home_set: bool  # LADO_HOME is set
     schema_: int | None = Field(alias="schema")
     tmux: TmuxInfo
+    git: str  # its version, "not installed" or "does not run"; never a path
     gui_session: GuiSession | None  # None but on a Mac
     providers: list[ProviderInfo]
     kits: list[KitFactInfo]

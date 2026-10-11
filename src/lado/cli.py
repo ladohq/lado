@@ -1261,8 +1261,11 @@ def main(argv: list[str] | None = None) -> int:
         kits.KitError,
         marketplaces.MarketplaceError,
     ) as exc:
-        # The notes: what undoing a failed start could not do (runtime._undo).
-        for line in [str(exc), *getattr(exc, "__notes__", [])]:
+        # A folder's hint: what the human can do. The notes: what undoing a failed start
+        # could not do (runtime._undo).
+        hint = exc.hint if isinstance(exc, runtime.FolderProblem) else None
+        lines = [str(exc), *([hint.line()] if hint else [])]
+        for line in [*lines, *getattr(exc, "__notes__", [])]:
             print(f"lado: {line}", file=sys.stderr)
         return 1
 

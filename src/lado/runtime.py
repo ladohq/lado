@@ -7,6 +7,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 import contextlib
 import enum
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -17,10 +18,22 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
-from lado import agent_env, artifacts, gui_session, kits, loop, providers, state, terminal, tmux
+from lado import (
+    agent_env,
+    artifacts,
+    gitcache,
+    gui_session,
+    kits,
+    loop,
+    providers,
+    state,
+    terminal,
+    tmux,
+)
 
 SUPERVISOR = "supervisor"  # the supervisor's agent name, whatever its role
 # In the lead's config folder: its lead skills (kits.LeadSkill), and the copies of the
@@ -207,6 +220,85 @@ class LadoError(RuntimeError):
     pass
 
 
+FolderProblemKind = Literal[
+    "missing", "not_folder", "no_git", "git_broken", "not_repo", "git_refused", "no_commits"
+]
+
+
+@dataclass(frozen=True)
+class Hint:
+    """What the human can do about a refusal: a sentence and one command to copy."""
+
+    text: str
+    command: str
+
+    def line(self) -> str:
+        """The hint as one line, as the CLI and `lado doctor` print it."""
+        return f"{self.text} {self.command}"
+
+
+class FolderProblem(LadoError):
+    """Why a folder cannot hold a session (`check_repo`), by kind, with a hint when the
+    human can fix it. A LadoError, so every caller that refuses on one refuses on this."""
+
+    def __init__(self, kind: FolderProblemKind, text: str, hint: Hint | None = None) -> None:
+        super().__init__(text)
+        self.kind = kind
+        self.hint = hint
+
+
+GIT_MIN = (2, 31)  # `rev-parse --path-format=absolute` (providers/gitpaths.py)
+XCODE_TOOLS = "xcode-select --install"
+
+
+def _macos() -> bool:
+    return platform.system() == "Darwin"
+
+
+def _no_git() -> FolderProblem:
+    if _macos():
+        hint = Hint("Install the Xcode command line tools (or `brew install git`):", XCODE_TOOLS)
+    else:
+        hint = Hint(
+            "Install git (or with your distribution's package manager):", "sudo apt install git"
+        )
+    return FolderProblem("no_git", gitcache.not_found(os.environ), hint)
+
+
+def _git_broken(line: str) -> FolderProblem:
+    if _macos():
+        hint = Hint("Install the Xcode command line tools, which this git needs:", XCODE_TOOLS)
+    else:
+        hint = Hint(
+            "Reinstall git (or with your distribution's package manager):",
+            "sudo apt install --reinstall git",
+        )
+    return FolderProblem("git_broken", f"git does not run: {line}", hint)
+
+
+def _first_line(*texts: str) -> str:
+    for text in texts:
+        for line in text.splitlines():
+            if line.strip():
+                return line.strip()
+    return ""
+
+
+def git_version() -> str:
+    """`git --version` on this process's PATH, the one look at whether git runs (the folder
+    check, `lado doctor`, the System panel); FolderProblem `no_git` or `git_broken` else."""
+    try:
+        result = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        raise _no_git() from None
+    except OSError as exc:
+        raise _git_broken(str(exc)) from None
+    if result.returncode != 0:
+        line = _first_line(result.stderr, result.stdout)
+        raise _git_broken(line or f"git --version exited {result.returncode}")
+    return result.stdout.strip()
+
+
 class NoSuchSession(LadoError):
     """A session to resume that LADO does not know."""
 
@@ -227,8 +319,21 @@ def slug(value: str) -> str:
     return re.sub(r"[^a-z0-9_-]+", "-", value.lower()).strip("-") or "lado"
 
 
+def _run_git(
+    repo: str, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(
+            ["git", "-C", repo, *args], capture_output=True, text=True, check=False, env=env
+        )
+    except FileNotFoundError:
+        raise _no_git() from None
+    except OSError as exc:
+        raise LadoError(f"cannot run git: {exc}") from None
+
+
 def git(repo: str, *args: str) -> str:
-    result = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, check=False)
+    result = _run_git(repo, *args)
     if result.returncode != 0:
         raise LadoError(result.stderr.strip() or f"git {' '.join(args)} failed")
     return result.stdout.strip()
@@ -277,15 +382,45 @@ def repo_root(path: str) -> str:
 
 def check_repo(path: str) -> str:
     """The root of the repository a session can start in at `path`, or why there is none.
-    `lado start` and the UI's folder check both ask this, so they refuse alike."""
+    `lado start` and the UI's folder check both ask this, so they refuse alike: a
+    FolderProblem of the first kind that holds, in the order of its kinds."""
     if not Path(path).exists():
-        raise LadoError(f"{path} does not exist")
-    root = repo_root(path)
-    try:
-        git(root, "rev-parse", "--verify", "--quiet", "HEAD")
-    except LadoError:
-        raise LadoError(f"{path} has no commits yet: make a first commit, then start") from None
+        raise FolderProblem("missing", f"{path} does not exist")
+    if not Path(path).is_dir():
+        raise FolderProblem("not_folder", f"{path} is a file, not a folder")
+    git_version()
+    # git's own words decide "not a repository", so they must not be translated.
+    english = {**os.environ, "LC_ALL": "C"}
+    top = _run_git(path, "rev-parse", "--show-toplevel", env=english)
+    if top.returncode != 0:
+        if "not a git repository" in top.stderr:
+            raise FolderProblem(
+                "not_repo",
+                f"{path} is not inside a git repository",
+                Hint(
+                    "Make it a repository with a first commit, in that folder:",
+                    "git init && git add -A && git commit -m 'First commit'",
+                ),
+            )
+        raise _git_refused(path, top)
+    root = top.stdout.strip()
+    head = _run_git(root, "rev-parse", "--verify", "--quiet", "HEAD", env=english)
+    if head.returncode != 0:
+        if _first_line(head.stderr):  # --quiet: a HEAD with no commit says nothing
+            raise _git_refused(path, head)
+        raise FolderProblem(
+            "no_commits",
+            f"{path} has no commits yet",
+            Hint(
+                "Make a first commit, in that folder:", "git add -A && git commit -m 'First commit'"
+            ),
+        )
     return root
+
+
+def _git_refused(path: str, result: subprocess.CompletedProcess) -> FolderProblem:
+    line = _first_line(result.stderr) or f"git exited {result.returncode}"
+    return FolderProblem("git_refused", f"git cannot read {path}: {line}")
 
 
 LAST_SESSION = "last_session"  # the provider of the folder's last session

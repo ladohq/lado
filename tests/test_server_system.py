@@ -7,6 +7,7 @@ import datetime
 import fcntl
 import json
 import os
+import re
 import shutil
 
 import pytest
@@ -77,6 +78,8 @@ def test_system_names_the_version_tmux_providers_kits_and_sessions(client, repo,
     )
     assert (info["sessions"]["running"], info["sessions"]["stopped"]) == (1, 1)
     assert info["tmux"]["socket"] == runtime.tmux.socket()
+    assert re.match(r"\d+\.\d+", info["git"])  # the machine's git, no "git version"
+    assert f"- git: {info['git']}\n" in info["report"]
     assert info["report"].startswith("### LADO system info\n")
 
 

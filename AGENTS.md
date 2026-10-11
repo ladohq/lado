@@ -221,10 +221,14 @@ fixes and docs only: no new feature, no API or schema change.
     `[FAIL]`; exit 1 only for a `FAIL`). No provider is required: a missing one is `info`
     with its install hint, an installed one with an untested version `warn`, and only
     none installed is one `FAIL` (`Agent CLI: no agent CLI installed`, every install hint).
+    `git` (after `tmux`, `check_git`) is the folder check's own look, `runtime.git_version`:
+    `FAIL` with the core's text and hint when git is missing or does not run, `WARN` below
+    `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
-    `doctor.system_info` (version, OS, installer, home, schema, tmux, providers, kits,
+    `doctor.system_info` (version, OS, installer, home, schema, tmux, git's version or
+    `not installed` / `does not run`, never its path, providers, kits,
     session counts, on a Mac where it and LADO's tmux server run, `gui_places`, also
     `lado doctor`'s Graphical session, the update check and the last update's result) and
     the text to copy for
@@ -289,8 +293,18 @@ fixes and docs only: no new feature, no API or schema change.
     lock, so the page waiting for that id learns why.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. Whether a folder can hold a session is `check_repo` (its repository's
-    root, or why not: does not exist, not inside a git repository, no commits yet), asked
-    by `start_session` and the UI's folder check. A repository's current branch (`branch`,
+    root, or why not: a `FolderProblem`, a `LadoError` with a `kind`, `missing`,
+    `not_folder`, `no_git`, `git_broken`, `not_repo`, `git_refused`, `no_commits`, the
+    first that holds in that order, and a `Hint`, a sentence and one command, for `no_git`,
+    `git_broken`, `not_repo` and `no_commits`, by `platform.system()`; the CLI prints it on
+    the line after the reason, the UI's folder check gives both), asked by `start_session`
+    and the UI's folder check. `not_repo` is only git's own "not a git repository" (its
+    `rev-parse` runs with `LC_ALL=C`); another failure is `git_refused` with git's line.
+    `git_version` (`git --version` on this process's PATH, no cache) is the one look at
+    whether git runs, also `lado doctor`'s and the System panel's; `git` and
+    `gitcache._git` turn a git that cannot run into their usual errors (the text of a
+    missing one is `gitcache.not_found`), and `providers/gitpaths` reads it as outside
+    git. A repository's current branch (`branch`,
     None on a detached HEAD) and its origin's URL (`remote`) are read next to `git`; a
     remote reaches the API only through `public_remote` (no userinfo but an ssh:// user;
     the scp form and a local path as they are). `start_session(resume=...)` takes what
@@ -728,7 +742,7 @@ fixes and docs only: no new feature, no API or schema change.
     for an agent in `waiting` or `stopped`) is `runtime.status_reason`, which
     `status_reasons` uses too (`lado ls`, `list_agents`);
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
-    control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, subfolders, the
+    control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
     `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,

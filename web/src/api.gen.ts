@@ -1152,8 +1152,9 @@ export interface components {
             root: string | null;
             /** Branch */
             branch: string | null;
-            /** Has Commits */
-            has_commits: boolean;
+            /** Problem Kind */
+            problem_kind: ("missing" | "not_folder" | "no_git" | "git_broken" | "not_repo" | "git_refused" | "no_commits") | null;
+            hint: components["schemas"]["HintInfo"] | null;
             /** Subfolders */
             subfolders: string[];
             /** Default Name */
@@ -1251,6 +1252,16 @@ export interface components {
             version: string;
             /** Started At */
             started_at: string;
+        };
+        /**
+         * HintInfo
+         * @description What the human can do about a folder's problem (runtime.Hint).
+         */
+        HintInfo: {
+            /** Text */
+            text: string;
+            /** Command */
+            command: string;
         };
         /**
          * IndexEntryInfo
@@ -2040,6 +2051,8 @@ export interface components {
             /** Schema */
             schema: number | null;
             tmux: components["schemas"]["TmuxInfo"];
+            /** Git */
+            git: string;
             gui_session: components["schemas"]["GuiSession"] | null;
             /** Providers */
             providers: components["schemas"]["ProviderInfo"][];

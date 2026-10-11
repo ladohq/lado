@@ -497,3 +497,68 @@ def test_open_in_new_tab_shows_the_record_alone_in_the_uis_theme(
     assert many["client"] >= column - 2 and many["scroll"] > many["client"], many
     assert prose["sideways"] == many["sideways"] == [], (prose, many)
     shot(tab, "table-light")
+
+
+# The tab scrolls to the end of a record taller than the window (it is a region that
+# scrolls itself, as the Shell's are): what scrolls under the pointer, and whether the
+# window itself has a scrollbar.
+NO_PAGE_SCROLL = """() => {
+  const tab = document.querySelector(".artifact-tab");
+  const page = document.scrollingElement;
+  return {
+    tab: tab.scrollHeight <= tab.clientHeight,
+    page: page.scrollHeight <= page.clientHeight,
+  };
+}"""
+
+
+@pytest.mark.parametrize("size", [(1280, 800), (390, 844)])
+def test_the_tab_scrolls_a_long_record_to_its_end(page: Page, server, repo, tmp_path, shot, size):
+    width, height = size
+    session = designed_session(repo, tmp_path)
+    page.set_viewport_size({"width": width, "height": height})
+    log_in(page, server)
+    long = "# Long\n\n" + "".join(f"Paragraph {i} of the long record.\n\n" for i in range(80))
+    markdown = artifacts.write(session, "supervisor", "long", content=long)
+    page.goto(f"{server['url']}/view/{session}/{markdown.record.id}")
+    last = page.get_by_text("Paragraph 79 of the long record.")
+    expect(page.get_by_role("heading", name="Long")).to_be_in_viewport()
+    expect(last).not_to_be_in_viewport()
+    page.mouse.move(width / 2, height / 2)
+    for _ in range(30):
+        page.mouse.wheel(0, 1000)
+    expect(last).to_be_in_viewport()
+    shot(page, f"markdown-end-{width}")
+
+    lines = "".join(f"line_{i} = {i}\n" for i in range(200))
+    text = artifacts.write(session, "supervisor", "ship/x/long.py", content=lines)
+    page.goto(f"{server['url']}/view/{session}/{text.record.id}")
+    code = page.get_by_role("table", name="ship/x/long.py")
+    expect(code.get_by_text("line_0 = 0")).to_be_in_viewport()
+    page.mouse.move(width / 2, height / 2)
+    for _ in range(30):
+        page.mouse.wheel(0, 1000)
+    expect(code.get_by_text("line_199 = 199")).to_be_in_viewport()
+    bar = page.locator(".code-bar")
+    expect(bar).to_be_in_viewport()
+    box = bar.bounding_box()
+    assert box is not None and box["y"] == 0, box  # it sticks at the top
+    shot(page, f"text-end-{width}")
+
+
+def test_a_short_record_and_an_image_fill_the_tab_with_nothing_to_scroll(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    page.set_viewport_size({"width": 1280, "height": 800})
+    log_in(page, server)
+    design = artifacts.find(session, "ship/x/design")[1].id
+    image = artifacts.find(session, "ship/x/shot.png")[1].id
+    for record, name in [(design, "markdown"), (image, "image")]:
+        page.goto(f"{server['url']}/view/{session}/{record}")
+        expect(page.locator(".artifact-tab").first).to_be_visible()
+        expect(page.get_by_text("Loading…")).to_have_count(0)
+        assert page.evaluate(NO_PAGE_SCROLL) == {"tab": True, "page": True}, name
+        box = page.locator(".artifact-tab").bounding_box()
+        assert box is not None and box["height"] == 800, (name, box)
+        shot(page, f"short-{name}")

@@ -1549,7 +1549,9 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   click shows it at full size; HTML: the page goes on with `location.replace` to the
   content address, under the server's sandbox headers, with no frame inside a frame (the
   viewer links HTML there directly: only an address typed by hand comes this way); other:
-  its facts and Download. Its theme is the UI's (`main.tsx` applies the stored one first),
+  its facts and Download. The page is a region that scrolls itself, the window's height (a
+  wide window never scrolls, as the Shell's), so a long record scrolls to its end and the
+  text's code bar stays at its top. Its theme is the UI's (`main.tsx` applies the stored one first),
   on the UI's ground and ink. Its login is the browser's cookie, as for the session row's
   Open in new tab; the Desktop stage decides for both (Session list, the row's menu).
 - **Chips** (`Attachments.tsx`): on a message (also one without a body: its summary and

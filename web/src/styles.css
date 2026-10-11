@@ -6334,9 +6334,14 @@ del.kit-mcp-name {
   font-size: 13px;
 }
 
-/* One record alone in a tab of its own (ArtifactTab): the body only, on the UI's ground. */
+/* One record alone in a tab of its own (ArtifactTab): the body only, on the UI's ground.
+   A region that scrolls itself, the window's height: a wide window never scrolls (the
+   Shell's rule above holds for this page too). */
 .artifact-tab {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .artifact-tab > p,
@@ -6352,8 +6357,10 @@ del.kit-mcp-name {
   padding: 12px 16px;
 }
 
+/* Not clipped: a clipping box would hold the sticky code bar, which sticks to the tab. */
 .artifact-tab-text .code-view {
-  min-height: 100vh;
+  min-height: 100%;
+  overflow: visible;
   border: none;
   border-radius: 0;
 }
@@ -6368,7 +6375,7 @@ del.kit-mcp-name {
 }
 
 .artifact-tab-image .image-frame {
-  min-height: 100vh;
+  min-height: 100%;
   padding: 16px;
   border: none;
   border-radius: 0;

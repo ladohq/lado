@@ -247,7 +247,9 @@ def remove_session_config_dirs(session: str) -> None:
 # takes the hook's output once printed (Capabilities.output_taken_when_printed): a batch the
 # hook never printed is typed in once this is over and a margin (lado.runtime
 # HOOK_OUTPUT_WAIT). Both CLIs take it in seconds and kill a hook that runs longer, then go
-# on (checked by hand: Claude Code 2.1.296, Codex CLI 0.162.0).
+# on (checked by hand with a Stop hook that sleeps 20 s under a limit of 3 s: Claude Code
+# 2.1.296, `claude -p` on a local endpoint, and Codex CLI 0.162.0, `codex exec` on Ollama,
+# each went on after 3 s and the hook never finished; Claude Code waited the 20 s under 30).
 TURN_END_HOOK_TIMEOUT = 60
 
 

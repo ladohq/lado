@@ -5,6 +5,11 @@
 - A Claude Code or Codex agent told at its turn's end to `read_messages` now gets the
   message's body in the turn that follows, where it used to get nothing until a later
   turn ended. A message an agent has read is never typed into its window again.
+- A message handed to a Claude Code or Codex agent at its turn's end no longer arrives a
+  second time when the turn that follows runs long without a tool call (a slow model): LADO
+  waits for that turn to end, up to 10 minutes, instead of typing it in again after 15 s.
+  Their turn-end hooks now have a 60 s limit. The database schema is now 24: restart
+  running sessions after the upgrade (`lado update` does it).
 
 - The team chips above a session's Activity all look the same, compact and without the
   role (it is in the tooltip); the supervisor's chip no longer looks unlike the others.

@@ -154,7 +154,9 @@ class CodexProvider(base.Provider):
             # Codex's own subagents: an agent that starts them talks to nobody. Its shell
             # snapshot writes the agent's whole environment, a kit's MCP secrets too, into
             # shell_snapshots/ of its home: no such value may go on disk (lado.mcp_exec).
-            features={"multi_agent": False, "shell_snapshot": False},
+            # Its goals (`update_goal`, on by default in 0.162): an agent gets its task as
+            # messages, and local models loop on the tool.
+            features={"multi_agent": False, "shell_snapshot": False, "goals": False},
             analytics={"enabled": False},
             feedback={"enabled": False},
         )

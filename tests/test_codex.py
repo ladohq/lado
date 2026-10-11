@@ -115,6 +115,13 @@ def test_the_agent_keeps_no_snapshot_of_its_environment(repo):
     assert config["features"]["shell_snapshot"] is False
 
 
+def test_the_agent_has_no_goal_tools(repo):
+    """Codex's goals (`update_goal`, on by default) make local models loop; LADO's agents
+    get their task as messages."""
+    _, config = _launch(repo)
+    assert config["features"]["goals"] is False
+
+
 def test_hooks_report_each_event_lado_uses(repo):
     launch, config = _launch(repo)
     groups = config["hooks"]

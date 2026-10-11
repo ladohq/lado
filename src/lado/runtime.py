@@ -1695,7 +1695,8 @@ def agent_ended(session: str, name: str, reason: str) -> bool:
         summary = f"{why}: resume the session with `lado stop {session}`, then `lado start`"
         _tell_lead(session, name, summary, way_out)
     else:
-        _tell_lead(session, name, f"{why}: {_finish_hint(session, name)}")
+        hint, body = _finish_hint(session, name)
+        _tell_lead(session, name, f"{why}: {hint}", body)
     return True
 
 
@@ -1723,18 +1724,32 @@ def check_windows(session: str, missing: set[str], now: datetime | None = None) 
     return gone
 
 
-def _finish_hint(session: str, name: str) -> str:
-    """How the supervisor ends a stopped worker, and starts another one for its run's step."""
+def _finish_hint(session: str, name: str) -> tuple[str, str]:
+    """How the supervisor ends a stopped worker, and starts another one for its run's step:
+    the end of the summary and the body. A read-only lead has neither tool: the human ends
+    it, and has no way to start a worker (lado.runs, _read_only_lead)."""
     agent = state.get_agent(session, name)
+    lead = state.get_agent(session, SUPERVISOR)
     try:
         refused = finish_preview(session, name).refused
     except LadoError:
         refused = None
+    if lead is not None and lead.read_only:
+        hint = (
+            f"the human ends it with `lado finish {session} {name}{' --discard' * bool(refused)}`"
+        )
+        body = "Your role is read-only: you cannot end it."
+        if agent is not None and agent.run:
+            body += (
+                f" Once it is ended, run {agent.run} waits for a worker until the human moves "
+                f"it on with `lado flow-set {session} {agent.run} <state> --reason ...`."
+            )
+        return hint, body
     discard = ", discard=true" if refused else ""
     hint = f'end it with finish_worker(name="{name}"{discard})'
     if agent is not None and agent.run:
         hint += f', then spawn_worker(run="{agent.run}")'
-    return hint
+    return hint, ""
 
 
 def _check_summary(summary: str, what: str = "summary", details: str = "body") -> None:

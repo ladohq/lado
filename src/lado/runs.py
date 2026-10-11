@@ -411,13 +411,19 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     open runs, then the steps of the runs at a supervisor state again. Returns a line for
     each run that needs a role the session has no more or whose flow cannot be read."""
     lines, problems, steps = [], [], []
+    read_only = env.lead.read_only  # the supervisor is not stored yet
     open_runs = state.list_runs(sess.name, open_only=True)
     for run in open_runs:
         try:
             flow = flow_of(run)
         except SnapshotError as error:
             # Neither its step nor an answer nor lado flow-set can be had without the flow.
-            problem = f"{error.line()}; it cannot go on: cancel the run with flow_cancel"
+            way = (
+                "neither you (read-only) nor lado flow-set can move it; " + _halts(sess.name)
+                if read_only
+                else "cancel the run with flow_cancel"
+            )
+            problem = f"{error.line()}; it cannot go on: {way}"
             problems.append(f"run {run.name}: {problem}")
             lines.append(f"- {run.name} at {run.state}: {problem}.")
             continue
@@ -433,6 +439,8 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
         elif _lead_step(current):
             what = "your step; it follows as a message from lado."
             steps.append(run)
+        elif read_only:
+            what = f"needs a {current.agent}. {_waits_for_human(run)}"
         else:
             what = (
                 f'needs a {current.agent}. Start one with spawn_worker(role="{current.agent}", '
@@ -445,10 +453,14 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
         }
         gone = sorted(roles - set(env.agents))
         if gone:
+            way = (
+                "the human moves the run on with lado flow-set"
+                if read_only
+                else "cancel the run with flow_cancel, or move it on with lado flow-set"
+            )
             problem = (
                 f"role{'s' if len(gone) > 1 else ''} {', '.join(gone)} "
-                f"{'are' if len(gone) > 1 else 'is'} not in the session now; cancel the run "
-                "with flow_cancel, or move it on with lado flow-set"
+                f"{'are' if len(gone) > 1 else 'is'} not in the session now; {way}"
             )
             problems.append(f"run {run.name}: {problem}")
             lines.append(f"  {problem[0].upper()}{problem[1:]}.")
@@ -727,8 +739,10 @@ def _deliver_step(run: state.Run, flow: flows.Flow, notices: list[str] | None) -
         _tell_supervisor(
             run,
             _needs(run, current.agent),
-            f'Start one with spawn_worker(role="{current.agent}", run="{run.name}"); it gets '
-            "the step as its task.",
+            _waits_for_human(run)
+            if _read_only_lead(run.session)
+            else f'Start one with spawn_worker(role="{current.agent}", run="{run.name}"); '
+            "it gets the step as its task.",
             notices,
         )
         return
@@ -737,6 +751,32 @@ def _deliver_step(run: state.Run, flow: flows.Flow, notices: list[str] | None) -
 
 def _needs(run: state.Run, role: str) -> str:
     return f"step {run.state} needs a {role}"
+
+
+# A read-only lead (kits.AgentDef.read_only) has none of LADO's command tools
+# (mcp_server.COMMAND_TOOLS): what LADO tells it names what waits and only the human's ways,
+# never a tool it lacks. The human has no way to start a worker or cancel a run (BACKLOG.md).
+
+
+def _read_only_lead(session: str) -> bool:
+    lead = state.get_agent(session, SUPERVISOR)
+    return lead is not None and lead.read_only
+
+
+def _flow_set(run: state.Run) -> str:
+    return f"`lado flow-set {run.session} {run.name} <state> --reason ...`"
+
+
+def _halts(session: str) -> str:
+    return f"`lado stop {session}` halts the session, and the run stays open"
+
+
+def _waits_for_human(run: state.Run) -> str:
+    """To a read-only lead: the run's step needs a worker it cannot start."""
+    return (
+        f"Your role is read-only: you cannot start a worker. The run waits at {run.state} "
+        f"until the human moves it on with {_flow_set(run)}; {_halts(run.session)}."
+    )
 
 
 def _close(run: state.Run, caller: str, notices: list[str] | None) -> None:
@@ -749,12 +789,22 @@ def _close(run: state.Run, caller: str, notices: list[str] | None) -> None:
     problem = _unfinished(repo, run, missing)
     if problem:
         kept = ", ".join(w.name for w in workers) or "none"
+        then = (
+            "the last one removes the worktree and branch (with no workers left, remove them "
+            "with git)."
+        )
+        how = (
+            "Your role is read-only: you cannot merge the branch or finish the workers. The "
+            f"human does: `git merge {run.branch}` in {repo}, then `lado finish "
+            f"{run.session} <worker>` for each worker: {then}"
+            if _read_only_lead(run.session)
+            else f"Merge the branch, then finish_worker each worker: {then}"
+        )
         _tell_supervisor(
             run,
             f"ended at {run.state}; kept its worktree and branch",
             f"{problem}\nKept: worktree {run.worktree}, branch {run.branch}, workers: {kept}.\n"
-            "Merge the branch, then finish_worker each worker: the last one removes the "
-            "worktree and branch (with no workers left, remove them with git).",
+            + how,
             notices,
         )
         return

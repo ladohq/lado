@@ -1373,3 +1373,117 @@ def test_flow_set_is_a_step_of_the_human_with_no_outcome(session):
         "implement",
         "set by the human: rework the form",
     )
+
+
+@pytest.fixture
+def read_only_lead(repo, fake_tmux):
+    """Session s led by kit watch's read-only supervisor, with the feature flow."""
+    kit = repo / ".lado" / "kits" / "watch"
+    write(kit / "kit.yaml", "name: watch\nversion: 1.0.0\nsupervisor: lead\n")
+    write(kit / "agents" / "lead.md", "---\nname: lead\ndescription: d\nread_only: true\n---\nx\n")
+    for role in ("developer", "reviewer"):
+        write(kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nx\n")
+    flow = FEATURE.replace("agent: supervisor", "agent: lead")
+    write(
+        kit / "flows" / "feature.yaml",
+        flow.replace("{merged: done}", "{merged: done, hold: gated}"),
+    )
+    runtime.start_session(str(repo), "s", None, kit_names=["watch"], provider="claude")
+    assert state.get_agent("s", "supervisor").read_only
+    return "s"
+
+
+COMMANDS = ("spawn_worker", "finish_worker", "flow_cancel", "flow_start", "Merge the branch")
+
+
+def orders_nothing(text):
+    return not [c for c in COMMANDS if c in text]
+
+
+WAITS_FOR_A_DEVELOPER = (
+    "Your role is read-only: you cannot start a worker. The run waits at implement until "
+    "the human moves it on with `lado flow-set s feature/login <state> --reason ...`; "
+    "`lado stop s` halts the session, and the run stays open."
+)
+
+
+def test_a_read_only_lead_is_told_that_the_step_waits_for_the_human(read_only_lead):
+    run = to_implement(read_only_lead)
+    ask = messages("supervisor")[-1]
+    # The same line as for any lead: a worker spawned for the step drops it.
+    assert ask.summary == "flow feature/login: step implement needs a developer"
+    assert ask.body == WAITS_FOR_A_DEVELOPER
+    runs.spawn_worker(read_only_lead, run.name)
+    assert messages("supervisor")[-1].state == state.DROPPED
+
+
+def test_a_read_only_leads_own_advance_gets_the_same_text_as_a_notice(read_only_lead):
+    runs.start(read_only_lead, "feature", "Add a login page", name="login")
+    notices = []
+    runs.advance(read_only_lead, "supervisor", "feature/login", "ready", notices=notices)
+    assert notices == [
+        f"flow feature/login: step implement needs a developer\n{WAITS_FOR_A_DEVELOPER}"
+    ]
+
+
+def test_a_read_only_lead_is_told_the_humans_way_to_merge_and_finish(read_only_lead, repo):
+    run = to_merge(read_only_lead)
+    commit(run)
+    runs.advance(read_only_lead, "supervisor", "feature/login", "merged")
+    told = messages("supervisor")[-1]
+    assert told.summary == "flow feature/login: ended at done; kept its worktree and branch"
+    assert orders_nothing(told.body)
+    assert told.body.endswith(
+        "Your role is read-only: you cannot merge the branch or finish the workers. The "
+        f"human does: `git merge {run.branch}` in {repo}, then `lado finish s <worker>` for "
+        "each worker: the last one removes the worktree and branch (with no workers left, "
+        "remove them with git)."
+    )
+    assert "workers: developer, reviewer" in told.body
+    # The way works: merged, the last worker finished takes the worktree and branch.
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    runtime.finish_worker(read_only_lead, "developer")
+    assert runtime.finish_worker(read_only_lead, "reviewer").how == "merged"
+    assert not Path(run.worktree).exists()
+
+
+def test_a_read_only_lead_is_told_the_human_ends_a_stopped_worker(read_only_lead):
+    to_implement(read_only_lead)
+    runs.spawn_worker(read_only_lead, "feature/login")
+    runtime.agent_ended(read_only_lead, "developer", "its CLI exited")
+    told = messages("supervisor")[-1]
+    assert told.summary == (
+        "developer stopped (its CLI exited): the human ends it with `lado finish s developer`"
+    )
+    assert orders_nothing(told.summary + told.body)
+    assert told.body == (
+        "Your role is read-only: you cannot end it. Once it is ended, run feature/login "
+        "waits for a worker until the human moves it on with `lado flow-set s feature/login "
+        "<state> --reason ...`."
+    )
+
+
+def test_resume_tells_a_read_only_lead_what_waits_without_orders(read_only_lead, repo):
+    runs.start(read_only_lead, "feature", "Build it", name="build")
+    runs.advance(read_only_lead, "supervisor", "feature/build", "ready")  # needs a developer
+    runs.start(read_only_lead, "feature", "Bad", name="bad")
+    spoil_snapshot(read_only_lead, "feature/bad", "{not json")
+    started = restart(read_only_lead, repo, without=["agent:reviewer"])
+    resumed = messages("supervisor")[-1]
+    assert resumed.summary == "session resumed: 2 open runs"
+    assert orders_nothing(resumed.body)
+    assert orders_nothing("\n".join(started.problems))
+    build, gone, bad = resumed.body.splitlines()
+    assert build == (
+        "- feature/build at implement: needs a developer. Your role is read-only: you cannot "
+        "start a worker. The run waits at implement until the human moves it on with "
+        "`lado flow-set s feature/build <state> --reason ...`; `lado stop s` halts the "
+        "session, and the run stays open."
+    )
+    assert gone == (
+        "  Role reviewer is not in the session now; the human moves the run on with lado flow-set."
+    )
+    assert bad.endswith(
+        "; it cannot go on: neither you (read-only) nor lado flow-set can move it; "
+        "`lado stop s` halts the session, and the run stays open."
+    )

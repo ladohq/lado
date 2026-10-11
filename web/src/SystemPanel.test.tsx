@@ -32,6 +32,7 @@ const SYSTEM: SystemInfo = {
   home_set: false,
   schema: 23,
   tmux: { version: "3.5a", socket: "lado" },
+  git: "2.47.1",
   gui_session: null,
   providers: [
     { ...PROVIDER, name: "claude", title: "Claude Code", installed: true, version: "2.1.295", tested_version: "2.1.295", warning: "" },
@@ -195,6 +196,7 @@ test("live is a button that opens the system panel", async () => {
     ["Running", "2 h 14 min"],
     ["Home", "~/.lado"],
     ["tmux", "3.5a · socket lado"],
+    ["git", "2.47.1"],
   ]);
   expect(within(shown).getByRole("button", { name: "Copy path" })).toBeTruthy();
   const providers = within(shown).getByRole("region", { name: "Providers" });

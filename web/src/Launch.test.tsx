@@ -41,7 +41,8 @@ function folder(path: string, more: Partial<FolderInfo> = {}): FolderInfo {
     problem: null,
     root: path,
     branch: "main",
-    has_commits: true,
+    problem_kind: null,
+    hint: null,
     subfolders: [],
     default_name: path.split("/").pop() ?? "",
     name_state: "free",
@@ -203,6 +204,57 @@ test("the folder is checked by the server and its reason shown; Start stays off 
   expect(startButton().disabled).toBe(true);
   await ready("/src/lado");
   expect(startButton().disabled).toBe(false);
+});
+
+const FIRST_COMMIT = "git add -A && git commit -m 'First commit'";
+
+test("a folder the human can fix shows the reason, the hint's sentence and its command to copy", async () => {
+  const writeText = vi.fn(async () => {});
+  clipboard(writeText);
+  await openLaunch();
+  folders["/tmp/new"] = folder("/tmp/new", {
+    ok: false,
+    problem: "/tmp/new has no commits yet",
+    problem_kind: "no_commits",
+    hint: { text: "Make a first commit, in that folder:", command: FIRST_COMMIT },
+  });
+  type("/tmp/new");
+  expect(await screen.findByText("/tmp/new has no commits yet")).toBeTruthy();
+  expect(screen.getByText("Make a first commit, in that folder:")).toBeTruthy();
+  expect(screen.getByText(FIRST_COMMIT).tagName).toBe("CODE");
+  fireEvent.click(screen.getByRole("button", { name: "Copy command" }));
+  await waitFor(() => expect(screen.getByText("Command copied").getAttribute("role")).toBe("status"));
+  expect(writeText).toHaveBeenCalledWith(FIRST_COMMIT);
+  expect(startButton().disabled).toBe(true);
+});
+
+test("when no copy works the hint's command is selected to copy by hand", async () => {
+  clipboard(async () => Promise.reject(new Error("not allowed")));
+  stubLegacyCopy(false);
+  await openLaunch();
+  folders["/tmp/new"] = folder("/tmp/new", {
+    ok: false,
+    problem: "/tmp/new has no commits yet",
+    problem_kind: "no_commits",
+    hint: { text: "Make a first commit, in that folder:", command: FIRST_COMMIT },
+  });
+  type("/tmp/new");
+  fireEvent.click(await screen.findByRole("button", { name: "Copy command" }));
+  await waitFor(() => expect(window.getSelection()?.toString()).toBe(FIRST_COMMIT));
+  expect(screen.getByText("Press ⌘C / Ctrl+C to copy")).toBeTruthy();
+});
+
+test.each([
+  ["missing", "/tmp/x does not exist"],
+  ["git_refused", "git cannot read /tmp/x: fatal: detected dubious ownership in repository at '/tmp/x'"],
+] as const)("a %s folder shows its reason and no hint", async (kind, problem) => {
+  await openLaunch();
+  folders["/tmp/x"] = folder("/tmp/x", { ok: false, problem, problem_kind: kind, root: null });
+  type("/tmp/x");
+  expect(await screen.findByText(problem)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
+  expect(document.querySelector(".folder-hint")).toBeNull();
+  expect(startButton().disabled).toBe(true);
 });
 
 test("subfolders are suggested from the parent of what is typed and picked with the keyboard", async () => {

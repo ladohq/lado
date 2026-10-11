@@ -23,6 +23,7 @@ import {
   type Started,
   type Taken,
 } from "./api";
+import { useCopy } from "./Copy";
 import { useLive } from "./live";
 import { sessionPath } from "./paths";
 
@@ -566,9 +567,41 @@ function WhereField({
           ✓ git repository{folder.branch ? ` · branch ${folder.branch}` : ""}
         </span>
       )}
-      {folder && !folder.ok && <span className="field-note bad">{folder.problem}</span>}
+      {folder && !folder.ok && (
+        <div className="field-note bad">
+          <div>{folder.problem}</div>
+          {folder.hint && <FolderHint text={folder.hint.text} command={folder.hint.command} />}
+        </div>
+      )}
       {problem && <span className="field-note bad">{problem}</span>}
       {checking && !problem && <span className="field-note">checking…</span>}
+    </div>
+  );
+}
+
+// What the human can do about the folder (the core's hint): its sentence, then its command
+// to copy. When no copy works, the command is selected to copy by hand.
+function FolderHint({ text, command }: { text: string; command: string }) {
+  const { note, copy } = useCopy();
+  const [byHand, setByHand] = useState(false);
+  const code = useRef<HTMLElement>(null);
+  const onCopy = async () => {
+    const done = await copy(command, "Command copied");
+    setByHand(!done);
+    if (!done && code.current) window.getSelection()?.selectAllChildren(code.current);
+  };
+  return (
+    <div className="folder-hint">
+      <div className="muted">{text}</div>
+      <div className="folder-hint-command">
+        <code ref={code}>{command}</code>
+        <button type="button" className="chip-button" aria-label="Copy command" onClick={onCopy}>
+          Copy
+        </button>
+      </div>
+      <span role="status" className="muted">
+        {note || (byHand ? "Press ⌘C / Ctrl+C to copy" : "")}
+      </span>
     </div>
   );
 }

@@ -4,6 +4,7 @@ Forget. The server is `lado` with the fake providers, so what it starts runs the
 agent."""
 
 import re
+import subprocess
 import uuid
 
 import agent_helpers
@@ -103,6 +104,25 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
     expect(dialog).to_contain_text(f"{plain} is not inside a git repository")
     expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
     # The CLIs checked: each `--version` may take seconds on a loaded machine.
+    expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
+    shot(page)
+
+
+def test_a_folder_without_commits_shows_the_command_that_makes_one(
+    page: Page, server, tmp_path, shot
+):
+    empty = tmp_path / "empty"
+    subprocess.run(["git", "init", "-q", str(empty)], check=True)
+    log_in(page, server)
+    page.get_by_role("button", name="New session").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(empty))
+    expect(dialog).to_contain_text(f"{empty} has no commits yet")
+    expect(dialog).to_contain_text("Make a first commit, in that folder:")
+    command = "git add -A && git commit -m 'First commit'"
+    expect(dialog.locator("code", has_text=command)).to_be_visible()
+    expect(dialog.get_by_role("button", name="Copy command")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
     expect(dialog.get_by_label("Provider")).to_be_enabled(timeout=30_000)
     shot(page)
 

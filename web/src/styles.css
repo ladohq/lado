@@ -3771,6 +3771,33 @@ h3 {
   color: var(--ink);
 }
 
+/* The folder's hint under its reason: the sentence, then the command and Copy. */
+.folder-hint {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.folder-hint-command {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.folder-hint code {
+  flex: 1;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--ground);
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.folder-hint [role="status"]:empty {
+  display: none;
+}
+
 .where-box {
   position: relative;
 }

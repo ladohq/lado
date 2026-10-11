@@ -1,6 +1,6 @@
 // The system panel and updating LADO from the UI (docs/design/ui.md, System panel): the top
 // bar's `live` is a button that opens a popover about this LADO, the server, its home, tmux,
-// the providers and the update check, with the system info to copy for an issue. A newer
+// git, the providers and the update check, with the system info to copy for an issue. A newer
 // LADO marks `live` with `↑ X.Y.Z` and gives the panel an Update block; Update… shows the
 // plan (U1), and after the human confirms, the page waits for the server, which the update
 // stops and starts again (U2), then shows the update's result once (U3).
@@ -342,6 +342,8 @@ function SystemPanel({
             <dd>
               {facts.tmux.version} · socket {facts.tmux.socket}
             </dd>
+            <dt>git</dt>
+            <dd>{facts.git}</dd>
             {facts.gui_session && (
               <>
                 <dt>Graphical session</dt>

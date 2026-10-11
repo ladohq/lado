@@ -32,11 +32,11 @@
 
 ## 4. Web UI
 
-- [ ] 4.1 `Launch.tsx` WhereField shows the hint (D8, mockup variant 2): vitest in
+- [x] 4.1 `Launch.tsx` WhereField shows the hint (D8, mockup variant 2): vitest in
   `Launch.test.tsx`: a hinted kind shows the sentence, the command and Copy (copying
   calls the clipboard); `missing` and `git_refused` show no hint; Start stays off.
-- [ ] 4.2 `SystemPanel.tsx` shows the `git` row: vitest in `SystemPanel.test.tsx`.
-- [ ] 4.3 UI e2e (`tests/ui/`, marker `ui`): the New session window on a folder without
+- [x] 4.2 `SystemPanel.tsx` shows the `git` row: vitest in `SystemPanel.test.tsx`.
+- [x] 4.3 UI e2e (`tests/ui/`, marker `ui`): the New session window on a folder without
   commits shows the reason, the hint's command and Copy; screenshot of that screen as a
   run artifact.
 

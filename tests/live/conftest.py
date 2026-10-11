@@ -2,7 +2,7 @@
 
 Run them with `make test-live` (`PROVIDER=codex|opencode|kilo|claude`). They never run by
 default. The models, the local setup (LM Studio, the bridge the Codex tests start), the
-variables that override them and why a test skips are in AGENTS.md, Testing (Live e2e).
+variables that override them and why a test skips are in AGENTS.md (Commands, "Live tests").
 In short: Codex, OpenCode and Kilo run on LM Studio's `local_models.MODEL`, one source of
 the model per provider in the environment every LADO process of the test inherits; Claude
 Code on haiku (`--model`), paid: only with the human's yes.
@@ -121,6 +121,10 @@ def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
             json.dumps(local_models.opencode_config(MODELS[name], local_models.lmstudio_url()))
         )
         monkeypatch.setenv(CONFIG_VARIABLES[name], str(config))
+        # Their TUI takes the model an agent used last (<state>/<cli>/model.json) over the
+        # config's (Kilo 7.8.8: the user's kilo-auto/free won): a state of the test's own,
+        # where they record the model they use (test_live.check_models).
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     return name
 
 

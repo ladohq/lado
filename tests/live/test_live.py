@@ -172,6 +172,22 @@ def check_supervisor_tools() -> None:
     assert not listed & set(mcp_server.COMMAND_TOOLS), sorted(listed)
 
 
+def supervisor_quiet() -> None:
+    """Wait until the supervisor is idle with nothing on its way to it: the test's own merge
+    into main must not fall in one of its turns, which compare the repository at their start
+    and end (check_supervisor_kept_still)."""
+
+    def quiet() -> bool:
+        waiting = [
+            m
+            for m in state.list_messages(SESSION)
+            if m.recipient == "supervisor" and m.state in (state.PENDING, state.SENT)
+        ]
+        return status("supervisor") == state.IDLE and not waiting
+
+    wait_for(quiet, "the supervisor to be idle with no message on its way", 120)
+
+
 def check_supervisor_kept_still() -> None:
     """No turn of the passive supervisor changed the repository (lado.fingerprint)."""
     changed = [
@@ -305,8 +321,9 @@ def check_models(provider: str, model: str) -> None:
     """Every agent of the session, the lead too, runs on the test model, from the one place
     its CLI reads it: Codex the `model` of its config.toml (carried from the test's user
     config), OpenCode and Kilo the file of OPENCODE_CONFIG / KILO_CONFIG every agent
-    inherits, which LADO's own config of the agent does not override. Claude Code: --model
-    (real_clis.with_model)."""
+    inherits, which LADO's own config of the agent does not override, and the models they
+    record as used in the test's state (conftest.live_provider) are only it. Claude Code:
+    --model (real_clis.with_model)."""
     agents = state.list_agents(SESSION)
     assert {a.name for a in agents} >= {"supervisor", "w1"}
     for agent in agents:
@@ -319,6 +336,16 @@ def check_models(provider: str, model: str) -> None:
             assert given["model"] == model
             own = json.loads((folder / providers.get(provider).config_file_name).read_text())
             assert "model" not in own, (agent.name, own["model"])
+    if provider in CONFIG_VARIABLES:
+        used = Path(os.environ["XDG_STATE_HOME"], provider, "model.json")
+        if used.exists():
+            recorded = json.loads(used.read_text())
+            names = {
+                f"{m['providerID']}/{m['modelID']}"
+                for m in [*recorded.get("model", {}).values(), *recorded.get("recent", [])]
+            }
+            assert names <= {model}, f"{provider} used {sorted(names)}"
+        print(f"{provider}'s model.json: {used.read_text() if used.exists() else 'none'}")
 
 
 def check_agent_config(provider: str, repo, worker: state.Agent) -> None:
@@ -574,6 +601,7 @@ def check_resume(provider: str, repo) -> None:
 
 def finish_worker(repo, worker: state.Agent) -> None:
     """Merge w1's branch and finish w1: its processes, window, worktree and branch go."""
+    supervisor_quiet()
     runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
     processes = agent_processes(f"{SESSION}:w1")
     runtime.finish_worker(SESSION, "w1")
@@ -635,6 +663,7 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider, l
     check_models(live_provider, live_model)
 
     # The human merges; finishing the run's last worker takes the worktree and branch.
+    supervisor_quiet()
     runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
     processes = agent_processes(f"{SESSION}:w1")
     runtime.finish_worker(SESSION, "w1")

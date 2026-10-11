@@ -79,12 +79,36 @@ login shell (tests of the shell set their own `SHELL`). It also sets
 on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`).
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
-is missing or not logged in. Models: Claude Code on `haiku`, Kilo on `kilo/kilo-auto/free`,
-OpenCode on `opencode/nemotron-3-ultra-free`, Codex CLI on the local `qwen3-coder:30b` of
-Ollama (it skips without `ollama` or the model; the model's provider goes in the test's own
-user Codex config, which LADO carries) (override with `LADO_LIVE_CLAUDE_MODEL` /
-`LADO_LIVE_KILO_MODEL` / `LADO_LIVE_OPENCODE_MODEL` / `LADO_LIVE_CODEX_MODEL`). Each Codex
-agent asks whether to trust the test's repo, answered by the test after checking the wait.
+is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's
+yes; `--model`, `real_clis.with_model`); Codex CLI, OpenCode and Kilo on one local model,
+LM Studio's `qwen/qwen3.5-35b-a3b` (`local_models.MODEL`: vision and tools, free). The local
+setup: LM Studio's server running with that model loaded with a context of at least 65536
+(`lms load qwen/qwen3.5-35b-a3b --context-length 65536 -y`; no other large model loaded by
+any server, as 64 GB hold one), and `uvx`. Each provider has one source of the model, in the
+environment every LADO process of the test inherits: OpenCode and Kilo a config file of the
+test as `OPENCODE_CONFIG` / `KILO_CONFIG` (the `lmstudio` provider and `model`), with a state
+folder of the test's own (`XDG_STATE_HOME`: their TUI takes the model an agent used last
+over the config's), the model each recorded checked after the run; Codex the test's own user
+Codex config, which LADO carries (`model`, `model_provider = "bridge"` at a Responses
+endpoint). LM Studio's own Responses API drops the MCP tools Codex sends, so the Codex tests
+start a bridge once per run (`local_models.Bridge`: `uvx --from 'litellm[proxy]==1.104.2'
+litellm` on 127.0.0.1 and a free port, Responses to LM Studio's chat API, a random master
+key Codex reads from `LADO_LIVE_BRIDGE_KEY`, its process group ended after the run; its log
+goes with a failed test's evidence). Overrides: `LADO_LIVE_CLAUDE_MODEL`;
+`LADO_LIVE_OPENCODE_MODEL` / `LADO_LIVE_KILO_MODEL` replace `model` in the file (an
+`lmstudio/<id>` keeps the LM Studio check, another value skips it); `LADO_LIVE_CODEX_MODEL`
+goes through the bridge to LM Studio with the check; `LADO_LIVE_CODEX_BASE_URL` points Codex
+at another Responses endpoint, with no bridge and no check; `LADO_LIVE_LMSTUDIO_URL` (default
+`http://127.0.0.1:1234`). A test skips, saying what to run, when LM Studio does not answer
+(`lms server start`), lacks the model (`lms get`), or has no instance (an `<id>:2` counts)
+loaded with that context (the `lms load` above), and when `uvx` is missing. The image test
+skips before it sends an image when the model does not declare image input (LM Studio's
+`type: vlm`; for another endpoint `LADO_LIVE_IMAGE=1`, and unset is a skip), and fails when
+a model that declares it does not see the image. The passive supervisor of the live kit is
+read-only (no command tools; LADO's run messages to it name the human's ways), and every
+live test fails when a `repo_changed` event names it; the test merges only while it is idle.
+Each Codex agent asks whether to trust the test's repo, answered by the test after checking
+the wait.
 Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
 user's `~/.codex`. The Claude test uses a fixed
 repo path and answers Claude Code's workspace trust dialog, so Claude Code records one trusted

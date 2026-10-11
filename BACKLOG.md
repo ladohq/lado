@@ -224,6 +224,9 @@ lado-windows session) ran for ~4 h with parent 1 and no pytest left: the run was
 from outside, so its teardown never stopped the session. Killed by hand on the human's
 word. Wanted as well: a live or smoke run kills, at its start, the `lado-test-*` servers
 whose pytest is gone.
+A Codex live run stopped from outside leaks its LiteLLM bridge as well (`uvx … litellm`, its
+own process group on 127.0.0.1; `local_models.Bridge`, feature/stable-local-live): only the
+fixture's teardown ends it.
 
 ## Flaky terminal socket test: input checked before it is written
 
@@ -566,111 +569,6 @@ Wanted: carry the login next to the carried settings (read only; a link or a cop
 600, or the keyring's setting), checked by hand with an account.
 Found: 2026-10-09, design of run feature/codex-provider.
 
-## Codex live worker test fails 3 of 3
-
-Size: M. Why here: the human released 0.32.0 with it red and asked for a fix right after.
-`test_worker_does_a_task_reports_and_gets_a_message[codex]` on `qwen3-coder:30b` failed in
-the full live run and both reruns at the release of 0.32.0. Once the line sent while w1 was
-busy was delivered `typed`, not `hook_output` (tests/live/test_live.py:474: Codex did not
-take the turn-end hook's output, or no Stop hook ran for that turn); twice w1 looped,
-sending "Task complete - final confirmation" to the supervisor many times, and stayed
-`busy` so the line was never delivered within 120 s.
-Wanted: find whether Codex takes LADO's Stop-hook output (a LADO bug) or the model loops
-(then a stronger local model, `LADO_LIVE_CODEX_MODEL`, or a test that holds on a model
-that loops), and make the test pass reliably.
-Found: 2026-10-09, release of 0.32.0.
-In the verify of feature/macos-gui-session (845cc46, 2026-10-10) it passed on its first
-rerun: once `typed` instead of `hook_output` (tests/live/test_live.py:474);
-`test_a_flow_run_moves_on_when_its_worker_reports[codex]` failed twice (w1 busy after its
-report, the run did not end within 240 s) and passed on the third run.
-Again 3 of 3 on 2026-10-10 (verify of feature/session-start-tool, which changes nothing in
-providers/, hooks.py or the delivery): twice w1 sent its report again and again and stayed
-busy, once `typed` instead of `hook_output` (tests/live/test_live.py:474).
-Again 3 of 3 on 2026-10-10 (verify of feature/linux-agents-path, e1dd5cc), in new ways: a
-window `worker` left after `finish_worker`, the flow branch not fast-forwardable onto main,
-flow.txt missing, or flow.txt holding prose instead of `OK`.
-Likely cause, found 2026-10-11 (research of a free cloud model for Codex): on Kilo's
-free gateway (nemotron) the passive supervisor merged w1's branch and called `finish_worker`
-itself in 2 of 2 runs: LADO's lead instructions come after the `passive` role and say to merge
-and finish, and the model follows them. The test needs a supervisor that cannot do that (deny
-its `finish_worker` or git) or a check that tolerates a finished w1; also behind "Flaky: Kilo
-live flow test, the passive supervisor acts on its own".
-Another lead, 2026-10-11 (round 2 of that research): through a LiteLLM Responses→Chat bridge
-to the same local qwen3-coder:30b, the worker test passed 2 of 3 and the flow test 2 of 3;
-Ollama's own `/v1/responses` (stateless, no custom tool-call replay) may be part of the
-failures. Also seen there: a `/responses` server that refuses Codex's `namespace` tool type
-(422, OVHcloud), and a non-retryable 4xx makes Codex spend all its `request_max_retries`.
-Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
-instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
-stayed busy.
-The `typed` instead of `hook_output` failures had a LADO cause (research `live-root-causes`,
-2026-10-11): Codex took the Stop hook's output, but the turn that went on from it ran a model
-step of 16-18 s with no hook, and the sweep typed the batch in again after 15 s. Fixed by
-feature/hook-output-retry (a printed batch waits for its turn's end): its verify (fd32583,
-2026-10-11) passed this test on the first run. The looping and the supervisor acting on its
-own stay; if no live run fails on them again, this entry can go.
-
-## Kilo live image test fails 3 of 3
-
-Size: M. Why here: a live test red every time; it hides a real regression of artifact images.
-`test_an_agent_sees_the_image_the_human_attaches[kilo]` on `kilo/kilo-auto/free` failed 3 of
-3 in the verify of feature/macos-gui-session (845cc46): w1 searches the disk with `find` for
-the image instead of reading it with `read_artifact`, and never replies within 180 s. It
-failed 2 of 3 at the 0.32.0 release (the note in "Flaky: Kilo live flow test, the passive
-supervisor acts on its own"). The branch changed nothing in Kilo, artifacts or the MCP server.
-Wanted: find whether the free model gets the image's content at all (then skip a model that
-takes no images, as OpenCode's test does) or pin a Kilo model that sees images.
-Found: 2026-10-10, verify of feature/macos-gui-session.
-At the release of 0.33.0 (f9d3739, 2026-10-10) it failed 2 of 3 the same way (the third run
-skipped: the model did not see the image).
-
-## Kilo live flow test fails 3 of 3: w1 never reads its step
-
-Size: M. Why here: a live test red every time at a release; it was a flake before.
-`test_a_flow_run_moves_on_when_its_worker_reports[kilo]` on `kilo/kilo-auto/free` failed 3 of
-3 at the release of 0.33.0 (f9d3739): twice `fatal: path 'flow.txt' does not exist in
-'lado/live/tiny-add-flow-txt-for-the'` (test_live.py:638), once the run did not end within
-240 s. In all three w1 never called `read_messages`: its step message stayed `delivered`,
-and it acted on the one-line notice alone. Earlier flakes of this test are in "Flaky: Kilo
-live flow test, the passive supervisor acts on its own".
-Wanted: find whether the free model ignores "call read_messages" (then a stronger model for
-Kilo's live tests, or a notice it follows) or LADO's notice reaches Kilo differently, and make
-the test pass reliably.
-Found: 2026-10-10, release of 0.33.0. Again in WSL2 Ubuntu on GitHub's windows-latest (Windows
-probe, run 38029389159, Kilo 7.8.8): the same `flow.txt` error; w1's step stayed `delivered`,
-it wrote flow.txt without committing it and advanced (the run ended with uncommitted changes).
-
-## Live: a Codex supervisor commits on main by itself
-
-Size: S. Why here: a live test fails twice of three on it.
-`test_a_flow_run_moves_on_when_its_worker_reports[codex]` on `qwen3-coder:30b`: the
-supervisor ignores "wait" and commits its own flow.txt on the test repo's main, so the run's
-`merge --ff-only` fails (`fatal: Not possible to fast-forward, aborting.`). The evidence
-folder holds many such runs (2026-10-09/10).
-Wanted: a supervisor role in the live kit that the local model follows, or a test that does
-not depend on main staying untouched.
-Found: 2026-10-10, verify of feature/terminal-scroll-hint (7f91295; passed on the third run).
-Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): `fatal: Not possible
-to fast-forward`, `untracked working tree files would be overwritten by merge`, and once the
-supervisor spawned an extra `worker` whose Codex (not on the test's model) failed with
-`input[0]: unknown input item type: "additional_tools"`.
-Again 3 of 3 on 2026-10-11 (verify of feature/hook-output-retry, fd32583): each time the
-passive supervisor called `spawn_worker` itself (`worker`, `worker-2`), so w1 was not the run's
-last worker and its end kept the worktree (test_live.py:579). New detail: the workers the
-supervisor's `spawn_worker` starts do not run on the test's model (`LADO_LIVE_CODEX_MODEL`)
-but on Codex's default, hence `additional_tools`. A fourth run by the developer: w1 called
-`flow_advance` without committing flow.txt (`path 'flow.txt' exists on disk, but not in`).
-
-## OpenCode live image test fails 3 of 3
-
-Size: M. Why here: a live test red every time; it hides a real regression of artifact images.
-`test_an_agent_sees_the_image_the_human_attaches[opencode]` on `opencode/nemotron-3-ultra-free`:
-w1 stays busy after the human's PNG and never replies within 180 s, in the full run and 2
-reruns. No API error was seen (the earlier 503 was at 0.29.0).
-Wanted: find whether the free model takes images at all (then skip it, as for Codex) or
-LADO's image does not reach it.
-Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
-
 ## A Claude turn that goes on from the hook's output and ends on Esc is not fingerprinted
 
 Size: S. Why here: a read-only agent's change in that turn goes unreported (R3 of feature/read-only-roles).
@@ -765,47 +663,6 @@ would let the smoke run a whole turn: call `send_message` or `flow_advance`, end
 take the queue at the turn's end (`hook_output`). It grows from the same fixture and the same
 per-provider endpoint config.
 Found: 2026-10-10, design of feature/live-cloud-matrix (decision 5).
-
-## Make the local live tests stable on a local model
-
-Size: L. Why here: the live tests run only locally at release, every provider; on free or
-local models they fail on model behaviour more often than on LADO (the human's decision 4 of
-feature/live-cloud-matrix).
-Today Codex runs on Ollama's `qwen3-coder:30b`, OpenCode and Kilo on free cloud models, and
-the cloud run of all of them (run 38081211658) was red in 5 of 6 cells on model behaviour.
-Leads (session artifacts `codex-free-model-research`, `codex-free-model-research-2`):
-- OpenCode, Kilo and Codex on one local Ollama model, Codex through a Responses→Chat bridge:
-  LiteLLM 1.104.2 (`use_chat_completions_api: true`) carried all of LADO's Codex live tests,
-  167 of 167 requests answered; through it `qwen3-coder:30b` passed the worker test 2 of 3,
-  which fails most runs through Ollama's own `/v1/responses` (see "Codex live worker test
-  fails 3 of 3").
-- The `passive` supervisor: LADO's lead instructions come after its role and tell it to
-  merge and finish, which models follow ("Never use any tool" loses); the test needs a
-  supervisor that cannot act (its tools denied) or that tolerates a finished w1.
-- Codex 0.162 runs no hook on a turn that ends on an API error, so a 429 hangs a test until
-  its timeout ("A Codex agent whose turn ends on a model or API error stays busy").
-Wanted: every live test passes reliably locally on one documented local setup.
-Found: 2026-10-10, design of feature/live-cloud-matrix (decision 4).
-Evidence from the verify of feature/live-cloud-matrix (c8aca85, 2026-10-11; the same on a
-`git archive` of main d7c5daa):
-- `test_an_agent_sees_the_image_the_human_attaches[kilo]` failed 3 of 3: kilo-auto/free does
-  not handle the image, w1 stays busy and never replies (the supervisor told the human "This
-  model cannot read images directly"), so the test times out instead of skipping.
-- `test_a_flow_run_moves_on_when_its_worker_reports[opencode]` failed 3 of 3, each time
-  otherwise: flow.txt holding other text than `OK`, `agent w1 is gone`, and once the run's
-  worktree still there after `finish_worker` (seen once; worth a look on its own).
-- Kilo's worker test (the supervisor finished w1 before the test checked it) and flow test
-  (`flow.txt` not committed) failed twice, then passed.
-Until this lands, the checker's live rule for merges should not hinge on the free-model
-tests (the lado-dev kit, after feature/live-cloud-matrix).
-Evidence from the verify of feature/read-only-roles (b91d3d3, 2026-10-11), each passed on
-its first rerun:
-- Codex worker test: `timed out after 240s waiting for w1's report` (w1 wrote its summary in
-  its window and never called send_message).
-- Flow test, codex and opencode: flow.txt holds the task's text instead of `OK`
-  (`assert 'flow.txt for live test' == 'OK'`).
-- Kilo flow test: `fatal: path 'flow.txt' does not exist in 'lado/live/tiny-add-flow-txt-for-the'`
-  after the run ended `step -done-> end`.
 
 ## styles.css writes 20 selectors twice; some may style two components
 
@@ -1102,128 +959,6 @@ Wanted: show `kits.lint` and `kits.warnings` lines at add/update, at start (stde
 the Kits page, from the same two calls.
 Found: 2026-10-06, design of the flow graph checks.
 
-## Flaky: Kilo live flow test, the passive supervisor acts on its own
-
-Size: S. Why here: a live-test flake, not in CI.
-
-`make test-live PROVIDER=kilo`, `test_a_flow_run_moves_on_when_its_worker_reports[kilo]`
-on `kilo/kilo-auto/free` failed twice in three runs: the supervisor, whose role says to do
-nothing, once called `finish_worker(name="w1", discard=true)` after the run ended ("agent w1
-is gone"), once spawned its own worker `worker` for the step before the test's w1 (the run's
-move was by `worker`). The third run passed. The free model does not keep to the passive
-role when LADO's messages ("step needs a worker", "run ended") reach it.
-Also on OpenCode: `test_worker_does_a_task_reports_and_gets_a_message[opencode]` on
-`opencode/nemotron-3-ultra-free` failed once in two runs (2026-10-06, feature/agent-liveness):
-the supervisor merged w1's branch and called `finish_worker(name="w1")` before the test's
-check of the human's message ("agent w1 is gone"); the rerun passed.
-Again on OpenCode (2026-10-08, release 0.28.0): the same test failed the same way, and
-`test_an_agent_sees_the_image_the_human_attaches[opencode]` timed out with w1 busy for 120 s
-("waiting for w1 to be idle"); the rerun passed (the image test skipped: the model takes
-no images).
-Again on Kilo (2026-10-06, feature/trust-dialog): the supervisor spawned `worker` for the
-step besides w1, so finishing w1 kept the run's worktree; the rerun passed. The same day on
-Claude Code (haiku): the passive supervisor spawned `worker`, which advanced the run instead
-of w1; the rerun passed.
-Also on Claude Code (2.1.291, haiku; 2026-10-06, feature/delivery):
-`test_a_flow_run_moves_on_when_its_worker_reports[claude]`, the supervisor got "step step
-needs a worker" at once (it was idle) and spawned `worker` for the run besides the test's
-w1, so finishing w1 kept the worktree (`assert not os.path.exists(run.worktree)`); the
-rerun passed. In the next round (load average ~135 just before) all three failed at once
-and passed on the rerun: Kilo's supervisor spawned `worker` and cancelled the run,
-OpenCode's spawned `worker` for the flow and merged and finished w1 during the follow-up.
-On 2026-10-07 (run feature/turn-resume) OpenCode's supervisor merged and finished w1 during
-the follow-up in two runs in a row ("agent w1 is gone"); the third run passed.
-Again on 2026-10-07 (run fix/test-timers): Kilo's supervisor finished w1 before the human's
-message (the rerun passed); OpenCode failed three runs in a row, a different way each
-time: w1 committed `flow.txt` with "live flow test" instead of "OK"; the supervisor spawned
-`worker` besides w1, so finishing w1 kept the run's worktree; the supervisor called
-`finish_worker(name="w1", discard=true)` before the human's message.
-Again on 2026-10-07 (run fix/integration-fix2): Kilo's supervisor merged w1's branch and
-called `finish_worker(name="w1")` before w1 answered the human ("agent w1 is gone").
-Again at the 0.25.0 release check (2026-10-07, f2b4c78): OpenCode's supervisor merged w1's
-branch and called `finish_worker(name="w1")` after w1 answered the human ("agent w1 is gone");
-the rerun passed.
-Again at the 0.26.0 release check (2026-10-08, e9ba5fa): OpenCode's passive supervisor
-spawned `worker` for the run besides w1 twice in a row (finishing w1 kept the worktree; the
-second time `worker`'s turn ended on the model's "tokens to keep ... greater than the
-context length" and the supervisor cancelled the run); the second rerun passed.
-Again on 2026-10-08 (verify of feature/expects-commands): OpenCode's passive supervisor
-spawned `worker` for the run besides w1, so finishing w1 kept the worktree; the rerun
-passed. In that rerun `test_an_agent_sees_the_image_the_human_attaches[opencode]` timed out
-with w1 busy for 120 s again; the next run skipped it as expected (the model takes no images).
-Again on 2026-10-08 (verify of feature/argv-prompt, a1f2fa0): in the OpenCode flow test w1
-committed its own three lines (`flow: tiny / test: live / status: active`) in `flow.txt`
-instead of "OK" (tests/live/test_live.py:606); the rerun passed.
-Again on 2026-10-08 (implement of feature/argv-prompt, its second visit):
-`test_a_flow_run_moves_on_when_its_worker_reports[opencode]` timed out once after w1 was
-finished (the passive supervisor busy), and once w1 committed `flow.txt` with two lines of
-its own instead of "OK"; the third run passed.
-Wanted: a live supervisor that cannot act (e.g. no spawn/finish tools for the test's passive
-role, or the test tolerates and names it), so the test checks LADO, not the model.
-Found: 2026-10-05, live tests of run feature/opencode-provider.
-Seen with Claude too, 2026-10-07 (verify of fix/integration-fix2):
-test_a_flow_run_moves_on_when_its_worker_reports[claude] failed on `assert not
-os.path.exists(run.worktree)` after finish_worker(w1): the passive supervisor (haiku) called
-spawn_worker for the run on its own, and that worker keeps the worktree; passed on rerun.
-Wanted also: the test does not depend on the supervisor not spawning (deny it spawn_worker
-in the live kit, or tolerate extra workers).
-Again on 2026-10-07 (verify of fix/merge-origin-main): OpenCode's supervisor merged w1's
-branch and called `finish_worker(name="w1")` while the test waited for w1's reply to the
-human ("agent w1 is gone", tests/live/test_live.py:162); the rerun passed.
-Again on 2026-10-09 (verify of feature/background-status, which does not change Kilo):
-`test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed 3 of 3, a new way twice:
-w1 called `flow_advance(done)` without committing flow.txt ("fatal: path 'flow.txt' does
-not exist", tests/live/test_live.py:613; once it wrote other text than `OK`); the third
-time the passive supervisor spawned `worker` for the run. Also
-`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once with "agent w1 is
-gone" (the supervisor merged and finished w1 early); the rerun passed. Wanted also: a
-stronger free Kilo model for the live test (`LADO_LIVE_KILO_MODEL`), or a check that tells
-a model's failure from LADO's.
-In that run's second verify, `test_an_agent_sees_the_image_the_human_attaches[kilo]` timed
-out twice in a row ("timed out after 180s waiting for w1's reply about colour.png",
-tests/agent_helpers.py:239): w1 and the passive supervisor looked for the image on disk with
-`find /` instead of calling `read_artifact`; the third run skipped as designed (the model
-takes no images). Wanted also: skip when the model cannot see the image on its first try
-instead of waiting 180 s.
-Again on 2026-10-09 (verify of feature/codex-provider, which does not change Kilo): both
-`test_worker_does_a_task_reports_and_gets_a_message[kilo]` (the supervisor merged and
-finished w1 before the follow-up; once the line sent while w1 was busy was not delivered in
-time) and `test_an_agent_sees_the_image_the_human_attaches[kilo]` (180 s for the reply about
-colour.png) failed 3 of 3, not once.
-On Codex CLI with the local `qwen3-coder:30b` (2026-10-09, verify and implement of
-feature/codex-provider): `test_a_flow_run_moves_on_when_its_worker_reports[codex]` passed
-about one run in two. w1 wrote other text than `OK` in flow.txt (tests/live/test_live.py:638),
-or left flow.txt uncommitted in the main checkout ("untracked working tree files would be
-overwritten by merge"); once the passive supervisor, whose role reached the model (checked
-with `codex debug prompt-input` on its home), ran `git add . && git commit` in the main
-checkout, so the test's `merge --ff-only` failed. Wanted also: a stronger local model for
-the Codex live test (`LADO_LIVE_CODEX_MODEL`).
-In the last verify of that run (9ef014f) `test_worker_does_a_task_reports_and_gets_a_message[codex]`
-passed 1 of 3: once w1 sent its report three times, called Codex's goal tool in a loop
-(`cannot update goal because this thread has no goal`) and stayed `busy` with no Stop hook
-although Codex's screen showed the turn done (maybe the same gap as "A Codex agent whose
-turn ends on a model or API error stays busy"); once it did not read the follow-up within
-120 s.
-At the release of 0.32.0 (8d48089, 2026-10-09): `test_a_flow_run_moves_on_when_its_worker_reports[codex]`
-passed 1 of 3 (flow.txt left uncommitted on the run's branch);
-`test_an_agent_sees_the_image_the_human_attaches[kilo]` timed out 2 of 3 (180 s, w1 busy;
-skipped once as designed). The Codex worker test failed 3 of 3: its own P1 entry, "Codex
-live worker test fails 3 of 3".
-In the verify of feature/macos-gui-session (845cc46, 2026-10-10):
-`test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed once (`flow.txt` missing on
-the run's branch) and passed on the rerun; the Kilo image test failed 3 of 3 (its own P1
-entry, "Kilo live image test fails 3 of 3").
-Again on 2026-10-10 (verify of feature/session-start-tool): the worker test failed the
-same way: `test_worker_does_a_task_reports_and_gets_a_message[kilo]` 2 of 3 and `[opencode]`
-1 of 2, the supervisor merged w1's branch and called `finish_worker(name="w1")` ("agent w1
-is gone"); and the Codex supervisor (qwen3-coder) did the flow step's work itself in
-`test_a_flow_run_moves_on_when_its_worker_reports[codex]` (2 of 3): it committed flow.txt
-on main and called flow_advance, so the run's branch could not fast-forward.
-Again on 2026-10-10 (verify of feature/question-answer, d5f95c2):
-`test_worker_does_a_task_reports_and_gets_a_message[kilo]` failed once: the passive
-supervisor called `finish_worker(name="w1")`, then with `discard=true` after w1's report, so
-the line sent while w1 was busy was `dropped`; the rerun passed.
-
 ## Flaky: Kilo live test does not see the resume line on the supervisor's screen
 
 Size: S. Why here: a live-test flake, not in CI.
@@ -1324,6 +1059,40 @@ supervisor, which may itself be down.
 Wanted: the human cancels a run from the CLI (`lado cancel <session> <run>`) or the run's
 page in the UI, through the same core function as `flow_cancel`.
 Found: 2026-10-08, feature/flow-inputs (design, Q8).
+
+## The human cannot start a worker or cancel a run
+
+Size: M. Why here: a run led by a read-only lead, or whose lead is gone, moves only by `lado flow-set` or waits.
+`spawn_worker` and `flow_cancel` are only the supervisor's MCP tools: no `lado` command and no
+UI endpoint (cli.py, app.py). A read-only lead has neither (`mcp_server.COMMAND_TOOLS`), so
+LADO's messages to it can name only `lado flow-set` and `lado stop` for a step that needs a
+worker (runs.py, `_waits_for_human`). The entry above is the cancel of an unreadable run.
+Wanted: the human starts a run's worker and cancels a run from the CLI and the UI, through the
+same core as the tools; the read-only lead's texts then name them, in one place.
+Found: 2026-10-11, architecture review of feature/stable-local-live.
+
+## Codex agents have Codex's own worktree tools
+
+Size: S. Why here: a worker can make a git worktree LADO does not know of.
+Codex 0.162's `worktrees` feature (on by default) gives the TUI an MCP namespace
+`codex_worktrees` with `create_worktree`, which makes a managed git worktree of the repository
+(seen in the request's tools, feature/stable-local-live). LADO switches it off only for a
+read-only agent; a worker may still make one besides its LADO worktree.
+Wanted: `features.worktrees = false` for every Codex agent, as `multi_agent`, if no agent needs it.
+Found: 2026-10-11, implement of feature/stable-local-live (hand check of Codex's tools).
+
+## Live: qwen3.5 answers a tool call as text now and then
+
+Size: S. Why here: one of seven OpenCode image runs failed on it.
+In `test_an_agent_sees_the_image_the_human_attaches[opencode]` on LM Studio's
+qwen/qwen3.5-35b-a3b, w1's two turns ended at once with the tool's name as plain text
+(`read_messages`, 3 tokens; then `read_artifact(name="colour-….png")`, finish `stop`) where it
+should have called it; the request had LADO's tools (14,360 input tokens, as in the passing
+runs, whose same requests got real tool calls, 5 of 5 recorded through a proxy). The model's,
+not LADO's (feature/stable-local-live, implement, item 9c).
+Wanted: know how often it hits the live suite (verify's 3 runs per provider), and whether a
+model setting (LM Studio's tool-call parsing, thinking on) avoids it.
+Found: 2026-10-11, implement of feature/stable-local-live.
 
 ## Finishing a worker in a stopped session says "no worker"
 
@@ -1795,19 +1564,6 @@ Wanted: `list_artifacts` takes the session's scope too (e.g. `run="/"`), when a 
 it.
 Found: 2026-10-08, implement of feature/chat-attachments.
 
-## OpenCode's live image check never runs on the default model
-
-Size: S. Why here: the image path of OpenCode (and Kilo) has no live proof.
-`test_an_agent_sees_the_image_the_human_attaches[opencode]` always skips with `Cannot read
-image`: the default free model `opencode/nemotron-3-ultra-free` takes no images. So only
-Claude Code proves that an attached image reaches the model.
-Wanted: a free OpenCode model with image input for that test (e.g. a separate
-`LADO_LIVE_OPENCODE_IMAGE_MODEL`), or the gap named in AGENTS.md (Testing, Live e2e).
-Found: 2026-10-08, verify of feature/chat-attachments.
-In the verify of feature/terminal-scroll-hint (7f91295, 2026-10-10) it timed out twice
-(180 s, w1 looping on read_messages) before it skipped on the third run.
-Wanted too: detect that the model takes no images before the test, so it skips every time.
-
 ## A traceback in hooks.log when the tmux server is gone at an agent's end
 
 Size: S. Why here: noise in hooks.log, no lost work.
@@ -1954,16 +1710,6 @@ Wanted: take a worktree as there only when `git worktree list --porcelain` names
 `rev-parse --show-toplevel` is the folder itself.
 Found: 2026-10-11, implement of fix/run-end-pushed-branch.
 
-## Live: free models loop on read_messages and miss the report
-
-Size: S. Why here: flaky live tests; each passes on a rerun.
-In the verify of feature/terminal-scroll-hint (7f91295)
-`test_worker_does_a_task_reports_and_gets_a_message[kilo]` timed out after 240 s with w1
-busy, and in `test_an_agent_sees_the_image_the_human_attaches[opencode]` w1 called
-`lado_read_messages` again and again and never replied.
-Wanted: a steadier free model, or a retry policy for the live suite.
-Found: 2026-10-10, verify of feature/terminal-scroll-hint.
-
 ## The terminal keeps its colours when the theme changes while it is open
 
 Size: S. Why here: a visible glitch in the UI, no lost work.
@@ -1990,15 +1736,6 @@ Size: S. Why here: a layout claim of the bare tab with no test.
 so nothing checks that a large image is fitted to the tab (`object-fit: contain`, never upscaled).
 Wanted: a large image whose box stays within the viewport, and a small one not upscaled.
 Found: 2026-10-10, review of feature/artifact-new-tab (Minor 1).
-
-## Live-test evidence of a Codex agent is not kept: symlinks in its CODEX_HOME
-
-Size: S. Why here: a failed Codex live test loses the evidence that explains it.
-When a Codex live test fails, `agent_helpers.keep_evidence` copies each agent's config folder
-(Codex's home) and fails on the `.tmp/plugins` symlinks there; the report says only "could not
-keep it in …".
-Wanted: the copy keeps links as links or skips what it cannot copy, naming it, and keeps the rest.
-Found: 2026-10-11, research of a free cloud model for Codex (session lado-windows).
 
 ## Smoke test: two of its endpoint checks are looser than they read
 
@@ -2031,6 +1768,14 @@ orders harmless). A passive supervisor on qwen3-coder followed them in 6 of 10 r
 Wanted: LADO's messages to the lead state facts ("step x needs a developer"), and the
 lead's instructions name only the tools it has.
 Found: 2026-10-11, design of feature/read-only-roles.
+Done in feature/stable-local-live: LADO's run messages to a read-only lead (a step that needs
+a worker, a run's end that kept its branch, a resume, a worker that stopped) name what waits
+and the human's ways only. Left: the texts to a lead that is not read-only, and
+SUPERVISOR_INSTRUCTIONS and FLOW_INSTRUCTIONS, which still list the command tools to a
+read-only lead before READ_ONLY_INSTRUCTIONS switches them off. Also seen there: the live
+tests' read-only passive supervisor, on qwen3.5-35b-a3b, takes the one-line copy "human wrote
+to w1: ..." as its own task: it reads the attached image with read_artifact and answers the
+human itself (OpenCode, 6 of 6 recorded image runs), while w1 does the same.
 
 ## A read-only Codex agent on an OpenAI model may keep apply_patch
 
@@ -2345,19 +2090,6 @@ the notes of a failed undo (`runtime._undo`, also on a `LadoError`) are not in t
 Wanted: the API answers 400 with the error and its notes, as the CLI prints them.
 Found: 2026-10-06, fix/tmux-missing-rollback.
 
-## Live flow test fails while the passive supervisor has a kit MCP server (Kilo)
-
-Size: S. Why here: a live-test flake, not in CI.
-
-With an MCP server of its own on the passive supervisor (the token server of
-`check_mcp_token`), `test_a_flow_run_moves_on_when_its_worker_reports[kilo]` failed 3 times
-of 3 (kilo-auto/free): the supervisor spawned `worker` for the run besides w1, so finishing
-w1 kept the worktree; without that server it passed at once. Maybe chance (see the passive
-supervisors entry above), maybe the server changes what Kilo's model does. The token check
-now runs only in `test_worker_does_a_task_reports_and_gets_a_message`.
-Wanted: know whether a kit MCP server makes the passive supervisor act; then the check can
-go in both scenarios.
-Found: 2026-10-06, run feature/mcp-secrets, `make test-live PROVIDER=kilo`.
 ## Session tabs are cut in a narrow column with no sign they scroll
 
 With the terminal column open (window 1280 px), the session's tab bar overflows: Artifacts

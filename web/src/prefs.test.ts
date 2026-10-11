@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import {
+  ARTIFACT_PANEL_WIDTH,
   PANEL_WIDTH,
   SESSIONS_WIDTH,
+  storeArtifactPanel,
   storeAskControl,
+  storedArtifactPanel,
   storedAskControl,
   storedPanel,
   storeColumn,
@@ -124,6 +127,21 @@ test("the older key of the stopped sessions is only where Stopped starts, until 
   expect(storedSessionGroups().stopped).toBe("folded");
 });
 
+test("the artifact panel is 620 px wide and not expanded at first; its width and expanded are remembered in lado.artifactPanel", () => {
+  expect(ARTIFACT_PANEL_WIDTH).toEqual({ initial: 620, min: 400, max: 2400 });
+  expect(storedArtifactPanel()).toEqual({ width: 620, expanded: false });
+  storeArtifactPanel({ width: 900, expanded: true });
+  expect(JSON.parse(localStorage.getItem("lado.artifactPanel") ?? "")).toEqual({ width: 900, expanded: true });
+  expect(storedArtifactPanel()).toEqual({ width: 900, expanded: true });
+});
+
+test("a bad stored artifact panel is 620 px wide and not expanded", () => {
+  for (const bad of ["not json", "[1]", JSON.stringify({ width: 300, expanded: "yes" }), JSON.stringify({ width: 3000, expanded: 1 })]) {
+    localStorage.setItem("lado.artifactPanel", bad);
+    expect(storedArtifactPanel()).toEqual({ width: 620, expanded: false });
+  }
+});
+
 test("Take control asks until the human says not to ask again", () => {
   expect(storedAskControl()).toBe(true);
   storeAskControl(false);
@@ -141,9 +159,11 @@ test("without browser storage every default holds and nothing breaks", () => {
   storePanel({ width: 600, collapsed: true });
   storeSessionsList({ width: 300, collapsed: true });
   storeAskControl(false);
+  storeArtifactPanel({ width: 900, expanded: true });
   storeSessionGroups({ "needs-you": "folded", running: "folded", stopped: "open" });
   expect(storedPanel()).toEqual({ width: PANEL_WIDTH.initial, collapsed: false });
   expect(storedSessionsList()).toEqual({ width: SESSIONS_WIDTH.initial, collapsed: false });
   expect(storedAskControl()).toBe(true);
+  expect(storedArtifactPanel()).toEqual({ width: 620, expanded: false });
   expect(storedSessionGroups()).toEqual({ "needs-you": "open", running: "open", stopped: "folded" });
 });

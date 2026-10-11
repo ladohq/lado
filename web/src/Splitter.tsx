@@ -51,30 +51,42 @@ export function useStripFocus(collapsed: boolean) {
 }
 
 // `edge`: the side of its column the splitter is on; moving it outward widens the column.
+// A drag captures the pointer, so the moves and the release come to the separator also over
+// an iframe; it ends on the release or when the browser cancels it. `grip`: a small handle
+// drawn in the middle of the edge (the artifact panel's); the whole edge stays the handle.
 export function Splitter({
   label,
   edge,
   width,
   bounds,
   onChange,
+  grip = false,
 }: {
   label: string;
   edge: "left" | "right";
   width: number;
   bounds: Bounds;
   onChange: (width: number) => void;
+  grip?: boolean;
 }) {
   const outward = edge === "left" ? -1 : 1;
-  const drag = (event: React.PointerEvent) => {
+  const [dragging, setDragging] = useState(false);
+  const drag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const separator = event.currentTarget;
+    separator.setPointerCapture?.(event.pointerId); // jsdom has none
     const startX = event.clientX;
     const startWidth = width;
     const move = (moved: PointerEvent) => onChange(clamp(startWidth + outward * (moved.clientX - startX), bounds));
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
+    const end = () => {
+      separator.removeEventListener("pointermove", move);
+      separator.removeEventListener("pointerup", end);
+      separator.removeEventListener("pointercancel", end);
+      setDragging(false);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    separator.addEventListener("pointermove", move);
+    separator.addEventListener("pointerup", end);
+    separator.addEventListener("pointercancel", end);
+    setDragging(true);
   };
   return (
     <div
@@ -87,12 +99,21 @@ export function Splitter({
       tabIndex={0}
       title={`${label}: drag, or double-click for the default width`}
       className={`splitter splitter-${edge}`}
+      data-dragging={dragging || undefined}
       onPointerDown={drag}
       onDoubleClick={() => onChange(bounds.initial)}
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft") onChange(clamp(width - outward * STEP, bounds));
         if (event.key === "ArrowRight") onChange(clamp(width + outward * STEP, bounds));
       }}
-    />
+    >
+      {grip && (
+        <span className="splitter-grip" aria-hidden="true">
+          <span className="splitter-grip-dot" />
+          <span className="splitter-grip-dot" />
+          <span className="splitter-grip-dot" />
+        </span>
+      )}
+    </div>
   );
 }

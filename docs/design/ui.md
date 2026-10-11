@@ -594,7 +594,9 @@ Sessions for now. The UI's texts are in English.
   bounds (list 200–480 px, panel 280–1200 px), and remembered in the browser
   (`lado.sessionsList`, `lado.terminals`). The session in the middle keeps at least
   360 px: in a narrower window the list and the panel are drawn narrower, but their chosen
-  widths stay remembered for a wider window.
+  widths stay remembered for a wider window. A drag captures the pointer, so it goes on
+  over an iframe and ends on the release or a cancel. The artifact panel's edge is the
+  same component (Artifacts, The panel).
 - **The window never scrolls** on a wide window: `html` and `body` do not scroll or bounce
   (`overflow: hidden`, `overscroll-behavior: none`) and the frame is the window's height;
   only regions inside scroll (the session list, the feed, the session's column, a page's
@@ -1554,11 +1556,24 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   watch the session's artifacts for it, so a new record changes a chip without a reload.
 - **The panel** (`ArtifactPanel.tsx`): a chip or a row of the tab opens the viewer on the right over the page
   (`?view=<record>`, `paths.VIEW_PARAM`, on any of the session's tabs; from Needs you,
-  over the session's Activity tab), min(620 px, 100%) wide, the whole screen on a phone,
-  over a scrim; the page stays where it was. Esc, × or a click on the scrim closes it and
-  the focus goes back to the chip (a row's link); Back closes it too (the view is a step of the
-  history). "Open in Artifacts tab" leads to the artifact's page with that record. Open
-  latest in it shows the latest record in the same panel.
+  over the session's Activity tab), over a scrim; the page stays where it was. Esc, × or a
+  click on the scrim closes it and the focus goes back to the chip (a row's link); Back
+  closes it too (the view is a step of the history). "Open in Artifacts tab" leads to the
+  artifact's page with that record. Open latest in it shows the latest record in the same
+  panel. Its width is the human's (decided 2026-10-11, feature/artifact-panel-width,
+  mockup artifact `feature/artifact-panel-width/mockup-panel.html`, version 4): its left
+  edge is the shared `Splitter` (drag, ←/→, a double-click for 620 px; a drag captures the
+  pointer, so it goes on over an HTML artifact's frame), with a grip in its middle (a
+  10×34 px pill with three dots, `--action` on hover, focus and drag; it takes no pointer
+  events), from 400 px to the room, the window's width less 64 px (a strip of the page stays
+  on the left, and a click there closes the panel), 620 px at first. Expand, before ×,
+  fills the room and becomes Restore width, back to the width chosen before; a drag or a
+  key while expanded ends expanded. Unlike the expanded terminal, Esc closes the panel, so
+  Expand's title has no "(Esc)". The width and expanded are remembered per browser under
+  `lado.artifactPanel`, one value for every session; when the window narrows the panel
+  narrows with it and gets its width back when it widens. A window with less room than
+  400 px (under 464 px wide, a phone) shows it on the whole screen, with no edge, grip or
+  Expand; the page's other splitters hide at ≤ 900 px, this edge does not.
 - **A gate's note** (`GateCard.tsx`): its chips under the note before the gate, then the
   artifacts the gate reads; an artifact the note carries is left out of those
   (`runs.gate_reads`), so each shows once.

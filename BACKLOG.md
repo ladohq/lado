@@ -678,6 +678,26 @@ by a turn-end hook that dies before its print keeps the old mark, so `_plan` wai
 Wanted: every hand-over sets `printed_at = NULL`; a unit test of that case.
 Found: 2026-10-11, review of feature/hook-output-retry (Minor).
 
+## A Claude turn that goes on from the hook's output and ends on Esc is not fingerprinted
+
+Size: S. Why here: a read-only agent's change in that turn goes unreported (R3 of feature/read-only-roles).
+`hooks.py` (the read-only fingerprint, about lines 116-127 and 209): after a `hook_output`
+hand-over the baseline is reopened for the turn that goes on; Claude Code runs no hook when
+the human interrupts it with Esc, so the next UserPromptSubmit replaces that baseline
+without comparing it, and a change made in the interrupted turn is never reported.
+Wanted: an open `continued` baseline is compared before it is replaced; a unit test of it.
+Found: 2026-10-11, review of feature/read-only-roles (Minor 3, visits 2 and 3).
+
+## CHANGELOG 0.34.0 names two database schemas
+
+Size: S. Why here: the release notes of 0.34.0 must be right before the tag.
+Under `## 0.34.0 (unreleased)` the read-only line says "database schema 25" and the
+hook_output line from main "The database schema is now 24"; after the merge 0.34.0 is on
+schema 25. The hook_output item also lost the blank line before it.
+Wanted: one sentence about schema 25 and the restart, even spacing between items; fix it
+with the release commit at the latest.
+Found: 2026-10-11, review of feature/read-only-roles (Minor 4).
+
 # P2: when convenient
 
 ## Kilo and OpenCode: a failed `promptAsync` waits the first retry delay
@@ -770,6 +790,14 @@ Evidence from the verify of feature/live-cloud-matrix (c8aca85, 2026-10-11; the 
   (`flow.txt` not committed) failed twice, then passed.
 Until this lands, the checker's live rule for merges should not hinge on the free-model
 tests (the lado-dev kit, after feature/live-cloud-matrix).
+Evidence from the verify of feature/read-only-roles (b91d3d3, 2026-10-11), each passed on
+its first rerun:
+- Codex worker test: `timed out after 240s waiting for w1's report` (w1 wrote its summary in
+  its window and never called send_message).
+- Flow test, codex and opencode: flow.txt holds the task's text instead of `OK`
+  (`assert 'flow.txt for live test' == 'OK'`).
+- Kilo flow test: `fatal: path 'flow.txt' does not exist in 'lado/live/tiny-add-flow-txt-for-the'`
+  after the run ended `step -done-> end`.
 
 ## styles.css writes 20 selectors twice; some may style two components
 

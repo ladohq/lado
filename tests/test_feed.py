@@ -116,7 +116,6 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "agents": 0,
             "waiting": {"gates": 0, "questions": 0, "agents": 0},
             "busy": 0,
-            "activity_since": None,
             "kits": ["default"],
             "provider": "claude",
             "permission_mode": None,
@@ -401,19 +400,13 @@ def test_an_agents_status_updates_how_many_work_in_its_session(
     stream = streams()
     stream.next()
 
-    def activity(e):
-        return is_change("sessions", "s")(e) and (
-            e.data["item"]["busy"],
-            e.data["item"]["activity_since"],
-        )
-
-    def since():
-        return models._iso(state.status_since("s")["supervisor"])
+    def busy(e):
+        return e.data["item"]["busy"] if is_change("sessions", "s")(e) else None
 
     state.set_status("s", "supervisor", state.BUSY)
-    stream.until(lambda e: activity(e) == (1, since()))
+    stream.until(lambda e: busy(e) == 1)
     state.set_status("s", "supervisor", state.IDLE)
-    stream.until(lambda e: activity(e) == (0, since()))
+    stream.until(lambda e: busy(e) == 0)
 
 
 def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
@@ -555,7 +548,6 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "agents": 1,
         "waiting": {"gates": 0, "questions": 0, "agents": 0},
         "busy": 0,
-        "activity_since": None,
         "kits": ["default"],
         "provider": "claude",
         "permission_mode": None,

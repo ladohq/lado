@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeSocket, stream, stubDialogs } from "./fakes";
+import { ranText } from "./Sessions";
 import { Shell, useTitle, useTopBar } from "./Shell";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
@@ -19,7 +20,7 @@ const NONE = { gates: 0, questions: 0, agents: 0 };
 
 function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
   const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null };
-  return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, busy: 0, activity_since: null, ...settings, ...more };
+  return { name, repo: `/src/${name}`, status: "running", agents: 1, waiting: NONE, busy: 0, ...settings, ...more };
 }
 
 function agent(name: string, role: string, status: AgentInfo["status"], more: Partial<AgentInfo> = {}): AgentInfo {
@@ -347,16 +348,16 @@ test("a row's card on focus and hover: name · status · agents, what needs the 
     return { lines, lead };
   };
   expect(await card(/^gated/)).toEqual({
-    lines: ["gated · running · 3 agents", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude · mode auto"],
+    lines: ["gated · running · 3 agents", "ran <1 min", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude · mode auto"],
     lead: "gated",
   });
   expect(await card(/^calm/)).toEqual({
-    lines: ["calm · running · idle · 1 agent", "/src/calm", "default · kilo"],
+    lines: ["calm · running · idle · 1 agent", "ran <1 min", "/src/calm", "default · kilo"],
     lead: "calm",
   });
   const stopped = await card(/^old/);
   expect(stopped).toEqual({
-    lines: ["old · stopped · 0 agents", "/src/old", "default · claude", "Stopped: open it and press Resume"],
+    lines: ["old · stopped · 0 agents", "ran <1 min", "/src/old", "default · claude", "Stopped: open it and press Resume"],
     lead: "old",
   });
   // The pointer resting on a row shows it too.
@@ -383,91 +384,111 @@ test("a session moves to Needs you when the feed says something waits in it", as
   expect(within(group("Needs you")).getByRole("link", { name: /lado/ })).toBeTruthy();
 });
 
-// Whether a Running session's agents work (SessionInfo.busy, activity_since): a dot before
-// its name and its line.
+// A Running session's row: a dot before its name for whether its agents work
+// (SessionInfo.busy), and a line with its agents and how long it ran, the head's run time.
 const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 const row = (name: string) => within(list()).getByRole("link", { name: new RegExp(`^${name}`) });
 const dot = (link: HTMLElement) => within(link).queryByRole("img");
 const about = (link: HTMLElement) => link.querySelector(".session-about")!.textContent;
 
-test("a Running row says whether its agents work: a full dot and how many, or a ring, with the time since", async () => {
+test("a Running row says whether its agents work, a full dot or a ring, and its agents and run time", async () => {
   sessions = [
-    session("one", { busy: 1, activity_since: ago(3 * MINUTE) }),
-    session("two", { agents: 3, busy: 2, activity_since: ago(40_000) }),
-    session("calm", { activity_since: ago(12 * MINUTE) }),
-    session("pair", { agents: 2, activity_since: ago(2 * 60 * MINUTE) }),
-    session("fresh", { busy: 1 }), // no event tells since when
-    session("quiet", { agents: 2 }),
+    session("one", { busy: 1, running_since: ago(3 * MINUTE) }),
+    session("two", { agents: 3, busy: 2, running_since: ago(40_000) }),
+    session("calm", { ran_seconds: 10 * 60, running_since: ago(2 * HOUR + 4 * MINUTE + 30_000) }),
+    session("long", { agents: 2, ran_seconds: 32 * 60 * 60, running_since: ago(MINUTE) }),
   ];
   open("/sessions");
   await within(list()).findByRole("link", { name: /^one/ });
-  expect(names(group("Running"))).toEqual(["one", "two", "calm", "pair", "fresh", "quiet"]);
+  expect(names(group("Running"))).toEqual(["one", "two", "calm", "long"]);
   const working = dot(row("one"))!;
   expect(working.getAttribute("aria-label")).toBe("working");
   expect(working.className).toContain("activity-working");
-  expect(about(row("one"))).toBe("1 of 1 agent · 3 min");
-  expect(about(row("two"))).toBe("2 of 3 agents · <1 min");
+  expect(about(row("one"))).toBe("1 agent · 3 min");
+  expect(about(row("two"))).toBe("3 agents · <1 min");
   const idle = dot(row("calm"))!;
   expect(idle.getAttribute("aria-label")).toBe("idle");
   expect(idle.className).toContain("activity-idle");
-  expect(about(row("calm"))).toBe("1 agent · 12 min");
-  expect(about(row("pair"))).toBe("2 agents · 2 h");
-  expect(about(row("fresh"))).toBe("1 of 1 agent");
-  expect(dot(row("quiet"))!.getAttribute("aria-label")).toBe("idle");
-  expect(about(row("quiet"))).toBe("2 agents");
+  expect(about(row("calm"))).toBe("1 agent · 2 h 14 min");
+  expect(about(row("long"))).toBe("2 agents · 1 d 8 h");
 });
 
-test("a row's time goes on by itself, on the minute's clock of the head's run time", async () => {
+test.each([
+  ["a running session: its closed spans and the time since its start, no prefix", { ran_seconds: 600, running_since: "2026-10-11T08:00:00Z" }, "2 h 10 min"],
+  ["a running session over a day", { ran_seconds: 32 * 3600, running_since: "2026-10-11T09:59:30Z" }, "1 d 8 h"],
+  ["a stopped session: when it stopped and how long it ran", { status: "stopped", ran_seconds: 182 * 60, stopped_at: "2026-10-11T04:40:00Z" }, "stopped 5 h ago · ran 3 h 2 min"],
+  ["a session with no start nor stop (tmux gone)", { status: "tmux_gone", ran_seconds: 182 * 60 }, "ran 3 h 2 min"],
+] as const)("ranText: %s", (_, more, text) => {
+  expect(ranText(session("s", more as Partial<SessionInfo>), Date.parse("2026-10-11T10:00:00Z"))).toBe(text);
+});
+
+test("a Running row's run time is the head's and goes on by itself, on the same minute's clock", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   try {
-    sessions = [session("calm", { activity_since: ago(30_000) })];
-    open("/sessions");
-    await within(list()).findByRole("link", { name: /^calm/ });
-    expect(about(row("calm"))).toBe("1 agent · <1 min");
+    sessions = [session("calm", { ran_seconds: 10 * 60, running_since: ago(2 * HOUR + 4 * MINUTE + 30_000) })];
+    open("/sessions/calm");
+    await screen.findByRole("region", { name: "Session calm" });
+    const head = () => document.querySelector(".session-ran")!.textContent;
+    expect(about(row("calm"))).toBe("1 agent · 2 h 14 min");
+    expect(head()).toBe("2 h 14 min");
     act(() => vi.advanceTimersByTime(MINUTE));
-    expect(about(row("calm"))).toBe("1 agent · 1 min");
-    act(() => vi.advanceTimersByTime(2 * MINUTE));
-    expect(about(row("calm"))).toBe("1 agent · 3 min");
+    expect(about(row("calm"))).toBe("1 agent · 2 h 15 min");
+    expect(head()).toBe("2 h 15 min");
   } finally {
     vi.useRealTimers();
   }
 });
 
-test("only a Running row has the dot: Needs you, Stopped, tmux gone and loop down rows are as before", async () => {
-  sessions = [
-    session("gated", { busy: 1, activity_since: ago(MINUTE), waiting: { gates: 1, questions: 0, agents: 0 } }),
-    session("gone", { status: "tmux_gone" }),
-    session("down", { status: "loop_down", agents: 2 }),
-    session("old", { status: "stopped", agents: 0 }),
-  ];
+test("a Stopped row says when it stopped and how long it ran, as its head does", async () => {
+  sessions = [session("old", { status: "stopped", agents: 0, ran_seconds: (3 * 60 + 2) * 60, stopped_at: ago(5 * HOUR + 20 * MINUTE) })];
   localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
+  open("/sessions/old");
+  await screen.findByRole("region", { name: "Session old" });
+  expect(about(row("old"))).toBe("stopped 5 h ago · ran 3 h 2 min");
+  expect(document.querySelector(".session-ran")!.textContent).toBe("stopped 5 h ago · ran 3 h 2 min");
+  expect(dot(row("old"))).toBeNull();
+});
+
+test("only a Running row has the dot: Needs you, tmux gone and loop down rows are as before", async () => {
+  sessions = [
+    session("gated", { busy: 1, running_since: ago(MINUTE), waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("gone", { status: "tmux_gone", ran_seconds: 600 }),
+    session("down", { status: "loop_down", agents: 2, running_since: ago(HOUR) }),
+  ];
   open("/sessions");
   await within(list()).findByRole("link", { name: /^gated/ });
-  for (const name of ["gated", "gone", "down", "old"]) expect(dot(row(name))).toBeNull();
+  for (const name of ["gated", "gone", "down"]) expect(dot(row(name))).toBeNull();
   expect(about(row("gated"))).toBe("1 gate");
   expect(about(row("gone"))).toBe("1 agent");
   expect(about(row("down"))).toBe("2 agents");
-  expect(about(row("old"))).toBe("stopped");
 });
 
-test("a Running row's card and its icon in the strip say whether it works", async () => {
+// A card's lines as text, of a row's link or an icon.
+const cardLines = (link: HTMLElement) => {
+  fireEvent.focus(link);
+  const lines = [...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  fireEvent.blur(link);
+  return lines;
+};
+
+test("a Running row's card and its icon in the strip say whether it works, then how long it ran", async () => {
   sessions = [
-    session("busy", { agents: 3, busy: 2, activity_since: ago(MINUTE) }),
-    session("calm", { activity_since: ago(12 * MINUTE) }),
-    session("gated", { waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("busy", { agents: 3, busy: 2, ran_seconds: 32 * 60 * 60, running_since: ago(MINUTE) }),
+    session("calm", { running_since: ago(12 * MINUTE) }),
+    session("gated", { running_since: ago(MINUTE), waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("old", { status: "stopped", agents: 0, ran_seconds: (3 * 60 + 2) * 60, stopped_at: ago(5 * HOUR) }),
+    session("gone", { status: "tmux_gone", ran_seconds: 600 }),
   ];
+  localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
   open("/sessions");
-  const first = async (name: RegExp) => {
-    const link = await within(list()).findByRole("link", { name });
-    fireEvent.focus(link);
-    const line = screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent;
-    fireEvent.blur(link);
-    return line;
-  };
-  expect(await first(/^busy/)).toBe("busy · running · 2 of 3 agents working");
-  expect(await first(/^calm/)).toBe("calm · running · idle 12 min · 1 agent");
-  expect(await first(/^gated/)).toBe("gated · running · 1 agent");
+  await within(list()).findByRole("link", { name: /^busy/ });
+  expect(cardLines(row("busy")).slice(0, 2)).toEqual(["busy · running · 2 of 3 agents working", "ran 1 d 8 h"]);
+  expect(cardLines(row("calm")).slice(0, 2)).toEqual(["calm · running · idle · 1 agent", "ran 12 min"]);
+  expect(cardLines(row("gated")).slice(0, 3)).toEqual(["gated · running · 1 agent", "ran 1 min", "Needs you: 1 gate"]);
+  expect(cardLines(row("old")).slice(0, 2)).toEqual(["old · stopped · 0 agents", "stopped 5 h ago · ran 3 h 2 min"]);
+  expect(cardLines(row("gone")).slice(0, 2)).toEqual(["gone · tmux session is gone · 1 agent", "ran 10 min"]);
   cleanup();
   collapsed();
   open("/sessions");
@@ -481,7 +502,8 @@ test("a Running row's card and its icon in the strip say whether it works", asyn
   expect(icon("gated").querySelector(".dot")).toBeNull();
   fireEvent.focus(icon("busy"));
   expect(nameFirst(screen.getByRole("tooltip"))).toBe("busy");
-  expect(screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent).toBe("busy · running · 2 of 3 agents working");
+  fireEvent.blur(icon("busy"));
+  expect(cardLines(icon("busy")).slice(0, 2)).toEqual(["busy · running · 2 of 3 agents working", "ran 1 d 8 h"]);
 });
 
 // The card's status word takes its group's colour (the card's tone), a session in trouble
@@ -672,11 +694,11 @@ test("an icon's tooltip: name · status · agents, what needs the human, the fol
     return { lines, waits };
   };
   expect(await tip(/^gated/)).toEqual({
-    lines: ["gated · running · 3 agents", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude"],
+    lines: ["gated · running · 3 agents", "ran <1 min", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude"],
     waits: ["Needs you: 1 gate · 2 questions"],
   });
   expect(await tip(/^stuck/)).toEqual({
-    lines: ["stuck · session loop not running · 1 agent", "/src/stuck", "default · kilo"],
+    lines: ["stuck · session loop not running · 1 agent", "ran <1 min", "/src/stuck", "default · kilo"],
     waits: [],
   });
 });

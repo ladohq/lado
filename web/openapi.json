@@ -5255,17 +5255,6 @@
             "type": "integer",
             "title": "Busy"
           },
-          "activity_since": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activity Since"
-          },
           "kits": {
             "items": {
               "type": "string"
@@ -5330,7 +5319,6 @@
           "agents",
           "waiting",
           "busy",
-          "activity_since",
           "kits",
           "provider",
           "permission_mode",

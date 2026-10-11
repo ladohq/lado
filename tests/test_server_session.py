@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from lado import doctor, providers, runtime, state
 from lado.server import app as server_app
-from lado.server import auth, models
+from lado.server import auth
 
 PORT = 8123
 
@@ -245,8 +245,8 @@ def test_a_session_says_how_many_agents_work_only_while_it_runs(
     state.set_status("s", "supervisor", working)
     monkeypatch.setattr(runtime, "session_status", lambda sess: status)
     [sess] = client.get("/api/sessions").json()
+    assert "activity_since" not in sess
     if status == runtime.SessionStatus.RUNNING:
-        since = state.status_since("s")["supervisor"]
-        assert (sess["busy"], sess["activity_since"]) == (1, models._iso(since))
+        assert sess["busy"] == 1
     else:  # the agents of a dead session may keep their last statuses
-        assert (sess["busy"], sess["activity_since"]) == (0, None)
+        assert sess["busy"] == 0

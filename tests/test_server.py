@@ -116,7 +116,6 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "agents": 1,
             "waiting": none,
             "busy": 1,  # its supervisor is starting
-            "activity_since": "2026-10-05T10:00:01.000Z",
             **defaults,
             "ran_seconds": 0,
             "running_since": "2026-10-05T10:00:00.000Z",
@@ -129,7 +128,6 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "agents": 0,
             "waiting": none,
             "busy": 0,
-            "activity_since": None,
             "kits": ["default"],
             "provider": "kilo",
             "permission_mode": "plan",

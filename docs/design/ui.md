@@ -428,8 +428,8 @@ Sessions for now. The UI's texts are in English.
   row alone shows under the heading; going to a session never opens a group nor changes
   what is remembered. The rows look alike in every group (no dimmed stopped ones, no
   orange in Needs you): the open row and the one under the pointer or focus get a stripe
-  of their group's colour on the left. Each shows a line under its name: what waits, or
-  its agents, the status of a session whose tmux session is gone or whose loop does not
+  of their group's colour on the left. Each shows a line under its name: what waits, its
+  agents and run time (Running, below), its stopped text (Stopped), or its agents, the status of a session whose tmux session is gone or whose loop does not
   run, and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
   Open in new tab; the session's own actions are in its head (Launch and session control,
   below). On hover or keyboard focus a row shows the session's card (`SessionTip` in a
@@ -437,8 +437,8 @@ Sessions for now. The UI's texts are in English.
   before the name (the row has its own) and the status word in its group's colour
   (`--done` Running, `--human` Needs you, `--muted` Stopped; tmux gone or loop down in
   `--danger`), which explains the colours of the row and the icon (decided 2026-10-09,
-  mockup artifact `fix/session-tip-no-dot/mockup-tip.html`), `Needs you: <the row's
-  line>` in the human's colour, the folder, kits · provider · `mode <permission mode>`
+  mockup artifact `fix/session-tip-no-dot/mockup-tip.html`), the run time (below),
+  `Needs you: <the row's line>` in the human's colour, the folder, kits · provider · `mode <permission mode>`
   when it has one, and for a stopped session `Stopped: open it and press Resume`; all
   from `SessionInfo`, no CLI commands. A Running row (a session whose status is `running`
   and in which nothing waits) also says whether its agents work now (decided 2026-10-08
@@ -446,21 +446,23 @@ Sessions for now. The UI's texts are in English.
   `feature/session-activity/mockup-list.html`, variant A without the word "working"): a
   dot before its name, a full `--done` dot with a soft pulse (none under
   `prefers-reduced-motion: reduce`) while some agent works, else a ring in `--muted` (the
-  team chips' busy and idle shapes), its accessible name `working` or `idle`; its line is
-  `<busy> of <agents> agent(s) · <time>` while some work (`2 of 3 agents · <1 min`), else
-  `<agents> agent(s) · <time>` (`1 agent · 12 min`), the time since `activity_since` by
-  the one formatter (`ChatText.duration`, `<1 min` under a minute), counted on by the
-  minute on the clock of the head's run time (`useNow`, `TICK_MS`), none without
-  `activity_since`. Its card's first line says `name · running · 2 of 3 agents working` or
-  `name · running · idle 12 min · 1 agent`, and its icon in the strip has the same dot,
+  team chips' busy and idle shapes), its accessible name `working` or `idle`. Its line
+  says what the human can use (decided 2026-10-11 in feature/session-row-line; mockup
+  artifact `feature/session-row-line/mockup-list.html`, the right column): its agents and
+  how long the session ran, `<agents> agent(s) · <run time>` (`2 agents · 1 d 8 h`), the
+  run time the head's, made by the one function `ranText` (Sessions.tsx; `ChatText.duration`,
+  exact) and counted on by the minute on the head's clock (`useNow`, `TICK_MS`); no `of`
+  count, which the dot says. A Stopped row's line is its stopped text, as its head says it
+  (`stopped 5 h ago · ran 3 h 2 min`). Its card's first line says `name · running · 2 of 3
+  agents working` or `name · running · idle · 1 agent`, with no time; under it, for every
+  session (the strip's icons have no row line), the run time: `ran ` and `ranText` while
+  the session runs (`ran 1 d 8 h`), else `ranText` as it is (`stopped … · ran …` or
+  `ran …`). Its icon in the strip has the same dot,
   small, in its corner, with `working` or `idle` in its accessible name. The rule is the
-  core's (`state.session_activity`): the agents in `busy`, `starting` or `background` (its
-  turn ended, work it started still runs; the human, 2026-10-09, feature/background-status)
-  work; since the
-  earliest time one of them got its status, or with none working the latest time any agent
-  got its own (their latest `status` or `spawned` event, as `lado ls` says). Its known
-  limits: a worker that takes turns with the supervisor may make the time start again; a
-  Claude agent the human interrupted with Esc stays `busy` until the human's next prompt
+  core's (`state.working_agents`, a count): the agents in `busy`, `starting` or
+  `background` (its turn ended, work it started still runs; the human, 2026-10-09,
+  feature/background-status) work. Its known
+  limits: a Claude agent the human interrupted with Esc stays `busy` until the human's next prompt
   (BACKLOG.md), so its session shows working; an agent's planned resume after a temporary
   API error shows idle until it fires; a background task Claude Code still lists after it
   ended (killed in `/tasks`) keeps its agent `background`, and the session working, until
@@ -927,8 +929,8 @@ Built in the layout task (2026-10-03, schema 14):
   stays; pages since feature/chat-paging: The change feed, Message windows); `SessionInfo.waiting {gates, questions, agents}` counts what waits for the human
   (open gates, open questions, agents in `waiting`), computed in `models.session_info` from
   the tables: the one definition of "needs you" for the session list now and the rail's
-  count later; `SessionInfo.busy` and `activity_since` say whether something moves in it
-  (`state.session_activity`; 0 and null unless its status is `running`, since a dead
+  count later; `SessionInfo.busy` says whether something moves in it
+  (`state.working_agents`; 0 unless its status is `running`, since a dead
   session's agents may keep their last statuses; feature/session-activity); `AgentInfo`
   has `run` and `task` (the first line of its task).
 - **Activity**: the team above the feed, a chip per agent, the supervisor first: a status

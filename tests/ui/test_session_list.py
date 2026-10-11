@@ -75,14 +75,18 @@ def test_a_row_shows_its_sessions_card_under_the_pointer(page: Page, server, rep
     sessions = page.get_by_role("navigation", name="Sessions")
     sessions.get_by_role("link", name=calm).hover()
     card = page.get_by_role("tooltip")
-    expect(card).to_contain_text(f"{calm} · running · idle <1 min · 1 agent")
+    expect(card).to_contain_text(f"{calm} · running · idle · 1 agent")
+    expect(card).to_contain_text("ran <1 min")
     expect(card).to_contain_text(str(repo))
     expect(card).to_contain_text("default · fake")
     shot(page, "running")
 
     sessions.get_by_role("button", name="Stopped 1").click()
-    sessions.get_by_role("link", name=old).hover()
+    stopped = sessions.get_by_role("link", name=old)
+    expect(stopped.locator(".session-about")).to_have_text("stopped <1 min ago · ran <1 min")
+    stopped.hover()
     expect(card).to_contain_text(f"{old} · stopped")
+    expect(card).to_contain_text("stopped <1 min ago · ran <1 min")
     expect(card).to_contain_text("Stopped: open it and press Resume")
     shot(page, "stopped")
 
@@ -110,7 +114,7 @@ def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(
     )
     working = row.get_by_role("img", name="working")
     expect(working).to_be_visible()
-    expect(about).to_have_text("1 of 1 agent · <1 min")
+    expect(about).to_have_text("1 agent · <1 min")
     pulse = "e => getComputedStyle(e).animationName"
     assert working.evaluate(pulse) == "activity-pulse"
     page.emulate_media(reduced_motion="reduce")

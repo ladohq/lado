@@ -256,28 +256,28 @@ function StripIcon({ session }: { session: SessionInfo }) {
   );
 }
 
-// Who a session is, the card of its row and of its icon: its name, status and agents, what
-// waits for the human, its folder, its kits, provider and permission mode; a stopped one,
-// how to bring it back (Resume is in the session's head). Its status word explains the
-// colours of the row and the icon: in its group's tone, a session in trouble (tmux gone,
-// loop down) in the danger colour.
+// Who a session is, the card of its row and of its icon: its name, status and agents, how
+// long it ran (the icons have no row line), what waits for the human, its folder, its kits,
+// provider and permission mode; a stopped one, how to bring it back (Resume is in the
+// session's head). Its status word explains the colours of the row and the icon: in its
+// group's tone, a session in trouble (tmux gone, loop down) in the danger colour.
 function SessionTip({ session }: { session: SessionInfo }) {
   const trouble = session.status === "tmux_gone" || session.status === "loop_down";
   const mode = session.permission_mode ? ` · mode ${session.permission_mode}` : "";
-  const now = useNow(tracked(session) ? session.activity_since : null);
+  const ran = useRan(session);
   const agents = count(session.agents, "agent");
-  const since = session.activity_since && ` ${duration(secondsSince(session.activity_since, now))}`;
   const work = !tracked(session)
     ? agents
     : session.busy > 0
       ? `${session.busy} of ${agents} working`
-      : `idle${since || ""} · ${agents}`;
+      : `idle · ${agents}`;
   return (
     <div className={`session-tip tone-${TONES[groupOf(session)]}`}>
       <div className="tooltip-line">
         <b>{session.name}</b> · <span className={trouble ? "danger-text" : "tip-status"}>{STATUS[session.status]}</span> ·{" "}
         {work}
       </div>
+      <div className="tooltip-line">{session.running_since ? `ran ${ran}` : ran}</div>
       {waits(session) && <div className="tooltip-line waits">Needs you: {about(session)}</div>}
       <div className="tooltip-line">{session.repo}</div>
       <div className="tooltip-line">
@@ -312,22 +312,20 @@ function grouped(sessions: SessionInfo[]): Record<SessionGroup, SessionInfo[]> {
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-// Whether the list says if a session's agents work (SessionInfo.busy, activity_since): a
-// Running row of a session that runs; the server counts none in one that does not.
+// Whether the list says if a session's agents work (SessionInfo.busy): a Running row of a
+// session that runs; the server counts none in one that does not.
 const tracked = (session: SessionInfo) => session.status === "running" && !waits(session);
 const workWord = (session: SessionInfo) => (session.busy > 0 ? "working" : "idle");
 
-// A Running row's line: how many of its agents work, or how many it has, and how long it has
-// worked or stood still, counted on by the minute.
-function WorkAbout({ session }: { session: SessionInfo }) {
-  const since = session.activity_since;
-  const now = useNow(since);
-  const agents = count(session.agents, "agent");
-  const who = session.busy > 0 ? `${session.busy} of ${agents}` : agents;
-  return <span className="session-about">{since ? `${who} · ${duration(secondsSince(since, now))}` : who}</span>;
+// The line under a Running row's name, its agents and how long it ran, and a Stopped row's,
+// when it stopped and how long it ran: the head's run time, counted on by the minute.
+function RanAbout({ session }: { session: SessionInfo }) {
+  const ran = useRan(session);
+  return <span className="session-about">{tracked(session) ? `${count(session.agents, "agent")} · ${ran}` : ran}</span>;
 }
 
-// One line under a session's name: what waits for the human, or its agents and status.
+// The line under the name of another row (Needs you, tmux gone, loop down): what waits for
+// the human, or its agents.
 function about(session: SessionInfo): string {
   const { gates, questions, agents } = session.waiting;
   const parts = [
@@ -335,7 +333,6 @@ function about(session: SessionInfo): string {
     questions > 0 && count(questions, "question"),
     agents > 0 && `${count(agents, "agent")} waiting`,
   ].filter(Boolean);
-  if (!isLive(session)) return STATUS.stopped;
   return parts.length ? parts.join(" · ") : count(session.agents, "agent");
 }
 
@@ -385,7 +382,11 @@ function Group({
                     />
                   )}
                 </span>
-                {tracked(session) ? <WorkAbout session={session} /> : <span className="session-about">{about(session)}</span>}
+                {tracked(session) || !isLive(session) ? (
+                  <RanAbout session={session} />
+                ) : (
+                  <span className="session-about">{about(session)}</span>
+                )}
                 {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
               </NavLink>
             </Tooltip>
@@ -822,15 +823,24 @@ function useNow(from: string | null): number {
 // The seconds from `iso` to `now`, none below 0.
 const secondsSince = (iso: string, now: number) => Math.max(0, (now - new Date(iso).getTime()) / 1000);
 
-// How long the session ran: while it runs, its closed spans and the time since its last
-// start; stopped, how long ago too; both counted on each minute.
-function Ran({ session }: { session: SessionInfo }) {
+// How long the session ran at `now`, the one text of it for the head, the list's rows and
+// the card: while it runs, its closed spans and the time since its last start, with no
+// prefix; stopped, how long ago too.
+export function ranText(session: SessionInfo, now: number): string {
   const { running_since: since, stopped_at: stopped } = session;
-  const now = useNow(since ?? stopped); // the time counted from
   const seconds = (iso: string) => secondsSince(iso, now);
   const ran = duration(session.ran_seconds + (since ? seconds(since) : 0), true);
-  const text = since ? ran : stopped ? `stopped ${duration(seconds(stopped))} ago · ran ${ran}` : `ran ${ran}`;
-  return <span className="session-ran">{text}</span>;
+  return since ? ran : stopped ? `stopped ${duration(seconds(stopped))} ago · ran ${ran}` : `ran ${ran}`;
+}
+
+// ranText, counted on each minute.
+function useRan(session: SessionInfo): string {
+  const now = useNow(session.running_since ?? session.stopped_at); // the time counted from
+  return ranText(session, now);
+}
+
+function Ran({ session }: { session: SessionInfo }) {
+  return <span className="session-ran">{useRan(session)}</span>;
 }
 
 // What a start or resume from the New session window said: the settings a resume changed,

@@ -13,6 +13,10 @@
   workers go, where the end used to fail and leave the workers behind. A worker whose
   branch or worktree was deleted by hand can be finished again (`lado finish`, the UI,
   `finish_worker`): it removes what is left and says what was already gone.
+- UI: the session list's line under a Running session's name says its agents and how long
+  the session ran, as its head does (`2 agents · 1 d 8 h`), instead of the time since its
+  agents' last status change; a Stopped one says when it stopped and how long it ran. The
+  card says the run time too. The API's `SessionInfo` no longer has `activity_since`.
 
 - The supervisor can start a new, independent session in the same repository, with its
   session's kits, provider and settings, for a problem it found or a new ticket: it asks

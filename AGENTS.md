@@ -676,9 +676,8 @@ fixes and docs only: no new feature, no API or schema change.
     its SQL), served as `GET /api/waiting` (`models.WaitingItem`) and counted from that same
     list as a session's `waiting` in `models.session_info` (`state.waiting_for_human`), so
     the list and the count cannot differ; whether something moves in a session, its
-    agents in `busy` or `starting` and since when, is `state.session_activity` (one query,
-    by `STATUS_EVENTS`), a session's `busy` and `activity_since` (0 and None unless its
-    status is `running`); an agent's `status_reason` (`AgentInfo`, only
+    agents in `busy`, `starting` or `background`, is `state.working_agents` (a count), a
+    session's `busy` (0 unless its status is `running`); an agent's `status_reason` (`AgentInfo`, only
     for an agent in `waiting` or `stopped`) is `runtime.status_reason`, which
     `status_reasons` uses too (`lado ls`, `list_agents`);
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
@@ -698,7 +697,7 @@ fixes and docs only: no new feature, no API or schema change.
     through the core, the changing ones under `Guard.changes`; `SessionInfo` carries the
     session's kits, provider, permission mode and without, and how long it ran
     (`ran_seconds`, its closed spans; `running_since`, the start of the open one while it
-    runs; `stopped_at`), and whether its agents work (`busy`, `activity_since`);
+    runs; `stopped_at`), and whether its agents work (`busy`);
     the Kits page's endpoints are in `app.py` too (docs/design/ui.md, Kits):
     `GET /api/kits/installed` (`InstalledKitInfo`, the installed then the built-in kits;
     with `KitInfo` it shares `KitSummary`), `GET /api/kits/available` (`OfferInfo`),
@@ -785,7 +784,7 @@ fixes and docs only: no new feature, no API or schema change.
   background)`), through `state.accepts_input` or its SQL form `state.ACCEPTS_INPUT_SQL`,
   never `idle` alone (a guard test in `tests/test_state.py`; `web/src/status.test.ts` for
   the UI, which reloads a worker's git state when it leaves busy). Where this section says
-  an idle agent gets its queue or its resume, a `background` one does too. `state.session_activity`
+  an idle agent gets its queue or its resume, a `background` one does too. `state.working_agents`
   counts it as working, with busy and starting; it is no "needs you" and has no
   `status_reason`. After a wait that began in `background` (its latest `status` event
   before the wait, with no `spawned` event after it), the awaited `RESUMED` returns it to

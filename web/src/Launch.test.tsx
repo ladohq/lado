@@ -29,7 +29,6 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
     ran_seconds: 0,
     running_since: null,
     busy: 0,
-    activity_since: null,
     stopped_at: null,
     ...more,
   };

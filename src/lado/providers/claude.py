@@ -96,6 +96,7 @@ class ClaudeProvider(base.Provider):
         deliver_on_turn_end=True,
         skills=True,
         hold_first_turn=True,
+        output_taken_when_printed=True,
     )
     # Passed on as --permission-mode: the choices of Claude Code 2.1.287, which also takes
     # "default" without listing it.
@@ -141,6 +142,8 @@ class ClaudeProvider(base.Provider):
             command: dict = {"type": "command", "command": base.hook_command(agent, event)}
             if event in ASYNC:
                 command["async"] = True
+            if EVENTS[event] == base.TURN_END:
+                command["timeout"] = base.TURN_END_HOOK_TIMEOUT
             return [{"hooks": [command]}]
 
         settings = config_dir / "settings.json"

@@ -39,6 +39,26 @@ def retry_delays_from(value: str | None) -> tuple[float, ...]:
 
 
 RETRY_DELAYS = retry_delays_from(os.environ.get("LADO_RETRY_DELAYS"))
+
+
+def seconds_from(value: str | None, default: float) -> float:
+    """A wait in seconds: `value`, an environment variable's, else `default`."""
+    return float(value) if value else default
+
+
+# Seconds a batch handed over in a turn-end hook's output waits before sweep deals with it,
+# for a CLI that takes that output once printed (Capabilities.output_taken_when_printed);
+# any other CLI's waits RETRY_DELAYS[0], as a typed one. Not printed (the hook died
+# first): the hook's limit and a margin, after which no print can come. Printed: the turn
+# that goes on from it ends it, however long its model steps run without a hook; this
+# backstop, the CLIs' own default hook limit, only catches a CLI that broke its promise to
+# take it, as no model step is silent for 10 minutes. LADO_HOOK_OUTPUT_WAIT and
+# LADO_HOOK_OUTPUT_BACKSTOP replace them for the processes started with them, as
+# LADO_RETRY_DELAYS does: only tests set them, each test itself.
+HOOK_OUTPUT_WAIT = seconds_from(
+    os.environ.get("LADO_HOOK_OUTPUT_WAIT"), providers.base.TURN_END_HOOK_TIMEOUT + 15
+)
+HOOK_OUTPUT_BACKSTOP = seconds_from(os.environ.get("LADO_HOOK_OUTPUT_BACKSTOP"), 600)
 # Seconds after the 1st, 2nd, ... turn in a row that ended on an error that passes by itself
 # (Event.transient) before LADO tells the agent to go on; after the last, the error goes to
 # the lead (turn_failed). LADO_RESUME_DELAYS replaces them, as LADO_RETRY_DELAYS does.
@@ -1417,15 +1437,33 @@ def _resume_summary(resume: int, error: str) -> str:
 def _sweep_sent(session: str, name: str, now: float, delays: tuple[float, ...]) -> None:
     """Carry out _plan for the agent's unconfirmed messages. What goes back to the queue is
     handed over by the caller, which takes the queue next (sweep, _deliver)."""
-    swept = state.sweep(session, name, now, lambda a, sent: _plan(a, sent, now, delays))
+
+    def plan(agent: state.Agent, sent: list[state.Message]) -> state.Plan:
+        return _plan(agent, sent, now, delays, _output_waits(agent.provider))
+
+    swept = state.sweep(session, name, now, plan)
     if swept.typed:
         tmux.send_text(session, name, format_messages(swept.typed))
     for message in swept.failed:
         _report_failure(session, message)
 
 
+def _output_waits(provider: str) -> tuple[float, float] | None:
+    """The waits of a batch in the agent's turn-end hook output (_plan), when its CLI takes
+    that output once printed; None for any other, also a provider LADO does not know."""
+    try:
+        taken = providers.get(provider).capabilities.output_taken_when_printed
+    except ValueError:
+        return None
+    return (HOOK_OUTPUT_WAIT, HOOK_OUTPUT_BACKSTOP) if taken else None
+
+
 def _plan(
-    agent: state.Agent, sent: list[state.Message], now: float, delays: tuple[float, ...]
+    agent: state.Agent,
+    sent: list[state.Message],
+    now: float,
+    delays: tuple[float, ...],
+    output_waits: tuple[float, float] | None = None,
 ) -> state.Plan:
     """A message is left alone until the delay of its attempt is over: delays[n - 1] after
     the n-th time it was handed over. Then, by its channel (hand_over):
@@ -1434,17 +1472,25 @@ def _plan(
       a hook ran and the agent takes input (state.accepts_input: idle or background; no
       prompt held its line): back to the queue; after
       the last attempt's delay: failed.
-    - HOOK_OUTPUT (always its first attempt): no hook ran since (the CLI did not take the
-      output, or its turn goes on that long without one): typed in, once, and TYPED from
-      then on; a turn that took it meanwhile gets it twice, which is better than never. A
-      turn's end that does not say it went on from the output, or a hook that failed
-      before printing it, has made it TYPED already (lado.hooks). It never fails by this
-      channel."""
+    - HOOK_OUTPUT (always its first attempt): for a CLI that takes the output once
+      printed, `output_waits` (HOOK_OUTPUT_WAIT, HOOK_OUTPUT_BACKSTOP) are its delay: the
+      first while its hook has not marked it printed (Message.printed_at), the second once
+      it has, so a turn that goes on from it is never typed into however long it runs
+      without a hook; delays[0] for any other CLI. Then: no hook ran since (the CLI did not
+      take the output, or its turn goes on that long without one): typed in, once, and
+      TYPED from then on; a turn that took it meanwhile gets it twice, which is better than
+      never. A hook ran and the agent takes input: back to the queue. A hook ran and the
+      agent is busy: left to the turn's end. A turn's end that does not say it went on from
+      the output, or a hook that failed before printing it, has made it TYPED already
+      (lado.hooks). It never fails by this channel."""
     plan = state.Plan()
     for message in sent:
         attempt = max(message.attempts, 1)
         sent_at = message.sent_at or 0
-        if now < sent_at + delays[min(attempt, len(delays)) - 1]:
+        delay = delays[min(attempt, len(delays)) - 1]
+        if message.channel == state.HOOK_OUTPUT and output_waits:
+            delay = output_waits[message.printed_at is not None]
+        if now < sent_at + delay:
             continue
         if attempt > len(delays):
             plan.fail.append(message.id)

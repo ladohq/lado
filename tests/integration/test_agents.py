@@ -6,12 +6,13 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import agent_helpers
 import pytest
 
-from lado import artifacts, runtime, state, tmux
+from lado import artifacts, loop, runtime, state, tmux
 
 pytestmark = pytest.mark.integration
 
@@ -208,6 +209,44 @@ def test_a_turn_end_output_the_cli_drops_is_typed_in_once(repo, provider):
     wait_status("supervisor", state.IDLE)
     assert inputs("supervisor") == ["[from human] lose", "[from human] hello"]
     assert channels("supervisor") == [state.TYPED, state.TYPED]
+
+
+def test_a_slow_turn_that_goes_on_from_the_turn_end_output_gets_it_once(repo, fakes_known_to_lado):
+    """As Claude Code and Codex ("fake-printed"): the hook marked its output printed, so the
+    turn that goes on from it runs without a hook for longer than the first retry delay and
+    is not typed into; its end confirms the batch."""
+    start(repo, "fake-printed")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")  # the slow turn
+    release("supervisor", 1)
+    paused("supervisor", 2)  # in the turn that goes on from the output: no hook
+    # Not a wait to act within: the session loop sweeps meanwhile and must type nothing.
+    time.sleep(runtime.RETRY_DELAYS[0] + 4 * loop.INTERVAL)
+    assert message_attempts("supervisor") == [1, 1]
+    release("supervisor", 2)
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
+    wait_status("supervisor", state.IDLE)
+    assert inputs("supervisor") == ["[from human] pause"] * 2
+    assert channels("supervisor") == [state.TYPED, state.HOOK_OUTPUT]
+    assert message_attempts("supervisor") == [1, 1]
+
+
+def test_a_printed_turn_end_output_the_cli_drops_is_typed_in_once_after_the_backstop(
+    repo, monkeypatch, fakes_known_to_lado
+):
+    """The CLI broke its promise to take what the hook printed: the backstop, short here,
+    types it in once (runtime.HOOK_OUTPUT_BACKSTOP)."""
+    monkeypatch.setenv("LADO_HOOK_OUTPUT_BACKSTOP", "3")
+    monkeypatch.setattr(runtime, "HOOK_OUTPUT_BACKSTOP", 3.0)
+    start(repo, "fake-printed")
+    runtime.send_message(SESSION, "human", "supervisor", "lose")
+    runtime.send_message(SESSION, "human", "supervisor", "hello")
+    release("supervisor", 1)
+    wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
+    wait_status("supervisor", state.IDLE)
+    assert inputs("supervisor") == ["[from human] lose", "[from human] hello"]
+    assert channels("supervisor") == [state.TYPED, state.TYPED]
+    assert message_attempts("supervisor") == [1, 2]
 
 
 def test_message_to_busy_agent_arrives_when_its_turn_ends(repo):

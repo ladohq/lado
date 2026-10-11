@@ -151,7 +151,9 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
         neutral = provider.parse_event(event, payload)
         output = handle(provider, neutral, session, agent) if neutral else None
         if output:
-            print(output)
+            print(output, flush=True)
+            if provider.capabilities.output_taken_when_printed:
+                _mark_printed(event, session, agent, started)
     except state.SchemaError as exc:
         # E.g. LADO upgraded in place under the running session: the database stays as it is.
         _log(f"{event} {session}/{agent}: {exc}")
@@ -161,3 +163,13 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
         with contextlib.suppress(Exception):  # logged above; the sweep's rule still holds
             state.output_not_taken(session, agent, since=started)
     return 0
+
+
+def _mark_printed(event: str, session: str, agent: str, started: float) -> None:
+    """Mark what this hook handed over for its output printed, after the print: a hook
+    killed in between leaves it unmarked, and it may come twice, never not at all. An error
+    is logged and leaves it unmarked; it is never output_not_taken, as the CLI has it."""
+    try:
+        state.output_printed(session, agent, since=started)
+    except Exception:
+        _log(f"{event} {session}/{agent}: marking the output printed\n{traceback.format_exc()}")

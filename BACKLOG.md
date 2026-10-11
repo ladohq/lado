@@ -548,6 +548,10 @@ Found: 2026-10-09, design of run feature/codex-provider.
 Seen live (2026-10-09, verify of feature/codex-provider): in the image test, w1 on
 `qwen3-coder:30b`, a model with no image input, stayed busy for 3 min after the human's
 PNG. The test now skips Codex models whose `ollama show` lists no `vision`.
+Since feature/hook-output-retry (2026-10-11) a batch a Codex Stop hook printed waits for its
+turn's end, up to `runtime.HOOK_OUTPUT_BACKSTOP` (600 s): a turn that goes on from it and
+ends on such an error is typed into after 10 minutes, no longer after 15 s, which used to
+wake it by chance. The human accepted that (decision Р3 of that run); this entry is the fix.
 
 ## Codex agents cannot log in: the user's Codex login is not carried
 
@@ -596,6 +600,12 @@ failures. Also seen there: a `/responses` server that refuses Codex's `namespace
 Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
 instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
 stayed busy.
+The `typed` instead of `hook_output` failures had a LADO cause (research `live-root-causes`,
+2026-10-11): Codex took the Stop hook's output, but the turn that went on from it ran a model
+step of 16-18 s with no hook, and the sweep typed the batch in again after 15 s. Fixed by
+feature/hook-output-retry (a printed batch waits for its turn's end): its verify (fd32583,
+2026-10-11) passed this test on the first run. The looping and the supervisor acting on its
+own stay; if no live run fails on them again, this entry can go.
 
 ## Kilo live image test fails 3 of 3
 
@@ -641,6 +651,12 @@ Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): `fatal:
 to fast-forward`, `untracked working tree files would be overwritten by merge`, and once the
 supervisor spawned an extra `worker` whose Codex (not on the test's model) failed with
 `input[0]: unknown input item type: "additional_tools"`.
+Again 3 of 3 on 2026-10-11 (verify of feature/hook-output-retry, fd32583): each time the
+passive supervisor called `spawn_worker` itself (`worker`, `worker-2`), so w1 was not the run's
+last worker and its end kept the worktree (test_live.py:579). New detail: the workers the
+supervisor's `spawn_worker` starts do not run on the test's model (`LADO_LIVE_CODEX_MODEL`)
+but on Codex's default, hence `additional_tools`. A fourth run by the developer: w1 called
+`flow_advance` without committing flow.txt (`path 'flow.txt' exists on disk, but not in`).
 
 ## OpenCode live image test fails 3 of 3
 
@@ -652,7 +668,27 @@ Wanted: find whether the free model takes images at all (then skip it, as for Co
 LADO's image does not reach it.
 Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
+## A re-handed-over hook_output batch keeps an old printed_at
+
+Size: S. Why here: a one-line fix to the rule just merged; until then a lost batch can wait 600 s instead of 75 s.
+`state.hand_over` (the UPDATE in `take_pending`) and the sweep's requeue do not reset
+`messages.printed_at`. A message printed once, put back in the queue and handed over again
+by a turn-end hook that dies before its print keeps the old mark, so `_plan` waits
+`HOOK_OUTPUT_BACKSTOP` (600 s) instead of `HOOK_OUTPUT_WAIT` (75 s) before typing it in.
+Wanted: every hand-over sets `printed_at = NULL`; a unit test of that case.
+Found: 2026-10-11, review of feature/hook-output-retry (Minor).
+
 # P2: when convenient
+
+## Kilo and OpenCode: a failed `promptAsync` waits the first retry delay
+
+Size: S. Why here: a message LADO knows at once was not delivered waits 15 s more.
+When the plugin's `promptAsync` of the turn-end output fails, it reports `plugin.error`
+(`HOOK_ERROR`) at once, but the batch stays `hook_output` and is typed in only after
+`RETRY_DELAYS[0]` (`runtime._plan`).
+Wanted: on that `HOOK_ERROR`, make the agent's `hook_output` batch `typed` at once
+(`state.output_not_taken`), so the sweep's typed rule takes it on.
+Found: 2026-10-11, design of run feature/hook-output-retry.
 
 ## Claude Code's first-run screens block an agent before any hook, unseen
 

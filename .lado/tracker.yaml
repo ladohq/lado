@@ -1,0 +1,9 @@
+board: Development
+statuses:
+  backlog: Backlog
+  to do: Backlog
+  in progress: In progress
+  review: Review
+  done: Done
+labels:
+  waiting for release: 'Release: Waiting'

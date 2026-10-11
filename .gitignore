@@ -11,3 +11,8 @@ node_modules/
 .pytest_cache/
 .ruff_cache/
 src/lado/server/static/
+
+# LADO: only the sdlc settings are tracked; worktrees, mockups and briefs stay local
+.lado/*
+!.lado/sdlc.md
+!.lado/tracker.yaml

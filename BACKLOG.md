@@ -1886,6 +1886,9 @@ are gone: `cannot read its work: fatal: ambiguous argument 'HEAD...<branch>'`, a
 Wanted: the run's end checks "merged" against the repo's current branch as `work_state` does and
 deletes with that knowledge (e.g. `git branch -D` after its own check), or says the branch is kept and why.
 Found: 2026-10-10, merge step of fix/windows-probe (session lado-windows).
+Again 2026-10-11 at the end of feature/live-cloud-matrix (also pushed): architect, developer and
+reviewer stayed until finished by hand; checker-2 cannot be finished, nor the old checker. The
+human sees the ended runs' workers still in the UI.
 
 ## Live: free models loop on read_messages and miss the report
 

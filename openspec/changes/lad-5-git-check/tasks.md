@@ -1,18 +1,18 @@
 ## 1. Core: the folder check's kinds and hints
 
-- [ ] 1.1 `runtime.FolderProblem`, `Hint`, `git_version()`, `GIT_MIN`; `runtime.git`
+- [x] 1.1 `runtime.FolderProblem`, `Hint`, `git_version()`, `GIT_MIN`; `runtime.git`
   catches `OSError` (D1, D2, D4). Unit tests (`tests/test_runtime.py`): `git_version` with
   no git on PATH (`no_git`, PATH named), with a fake `git` script that exits 1 printing
   the xcrun line (`git_broken`), with a fake one printing `git version 2.30.2`.
-- [ ] 1.2 `check_repo` in the spec's order (D3): unit tests for each kind of "The folder
+- [x] 1.2 `check_repo` in the spec's order (D3): unit tests for each kind of "The folder
   check names what a folder lacks", with real git for `missing`, `not_folder`,
   `not_repo`, `no_commits`, and a fake `git` script on PATH for `no_git`, `git_broken` and
   `git_refused` (it passes `--version` and fails `rev-parse` with "detected dubious
   ownership"); the hints by kind and by `platform.system()` (D5).
-- [ ] 1.3 `gitcache._git` catches `OSError` (`GitError` with the `no_git` text);
+- [x] 1.3 `gitcache._git` catches `OSError` (`GitError` with the `no_git` text);
   `gitpaths.rev_parse` returns None on `OSError` (D4). Unit tests: `gitcache` with no git
   on PATH; `gitpaths.git_root` with no git.
-- [ ] 1.4 CLI (D6): `lado start` on each hinted kind prints the two lines and exits 1;
+- [x] 1.4 CLI (D6): `lado start` on each hinted kind prints the two lines and exits 1;
   `lado kits add` with no git exits 1 with the text; no traceback (unit, `cli.main` with
   `capsys` and PATH set to an empty folder).
 

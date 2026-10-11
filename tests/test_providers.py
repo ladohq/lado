@@ -1066,3 +1066,11 @@ def test_hook_limits_are_what_each_cli_gives_a_hook(repo):
         assert timeout == claude.hook_limit(native)
     assert kilo.hook_limit("session.idle") is None
     assert opencode.hook_limit("chat.message") is None
+
+
+def test_gitpaths_reads_no_git_as_outside_git(tmp_path, monkeypatch):
+    from lado.providers import gitpaths
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+    assert gitpaths.git_root(tmp_path) == Path(tmp_path.resolve().anchor)
+    assert gitpaths.main_root(tmp_path) == tmp_path.resolve()

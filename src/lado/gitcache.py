@@ -26,7 +26,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from urllib.parse import quote, unquote
 
@@ -39,6 +39,12 @@ SCP_LIKE = re.compile(r"[\w.-]+@[\w.-]+:")
 
 class GitError(RuntimeError):
     pass
+
+
+def not_found(env: Mapping[str, str]) -> str:
+    """The one text of a git that is not found, on the PATH of `env` (as subprocess looks
+    it up); runtime's folder check says it too."""
+    return f"git is not installed or not on PATH ({env.get('PATH', '')})"
 
 
 def root() -> Path:
@@ -200,9 +206,14 @@ def commit(clone: Path) -> str:
 def _git(cwd: Path | None, *args: str) -> str:
     where = ["-C", str(cwd)] if cwd else []
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # fail instead of asking for a password
-    result = subprocess.run(
-        ["git", *where, *args], capture_output=True, text=True, check=False, env=env
-    )
+    try:
+        result = subprocess.run(
+            ["git", *where, *args], capture_output=True, text=True, check=False, env=env
+        )
+    except FileNotFoundError:
+        raise GitError(not_found(env)) from None
+    except OSError as exc:
+        raise GitError(f"cannot run git: {exc}") from None
     if result.returncode != 0:
         raise GitError(result.stderr.strip() or f"git {' '.join(args)} failed")
     return result.stdout.strip()

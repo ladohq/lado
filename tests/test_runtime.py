@@ -355,15 +355,100 @@ def test_check_repo_gives_the_root_of_a_repository_with_commits(repo):
     assert runtime.check_repo(str(repo / "sub")) == str(repo)
 
 
+def _refusal(path: Path) -> runtime.FolderProblem:
+    with pytest.raises(runtime.FolderProblem) as refused:
+        runtime.check_repo(str(path))
+    return refused.value
+
+
+def _fake_git(tmp_path: Path, monkeypatch, script: str) -> Path:
+    """A `git` on an otherwise empty PATH that runs `script` (sh) with git's arguments."""
+    bin_dir = tmp_path / "fake-bin"
+    bin_dir.mkdir()
+    git = bin_dir / "git"
+    git.write_text(f"#!/bin/sh\n{script}\n")
+    git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    return bin_dir
+
+
+XCRUN = "xcrun: error: invalid active developer path (/Library/Developer/CommandLineTools)"
+
+
+def test_git_version_names_the_path_when_there_is_no_git(tmp_path, monkeypatch):
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    with pytest.raises(runtime.FolderProblem) as refused:
+        runtime.git_version()
+    assert refused.value.kind == "no_git"
+    assert str(refused.value) == f"git is not installed or not on PATH ({empty})"
+    assert refused.value.hint is not None
+
+
+def test_git_version_tells_a_git_that_does_not_run(tmp_path, monkeypatch):
+    _fake_git(tmp_path, monkeypatch, f"echo '{XCRUN}' >&2\necho 'more' >&2\nexit 1")
+    with pytest.raises(runtime.FolderProblem) as refused:
+        runtime.git_version()
+    assert refused.value.kind == "git_broken"
+    assert str(refused.value) == f"git does not run: {XCRUN}"
+
+
+def test_git_version_gives_the_version_text(tmp_path, monkeypatch):
+    _fake_git(tmp_path, monkeypatch, "echo 'git version 2.30.2'")
+    assert runtime.git_version() == "git version 2.30.2"
+
+
+def test_git_without_git_is_ladoerror_not_a_crash(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(runtime.LadoError, match=r"^git is not installed or not on PATH \("):
+        runtime.git(str(tmp_path), "status")
+
+
 def test_check_repo_refuses_a_folder_that_is_not_there(tmp_path):
     missing = tmp_path / "nope"
-    with pytest.raises(runtime.LadoError, match=f"^{missing} does not exist$"):
-        runtime.check_repo(str(missing))
+    refused = _refusal(missing)
+    assert (refused.kind, str(refused), refused.hint) == (
+        "missing",
+        f"{missing} does not exist",
+        None,
+    )
+
+
+def test_check_repo_refuses_a_file(tmp_path):
+    file = tmp_path / "notes.txt"
+    file.write_text("x")
+    refused = _refusal(file)
+    assert (refused.kind, str(refused), refused.hint) == (
+        "not_folder",
+        f"{file} is a file, not a folder",
+        None,
+    )
 
 
 def test_check_repo_refuses_a_folder_outside_git(tmp_path):
-    with pytest.raises(runtime.LadoError, match=f"^{tmp_path} is not inside a git repository$"):
-        runtime.check_repo(str(tmp_path))
+    refused = _refusal(tmp_path)
+    assert (refused.kind, str(refused)) == (
+        "not_repo",
+        f"{tmp_path} is not inside a git repository",
+    )
+    assert refused.hint == runtime.Hint(
+        "Make it a repository with a first commit, in that folder:",
+        "git init && git add -A && git commit -m 'First commit'",
+    )
+
+
+def test_check_repo_reads_git_in_english(tmp_path, monkeypatch):
+    # A translating git would hide "not a git repository" (Apple's git translates nothing,
+    # so a fake one answers in German unless LC_ALL=C).
+    monkeypatch.setenv("LC_ALL", "de_DE.UTF-8")
+    script = (
+        'if [ "$1" = --version ]; then echo "git version 2.47.1"; exit 0; fi\n'
+        'if [ "$LC_ALL" = C ]; then echo "fatal: not a git repository (or any parent)" >&2\n'
+        'else echo "fatal: kein Git-Repository" >&2; fi\nexit 128'
+    )
+    _fake_git(tmp_path, monkeypatch, script)
+    assert _refusal(tmp_path).kind == "not_repo"
 
 
 def _repo_without_commits(path: Path) -> Path:
@@ -374,9 +459,71 @@ def _repo_without_commits(path: Path) -> Path:
 
 def test_check_repo_refuses_a_repository_without_commits(tmp_path):
     empty = _repo_without_commits(tmp_path / "empty")
-    expected = f"^{empty} has no commits yet: make a first commit, then start$"
-    with pytest.raises(runtime.LadoError, match=expected):
-        runtime.check_repo(str(empty))
+    refused = _refusal(empty)
+    assert (refused.kind, str(refused)) == ("no_commits", f"{empty} has no commits yet")
+    assert refused.hint == runtime.Hint(
+        "Make a first commit, in that folder:", "git add -A && git commit -m 'First commit'"
+    )
+
+
+def test_check_repo_without_git(tmp_path, monkeypatch):
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    refused = _refusal(tmp_path)
+    assert (refused.kind, str(refused)) == (
+        "no_git",
+        f"git is not installed or not on PATH ({empty})",
+    )
+
+
+def test_check_repo_with_a_git_that_does_not_run(tmp_path, monkeypatch):
+    _fake_git(tmp_path, monkeypatch, f"echo '{XCRUN}' >&2\nexit 1")
+    refused = _refusal(tmp_path)
+    assert (refused.kind, str(refused)) == ("git_broken", f"git does not run: {XCRUN}")
+
+
+def test_check_repo_when_git_refuses_the_folder(tmp_path, monkeypatch):
+    dubious = "fatal: detected dubious ownership in repository at '/x'"
+    script = (
+        'if [ "$1" = --version ]; then echo "git version 2.47.1"; exit 0; fi\n'
+        f'echo "{dubious}" >&2\necho "To add an exception..." >&2\nexit 128'
+    )
+    _fake_git(tmp_path, monkeypatch, script)
+    refused = _refusal(tmp_path)
+    assert (refused.kind, str(refused), refused.hint) == (
+        "git_refused",
+        f"git cannot read {tmp_path}: {dubious}",
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("system", "command", "sentence"),
+    [
+        ("Darwin", "xcode-select --install", "brew install git"),
+        ("Linux", "sudo apt install git", "your distribution's package manager"),
+    ],
+)
+def test_the_install_hint_is_this_systems(tmp_path, monkeypatch, system, command, sentence):
+    monkeypatch.setattr(runtime.platform, "system", lambda: system)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    refused = _refusal(tmp_path)
+    assert refused.hint is not None
+    assert refused.hint.command == command
+    assert sentence in refused.hint.text
+
+
+@pytest.mark.parametrize(
+    ("system", "command"),
+    [("Darwin", "xcode-select --install"), ("Linux", "sudo apt install --reinstall git")],
+)
+def test_the_hint_for_a_git_that_does_not_run(tmp_path, monkeypatch, system, command):
+    monkeypatch.setattr(runtime.platform, "system", lambda: system)
+    _fake_git(tmp_path, monkeypatch, f"echo '{XCRUN}' >&2\nexit 1")
+    refused = _refusal(tmp_path)
+    assert refused.hint is not None
+    assert refused.hint.command == command
 
 
 def test_start_refuses_a_repository_without_commits(tmp_path, fake_tmux):

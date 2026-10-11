@@ -6,13 +6,17 @@ from pathlib import Path
 
 
 def rev_parse(cwd: Path, *args: str) -> str | None:
-    """`git rev-parse --path-format=absolute <args>` in `cwd`; None outside git."""
-    done = subprocess.run(
-        ["git", "-C", str(cwd), "rev-parse", "--path-format=absolute", *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    """`git rev-parse --path-format=absolute <args>` in `cwd`; None outside git, also when
+    git cannot run (as for any failure of git)."""
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--path-format=absolute", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
     return done.stdout.strip() if done.returncode == 0 else None
 
 

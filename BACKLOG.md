@@ -2340,3 +2340,13 @@ crossed-out eye says so).
 Wanted: a PDF's pages as images (or its text), within the image limits; an archive's list
 of files.
 Found: 2026-10-08, design of feature/chat-attachments.
+
+## The session list's run time and the head's can differ by a minute
+
+Size: S. Why here: cosmetic, at most a minute for under a minute.
+The row and the head each run their own `useNow` interval (`web/src/Sessions.tsx`, `useRan`),
+started at their own mount, not on a minute of the run time: when the head opens later than
+the list, around a minute's turn the row can say `2 h 14 min` and the head `2 h 15 min`.
+Wanted: one shared minute clock for the list and the head (a context or module-level store),
+or ticks aligned to the next minute of `running_since`.
+Found: 2026-10-11, review of feature/session-row-line (Minor finding 1).

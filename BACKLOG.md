@@ -1814,27 +1814,15 @@ Wanted: a worker's writes to refs other than its own branch refused or at least 
 check of main's tip before a run's merge, or a hook on ref updates).
 Found: 2026-10-09, review of feature/codex-provider (the reviewer's open question).
 
-## Flaky in CI: UI tests of the terminal panel and the gates
+## Flaky in CI: the gates UI test's scroll
 
 Size: S. Why here: a red CI run on the release commit for no code reason.
-CI on 8d48089 (release of 0.32.0) failed the `ui` job twice, one test each time, then passed
-on the second rerun: `test_terminal_panel::test_an_agents_terminal_opens_to_view_with_its_history`
-(now `test_an_agents_terminal_opens_to_view_and_its_wheel_points_at_take_control`)
-(the test's `lines 120` and LADO's first pasted input landed on one line of the fake agent,
-`ValueError: invalid literal for int() with base 10: '120\x1b[200~[from'`) and
+CI on 8d48089 (release of 0.32.0) failed the `ui` job on
 `test_gates::test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment`
-("Locator expected to be in viewport").
-Wanted: the terminal test types only after the agent's first input is confirmed; the gates
-test waits for the scroll to end.
-Found: 2026-10-09, release of 0.32.0.
-Again at the release of 0.33.0 (f9d3739): the terminal panel test, the same `ValueError`;
-passed on the first rerun.
-Again in CI on 99b22f3 (push of main, 2026-10-10, run 38046763270): the same `ValueError`;
-passed on the rerun. Third time: worth fixing before the next release.
-Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85, `make check`): the
-terminal panel test, the same `ValueError`; passed on both reruns.
-Again in CI on d8533dd (push of main, 2026-10-11, run 38113153944): the same `ValueError`
-in two runs in a row; passed on the second rerun.
+("Locator expected to be in viewport"); passed on the rerun.
+Wanted: the gates test waits for the scroll to end.
+Found: 2026-10-09, release of 0.32.0. (The terminal panel test that failed with it, five
+times, was fixed in fix/terminal-ui-flake: its lines now come from the worker's task.)
 
 ## Flaky in CI: `test_stopping_a_session_tells_no_one_and_counts_what_it_dropped` on 3.10
 

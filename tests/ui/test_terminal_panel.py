@@ -9,7 +9,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
-from lado import runtime, state, tmux
+from lado import runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -44,11 +44,16 @@ def test_an_agents_terminal_opens_to_view_and_its_wheel_points_at_take_control(
     page: Page, server, repo, shot
 ):
     session = running_session(repo)
-    runtime.spawn_worker(session, "sleep 0", name="w1")
+    # The lines come from its task: keys typed into its window would race LADO's paste of it.
+    runtime.spawn_worker(session, "lines 120", name="w1")
     agent_helpers.wait_for(
-        lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session
+        lambda: (
+            agent_helpers.unreceived(session, "w1") == 0
+            and state.get_agent(session, "w1").status == state.IDLE
+        ),
+        "w1 idle after its task",
+        session,
     )
-    tmux.send_text(session, "w1", "lines 120")
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/agents/w1")
     agent = page.get_by_role("region", name="Agent w1")

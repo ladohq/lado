@@ -21,8 +21,11 @@ MCP_READY_TIMEOUT = 20.0
 MCP_READY_POLL = 0.02  # seconds between two looks; each look is one small query
 
 # A read-only agent's fingerprint of its turn's start (lado.fingerprint), in its config
-# folder, which goes with the agent: {"state": "open" | "closed", "fingerprint": ...}. Open
-# from the turn's start until its end, whose fingerprint it then holds, closed.
+# folder, which goes with the agent: {"state": "open" | "continued" | "closed",
+# "fingerprint": ...}. Open from the turn's start until its end, whose fingerprint it then
+# holds, closed; continued when the queue went in the turn-end hook's output, so that end
+# starts the next turn.
+OPEN_STATES = ("open", "continued")
 BASELINE = "read-only-baseline.json"
 # Of the time the CLI gives a hook (Provider.hook_limit), what the fingerprint leaves for
 # the rest of the hook: the start of Python before main, and handing the queue over and the
@@ -105,7 +108,7 @@ def _compare(session: str, me: state.Agent, now, end_seen: bool) -> None:
     baseline = _read_baseline(me)
     if baseline is None:
         _log(f"{session}/{me.name}: no fingerprint of its turn's start; nothing to compare")
-    elif baseline.get("state") == "open" and baseline.get("fingerprint"):
+    elif baseline.get("state") in OPEN_STATES and baseline.get("fingerprint"):
         if changes := fingerprint.diff(baseline["fingerprint"], now):
             runtime.repo_changed(session, me.name, changes, end_seen)
 
@@ -113,7 +116,9 @@ def _compare(session: str, me: state.Agent, now, end_seen: bool) -> None:
 def _turn_start(session: str, me: state.Agent, by: float | None) -> None:
     """A read-only agent's turn starts: its fingerprint is the turn's open baseline. One
     still open means the previous turn ended with no turn-end hook (e.g. the human's Esc in
-    Claude Code): compared first, as far as now."""
+    Claude Code): compared first, as far as now. A continued one is replaced: the turn
+    that goes on from the hook's output runs this hook too (OpenCode's and Kilo's
+    chat.message for promptAsync), and its end was seen."""
     now = _fingerprint(session, me, by)
     if now is None:
         _write_baseline(me, "closed", None)  # nothing to compare this turn with
@@ -199,9 +204,9 @@ def handle(
         ended = _turn_end(session, me, deadline) if me and me.read_only else None
         output = _idle(provider, session, agent, event)
         if output and ended is not None:
-            # The queue went in this hook's output: the turn that goes on from it runs no
-            # prompt-submit hook, so this end is its start.
-            _write_baseline(me, "open", ended)
+            # The queue went in this hook's output: this end is the start of the turn that
+            # goes on from it, which runs no prompt-submit hook in Claude Code and Codex.
+            _write_baseline(me, "continued", ended)
         return output
     elif event.kind == providers.CONVERSATION_END:
         # Not ready while the next conversation loads: messages wait in the queue.

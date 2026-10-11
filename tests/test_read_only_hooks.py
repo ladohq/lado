@@ -131,11 +131,30 @@ def test_a_turn_that_goes_on_from_the_hook_s_output_is_compared_with_the_last_en
     runtime.send_message("s", "supervisor", "r1", "one more")  # waits: r1 is busy
     output = _hook("Stop", "r1")
     assert json.loads(output)["decision"] == "block"  # the queue goes in the hook's output
-    assert _baseline("r1")["state"] == "open"  # no prompt-submit hook for that turn
+    # Claude Code runs no prompt-submit hook for that turn: the end is its start.
+    assert _baseline("r1")["state"] == "continued"
     open(f"{_tree('r1')}/later.md", "w").write("x\n")
     _hook("Stop", "r1", {"stop_hook_active": True})
     assert [m.summary for m in _from_lado("supervisor")] == [
         "while r1's turn the repository changed: new: later.md"
+    ]
+
+
+def test_a_prompt_submit_for_the_hook_s_output_starts_the_turn_with_no_report(quiet):
+    """OpenCode and Kilo run chat.message for the turn-end hook's output (promptAsync): its
+    turn's start follows the end that was seen, nothing to tell between them."""
+    _hook("UserPromptSubmit", "r1", {"prompt": "go"})
+    runtime.send_message("s", "supervisor", "r1", "one more")
+    output = _hook("Stop", "r1")
+    assert _baseline("r1")["state"] == "continued"
+    open(f"{_tree('r1')}/other-agent.md", "w").write("x\n")  # e.g. another agent of its run
+    _hook("UserPromptSubmit", "r1", {"prompt": json.loads(output)["reason"]})
+    assert _from_lado("supervisor") == [] and _events(state.REPO_CHANGED) == []
+    assert _baseline("r1")["state"] == "open"
+    open(f"{_tree('r1')}/mine.md", "w").write("x\n")
+    _hook("Stop", "r1")
+    assert [m.summary for m in _from_lado("supervisor")] == [
+        "while r1's turn the repository changed: new: mine.md"
     ]
 
 

@@ -1108,10 +1108,12 @@ fixes and docs only: no new feature, no API or schema change.
   git fingerprint (`fingerprint.py`) at each turn's start (PROMPT_SUBMIT) and end
   (TURN_END, before it is idle, so before any queue goes), kept in its config folder as
   `hooks.BASELINE` (`open` from a turn's start to its end, then `closed` with the end's
-  fingerprint; a turn that goes on from the turn-end hook's output reopens it, as no
-  prompt-submit hook runs for that turn; one still open at a turn's start, a turn whose end
-  ran no hook, is compared then, worded `since <agent>'s turn started (its end was not
-  seen)`). A difference is a `repo_changed` event and one line from `lado` to its lead
+  fingerprint; when the queue goes in the turn-end hook's output it is `continued`: that
+  end starts the turn that goes on from it, which Claude Code and Codex run with no
+  prompt-submit hook, and whose prompt-submit hook in OpenCode and Kilo, `chat.message`
+  for `promptAsync`, replaces it without comparing; one still `open` at a turn's start, a
+  turn whose end ran no hook, is compared then, worded `since <agent>'s turn started (its
+  end was not seen)`). A difference is a `repo_changed` event and one line from `lado` to its lead
   (`runtime.repo_changed`, the human for a read-only supervisor), `while <agent>'s turn
   the repository changed: ...` (another agent may share the worktree), the whole list in
   the body when the line cannot hold it; nothing is blocked. The fingerprint's git runs

@@ -1911,6 +1911,24 @@ Wanted: find out from the evidence what w1's turn did that long (a slow model tu
 turn's end Codex ran no hook for), then a fix or a longer wait with the reason written down.
 Found: 2026-10-11, live tests of release 0.35.0.
 
+## Flaky in CI: a slow turn's hook-output message was typed
+
+Size: S. Why here: a red CI at the 0.35.0 release, green on rerun.
+CI check (3.13), run 38158241466: `tests/integration/test_agents.py::test_a_slow_turn_that_goes_on_from_the_turn_end_output_gets_it_once`:
+`AssertionError: assert ['typed', 'typed'] == ['typed', 'hook_output']` (test_agents.py:230).
+The batch went `typed`, likely its wait ran out on a loaded runner.
+Wanted: a test that does not depend on the runner's speed for the channel.
+Found: 2026-10-11, CI of release 0.35.0.
+
+## Flaky in CI: the Codex smoke on macOS reached no model API
+
+Size: S. Why here: a red smoke cell at the 0.35.0 release, green on rerun.
+CI smoke macos-latest codex, run 38158241466: `the supervisor's turn reached no model API`
+(tests/smoke/test_smoke.py:86).
+Wanted: find why Codex's first turn sent no request in time (a slow start), then a fix or a
+longer wait with the reason.
+Found: 2026-10-11, CI of release 0.35.0.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

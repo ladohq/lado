@@ -5,21 +5,18 @@
 - Read-only roles: `read_only: true` in a role's frontmatter takes its agent's file
   editing tools away (Claude Code, OpenCode, Kilo; Codex CLI refuses such an agent), hides
   LADO's command tools from a read-only supervisor, and tells the supervisor (or you) when
-  the repository changed during one of the agent's turns. Running sessions must be
-  restarted after the upgrade (database schema 25).
-
+  the repository changed during one of the agent's turns.
+- The database schema is now 25: restart running sessions after the upgrade (`lado update`
+  does it).
 - UI: the artifact panel's width is yours: drag its left edge (a grip in its middle), or
   Expand it to almost the whole window; the browser remembers it.
-
 - A Claude Code or Codex agent told at its turn's end to `read_messages` now gets the
   message's body in the turn that follows, where it used to get nothing until a later
   turn ended. A message an agent has read is never typed into its window again.
 - A message handed to a Claude Code or Codex agent at its turn's end no longer arrives a
   second time when the turn that follows runs long without a tool call (a slow model): LADO
   waits for that turn to end, up to 10 minutes, instead of typing it in again after 15 s.
-  Their turn-end hooks now have a 60 s limit. The database schema is now 24: restart
-  running sessions after the upgrade (`lado update` does it).
-
+  Their turn-end hooks now have a 60 s limit.
 - UI: an agent's terminal you control is marked in blue (its bar says "You're typing into
   <agent>", a frame around it, a keyboard on its tab) and goes back to view by itself when
   the page is hidden, the panel folded, the connection lost or after 10 minutes without
@@ -39,7 +36,6 @@
   the session ran, as its head does (`2 agents · 1 d 8 h`), instead of the time since its
   agents' last status change; a Stopped one says when it stopped and how long it ran. The
   card says the run time too. The API's `SessionInfo` no longer has `activity_since`.
-
 - The supervisor can start a new, independent session in the same repository, with its
   session's kits, provider and settings, for a problem it found or a new ticket: it asks
   you with the brief attached and the choice `Start session <name>`, and once you pick it,

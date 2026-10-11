@@ -683,15 +683,6 @@ hook-output turn runs no prompt-submit hook (Claude Code, Codex; on OpenCode and
 would bring back the false "its end was not seen" line); a unit test of it.
 Found: 2026-10-11, review of feature/read-only-roles (Minor 3, visits 2 and 3).
 
-## CHANGELOG 0.34.0 names two database schemas
-
-Size: S. Why here: the release notes of 0.34.0 must be right before the tag.
-Under `## 0.34.0 (unreleased)` the read-only line says "database schema 25" and the
-hook_output line from main "The database schema is now 24"; after the merge 0.34.0 is on
-schema 25. The hook_output item also lost the blank line before it.
-Wanted: one sentence about schema 25 and the restart, even spacing between items; fix it
-with the release commit at the latest.
-Found: 2026-10-11, review of feature/read-only-roles (Minor 4).
 ## The needs-you notification UI test can hang `make test-ui` for good
 
 Size: S. Why here: a hang holds the machine-wide check lock until someone kills pytest.

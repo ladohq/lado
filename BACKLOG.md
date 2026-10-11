@@ -171,6 +171,8 @@ Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85): the same `Va
 `make check`; passed on both reruns.
 Again on 2026-10-11 (verify of feature/artifact-panel-width, 211f4c8): the same `ValueError`
 in `make test-ui`; passed on its first rerun alone.
+Again on 2026-10-11 (verify of feature/team-run-frames, 5f0841e): the same `ValueError` in
+`make check`; passed on its first rerun. Third time today: worth fixing soon.
 
 ### Launch vitest tests fail now and then under the load of a full run
 

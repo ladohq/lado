@@ -470,7 +470,8 @@ HUMAN = "human"  # the human as a participant of messages: no agent, no window
 RESERVED = frozenset({LADO, HUMAN})  # senders of messages that no agent may be named
 
 # Message states. A message typed into an agent's window is only "sent" until the agent's
-# prompt-submit hook confirms it; a modal dialog in the TUI can swallow the text.
+# prompt-submit hook confirms it, or the agent reads it (read_messages); a modal dialog in
+# the TUI can swallow the text.
 PENDING = "pending"
 SENT = "sent"
 DELIVERED = "delivered"
@@ -2076,14 +2077,17 @@ def message_page(
 
 
 def read_messages(session: str, recipient: str) -> list[Message]:
-    """Mark the recipient's delivered messages that have something to read (TO_READ: a body
-    or artifacts) read and return them, oldest first. Each one is returned once."""
+    """Mark the recipient's handed-over messages (sent or delivered) that have something to
+    read (TO_READ: a body or artifacts) read and return them, oldest first. Each one is
+    returned once. A sent one is confirmed so: the agent has it in the tool's result, also
+    in a turn that goes on from a turn-end hook's output, before anything else confirms it;
+    being read, it is out of the sweep's rule (never typed again, never failed)."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         rows = db.execute(
-            f"SELECT {MESSAGE_COLUMNS} FROM messages"
-            f" WHERE session = ? AND recipient = ? AND state = ? AND {TO_READ} ORDER BY id",
-            (session, recipient, DELIVERED),
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND recipient = ?"
+            f" AND state IN (?, ?) AND {TO_READ} ORDER BY id",
+            (session, recipient, SENT, DELIVERED),
         ).fetchall()
         db.executemany(
             "UPDATE messages SET state = ? WHERE id = ?", [(READ, r["id"]) for r in rows]

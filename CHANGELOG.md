@@ -2,6 +2,10 @@
 
 ## 0.34.0 (unreleased)
 
+- A Claude Code or Codex agent told at its turn's end to `read_messages` now gets the
+  message's body in the turn that follows, where it used to get nothing until a later
+  turn ended. A message an agent has read is never typed into its window again.
+
 - The team chips above a session's Activity all look the same, compact and without the
   role (it is in the tooltip); the supervisor's chip no longer looks unlike the others.
 - Markdown tables wrap their cells to fit the column; they scroll sideways only when their

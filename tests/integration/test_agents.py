@@ -166,6 +166,38 @@ def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(
     assert channels("supervisor") == [state.TYPED] + [state.HOOK_OUTPUT] * 3
 
 
+def message_attempts(recipient: str) -> list[int]:
+    with state.connect() as db:
+        rows = db.execute(
+            "SELECT attempts FROM messages WHERE session = ? AND recipient = ? ORDER BY id",
+            (SESSION, recipient),
+        ).fetchall()
+    return [r["attempts"] for r in rows]
+
+
+def test_the_turn_that_goes_on_from_the_turn_end_output_reads_its_body(repo):
+    """As Claude Code: the batch is confirmed only by the end of the turn that went on from
+    it, and in that turn the agent reads the body. The read message is never typed again;
+    the pause after it, with no hook, makes the sweep type in what is left (the short retry
+    delays)."""
+    start(repo, "fake-stop")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
+    runtime.send_message(SESSION, "human", "supervisor", "read", "the details")
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
+    release("supervisor", 1)
+    paused("supervisor", 2)  # in the turn that goes on from the output, after its read
+    assert [m["body"] for m in seen("supervisor")["read"]] == ["the details"]
+    assert message_states("supervisor")[1:] == [state.READ, state.SENT]
+    wait_for(lambda: message_attempts("supervisor")[2] == 2, "the pause typed in again")
+    release("supervisor", 2)
+    paused("supervisor", 3)  # the pause typed in again, alone
+    release("supervisor", 3)
+    wait_status("supervisor", state.IDLE)
+    assert inputs("supervisor")[-1] == "[from human] pause"
+    assert message_states("supervisor")[1:] == [state.READ, state.DELIVERED]
+    assert message_attempts("supervisor")[1] == 1
+
+
 @pytest.mark.parametrize("provider", ["fake", "fake-stop"])
 def test_a_turn_end_output_the_cli_drops_is_typed_in_once(repo, provider):
     start(repo, provider)

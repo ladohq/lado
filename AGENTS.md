@@ -923,8 +923,10 @@ fixes and docs only: no new feature, no API or schema change.
   when there is a body, ` (#<id>, <n> lines, <k> artifacts: call read_messages)` with
   artifacts attached too, ` (#<id>, <k> artifacts: call read_messages)` with only those. A
   message with a body or an attachment is one to read (`state.TO_READ`): `read_messages`
-  returns the caller's delivered, unread ones (with each attachment's full name, title,
-  media type, size and whether it `changed` since) and marks them `read`; a stop or finish
+  returns the caller's handed-over (`sent` or `delivered`), unread ones (with each
+  attachment's full name, title, media type, size and whether it `changed` since) and
+  marks them `read`; reading a `sent` one confirms it, as the agent has it in the tool's
+  result (any channel; never a `pending` one, which keeps the queue's order); a stop or finish
   drops such a message unread. The supervisor stays quiet with the human: it does not relay reports,
   and the details are in `lado log`.
 - The human is a participant of messages, `human` (design in
@@ -987,7 +989,9 @@ fixes and docs only: no new feature, no API or schema change.
     UserPromptSubmit for a Stop hook's `block` reason; the Stop that ends the turn it went
     on to has `stop_hook_active` true (`Event.continued`; checked by hand with 2.1.291,
     also after two blocks in a row), which confirms the agent's `hook_output` messages, and
-    only those: another Stop hook of the user's may have made the turn go on too.
+    only those: another Stop hook of the user's may have made the turn go on too. The turn
+    that goes on from the output reads the batch's bodies at once (`read_messages` takes
+    `sent` ones); what is left of the batch waits for that Stop.
   Every path takes the queue the same way, `runtime.hand_over`: only from an idle agent
   with no batch sent and unconfirmed (checked as the queue is taken), which is then busy;
   so an agent has at most one sent batch at a time, and a new message waits while one
@@ -1009,8 +1013,9 @@ fixes and docs only: no new feature, no API or schema change.
 - What happens to an unconfirmed message is one rule, `runtime.sweep` (`_plan`), run by
   `send_message` to the agent, by each of its hooks that makes it idle, and every
   `loop.INTERVAL` seconds by the session loop (below). Each hand-over is an attempt; after
-  the n-th, the message is left alone for `RETRY_DELAYS[n-1]` seconds (15, 30, 60). Then,
-  by its channel:
+  the n-th, the message is left alone for `RETRY_DELAYS[n-1]` seconds (15, 30, 60). A
+  message the agent read (`read_messages`) is confirmed and out of this rule: never typed
+  again, never failed, nor failed with its batch. Then, by its channel:
   - `hook_output` (its first attempt): if no hook of the agent ran since (the CLI did not
     take the output, the hook failed after the hand-over, or the turn goes on that long
     without a hook), it is typed in, once, with the queue, and is `typed` from then on: a

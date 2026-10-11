@@ -1532,6 +1532,65 @@ def test_output_a_turn_ended_without_is_not_confirmed_by_a_later_turn_that_goes_
     assert (report.state, report.channel) == (state.SENT, state.TYPED)
 
 
+def _report_and_ping_in_the_stop_hook(repo):
+    """w1's report (with a body) and ping (without) in the busy supervisor's Stop hook
+    output. Returns when they were handed over."""
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "report", "the details")
+    runtime.send_message("s", "w1", "supervisor", "ping")
+    assert _hook("Stop", "supervisor")["decision"] == "block"
+    return state.list_messages("s")[0].sent_at
+
+
+def test_the_turn_that_goes_on_from_the_hook_output_reads_its_bodies(repo, fake_tmux):
+    _report_and_ping_in_the_stop_hook(repo)
+    [read] = state.read_messages("s", "supervisor")
+    assert (read.summary, read.body) == ("report", "the details")
+    # The turn's end confirms only what is left of the batch.
+    _hook("Stop", "supervisor", CONTINUED)
+    assert [m.state for m in state.list_messages("s")] == [state.READ, state.DELIVERED]
+
+
+@pytest.mark.parametrize("taken", [True, False])
+def test_a_message_read_before_its_confirmation_is_never_typed_again(repo, fake_tmux, taken):
+    sent = _report_and_ping_in_the_stop_hook(repo)
+    state.read_messages("s", "supervisor")
+    # The turn ends: went on from the output, or not (the ping goes by TYPED then).
+    _hook("Stop", "supervisor", CONTINUED if taken else {})
+    at = _retry_until_failed(sent)
+    runtime.sweep("s", now=at + 1000, delays=DELAYS)
+    report, ping = state.list_messages("s")[:2]
+    assert report.state == state.READ
+    typed = [t for t in _typed(fake_tmux) if "report" in t]
+    assert typed == []
+    if not taken:
+        # The ping fails alone; the report's sender hears of the ping only.
+        assert ping.state == state.FAILED
+        notices = [m.summary for m in state.list_messages("s") if m.sender == state.LADO]
+        assert notices == [f"message #{ping.id} to supervisor not delivered: ping"]
+
+
+def test_a_message_read_stays_read_when_the_hook_output_was_not_taken(repo, fake_tmux):
+    _report_and_ping_in_the_stop_hook(repo)
+    state.read_messages("s", "supervisor")
+    state.output_not_taken("s", "supervisor")
+    report, ping = state.list_messages("s")
+    assert (report.state, report.channel) == (state.READ, state.HOOK_OUTPUT)
+    assert (ping.state, ping.channel) == (state.SENT, state.TYPED)
+
+
+def test_a_batch_read_in_full_holds_back_no_next_message(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "supervisor")
+    runtime.send_message("s", "w1", "supervisor", "report", "the details")
+    assert _hook("Stop", "supervisor")["decision"] == "block"
+    state.read_messages("s", "supervisor")
+    assert _hook("Stop", "supervisor") is None  # idle, nothing sent is left unconfirmed
+    assert runtime.send_message("s", "w1", "supervisor", "next") == "sent"
+    assert _typed(fake_tmux) == ["[from w1] next"]
+
+
 def test_only_the_summary_is_typed_and_the_body_waits(repo, fake_tmux):
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
@@ -2729,7 +2788,8 @@ def test_a_message_queued_while_the_worker_is_finished_reaches_nobody(
     runtime.spawn_worker("s", "new task", name="w1")
     taken = state.take_pending("s", "w1", state.SENT, state.BUSY)
     assert [m.summary for m in taken] == ["your task"]  # its own only
-    assert state.read_messages("s", "w1") == []
+    # Read as soon as it is handed over: the new w1's task, nothing to the old one.
+    assert [m.id for m in state.read_messages("s", "w1")] == [taken[0].id]
 
 
 def test_finish_worker_drops_the_bodies_it_never_read(repo, fake_tmux):

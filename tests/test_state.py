@@ -750,6 +750,23 @@ def test_read_messages_returns_unread_bodies_once(lado_home):
     }
 
 
+@pytest.mark.parametrize("channel", [state.HOOK_OUTPUT, state.TYPED])
+def test_read_messages_reads_a_handed_over_message_before_it_is_confirmed(lado_home, channel):
+    _session_with(_agent())
+    report = state.queue_message("s", "supervisor", "w1", "report", "the details")
+    state.queue_message("s", "supervisor", "w1", "ping")
+    state.take_pending("s", "w1", state.SENT, channel=channel)
+    state.queue_message("s", "supervisor", "w1", "later", "not handed over yet")
+    assert [m.id for m in state.read_messages("s", "w1")] == [report]
+    assert state.read_messages("s", "w1") == []
+    states = {m.summary: m.state for m in state.list_messages("s")}
+    assert states == {"report": state.READ, "ping": state.SENT, "later": state.PENDING}
+    # What is left of the batch is confirmed as before; the read one stays read.
+    state.confirm_channel("s", "w1", channel)
+    states = {m.summary: m.state for m in state.list_messages("s")}
+    assert states == {"report": state.READ, "ping": state.DELIVERED, "later": state.PENDING}
+
+
 def test_version_5_database_gets_runs(lado_home):
     db = _schema_v4(lado_home)
     for statement in state.MIGRATIONS[4]:

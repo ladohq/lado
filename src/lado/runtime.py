@@ -1568,6 +1568,39 @@ def _tell_lead(session: str, agent: str, summary: str, body: str = "") -> None:
         post(session, state.LADO, to, _cut(summary), body)
 
 
+def repo_changed(session: str, agent: str, changes: list[str], end_seen: bool = True) -> None:
+    """The repository of read-only `agent` changed while its turn (lado.fingerprint's
+    lines): an event, and one line to its lead (_tell_lead) with as many changes as fit, all
+    of them in the body when some do not. Not "the agent changed it": another agent may
+    share its worktree. `end_seen` False: the turn's end ran no hook, so the changes are
+    those since its start, up to the next turn's start."""
+    state.add_event(session, agent, state.REPO_CHANGED, "\n".join(changes))
+    if end_seen:
+        line = f"while {agent}'s turn the repository changed: "
+    else:
+        line = f"since {agent}'s turn started (its end was not seen) the repository changed: "
+    shown = 0
+    for change in changes:
+        rest = len(changes) - shown - 1
+        more = f", … ({rest} more)" if rest else ""
+        if len(line) + (2 if shown else 0) + len(change) + len(more) > state.SUMMARY_LIMIT:
+            break
+        line += (", " if shown else "") + change
+        shown += 1
+    if shown < len(changes):
+        line += f"{', ' if shown else ''}… ({len(changes) - shown} more)"
+    _tell_lead(session, agent, line, "\n".join(changes) if shown < len(changes) else "")
+
+
+def repo_check_failed(session: str, agent: str, reason: str) -> None:
+    """The repository of read-only `agent` could not be checked at a turn's start or end:
+    an event each time, one line to its lead only the first time."""
+    told = state.has_kind(session, agent, state.REPO_CHECK_FAILED)
+    state.add_event(session, agent, state.REPO_CHECK_FAILED, reason)
+    if not told:
+        _tell_lead(session, agent, f"could not check {agent}'s repository: {reason}")
+
+
 def turn_failed(
     session: str, agent: str, error: str, transient: bool = False, background: bool = False
 ) -> None:

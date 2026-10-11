@@ -7,16 +7,42 @@ logged, not raised.
 """
 
 import contextlib
+import json
+import os
 import sys
 import time
 import traceback
 
-from lado import providers, runtime, state
+from lado import fingerprint, providers, runtime, state
 from lado.runtime import format_message
 
 # How long a session-start hook holds the agent's first turn for LADO's MCP server.
 MCP_READY_TIMEOUT = 20.0
 MCP_READY_POLL = 0.02  # seconds between two looks; each look is one small query
+
+# A read-only agent's fingerprint of its turn's start (lado.fingerprint), in its config
+# folder, which goes with the agent: {"state": "open" | "closed", "fingerprint": ...}. Open
+# from the turn's start until its end, whose fingerprint it then holds, closed.
+BASELINE = "read-only-baseline.json"
+# Of the time the CLI gives a hook (Provider.hook_limit), what the fingerprint leaves for
+# the rest of the hook: the start of Python before main, and handing the queue over and the
+# sweep after the fingerprint.
+STARTUP_RESERVE = 0.5
+QUEUE_RESERVE = 1.0
+
+
+def deadline(provider: providers.Provider, native: str, started: float) -> float | None:
+    """When (time.monotonic) a hook of `native` started at `started` must be done with its
+    fingerprint; None when the CLI waits for it with no limit."""
+    limit = provider.hook_limit(native)
+    return None if limit is None else started + limit - STARTUP_RESERVE - QUEUE_RESERVE
+
+
+def budget(by: float | None) -> float:
+    """The seconds a fingerprint may take now, to be done `by` (deadline)."""
+    if by is None:
+        return fingerprint.BUDGET
+    return min(fingerprint.BUDGET, by - time.monotonic())
 
 
 def _wait_for_mcp(session: str, agent: state.Agent) -> None:
@@ -38,10 +64,86 @@ def _log(text: str) -> None:
         log.write(f"{text}\n")
 
 
+def _baseline_path(me: state.Agent):
+    return providers.base.config_path(me) / BASELINE
+
+
+def _read_baseline(me: state.Agent) -> dict | None:
+    try:
+        return json.loads(_baseline_path(me).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def _write_baseline(me: state.Agent, kind: str, taken: fingerprint.Fingerprint | None) -> None:
+    path = _baseline_path(me)
+    if not path.parent.is_dir():
+        return  # the agent's config folder is gone with the agent
+    temporary = path.with_name(f"{BASELINE}.{os.getpid()}")
+    temporary.write_text(json.dumps({"state": kind, "fingerprint": taken}))
+    os.replace(temporary, path)
+
+
+def _fingerprint(session: str, me: state.Agent, by: float | None) -> fingerprint.Fingerprint | None:
+    """The fingerprint of the read-only agent's repository now; None, told as
+    repo_check_failed, when it cannot be taken in time."""
+    left = budget(by)
+    if left < fingerprint.MIN_BUDGET:
+        reason = "no time left in the hook"
+    else:
+        try:
+            return fingerprint.take(me.cwd, state.get_session(session).repo, left)
+        except fingerprint.FingerprintError as error:
+            reason = str(error)
+    _log(f"{session}/{me.name}: could not check {me.name}'s repository: {reason}")
+    runtime.repo_check_failed(session, me.name, reason)
+    return None
+
+
+def _compare(session: str, me: state.Agent, now, end_seen: bool) -> None:
+    """Tell the changes since the open baseline of its turn's start, if there is one."""
+    baseline = _read_baseline(me)
+    if baseline is None:
+        _log(f"{session}/{me.name}: no fingerprint of its turn's start; nothing to compare")
+    elif baseline.get("state") == "open" and baseline.get("fingerprint"):
+        if changes := fingerprint.diff(baseline["fingerprint"], now):
+            runtime.repo_changed(session, me.name, changes, end_seen)
+
+
+def _turn_start(session: str, me: state.Agent, by: float | None) -> None:
+    """A read-only agent's turn starts: its fingerprint is the turn's open baseline. One
+    still open means the previous turn ended with no turn-end hook (e.g. the human's Esc in
+    Claude Code): compared first, as far as now."""
+    now = _fingerprint(session, me, by)
+    if now is None:
+        _write_baseline(me, "closed", None)  # nothing to compare this turn with
+        return
+    baseline = _read_baseline(me)
+    if baseline and baseline.get("state") == "open":
+        _compare(session, me, now, end_seen=False)
+    _write_baseline(me, "open", now)
+
+
+def _turn_end(session: str, me: state.Agent, by: float | None) -> fingerprint.Fingerprint | None:
+    """A read-only agent's turn ends: compared with its start, then closed with this
+    fingerprint; before the agent is idle, so before any queue is handed over (_idle)."""
+    now = _fingerprint(session, me, by)
+    if now is not None:
+        _compare(session, me, now, end_seen=True)
+    _write_baseline(me, "closed", now)
+    return now
+
+
 def handle(
-    provider: providers.Provider, event: providers.Event, session: str, agent: str
+    provider: providers.Provider,
+    event: providers.Event,
+    session: str,
+    agent: str,
+    deadline: float | None = None,
 ) -> str | None:
-    """Update the agent's status for `event`. Returns the hook output to print, if any."""
+    """Update the agent's status for `event`. Returns the hook output to print, if any.
+    `deadline` (hooks.deadline): when the CLI stops waiting for the hook, for a read-only
+    agent's fingerprint."""
     if event.kind == providers.HOOK_ERROR:
         # Not a sign that the agent took anything: no hook followed the hand-over it is
         # about, so sweep types those messages in (runtime._plan).
@@ -68,6 +170,9 @@ def handle(
     elif event.kind == providers.PROMPT_SUBMIT:
         state.set_status(session, agent, state.BUSY)
         state.confirm_sent(session, agent, event.prompt, format_message)
+        me = state.get_agent(session, agent)
+        if me and me.read_only:
+            _turn_start(session, me, deadline)
     elif event.kind == providers.WAITING:
         state.wait(session, agent, event.key)
     elif event.kind == providers.RESUMED:
@@ -90,7 +195,14 @@ def handle(
             runtime.turn_failed(session, agent, event.error, event.transient, event.background)
         else:
             state.reset_resumes(session, agent)
-        return _idle(provider, session, agent, event)
+        me = state.get_agent(session, agent)
+        ended = _turn_end(session, me, deadline) if me and me.read_only else None
+        output = _idle(provider, session, agent, event)
+        if output and ended is not None:
+            # The queue went in this hook's output: the turn that goes on from it runs no
+            # prompt-submit hook, so this end is its start.
+            _write_baseline(me, "open", ended)
+        return output
     elif event.kind == providers.CONVERSATION_END:
         # Not ready while the next conversation loads: messages wait in the queue.
         state.set_status(session, agent, state.STARTING)
@@ -141,6 +253,7 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
     """Run the hook for a native `event` and print its output. An error is logged and the
     hook exits 0; messages it handed over for its output before the error are sent, not
     delivered, and wait to be typed in by the sweep's rule (runtime._plan)."""
+    began = time.monotonic()  # first: the CLI's limit for the hook runs from its start
     started = time.time()
     try:
         payload = sys.stdin.read()
@@ -149,7 +262,8 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
             return 0  # an earlier launch of this agent, e.g. exiting after `lado stop`
         provider = providers.get(current.provider)
         neutral = provider.parse_event(event, payload)
-        output = handle(provider, neutral, session, agent) if neutral else None
+        by = deadline(provider, event, began)
+        output = handle(provider, neutral, session, agent, by) if neutral else None
         if output:
             print(output)
     except state.SchemaError as exc:

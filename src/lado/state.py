@@ -512,6 +512,11 @@ ENDED = "ended"
 # "waiting" status event, before its window starts; detail: why and what the human does.
 # Why it waits until its next "status" or "spawned" event (block_reasons).
 BLOCKED = "blocked"
+# A read-only agent's repository changed while its turn (lado.hooks, lado.fingerprint);
+# detail: the changes, one per line.
+REPO_CHANGED = "repo_changed"
+# Its repository could not be checked at a turn's start or end; detail: why.
+REPO_CHECK_FAILED = "repo_check_failed"
 # Flow run events (lado.runs); their run column names the run.
 FLOW_START = "flow_start"
 FLOW = "flow"  # a transition; detail: flow_detail's "<from> -<outcome>-> <to>"
@@ -1384,6 +1389,18 @@ def has_event(session: str, agent: str, kind: str, detail: str) -> bool:
         row = db.execute(
             "SELECT 1 FROM events WHERE session = ? AND agent = ? AND kind = ? AND detail = ?",
             (session, agent, kind, detail),
+        ).fetchone()
+    return row is not None
+
+
+def has_kind(session: str, agent: str, kind: str) -> bool:
+    """Whether the agent has an event of `kind` since it was spawned (its latest launch of
+    that name)."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT 1 FROM events WHERE session = ? AND agent = ? AND kind = ? AND id > COALESCE("
+            "(SELECT MAX(id) FROM events WHERE session = ? AND agent = ? AND kind = ?), 0)",
+            (session, agent, kind, session, agent, SPAWNED),
         ).fetchone()
     return row is not None
 

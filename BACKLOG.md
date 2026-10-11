@@ -2032,17 +2032,18 @@ Wanted: LADO's messages to the lead state facts ("step x needs a developer"), an
 lead's instructions name only the tools it has.
 Found: 2026-10-11, design of feature/read-only-roles.
 
-## Codex CLI cannot run a read-only agent
+## A read-only Codex agent on an OpenAI model may keep apply_patch
 
-Size: M. Why here: read-only roles work on three of four providers; Codex refuses them.
-Codex 0.162 has no config key that takes apply_patch away, and a PreToolUse hook on
-apply_patch does not see `apply_patch <<EOF` run through the shell (it reaches the hook as
-tool `Bash`); on qwen3-coder there is no apply_patch tool at all. So
-`deny_edit_tools` is False and `lado start --provider codex` / `spawn_worker` refuse a
-read-only role. Not checked: an OpenAI model's own apply_patch tool (paid).
-Wanted: a way Codex takes edits away (a newer Codex, a read-only sandbox that still runs
-tests), checked by hand, then `deny_edit_tools` for it.
-Found: 2026-10-11, implement of feature/read-only-roles (manual check).
+Size: M. Why here: read-only Codex agents are checked only on a model Codex has no metadata for.
+Codex 0.162 gives apply_patch by the model's metadata (`apply_patch_tool_type`); a local
+model gets the fallback metadata, which has none (checked on qwen3.5-35b-a3b, run
+feature/stable-local-live), but an OpenAI model may get it, and no config key takes it
+away. LADO warns at each read-only Codex agent's launch and reports a change of the
+repository after the turn. Not tried: a `model_catalog_json` that gives the model no
+apply_patch; a PreToolUse hook that denies the apply_patch tool (it does not see a shell
+`apply_patch <<EOF`, which reaches the hook as `Bash`).
+Wanted: checked on an OpenAI model (paid, the human's yes), and a way to take it away.
+Found: 2026-10-11, implement of feature/read-only-roles; narrowed in feature/stable-local-live.
 
 # P3: maybe never
 

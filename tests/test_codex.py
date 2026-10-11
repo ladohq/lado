@@ -122,6 +122,20 @@ def test_the_agent_has_no_goal_tools(repo):
     assert config["features"]["goals"] is False
 
 
+def test_a_read_only_agent_has_no_codex_worktrees_and_is_warned_about_apply_patch(repo):
+    """Codex's own worktrees (create_worktree) change the repository. Its apply_patch tool
+    comes with a model's metadata, which no config key takes away: the warning says so."""
+    agent = _agent(repo)
+    spec = providers.AgentSpec(ROLE, mcp={"lado": base.mcp_server(agent)}, read_only=True)
+    sess = state.Session("s", str(repo), None, "codex")
+    launch = providers.get("codex").launch_command(agent, sess, spec)
+    assert _config(launch)["features"]["worktrees"] is False
+    [warning] = launch.warnings
+    assert "apply_patch" in warning and "w1" in warning
+    _, config = _launch(repo)
+    assert "worktrees" not in config["features"]
+
+
 def test_hooks_report_each_event_lado_uses(repo):
     launch, config = _launch(repo)
     groups = config["hooks"]

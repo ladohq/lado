@@ -1120,11 +1120,17 @@ fixes and docs only: no new feature, no API or schema change.
   beat the global rule; checked with OpenCode 1.18.35 and Kilo 7.8.8 under `--auto`: edit,
   write and patch gone, also for their subagents). Not covered there: an agent of the
   repo's or the user's own config with its own edit rule (a custom subagent,
-  `default_agent`). Codex CLI cannot (0.162: no config key, and a PreToolUse hook on
-  apply_patch misses `apply_patch` run through the shell, which reaches it as `Bash`):
-  `runtime._spec` refuses a read-only agent on such a CLI before anything is stored or
-  made (a lead before the session is added, a worker before its worktree), naming the
-  providers that can. These claims hold for each provider's `TESTED_VERSION`; another
+  `default_agent`). Codex CLI sets `features.worktrees = false` (its `create_worktree`
+  changes the repository); with that, a model Codex has no metadata for (all local ones)
+  gets no tool that writes files but the shell (0.162 on LM Studio's qwen3.5-35b-a3b, the
+  request's tools read in a bridge, under `default` and bypassPermissions;
+  `providers/codex.py`). Not covered there: a model Codex has metadata for (OpenAI's) may
+  get an apply_patch tool, which no config key takes away (unchecked: paid), so each
+  read-only Codex agent's launch warns about it; a shell `apply_patch <<EOF` runs as
+  Codex's own apply_patch, as any shell command may change a file (layer 3 reports it).
+  `runtime._spec` refuses a read-only agent on a CLI without the capability before
+  anything is stored or made (a lead before the session is added, a worker before its
+  worktree), naming the providers that can. These claims hold for each provider's `TESTED_VERSION`; another
   version is `lado doctor`'s usual warning. LADO's instructions get a paragraph
   (`runtime.READ_ONLY_INSTRUCTIONS`): no changes through the shell either. 2. A read-only
   supervisor's `lado mcp` has no `COMMAND_TOOLS` (`mcp_server.py`). 3. Its hooks take a

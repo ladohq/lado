@@ -996,8 +996,8 @@ def test_an_agent_that_is_not_read_only_gets_the_config_it_always_got(repo, name
 
 def test_capabilities_say_which_clis_take_the_edit_tools_away():
     can = {n for n in providers.names() if providers.get(n).capabilities.deny_edit_tools}
-    # Codex 0.162: apply_patch through the shell reaches PreToolUse as Bash (checked by hand).
-    assert can == {"claude", "kilo", "opencode"}
+    # Codex 0.162: checked by hand on a model it has no metadata for (providers/codex.py).
+    assert can == {"claude", "codex", "kilo", "opencode"}
 
 
 @pytest.mark.parametrize("mode", [None, "default", "bypassPermissions", "plan"])

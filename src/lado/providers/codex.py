@@ -121,12 +121,20 @@ class CodexProvider(base.Provider):
         notice_on_argv=True,
         session_start_on_first_input=True,
         output_taken_when_printed=True,
-        # No read-only agents (checked by hand with 0.162.0 on qwen3-coder:30b, `codex exec`):
-        # no config.toml key takes apply_patch away (`disabled_tools` is an MCP server's),
-        # and a PreToolUse hook on apply_patch does not see `apply_patch <<EOF` run through
-        # the shell, which Codex runs as its apply_patch: the hook gets it as tool "Bash".
-        # That model has no apply_patch tool at all and writes files through the shell.
-        deny_edit_tools=False,
+        # Read-only agents (AgentSpec.read_only), checked by hand with 0.162.0 on LM Studio's
+        # qwen/qwen3.5-35b-a3b through a Responses-to-Chat bridge, every tool of the request
+        # read in the bridge, in the TUI with `-a on-request` and with
+        # `--dangerously-bypass-approvals-and-sandbox` alike: exec_command, write_stdin,
+        # request_user_input, view_image, web_search, the MCP servers' tools and, with
+        # features.worktrees on, the namespace codex_worktrees, whose create_worktree changes
+        # the repository (switched off for a read-only agent). No apply_patch: Codex has no
+        # metadata for the model ("Defaulting to fallback metadata"), and its fallback has
+        # none; a model Codex has metadata for (OpenAI's) may get one, which no config key
+        # takes away (`apply_patch_tool_type` is model metadata; `apply_patch_freeform` and
+        # `js_repl` are removed features): a launch warning says so. A shell `apply_patch
+        # <<EOF` runs as Codex's own apply_patch and changes the file, as any shell command
+        # may: the shell stays, and lado.fingerprint reports the change.
+        deny_edit_tools=True,
     )
     # No mode: Codex's own approvals (on-request in a trusted folder) and LADO's permission
     # profile. `default` asks for approvals as Codex's on-request does.
@@ -160,6 +168,13 @@ class CodexProvider(base.Provider):
             analytics={"enabled": False},
             feedback={"enabled": False},
         )
+        if spec.read_only:
+            config["features"]["worktrees"] = False
+            warnings.append(
+                f"Codex CLI gives a model it has metadata for (OpenAI's) an apply_patch tool "
+                f"that LADO cannot take away from read-only agent {agent.name}; its shell "
+                "stays too, and LADO reports any change of the repository"
+            )
         if trust := _trust_entry(user.get("projects"), cwd):
             config["projects"] = {trust[0]: {"trust_level": trust[1]}}
         config["hooks"] = _hooks(agent, home)

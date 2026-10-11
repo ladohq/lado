@@ -150,6 +150,21 @@ def test_finish_worker_reports_what_it_removed(repo, fake_tmux):
     assert state.get_agent("s", "w1") is None
 
 
+def test_finish_worker_reports_what_was_already_gone(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    worker = runtime.spawn_worker("s", "task", name="w1")
+    runtime.git(str(repo), "worktree", "remove", worker.cwd)
+    server = mcp_server.build("s", "supervisor")
+    result = asyncio.run(server.call_tool("finish_worker", {"name": "w1"}))
+    assert json.loads(result.content[0].text) == {
+        "name": "w1",
+        "finished": "merged",
+        "removed": {"window": "w1", "branch": "lado/s/w1"},
+        "already_gone": {"worktree": worker.cwd},
+        "dropped_messages": 1,
+    }
+
+
 @pytest.mark.parametrize(
     ("tool", "args", "reason"),
     [

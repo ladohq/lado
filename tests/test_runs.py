@@ -753,6 +753,64 @@ def test_end_finishes_the_workers_and_removes_a_merged_worktree(session, repo, f
     assert state.list_runs(session, open_only=True) == []
 
 
+def test_end_removes_a_merged_branch_whose_upstream_is_behind(session, repo, fake_tmux):
+    # git branch -d checks a branch with an upstream against it, not against HEAD.
+    run = to_merge(session)
+    commit(run, "one.txt")
+    origin = repo.parent / "origin.git"
+    runtime.git(str(repo), "init", "-q", "--bare", str(origin))
+    runtime.git(str(repo), "remote", "add", "origin", str(origin))
+    runtime.git(run.worktree, "push", "-q", "-u", "origin", run.branch)
+    commit(run, "two.txt")
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    notices = []
+    run = runs.advance(session, "supervisor", "feature/login", "merged", notices=notices)
+    assert (run.state, run.status) == ("done", state.ENDED)
+    assert notices == ["flow feature/login: ended at done; worktree and branch removed"]
+    assert [a.name for a in state.list_agents(session)] == ["supervisor"]
+    assert not Path(run.worktree).exists()
+    assert runtime.git(str(repo), "branch", "--list", run.branch) == ""
+
+
+@pytest.mark.parametrize("gone", ["worktree", "branch", "both"])
+def test_end_closes_the_workers_when_the_worktree_or_branch_is_gone(session, repo, fake_tmux, gone):
+    run = to_merge(session)
+    commit(run)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", run.branch)
+    if gone in ("worktree", "both"):
+        shutil.rmtree(run.worktree)  # by hand: git still has it as a worktree
+    if gone == "branch":
+        runtime.git(run.worktree, "checkout", "-q", "--detach")
+    if gone in ("branch", "both"):
+        runtime.git(str(repo), "worktree", "prune")
+        runtime.git(str(repo), "branch", "-D", run.branch)
+    notices = []
+    run = runs.advance(session, "supervisor", "feature/login", "merged", notices=notices)
+    assert run.status == state.ENDED
+    assert [a.name for a in state.list_agents(session)] == ["supervisor"]
+    assert not Path(run.worktree).exists()
+    assert runtime.git(str(repo), "branch", "--list", run.branch) == ""
+    already = {
+        "worktree": f"worktree {run.worktree}",
+        "branch": f"branch {run.branch}",
+        "both": f"worktree {run.worktree}, branch {run.branch}",
+    }[gone]
+    assert notices == [
+        f"flow feature/login: ended at done; worktree and branch removed\nAlready gone: {already}."
+    ]
+
+
+def test_end_keeps_a_run_whose_branch_is_gone_with_uncommitted_changes(session, repo):
+    run = to_merge(session)
+    runtime.git(run.worktree, "checkout", "-q", "--detach")
+    runtime.git(str(repo), "branch", "-D", run.branch)
+    Path(run.worktree, "draft.txt").write_text("x")
+    runs.advance(session, "supervisor", "feature/login", "merged")
+    assert "has uncommitted changes" in messages("supervisor")[-1].body
+    assert Path(run.worktree, "draft.txt").exists()
+    assert [a.name for a in state.list_agents(session)] == ["supervisor", "developer", "reviewer"]
+
+
 def test_the_supervisor_that_ends_the_run_gets_the_end_as_a_notice(session, repo):
     run = to_merge(session)
     commit(run)

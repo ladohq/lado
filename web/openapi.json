@@ -6248,7 +6248,21 @@
             "title": "Uncommitted"
           },
           "last_commit": {
-            "$ref": "#/components/schemas/CommitInfo"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommitInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gone": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Gone"
           }
         },
         "type": "object",
@@ -6258,7 +6272,8 @@
           "ahead",
           "behind",
           "uncommitted",
-          "last_commit"
+          "last_commit",
+          "gone"
         ],
         "title": "WorkInfo",
         "description": "Where a worker's work stands in git when asked (runtime.work_state): what finishing\nit goes by."

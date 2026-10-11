@@ -626,7 +626,10 @@ class WorkInfo(BaseModel):
     ahead: int  # commits not in base: 0 means merged
     behind: int
     uncommitted: int  # paths with changes in its worktree
-    last_commit: CommitInfo
+    last_commit: CommitInfo | None  # None when its branch is gone
+    # "worktree", "branch": those no longer there (deleted by hand, or by an end that
+    # stopped half way); finishing the worker removes what is left
+    gone: list[str]
 
 
 class AgentDetails(BaseModel):
@@ -1011,17 +1014,17 @@ def agent_info(agent: state.Agent) -> AgentInfo:
 
 
 def work_info(work: runtime.WorkState) -> WorkInfo:
+    last = work.last_commit
     return WorkInfo(
         branch=work.branch,
         base=work.base,
         ahead=work.ahead,
         behind=work.behind,
         uncommitted=work.uncommitted,
-        last_commit=CommitInfo(
-            sha=work.last_commit.sha,
-            subject=work.last_commit.subject,
-            at=_iso(work.last_commit.at),
-        ),
+        last_commit=CommitInfo(sha=last.sha, subject=last.subject, at=_iso(last.at))
+        if last
+        else None,
+        gone=work.gone,
     )
 
 

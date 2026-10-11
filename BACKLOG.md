@@ -1872,23 +1872,17 @@ Wanted: when native Windows is taken on, whether LADO needs `mcp[crypto]`, or a 
 win_arm64 wheel.
 Found: 2026-10-10, run fix/windows-probe (session lado-windows).
 
-## A run's end cannot delete a branch that was pushed
+## A worktree folder git no longer knows reads as the session repo's
 
-Size: S. Why here: met at the end of fix/windows-probe, whose branch was pushed to test a workflow.
-`flow_advance(merged)` ended the run but returned an error: `git branch -d` refused
-(`not deleting branch ... that is not yet merged to 'refs/remotes/origin/<branch>', even though it
-is merged to HEAD`; `The branch ... is not fully merged`), since git checks a branch with an
-upstream against that upstream. The supervisor deleted the remote and local branch by hand.
-The run's workers stayed too (the end stopped before closing them): `finish_worker` closed the
-developer and reviewer, but the checker cannot be finished at all once the branch and worktree
-are gone: `cannot read its work: fatal: ambiguous argument 'HEAD...<branch>'`, and with
-`discard=true`: `'<worktree>' is not a working tree`. It stays in `list_agents`.
-Wanted: the run's end checks "merged" against the repo's current branch as `work_state` does and
-deletes with that knowledge (e.g. `git branch -D` after its own check), or says the branch is kept and why.
-Found: 2026-10-10, merge step of fix/windows-probe (session lado-windows).
-Again 2026-10-11 at the end of feature/live-cloud-matrix (also pushed): architect, developer and
-reviewer stayed until finished by hand; checker-2 cannot be finished, nor the old checker. The
-human sees the ended runs' workers still in the UI.
+Size: S. Why here: a corner of finishing a worker whose worktree is half gone.
+`runtime.gone` takes a worktree as there when its folder exists. A folder left after git
+dropped it as a worktree (`git worktree prune` with the folder unreadable, or its `.git` file
+deleted) sits inside the session repo (`.lado/worktrees/...`), so `git -C <folder> status` reads
+the session repo's own changes as the worker's, and `worktree remove` fails with "is not a
+working tree".
+Wanted: take a worktree as there only when `git worktree list --porcelain` names it, or when its
+`rev-parse --show-toplevel` is the folder itself.
+Found: 2026-10-11, implement of fix/run-end-pushed-branch.
 
 ## Live: free models loop on read_messages and miss the report
 

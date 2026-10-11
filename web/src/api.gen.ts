@@ -2267,7 +2267,9 @@ export interface components {
             behind: number;
             /** Uncommitted */
             uncommitted: number;
-            last_commit: components["schemas"]["CommitInfo"];
+            last_commit: components["schemas"]["CommitInfo"] | null;
+            /** Gone */
+            gone: string[];
         };
         /** Worktree */
         Worktree: {

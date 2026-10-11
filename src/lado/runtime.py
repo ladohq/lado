@@ -748,6 +748,7 @@ class Finished:
     worker: state.Agent
     how: str  # "merged", "discarded", or CLOSED: only its window, its run keeps the worktree
     dropped: int  # messages it never got
+    gone: list[str] = field(default_factory=list)  # of WORKTREE, BRANCH: gone before it
 
     @property
     def removed_worktree(self) -> bool:
@@ -761,11 +762,16 @@ class Finished:
     def text(self) -> str:
         """What finishing did, in one line (`lado finish`, the UI)."""
         worker = self.worker
-        if self.removed_worktree:
-            removed = f"removed window, worktree {worker.cwd} and branch {worker.branch}"
-        else:
+        if not self.removed_worktree:
             removed = f"closed its window; run {worker.run} keeps {worker.cwd}"
-        return f'Finished worker "{worker.name}" ({self.detail()}): {removed}'
+            return f'Finished worker "{worker.name}" ({self.detail()}): {removed}'
+        there = [n for n in (WORKTREE, BRANCH) if n not in self.gone]
+        removed = ", ".join(["window", *named(there[:-1], worker.cwd, worker.branch)])
+        if there:
+            removed += f" and {named(there[-1:], worker.cwd, worker.branch)[0]}"
+        if self.gone:
+            removed += f"; already gone: {', '.join(named(self.gone, worker.cwd, worker.branch))}"
+        return f'Finished worker "{worker.name}" ({self.detail()}): removed {removed}'
 
 
 def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
@@ -778,6 +784,9 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
     A worker of a flow run shares the run's worktree: while the run is open or other
     workers of it remain, only its window is closed. The last worker of an ended run takes
     the worktree and branch with it, as above.
+
+    A worktree or branch that is gone already (deleted by hand, or by an end that stopped
+    half way) is no reason to refuse: the finish removes what is left and says what was gone.
     """
     preview = finish_preview(session, name)
     worker = state.get_agent(session, name)
@@ -788,10 +797,45 @@ def finish_worker(session: str, name: str, discard: bool = False) -> Finished:
     if preview.refused and not discard:
         raise LadoError(preview.refused)
     repo = state.get_session(session).repo
+    missing = gone(repo, worker.cwd, worker.branch)
     # Git first: if it fails, the worker keeps running and nothing is half done.
-    git(repo, "worktree", "remove", *(["--force"] if discard else []), worker.cwd)
-    git(repo, "branch", "-D" if discard else "-d", worker.branch)
-    return close_worker(session, worker, "discarded" if discard else "merged")
+    remove_work(repo, worker.cwd, worker.branch, missing, force=discard)
+    return close_worker(session, worker, "discarded" if discard else "merged", missing)
+
+
+WORKTREE, BRANCH = "worktree", "branch"
+
+
+def gone(repo: str, worktree: str, branch: str) -> list[str]:
+    """Which of a worker's or run's worktree and branch are no longer there (WORKTREE,
+    BRANCH): deleted by hand, or by an end that stopped half way."""
+    missing = [] if Path(worktree).is_dir() else [WORKTREE]
+    try:
+        git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")
+    except LadoError:
+        missing.append(BRANCH)
+    return missing
+
+
+def named(which: list[str], worktree: str, branch: str) -> list[str]:
+    """`worktree <path>` and `branch <name>` for each of WORKTREE, BRANCH in `which`."""
+    return [f"worktree {worktree}" if n == WORKTREE else f"branch {branch}" for n in which]
+
+
+def remove_work(
+    repo: str, worktree: str, branch: str, missing: list[str], force: bool = False
+) -> None:
+    """Remove a worktree and its branch, but those in `missing` (gone()). Only after LADO's
+    own check that no work is lost (merged into the repo's current branch and committed, or
+    discarded): that check is the one gate, so the branch goes with `-D`. `-d` would check
+    again by another rule, against the branch's upstream when it has one, and refuse a
+    branch merged here whose last commits were never pushed."""
+    if WORKTREE in missing:
+        git(repo, "worktree", "prune")  # else git still has the branch checked out there
+    else:
+        git(repo, "worktree", "remove", *(["--force"] if force else []), worktree)
+    if BRANCH not in missing:
+        git(repo, "branch", "-D", branch)
 
 
 @dataclass
@@ -829,11 +873,13 @@ CLOSED = "closed"  # a run's worker: its window is closed, the run keeps the wor
 DISCARD_NOT_APPLIED = "discard does not apply: the run keeps its worktree"
 
 
-def close_worker(session: str, worker: state.Agent, how: str) -> Finished:
+def close_worker(
+    session: str, worker: state.Agent, how: str, missing: list[str] | None = None
+) -> Finished:
     """Forget the worker, then close its window; its worktree is left alone. Forgotten
     first: the session-end hook of the dying worker then finds no agent, so its end is
     LADO's and tells no one (agent_ended)."""
-    finished = _forget_worker(session, worker, how)
+    finished = _forget_worker(session, worker, how, missing)
     try:
         tmux.kill_window(session, worker.name)
     except tmux.TmuxError as error:
@@ -846,13 +892,15 @@ def close_worker(session: str, worker: state.Agent, how: str) -> Finished:
     return finished
 
 
-def _forget_worker(session: str, worker: state.Agent, how: str) -> Finished:
+def _forget_worker(
+    session: str, worker: state.Agent, how: str, missing: list[str] | None = None
+) -> Finished:
     state.delete_agent(session, worker.name)
     # Forgotten first, so no new message can be queued for it (the queue checks the
     # recipient in the transaction that stores the message): a later worker with the same
     # name must not get what was meant for this one.
     dropped = state.drop_undelivered(session, worker.name)
-    finished = Finished(worker, how, dropped)
+    finished = Finished(worker, how, dropped, missing or [])
     state.add_event(session, worker.name, state.FINISHED, finished.detail())
     return finished
 
@@ -876,14 +924,16 @@ class Commit:
 @dataclass
 class WorkState:
     """Where a worker's work stands now: its branch against the repo's current branch
-    (`base`) and its worktree."""
+    (`base`) and its worktree. A branch or worktree that is gone holds no work: no commits
+    ahead or behind, no last commit, no changes."""
 
     branch: str
     base: str
     ahead: int  # commits on the branch that are not in base: 0 means merged
     behind: int  # commits in base that are not on the branch
     changes: list[str]  # `git status --porcelain` lines of its worktree
-    last_commit: Commit
+    last_commit: Commit | None  # None when the branch is gone
+    gone: list[str]  # of WORKTREE, BRANCH: those no longer there (gone())
 
     @property
     def uncommitted(self) -> int:
@@ -905,18 +955,25 @@ def work_state(session: str, name: str) -> WorkState:
 
 def _work_state(repo: str, worker: state.Agent) -> WorkState:
     branch = worker.branch
-    behind, ahead = git(repo, "rev-list", "--left-right", "--count", f"HEAD...{branch}").split()
-    # The commit time as seconds: git's ISO form ends in "Z" for UTC (git 2.45+), which
-    # Python 3.10's fromisoformat does not read.
-    sha, at, subject = git(repo, "log", "-1", "--format=%H%x00%ct%x00%s", branch).split("\0", 2)
-    changes = git(worker.cwd, "status", "--porcelain").splitlines()
+    missing = gone(repo, worker.cwd, branch)
+    behind, ahead, last = "0", "0", None
+    if BRANCH not in missing:
+        counts = git(repo, "rev-list", "--left-right", "--count", f"HEAD...{branch}")
+        behind, ahead = counts.split()
+        # The commit time as seconds: git's ISO form ends in "Z" for UTC (git 2.45+), which
+        # Python 3.10's fromisoformat does not read.
+        log = git(repo, "log", "-1", "--format=%H%x00%ct%x00%s", branch)
+        sha, at, subject = log.split("\0", 2)
+        last = Commit(sha, subject, datetime.fromtimestamp(int(at), timezone.utc))
+    changes = [] if WORKTREE in missing else git(worker.cwd, "status", "--porcelain").splitlines()
     return WorkState(
         branch,
         git(repo, "rev-parse", "--abbrev-ref", "HEAD"),
         int(ahead),
         int(behind),
         changes,
-        Commit(sha, subject, datetime.fromtimestamp(int(at), timezone.utc)),
+        last,
+        missing,
     )
 
 

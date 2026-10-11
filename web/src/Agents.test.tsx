@@ -86,6 +86,7 @@ const WORK: AgentDetails = {
     behind: 0,
     uncommitted: 2,
     last_commit: { sha: "abc1234def", subject: "AgentInfo: run step and since", at: "2026-10-04T10:52:00.000Z" },
+    gone: [],
   },
   work_problem: null,
 };
@@ -352,6 +353,15 @@ test("an agent's page has its head with the run and step, its branch, work, work
   expect(facts.textContent).toContain("“AgentInfo: run step and since”");
   expect(facts.textContent).toMatch(/as of \d/);
   expect(within(region).queryByRole("note")).toBeNull();
+});
+
+test("an agent's work says what of it is gone", async () => {
+  const gone = { ...WORK.work!, ahead: 0, uncommitted: 0, last_commit: null, gone: ["branch", "worktree"] };
+  serve({ details: { developer: { ...WORK, work: gone } } });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(await within(region).findByText(/branch gone · worktree gone/)).toBeTruthy();
+  expect(region.textContent).not.toContain("last commit");
 });
 
 test("the task shows its first lines with Show more", async () => {

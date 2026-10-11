@@ -89,12 +89,31 @@ def test_details_of_the_supervisor_have_no_work_and_no_problem(client, session):
     }
 
 
-def test_details_say_why_the_work_cannot_be_read(client, session, repo):
+def test_details_say_what_of_the_work_is_gone(client, session, repo):
     w1 = state.get_agent("s", "w1")
     runtime.git(str(repo), "worktree", "remove", "--force", w1.cwd)
+    work = client.get(f"{AGENTS}/w1/details").json()["work"]
+    assert (work["gone"], work["uncommitted"], work["last_commit"]["subject"]) == (
+        ["worktree"],
+        0,
+        "init",
+    )
+    runtime.git(str(repo), "branch", "-D", w1.branch)
     details = client.get(f"{AGENTS}/w1/details").json()
-    assert details["work"] is None
-    assert details["work_problem"]
+    assert (details["work"]["gone"], details["work"]["last_commit"]) == (
+        ["worktree", "branch"],
+        None,
+    )
+    assert details["work_problem"] is None
+
+
+def test_details_say_why_the_work_cannot_be_read(client, session, monkeypatch):
+    def fails(session, name):
+        raise runtime.LadoError("git cannot read it")
+
+    monkeypatch.setattr(runtime, "work_state", fails)
+    details = client.get(f"{AGENTS}/w1/details").json()
+    assert (details["work"], details["work_problem"]) == (None, "git cannot read it")
 
 
 @pytest.mark.parametrize(

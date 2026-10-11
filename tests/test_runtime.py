@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -2531,6 +2532,116 @@ def test_finish_worker_discard_throws_the_work_away(repo, fake_tmux):
     assert state.get_agent("s", "w1") is None
     last = state.list_events("s")[-1]
     assert (last.agent, last.kind, last.detail) == ("w1", "finished", "discarded")
+
+
+def _push(repo, worktree, branch):
+    """Push the branch to a bare `origin` of the repo, with its upstream set."""
+    origin = Path(repo).parent / f"{Path(repo).name}-origin.git"
+    runtime.git(str(repo), "init", "-q", "--bare", str(origin))
+    runtime.git(str(repo), "remote", "add", "origin", str(origin))
+    runtime.git(worktree, "push", "-q", "-u", "origin", branch)
+
+
+def test_finish_worker_removes_a_merged_branch_whose_upstream_is_behind(repo, fake_tmux):
+    # git branch -d checks a branch with an upstream against it, not against HEAD.
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd, "one.txt")
+    _push(repo, worker.cwd, worker.branch)
+    _commit(worker.cwd, "two.txt")
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
+    assert runtime.finish_worker("s", "w1").how == "merged"
+    assert not Path(worker.cwd).exists()
+    assert _branches(repo) == ["main"]
+
+
+def _detach_and_delete_branch(repo, worker):
+    runtime.git(worker.cwd, "checkout", "-q", "--detach")
+    runtime.git(str(repo), "branch", "-D", worker.branch)
+
+
+def test_a_worker_whose_branch_is_gone_finishes(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    _detach_and_delete_branch(repo, worker)
+    work = runtime.work_state("s", "w1")
+    assert (work.gone, work.ahead, work.last_commit, work.uncommitted) == (["branch"], 0, None, 0)
+    preview = runtime.finish_preview("s", "w1")
+    assert (preview.removes_worktree, preview.refused, preview.work.gone) == (
+        True,
+        None,
+        ["branch"],
+    )
+    finished = runtime.finish_worker("s", "w1")
+    assert (finished.how, finished.gone) == ("merged", ["branch"])
+    assert finished.text() == (
+        f'Finished worker "w1" (merged): removed window and worktree {worker.cwd}; '
+        "already gone: branch lado/s/w1"
+    )
+    assert not Path(worker.cwd).exists()
+    assert ("kill_window", "s", "w1") in fake_tmux
+    assert state.get_agent("s", "w1") is None
+
+
+def test_a_worker_whose_branch_is_gone_keeps_uncommitted_changes_without_discard(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _detach_and_delete_branch(repo, worker)
+    Path(worker.cwd, "draft.txt").write_text("x")
+    with pytest.raises(runtime.LadoError, match="(?s)uncommitted changes.*draft.txt.*discard"):
+        runtime.finish_worker("s", "w1")
+    assert state.get_agent("s", "w1") is not None and Path(worker.cwd).exists()
+    finished = runtime.finish_worker("s", "w1", discard=True)
+    assert (finished.how, finished.gone) == ("discarded", ["branch"])
+    assert not Path(worker.cwd).exists()
+
+
+def test_a_worker_whose_worktree_is_gone_finishes(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
+    shutil.rmtree(worker.cwd)  # by hand: git still has it as a worktree
+    work = runtime.work_state("s", "w1")
+    assert (work.gone, work.ahead, work.uncommitted) == (["worktree"], 0, 0)
+    assert runtime.finish_preview("s", "w1").refused is None
+    finished = runtime.finish_worker("s", "w1")
+    assert (finished.how, finished.gone) == ("merged", ["worktree"])
+    assert finished.text() == (
+        'Finished worker "w1" (merged): removed window and branch lado/s/w1; '
+        f"already gone: worktree {worker.cwd}"
+    )
+    assert _branches(repo) == ["main"]
+    assert runtime.git(str(repo), "worktree", "list").count("\n") == 0
+
+
+def test_a_worker_whose_worktree_is_gone_still_needs_its_branch_merged(repo, fake_tmux):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    _commit(worker.cwd)
+    shutil.rmtree(worker.cwd)
+    with pytest.raises(runtime.LadoError, match="lado/s/w1 is not merged into main"):
+        runtime.finish_worker("s", "w1")
+    assert runtime.finish_worker("s", "w1", discard=True).gone == ["worktree"]
+    assert _branches(repo) == ["main"]
+
+
+@pytest.mark.parametrize("discard", [False, True])
+def test_a_worker_whose_branch_and_worktree_are_gone_finishes(repo, fake_tmux, discard):
+    _session_with_worker(repo)
+    worker = state.get_agent("s", "w1")
+    runtime.git(str(repo), "worktree", "remove", worker.cwd)
+    runtime.git(str(repo), "branch", "-D", worker.branch)
+    assert runtime.work_state("s", "w1").gone == ["worktree", "branch"]
+    assert runtime.finish_preview("s", "w1").refused is None
+    finished = runtime.finish_worker("s", "w1", discard=discard)
+    assert finished.gone == ["worktree", "branch"]
+    assert finished.text().endswith(
+        f"removed window; already gone: worktree {worker.cwd}, branch lado/s/w1"
+    )
+    assert state.get_agent("s", "w1") is None
+    assert ("kill_window", "s", "w1") in fake_tmux
 
 
 @pytest.mark.parametrize("discard", [False, True])

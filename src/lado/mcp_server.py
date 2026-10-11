@@ -348,7 +348,8 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
 
             It refuses while the branch is not merged or the worktree has uncommitted changes.
             `discard=True` ends the worker anyway and throws that work away. Messages it has
-            not received yet are dropped; the result counts them.
+            not received yet are dropped; the result counts them. A worktree or branch that
+            is gone already does not stop it: the result names it under `already_gone`.
 
             A worker of a flow run only has its window closed while its run is open or other
             workers of the run remain: the worktree and branch belong to the run.
@@ -356,13 +357,16 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             with _reasons():
                 finished = runtime.finish_worker(session, name, discard)
             worker = finished.worker
-            removed = {"window": worker.name}
+            removed, gone = {"window": worker.name}, {}
             if finished.removed_worktree:
-                removed.update(worktree=worker.cwd, branch=worker.branch)
+                paths = {runtime.WORKTREE: worker.cwd, runtime.BRANCH: worker.branch}
+                for what, path in paths.items():
+                    (gone if what in finished.gone else removed)[what] = path
             return {
                 "name": worker.name,
                 "finished": finished.how,
                 "removed": removed,
+                **({"already_gone": gone} if gone else {}),
                 "dropped_messages": finished.dropped,
             }
 

@@ -278,12 +278,21 @@ function Work({ work }: { work: ReturnType<typeof useWork> }) {
   if (details === null) {
     text = problem ?? "Loading…";
   } else if (found) {
+    // A branch or worktree deleted outside LADO holds no work; finishing removes the rest.
     const last = found.last_commit;
     text = (
       <>
-        {plural(found.ahead, "commit")} ahead of {found.base} · {found.behind} behind ·{" "}
-        {plural(found.uncommitted, "file")} not committed · last commit{" "}
-        <time dateTime={last.at}>{clock(last.at)}</time> “{last.subject}”
+        {found.gone.includes("branch")
+          ? "branch gone"
+          : `${plural(found.ahead, "commit")} ahead of ${found.base} · ${found.behind} behind`}
+        {" · "}
+        {found.gone.includes("worktree") ? "worktree gone" : `${plural(found.uncommitted, "file")} not committed`}
+        {last && (
+          <>
+            {" "}
+            · last commit <time dateTime={last.at}>{clock(last.at)}</time> “{last.subject}”
+          </>
+        )}
       </>
     );
   } else {
@@ -414,12 +423,16 @@ function FinishDialog({ session, agent, onClose }: { session: string; agent: str
           <p>Discard the work of {agent}? This cannot be undone.</p>
           {work && (
             <ul className="consequences">
-              <li>
-                branch <code>{work.branch}</code> is deleted
-              </li>
-              <li>
-                {plural(work.ahead, "commit")} not in {work.base} {work.ahead === 1 ? "is" : "are"} lost
-              </li>
+              {!work.gone.includes("branch") && (
+                <>
+                  <li>
+                    branch <code>{work.branch}</code> is deleted
+                  </li>
+                  <li>
+                    {plural(work.ahead, "commit")} not in {work.base} {work.ahead === 1 ? "is" : "are"} lost
+                  </li>
+                </>
+              )}
               <li>
                 {plural(work.uncommitted, "uncommitted file")} {work.uncommitted === 1 ? "is" : "are"} lost
               </li>

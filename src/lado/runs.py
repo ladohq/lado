@@ -745,7 +745,8 @@ def _close(run: state.Run, caller: str, notices: list[str] | None) -> None:
     agent (or the human) whose action ended the run."""
     repo = _session(run.session).repo
     workers = _workers(run)
-    problem = _unfinished(repo, run)
+    missing = runtime.gone(repo, run.worktree, run.branch)
+    problem = _unfinished(repo, run, missing)
     if problem:
         kept = ", ".join(w.name for w in workers) or "none"
         _tell_supervisor(
@@ -758,22 +759,29 @@ def _close(run: state.Run, caller: str, notices: list[str] | None) -> None:
         )
         return
     # Git first: if it fails, the workers keep running and nothing is half done.
-    runtime.git(repo, "worktree", "remove", run.worktree)
-    runtime.git(repo, "branch", "-d", run.branch)
-    _tell_supervisor(run, f"ended at {run.state}; worktree and branch removed", notices=notices)
+    runtime.remove_work(repo, run.worktree, run.branch, missing)
+    already = ", ".join(runtime.named(missing, run.worktree, run.branch))
+    _tell_supervisor(
+        run,
+        f"ended at {run.state}; worktree and branch removed",
+        f"Already gone: {already}." if missing else "",
+        notices,
+    )
     # The caller last: this code runs in its MCP server, which goes with its window.
     for worker in sorted(workers, key=lambda w: w.name == caller):
         runtime.close_worker(run.session, worker, "run ended")
 
 
-def _unfinished(repo: str, run: state.Run) -> str:
-    """Why the run's work would be lost if its worktree went, or ""."""
+def _unfinished(repo: str, run: state.Run, missing: list[str]) -> str:
+    """Why the run's work would be lost if its worktree went, or "". A worktree or branch
+    that is gone already (`missing`, runtime.gone) holds no work to lose."""
     try:
-        runtime.git(repo, "merge-base", "--is-ancestor", run.branch, "HEAD")
+        if runtime.BRANCH not in missing:
+            runtime.git(repo, "merge-base", "--is-ancestor", run.branch, "HEAD")
     except LadoError:
         head = runtime.git(repo, "rev-parse", "--abbrev-ref", "HEAD")
         return f"Branch {run.branch} is not merged into {head}."
-    if runtime.git(run.worktree, "status", "--porcelain"):
+    if runtime.WORKTREE not in missing and runtime.git(run.worktree, "status", "--porcelain"):
         return f"The worktree {run.worktree} has uncommitted changes."
     return ""
 

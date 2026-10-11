@@ -42,11 +42,11 @@
 
 ## 5. Docs
 
-- [ ] 5.1 `docs/design/ui.md`: New session window (the kinds, the hint, Copy) and System
+- [x] 5.1 `docs/design/ui.md`: New session window (the kinds, the hint, Copy) and System
   panel (git row).
-- [ ] 5.2 `docs/install.md` Common problems: "git is not installed", "git does not run"
+- [x] 5.2 `docs/install.md` Common problems: "git is not installed", "git does not run"
   (macOS stub), git older than 2.31.
-- [ ] 5.3 AGENTS.md Layout: `doctor.py` (the git check), `runtime.py` (`check_repo`'s
+- [x] 5.3 AGENTS.md Layout: `doctor.py` (the git check), `runtime.py` (`check_repo`'s
   kinds, `FolderProblem`, `git_version`); CHANGELOG.md: rename `## 0.35.1 (unreleased)`
   to `## 0.36.0 (unreleased)` and add the lines (D10).
 

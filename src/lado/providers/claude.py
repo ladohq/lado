@@ -73,6 +73,14 @@ SWITCHES = ("clear", "resume")
 # agent's tool list, also with --permission-mode bypassPermissions (checked with 2.1.286).
 BUILT_IN_MESSAGING = ["SendMessage", "ListAgents"]
 
+# Claude Code's tools that change files, denied to a read-only agent (AgentSpec.read_only)
+# the same way: a deny rule takes them out of its tool list, also with bypassPermissions.
+EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"]
+
+# How long Claude Code waits for a command hook that sets no `timeout`: 600 s (`lu`, read in
+# the binary of 2.1.296). LADO's hooks set none.
+HOOK_LIMIT = 600
+
 # Variables that log Claude Code in without the keychain: a token, an API key, or another
 # API provider (all in the binary of 2.1.296).
 LOGINS = (
@@ -96,6 +104,7 @@ class ClaudeProvider(base.Provider):
         deliver_on_turn_end=True,
         skills=True,
         hold_first_turn=True,
+        deny_edit_tools=True,
     )
     # Passed on as --permission-mode: the choices of Claude Code 2.1.287, which also takes
     # "default" without listing it.
@@ -146,7 +155,7 @@ class ClaudeProvider(base.Provider):
         settings = config_dir / "settings.json"
         config = {
             "hooks": {e: hook(e) for e in EVENTS},
-            "permissions": {"deny": BUILT_IN_MESSAGING},
+            "permissions": {"deny": BUILT_IN_MESSAGING + (EDIT_TOOLS if spec.read_only else [])},
         }
         settings.write_text(json.dumps(config, indent=2))
 
@@ -209,6 +218,9 @@ class ClaudeProvider(base.Provider):
                 background=_background(data),
             )
         return base.Event(neutral, data.get("prompt", ""))
+
+    def hook_limit(self, native: str) -> float | None:
+        return HOOK_LIMIT
 
     def continue_output(self, text: str) -> str | None:
         # Blocking the stop makes Claude Code continue with `reason` as its next input. It

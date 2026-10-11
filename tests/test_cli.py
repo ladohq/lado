@@ -456,6 +456,22 @@ def test_kits_check(repo, capsys, monkeypatch):
     assert main(["kits", "check", "nope"]) == 1
 
 
+READ_ONLY_REV = "---\nname: rev\ndescription: reviews\nread_only: true\n---\nReview.\n"
+
+
+def test_kits_show_and_check_name_read_only_roles(repo, capsys):
+    kit = _kit(repo, "team", READ_ONLY_REV)
+    assert main(["kits", "--repo", str(repo), "show", "default", "team"]) == 0
+    out = capsys.readouterr().out
+    rev = out[out.index("  rev  from team") :]
+    assert rev.splitlines()[1:3] == ["    skills (all): none", "    read-only: yes"]
+    assert out.count("    read-only: yes") == 1
+    assert main(["kits", "check", str(kit)]) == 0
+    assert "\nread-only roles: rev\n" in capsys.readouterr().out
+    assert main(["kits", "check", "default"]) == 0
+    assert "read-only roles" not in capsys.readouterr().out
+
+
 def test_kits_check_tag(tmp_path, capsys):
     """A kit's CI: `lado kits check . --tag "$TAG"` says what `lado kits add <url>@<tag>` would."""
     kit = tmp_path / "team"

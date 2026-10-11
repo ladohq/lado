@@ -67,6 +67,20 @@ def test_load_reads_agents_and_skills(project):
     assert kit.supervisor is None
 
 
+def test_a_role_may_be_read_only(project):
+    path = make_kit(project, "k", agents={"rev": ({"read_only": True}, ""), "w": ({}, "")})
+    kit = kits.load(path)
+    assert (kit.agents["rev"].read_only, kit.agents["w"].read_only) == (True, False)
+
+
+@pytest.mark.parametrize("value", ["yes", 1, None, [True]])
+def test_read_only_must_be_true_or_false(project, value):
+    path = make_kit(project, "k", agents={"rev": ({"read_only": value}, "")})
+    with pytest.raises(kits.KitError) as e:
+        kits.load(path)
+    assert f"{path / 'agents' / 'rev.md'}: read_only must be true or false" in str(e.value)
+
+
 def test_kit_names_its_supervisor(project):
     path = make_kit(project, "k", agents={"boss": ({}, ""), "w": ({}, "")}, supervisor="boss")
     assert kits.load(path).supervisor == "boss"
@@ -398,6 +412,15 @@ def test_warnings_say_how_kit_supervisors_are_used(repo, project):
     assert kits.resolve(repo, ["a", "default"], ["mcp:db", "mcp:web@a"]).warnings[1:] == [
         env.warnings[2]
     ]
+
+
+def test_a_read_only_kit_supervisor_that_does_not_lead_is_named(repo, project):
+    lead_kit(project, "a", {"read_only": True})
+    env = kits.resolve(repo, ["a", "default"])
+    assert env.lead.read_only is False
+    assert "read_only of supervisor (kit a) has no effect: it does not lead" in env.warnings
+    lead_kit(project, "b")
+    assert not [w for w in kits.resolve(repo, ["b", "default"]).warnings if "read_only" in w]
 
 
 def test_a_skill_named_like_a_lead_skill_is_an_error(repo, project):

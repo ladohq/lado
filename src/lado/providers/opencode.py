@@ -23,6 +23,8 @@ class OpenCodeProvider(opencode_family.OpenCodeFamily):
     install_hint = "install it: `npm install -g opencode-ai`"
     tested_version = TESTED_VERSION
     config_file_name = "opencode.json"
+    # `opencode agent list`, 1.18.35, but compaction, summary and title.
+    BUILT_IN_AGENTS = ("build", "plan", "general", "explore")
     # How launch_command maps them, against OpenCode's own defaults (`opencode debug agent
     # build`, 1.18.34): its default agent allows everything but external_directory and
     # doom_loop, which it asks about, so bash and edits run without asking; the plan agent

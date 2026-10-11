@@ -44,6 +44,11 @@ class Capabilities:
     # submitted: an agent with an empty queue would never be ready, so LADO gives it a line
     # of its own (lado.runtime). Only with notice_on_argv, which takes that line.
     session_start_on_first_input: bool = False
+    # The CLI's own config can take the agent's edit tools away, also from its subagents and
+    # in the permission modes LADO runs it with (AgentSpec.read_only). True only once checked
+    # by hand on the CLI's tested version, as its provider's comment says; LADO refuses to
+    # launch a read-only agent on a CLI that cannot (lado.runtime).
+    deny_edit_tools: bool = False
 
 
 @dataclass(frozen=True)
@@ -107,6 +112,9 @@ class AgentSpec:
     # where a CLI that keeps the user's settings in its own home finds that home. Read only:
     # it holds the user's keys.
     environ: dict[str, str] = field(default_factory=dict, repr=False)
+    # Its role changes nothing in the repository (lado.kits): the CLI's edit tools are taken
+    # away. Only for a CLI with Capabilities.deny_edit_tools.
+    read_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -186,6 +194,11 @@ class Provider(ABC):
         login keychain, which only the graphical session opens (lado.gui_session); else
         how else to log it in, as the end of a sentence ("" when there is no other way).
         By default None."""
+        return None
+
+    def hook_limit(self, native: str) -> float | None:
+        """The seconds the CLI gives LADO's hook of the native event `native` before it
+        stops waiting for it; None when it waits with no limit. By default None."""
         return None
 
     def continue_output(self, text: str) -> str | None:

@@ -182,6 +182,15 @@ def test_the_hook_hash_follows_what_codex_normalizes():
     assert digest("Stop", {}, {**plain, "async": True}) != digest("Stop", {}, plain)
 
 
+def test_the_hook_limit_is_the_timeout_codex_gives_lado_s_hook(repo):
+    cli = providers.get("codex")
+    # The same timeout the hook hash goes by, for the handler LADO writes (HOOK_TIMEOUTS).
+    assert [cli.hook_limit(e) for e in ("UserPromptSubmit", "Stop", "Interrupt")] == [600, 600, 3]
+    _, config = _launch(repo)
+    [group] = config["hooks"]["Interrupt"]
+    assert group["hooks"][0]["timeout"] == cli.hook_limit("Interrupt")
+
+
 def test_lado_s_mcp_server_starts_with_the_agent_and_is_used_without_asking(repo):
     agent = _agent(repo)
     _, config = _launch(repo)

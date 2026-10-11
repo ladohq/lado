@@ -63,6 +63,7 @@ class OpenCodeFamily(base.Provider):
         deliver_on_turn_end=True,
         skills=True,
         notice_on_argv=True,
+        deny_edit_tools=True,  # see deny_edits
     )
     permission_modes = ("default", "acceptEdits", "bypassPermissions", "plan")
 
@@ -135,7 +136,26 @@ class OpenCodeFamily(base.Provider):
             # 7.8.1); its own rules come after the global ones (`opencode debug agent plan`,
             # OpenCode 1.18.34), so this allow wins.
             config["agent"] = {"plan": {"permission": self.plan_permission()}}
+        if spec.read_only:
+            self.deny_edits(config)
         return config
+
+    # A read-only agent (AgentSpec.read_only), checked by hand with OpenCode 1.18.35 and Kilo
+    # 7.8.8 under --auto (`run --auto --format json`): with `edit: deny` the edit, write and
+    # patch tools are not in the agent's tool list ("Model tried to call unavailable tool
+    # 'write'"), nor in the built-in subagents' its task tool starts (asked to write, they
+    # used bash). An agent's own rules come after the global ones (`debug agent`): a repo's
+    # or the user's `agent.<name>.permission.edit: allow` beats the global deny, so each
+    # built-in agent gets the deny too; LADO's config text is merged last, so it wins there.
+    # Not covered: an agent of the repo's or the user's own config with its own edit rule
+    # (a subagent, or `default_agent`). The shell stays, as for every read-only agent.
+    BUILT_IN_AGENTS: tuple[str, ...]  # `<cli> agent list`, but those that run no tools
+
+    def deny_edits(self, config: dict) -> None:
+        config["permission"]["edit"] = "deny"
+        agents = config.setdefault("agent", {})
+        for name in self.BUILT_IN_AGENTS:
+            agents.setdefault(name, {}).setdefault("permission", {})["edit"] = "deny"
 
     def plan_permission(self) -> dict:
         """The plan agent's own rules; a subclass adds what its plan agent lacks."""

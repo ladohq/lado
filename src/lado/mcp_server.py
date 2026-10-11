@@ -27,6 +27,11 @@ def _reasons() -> Iterator[None]:
         raise ToolError("\n".join([str(exc), *getattr(exc, "__notes__", [])])) from exc
 
 
+# The supervisor's tools that start, end or move agents and runs: a read-only supervisor
+# (kits.AgentDef.read_only) is not given them.
+COMMAND_TOOLS = ("spawn_worker", "finish_worker", "flow_start", "flow_cancel", "start_session")
+
+
 class _Server(MCPServer):
     """Records once that the agent's CLI listed the tools: the agent's session-start hook
     waits for it, so that its first turn has them (lado.hooks)."""
@@ -37,6 +42,7 @@ class _Server(MCPServer):
         )
         self._lado_agent = (session, agent)
         self._lado_instance = instance  # "" when started without one: nothing to record
+        self._lado_read_only: str | None = None  # the role of a read-only agent
 
     async def list_tools(self):
         tools = await super().list_tools()
@@ -53,6 +59,9 @@ class _Server(MCPServer):
         word, so an agent with a stale tool schema, or a typo, would never learn that its
         argument was not used."""
         tool = self._tool_manager.get_tool(name)
+        if tool is None and self._lado_read_only and name in COMMAND_TOOLS:
+            # Not registered for it (build): the library would only say it is unknown.
+            raise ToolError(f"role {self._lado_read_only} is read-only: {name} is not available")
         if tool:
             accepted = list(tool.parameters.get("properties", {}))
             unknown = ", ".join(f'"{a}"' for a in sorted(set(arguments) - set(accepted)))
@@ -261,7 +270,10 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         me = state.get_agent(session, agent)
     except state.SchemaError:
         me = None  # the shared tools only; each call says why it cannot work
-    if me and me.name == runtime.SUPERVISOR:
+    if me and me.read_only:
+        server._lado_read_only = me.role
+    # COMMAND_TOOLS, the supervisor's.
+    if me and me.name == runtime.SUPERVISOR and not me.read_only:
 
         @server.tool()
         def spawn_worker(

@@ -252,6 +252,22 @@ def test_the_migration_gives_gates_the_note_before_them_as_a_new_database_has_it
     assert old.note_id is None
 
 
+def test_the_migration_gives_agents_their_read_only_flag(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert "read_only" not in [row[1] for row in db.execute("PRAGMA table_info(agents)")]
+    db.close()
+    assert state.migrate() == state.SCHEMA_VERSION
+    assert state.get_agent("s", "w1").read_only is False
+    state.add_agent(
+        state.Agent(
+            "s", "w2", "reviewer", "/w", None, None, state.STARTING, "claude", read_only=True
+        )
+    )
+    assert state.get_agent("s", "w2").read_only is True
+
+
 # A flow of LADO 0.26: `needs` names states.
 WITH_NEEDS = {
     "name": "ship",
@@ -274,7 +290,7 @@ def test_the_migration_drops_needs_from_the_snapshots_of_closed_runs_only(lado_h
     from lado import runs
 
     _session_with()
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(23)
     assert state.MIGRATIONS[22] == [state.closed_runs_without_needs]
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     old = json.dumps(WITH_NEEDS, indent=1)

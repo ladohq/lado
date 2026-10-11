@@ -119,6 +119,12 @@ class CodexProvider(base.Provider):
         skills=True,
         notice_on_argv=True,
         session_start_on_first_input=True,
+        # No read-only agents (checked by hand with 0.162.0 on qwen3-coder:30b, `codex exec`):
+        # no config.toml key takes apply_patch away (`disabled_tools` is an MCP server's),
+        # and a PreToolUse hook on apply_patch does not see `apply_patch <<EOF` run through
+        # the shell, which Codex runs as its apply_patch: the hook gets it as tool "Bash".
+        # That model has no apply_patch tool at all and writes files through the shell.
+        deny_edit_tools=False,
     )
     # No mode: Codex's own approvals (on-request in a trusted folder) and LADO's permission
     # profile. `default` asks for approvals as Codex's on-request does.
@@ -204,6 +210,10 @@ class CodexProvider(base.Provider):
             digest = hashlib.sha256(json.dumps(about, sort_keys=True).encode()).hexdigest()
             return base.Event(neutral, key=digest[:16])
         return base.Event(neutral, data.get("prompt", ""))
+
+    def hook_limit(self, native: str) -> float | None:
+        # The timeout of LADO's handler (_handler), as Codex normalizes it.
+        return _timeout(native, {"timeout": HOOK_TIMEOUTS.get(native)})
 
     def continue_output(self, text: str) -> str | None:
         # Blocking the stop makes Codex go on with `reason` as the next input, with no
@@ -368,16 +378,29 @@ def _unreviewed(cwd: Path, home: Path, trusted: dict) -> list[Path]:
     return files
 
 
+def _timeout(event: str, handler: dict) -> int:
+    """The seconds Codex gives a hook's handler, as it normalizes its `timeout` (read in its
+    source with hook_hash's): the one rule for the hash and for CodexProvider.hook_limit."""
+    timeout = handler.get("timeout")
+    if event in SHORT:
+        return min(max(1 if timeout is None else timeout, 1), 3)
+    return max(600 if timeout is None else timeout, 1)
+
+
+def _handler(agent: state.Agent, event: str) -> dict:
+    """LADO's hook handler of `event`."""
+    handler: dict = {"type": "command", "command": base.hook_command(agent, event)}
+    if event in HOOK_TIMEOUTS:
+        handler["timeout"] = HOOK_TIMEOUTS[event]
+    return handler
+
+
 def hook_hash(event: str, group: dict, handler: dict) -> str:
     """The hash Codex trusts a hook by (trusted_hash; its hook_hash and version_for_toml,
     read in its source, hooks/src/engine/discovery.rs and config/src/fingerprint.rs, and
     checked against hashes Codex 0.162.0 wrote): SHA-256 of the compact, key-sorted JSON of
     the event's label, the group's matcher and the handler as Codex normalizes it."""
-    timeout = handler.get("timeout")
-    if event in SHORT:
-        timeout = min(max(1 if timeout is None else timeout, 1), 3)
-    else:
-        timeout = max(600 if timeout is None else timeout, 1)
+    timeout = _timeout(event, handler)
     if handler.get("type") == "mcp_tool":
         normalized = {
             "type": "mcp_tool",
@@ -411,9 +434,7 @@ def _hooks(agent: state.Agent, home: Path) -> dict:
     source = Path(os.path.realpath(home)) / "config.toml"
     hooks: dict = {"state": {}}
     for event in EVENTS:
-        handler: dict = {"type": "command", "command": base.hook_command(agent, event)}
-        if event in HOOK_TIMEOUTS:
-            handler["timeout"] = HOOK_TIMEOUTS[event]
+        handler = _handler(agent, event)
         group = {"hooks": [handler]}
         hooks[event] = [group]
         key = f"{source}:{LABELS[event]}:0:0"

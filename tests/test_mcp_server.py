@@ -49,6 +49,42 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
     ]
 
 
+def _read_only_lead(repo):
+    kit = repo / ".lado" / "kits" / "quiet"
+    (kit / "agents").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: quiet\nversion: 1.0.0\nsupervisor: boss\n")
+    (kit / "agents" / "boss.md").write_text(
+        "---\nname: boss\ndescription: watches\nread_only: true\n---\nWatch.\n"
+    )
+    (kit / "agents" / "dev.md").write_text("---\nname: dev\ndescription: d\n---\nDevelop.\n")
+    runtime.start_session(str(repo), "s", None, provider="claude", kit_names=["quiet"])
+
+
+def test_a_read_only_supervisor_has_no_command_tools_and_is_refused_them(repo, fake_tmux):
+    _read_only_lead(repo)
+    tools = _tools("s", "supervisor")
+    assert not set(mcp_server.COMMAND_TOOLS) & set(tools)
+    assert "flow_advance" in tools and "send_message" in tools
+    for tool in mcp_server.COMMAND_TOOLS:
+        with pytest.raises(ToolError) as refused:
+            _call("s", "supervisor", tool, {})
+        assert str(refused.value) == f"role boss is read-only: {tool} is not available"
+    # Another tool it lacks is the library's own error.
+    with pytest.raises(ToolError, match="Unknown tool"):
+        _call("s", "supervisor", "no_such_tool", {})
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+
+
+def test_command_tools_are_the_supervisor_s_own():
+    assert set(mcp_server.COMMAND_TOOLS) == {
+        "spawn_worker",
+        "finish_worker",
+        "flow_start",
+        "flow_cancel",
+        "start_session",
+    }
+
+
 def test_listing_the_tools_records_that_the_server_is_ready(repo, fake_tmux):
     """The agent's session-start hook waits for this (lado.hooks)."""
     runtime.start_session(str(repo), "s", None, provider="claude")

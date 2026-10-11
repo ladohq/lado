@@ -946,3 +946,102 @@ def test_keychain_users_are_the_installed_providers_that_need_it(monkeypatch):
     hint = providers.get("claude").keychain_login({})
     assert providers.keychain_users({}, lambda c: f"/bin/{c}") == [("Claude Code", hint)]
     assert providers.keychain_users({}, lambda c: None if c == "claude" else "/x") == []
+
+
+# Read-only roles (AgentSpec.read_only): each provider that can takes its CLI's edit tools
+# away in the agent's own config; nothing else of the config changes.
+
+
+def _files(launch_dir: Path) -> dict[str, str]:
+    return {p.name: p.read_text() for p in sorted(launch_dir.iterdir()) if p.is_file()}
+
+
+def _launch_with(repo, name, mode=None, read_only=None):
+    """The files of the agent's config folder and its launch, for a spec with `read_only`
+    (None: not given at all)."""
+    sess = state.Session("s", str(repo), mode, name)
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, name, "i1")
+    extra = {} if read_only is None else {"read_only": read_only}
+    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)}, **extra)
+    launch = providers.get(name).launch_command(agent, sess, spec)
+    return _files(base.config_path(agent)), launch
+
+
+@pytest.mark.parametrize("name", ["claude", "codex", *FAMILY])
+@pytest.mark.parametrize("mode", [None, "default", "bypassPermissions"])
+def test_an_agent_that_is_not_read_only_gets_the_config_it_always_got(repo, name, mode):
+    if mode and mode not in providers.get(name).permission_modes:
+        pytest.skip(f"{name} has no mode {mode}")
+    as_before = _launch_with(repo, name, mode)
+    assert _launch_with(repo, name, mode, read_only=False) == as_before
+    files = "\n".join(as_before[0].values())
+    for marker in ('"Edit"', '"NotebookEdit"', '"edit": "deny"', "PreToolUse"):
+        assert marker not in files
+
+
+def test_capabilities_say_which_clis_take_the_edit_tools_away():
+    can = {n for n in providers.names() if providers.get(n).capabilities.deny_edit_tools}
+    # Codex 0.162: apply_patch through the shell reaches PreToolUse as Bash (checked by hand).
+    assert can == {"claude", "kilo", "opencode"}
+
+
+@pytest.mark.parametrize("mode", [None, "default", "bypassPermissions", "plan"])
+def test_claude_denies_a_read_only_agent_its_edit_tools(repo, mode):
+    normal, _ = _launch_with(repo, "claude", mode)
+    files, launch = _launch_with(repo, "claude", mode, read_only=True)
+    settings = json.loads(files["settings.json"])
+    assert settings["permissions"]["deny"] == [
+        "SendMessage",
+        "ListAgents",
+        "Edit",
+        "Write",
+        "NotebookEdit",
+    ]
+    settings["permissions"]["deny"] = ["SendMessage", "ListAgents"]
+    assert settings == json.loads(normal["settings.json"])
+    assert {k: v for k, v in files.items() if k != "settings.json"} == {
+        k: v for k, v in normal.items() if k != "settings.json"
+    }
+
+
+@pytest.mark.parametrize("name", list(FAMILY))
+@pytest.mark.parametrize("mode", [None, "default", "acceptEdits", "bypassPermissions", "plan"])
+def test_the_opencode_family_denies_a_read_only_agent_edits_in_each_built_in_agent(
+    repo, name, mode
+):
+    _, normal = _launch_with(repo, name, mode)
+    _, launch = _launch_with(repo, name, mode, read_only=True)
+    config, expected = json.loads(launch.env[FAMILY[name]]), json.loads(normal.env[FAMILY[name]])
+    cli = providers.get(name)
+    # An agent's own rules come after the global ones: a repo's `agent.build.permission.edit:
+    # allow` would win over the global deny (checked by hand), so each built-in agent gets it.
+    expected["permission"]["edit"] = "deny"
+    agents = expected.setdefault("agent", {})
+    for agent in cli.BUILT_IN_AGENTS:
+        agents.setdefault(agent, {}).setdefault("permission", {})["edit"] = "deny"
+    assert config == expected
+    assert launch.argv == normal.argv
+
+
+def test_the_built_in_agents_of_each_family_cli():
+    # `opencode agent list` 1.18.35 and `kilo agent list` 7.8.8 (compaction, summary and
+    # title run no tools).
+    assert providers.get("opencode").BUILT_IN_AGENTS == ("build", "plan", "general", "explore")
+    assert providers.get("kilo").BUILT_IN_AGENTS == (
+        "code",
+        "ask",
+        "debug",
+        "orchestrator",
+        "plan",
+        "general",
+        "explore",
+    )
+
+
+def test_hook_limits_are_what_each_cli_gives_a_hook():
+    claude, kilo, opencode = (providers.get(n) for n in ("claude", "kilo", "opencode"))
+    # Claude Code 2.1.296: a command hook without its own timeout gets 600 s (read in the
+    # binary). The plugin of the OpenCode family waits for the hook with no limit.
+    assert [claude.hook_limit(e) for e in ("UserPromptSubmit", "Stop")] == [600, 600]
+    assert kilo.hook_limit("session.idle") is None
+    assert opencode.hook_limit("chat.message") is None

@@ -146,6 +146,17 @@ the human attached) is "/<name>".
     + WORKER_INPUT
 )
 
+# What an agent of a read-only role (kits.AgentDef.read_only) must know, after the above.
+READ_ONLY_INSTRUCTIONS = """\
+Your role {role} is read-only: you change nothing in the repository. Your CLI's tools that \
+edit files are switched off, and so are LADO's command tools (spawn_worker, finish_worker, \
+flow_start, flow_cancel, start_session). Do not change the repository through the shell \
+either: no commits, edits or new files, no branch, tag or stash changes; remove a temporary \
+file before your turn ends. The shell is for reading, `git diff`, linters and tests; \
+messages and artifacts are yours to write. LADO compares the repository at each turn's \
+start and end and reports any change.
+"""
+
 # How every agent sends and reads messages, appended to the instructions above.
 MESSAGING = """\
 Messages: send_message takes a one-line summary (at most 200 characters), the only thing \
@@ -399,6 +410,7 @@ def start_session(
     )
     instructions = _supervisor_instructions(env, session)
     spec = _spec(agent_cli, env, env.lead.name, agent, instructions, base_env)
+    agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
     started = Started(sess, chosen, lead=env.lead_line(), warnings=list(env.warnings))
     if old and not old.stopped_at:
         state.stop_session(session, gone=True)  # left over from a tmux session that is gone
@@ -550,6 +562,7 @@ def spawn_worker(
     base_env = _base_env()
     _check_commands(env, base_env)
     spec = _spec(agent_cli, env, role_def.name, agent, instructions, base_env, without or [])
+    agent.read_only = spec.read_only
     if not run:
         exclude_worktrees(sess.repo)
         git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
@@ -1981,6 +1994,18 @@ def _spec(
     and MCP servers, each ${ENV_VAR} of theirs checked in the agent's `base_env` (the value
     stays there: lado.mcp_exec). Fails on anything its CLI cannot do."""
     resolved = env.resolve(role, without or [])
+    read_only = resolved.agent.read_only
+    if read_only and not agent_cli.capabilities.deny_edit_tools:
+        able = [n for n in providers.names() if providers.get(n).capabilities.deny_edit_tools]
+        how = (
+            "lado start --provider NAME"
+            if agent.name == SUPERVISOR
+            else "spawn_worker(provider=...)"
+        )
+        raise LadoError(
+            f"role {role} is read-only, but {agent_cli.title} cannot take its edit tools away; "
+            f"use a provider that can: {', '.join(able)} ({how})"
+        )
     cannot = f'{agent_cli.title} cannot load skills, but agent "{agent.name}" ({role}) gets'
     if resolved.skills and not agent_cli.capabilities.skills:
         raise LadoError(
@@ -2001,12 +2026,15 @@ def _spec(
         skills[lead_skill.name] = config / LEAD_SKILLS / lead_skill.name
     if lead_skills:
         read.append(config / LEAD_FILES)
+    if read_only:
+        instructions += READ_ONLY_INSTRUCTIONS.format(role=role)
     return providers.AgentSpec(
         prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}",
         skills=skills,
         mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers(base_env)},
         read=read,
         environ=base_env,
+        read_only=read_only,
     )
 
 

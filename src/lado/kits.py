@@ -84,7 +84,7 @@ REQUIRE = "require"
 ASSUME = "assume"
 PACK_KEYS = {"from", "folders"}
 LADO_NEEDS = re.compile(r">=\s*(\d+)\.(\d+)(?:\.(\d+))?")
-AGENT_KEYS = {"name", "description", "skills", "mcp"}
+AGENT_KEYS = {"name", "description", "skills", "mcp", "read_only"}
 MCP_KEYS = {"command", "env"}
 WITHOUT_KINDS = ("agent", "skill", "mcp", "flow")
 
@@ -157,6 +157,9 @@ class AgentDef:
     body: str  # the role prompt, ${KIT_DIR} substituted
     kit: str
     path: Path
+    # Its agent changes nothing in the repository: LADO takes its CLI's edit tools and its
+    # own command tools away and checks the repository at each turn (lado.runtime).
+    read_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -395,6 +398,11 @@ class Environment:
             )
             if not skill.listed:
                 found.append(f"kit {kit}'s supervisor lists no skills: its lead skill carries none")
+            source = self.kit_supervisors[kit]
+            if source.read_only:
+                found.append(
+                    f"read_only of {source.name} (kit {kit}) has no effect: it does not lead"
+                )
             if skill.missing_mcp:
                 found.append(
                     f"MCP servers of kit {kit}'s supervisor ({', '.join(skill.missing_mcp)}) "
@@ -1899,13 +1907,16 @@ def _load_agent(path: Path, kit: Path, kit_name: str, errors: list[str]) -> Agen
     if skills is not None and not _str_list(skills):
         errors.append(f"{path}: skills must be a list of skill names")
     mcp = _load_mcp(meta.get("mcp", {}), path, kit, errors)
+    read_only = meta.get("read_only", False)
+    if not isinstance(read_only, bool):
+        errors.append(f"{path}: read_only must be true or false")
     try:
         body = _substitute(body, {"KIT_DIR": str(kit)}, f"{path}", keep_unknown=True)
     except KitError as exc:
         errors.append(str(exc))
     if len(errors) > count:
         return None
-    return AgentDef(name, description, skills, mcp, body.strip(), kit_name, path)
+    return AgentDef(name, description, skills, mcp, body.strip(), kit_name, path, read_only)
 
 
 def _load_mcp(value: object, path: Path, kit: Path, errors: list[str]) -> dict[str, McpDef]:

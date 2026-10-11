@@ -3600,6 +3600,83 @@ def test_a_provider_without_skills_names_the_way_out_of_lead_skills(
     )
 
 
+@pytest.fixture
+def quiet_kit(repo):
+    """Kit quiet: a read-only reviewer and a developer."""
+    kit = repo / ".lado" / "kits" / "quiet"
+    _write(kit / "kit.yaml", "name: quiet\nversion: 1.0.0\n")
+    _write(
+        kit / "agents" / "reviewer.md",
+        "---\nname: reviewer\ndescription: reviews\nread_only: true\n---\nYou review.\n",
+    )
+    _write(kit / "agents" / "dev.md", "---\nname: dev\ndescription: develops\n---\nDevelop.\n")
+    return kit
+
+
+def _deny(cmd):
+    return json.loads(open(cmd[cmd.index("--settings") + 1]).read())["permissions"]["deny"]
+
+
+def test_a_read_only_worker_is_stored_so_and_its_cli_takes_its_edit_tools(
+    repo, fake_tmux, quiet_kit
+):
+    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
+    reviewer = runtime.spawn_worker("s", "review", role="reviewer")
+    assert state.get_agent("s", reviewer.name).read_only is True
+    cmd = fake_tmux[-1][-1]
+    assert _deny(cmd) == ["SendMessage", "ListAgents", "Edit", "Write", "NotebookEdit"]
+    assert runtime.READ_ONLY_INSTRUCTIONS.format(role="reviewer") in agent_helpers.claude_prompt(
+        cmd
+    )
+    dev = runtime.spawn_worker("s", "build", role="dev")
+    assert state.get_agent("s", dev.name).read_only is False
+    cmd = fake_tmux[-1][-1]
+    assert _deny(cmd) == ["SendMessage", "ListAgents"]
+    assert "read-only" not in agent_helpers.claude_prompt(cmd)
+    assert state.get_agent("s", "supervisor").read_only is False
+
+
+def test_a_read_only_worker_on_a_cli_that_cannot_take_edits_is_refused_before_its_worktree(
+    repo, fake_tmux, quiet_kit
+):
+    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
+    with pytest.raises(runtime.LadoError) as e:
+        runtime.spawn_worker("s", "review", role="reviewer", provider="codex")
+    assert str(e.value) == (
+        "role reviewer is read-only, but Codex CLI cannot take its edit tools away; use a "
+        "provider that can: claude, kilo, opencode (spawn_worker(provider=...))"
+    )
+    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
+    assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
+    assert not (repo / ".lado" / "worktrees" / "s" / "reviewer").exists()
+
+
+def test_a_read_only_lead_is_stored_so_and_written_anew_at_each_resume(repo, fake_tmux, quiet_kit):
+    _write(quiet_kit / "kit.yaml", "name: quiet\nversion: 1.0.0\nsupervisor: reviewer\n")
+    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
+    assert state.get_agent("s", "supervisor").read_only is True
+    assert "Edit" in _deny(fake_tmux[0][-1])
+    runtime.stop_session("s")
+    reviewer = quiet_kit / "agents" / "reviewer.md"
+    reviewer.write_text(reviewer.read_text().replace("read_only: true\n", ""))
+    runtime.start_session(str(repo), "s", None)
+    assert state.get_agent("s", "supervisor").read_only is False
+    assert "Edit" not in _deny(fake_tmux[-1][-1])
+
+
+def test_a_read_only_lead_on_a_cli_that_cannot_take_edits_refuses_the_start(
+    repo, fake_tmux, quiet_kit
+):
+    _write(quiet_kit / "kit.yaml", "name: quiet\nversion: 1.0.0\nsupervisor: reviewer\n")
+    with pytest.raises(runtime.LadoError) as e:
+        runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="codex")
+    assert str(e.value) == (
+        "role reviewer is read-only, but Codex CLI cannot take its edit tools away; use a "
+        "provider that can: claude, kilo, opencode (lado start --provider NAME)"
+    )
+    assert state.get_session("s") is None and fake_tmux == []
+
+
 def test_kit_users_are_the_sessions_that_name_the_kit_split_by_status(
     tmp_path, lado_home, monkeypatch
 ):

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -295,6 +295,10 @@ ARTIFACTS_TABLES = [
 # attachments and whether a needed note is that one go by this id. NULL in older gates
 # and in those of a run whose step reported no note.
 GATES_NOTE = "ALTER TABLE gates ADD COLUMN note_id INTEGER REFERENCES notes(id)"
+# Whether the agent's role is read-only (`read_only: true` in its kit), from version 24 on:
+# written at its launch, as the role does not change while it runs. Its hooks check the
+# repository at each turn (lado.fingerprint) and its `lado mcp` hides LADO's command tools.
+AGENTS_READ_ONLY = "ALTER TABLE agents ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0"
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.
@@ -375,6 +379,7 @@ SCHEMA += (
             *AGENTS_RESUME,
             *ARTIFACTS_TABLES,
             GATES_NOTE,
+            AGENTS_READ_ONLY,
         ]
     )
     + ";\n"
@@ -444,6 +449,7 @@ MIGRATIONS = {
     20: ARTIFACTS_TABLES,
     21: [GATES_NOTE],
     22: [closed_runs_without_needs],
+    23: [AGENTS_READ_ONLY],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -583,6 +589,7 @@ class Agent:
     waiting_for: str | None = None  # the request it waits for, while waiting (`wait`)
     resume_at: float | None = None  # when LADO tells it to go on (`schedule_resume`)
     resumes: int = 0  # how many times it was told so since its last other turn's end
+    read_only: bool = False  # its role changes nothing in the repository (lado.kits)
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
 
 
@@ -1060,8 +1067,8 @@ def add_agent(agent: Agent) -> None:
     with connect() as db:
         db.execute(
             "INSERT INTO agents"
-            " (session, name, role, cwd, branch, task, status, provider, instance, run)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " (session, name, role, cwd, branch, task, status, provider, instance, run,"
+            " read_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 agent.session,
                 agent.name,
@@ -1073,6 +1080,7 @@ def add_agent(agent: Agent) -> None:
                 agent.provider,
                 agent.instance,
                 agent.run,
+                int(agent.read_only),
             ),
         )
 
@@ -2306,6 +2314,7 @@ def _agent(row: sqlite3.Row) -> Agent:
         waiting_for=row["waiting_for"],
         resume_at=row["resume_at"],
         resumes=row["resumes"],
+        read_only=bool(row["read_only"]),
         created_at=row["created_at"],
     )
 

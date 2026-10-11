@@ -281,6 +281,8 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
         print(f"  {agent.name}{flag}  from {agent.kit}: {agent.path}")
         skills = ", ".join(f"{s.name} ({origin(s)})" for s in resolved.skills.values()) or "none"
         print(f"    skills{' (all)' if agent.skills is None else ''}: {skills}")
+        if agent.read_only:
+            print("    read-only: yes")
         for mcp in resolved.mcp.values():
             print(f"    mcp {mcp.name}: {' '.join(mcp.command)}")
     if env.lead_skills():
@@ -342,6 +344,8 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
     skills = len(env.all_skills())
     counts = f"{len(env.agents)} agents, {skills} skills, {len(kit.packs)} packs"
     print(f"{kit.name}: OK ({counts} and {len(env.flows)} flows)")
+    if read_only := [a.name for a in kit.agents.values() if a.read_only]:
+        print(f"read-only roles: {', '.join(read_only)}")
     if kit.expects.skills:
         print(f"expects skills: {', '.join(kit.expects.skills)}")
     if kit.expects.commands:

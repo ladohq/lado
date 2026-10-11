@@ -1833,6 +1833,8 @@ Again in CI on 99b22f3 (push of main, 2026-10-10, run 38046763270): the same `Va
 passed on the rerun. Third time: worth fixing before the next release.
 Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85, `make check`): the
 terminal panel test, the same `ValueError`; passed on both reruns.
+Again in CI on d8533dd (push of main, 2026-10-11, run 38113153944): the same `ValueError`
+in two runs in a row; passed on the second rerun.
 
 ## Flaky in CI: `test_stopping_a_session_tells_no_one_and_counts_what_it_dropped` on 3.10
 

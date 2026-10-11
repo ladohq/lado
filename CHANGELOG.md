@@ -11,6 +11,10 @@
   Their turn-end hooks now have a 60 s limit. The database schema is now 24: restart
   running sessions after the upgrade (`lado update` does it).
 
+- UI: an agent's terminal you control is marked in blue (its bar says "You're typing into
+  <agent>", a frame around it, a keyboard on its tab) and goes back to view by itself when
+  the page is hidden, the panel folded, the connection lost or after 10 minutes without
+  input. The bar no longer says "live": it names the connection only when it is not open.
 - The team chips above a session's Activity all look the same, compact and without the
   role (it is in the tooltip); the supervisor's chip no longer looks unlike the others.
 - Markdown tables wrap their cells to fit the column; they scroll sideways only when their

@@ -313,6 +313,22 @@ export const ClipIcon = () => (
   </Icon>
 );
 
+// An eye: a terminal open to view.
+export const ViewIcon = () => (
+  <Icon>
+    <path d="M3 12c1-3 4.4-7 9-7s8 4 9 7c-1 3-4.4 7-9 7s-8-4-9-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+
+// A keyboard: a terminal the human controls, its keys going to the agent.
+export const KeyboardIcon = () => (
+  <Icon>
+    <rect x="2.5" y="6" width="19" height="12.5" rx="2" />
+    <path d="M6.5 10.5h1M10.5 10.5h1M14.5 10.5h3M7 14.5h10" />
+  </Icon>
+);
+
 // An eye struck through: an agent cannot see what the file holds.
 export const UnseenIcon = () => (
   <Icon>

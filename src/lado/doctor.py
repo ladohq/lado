@@ -137,8 +137,7 @@ def check_git() -> Check:
     try:
         version = runtime.git_version()
     except runtime.FolderProblem as problem:
-        hint = f"{problem.hint.text} {problem.hint.command}" if problem.hint else ""
-        return Check("git", FAIL, str(problem), hint)
+        return Check("git", FAIL, str(problem), problem.hint.line() if problem.hint else "")
     found = _git_numbers(version)
     if found and found < runtime.GIT_MIN:
         need = ".".join(map(str, runtime.GIT_MIN))

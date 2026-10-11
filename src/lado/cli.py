@@ -1264,7 +1264,7 @@ def main(argv: list[str] | None = None) -> int:
         # A folder's hint: what the human can do. The notes: what undoing a failed start
         # could not do (runtime._undo).
         hint = exc.hint if isinstance(exc, runtime.FolderProblem) else None
-        lines = [str(exc), *([f"{hint.text} {hint.command}"] if hint else [])]
+        lines = [str(exc), *([hint.line()] if hint else [])]
         for line in [*lines, *getattr(exc, "__notes__", [])]:
             print(f"lado: {line}", file=sys.stderr)
         return 1

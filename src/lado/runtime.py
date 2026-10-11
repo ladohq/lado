@@ -232,6 +232,10 @@ class Hint:
     text: str
     command: str
 
+    def line(self) -> str:
+        """The hint as one line, as the CLI and `lado doctor` print it."""
+        return f"{self.text} {self.command}"
+
 
 class FolderProblem(LadoError):
     """Why a folder cannot hold a session (`check_repo`), by kind, with a hint when the
@@ -244,6 +248,7 @@ class FolderProblem(LadoError):
 
 
 GIT_MIN = (2, 31)  # `rev-parse --path-format=absolute` (providers/gitpaths.py)
+XCODE_TOOLS = "xcode-select --install"
 
 
 def _macos() -> bool:
@@ -258,9 +263,6 @@ def _no_git() -> FolderProblem:
             "Install git (or with your distribution's package manager):", "sudo apt install git"
         )
     return FolderProblem("no_git", gitcache.not_found(os.environ), hint)
-
-
-XCODE_TOOLS = "xcode-select --install"
 
 
 def _git_broken(line: str) -> FolderProblem:

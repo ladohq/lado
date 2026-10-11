@@ -1833,6 +1833,8 @@ CI on 99b22f3 (run 38046763270, job check (3.10)): `tests/integration/test_agent
 Wanted: find what the test waits for after the stop (the agents are gone already) and wait
 for that, not the supervisor's hook.
 Found: 2026-10-10, CI after the push of main.
+Again on 23f0792 (run 38124031817, 2026-10-11): failed twice in a row on 3.10, the same
+timeout, passed on the second rerun; 6 of 6 passed locally on 3.10 (`-n0`). Worth fixing.
 
 ## Codex agents call `read_mcp_resource` instead of LADO's tools
 

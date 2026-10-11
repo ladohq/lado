@@ -1,16 +1,23 @@
 # Changelog
 
+## 0.35.0 (2026-10-11)
+
+- Codex CLI runs read-only agents: their worktree tool is off, and on a model Codex has no
+  metadata for, such as a local one, no tool but the shell writes files; each launch warns
+  that an OpenAI model may keep apply_patch.
+- LADO's messages to a read-only supervisor no longer tell it to start, merge or finish
+  workers: they say what waits and your way (`lado flow-set`, `git merge`, `lado finish`).
+- Codex CLI agents no longer get Codex's goal tools (`features.goals = false`): local
+  models looped on them.
+- UI: an artifact opened in a new tab scrolls when it is longer than the window (it was cut
+  off on a wide window); a text record's bar stays on top.
+
 ## 0.34.0 (2026-10-11)
 
 - Read-only roles: `read_only: true` in a role's frontmatter takes its agent's file
-  editing tools away (Claude Code, OpenCode, Kilo; Codex CLI on a model it has no metadata
-  for, such as a local one, and it warns that an OpenAI model may keep apply_patch), hides
+  editing tools away (Claude Code, OpenCode, Kilo; Codex CLI refuses such an agent), hides
   LADO's command tools from a read-only supervisor, and tells the supervisor (or you) when
-  the repository changed during one of the agent's turns. LADO's messages to a read-only
-  supervisor no longer tell it to start, merge or finish workers: they say what waits and
-  your way (`lado flow-set`, `git merge`, `lado finish`).
-- Codex CLI agents no longer get Codex's goal tools (`features.goals = false`): local
-  models looped on them.
+  the repository changed during one of the agent's turns.
 - The database schema is now 25: restart running sessions after the upgrade (`lado update`
   does it).
 - UI: the artifact panel's width is yours: drag its left edge (a grip in its middle), or

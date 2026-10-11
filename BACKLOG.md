@@ -687,7 +687,9 @@ Size: S. Why here: a read-only agent's change in that turn goes unreported (R3 o
 hand-over the baseline is reopened for the turn that goes on; Claude Code runs no hook when
 the human interrupts it with Esc, so the next UserPromptSubmit replaces that baseline
 without comparing it, and a change made in the interrupted turn is never reported.
-Wanted: an open `continued` baseline is compared before it is replaced; a unit test of it.
+Wanted: an open `continued` baseline is compared before it is replaced, only for CLIs whose
+hook-output turn runs no prompt-submit hook (Claude Code, Codex; on OpenCode and Kilo it
+would bring back the false "its end was not seen" line); a unit test of it.
 Found: 2026-10-11, review of feature/read-only-roles (Minor 3, visits 2 and 3).
 
 ## CHANGELOG 0.34.0 names two database schemas

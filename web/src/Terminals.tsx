@@ -11,9 +11,13 @@
 // (remembered; narrowed while the window leaves the session too little room), and Expand
 // shows it over the whole page with the same terminals. Every terminal opens to view: the
 // wheel up, once the panel has nothing more to scroll, points at Take control (scrolling the
-// agent's CLI needs control); Take control asks first in a dialog (until
-// the human says not to ask again), then types into the agent; Release goes back. A terminal
-// closed for good has Reconnect, and opens again by itself when its agent comes back.
+// agent's CLI needs control); Take control, only while the socket is open, asks first in a
+// dialog (until the human says not to ask again), then types into the agent, marked in its
+// bar, around its screen and on its tab. Release goes back, and so does the terminal by
+// itself, silently: the page hidden, IDLE_MS without input, its socket lost after it was
+// open, the panel folded. The panel owns which agents are in control. The bar names the
+// connection only while it is not open. A terminal closed for good has Reconnect (to view),
+// and opens again by itself when its agent comes back.
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -30,7 +34,7 @@ import {
 import { useSearchParams } from "react-router";
 
 import type { AgentInfo } from "./api";
-import { CollapsePanelIcon, ExpandIcon } from "./icons";
+import { CollapsePanelIcon, ExpandIcon, KeyboardIcon, ViewIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
 import { TERMINAL_PARAM } from "./paths";
 import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type ColumnPrefs } from "./prefs";
@@ -89,6 +93,27 @@ export function TerminalPanel({ session, children }: { session: string; children
   const [page, room] = useWidth<HTMLDivElement>();
   const tabList = useRef<HTMLDivElement>(null);
 
+  // The agents whose terminal the human controls. Control left where the human cannot see
+  // it is forgotten control: the page hidden, the panel folded, the tab closed end it.
+  const [controlled, setControlled] = useState<ReadonlySet<string>>(() => new Set());
+  const setMode = useCallback((agent: string, mode: Mode) => {
+    setControlled((now) => {
+      if (now.has(agent) === (mode === "control")) return now;
+      const next = new Set(now);
+      if (mode === "control") next.add(agent);
+      else next.delete(agent);
+      return next;
+    });
+  }, []);
+  const releaseAll = useCallback(() => setControlled((now) => (now.size === 0 ? now : new Set())), []);
+  useEffect(() => {
+    const hidden = () => {
+      if (document.visibilityState === "hidden") releaseAll();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, [releaseAll]);
+
   // The selected tab, chosen here or by a chip, scrolls into the tabs' view.
   useEffect(() => {
     tabList.current
@@ -141,11 +166,13 @@ export function TerminalPanel({ session, children }: { session: string; children
     const left = tabs.filter((one) => one !== agent);
     setTabs(left);
     setShown((now) => now.filter((one) => one !== agent));
+    setMode(agent, "view");
     if (active === agent) setActive(left[left.length - 1]);
   };
 
   const focus = useStripFocus(panel.collapsed);
   const collapse = () => {
+    releaseAll();
     setExpanded(false);
     focus.toggled();
     keep({ collapsed: true });
@@ -242,13 +269,18 @@ export function TerminalPanel({ session, children }: { session: string; children
                           type="button"
                           role="tab"
                           id={`term-tab-${agent}`}
-                          aria-label={`${agent}, ${statusOf(agent)}`}
+                          aria-label={`${agent}, ${statusOf(agent)}${controlled.has(agent) ? ", in control" : ""}`}
                           aria-selected={agent === active}
                           aria-controls={`term-${agent}`}
                           onClick={() => setActive(agent)}
                         >
                           <StatusDot status={statusOf(agent)} small />
                           <span className="term-tab-name">{agent}</span>
+                          {controlled.has(agent) && (
+                            <span className="term-tab-control" role="img" aria-label="In control" title="In control">
+                              <KeyboardIcon />
+                            </span>
+                          )}
                         </button>
                       </Tooltip>
                       {agent !== SUPERVISOR && (
@@ -306,6 +338,8 @@ export function TerminalPanel({ session, children }: { session: string; children
                   agent={agent}
                   visible={!panel.collapsed && agent === active}
                   info={infoOf(agent)}
+                  mode={controlled.has(agent) ? "control" : "view"}
+                  onMode={(next) => setMode(agent, next)}
                 />
               )}
             </div>
@@ -336,39 +370,54 @@ function fitFont(term: Terminal, fit: FitAddon, [cols, rows]: [number, number]):
   }
 }
 
-const PHASE: Record<LinkState["phase"], string> = {
-  connecting: "connecting…",
-  open: "live",
-  retrying: "reconnecting",
-  closed: "closed",
-};
+// How long control lasts with no input from the human: then it goes back to view.
+export const IDLE_MS = 600_000;
+
+// The connection is named only while it is not open.
+function linkText({ phase, reason }: LinkState): string {
+  if (phase === "connecting") return "connecting…";
+  if (phase === "retrying") return `reconnecting: ${reason}`;
+  if (phase === "closed") return `closed: ${reason}`;
+  return "";
+}
+
+const CONNECTING: LinkState = { phase: "connecting", reason: null };
 
 const controlText = (agent: string) =>
   `What you type goes straight to ${agent}, as if you typed in its tmux window. Messages LADO ` +
   "delivers to it meanwhile land among your keys.";
 
 // `info`: the agent as the session's agents list has it, or null while it is not there.
+// `mode` is the panel's; Take control, Release and the terminal's own ends of control
+// (IDLE_MS without input, its socket lost) go through `onMode`.
 function AgentTerminal({
   session,
   agent,
   visible,
   info,
+  mode,
+  onMode,
 }: {
   session: string;
   agent: string;
   visible: boolean;
   info: AgentInfo | null;
+  mode: Mode;
+  onMode: (next: Mode) => void;
 }) {
-  const [mode, setModeNow] = useState<Mode>("view");
-  const [link, setLink] = useState<LinkState>({ phase: "connecting", reason: null });
+  const [link, setLink] = useState<LinkState>(CONNECTING);
   const [attempt, setAttempt] = useState(0); // a new socket each time it changes: Reconnect
   // Another mode is another socket: the old one's state is not shown for it.
-  const setMode = (next: Mode) => {
-    setLink({ phase: "connecting", reason: null });
-    setModeNow(next);
-  };
+  const [linkMode, setLinkMode] = useState(mode);
+  if (linkMode !== mode) {
+    setLinkMode(mode);
+    setLink(CONNECTING);
+  }
+  const onModeNow = useRef(onMode);
+  onModeNow.current = onMode;
   const reconnect = () => {
-    setLink({ phase: "connecting", reason: null });
+    onModeNow.current("view");
+    setLink(CONNECTING);
     setAttempt((now) => now + 1);
   };
   // A socket closed for good opens again when the agent comes back or changes (a resumed
@@ -419,6 +468,15 @@ function AgentTerminal({
     term.loadAddon(fit);
     term.open(element);
     let window_: [number, number] | null = null; // in view: the agent's window's size
+    // Control ends by itself after IDLE_MS without input, and when its socket, once open,
+    // is lost (not while a new one connects).
+    const release = () => onModeNow.current("view");
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    const awake = () => {
+      clearTimeout(idle);
+      idle = setTimeout(release, IDLE_MS);
+    };
+    let opened = false;
     const socket = new TermLink(terminalUrl(window.location, session, agent, mode), {
       output: (data) => term.write(data),
       size: (cols, rows) => {
@@ -430,7 +488,12 @@ function AgentTerminal({
       state: (state) => {
         if (state.phase === "closed") closedWith.current = infoNow.current;
         setLink(state);
-        if (state.phase === "open") fitNow.current();
+        if (state.phase === "open") {
+          opened = true;
+          fitNow.current();
+        } else if (opened && mode === "control" && state.phase !== "connecting") {
+          release();
+        }
       },
     });
     // In control the terminal fills the panel and tells the server its size. In view it
@@ -449,7 +512,14 @@ function AgentTerminal({
       const screen = element.parentElement;
       if (screen) screen.scrollTop = screen.scrollHeight;
     };
-    const typed = mode === "control" ? term.onData((data) => socket.input(data)) : null;
+    const typed =
+      mode === "control"
+        ? term.onData((data) => {
+            awake();
+            socket.input(data);
+          })
+        : null;
+    if (mode === "control") awake();
     term.attachCustomWheelEventHandler((event) => {
       if (mode === "control") return true; // to tmux: copy-mode, or the CLI's own scrolling
       // In view the wheel scrolls the panel (a window too big for it at the least font); once
@@ -462,6 +532,7 @@ function AgentTerminal({
     setNotice(null);
     socket.start();
     return () => {
+      clearTimeout(idle);
       resized?.disconnect();
       typed?.dispose();
       socket.stop();
@@ -473,35 +544,53 @@ function AgentTerminal({
     if (visible) fitNow.current();
   }, [visible]);
 
-  const status =
-    link.phase === "retrying" || link.phase === "closed"
-      ? `${PHASE[link.phase]}: ${link.reason}`
-      : PHASE[link.phase];
+  // Take control's question goes with the connection it would take control over.
+  const open = link.phase === "open";
+  useEffect(() => {
+    if (!open) setAsking(false);
+  }, [open]);
 
   const takeControl = () => {
     setAsking(false);
-    setMode("control");
+    onMode("control");
   };
 
+  const typingInto = `You're typing into ${agent}`;
+  // The error frame of a close for good says what its status says already.
+  const shownNotice = link.phase === "closed" && notice === link.reason ? null : notice;
+
   return (
-    <div className="term" data-mode={mode}>
+    <div className="term" data-mode={mode} data-link={link.phase}>
       <div className="term-tools">
-        <span className={`term-mode term-${mode}`}>{mode === "control" ? "In control" : "Viewing"}</span>
-        <span role="status" className={`term-link term-link-${link.phase}`}>
-          {status}
-        </span>
-        {notice && (
-          <span role="alert" className="term-notice">
-            {notice}
+        {mode === "control" ? (
+          <span className="term-mode term-control" title={typingInto}>
+            <KeyboardIcon />
+            <span className="term-control-words">You're typing into</span>{" "}
+            <span className="term-control-agent">{agent}</span>
+          </span>
+        ) : (
+          <span className="term-mode term-view">
+            <ViewIcon />
+            Viewing
           </span>
         )}
-        {link.phase === "closed" && (
+        <span role="status" className={`term-link term-link-${link.phase}`}>
+          {(link.phase === "connecting" || link.phase === "retrying") && (
+            <span className="term-spin" aria-hidden="true" />
+          )}
+          {linkText(link)}
+        </span>
+        {shownNotice && (
+          <span role="alert" className="term-notice">
+            {shownNotice}
+          </span>
+        )}
+        {link.phase === "closed" ? (
           <button type="button" className="quiet" onClick={reconnect}>
             Reconnect
           </button>
-        )}
-        {mode === "control" ? (
-          <button type="button" className="quiet" onClick={() => setMode("view")}>
+        ) : mode === "control" ? (
+          <button type="button" className="quiet term-release" onClick={() => onMode("view")}>
             Release
           </button>
         ) : (
@@ -509,13 +598,15 @@ function AgentTerminal({
             <button
               type="button"
               className={hint ? "quiet attention" : "quiet"}
-              title={controlText(agent)}
+              disabled={!open}
+              title={open ? controlText(agent) : "No connection to the terminal yet"}
               onClick={() => {
                 closeHint();
                 if (storedAskControl()) setAsking(true);
                 else takeControl();
               }}
             >
+              <KeyboardIcon />
               Take control
             </button>
             {hint && (

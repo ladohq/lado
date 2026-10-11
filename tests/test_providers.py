@@ -25,6 +25,11 @@ def test_registry():
         providers.get("nope")
 
 
+def test_the_cli_takes_the_turn_end_hook_output_once_printed_for_claude_and_codex_only():
+    taken = {n: providers.get(n).capabilities.output_taken_when_printed for n in providers.names()}
+    assert taken == {"claude": True, "codex": True, "kilo": False, "opencode": False}
+
+
 @pytest.mark.parametrize(
     ("native", "payload", "expected"),
     [
@@ -214,6 +219,16 @@ def test_claude_reports_dialogs_at_once_and_their_answers_without_holding_tools(
         assert answered["hooks"][0]["async"] is True
         assert answered["hooks"][0]["command"].split()[-7] == native
     assert "Notification" not in hooks_ and "PreToolUse" not in hooks_
+
+
+def test_claude_gives_its_turn_end_hooks_lados_limit_and_no_other_hook_one(repo):
+    hooks_ = _claude_settings(repo)
+    for native, groups in hooks_.items():
+        [command] = groups[0]["hooks"]
+        if native in ("Stop", "StopFailure"):
+            assert command["timeout"] == base.TURN_END_HOOK_TIMEOUT == 60
+        else:
+            assert "timeout" not in command
 
 
 def test_providers_that_report_a_wait_report_its_end():
@@ -1038,10 +1053,16 @@ def test_the_built_in_agents_of_each_family_cli():
     )
 
 
-def test_hook_limits_are_what_each_cli_gives_a_hook():
+def test_hook_limits_are_what_each_cli_gives_a_hook(repo):
     claude, kilo, opencode = (providers.get(n) for n in ("claude", "kilo", "opencode"))
     # Claude Code 2.1.296: a command hook without its own timeout gets 600 s (read in the
-    # binary). The plugin of the OpenCode family waits for the hook with no limit.
-    assert [claude.hook_limit(e) for e in ("UserPromptSubmit", "Stop")] == [600, 600]
+    # binary); LADO's turn-end hooks set theirs. The plugin of the OpenCode family waits for
+    # the hook with no limit.
+    limits = [claude.hook_limit(e) for e in ("UserPromptSubmit", "Stop", "StopFailure")]
+    assert limits == [600, 60, 60]
+    written = _claude_settings(repo)  # the hooks LADO writes
+    for native in ("UserPromptSubmit", "Stop", "StopFailure"):
+        timeout = written[native][0]["hooks"][0].get("timeout", 600)
+        assert timeout == claude.hook_limit(native)
     assert kilo.hook_limit("session.idle") is None
     assert opencode.hook_limit("chat.message") is None

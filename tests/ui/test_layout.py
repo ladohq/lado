@@ -38,7 +38,7 @@ def test_the_panel_shows_the_supervisors_terminal_when_the_page_opens(
     page.goto(f"{server['url']}/sessions/{session}")
     panel = page.get_by_role("complementary", name="Terminals")
     view = panel.get_by_role("tabpanel", name="supervisor")
-    expect(view.get_by_role("status")).to_have_text("live")  # before any click
+    expect(view.locator(".term")).to_have_attribute("data-link", "open")  # before any click
     expect(panel.get_by_role("tab", name="supervisor")).to_have_attribute("aria-selected", "true")
     expect(panel.get_by_role("button", name="Close supervisor's terminal")).to_have_count(0)
     chat = page.get_by_role("region", name="Chat").bounding_box()
@@ -63,7 +63,7 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     chips.nth(1).click()
     expect(chips.nth(1)).to_have_attribute("aria-pressed", "true")
     view = panel.get_by_role("tabpanel", name="w1")
-    expect(view.get_by_role("status")).to_have_text("live")
+    expect(view.locator(".term")).to_have_attribute("data-link", "open")
     expect(view).to_contain_text("Viewing")
     chat = page.get_by_role("region", name="Chat").bounding_box()
     right = panel.bounding_box()
@@ -77,11 +77,11 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
 
     chips.first.click()  # back to the supervisor's tab; w1's keeps its socket
     expect(panel.get_by_role("tab")).to_have_text(["supervisor", "w1"])
-    expect(panel.get_by_role("tabpanel", name="supervisor").get_by_role("status")).to_have_text(
-        "live"
+    expect(panel.get_by_role("tabpanel", name="supervisor").locator(".term")).to_have_attribute(
+        "data-link", "open"
     )
     panel.get_by_role("tab", name="w1").click()
-    expect(view.get_by_role("status")).to_have_text("live")
+    expect(view.locator(".term")).to_have_attribute("data-link", "open")
 
 
 BUILD = """\
@@ -151,7 +151,9 @@ def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_t
     chip.click()
     expect(chip).to_have_attribute("aria-pressed", "true")
     panel = page.get_by_role("complementary", name="Terminals")
-    expect(panel.get_by_role("tabpanel", name="dev").get_by_role("status")).to_have_text("live")
+    expect(panel.get_by_role("tabpanel", name="dev").locator(".term")).to_have_attribute(
+        "data-link", "open"
+    )
 
     frame.get_by_role("link", name="build/x").click()
     expect(page).to_have_url(re.compile(f"/sessions/{session}/flows/build%2Fx$"))
@@ -164,7 +166,7 @@ def test_the_panel_collapses_to_a_strip_and_opens_no_terminal_until_it_is_opened
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     panel = page.get_by_role("complementary", name="Terminals")
-    expect(panel.get_by_role("status")).to_have_text("live")
+    expect(panel.locator(".term")).to_have_attribute("data-link", "open")
     panel.get_by_role("button", name="Collapse terminals").click()
     assert panel.bounding_box()["width"] < 50
     shot(page)
@@ -176,7 +178,7 @@ def test_the_panel_collapses_to_a_strip_and_opens_no_terminal_until_it_is_opened
     page.wait_for_timeout(500)
     assert sockets == []
     panel.get_by_role("button", name="Terminals").click()
-    expect(panel.get_by_role("status")).to_have_text("live")
+    expect(panel.locator(".term")).to_have_attribute("data-link", "open")
     assert len(sockets) == 1
 
 
@@ -208,7 +210,7 @@ def test_the_list_and_the_panel_are_resized_on_their_edges_and_keep_their_widths
     expect(panel_edge).to_have_attribute("aria-valuenow", "530")
     page.reload()
     panel = page.get_by_role("complementary", name="Terminals")
-    expect(panel.get_by_role("status")).to_have_text("live")
+    expect(panel.locator(".term")).to_have_attribute("data-link", "open")
     assert round(page.locator(".session-list").bounding_box()["width"]) == 320
     assert round(panel.bounding_box()["width"]) == 530
     shot(page)

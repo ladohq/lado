@@ -128,6 +128,9 @@ def test_hooks_report_each_event_lado_uses(repo):
         assert handler["command"] == base.hook_command(_agent(repo), event)
     # Interrupt's hook gets a second by default; its hand-over may take longer.
     assert groups["Interrupt"][0]["hooks"][0]["timeout"] == 3
+    # The turn-end hook gets LADO's limit: a batch it never printed waits that long, and a
+    # margin, before it is typed in (lado.runtime.HOOK_OUTPUT_WAIT).
+    assert groups["Stop"][0]["hooks"][0]["timeout"] == base.TURN_END_HOOK_TIMEOUT == 60
 
 
 def test_lado_trusts_its_own_hooks_so_codex_asks_no_review(repo, lado_home):
@@ -185,10 +188,11 @@ def test_the_hook_hash_follows_what_codex_normalizes():
 def test_the_hook_limit_is_the_timeout_codex_gives_lado_s_hook(repo):
     cli = providers.get("codex")
     # The same timeout the hook hash goes by, for the handler LADO writes (HOOK_TIMEOUTS).
-    assert [cli.hook_limit(e) for e in ("UserPromptSubmit", "Stop", "Interrupt")] == [600, 600, 3]
+    assert [cli.hook_limit(e) for e in ("UserPromptSubmit", "Stop", "Interrupt")] == [600, 60, 3]
     _, config = _launch(repo)
-    [group] = config["hooks"]["Interrupt"]
-    assert group["hooks"][0]["timeout"] == cli.hook_limit("Interrupt")
+    for event in ("Stop", "Interrupt"):
+        [group] = config["hooks"][event]
+        assert group["hooks"][0]["timeout"] == cli.hook_limit(event)
 
 
 def test_lado_s_mcp_server_starts_with_the_agent_and_is_used_without_asking(repo):

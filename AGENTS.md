@@ -633,7 +633,9 @@ fixes and docs only: no new feature, no API or schema change.
     once. Schema 23 changes data only (`closed_runs_without_needs`, a callable step of
     `MIGRATIONS`): an ended or cancelled run's snapshot drops `needs`; an open run's stays
     and shows its problem (`runs.SnapshotError`), a snapshot that is no flow's JSON too.
-    From schema 24 an agent keeps whether its role is read-only, `agents.read_only`
+    From schema 24 a message keeps when its turn-end hook printed it, `messages.printed_at`
+    (only for a provider with `output_taken_when_printed`; How agents talk; not in the API).
+    From schema 25 an agent keeps whether its role is read-only, `agents.read_only`
     (`AGENTS_READ_ONLY`; written at each launch, resume included; Read-only roles, below),
     and the events `repo_changed` (detail: the changes, one per line) and
     `repo_check_failed` (detail: why) are its turns' repository checks.
@@ -1002,7 +1004,14 @@ fixes and docs only: no new feature, no API or schema change.
     also after two blocks in a row), which confirms the agent's `hook_output` messages, and
     only those: another Stop hook of the user's may have made the turn go on too. The turn
     that goes on from the output reads the batch's bodies at once (`read_messages` takes
-    `sent` ones); what is left of the batch waits for that Stop.
+    `sent` ones); what is left of the batch waits for that Stop. Claude Code and Codex
+    take what a Stop hook that ended by itself printed
+    (`Capabilities.output_taken_when_printed`): `hooks.main` marks its batch printed right
+    after the print (`state.output_printed`, `messages.printed_at`; a failing mark is
+    logged and leaves it unmarked, never `typed`), and their turn-end hooks get LADO's
+    limit, `base.TURN_END_HOOK_TIMEOUT` (60 s: Claude Code's `Stop` and `StopFailure`,
+    Codex's `Stop`; both kill a hook that runs longer and go on, checked by hand with
+    2.1.296 and 0.162.0).
   Every path takes the queue the same way, `runtime.hand_over`: only from an idle agent
   with no batch sent and unconfirmed (checked as the queue is taken), which is then busy;
   so an agent has at most one sent batch at a time, and a new message waits while one
@@ -1027,11 +1036,21 @@ fixes and docs only: no new feature, no API or schema change.
   the n-th, the message is left alone for `RETRY_DELAYS[n-1]` seconds (15, 30, 60). A
   message the agent read (`read_messages`) is confirmed and out of this rule: never typed
   again, never failed, nor failed with its batch. Then, by its channel:
-  - `hook_output` (its first attempt): if no hook of the agent ran since (the CLI did not
-    take the output, the hook failed after the hand-over, or the turn goes on that long
-    without a hook), it is typed in, once, with the queue, and is `typed` from then on: a
-    turn that did take it gets it twice, which is better than never (the human's
-    decision). It never fails by this channel. A batch the CLI did not take stops waiting
+  - `hook_output` (its first attempt): for a provider whose CLI takes what the hook
+    printed (`output_taken_when_printed`: Claude Code, Codex), the delay is not
+    `RETRY_DELAYS[0]` but the fact of the print: a batch marked printed waits for the
+    end of the turn that goes on from it, however long its model steps run without a
+    hook, up to `runtime.HOOK_OUTPUT_BACKSTOP` (600 s, the CLIs' own default hook limit:
+    only a CLI that broke its promise to take it gets there); one never marked printed
+    (the hook was killed or failed before the print) waits `runtime.HOOK_OUTPUT_WAIT`,
+    the hook's limit and 15 s, after which no print can come. Kilo and OpenCode (more
+    can fail after the plugin's print) wait `RETRY_DELAYS[0]`. Then, if no hook of the
+    agent ran since (the CLI did not take the output, the hook failed after the
+    hand-over, or the turn goes on that long without a hook), it is typed in, once, with
+    the queue, and is `typed` from then on: a turn that did take it gets it twice, which
+    is better than never (the human's decision); if a hook ran and the agent takes input,
+    it goes back to the queue; if a hook ran and the agent is busy, it is left to the
+    turn's end. It never fails by this channel. A batch the CLI did not take stops waiting
     for a turn that goes on from it, so a later turn another Stop hook makes go on never
     confirms it: a turn's end without `Event.continued`, or a hook that fails after the
     hand-over (`hooks.main`, its own batch only), makes it `typed`
@@ -1051,7 +1070,11 @@ fixes and docs only: no new feature, no API or schema change.
   `LADO_RETRY_DELAYS` (`2,0.5,0.5`) replaces the delays in the processes started with it:
   only tests set it, the integration tests for each test (`tests/integration/conftest.py`,
   also `runtime.RETRY_DELAYS` in the test's own process); a test that moves time itself
-  takes the `production_retry_delays` fixture.
+  takes the `production_retry_delays` fixture. `LADO_HOOK_OUTPUT_WAIT` and
+  `LADO_HOOK_OUTPUT_BACKSTOP` (seconds) replace those two waits likewise; only tests set
+  them, each test itself, never the integration conftest. A test whose agent is the fake
+  provider with that flag (`fake-printed`) takes the `fakes_known_to_lado` fixture, so
+  its session loop, whose sweep asks the agent's provider, knows the fake providers.
 - The session loop is a hidden `lado loop <session>` (`loop.py`), a process of its own
   outside tmux that `lado start` (also a resume) starts once the tmux session exists. It
   sweeps the session every `loop.INTERVAL` seconds (2; `LADO_LOOP_INTERVAL`, a positive
@@ -1118,8 +1141,9 @@ fixes and docs only: no new feature, no API or schema change.
   the repository changed: ...` (another agent may share the worktree), the whole list in
   the body when the line cannot hold it; nothing is blocked. The fingerprint's git runs
   within what the CLI gives the hook: `hooks.deadline` from the hook's start, the
-  provider's `hook_limit` (Claude Code 600 s, read in its binary; Codex its handler's
-  timeout, shared with `hook_hash`; OpenCode and Kilo none) less `STARTUP_RESERVE` and
+  provider's `hook_limit`, the timeout of the handler LADO writes (Claude Code: 600 s when
+  it sets none, read in its binary, and `base.TURN_END_HOOK_TIMEOUT` for its turn-end hooks;
+  Codex: shared with `hook_hash`; OpenCode and Kilo none) less `STARTUP_RESERVE` and
   `QUEUE_RESERVE`, at most `fingerprint.BUDGET` (2 s); under `MIN_BUDGET`, or on a git
   error or timeout, it is `repo_check_failed`, told to the lead once per launch
   (`state.has_kind`), and the hook goes on.

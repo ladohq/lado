@@ -81,8 +81,14 @@ BUILT_IN_MESSAGING = ["SendMessage", "ListAgents"]
 EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"]
 
 # How long Claude Code waits for a command hook that sets no `timeout`: 600 s (`lu`, read in
-# the binary of 2.1.296). LADO's hooks set none.
+# the binary of 2.1.296). LADO sets one only for its turn-end hooks (_timeout).
 HOOK_LIMIT = 600
+
+
+def _timeout(event: str) -> int | None:
+    """The `timeout` LADO writes for its hook of `event`; None for Claude Code's default."""
+    return base.TURN_END_HOOK_TIMEOUT if EVENTS.get(event) == base.TURN_END else None
+
 
 # Variables that log Claude Code in without the keychain: a token, an API key, or another
 # API provider (all in the binary of 2.1.296).
@@ -107,6 +113,7 @@ class ClaudeProvider(base.Provider):
         deliver_on_turn_end=True,
         skills=True,
         hold_first_turn=True,
+        output_taken_when_printed=True,
         deny_edit_tools=True,
     )
     # Passed on as --permission-mode: the choices of Claude Code 2.1.287, which also takes
@@ -153,6 +160,8 @@ class ClaudeProvider(base.Provider):
             command: dict = {"type": "command", "command": base.hook_command(agent, event)}
             if event in ASYNC:
                 command["async"] = True
+            if (timeout := _timeout(event)) is not None:
+                command["timeout"] = timeout
             return [{"hooks": [command]}]
 
         settings = config_dir / "settings.json"
@@ -223,7 +232,8 @@ class ClaudeProvider(base.Provider):
         return base.Event(neutral, data.get("prompt", ""))
 
     def hook_limit(self, native: str) -> float | None:
-        return HOOK_LIMIT
+        timeout = _timeout(native)
+        return HOOK_LIMIT if timeout is None else timeout
 
     def continue_output(self, text: str) -> str | None:
         # Blocking the stop makes Claude Code continue with `reason` as its next input. It

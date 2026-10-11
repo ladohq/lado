@@ -62,6 +62,15 @@ def production_retry_delays(monkeypatch):
     retry_delays(monkeypatch, None)
 
 
+@pytest.fixture
+def fakes_known_to_lado(monkeypatch):
+    """The processes LADO starts of its own (the session loop, the popup, the UI server)
+    know the fake providers too, as the fake agent's hooks and lado mcp do: for a test
+    whose session loop's sweep must ask the agent's provider ("fake-printed"). Their argv
+    is then fake_provider.py's, not `lado.cli`'s."""
+    monkeypatch.setattr(providers, "lado_command", fake_provider.lado_command)
+
+
 def no_loop_left() -> None:
     """Session loops end by themselves once their tmux session is gone: fail a test that
     leaves one running five loop intervals after."""

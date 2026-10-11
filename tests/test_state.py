@@ -189,6 +189,35 @@ def test_the_migration_gives_messages_their_channel(lado_home):
     assert state.get_message("s", old).channel == state.HOOK_OUTPUT
 
 
+def test_the_migration_gives_messages_their_print_mark(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    old = state.queue_message("s", "supervisor", "w1", "before")
+    agent_helpers.schema_before(24)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = [row[1] for row in db.execute("PRAGMA table_info(messages)")]
+    db.close()
+    assert "printed_at" not in columns
+    assert state.migrate() == state.SCHEMA_VERSION
+    assert state.get_message("s", old).printed_at is None
+
+
+def test_output_printed_marks_only_the_hook_output_handed_over_since(lado_home, monkeypatch):
+    _session_with(_agent(status=state.IDLE))
+
+    def handed_over(summary, at, channel):
+        message = state.queue_message("s", "supervisor", "w1", summary)
+        monkeypatch.setattr(state.time, "time", lambda: at)
+        state.take_pending("s", "w1", state.SENT, channel=channel)
+        return message
+
+    early = handed_over("early", 100.0, state.HOOK_OUTPUT)
+    typed = handed_over("typed", 110.0, state.TYPED)
+    batch = handed_over("batch", 110.0, state.HOOK_OUTPUT)
+    state.output_printed("s", "w1", since=105.0)
+    printed = {m.id: m.printed_at for m in state.list_messages("s")}
+    assert printed == {early: None, typed: None, batch: 110.0}
+
+
 def test_the_migration_gives_agents_their_resumes(lado_home):
     _session_with(_agent(status=state.BUSY))
     agent_helpers.schema_before(20)

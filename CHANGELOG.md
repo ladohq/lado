@@ -6,12 +6,21 @@
   editing tools away (Claude Code, OpenCode, Kilo; Codex CLI refuses such an agent), hides
   LADO's command tools from a read-only supervisor, and tells the supervisor (or you) when
   the repository changed during one of the agent's turns. Running sessions must be
-  restarted after the upgrade (database schema 24).
+  restarted after the upgrade (database schema 25).
 
 - A Claude Code or Codex agent told at its turn's end to `read_messages` now gets the
   message's body in the turn that follows, where it used to get nothing until a later
   turn ended. A message an agent has read is never typed into its window again.
+- A message handed to a Claude Code or Codex agent at its turn's end no longer arrives a
+  second time when the turn that follows runs long without a tool call (a slow model): LADO
+  waits for that turn to end, up to 10 minutes, instead of typing it in again after 15 s.
+  Their turn-end hooks now have a 60 s limit. The database schema is now 24: restart
+  running sessions after the upgrade (`lado update` does it).
 
+- UI: an agent's terminal you control is marked in blue (its bar says "You're typing into
+  <agent>", a frame around it, a keyboard on its tab) and goes back to view by itself when
+  the page is hidden, the panel folded, the connection lost or after 10 minutes without
+  input. The bar no longer says "live": it names the connection only when it is not open.
 - The team chips above a session's Activity all look the same, compact and without the
   role (it is in the tooltip); the supervisor's chip no longer looks unlike the others.
 - Markdown tables wrap their cells to fit the column; they scroll sideways only when their

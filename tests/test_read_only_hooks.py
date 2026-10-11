@@ -245,7 +245,7 @@ def test_the_budget_is_what_is_left_before_the_hook_s_deadline(monkeypatch):
     claude = providers.get("claude")
     started = 100.0
     deadline = hooks.deadline(claude, "Stop", started)
-    assert deadline == started + 600 - hooks.STARTUP_RESERVE - hooks.QUEUE_RESERVE
+    assert deadline == started + 60 - hooks.STARTUP_RESERVE - hooks.QUEUE_RESERVE
     assert hooks.deadline(providers.get("kilo"), "session.idle", started) is None
     monkeypatch.setattr(hooks.time, "monotonic", lambda: deadline - 0.5)
     assert hooks.budget(deadline) == 0.5

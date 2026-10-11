@@ -215,6 +215,13 @@ and feature-mcp-secrets (16 h) worktrees, and three test tmux servers (`tmux -L
 lado-test-*`, sessions `ui-*`, from UI tests of fix-server-stop-streams, 1.5 h old, parent
 1) with their fake agents still alive: the tmux servers a UI test starts leak too. All idle
 (0% CPU); killed by hand.
+Seen again 2026-10-11: live tests leak too. Two `tmux -L lado-test-*` servers (session
+`live`, Codex supervisor and worker on Ollama models, from
+`test_worker_does_a_task_reports_and_gets_a_message[codex]`, a researcher's venv of the
+lado-windows session) ran for ~4 h with parent 1 and no pytest left: the run was stopped
+from outside, so its teardown never stopped the session. Killed by hand on the human's
+word. Wanted as well: a live or smoke run kills, at its start, the `lado-test-*` servers
+whose pytest is gone.
 
 ## Flaky terminal socket test: input checked before it is written
 
@@ -541,6 +548,10 @@ Found: 2026-10-09, design of run feature/codex-provider.
 Seen live (2026-10-09, verify of feature/codex-provider): in the image test, w1 on
 `qwen3-coder:30b`, a model with no image input, stayed busy for 3 min after the human's
 PNG. The test now skips Codex models whose `ollama show` lists no `vision`.
+Since feature/hook-output-retry (2026-10-11) a batch a Codex Stop hook printed waits for its
+turn's end, up to `runtime.HOOK_OUTPUT_BACKSTOP` (600 s): a turn that goes on from it and
+ends on such an error is typed into after 10 minutes, no longer after 15 s, which used to
+wake it by chance. The human accepted that (decision Р3 of that run); this entry is the fix.
 
 ## Codex agents cannot log in: the user's Codex login is not carried
 
@@ -589,6 +600,12 @@ failures. Also seen there: a `/responses` server that refuses Codex's `namespace
 Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): twice `typed`
 instead of `hook_output` (tests/live/test_live.py:474), once w1 sent its report again and
 stayed busy.
+The `typed` instead of `hook_output` failures had a LADO cause (research `live-root-causes`,
+2026-10-11): Codex took the Stop hook's output, but the turn that went on from it ran a model
+step of 16-18 s with no hook, and the sweep typed the batch in again after 15 s. Fixed by
+feature/hook-output-retry (a printed batch waits for its turn's end): its verify (fd32583,
+2026-10-11) passed this test on the first run. The looping and the supervisor acting on its
+own stay; if no live run fails on them again, this entry can go.
 
 ## Kilo live image test fails 3 of 3
 
@@ -634,6 +651,12 @@ Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): `fatal:
 to fast-forward`, `untracked working tree files would be overwritten by merge`, and once the
 supervisor spawned an extra `worker` whose Codex (not on the test's model) failed with
 `input[0]: unknown input item type: "additional_tools"`.
+Again 3 of 3 on 2026-10-11 (verify of feature/hook-output-retry, fd32583): each time the
+passive supervisor called `spawn_worker` itself (`worker`, `worker-2`), so w1 was not the run's
+last worker and its end kept the worktree (test_live.py:579). New detail: the workers the
+supervisor's `spawn_worker` starts do not run on the test's model (`LADO_LIVE_CODEX_MODEL`)
+but on Codex's default, hence `additional_tools`. A fourth run by the developer: w1 called
+`flow_advance` without committing flow.txt (`path 'flow.txt' exists on disk, but not in`).
 
 ## OpenCode live image test fails 3 of 3
 
@@ -645,7 +668,27 @@ Wanted: find whether the free model takes images at all (then skip it, as for Co
 LADO's image does not reach it.
 Found: 2026-10-10, verify of feature/linux-agents-path (e1dd5cc).
 
+## A re-handed-over hook_output batch keeps an old printed_at
+
+Size: S. Why here: a one-line fix to the rule just merged; until then a lost batch can wait 600 s instead of 75 s.
+`state.hand_over` (the UPDATE in `take_pending`) and the sweep's requeue do not reset
+`messages.printed_at`. A message printed once, put back in the queue and handed over again
+by a turn-end hook that dies before its print keeps the old mark, so `_plan` waits
+`HOOK_OUTPUT_BACKSTOP` (600 s) instead of `HOOK_OUTPUT_WAIT` (75 s) before typing it in.
+Wanted: every hand-over sets `printed_at = NULL`; a unit test of that case.
+Found: 2026-10-11, review of feature/hook-output-retry (Minor).
+
 # P2: when convenient
+
+## Kilo and OpenCode: a failed `promptAsync` waits the first retry delay
+
+Size: S. Why here: a message LADO knows at once was not delivered waits 15 s more.
+When the plugin's `promptAsync` of the turn-end output fails, it reports `plugin.error`
+(`HOOK_ERROR`) at once, but the batch stays `hook_output` and is typed in only after
+`RETRY_DELAYS[0]` (`runtime._plan`).
+Wanted: on that `HOOK_ERROR`, make the agent's `hook_output` batch `typed` at once
+(`state.output_not_taken`), so the sweep's typed rule takes it on.
+Found: 2026-10-11, design of run feature/hook-output-retry.
 
 ## Claude Code's first-run screens block an agent before any hook, unseen
 
@@ -1530,17 +1573,6 @@ Wanted: `flow_start` can name the repo a run works on (a registered kit source o
 and the run's worktree, `make check` and merge happen there.
 Found: 2026-10-02, task lado-dev architecture (kit changes in lado-kits).
 
-## A terminal closed for good shows its reason twice
-
-Size: S. Why here: seen on every stopped session's page.
-
-A terminal whose socket closes for good (e.g. a stopped session) shows the reason in its
-status ("closed: session "x" is stopped") and again as the error notice beside it: the
-server sends an error frame and then closes with the same reason. Now that the
-supervisor's tab is always shown, every stopped session's page shows it twice.
-Wanted: one line with the reason (the notice left out when it repeats the close reason).
-Found: 2026-10-03, UI e2e screenshots of feature/ui-polish.
-
 ## A sent batch of a busy agent that a hook ran after waits without a limit
 
 Size: S. Why here: no loss, but the agent shows busy with an unconfirmed batch until the human types; rare.
@@ -2375,3 +2407,21 @@ the list, around a minute's turn the row can say `2 h 14 min` and the head `2 h 
 Wanted: one shared minute clock for the list and the head (a context or module-level store),
 or ticks aligned to the next minute of `running_since`.
 Found: 2026-10-11, review of feature/session-row-line (Minor finding 1).
+
+## The wheel-up hint points at a disabled Take control
+
+Size: S. Why here: a hint the human cannot follow, only while the terminal has no connection.
+In view, a wheel up while the socket is not open (e.g. `reconnecting`) still rings Take
+control (`attention`) and shows "Scrolling works after Take control.", though the button is
+disabled then (`web/src/Terminals.tsx`, the wheel handler and the hint).
+Wanted: the hint only while the socket is open, or no ring on a disabled button.
+Found: 2026-10-11, review of feature/terminal-control-bar (Minor finding 1).
+
+## A control socket that closes for good before it opened stays marked in control
+
+Size: S. Why here: rare (a 44xx close right after Take control), and Reconnect ends it.
+The terminal releases control only on a transition from `open`; a control socket that never
+opens and closes for good keeps the blue bar and the tab's mark beside `closed: <reason>`
+until Reconnect (which opens in View) or the agent changes.
+Wanted: a close for good in control releases it too, whatever the phase before.
+Found: 2026-10-11, review of feature/terminal-control-bar (noted, allowed by the design).

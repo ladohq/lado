@@ -42,7 +42,13 @@ class FakeProvider(base.Provider):
     install_hint = "part of the LADO tests"
     permission_modes = ()  # the fake agent asks for no permissions
 
-    def __init__(self, name: str, deliver_on_turn_end: bool, says_continued: bool = False):
+    def __init__(
+        self,
+        name: str,
+        deliver_on_turn_end: bool,
+        says_continued: bool = False,
+        output_taken_when_printed: bool = False,
+    ):
         self.name = name
         # Like Claude Code: no prompt-submit hook for the turn-end hook's output, and the
         # turn's end says the turn went on from it (Event.continued).
@@ -53,6 +59,7 @@ class FakeProvider(base.Provider):
             deliver_on_turn_end=deliver_on_turn_end,
             skills=True,
             hold_first_turn=True,
+            output_taken_when_printed=output_taken_when_printed,
             # It has no edit tools to take away: read-only agents run on it for the
             # repository check and LADO's command tools.
             deny_edit_tools=True,
@@ -120,10 +127,12 @@ ASKS_FIRST = 'Fake agent asks a question first: type "yes" in its terminal'
 
 # "fake" gets queued messages from its turn-end hook and confirms them by its prompt-submit
 # hook, like OpenCode and Kilo; "fake-stop" by the next turn's end, like Claude Code;
-# "fake-paste" has them typed into its window.
+# "fake-paste" has them typed into its window; "fake-printed" as "fake-stop", and its CLI
+# takes what the hook printed (output_taken_when_printed), like Claude Code and Codex.
 FAKES = (
     FakeProvider("fake", True),
     FakeProvider("fake-stop", True, says_continued=True),
+    FakeProvider("fake-printed", True, says_continued=True, output_taken_when_printed=True),
     FakeProvider("fake-paste", False),
 )
 

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -295,7 +295,13 @@ ARTIFACTS_TABLES = [
 # attachments and whether a needed note is that one go by this id. NULL in older gates
 # and in those of a run whose step reported no note.
 GATES_NOTE = "ALTER TABLE gates ADD COLUMN note_id INTEGER REFERENCES notes(id)"
-# Whether the agent's role is read-only (`read_only: true` in its kit), from version 24 on:
+# When the turn-end hook that carried a message in its output (HOOK_OUTPUT) printed it,
+# from version 24 on: written right after the print, only for a provider whose CLI takes
+# what a finished turn-end hook printed (Capabilities.output_taken_when_printed). NULL
+# while not printed, and for every other message. The sweep's wait for such a message goes
+# by it (lado.runtime._plan).
+MESSAGES_PRINTED = "ALTER TABLE messages ADD COLUMN printed_at REAL"
+# Whether the agent's role is read-only (`read_only: true` in its kit), from version 25 on:
 # written at its launch, as the role does not change while it runs. Its hooks check the
 # repository at each turn (lado.fingerprint) and its `lado mcp` hides LADO's command tools.
 AGENTS_READ_ONLY = "ALTER TABLE agents ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0"
@@ -379,6 +385,7 @@ SCHEMA += (
             *AGENTS_RESUME,
             *ARTIFACTS_TABLES,
             GATES_NOTE,
+            MESSAGES_PRINTED,
             AGENTS_READ_ONLY,
         ]
     )
@@ -449,7 +456,8 @@ MIGRATIONS = {
     20: ARTIFACTS_TABLES,
     21: [GATES_NOTE],
     22: [closed_runs_without_needs],
-    23: [AGENTS_READ_ONLY],
+    23: [MESSAGES_PRINTED],
+    24: [AGENTS_READ_ONLY],
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -654,6 +662,7 @@ class Message:
     choice: str | None = None  # an answer's: the choice taken, if one was
     reply_state: str | None = None  # the human's message to an agent: REPLIED | MISSING
     channel: str | None = None  # how it was handed over: TYPED | HOOK_OUTPUT; None for none
+    printed_at: float | None = None  # when its turn-end hook printed it (MESSAGES_PRINTED)
     attachments: int = 0  # how many artifacts it carries (message_attachments)
 
     @property
@@ -1793,7 +1802,7 @@ def agent_times(
 MESSAGE_COLUMNS = (
     "id, sender, summary, body, recipient, state, created_at, attempts, sent_at, kind, choices,"
     " free_answer, question_state, answered_by, reply_to, choice, reply_state, channel,"
-    " (SELECT count(*) FROM attachments WHERE message = messages.id) AS attachments"
+    " printed_at, (SELECT count(*) FROM attachments WHERE message = messages.id) AS attachments"
 )
 
 
@@ -1811,6 +1820,7 @@ def _message(row: sqlite3.Row, **changed) -> Message:
         choice=row["choice"],
         reply_state=row["reply_state"],
         channel=row["channel"],
+        printed_at=row["printed_at"],
         attachments=row["attachments"],
     )
     return replace(message, **changed) if changed else message
@@ -2265,6 +2275,18 @@ def output_not_taken(session: str, recipient: str, since: float = 0) -> None:
             "UPDATE messages SET channel = ? WHERE session = ? AND recipient = ? AND state = ?"
             " AND channel = ? AND sent_at >= ?",
             (TYPED, session, recipient, SENT, HOOK_OUTPUT, since),
+        )
+
+
+def output_printed(session: str, recipient: str, since: float) -> None:
+    """The recipient's turn-end hook printed the sent messages it carried in its output
+    (those handed over since `since`, as output_not_taken takes them): mark them printed
+    (Message.printed_at)."""
+    with connect() as db:
+        db.execute(
+            "UPDATE messages SET printed_at = ? WHERE session = ? AND recipient = ?"
+            " AND state = ? AND channel = ? AND sent_at >= ?",
+            (time.time(), session, recipient, SENT, HOOK_OUTPUT, since),
         )
 
 

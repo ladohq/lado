@@ -1846,16 +1846,108 @@ h3 {
 }
 
 .term-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   font-weight: 600;
+}
+
+.term-tools .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 
 .term-view {
   color: var(--muted);
 }
 
+/* Control is the state to see (decided 2026-10-11, feature/terminal-control-bar, variant
+   C): the bar on the action's ground, its words in the action's blue, Release ringed in
+   it, and a frame inside the screen (a shadow: nothing resizes). Never orange: orange is
+   what waits for the human. On a narrow panel the words stay on one line beside Release,
+   only the agent's name cut. */
+.term[data-mode="control"] .term-tools {
+  flex-wrap: nowrap;
+  background: var(--action-ground);
+}
+
+/* A word's space between the words and the name, the icon's 6 px before them. */
+.term-control {
+  flex: 0 1 auto;
+  gap: 0.3em;
+  color: var(--action);
+}
+
+.term-control .icon {
+  margin-right: calc(6px - 0.3em);
+}
+
+.term-control-words {
+  flex: none;
+  white-space: nowrap;
+}
+
+.term-control-agent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.term-tools .term-release {
+  flex: none;
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.term[data-mode="control"] .term-screen {
+  box-shadow: inset 0 0 0 2px var(--action);
+}
+
+/* The mark of a tab whose terminal the human controls, seen from any tab. */
+.term-tab-control {
+  display: inline-flex;
+  flex: none;
+  color: var(--action);
+}
+
+.term-tab-control .icon {
+  width: 16px;
+  height: 16px;
+}
+
 .term-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   color: var(--muted);
+}
+
+/* While the socket connects or retries: a small ring that turns, still for those who ask
+   for less motion. */
+.term-spin {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--muted);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: term-spin 1s linear infinite;
+}
+
+@keyframes term-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .term-spin {
+    animation: none;
+  }
 }
 
 .term-link-closed {
@@ -1868,6 +1960,9 @@ h3 {
 }
 
 .term-tools .quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
 }
 

@@ -11,12 +11,13 @@ import {
   FakeResizeObserver,
   FakeSocket,
   FakeXterm,
+  setVisible,
   stream,
   stubDialogs,
   wideColumn,
 } from "./fakes";
 import { RETRY_MS } from "./terminalLink";
-import { HINT_MS } from "./Terminals";
+import { HINT_MS, IDLE_MS } from "./Terminals";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -146,7 +147,7 @@ test("a chip opens its agent's terminal on the right, to view", async () => {
   expect(socketOf("w1", "view")).toHaveLength(1);
   expect(socketOf("w1", "control")).toHaveLength(0);
   act(() => socketOf("w1", "view")[0].open());
-  expect(within(view).getByRole("status").textContent).toContain("live");
+  expect(view.querySelector<HTMLElement>(".term")!.dataset.link).toBe("open");
   act(() => FakeXterm.all[1].type("x"));
   expect(socketOf("w1", "view")[0].sent).toEqual([]); // in view nothing typed goes out
   expect(within(view).getByRole("button", { name: "Take control" })).toBeTruthy();
@@ -291,21 +292,31 @@ test("a chip opens a collapsed panel on its agent's terminal", async () => {
   expect((await chip("w1")).getAttribute("aria-pressed")).toBe("true");
 });
 
-test("collapsing the panel keeps its sockets, and in control tells the server no new size", async () => {
+test("collapsing the panel keeps its sockets", async () => {
+  await open();
+  await openTerminal("w1");
+  collapse();
+  expect(FakeSocket.all.map((socket) => socket.closed)).toEqual([false, false]);
+  expandPanel();
+  expect(FakeSocket.all).toHaveLength(2);
+});
+
+test("a hidden tab in control keeps its control and tells the server no new size", async () => {
   columnWidth(null);
   localStorage.setItem("lado.askControl", "never");
   await open();
   const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  act(() => socketOf("supervisor", "view")[0].open());
   fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
   const [control] = socketOf("supervisor", "control");
   act(() => control.open());
   expect(control.frames).toEqual([{ type: "resize", cols: 120, rows: 30 }]);
-  collapse();
-  FakeResizeObserver.resize(() => 0); // the strip: its terminal has no room
+  await openTerminal("w1");
+  FakeResizeObserver.resize(() => 0); // hidden: its terminal has no room
   expect(control.frames).toEqual([{ type: "resize", cols: 120, rows: 30 }]);
   expect(control.closed).toBe(false);
-  expandPanel();
-  expect(control.frames).toHaveLength(2); // open again: its size goes out
+  fireEvent.click(tab("supervisor"));
+  expect(control.frames).toHaveLength(2); // shown again: its size goes out
 });
 
 // A terminal closed for good: Reconnect, or by itself when its agent comes back
@@ -318,7 +329,7 @@ test("a terminal closed for good has Reconnect, which opens a new socket", async
   fireEvent.click(within(view).getByRole("button", { name: "Reconnect" }));
   expect(socketOf("supervisor", "view")).toHaveLength(2);
   act(() => socketOf("supervisor", "view")[1].open());
-  expect(within(view).getByRole("status").textContent).toBe("live");
+  expect(within(view).getByRole("status").textContent).toBe("");
   expect(within(view).queryByRole("button", { name: "Reconnect" })).toBeNull();
 });
 
@@ -339,9 +350,15 @@ test("a terminal closed for good opens again when its agent comes back, also wit
 
 // Take control
 
-test("Take control asks in a modal dialog first; Cancel and Esc keep the terminal to view", async () => {
+// The supervisor's terminal, its socket open.
+async function supervisorTerminal() {
   await open();
-  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  act(() => socketOf("supervisor", "view")[0].open());
+  return within(panel()).getByRole("tabpanel", { name: "supervisor" });
+}
+
+test("Take control asks in a modal dialog first; Cancel and Esc keep the terminal to view", async () => {
+  const view = await supervisorTerminal();
   const take = within(view).getByRole("button", { name: "Take control" });
   expect(take.getAttribute("title")).toMatch(/goes straight to supervisor/);
   fireEvent.click(take);
@@ -360,7 +377,7 @@ test("Take control asks in a modal dialog first; Cancel and Esc keep the termina
 });
 
 test("Don't ask again: Take control takes it at once, for every agent and after a reload", async () => {
-  await open();
+  await supervisorTerminal();
   fireEvent.click(within(panel()).getByRole("button", { name: "Take control" }));
   const ask = screen.getByRole("dialog", { name: "Take control of supervisor" });
   fireEvent.click(within(ask).getByRole("checkbox", { name: "Don't ask again" }));
@@ -370,6 +387,7 @@ test("Don't ask again: Take control takes it at once, for every agent and after 
 
   await open();
   const view = await openTerminal("w1");
+  act(() => socketOf("w1", "view").at(-1)!.open());
   fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(socketOf("w1", "control")).toHaveLength(1);
@@ -382,16 +400,19 @@ test("without browser storage Take control asks every time", async () => {
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw new Error("denied");
   });
-  await open();
-  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
-  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
-  const ask = screen.getByRole("dialog");
-  fireEvent.click(within(ask).getByRole("checkbox", { name: "Don't ask again" }));
-  fireEvent.click(within(ask).getByRole("button", { name: "Take control" }));
-  fireEvent.click(within(view).getByRole("button", { name: "Release" }));
-  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
-  expect(screen.getByRole("dialog")).toBeTruthy();
-  vi.restoreAllMocks();
+  try {
+    const view = await supervisorTerminal();
+    fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+    const ask = screen.getByRole("dialog");
+    fireEvent.click(within(ask).getByRole("checkbox", { name: "Don't ask again" }));
+    fireEvent.click(within(ask).getByRole("button", { name: "Take control" }));
+    fireEvent.click(within(view).getByRole("button", { name: "Release" }));
+    act(() => socketOf("supervisor", "view").at(-1)!.open());
+    fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  } finally {
+    vi.restoreAllMocks();
+  }
 });
 
 async function w1Terminal() {
@@ -433,8 +454,7 @@ test("Expand terminal shows the panel over the page with the same socket; Restor
 
 test("Esc restores an expanded terminal to view; in control it goes to the agent", async () => {
   localStorage.setItem("lado.askControl", "never");
-  await open();
-  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  const view = await supervisorTerminal();
   fireEvent.click(within(panel()).getByRole("button", { name: "Expand terminal" }));
   const xterm = () => FakeXterm.all[FakeXterm.all.length - 1].element!;
   fireEvent.keyDown(xterm(), { key: "Escape" });
@@ -448,7 +468,7 @@ test("Esc restores an expanded terminal to view; in control it goes to the agent
   act(() => FakeXterm.all[FakeXterm.all.length - 1].type("\x1b")); // xterm.js sends it on
   expect(panel().classList.contains("expanded")).toBe(true);
   expect(control.frames).toContainEqual({ type: "input", data: "\x1b" });
-  expect(within(view).getByText("In control")).toBeTruthy();
+  expect(view.querySelector<HTMLElement>(".term")!.dataset.mode).toBe("control");
   // Outside the terminal Esc restores it, in control too, which stays.
   fireEvent.keyDown(within(panel()).getByRole("button", { name: "Restore terminal" }), { key: "Escape" });
   expect(panel().classList.contains("expanded")).toBe(false);
@@ -652,4 +672,186 @@ test("in view the terminal takes the window's size and its font shrinks until it
   expect(font()).toBe(13);
   act(() => socketOf("w1", "view")[0].frame({ type: "size", cols: 400, rows: 120 }));
   expect(font()).toBe(8);
+});
+
+// The connection shows only when it is not open (feature/terminal-control-bar)
+
+const statusOf = (view: HTMLElement) => within(view).getByRole("status");
+const termOf = (view: HTMLElement) => view.querySelector<HTMLElement>(".term")!;
+
+test("with the socket open the bar says nothing of the connection; .term carries the phase", async () => {
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  expect(termOf(view).dataset.link).toBe("connecting");
+  act(() => socketOf("supervisor", "view")[0].open());
+  expect(statusOf(view).textContent).toBe("");
+  expect(termOf(view).dataset.link).toBe("open");
+  expect(view.textContent).not.toContain("live");
+});
+
+test("connecting and retrying show their words with a spinning ring; closed for good its reason once", async () => {
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  expect(statusOf(view).textContent).toBe("connecting…");
+  expect(statusOf(view).querySelector(".term-spin")).not.toBeNull();
+  act(() => socketOf("supervisor", "view")[0].open());
+  act(() => socketOf("supervisor", "view")[0].end(1006, "gone for now"));
+  expect(statusOf(view).textContent).toBe("reconnecting: gone for now");
+  expect(statusOf(view).querySelector(".term-spin")).not.toBeNull();
+  expect(termOf(view).dataset.link).toBe("retrying");
+  cleanup();
+
+  await open();
+  const again = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  const socket = socketOf("supervisor", "view").at(-1)!;
+  act(() => socket.frame({ type: "error", reason: 'session "lado" is stopped' }));
+  act(() => socket.end(4404, 'session "lado" is stopped'));
+  expect(statusOf(again).textContent).toBe('closed: session "lado" is stopped');
+  expect(statusOf(again).querySelector(".term-spin")).toBeNull();
+  expect(within(again).queryByRole("alert")).toBeNull(); // the notice would say it again
+  expect(termOf(again).dataset.link).toBe("closed");
+});
+
+test("Take control is disabled until the socket is open, and gone when it is closed for good", async () => {
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  const take = () => within(view).queryByRole("button", { name: "Take control" }) as HTMLButtonElement | null;
+  expect(take()!.disabled).toBe(true);
+  expect(take()!.title).toBe("No connection to the terminal yet");
+  act(() => socketOf("supervisor", "view")[0].open());
+  expect(take()!.disabled).toBe(false);
+  expect(take()!.title).toMatch(/goes straight to supervisor/);
+  act(() => socketOf("supervisor", "view")[0].end(4404, "no terminal"));
+  expect(take()).toBeNull();
+  expect(within(view).getByRole("button", { name: "Reconnect" })).toBeTruthy();
+});
+
+// View and control (variant C)
+
+async function inControl(agent = "w1") {
+  localStorage.setItem("lado.askControl", "never");
+  await open();
+  const view = await openTerminal(agent);
+  act(() => socketOf(agent, "view").at(-1)!.open());
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const control = socketOf(agent, "control").at(-1)!;
+  act(() => control.open());
+  return { view, control };
+}
+const modeOf = (view: HTMLElement) => termOf(view).dataset.mode;
+const controlMark = (agent: string) => within(tab(agent)).queryByRole("img", { name: "In control" });
+
+test("view shows an eye and Viewing; Take control has a keyboard icon", async () => {
+  await w1Terminal();
+  const view = within(panel()).getByRole("tabpanel", { name: "w1" });
+  const mode = view.querySelector(".term-mode")!;
+  expect(mode.textContent).toBe("Viewing");
+  expect(mode.querySelector("svg.icon")).not.toBeNull();
+  expect(within(view).getByRole("button", { name: "Take control" }).querySelector("svg.icon")).not.toBeNull();
+  expect(controlMark("w1")).toBeNull();
+});
+
+test("control says whom the keys go to, and the agent's tab is marked, also with another tab selected", async () => {
+  const { view } = await inControl();
+  const mode = view.querySelector(".term-mode")!;
+  expect(mode.textContent).toBe("You're typing into w1");
+  expect(mode.getAttribute("title")).toBe("You're typing into w1"); // the name may be cut
+  expect(mode.querySelector(".term-control-agent")!.textContent).toBe("w1");
+  expect(within(view).getByRole("button", { name: "Release" })).toBeTruthy();
+  expect(controlMark("w1")!.getAttribute("title")).toBe("In control");
+  expect(controlMark("supervisor")).toBeNull();
+  fireEvent.click(tab("supervisor"));
+  expect(controlMark("w1")).not.toBeNull();
+  expect(modeOf(view)).toBe("control");
+});
+
+test("Take control, its socket connecting then open, stays in control", async () => {
+  localStorage.setItem("lado.askControl", "never");
+  await w1Terminal();
+  const view = within(panel()).getByRole("tabpanel", { name: "w1" });
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  expect(termOf(view).dataset.link).toBe("connecting");
+  expect(modeOf(view)).toBe("control");
+  act(() => socketOf("w1", "control")[0].open());
+  expect(modeOf(view)).toBe("control");
+});
+
+// Control ends by itself
+
+test("the page hidden releases every terminal in control, silently", async () => {
+  const { view, control } = await inControl();
+  try {
+    act(() => {
+      setVisible(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(modeOf(view)).toBe("view");
+    expect(control.closed).toBe(true);
+    expect(controlMark("w1")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(within(view).queryByRole("alert")).toBeNull();
+  } finally {
+    setVisible(true);
+  }
+});
+
+test("10 minutes without input release control; input restarts the clock", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { view, control } = await inControl();
+  act(() => vi.advanceTimersByTime(IDLE_MS - 1000));
+  act(() => FakeXterm.all.at(-1)!.type("x"));
+  act(() => vi.advanceTimersByTime(IDLE_MS - 1000));
+  expect(modeOf(view)).toBe("control");
+  act(() => vi.advanceTimersByTime(1000));
+  expect(modeOf(view)).toBe("view");
+  expect(control.closed).toBe(true);
+});
+
+test("the control socket going from open to retrying releases control", async () => {
+  const { view } = await inControl();
+  act(() => socketOf("w1", "control")[0].end(1006));
+  expect(modeOf(view)).toBe("view");
+  expect(controlMark("w1")).toBeNull();
+});
+
+test("the control socket going from open to closed for good releases control", async () => {
+  const { view } = await inControl();
+  act(() => socketOf("w1", "control")[0].end(4404, "no terminal"));
+  expect(modeOf(view)).toBe("view");
+});
+
+test("folding the panel releases control", async () => {
+  const { view, control } = await inControl();
+  collapse();
+  expect(control.closed).toBe(true);
+  expandPanel();
+  expect(modeOf(view)).toBe("view");
+});
+
+test("Reconnect opens in view, also after a control socket that never opened", async () => {
+  localStorage.setItem("lado.askControl", "never");
+  const { view } = await w1Terminal();
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  act(() => socketOf("w1", "control")[0].end(4404, "no terminal"));
+  fireEvent.click(within(view).getByRole("button", { name: "Reconnect" }));
+  expect(modeOf(view)).toBe("view");
+  expect(socketOf("w1", "view")).toHaveLength(2);
+  expect(socketOf("w1", "control")).toHaveLength(1);
+});
+
+test("the Take control dialog closes when the socket leaves open", async () => {
+  const { view } = await w1Terminal();
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  act(() => socketOf("w1", "view")[0].end(1006));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(modeOf(view)).toBe("view");
+});
+
+test("a tab closed in control and opened again is in view, unmarked", async () => {
+  await inControl();
+  fireEvent.click(within(panel()).getByRole("button", { name: "Close w1's terminal" }));
+  const view = await openTerminal("w1");
+  expect(modeOf(view)).toBe("view");
+  expect(controlMark("w1")).toBeNull();
 });

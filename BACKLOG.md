@@ -215,6 +215,13 @@ and feature-mcp-secrets (16 h) worktrees, and three test tmux servers (`tmux -L
 lado-test-*`, sessions `ui-*`, from UI tests of fix-server-stop-streams, 1.5 h old, parent
 1) with their fake agents still alive: the tmux servers a UI test starts leak too. All idle
 (0% CPU); killed by hand.
+Seen again 2026-10-11: live tests leak too. Two `tmux -L lado-test-*` servers (session
+`live`, Codex supervisor and worker on Ollama models, from
+`test_worker_does_a_task_reports_and_gets_a_message[codex]`, a researcher's venv of the
+lado-windows session) ran for ~4 h with parent 1 and no pytest left: the run was stopped
+from outside, so its teardown never stopped the session. Killed by hand on the human's
+word. Wanted as well: a live or smoke run kills, at its start, the `lado-test-*` servers
+whose pytest is gone.
 
 ## Flaky terminal socket test: input checked before it is written
 

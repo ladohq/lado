@@ -596,8 +596,9 @@ stayed busy.
 The `typed` instead of `hook_output` failures had a LADO cause (research `live-root-causes`,
 2026-10-11): Codex took the Stop hook's output, but the turn that went on from it ran a model
 step of 16-18 s with no hook, and the sweep typed the batch in again after 15 s. Fixed by
-feature/hook-output-retry (a printed batch waits for its turn's end); to confirm in the next
-live run of Codex. The looping and the supervisor acting on its own stay.
+feature/hook-output-retry (a printed batch waits for its turn's end): its verify (fd32583,
+2026-10-11) passed this test on the first run. The looping and the supervisor acting on its
+own stay; if no live run fails on them again, this entry can go.
 
 ## Kilo live image test fails 3 of 3
 
@@ -643,6 +644,12 @@ Again 3 of 3 on 2026-10-10 (verify of feature/question-answer, d5f95c2): `fatal:
 to fast-forward`, `untracked working tree files would be overwritten by merge`, and once the
 supervisor spawned an extra `worker` whose Codex (not on the test's model) failed with
 `input[0]: unknown input item type: "additional_tools"`.
+Again 3 of 3 on 2026-10-11 (verify of feature/hook-output-retry, fd32583): each time the
+passive supervisor called `spawn_worker` itself (`worker`, `worker-2`), so w1 was not the run's
+last worker and its end kept the worktree (test_live.py:579). New detail: the workers the
+supervisor's `spawn_worker` starts do not run on the test's model (`LADO_LIVE_CODEX_MODEL`)
+but on Codex's default, hence `additional_tools`. A fourth run by the developer: w1 called
+`flow_advance` without committing flow.txt (`path 'flow.txt' exists on disk, but not in`).
 
 ## OpenCode live image test fails 3 of 3
 

@@ -156,6 +156,16 @@ checked as if it led, so a skill its kit does not have stops the start. `lado st
 `lado kits show` print who leads; `lado kits show` lists the lead skills. The supervisor starts workers with
 `spawn_worker(role=...)`; the role may be left out only when the session has one.
 
+A role that must not change the repository (a reviewer, a checker, a passive supervisor)
+says `read_only: true` in its frontmatter (`agents/<role>.md`). Its agent's CLI gets no
+tools that edit files (Claude Code, OpenCode and Kilo; LADO refuses to start a read-only
+agent on Codex CLI, which cannot take them away), a read-only supervisor gets none of
+LADO's tools that start or end agents and runs, and LADO compares the repository at each of
+the agent's turns: a commit, an edit or a new file it finds is one line to the supervisor
+(to you for a read-only supervisor) and an event in `lado log`. The agent keeps its shell,
+for `git diff`, linters and tests, so this is no sandbox: nothing is blocked or undone.
+`lado kits show` and `lado kits check` name the read-only roles.
+
 `--without kind:name` switches off an agent, flow, skill or MCP server (kinds `agent`,
 `flow`, `skill`, `mcp`) in the whole session. `--without kind:name@kit` switches it off in
 that kit only, before the kits are combined: so two kits with a role of the same name, or

@@ -1953,6 +1953,29 @@ Linux and macOS), the Windows probe green, `make test-live` for every provider l
 the human's yes), then the tag. AGENTS.md to match.
 Found: 2026-10-11, verify of fix/run-end-pushed-branch (checker-3).
 
+## LADO's messages to the lead read as orders
+
+Size: M. Why here: weak models follow them against their role; the root of the passive live supervisor's breakage.
+LADO's lines and instructions to the lead say "Start one with spawn_worker", "Merge the
+branch", and SUPERVISOR_INSTRUCTIONS lists spawn_worker, finish_worker and the flow tools
+also to a read-only supervisor, which has none of them (read-only roles only make the
+orders harmless). A passive supervisor on qwen3-coder followed them in 6 of 10 runs.
+Wanted: LADO's messages to the lead state facts ("step x needs a developer"), and the
+lead's instructions name only the tools it has.
+Found: 2026-10-11, design of feature/read-only-roles.
+
+## Codex CLI cannot run a read-only agent
+
+Size: M. Why here: read-only roles work on three of four providers; Codex refuses them.
+Codex 0.162 has no config key that takes apply_patch away, and a PreToolUse hook on
+apply_patch does not see `apply_patch <<EOF` run through the shell (it reaches the hook as
+tool `Bash`); on qwen3-coder there is no apply_patch tool at all. So
+`deny_edit_tools` is False and `lado start --provider codex` / `spawn_worker` refuse a
+read-only role. Not checked: an OpenAI model's own apply_patch tool (paid).
+Wanted: a way Codex takes edits away (a newer Codex, a read-only sandbox that still runs
+tests), checked by hand, then `deny_edit_tools` for it.
+Found: 2026-10-11, implement of feature/read-only-roles (manual check).
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

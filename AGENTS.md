@@ -522,8 +522,10 @@ fixes and docs only: no new feature, no API or schema change.
     `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to
     attach; `read_artifact` returns an image as MCP image content, the SDK's `Image`, after
     its facts, when `artifacts.read` gives it as `Shown`; the supervisor also gets
-    `spawn_worker`, `finish_worker`, `flow_start`, `flow_cancel` and `start_session`). No
-    tool answers a gate or a question.
+    `spawn_worker`, `finish_worker`, `flow_start`, `flow_cancel` and `start_session`,
+    `COMMAND_TOOLS`, unless it is read-only: then they are not listed, and a call of one
+    is refused as `role <r> is read-only: <tool> is not available`). No tool answers a
+    gate or a question.
   - `artifacts.py`: artifacts, named documents of a session (contract:
     [docs/design/artifacts.md](docs/design/artifacts.md)); the only module the rest of LADO
     calls for them (MCP tools, CLI, runs, runtime, doctor, the UI server): names (`NAME`,
@@ -631,6 +633,15 @@ fixes and docs only: no new feature, no API or schema change.
     once. Schema 23 changes data only (`closed_runs_without_needs`, a callable step of
     `MIGRATIONS`): an ended or cancelled run's snapshot drops `needs`; an open run's stays
     and shows its problem (`runs.SnapshotError`), a snapshot that is no flow's JSON too.
+    From schema 24 an agent keeps whether its role is read-only, `agents.read_only`
+    (`AGENTS_READ_ONLY`; written at each launch, resume included; Read-only roles, below),
+    and the events `repo_changed` (detail: the changes, one per line) and
+    `repo_check_failed` (detail: why) are its turns' repository checks.
+  - `fingerprint.py`: a read-only agent's git fingerprint (Read-only roles, below): `take`
+    (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
+    stash, each changed or new file not ignored and not under `.lado/` with its content's
+    hash; no copy of a file; all git commands within a budget, `--no-optional-locks`, else
+    `FingerprintError`) and `diff` (one short line per change). Only git, no state.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
@@ -1072,6 +1083,43 @@ fixes and docs only: no new feature, no API or schema change.
   whose loop does not run (its lock is free) and says to run `lado attach <session>`:
   `lado attach`, and `lado start` on a running session (which still refuses), start the
   loop again when its lock is free. `lado forget` removes the lock file.
+- Read-only roles: a role's `read_only: true` (`kits.AGENT_KEYS`, a bool, `AgentDef.read_only`;
+  `lado kits show` prints `read-only: yes`, `lado kits check` the read-only roles; a kit
+  supervisor that does not lead keeps none, said in `Environment.warnings`) makes its agent
+  change nothing in the repository, for its whole life, in three layers; an agent without
+  it runs exactly as before. 1. Its CLI's edit tools are taken away in the agent's own
+  config (`AgentSpec.read_only`), only on a CLI with `Capabilities.deny_edit_tools`, set
+  after a check by hand: Claude Code adds `EDIT_TOOLS` (Edit, Write, NotebookEdit) to
+  `permissions.deny`, which takes them out of the tool list also with bypassPermissions;
+  OpenCode and Kilo set `permission.edit: deny`, globally and in each of their
+  `BUILT_IN_AGENTS` (a repo's or the user's `agent.<name>.permission.edit: allow` would
+  beat the global rule; checked with OpenCode 1.18.35 and Kilo 7.8.8 under `--auto`: edit,
+  write and patch gone, also for their subagents). Not covered there: an agent of the
+  repo's or the user's own config with its own edit rule (a custom subagent,
+  `default_agent`). Codex CLI cannot (0.162: no config key, and a PreToolUse hook on
+  apply_patch misses `apply_patch` run through the shell, which reaches it as `Bash`):
+  `runtime._spec` refuses a read-only agent on such a CLI before anything is stored or
+  made (a lead before the session is added, a worker before its worktree), naming the
+  providers that can. These claims hold for each provider's `TESTED_VERSION`; another
+  version is `lado doctor`'s usual warning. LADO's instructions get a paragraph
+  (`runtime.READ_ONLY_INSTRUCTIONS`): no changes through the shell either. 2. A read-only
+  supervisor's `lado mcp` has no `COMMAND_TOOLS` (`mcp_server.py`). 3. Its hooks take a
+  git fingerprint (`fingerprint.py`) at each turn's start (PROMPT_SUBMIT) and end
+  (TURN_END, before it is idle, so before any queue goes), kept in its config folder as
+  `hooks.BASELINE` (`open` from a turn's start to its end, then `closed` with the end's
+  fingerprint; a turn that goes on from the turn-end hook's output reopens it, as no
+  prompt-submit hook runs for that turn; one still open at a turn's start, a turn whose end
+  ran no hook, is compared then, worded `since <agent>'s turn started (its end was not
+  seen)`). A difference is a `repo_changed` event and one line from `lado` to its lead
+  (`runtime.repo_changed`, the human for a read-only supervisor), `while <agent>'s turn
+  the repository changed: ...` (another agent may share the worktree), the whole list in
+  the body when the line cannot hold it; nothing is blocked. The fingerprint's git runs
+  within what the CLI gives the hook: `hooks.deadline` from the hook's start, the
+  provider's `hook_limit` (Claude Code 600 s, read in its binary; Codex its handler's
+  timeout, shared with `hook_hash`; OpenCode and Kilo none) less `STARTUP_RESERVE` and
+  `QUEUE_RESERVE`, at most `fingerprint.BUDGET` (2 s); under `MIN_BUDGET`, or on a git
+  error or timeout, it is `repo_check_failed`, told to the lead once per launch
+  (`state.has_kind`), and the hook goes on.
 - Agents talk only through LADO's MCP tools. A CLI's own agent messaging is switched off
   (Claude Code: `SendMessage` and `ListAgents` are denied in the agent's settings, and the
   `lado` MCP server has `alwaysLoad`, so its tools are not hidden behind tool search), and so

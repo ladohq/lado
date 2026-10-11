@@ -2,6 +2,12 @@
 
 ## 0.34.0 (unreleased)
 
+- Read-only roles: `read_only: true` in a role's frontmatter takes its agent's file
+  editing tools away (Claude Code, OpenCode, Kilo; Codex CLI refuses such an agent), hides
+  LADO's command tools from a read-only supervisor, and tells the supervisor (or you) when
+  the repository changed during one of the agent's turns. Running sessions must be
+  restarted after the upgrade (database schema 24).
+
 - A Claude Code or Codex agent told at its turn's end to `read_messages` now gets the
   message's body in the turn that follows, where it used to get nothing until a later
   turn ended. A message an agent has read is never typed into its window again.

@@ -2341,3 +2341,21 @@ the list, around a minute's turn the row can say `2 h 14 min` and the head `2 h 
 Wanted: one shared minute clock for the list and the head (a context or module-level store),
 or ticks aligned to the next minute of `running_since`.
 Found: 2026-10-11, review of feature/session-row-line (Minor finding 1).
+
+## The wheel-up hint points at a disabled Take control
+
+Size: S. Why here: a hint the human cannot follow, only while the terminal has no connection.
+In view, a wheel up while the socket is not open (e.g. `reconnecting`) still rings Take
+control (`attention`) and shows "Scrolling works after Take control.", though the button is
+disabled then (`web/src/Terminals.tsx`, the wheel handler and the hint).
+Wanted: the hint only while the socket is open, or no ring on a disabled button.
+Found: 2026-10-11, review of feature/terminal-control-bar (Minor finding 1).
+
+## A control socket that closes for good before it opened stays marked in control
+
+Size: S. Why here: rare (a 44xx close right after Take control), and Reconnect ends it.
+The terminal releases control only on a transition from `open`; a control socket that never
+opens and closes for good keeps the blue bar and the tab's mark beside `closed: <reason>`
+until Reconnect (which opens in View) or the agent changes.
+Wanted: a close for good in control releases it too, whatever the phase before.
+Found: 2026-10-11, review of feature/terminal-control-bar (noted, allowed by the design).

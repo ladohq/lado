@@ -1090,7 +1090,8 @@ fixes and docs only: no new feature, no API or schema change.
   it runs exactly as before. 1. Its CLI's edit tools are taken away in the agent's own
   config (`AgentSpec.read_only`), only on a CLI with `Capabilities.deny_edit_tools`, set
   after a check by hand: Claude Code adds `EDIT_TOOLS` (Edit, Write, NotebookEdit) to
-  `permissions.deny`, which takes them out of the tool list also with bypassPermissions;
+  `permissions.deny`, which takes them out of the tool list also with bypassPermissions,
+  its Task subagents' too (checked with 2.1.296 on haiku);
   OpenCode and Kilo set `permission.edit: deny`, globally and in each of their
   `BUILT_IN_AGENTS` (a repo's or the user's `agent.<name>.permission.edit: allow` would
   beat the global rule; checked with OpenCode 1.18.35 and Kilo 7.8.8 under `--auto`: edit,

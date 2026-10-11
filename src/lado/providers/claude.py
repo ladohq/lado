@@ -74,7 +74,10 @@ SWITCHES = ("clear", "resume")
 BUILT_IN_MESSAGING = ["SendMessage", "ListAgents"]
 
 # Claude Code's tools that change files, denied to a read-only agent (AgentSpec.read_only)
-# the same way: a deny rule takes them out of its tool list, also with bypassPermissions.
+# the same way: a deny rule takes them out of its tool list, also with bypassPermissions,
+# and out of its Task subagents' (checked by hand with 2.1.296 on haiku, `claude -p
+# --permission-mode bypassPermissions`: neither the agent nor a general-purpose subagent
+# has Write or Edit, and ToolSearch finds neither).
 EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"]
 
 # How long Claude Code waits for a command hook that sets no `timeout`: 600 s (`lu`, read in

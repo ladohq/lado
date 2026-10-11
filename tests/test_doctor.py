@@ -46,6 +46,7 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
         "LADO",
         "Python",
         "tmux",
+        "git",
         "Agent environment",
         "Agent config folders",
         "Artifacts",
@@ -404,6 +405,100 @@ def test_a_place_that_cannot_be_read_is_not_checked(mac, process, server):
     check = _graphical()
     assert check.level == doctor.INFO
     assert check.detail.startswith("not checked: ")
+
+
+def _git_on_path(tmp_path, monkeypatch, script: str | None) -> str:
+    """PATH of one folder, with a `git` running `script` (sh) in it, or none."""
+    bin_dir = tmp_path / "git-bin"
+    bin_dir.mkdir()
+    if script is not None:
+        git = bin_dir / "git"
+        git.write_text(f"#!/bin/sh\n{script}\n")
+        git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    return str(bin_dir)
+
+
+def _git_check(which=lambda cmd: cmd) -> doctor.Check:
+    return next(c for c in doctor.run_checks(which=which) if c.name == "git")
+
+
+def test_git_missing_fails_with_the_install_hint(tmp_path, monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Linux")
+    path = _git_on_path(tmp_path, monkeypatch, None)
+    check = _git_check()
+    assert (check.level, check.detail) == (
+        doctor.FAIL,
+        f"git is not installed or not on PATH ({path})",
+    )
+    assert "sudo apt install git" in check.hint
+    names = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert names.index("git") == names.index("tmux") + 1
+
+
+def test_doctor_exits_1_without_git(tmp_path, monkeypatch, capsys):
+    _versions(monkeypatch)
+    _git_on_path(tmp_path, monkeypatch, None)
+    checks = doctor.run_checks
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks(which=lambda cmd: cmd))
+    assert doctor.main() == 1
+    assert "[FAIL] git" in capsys.readouterr().out
+
+
+def test_the_macos_stub_fails_with_xcode_tools(tmp_path, monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Darwin")
+    _git_on_path(
+        tmp_path, monkeypatch, "echo 'xcrun: error: invalid active developer path' >&2\nexit 1"
+    )
+    check = _git_check()
+    assert (check.level, check.detail) == (
+        doctor.FAIL,
+        "git does not run: xcrun: error: invalid active developer path",
+    )
+    assert "xcode-select --install" in check.hint
+
+
+def test_an_old_git_warns_and_keeps_the_exit_status(tmp_path, monkeypatch, capsys):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    _git_on_path(tmp_path, monkeypatch, "echo 'git version 2.30.2'")
+    check = _git_check()
+    assert (check.level, check.detail) == (doctor.WARN, "git version 2.30.2")
+    assert "2.31" in check.hint
+    assert "--path-format=absolute" in check.hint
+    checks = doctor.run_checks
+    monkeypatch.setattr(doctor, "run_checks", lambda: checks(which=lambda cmd: cmd))
+    assert doctor.main() == 0
+
+
+@pytest.mark.parametrize("version", ["git version 2.47.1", "git version 2.39.5 (Apple Git-154)"])
+def test_a_current_git_is_ok_with_its_version(tmp_path, monkeypatch, version):
+    _versions(monkeypatch)
+    _git_on_path(tmp_path, monkeypatch, f"echo '{version}'")
+    check = _git_check()
+    assert (check.level, check.detail, check.hint) == (doctor.OK, version, "")
+
+
+@pytest.mark.parametrize(
+    ("script", "shown"),
+    [
+        ("echo 'git version 2.47.1'", "2.47.1"),
+        ("echo 'git version 2.39.5 (Apple Git-154)'", "2.39.5 (Apple Git-154)"),
+        (None, "not installed"),
+        ("echo 'xcrun: error' >&2\nexit 1", "does not run"),
+    ],
+)
+def test_system_info_and_report_give_gits_version_never_its_path(
+    tmp_path, monkeypatch, script, shown
+):
+    path = _git_on_path(tmp_path, monkeypatch, script)
+    system = doctor.system_info(which=lambda cmd: cmd)
+    assert system.git == shown
+    report = doctor.report(system, False, 0)
+    assert f"- git: {shown}\n" in report
+    assert path not in report
 
 
 def test_system_info_and_report_give_only_the_kind_of_place(mac):

@@ -18,14 +18,14 @@
 
 ## 2. doctor and the system facts
 
-- [ ] 2.1 `doctor.check_git` after `tmux` (D9): unit tests for missing, not running, 2.30.2
+- [x] 2.1 `doctor.check_git` after `tmux` (D9): unit tests for missing, not running, 2.30.2
   (`WARN`, exit status of the others), 2.47.1 and Apple's `2.39.5 (Apple Git-154)` (`OK`).
-- [ ] 2.2 `System.git`, `SystemInfo.git`, the report's `- git:` line (D7): unit tests of
+- [x] 2.2 `System.git`, `SystemInfo.git`, the report's `- git:` line (D7): unit tests of
   `system_info` and `report` (no path in either).
 
 ## 3. API
 
-- [ ] 3.1 `FolderInfo`: drop `has_commits`, add `problem_kind` and `hint` (D7); `make
+- [x] 3.1 `FolderInfo`: drop `has_commits`, add `problem_kind` and `hint` (D7); `make
   web-types`, commit `web/openapi.json` and `web/src/api.gen.ts`. Unit tests in
   `tests/test_server_launch.py`: each kind's `problem_kind` and `hint`; no git gives 200
   on `GET /api/folders` and 400 on `POST /api/sessions` (never 500).

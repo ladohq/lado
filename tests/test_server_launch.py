@@ -54,7 +54,8 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
         "problem": None,
         "root": str(repo),
         "branch": "main",
-        "has_commits": True,
+        "problem_kind": None,
+        "hint": None,
         "subfolders": ["docs", "src"],
         "default_name": "my-repo",
         "name_state": "free",
@@ -64,19 +65,67 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
 
 def test_the_folder_check_gives_the_cores_reason(client, tmp_path):
     info = folder(client, tmp_path)
-    assert (info["ok"], info["root"], info["has_commits"]) == (False, None, False)
+    assert (info["ok"], info["root"], info["problem_kind"]) == (False, None, "not_repo")
     assert info["problem"] == f"{tmp_path} is not inside a git repository"
+    assert info["hint"] == {
+        "text": "Make it a repository with a first commit, in that folder:",
+        "command": "git init && git add -A && git commit -m 'First commit'",
+    }
     missing = folder(client, tmp_path / "nope")
     assert missing["problem"] == f"{tmp_path / 'nope'} does not exist"
+    assert (missing["problem_kind"], missing["hint"]) == ("missing", None)
     assert missing["subfolders"] == []
+    (tmp_path / "file").write_text("x")
+    file = folder(client, tmp_path / "file")
+    assert (file["problem_kind"], file["hint"]) == ("not_folder", None)
 
 
 def test_a_repository_without_commits_is_named_so(client, tmp_path):
     empty = tmp_path / "empty"
     subprocess.run(["git", "init", "-q", "-b", "trunk", str(empty)], check=True)
     info = folder(client, empty)
-    assert (info["ok"], info["has_commits"], info["branch"]) == (False, False, "trunk")
-    assert info["problem"] == f"{empty} has no commits yet: make a first commit, then start"
+    assert (info["ok"], info["problem_kind"], info["branch"]) == (False, "no_commits", "trunk")
+    assert info["problem"] == f"{empty} has no commits yet"
+    assert info["hint"] == {
+        "text": "Make a first commit, in that folder:",
+        "command": "git add -A && git commit -m 'First commit'",
+    }
+
+
+def _git_script(tmp_path, monkeypatch, script: str | None) -> Path:
+    bin_dir = tmp_path / "git-bin"
+    bin_dir.mkdir()
+    if script is not None:
+        git = bin_dir / "git"
+        git.write_text(f"#!/bin/sh\n{script}\n")
+        git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    return bin_dir
+
+
+def test_no_git_is_a_folder_problem_not_a_server_error(client, repo, monkeypatch):
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Linux")
+    bin_dir = _git_script(repo.parent, monkeypatch, None)
+    answer = client.get("/api/folders", params={"path": str(repo)})
+    assert answer.status_code == 200
+    info = answer.json()
+    assert (info["ok"], info["problem_kind"], info["root"]) == (False, "no_git", None)
+    assert info["problem"] == f"git is not installed or not on PATH ({bin_dir})"
+    assert info["hint"]["command"] == "sudo apt install git"
+    started = launch(client, repo, provider="claude")
+    assert (started.status_code, started.json()["detail"]) == (400, info["problem"])
+
+
+def test_a_git_that_refuses_the_folder_has_no_hint(client, tmp_path, monkeypatch):
+    script = (
+        'if [ "$1" = --version ]; then echo "git version 2.47.1"; exit 0; fi\n'
+        "echo \"fatal: detected dubious ownership in repository at '/x'\" >&2\nexit 128"
+    )
+    _git_script(tmp_path, monkeypatch, script)
+    info = folder(client, tmp_path)
+    assert (info["problem_kind"], info["hint"]) == ("git_refused", None)
+    broken = folder(client, tmp_path)
+    assert broken["problem"].startswith(f"git cannot read {tmp_path}: fatal: detected dubious")
 
 
 def test_the_folder_check_expands_the_home_folder(client, repo, monkeypatch):

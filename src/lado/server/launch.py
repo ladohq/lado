@@ -26,11 +26,16 @@ def full_path(path: str) -> str:
 
 def folder_info(path: str, has_db: bool) -> models.FolderInfo:
     path = full_path(path)
+    kind, hint = None, None
     try:
         root = runtime.check_repo(path)
-        ok, problem, has_commits = True, None, True
+        ok, problem = True, None
     except runtime.LadoError as refused:
-        ok, problem, has_commits = False, str(refused), False
+        ok, problem = False, str(refused)
+        if isinstance(refused, runtime.FolderProblem):
+            kind = refused.kind
+            if refused.hint:
+                hint = models.HintInfo(text=refused.hint.text, command=refused.hint.command)
         root = _root_or_none(path)
     name = runtime.slug(Path(root).name) if root else None
     suggestion = runtime.suggested_provider(root if has_db else None, _installed)
@@ -40,7 +45,8 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         problem=problem,
         root=root,
         branch=runtime.branch(root) if root else None,
-        has_commits=has_commits,
+        problem_kind=kind,
+        hint=hint,
         subfolders=_subfolders(Path(path)),
         default_name=name,
         name_state=_name_state(name, root, has_db) if name and root else None,

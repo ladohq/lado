@@ -1839,6 +1839,48 @@ apply_patch; a PreToolUse hook that denies the apply_patch tool (it does not see
 Wanted: checked on an OpenAI model (paid, the human's yes), and a way to take it away.
 Found: 2026-10-11, implement of feature/read-only-roles; narrowed in feature/stable-local-live.
 
+## Live: the passive supervisor explores instead of waiting
+
+Size: S. Why here: makes the Codex live image test flaky on the gateway (qwen3.6).
+On its first input ("session started; wait…") the read-only passive supervisor read files
+in its config folder and in `LADO_HOME` for more than 60 s instead of ending its turn; the
+Codex image test failed once on it (verify of feature/stable-local-live, visit 2) and passed
+on rerun.
+Wanted: a passive role or first message that makes the model end its turn at once, or a
+longer idle wait in the test with the reason written down.
+Found: 2026-10-11, verify of feature/stable-local-live.
+
+## Flaky: Kilo live tests time out on slow gateway turns
+
+Size: S. Why here: AC 12 of feature/stable-local-live (3 green runs in a row) not met for Kilo.
+On the gateway (qwen3.6) a trivial first turn of w1 took the model 2-2.5 minutes, so the
+human's message started near the end of the image test's 180 s wait (2 runs of 3); in the
+flow test w1 hung in a model call after its commit, past the 240 s wait. LADO's delivery
+and hooks were correct.
+Wanted: live waits that allow for a slow endpoint (e.g. scaled by a variable), or a failure
+message that says the model's turn was still running; or a documented model or endpoint
+that answers in seconds.
+Found: 2026-10-11, verify of feature/stable-local-live.
+
+## Live evidence may keep the gateway key when its copy fails half way
+
+Size: S. Why here: the design asks that evidence never hold the key; local `/tmp` only.
+`tests/agent_helpers.keep_evidence` redacts only after `_copy_evidence` returns; if the copy
+raises part way (e.g. after `agents/` with an unread `env.json` was copied), the files
+already copied keep the key and `real_clis.keep_evidence` leaves the folder as it is.
+Wanted: redact in a `finally` around `_copy_evidence`.
+Found: 2026-10-11, review of feature/stable-local-live (Minor, left open).
+
+## Two misleading texts: a resume problem's "you" and `deny_edit_tools`
+
+Size: S. Why here: wording only, left open by the review of feature/stable-local-live.
+`runs.py:421` says "neither you (read-only) nor lado flow-set can move it", which reaches
+the human's stderr through `cli.py:57`, where "you" reads as the human. The comment on
+`Capabilities.deny_edit_tools` (`providers/base.py:53`) reads as unconditional, though for
+Codex the claim depends on the model.
+Wanted: the resume text names who it means; the comment says where the claim depends on the model.
+Found: 2026-10-11, review of feature/stable-local-live (Minor, left open).
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

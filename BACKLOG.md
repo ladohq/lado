@@ -236,6 +236,7 @@ separate tasks in the socket, so `done` can arrive before the last input is writ
 Passed on rerun and locally. Wanted: wait for the written input itself (poll `written`
 with a timeout), not for an unrelated output frame.
 Found: 2026-10-06, CI before the 0.23.0 release.
+Again: 2026-10-11, CI on 259e1e5 (run 38143437060, Python 3.13), passed on rerun.
 
 ## Flaky: integration test of a swallowed message typed again after a hook
 

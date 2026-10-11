@@ -52,6 +52,6 @@
 
 ## 6. Regression
 
-- [ ] 6.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui <changed files>`,
+- [x] 6.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui <changed files>`,
   `openspec validate --specs --strict`; CI runs the integration tests (no integration test
   is added: nothing here crosses processes beyond one git call).

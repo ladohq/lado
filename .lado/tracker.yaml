@@ -7,3 +7,8 @@ statuses:
   done: Done
 labels:
   waiting for release: 'Release: Waiting'
+  component lado: 'Component: lado'
+  component kit-sdlc: 'Component: kit-sdlc'
+  component kit-builder: 'Component: kit-builder'
+  component kit-tracker-yougile: 'Component: kit-tracker-yougile'
+  component kit-tracker-jira-server: 'Component: kit-tracker-jira-server'

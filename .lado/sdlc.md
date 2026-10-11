@@ -7,7 +7,8 @@ at the start of every step.
 
 - Chat with the human: Russian
 - Pull request description and comments: English
-- Tracker comments: Russian
+- Tracker (Yougile): Russian, everything written there: task titles, descriptions and
+  comments; the team has no English-speaking developers
 - Commit messages: English, the repository's own style: a plain sentence that says what
   the change does (no `<type>:` prefix), the task key at its end in parentheses
   (`The artifact tab scrolls a long record (DEV-12)`); the body says why, not what
@@ -27,6 +28,11 @@ at the start of every step.
 
 - Waiting for release label: `waiting for release` (the sticker `Release: Waiting`,
   mapped in `.lado/tracker.yaml`)
+- Component labels: the sticker `Component` says which part of the system a task
+  changes, one of `component lado`, `component kit-sdlc`, `component kit-builder`,
+  `component kit-tracker-yougile`, `component kit-tracker-jira-server` (mapped in
+  `.lado/tracker.yaml`). A task created through LADO gets the label of the part it
+  changes; a task of this repository is `component lado`.
 - Skipped issue types: none
 - Merge comment (Markdown):
 

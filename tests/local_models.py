@@ -28,6 +28,17 @@ INSTALL_TIMEOUT = 300  # uvx's first run installs LiteLLM
 START_TIMEOUT = 120
 # OpenCode's and Kilo's config file of the test, by the variable each reads it from.
 CONFIG_VARIABLES = {"opencode": "OPENCODE_CONFIG", "kilo": "KILO_CONFIG"}
+# Each CLI's own test model, which wins over the endpoint's.
+MODEL_VARIABLES = {
+    p: f"LADO_LIVE_{p.upper()}_MODEL" for p in ("claude", "codex", "kilo", "opencode")
+}
+# A remote OpenAI-compatible endpoint instead of LM Studio, for Codex, OpenCode and Kilo: its
+# base URL (ending in /v1), its key (only ever in the environment: the configs name the
+# variable, never the value) and the model of all three.
+ENDPOINT = "LADO_LIVE_ENDPOINT"
+API_KEY = "LADO_LIVE_API_KEY"
+ENDPOINT_MODEL = "LADO_LIVE_MODEL"
+ENDPOINT_PROVIDER = "endpoint"  # the provider's name in each CLI's config
 
 
 def lmstudio_url() -> str:
@@ -73,18 +84,22 @@ def lmstudio_sees_images(model: str, url: str) -> bool:
     return any(m.get("type") == "vlm" for m in _instances(lmstudio_models(url) or [], model))
 
 
-def opencode_config(model: str, url: str) -> dict:
+def opencode_config(model: str, base_url: str, key_variable: str | None = None) -> dict:
     """OpenCode's and Kilo's config of the test (OPENCODE_CONFIG, KILO_CONFIG): the model,
-    and for `lmstudio/<id>` the provider it names. LADO's own config of each agent goes on
-    top and keeps both."""
+    and for `lmstudio/<id>` or `endpoint/<id>` the OpenAI-compatible provider it names at
+    `base_url`, with the key as a reference to `key_variable` ({env:...}, which both expand).
+    LADO's own config of each agent goes on top and keeps both."""
     config: dict = {"model": model}
-    if model.startswith("lmstudio/"):
-        name = model.split("/", 1)[1]
+    provider, _, name = model.partition("/")
+    if provider in ("lmstudio", ENDPOINT_PROVIDER):
+        options = {"baseURL": base_url}
+        if key_variable:
+            options["apiKey"] = f"{{env:{key_variable}}}"
         config["provider"] = {
-            "lmstudio": {
+            provider: {
                 "npm": "@ai-sdk/openai-compatible",
-                "name": "LM Studio (local)",
-                "options": {"baseURL": f"{url}/v1"},
+                "name": "LM Studio (local)" if provider == "lmstudio" else "the live endpoint",
+                "options": options,
                 "models": {
                     name: {
                         "name": name,
@@ -99,15 +114,51 @@ def opencode_config(model: str, url: str) -> dict:
     return config
 
 
-def codex_config(model: str, base_url: str, env_key: str | None) -> str:
+def codex_config(model: str, base_url: str, env_key: str | None, name: str = "bridge") -> str:
     """The user's Codex config of the test, which LADO carries into each agent's own
-    (providers/codex.py, CARRIED): the model at a Responses endpoint."""
-    provider = {"name": "bridge", "base_url": base_url, "wire_api": "responses"}
+    (providers/codex.py, CARRIED): the model at a Responses endpoint, its key read from the
+    variable `env_key`."""
+    provider = {"name": name, "base_url": base_url, "wire_api": "responses"}
     if env_key:
         provider["env_key"] = env_key
-    return toml_text(
-        {"model": model, "model_provider": "bridge", "model_providers": {"bridge": provider}}
-    )
+    return toml_text({"model": model, "model_provider": name, "model_providers": {name: provider}})
+
+
+def endpoint() -> str | None:
+    """The remote endpoint's base URL, or None: LM Studio."""
+    return (os.environ.get(ENDPOINT) or "").rstrip("/") or None
+
+
+def endpoint_model(provider: str) -> str:
+    """The provider's test model on the endpoint: its own variable, else LADO_LIVE_MODEL
+    (OpenCode and Kilo name it `endpoint/<id>`); "" when neither is set."""
+    if own := os.environ.get(MODEL_VARIABLES[provider]):
+        return own
+    model = os.environ.get(ENDPOINT_MODEL, "")
+    return f"{ENDPOINT_PROVIDER}/{model}" if model and provider in CONFIG_VARIABLES else model
+
+
+def endpoint_problem(provider: str) -> str | None:
+    """Why the provider's tests cannot run on the endpoint, or None. Never the key."""
+    if not endpoint_model(provider):
+        own = MODEL_VARIABLES[provider]
+        return f"{ENDPOINT} has no default model: set {ENDPOINT_MODEL} (or {own})"
+    if not os.environ.get(API_KEY):
+        return f"{ENDPOINT} is set without its key: set {API_KEY}"
+    return None
+
+
+def write_endpoint_config(provider: str, model: str, folder: Path) -> dict[str, str]:
+    """Write the provider's config for the endpoint in `folder` (Codex: the test's own user
+    config, `folder` its CODEX_HOME), the key only by reference. The variables to set."""
+    url = endpoint()
+    if provider == "codex":
+        text = codex_config(model, url, API_KEY, ENDPOINT_PROVIDER)
+        (folder / "config.toml").write_text(text)
+        return {}
+    path = folder / f"{provider}-config.json"
+    path.write_text(json.dumps(opencode_config(model, url, API_KEY)))
+    return {CONFIG_VARIABLES[provider]: str(path)}
 
 
 class BridgeError(Exception):

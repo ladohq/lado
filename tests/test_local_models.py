@@ -116,7 +116,7 @@ def test_the_url_comes_from_the_environment(monkeypatch):
 
 
 def test_the_opencode_config_has_lmstudio_and_the_model():
-    config = local_models.opencode_config(f"lmstudio/{MODEL}", "http://127.0.0.1:1234")
+    config = local_models.opencode_config(f"lmstudio/{MODEL}", "http://127.0.0.1:1234/v1")
     assert config["model"] == f"lmstudio/{MODEL}"
     lmstudio = config["provider"]["lmstudio"]
     assert lmstudio["npm"] == "@ai-sdk/openai-compatible"
@@ -145,6 +145,79 @@ def test_the_codex_config_points_at_the_endpoint():
     }
     no_key = tomllib.loads(local_models.codex_config(MODEL, "http://h/v1", None))
     assert "env_key" not in no_key["model_providers"]["bridge"]
+
+
+ENDPOINT = "http://gateway.test:4000/v1"
+SECRET = "sk-the-human-s-secret-value"
+
+
+@pytest.fixture
+def endpoint_env(monkeypatch):
+    for name in [*local_models.MODEL_VARIABLES.values(), local_models.ENDPOINT_MODEL]:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(local_models.ENDPOINT, f"{ENDPOINT}/")
+    monkeypatch.setenv(local_models.API_KEY, SECRET)
+    monkeypatch.setenv(local_models.ENDPOINT_MODEL, "qwen/qwen3.6-35b-a3b")
+
+
+def written(folder):
+    return {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+
+
+def test_without_an_endpoint_lmstudio_is_the_default(monkeypatch):
+    monkeypatch.delenv(local_models.ENDPOINT, raising=False)
+    assert local_models.endpoint() is None
+
+
+@pytest.mark.parametrize("provider", ["opencode", "kilo"])
+def test_opencode_and_kilo_reach_the_endpoint_with_the_key_by_reference(
+    endpoint_env, tmp_path, provider
+):
+    assert local_models.endpoint() == ENDPOINT
+    assert local_models.endpoint_problem(provider) is None
+    model = local_models.endpoint_model(provider)
+    assert model == "endpoint/qwen/qwen3.6-35b-a3b"
+    variables = local_models.write_endpoint_config(provider, model, tmp_path)
+    [(name, path)] = variables.items()
+    assert name == local_models.CONFIG_VARIABLES[provider]
+    config = json.loads(open(path).read())
+    assert config["model"] == model
+    endpoint = config["provider"]["endpoint"]
+    assert endpoint["options"] == {"baseURL": ENDPOINT, "apiKey": "{env:LADO_LIVE_API_KEY}"}
+    assert endpoint["models"]["qwen/qwen3.6-35b-a3b"]["tool_call"] is True
+    assert not [p for p, data in written(tmp_path).items() if SECRET.encode() in data]
+
+
+def test_codex_reaches_the_endpoint_with_the_key_by_reference(endpoint_env, tmp_path):
+    model = local_models.endpoint_model("codex")
+    assert model == "qwen/qwen3.6-35b-a3b"
+    assert local_models.write_endpoint_config("codex", model, tmp_path) == {}
+    config = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert config["model"] == model
+    assert config["model_provider"] == "endpoint"
+    assert config["model_providers"]["endpoint"] == {
+        "name": "endpoint",
+        "base_url": ENDPOINT,
+        "wire_api": "responses",
+        "env_key": "LADO_LIVE_API_KEY",
+    }
+    assert not [p for p, data in written(tmp_path).items() if SECRET.encode() in data]
+
+
+def test_a_cli_s_own_model_wins_over_the_endpoint_s(endpoint_env, monkeypatch):
+    monkeypatch.setenv("LADO_LIVE_KILO_MODEL", "endpoint/google/gemma-4-26b-a4b")
+    assert local_models.endpoint_model("kilo") == "endpoint/google/gemma-4-26b-a4b"
+    assert local_models.endpoint_model("opencode") == "endpoint/qwen/qwen3.6-35b-a3b"
+
+
+def test_an_endpoint_without_a_model_or_a_key_is_a_skip_reason(endpoint_env, monkeypatch):
+    monkeypatch.delenv(local_models.ENDPOINT_MODEL)
+    assert "LADO_LIVE_MODEL" in local_models.endpoint_problem("codex")
+    monkeypatch.setenv("LADO_LIVE_CODEX_MODEL", "qwen/qwen3.6-35b-a3b")
+    assert local_models.endpoint_problem("codex") is None
+    monkeypatch.delenv(local_models.API_KEY)
+    problem = local_models.endpoint_problem("codex")
+    assert "LADO_LIVE_API_KEY" in problem and SECRET not in problem
 
 
 # A stand-in for LiteLLM: `--version`, or a server that answers /health/liveliness and

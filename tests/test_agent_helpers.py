@@ -139,6 +139,17 @@ def test_keep_evidence_keeps_links_as_links_and_notes_what_it_cannot_copy(
     assert (folder / "screens" / "w1.txt").exists()  # the rest goes on
 
 
+def test_keep_evidence_redacts_the_secrets_it_is_given(failed_session, tmp_path, lado_home):
+    secret = "sk-the-key-of-the-endpoint"
+    (lado_home / "hooks.log").write_text(f"error with {secret} in it\n")
+    (lado_home / "agents" / "s" / "w1" / "env.json").write_text(f'{{"KEY": "{secret}"}}')
+    folder = agent_helpers.keep_evidence(failed_session, tmp_path / "evidence", (secret,))
+    kept = [p for p in folder.rglob("*") if p.is_file()]
+    assert not [p for p in kept if secret.encode() in p.read_bytes()]
+    assert "error with <redacted> in it" in (folder / "hooks.log").read_text()
+    assert (folder / "agents" / "w1" / "kilo.json").read_text() == "{}"
+
+
 def test_a_timed_out_wait_says_what_it_waited_for_and_the_last_state(failed_session):
     with pytest.raises(pytest.fail.Exception) as failed:
         agent_helpers.wait_for(lambda: False, "w1's report", failed_session, timeout=0)

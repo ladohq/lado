@@ -29,14 +29,21 @@ from real_clis import CLASSES, EVIDENCE, isolated, with_model  # noqa: F401 (fix
 
 from lado import providers
 
-# The test model of each provider. OpenCode and Kilo name LM Studio's as `lmstudio/<id>`.
+# A remote endpoint (LADO_LIVE_ENDPOINT) for Codex, OpenCode and Kilo instead of LM Studio:
+# no LM Studio check and no bridge; its key only in the environment (local_models).
+ENDPOINT = local_models.endpoint()
+LOCAL = f"lmstudio/{local_models.MODEL}"  # OpenCode and Kilo name LM Studio's so
+# The test model of each provider.
 MODELS = {
     "claude": os.environ.get("LADO_LIVE_CLAUDE_MODEL") or "haiku",
-    "codex": os.environ.get("LADO_LIVE_CODEX_MODEL") or local_models.MODEL,
-    "kilo": os.environ.get("LADO_LIVE_KILO_MODEL") or f"lmstudio/{local_models.MODEL}",
-    "opencode": os.environ.get("LADO_LIVE_OPENCODE_MODEL") or f"lmstudio/{local_models.MODEL}",
+    **{
+        p: local_models.endpoint_model(p)
+        if ENDPOINT
+        else os.environ.get(local_models.MODEL_VARIABLES[p]) or default
+        for p, default in (("codex", local_models.MODEL), ("kilo", LOCAL), ("opencode", LOCAL))
+    },
 }
-# Another Responses endpoint for Codex: no bridge, no LM Studio check.
+# Another Responses endpoint for Codex alone: no bridge, no LM Studio check.
 CODEX_BASE_URL = os.environ.get("LADO_LIVE_CODEX_BASE_URL")
 BRIDGE_KEY = "LADO_LIVE_BRIDGE_KEY"  # the variable Codex reads the bridge's key from
 CONFIG_VARIABLES = local_models.CONFIG_VARIABLES
@@ -45,6 +52,8 @@ CONFIG_VARIABLES = local_models.CONFIG_VARIABLES
 def lmstudio_model(provider: str) -> str | None:
     """The LM Studio model id the provider's test model is, or None for another endpoint."""
     model = MODELS[provider]
+    if ENDPOINT:
+        return None
     if provider == "codex":
         return None if CODEX_BASE_URL else model
     if provider in CONFIG_VARIABLES and model.startswith("lmstudio/"):
@@ -64,6 +73,8 @@ def _claude_unusable() -> str | None:
 
 
 def _local_unusable(provider: str) -> str | None:
+    if ENDPOINT:
+        return local_models.endpoint_problem(provider)
     model = lmstudio_model(provider)
     return local_models.lmstudio_problem(model, local_models.lmstudio_url()) if model else None
 
@@ -104,6 +115,13 @@ def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
         pytest.skip(reason)
     if name == "claude":
         monkeypatch.setitem(providers._PROVIDERS, name, with_model(CLASSES[name], MODELS[name]))
+    elif ENDPOINT:
+        folder = codex_home if name == "codex" else tmp_path
+        folder.mkdir(parents=True, exist_ok=True)
+        for variable, value in local_models.write_endpoint_config(
+            name, MODELS[name], folder
+        ).items():
+            monkeypatch.setenv(variable, value)
     elif name == "codex":
         # The user's Codex config of the test, which LADO carries into each agent's own. It
         # trusts no folder, so each agent asks (real_clis.answer_dialogs).
@@ -121,6 +139,7 @@ def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
             json.dumps(local_models.opencode_config(MODELS[name], local_models.lmstudio_url()))
         )
         monkeypatch.setenv(CONFIG_VARIABLES[name], str(config))
+    if name in CONFIG_VARIABLES:
         # Their TUI takes the model an agent used last (<state>/<cli>/model.json) over the
         # config's (Kilo 7.8.8: the user's kilo-auto/free won): a state of the test's own,
         # where they record the model they use (test_live.check_models).
@@ -170,4 +189,9 @@ def live_repo(live_provider, tmp_path):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
-    real_clis.keep_evidence(item, outcome.get_result(), tuple(b.log for b in BRIDGES))
+    real_clis.keep_evidence(
+        item,
+        outcome.get_result(),
+        tuple(b.log for b in BRIDGES),
+        (os.environ.get(local_models.API_KEY, ""),),
+    )

@@ -291,11 +291,23 @@ def last_state(session: str) -> str:
     return f"agents: {agents}; messages: {messages or 'none'}"
 
 
-def keep_evidence(session: str, folder: Path) -> Path:
+def keep_evidence(session: str, folder: Path, secrets: tuple[str, ...] = ()) -> Path:
     """Copy into `folder` what shows why an agent test failed: `lado log` of the session,
     hooks.log, each agent's config folder and where it worked, and each tmux window's screen
-    with its scrollback. Takes what is still there: a stopped session has no windows left."""
-    folder.mkdir(parents=True)
+    with its scrollback. Takes what is still there: a stopped session has no windows left.
+    Each of `secrets` (e.g. an endpoint's key) is replaced by `<redacted>` in every file kept."""
+    _copy_evidence(session, folder)
+    for secret in filter(None, secrets):
+        for path in folder.rglob("*"):
+            if path.is_file() and not path.is_symlink():
+                data = path.read_bytes()
+                if secret.encode() in data:
+                    path.write_bytes(data.replace(secret.encode(), b"<redacted>"))
+    return folder
+
+
+def _copy_evidence(session: str, folder: Path) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
     feed = log.Feed(session).read() if state.get_session(session) else []
     (folder / "lado-log.txt").write_text("".join(f"{log.format_entry(e)}\n" for e in feed))
     hooks_log = state.home() / "hooks.log"
@@ -326,7 +338,6 @@ def keep_evidence(session: str, folder: Path) -> Path:
             (screens / f"{window}.txt").write_text(screen)
     except tmux.TmuxError as exc:
         (screens / "error.txt").write_text(f"{exc}\n")
-    return folder
 
 
 def diagnostics(session: str) -> str:

@@ -104,7 +104,17 @@ at another Responses endpoint, with no bridge and no check; `LADO_LIVE_LMSTUDIO_
 loaded with that context (the `lms load` above), and when `uvx` is missing. The image test
 skips before it sends an image when the model does not declare image input (LM Studio's
 `type: vlm`; for another endpoint `LADO_LIVE_IMAGE=1`, and unset is a skip), and fails when
-a model that declares it does not see the image. The passive supervisor of the live kit is
+a model that declares it does not see the image. The other setup, a remote OpenAI-compatible
+endpoint (chat completions and Responses, e.g. a LiteLLM gateway) for Codex, OpenCode and
+Kilo at once: `LADO_LIVE_ENDPOINT` (its base URL, ending in `/v1`), `LADO_LIVE_API_KEY` (its
+key, only ever in the environment: Codex's carried config names it as `env_key`, OpenCode's
+and Kilo's file as `{env:LADO_LIVE_API_KEY}`; a failed test's evidence has it redacted, and
+the tests check that no agent config holds it) and `LADO_LIVE_MODEL` (the model of all three,
+with tools and, for the image test, vision with `LADO_LIVE_IMAGE=1`; no default: unset, or
+no key, is a skip), each CLI's own `LADO_LIVE_*_MODEL` winning; no LM Studio check and no
+bridge then, as the endpoint's Responses API must keep Codex's MCP tools. E.g. `LADO_LIVE_ENDPOINT=<url>
+LADO_LIVE_API_KEY="$(cat <key file>)" LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 make test-live
+PROVIDER=codex`; never a paid model. The passive supervisor of the live kit is
 read-only (no command tools; LADO's run messages to it name the human's ways), and every
 live test fails when a `repo_changed` event names it; the test merges only while it is idle.
 Each Codex agent asks whether to trust the test's repo, answered by the test after checking

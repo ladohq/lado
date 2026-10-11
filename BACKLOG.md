@@ -1095,6 +1095,44 @@ not LADO's (feature/stable-local-live, implement, item 9c).
 Wanted: know how often it hits the live suite (verify's 3 runs per provider), and whether a
 model setting (LM Studio's tool-call parsing, thinking on) avoids it.
 Found: 2026-10-11, implement of feature/stable-local-live.
+Verify of that run (d15a64f) on LM Studio: OpenCode red in 3 of 3 runs (image 3 times, worker
+once, flow once), Codex 1 of 3 (flow), each the same: `read_messages`, `[call read_messages]`,
+`call send_message(...)` or `ACK` written as text, finish `stop`; OpenCode's session store
+shows each failed turn's input as large as the turns of the same session that did call the
+tools (14,354-14,560 tokens). Hence the human's switch of verify to a gateway with
+qwen3.6-35b-a3b (`LADO_LIVE_ENDPOINT`, design v5); LM Studio stays the default setup.
+
+## The lead answers the human's message to a worker
+
+Size: S. Why here: a lead that does a worker's job answers the human twice, and loads the model twice.
+When the human writes to an agent, the lead gets the one-line copy `human wrote to <agent>: ...`
+"for your information". The live tests' read-only passive supervisor on qwen3.5 takes it as
+its task: it reads the attached image with read_artifact and sends `red` to the human itself
+(6 of 6 recorded OpenCode image runs in implement, once in verify), while w1 answers too.
+Wanted: the copy says plainly that the agent answers and the lead must not, or the live test
+fails on a lead's message to the human that answers the human's message to w1.
+Found: 2026-10-11, implement and verify of feature/stable-local-live.
+
+## A read-only lead is told the run waits while the test starts its worker
+
+Size: S. Why here: the lead tells the human something false in the live flow test.
+At `runs.start` the read-only lead gets "step step needs a worker. Your role is read-only:
+you cannot start a worker. The run waits at step until the human moves it on with `lado
+flow-set ...`", and in the same second the live test starts w1 itself with `runs.spawn_worker`,
+a path no human has (BACKLOG "The human cannot start a worker or cancel a run"). The message
+is dropped only if still pending; once handed over, the lead told the human `Flow requires
+human action - cannot spawn workers in read-only mode` (Codex, verify run 3).
+Wanted: once the human can start a worker, the text names that way and the live test uses it;
+until then the test could start the run's worker before the lead's turn, or tolerate it.
+Found: 2026-10-11, verify of feature/stable-local-live.
+
+## Test tmux servers leave their socket files behind
+
+Size: S. Why here: about 100 stale sockets pile up in the tmux folder.
+`/private/tmp/tmux-501/` holds ~100 `lado-test-*` socket files of earlier runs with no server
+behind them: `kill_tmux_server` ends the server but leaves its socket.
+Wanted: a test's teardown removes its socket file after the server is gone.
+Found: 2026-10-11, verify of feature/stable-local-live.
 
 ## Finishing a worker in a stopped session says "no worker"
 

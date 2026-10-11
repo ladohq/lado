@@ -15,7 +15,7 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
-from local_models import CONFIG_VARIABLES
+from local_models import API_KEY, CONFIG_VARIABLES
 from real_clis import agent_processes, answer_dialogs, check_gone
 
 from lado import artifacts, loop, mcp_server, providers, runs, runtime, state, terminal, tmux
@@ -336,6 +336,19 @@ def check_models(provider: str, model: str) -> None:
             assert given["model"] == model
             own = json.loads((folder / providers.get(provider).config_file_name).read_text())
             assert "model" not in own, (agent.name, own["model"])
+    if key := os.environ.get(API_KEY):
+        # An endpoint's key goes to each CLI by reference only (local_models); env.json, the
+        # agent's environment for its window, is removed once read.
+        holding = [
+            str(p)
+            for a in agents
+            for p in base.config_dir(a).rglob("*")
+            if p.is_file()
+            and not p.is_symlink()
+            and p.name != "env.json"
+            and key.encode() in p.read_bytes()
+        ]
+        assert not holding, f"the endpoint's key is in: {holding}"
     if provider in CONFIG_VARIABLES:
         used = Path(os.environ["XDG_STATE_HOME"], provider, "model.json")
         if used.exists():

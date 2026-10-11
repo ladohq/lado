@@ -661,6 +661,8 @@ typed in again by the sweep's rule. It passed in the run before (38084298408) an
 Wanted: find which timing makes the sweep type the batch (its retry delay under a slow
 runner, the hook not seen in time) and make the test hold.
 Found: 2026-10-11, feature/live-cloud-matrix (developer).
+Seen again 2026-10-11 at release 0.35.0: Windows probe run 38158261717 (`[fake]`), and in CI
+the same class ("Flaky in CI: a slow turn's hook-output message was typed", below).
 
 ## A fake model server for the smoke tests
 

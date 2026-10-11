@@ -1943,6 +1943,16 @@ keep it in …".
 Wanted: the copy keeps links as links or skips what it cannot copy, naming it, and keeps the rest.
 Found: 2026-10-11, research of a free cloud model for Codex (session lado-windows).
 
+## Smoke test: two of its endpoint checks are looser than they read
+
+Size: S. Why here: the review of feature/live-cloud-matrix left two Minor findings open.
+`tests/smoke/test_smoke.py`: for Codex, the supervisor's first request to the fake endpoint
+is asserted at once, without a wait (lines 85-86); and "w1 reached the endpoint" is checked
+as more requests in total (line 94), not as a request by w1.
+Wanted: wait for the first request, and tell each agent's requests apart (e.g. by a header
+or the config's provider name) so the check is per agent.
+Found: 2026-10-11, review of feature/live-cloud-matrix.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

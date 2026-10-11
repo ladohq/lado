@@ -1900,6 +1900,17 @@ Wanted: decide whether that is acceptable, or make the sideways scroll reachable
 reader is.
 Found: 2026-10-11, review of fix/artifact-tab-scroll.
 
+## Flaky: the Codex live image test's w1 stays busy on its task on LM Studio
+
+Size: S. Why here: one red live run at the 0.35.0 release, green on the first rerun.
+`test_an_agent_sees_the_image_the_human_attaches[codex]` on LM Studio's qwen3.5-35b-a3b
+(through the bridge): `timed out after 120s waiting for w1 to be idle; agents: supervisor
+idle, w1 busy`, its task read. Evidence:
+`$TMPDIR/lado-live-evidence/20261011-210906-test_an_agent_sees_the_image_the_human_attaches_codex_`.
+Wanted: find out from the evidence what w1's turn did that long (a slow model turn, or a
+turn's end Codex ran no hook for), then a fix or a longer wait with the reason written down.
+Found: 2026-10-11, live tests of release 0.35.0.
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

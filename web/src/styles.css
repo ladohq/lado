@@ -2121,28 +2121,61 @@ h3 {
   font: 600 13px var(--mono);
 }
 
-/* A flow run's agents: a dashed frame, the run's name (a link to its page in Flows), then
-   its agents' chips, in the team's row. */
+/* A flow run's agents: a dashed frame in the run's colour (data-colour, Team.tsx:
+   runColours; grey until the runs load), no fill, no name: the Flows icon in that colour (a
+   link to the run's page in Flows, its tooltip names the run), then its agents' chips, in
+   the team's row (decided 2026-10-11, feature/team-run-frames). */
 .team-run {
+  --run: var(--line);
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
-  padding: 2px 3px 2px 10px;
-  border: 1px dashed var(--line);
+  padding: 2px 3px;
+  border: 1.5px dashed var(--run);
   border-radius: 16px;
 }
 
-.team-run-name {
-  color: var(--action);
-  font: 12px var(--mono);
-  text-decoration: none;
-  overflow-wrap: anywhere;
+.team-run[data-colour="1"] {
+  --run: var(--run-1);
 }
 
-.team-run-name:hover {
-  text-decoration: underline;
+.team-run[data-colour="2"] {
+  --run: var(--run-2);
+}
+
+.team-run[data-colour="3"] {
+  --run: var(--run-3);
+}
+
+.team-run[data-colour="4"] {
+  --run: var(--run-4);
+}
+
+.team-run-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--run);
+}
+
+.team-run:not([data-colour]) .team-run-link {
+  color: var(--muted); /* grey dashes, but an icon one can see */
+}
+
+.team-run-link .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.team-run-link:hover,
+.team-run-link:focus-visible {
+  background: color-mix(in srgb, currentColor 18%, transparent);
 }
 
 /* An agent's status: colour and shape, so it reads without colour too. busy: a full green

@@ -976,9 +976,17 @@ Built in the layout task (2026-10-03, schema 14):
   2026-10-07, feature/activity-team), from `AgentInfo.run` only: the supervisor and its
   own workers (no run) come first, as the server lists them; then each run that has an
   agent, in the order its first agent is listed, as a dashed frame (`role="group"`,
-  `run <name>`) with the run's name, a link to its page in Flows, and its agents' chips, all
-  in the team's one wrapping row. The frame shows no state of the run (Flows and Agents
-  do). The tooltip (the UI polish, the
+  `run <name>`) with its agents' chips, all in the team's one wrapping row. The frame
+  shows no name and no state of the run (Flows and Agents show the state; decided
+  2026-10-11, feature/team-run-frames, mockup `feature/team-run-frames/mockup-team.html`,
+  version 4, variant C): its dashes (1.5 px, no fill) are in the run's colour, and before
+  the chips a small Flows icon (the Flows tab's own) in that colour is the link to the
+  run's page in Flows (`run <name> in Flows`; the UI's tooltip `flow <name>` on hover and
+  on the keyboard's focus). The colour is `--run-1` … `--run-4` by the run's place among
+  all the session's runs, ended ones too, as the server lists them (by start), counted
+  oldest first, mod 4 (`runColours` in Team.tsx, no sort of its own): a run keeps its
+  colour while others start and end, and four runs started one after another never share
+  one. Until the runs are loaded the dashes are `--line`. The tooltip (the UI polish, the
   human's decision, 2026-10-03) is the UI's own (`Tooltip.tsx`, one component for the
   chips and the terminal tabs), not the browser's `title`: compact, from `AgentInfo`
   only: `name · role · provider` (the role left out when it is the name), and
@@ -1749,6 +1757,13 @@ blue. The human's avatar is "Y" on `--action` (`--on-action`), a gate's a flag i
 `--muted` on `--raised`. A known limit: roles with the same first letter (`developer`,
 `designer`) differ only by colour, and with six colours that may be the same; the full name
 stands beside it. Orange stays only for open questions and gates and the gate hint.
+
+**Run colours** (feature/team-run-frames, 2026-10-11; Team's run frames): four colours,
+`--run-1` … `--run-4`, on purpose four of the avatars' hues (`--avatar-3`, `-5`, `-4`,
+`-6`: violet, teal, magenta, olive), written as their own literal pairs so the contrast
+test checks them on `--panel` and `--ground`. They keep out orange and the action's blue,
+as the avatars do, and leave out the avatars' green, which is close to busy. A run
+coloured in the chat one day would sit next to avatars of the same hues.
 
 **Artifacts** (feature/artifacts-ui, 2026-10-07): a type's icon is a 28 px tile (20 px on a
 chip) on `--raised`, coloured by kind: Markdown `--action` on `--action-ground`, HTML

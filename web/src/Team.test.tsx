@@ -1,11 +1,13 @@
-// The team's groups (Team.tsx: teamGroups) and the Stop icon of a session's head.
-import { cleanup, render } from "@testing-library/react";
+// The team's groups (Team.tsx: teamGroups), a run's frame and its colour (RunFrame,
+// runColours), and the Stop icon of a session's head.
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, expect, test } from "vitest";
 
-import type { AgentInfo } from "./api";
+import type { AgentInfo, RunInfo } from "./api";
 import { AGENT_REST } from "./fakes";
 import { ResumeIcon, StopIcon } from "./icons";
-import { AgentChip, StatusDot, teamGroups } from "./Team";
+import { AgentChip, RunFrame, runColours, StatusDot, teamGroups } from "./Team";
 
 afterEach(cleanup);
 
@@ -83,4 +85,68 @@ test("every chip is one chip: the supervisor's, a worker's and a run's alike, wi
     "w1, developer, idle",
     "dev, developer, idle",
   ]); // the role stays for the ear
+});
+
+// A run as the server lists it; only its name and status matter to its colour.
+function run(name: string, status: RunInfo["status"] = "active"): RunInfo {
+  return { name, status } as RunInfo;
+}
+
+test("a run's colour is its place among the session's runs as served (newest first), counted oldest first", () => {
+  const served = [run("d"), run("c"), run("b"), run("a")]; // a started first
+  expect([...runColours(served)]).toEqual([
+    ["d", 4],
+    ["c", 3],
+    ["b", 2],
+    ["a", 1],
+  ]);
+});
+
+test("the colours wrap after four: the fifth run takes the first's colour", () => {
+  const served = [run("e"), run("d"), run("c"), run("b"), run("a")];
+  expect(runColours(served).get("e")).toBe(1);
+  expect(runColours(served).get("a")).toBe(1);
+});
+
+test("an ended run keeps its place, so a run started later moves no earlier run's colour", () => {
+  const before = runColours([run("b"), run("a", "ended")]);
+  const after = runColours([run("c"), run("b"), run("a", "ended")]);
+  expect(after.get("a")).toBe(before.get("a"));
+  expect(after.get("b")).toBe(before.get("b"));
+  expect(after.get("c")).toBe(3);
+});
+
+function frame(colour: number | null) {
+  return render(
+    <MemoryRouter>
+      <RunFrame session="lado" run="feature/x" colour={colour} agents={[agent("dev", "feature/x")]} shown={null} open={() => {}} />
+    </MemoryRouter>,
+  );
+}
+
+test("a run's frame shows no name: a link to the run in Flows with the Flows icon, then its chips", () => {
+  frame(2);
+  const group = screen.getByRole("group", { name: "run feature/x" });
+  expect(group.textContent).toBe("dev"); // only the chips' names
+  const link = within(group).getByRole("link", { name: "run feature/x in Flows" });
+  expect(link.getAttribute("href")).toBe(`/sessions/lado/flows/${encodeURIComponent("feature/x")}`);
+  expect(link.querySelector("svg")).not.toBeNull();
+  expect(group.firstElementChild).toBe(link);
+  expect(group.getAttribute("data-colour")).toBe("2");
+});
+
+test("a run's frame with no colour yet has no data-colour", () => {
+  frame(null);
+  expect(screen.getByRole("group", { name: "run feature/x" }).hasAttribute("data-colour")).toBe(false);
+});
+
+test("the link's tooltip names the flow on keyboard focus and on hover", async () => {
+  frame(1);
+  const link = screen.getByRole("link", { name: "run feature/x in Flows" });
+  fireEvent.focus(link);
+  expect(screen.getByRole("tooltip").textContent).toBe("flow feature/x");
+  fireEvent.blur(link);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.mouseEnter(link);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("flow feature/x");
 });

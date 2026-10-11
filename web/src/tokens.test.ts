@@ -72,6 +72,15 @@ const PAIRS = [
   ["on-avatar", "avatar-5"],
   ["on-avatar", "avatar-6"],
   ["on-avatar", "muted"], // LADO's own small avatar in a flow event's line
+  // A flow run's colour in Team (its frame's dashes and icon) on the row and on the page.
+  ["run-1", "panel"],
+  ["run-2", "panel"],
+  ["run-3", "panel"],
+  ["run-4", "panel"],
+  ["run-1", "ground"],
+  ["run-2", "ground"],
+  ["run-3", "ground"],
+  ["run-4", "ground"],
 ] as const;
 
 test("the UI's text is Inter, its code IBM Plex Mono, both bundled", () => {

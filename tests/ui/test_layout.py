@@ -136,8 +136,26 @@ def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_t
     frame = team.get_by_role("group", name="run build/x")
     chip = frame.get_by_role("button")
     expect(chip).to_have_accessible_name("dev, worker, idle")
-    expect(frame).to_have_text("build/xdev")  # no state, no role
+    expect(frame).to_have_text("dev")  # no name, no state, no role
+    # The session's one run is its first: the frame's dashes and icon in --run-1, no fill.
+    expect(frame).to_have_attribute("data-colour", "1")
+    look = frame.evaluate(
+        """e => {
+          const s = getComputedStyle(e), probe = document.createElement('i');
+          probe.style.color = 'var(--run-1)';
+          e.append(probe);
+          const run = getComputedStyle(probe).color;
+          probe.remove();
+          const icon = getComputedStyle(e.querySelector('.team-run-link')).color;
+          return [s.borderTopStyle, s.borderTopColor === run, icon === run, s.backgroundColor];
+        }"""
+    )
+    assert look == ["dashed", True, True, "rgba(0, 0, 0, 0)"]
+    link = frame.get_by_role("link", name="run build/x in Flows")
+    link.focus()
+    expect(page.get_by_role("tooltip")).to_have_text("flow build/x")
     shot(page, "team")
+    link.blur()
     # Every chip alike, the supervisor's, its worker's and the run's: no role on any.
     expect(team.get_by_role("button")).to_have_text(["supervisor", "w1", "dev"])
     one = {"height": 24, "radius": "12px", "padding": "0px 9px", "gap": "6px", "name": "600 13px"}
@@ -155,7 +173,7 @@ def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_t
         "data-link", "open"
     )
 
-    frame.get_by_role("link", name="build/x").click()
+    link.click()
     expect(page).to_have_url(re.compile(f"/sessions/{session}/flows/build%2Fx$"))
 
 

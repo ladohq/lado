@@ -1940,6 +1940,17 @@ Wanted: wait for the first request, and tell each agent's requests apart (e.g. b
 or the config's provider name) so the check is per agent.
 Found: 2026-10-11, review of feature/live-cloud-matrix.
 
+## The lado-dev kit's checker still runs live tests at verify
+
+Size: S. Why here: the human decided live tests run only locally at release; the supervisor overrides the kit each time.
+The kit-lado-dev checker role (section 3) has `verify` run `make test-live` when a change touches
+providers, hooks, mcp_server, runtime or agent_env, and its lado-checks skill ("Live tests", "Releasing
+LADO") says the same; AGENTS.md "Testing" still says "run it locally after changing a provider".
+Wanted: in the kit repository, no live tests in `verify`; the release order is CI green (smoke on
+Linux and macOS), the Windows probe green, `make test-live` for every provider locally (Claude with
+the human's yes), then the tag. AGENTS.md to match.
+Found: 2026-10-11, verify of fix/run-end-pushed-branch (checker-3).
+
 # P3: maybe never
 
 ## Code artifacts have no syntax highlighting

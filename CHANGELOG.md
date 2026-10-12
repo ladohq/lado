@@ -7,6 +7,8 @@
   resume, where it comes after LADO's `session resumed`. The supervisor answers in the
   chat; the text never goes on an agent's command line.
 - API: `prompt` in `POST /api/sessions` and `POST /api/sessions/{name}/resume`.
+- The chat: a closed question card shows the choice you picked once, marked in its list;
+  the reply block under it keeps who answered, when, and your comment.
 
 ## 0.36.0 (2026-10-12)
 

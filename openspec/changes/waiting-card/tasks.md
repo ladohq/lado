@@ -13,7 +13,7 @@
 
 ## 2. API
 
-- [ ] 2.1 `POST /api/sessions/{name}/answers` (`models.Replies`, `models.Reply`); the two
+- [x] 2.1 `POST /api/sessions/{name}/answers` (`models.Replies`, `models.Reply`); the two
   question endpoints, `Answer` and `Dismissal` removed; `api.ts` `answerQuestions`; `make
   web-types`, both generated files committed (D5). Tests (`tests/test_server_messages.py`):
   "The UI sends a tab", "An empty list", the old endpoints gone, the guard's cases on the new

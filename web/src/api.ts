@@ -215,6 +215,13 @@ export async function uploadFile(session: string, file: File, name: string): Pro
   return (await answer.json()) as ArtifactInfo;
 }
 
+export type Reply = components["schemas"]["Reply"];
+
+// The human's replies to open questions of one agent (a tab of the waiting card): all or
+// none, handed over to the agent together.
+export const answerQuestions = (session: string, answers: Reply[]) =>
+  post<Sent>(`${sessionPath(session)}/answers`, { answers });
+
 export const answerQuestion = (session: string, id: number, answer: { choice?: string; text?: string }) =>
   post<Sent>(`${sessionPath(session)}/questions/${id}/answer`, answer);
 

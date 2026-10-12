@@ -941,13 +941,20 @@ class Limits(BaseModel):
     max_message: int  # characters of a message's text; a longer paste becomes a file
 
 
-class Answer(BaseModel):
+class Reply(BaseModel):
+    """The human's reply to one open question: one of its choices, own words, or with
+    `skip` a dismissal, `text` then its comment."""
+
+    question: int
     choice: str | None = None
     text: str | None = None
+    skip: bool = False
 
 
-class Dismissal(BaseModel):
-    text: str | None = None  # the human's comment, the reply's body
+class Replies(BaseModel):
+    """The replies of a tab of the waiting card: open questions of one agent."""
+
+    answers: list[Reply]
 
 
 class Sent(BaseModel):

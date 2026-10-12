@@ -442,47 +442,11 @@ only with `--pre`.
 1. Publish the kit's repository where your users can clone it, with a release tag.
 2. They can install it by its address right away:
    `lado kits add https://github.com/<owner>/my-team`.
-3. To have it installed by name, add it to a marketplace: a git repository with a
-   `marketplace.yaml` at its root that maps each kit's name (the `name` in its kit.yaml) to
-   its repository:
-
-   ```yaml
-   kits:
-     my-team: https://github.com/<owner>/my-team.git
-   ```
-
-   Your team adds the marketplace once (`lado marketplaces add team <its git url>`) and then
-   installs with `lado kits add my-team -m team`.
-
-What the UI's Kits page shows of a marketplace's kits comes from an `index.json` at the
-marketplace's root, which its CI builds from the kits; LADO reads it from the marketplace's
-clone, never the network. Version 1:
-
-```json
-{
-  "index": 1,
-  "kits": {
-    "sdlc": {
-      "address": "https://github.com/ladohq/kit-sdlc.git",
-      "latest": "v0.5.0",
-      "commit": "4be21c0…",
-      "lado": ">=0.30",
-      "description": "Day-to-day development of a project whose tasks live in a task tracker.",
-      "agents": {"analyst": "the first line of the role's description"},
-      "skills": ["openspec-changes"],
-      "flows": ["task"],
-      "mcp": {"playwright": "npx @playwright/mcp"}
-    }
-  }
-}
-```
-
-`latest` is the latest release (no pre-release) and `commit` its commit, `lado` the kit's
-`dependencies.lado`, `mcp` each MCP server's command on one line. Only `address` is
-required, and it must be the one `marketplace.yaml` gives; keys LADO does not know are
-passed over, so the CI may add some without a new version; a higher `index` needs a newer
-LADO. `marketplace.yaml` stays the list of names and addresses: an entry of a kit it does
-not list is left out. Without `index.json` the page shows each kit's name and address.
+3. To have it installed by name, list it in a marketplace: a git repository that names
+   kits and gives each one's address. Your team adds the marketplace once and then
+   installs with `lado kits add my-team -m team`. How to make one, its `index.json` for the
+   web UI, and how to propose a kit to the official marketplace:
+   [Marketplaces guide](marketplaces.md).
 
 ## 8. Troubleshooting
 

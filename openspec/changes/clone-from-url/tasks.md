@@ -29,7 +29,7 @@
   and `not_empty` refused; a name of a session of another folder refused before any
   clone; a clone then `start_session` with the folder; a refused start prints `the clone
   stays in`.
-- [ ] 2.2 Integration (`tests/integration/test_clone_start.py`, `-m integration`): "Clone
+- [x] 2.2 Integration (`tests/integration/test_clone_start.py`, `-m integration`): "Clone
   and start" with the fake agent; Ctrl-C (SIGINT) during a fake slow clone exits 130 with
   no temp folder and no target.
 

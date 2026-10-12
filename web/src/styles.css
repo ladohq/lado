@@ -3970,6 +3970,43 @@ h3 {
   margin-top: 10px;
 }
 
+/* Two rows one under the other share one line between them. */
+.launch-advanced + .launch-advanced {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Folded with text, the row shows the text's first line, cut to one line. */
+.launch-first summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launch-first-peek {
+  color: var(--ink);
+}
+
+.launch-first textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.launch-first textarea:focus {
+  outline: 0;
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px var(--action-ground);
+}
+
 .launch-refused {
   display: flex;
   flex-direction: column;

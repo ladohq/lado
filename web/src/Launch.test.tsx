@@ -533,7 +533,7 @@ test("a name in two kits offers to switch off either one, into the Switch off fi
   expect(within(dialog).getByRole("button", { name: "Switch off reviewer of kit-a" })).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("button", { name: "Switch off reviewer of kit-b" }));
   expect(field.value).toBe("skill:x, agent:reviewer@kit-b");
-  expect((dialog.querySelector("details.launch-advanced") as HTMLDetailsElement).open).toBe(true);
+  expect((field.closest("details") as HTMLDetailsElement).open).toBe(true);
   expect(calls.filter((c) => c.method === "POST")).toHaveLength(1); // started again only by Start
 });
 
@@ -565,6 +565,97 @@ test("a taken name of a running session of this folder offers to open it, not to
   fireEvent.click(within(dialog).getByRole("button", { name: "Open it" }));
   expect(await screen.findByRole("region", { name: "Session app" })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull();
+});
+
+// First message (openspec change first-message)
+
+const STARTED = { resumed: false, changes: [], problems: [], lead: "", warnings: [] };
+const LIMITS = {
+  extensions: {},
+  text_types: [],
+  agent_images: [],
+  max_size: 1000,
+  max_files: 3,
+  image_limit: 500,
+  image_max_side: 8000,
+  max_message: 20,
+};
+const FIRST_ROW = "First message to the supervisor (optional)";
+const firstField = () => screen.getByRole("textbox", { name: "First message" }) as HTMLTextAreaElement;
+const firstRow = () => screen.getByText(/^First message to the supervisor/).closest("details") as HTMLDetailsElement;
+
+function writeFirst(text: string) {
+  const row = firstRow();
+  if (!row.open) fireEvent.click(row.querySelector("summary")!);
+  fireEvent.change(firstField(), { target: { value: text } });
+}
+
+test("the first message row is folded when the window opens", async () => {
+  await openLaunch();
+  expect(screen.getByText(FIRST_ROW)).toBeTruthy();
+  expect(firstRow().open).toBe(false);
+  // It comes before Advanced.
+  const rows = [...document.querySelectorAll(".launch-dialog details summary")].map((s) => s.textContent);
+  expect(rows).toEqual([FIRST_ROW, "Advanced: switch off agents, skills, MCP servers or flows"]);
+});
+
+test("a first message is sent with the start", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("app", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/app");
+  writeFirst("  Take LAD-19\n");
+  expect(screen.getByText(/sent to the supervisor as your message once it starts/)).toBeTruthy();
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session app" });
+  const sent = calls.find((c) => c.method === "POST" && c.path === "/api/sessions")!;
+  expect(sent.body).toMatchObject({ prompt: "Take LAD-19" });
+});
+
+test("an empty first message is not sent", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("app", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/app");
+  writeFirst("  \n ");
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session app" });
+  const sent = calls.find((c) => c.method === "POST" && c.path === "/api/sessions")!;
+  expect(sent.body).not.toHaveProperty("prompt");
+});
+
+test("folded with text the row shows its first line", async () => {
+  await openLaunch();
+  writeFirst("\n  Line one  \nLine two");
+  fireEvent.click(firstRow().querySelector("summary")!);
+  expect(firstRow().querySelector("summary")!.textContent).toBe("First message to the supervisor: Line one");
+});
+
+test("a first message over the limit keeps Start off, also folded", async () => {
+  answers["GET /api/limits"] = () => json(LIMITS);
+  await openLaunch();
+  await ready("/src/app");
+  writeFirst("x".repeat(21));
+  expect(await screen.findByText("21 characters, the limit is 20")).toBeTruthy();
+  expect(startButton().disabled).toBe(true);
+  fireEvent.click(firstRow().querySelector("summary")!);
+  expect(startButton().disabled).toBe(true);
+  fireEvent.click(firstRow().querySelector("summary")!);
+  fireEvent.change(firstField(), { target: { value: "x".repeat(20) } });
+  expect(startButton().disabled).toBe(false);
+});
+
+test("the Resume window sends its first message", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado" })];
+  answers["POST /api/sessions/lado/resume"] = () => json({ session: session("lado"), ...STARTED, resumed: true });
+  open("/sessions/lado");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  expect(firstRow().open).toBe(false);
+  writeFirst("Continue the review");
+  const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  fireEvent.click(resume);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Resume session" })).toBeNull());
+  expect(calls.find((c) => c.method === "POST")!.body).toEqual({ prompt: "Continue the review" });
 });
 
 // Resume
@@ -1278,6 +1369,18 @@ test("a finished clone starts the session in the cloned folder and opens it", as
     kits: ["default"],
     provider: "claude",
   });
+});
+
+test("Clone and start carries the first message to the start after the clone", async () => {
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => json(job({ state: "done", seconds: 3 }));
+  answers["POST /api/sessions"] = () => json({ session: session("marketplace", { repo: INTO }), ...STARTED });
+  await cloneReady();
+  writeFirst("Read the README first");
+  fireEvent.click(cloneButton());
+  expect(await screen.findByRole("region", { name: "Session marketplace" })).toBeTruthy();
+  const sent = calls.find((c) => c.method === "POST" && c.path === "/api/sessions")!;
+  expect(sent.body).toMatchObject({ prompt: "Read the README first" });
 });
 
 test("a failed clone shows why with its hint and keeps the form", async () => {

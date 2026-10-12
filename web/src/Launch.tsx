@@ -13,6 +13,7 @@ import {
   getCloneTarget,
   getFolder,
   getKits,
+  getLimits,
   getProviders,
   getRecentFolders,
   getRemoteBranches,
@@ -24,6 +25,7 @@ import {
   type CloneTarget,
   type FolderInfo,
   type KitInfo,
+  type Limits,
   type ProviderInfo,
   type ProviderSuggestion,
   type RecentFolder,
@@ -188,6 +190,7 @@ function LaunchDialog({
   const [suggested, setSuggested] = useState<ProviderSuggestion["reason"] | null>(null);
   const [permissionMode, setPermissionMode] = useState(resuming?.permission_mode ?? DEFAULT_MODE);
   const [without, setWithout] = useState(resuming?.without.join(", ") ?? "");
+  const [prompt, setPrompt] = useState(""); // the human's first message to the supervisor
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [fromLast, setFromLast] = useState(false);
   const [modeNote, setModeNote] = useState<string | null>(null);
@@ -259,6 +262,11 @@ function LaunchDialog({
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
   const providerList = useOnce(getProviders);
   const providers = valueOf(providerList);
+  // Without the limits the server checks the first message's length alone.
+  const maxMessage = valueOf(useOnce<Limits>(getLimits))?.max_message ?? null;
+  const promptText = prompt.trim();
+  const promptOver = maxMessage !== null && promptText.length > maxMessage;
+  const withPrompt = promptText ? { prompt: promptText } : {};
 
   const chosenProvider = provider;
   const providerInfo = providers?.find((one) => one.name === chosenProvider) ?? null;
@@ -315,8 +323,11 @@ function LaunchDialog({
   };
 
   const ready =
-    (resuming !== null || ((current?.ok ?? false) && providerInfo?.installed === true)) && kits.length > 0;
+    (resuming !== null || ((current?.ok ?? false) && providerInfo?.installed === true)) &&
+    kits.length > 0 &&
+    !promptOver;
   const cloneReady =
+    !promptOver &&
     remote !== null &&
     target !== null &&
     CAN_CLONE.has(target.state) &&
@@ -334,6 +345,7 @@ function LaunchDialog({
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
       ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
       ...(off.length ? { without: off } : {}),
+      ...withPrompt,
     });
   };
 
@@ -432,7 +444,7 @@ function LaunchDialog({
         if (chosenProvider !== null && chosenProvider !== resuming.provider) changed.provider = chosenProvider;
         if (permissionMode !== (resuming.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
         if (!sameList(off, resuming.without)) changed.without = off;
-        started = await resumeSession(resuming.name, changed);
+        started = await resumeSession(resuming.name, { ...changed, ...withPrompt });
       } else {
         started = await startIn(path.trim());
       }
@@ -630,6 +642,8 @@ function LaunchDialog({
           </div>
         </div>
 
+        <FirstMessage text={prompt} onText={setPrompt} limit={maxMessage} disabled={busy} />
+
         <details className="launch-advanced" ref={advanced}>
           <summary>Advanced: switch off agents, skills, MCP servers or flows</summary>
           <label className="field">
@@ -744,6 +758,55 @@ function LaunchDialog({
         </div>
       </form>
     </dialog>
+  );
+}
+
+// The human's first message to the supervisor: a row folded each time the window opens,
+// which shows the text's first line while folded with text in it.
+function FirstMessage({
+  text,
+  onText,
+  limit,
+  disabled,
+}: {
+  text: string;
+  onText: (text: string) => void;
+  limit: number | null;
+  disabled: boolean;
+}) {
+  const trimmed = text.trim();
+  const first = trimmed.split("\n")[0].trim();
+  return (
+    <details className="launch-advanced launch-first">
+      <summary>
+        {first ? (
+          <>
+            First message to the supervisor: <span className="launch-first-peek">{first}</span>
+          </>
+        ) : (
+          "First message to the supervisor (optional)"
+        )}
+      </summary>
+      <div className="field">
+        <textarea
+          aria-label="First message"
+          rows={4}
+          value={text}
+          disabled={disabled}
+          placeholder="What the supervisor should do first"
+          onChange={(event) => onText(event.target.value)}
+        />
+        {limit !== null && trimmed.length > limit ? (
+          <span className="field-note bad">
+            {trimmed.length} characters, the limit is {limit}
+          </span>
+        ) : (
+          <span className="field-note">
+            sent to the supervisor as your message once it starts; its answer comes in the chat
+          </span>
+        )}
+      </div>
+    </details>
   );
 }
 

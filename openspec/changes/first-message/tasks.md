@@ -27,7 +27,7 @@
 
 ## 4. UI
 
-- [ ] 4.1 The New session window's First message row, New and Resume, folder and clone
+- [x] 4.1 The New session window's First message row, New and Resume, folder and clone
   (D7; mockup `task/lad-19/mockup-first-message.html` v2, variant C). vitest
   (`web/src/Launch.test.tsx`): "Folded by default", "A first message sent", an empty one
   not sent, "Folded with text", "Over the limit" (Start off, also folded), "Resume with a

@@ -21,6 +21,57 @@ def idle(session: str) -> bool:
     return agent is not None and agent.status == state.IDLE
 
 
+def inputs(session: str) -> list[str]:
+    log = fake_logs(session, "supervisor") / "inputs.jsonl"
+    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+
+def humans(session: str) -> list[state.Message]:
+    return [m for m in state.list_messages(session) if m.sender == state.HUMAN]
+
+
+def delivered(session: str) -> bool:
+    found = humans(session)
+    return bool(found) and all(m.state == state.DELIVERED for m in found)
+
+
+# The human's first message (openspec change first-message): with the supervisor's first
+# input, through the real queue, hooks and session loop.
+
+
+def test_a_session_starts_with_the_humans_first_message(repo):
+    runtime.start_session(str(repo), "s", None, "fake", prompt="Take LAD-19\nAsk first")
+    try:
+        wait_for(lambda: delivered("s"), "the human's first message delivered", "s")
+        [message] = humans("s")
+        assert (message.recipient, message.body) == ("supervisor", "Take LAD-19\nAsk first")
+        line = f"[from human] {runtime.FIRST_MESSAGE} (#{message.id}, 2 lines: call read_messages)"
+        assert line in inputs("s")[0].splitlines()  # its first input
+        assert not [text for text in inputs("s") if "LAD-19" in text]  # the body is not typed
+    finally:
+        runtime.stop_session("s")
+
+
+def test_a_resumed_session_gets_the_humans_message_after_lados(repo):
+    runtime.start_session(str(repo), "s", None, "fake")
+    wait_for(lambda: idle("s"), "the supervisor idle", "s")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None, prompt="Continue")
+    try:
+        wait_for(lambda: delivered("s"), "the human's first message delivered", "s")
+        [message] = humans("s")
+        resumed = [m for m in state.list_messages("s") if m.sender == state.LADO][-1]
+        assert resumed.summary == "session resumed: 0 open runs"
+        assert resumed.state == state.DELIVERED
+        first = next(t for t in inputs("s") if "session resumed" in t).splitlines()
+        assert first == [
+            "[from lado] session resumed: 0 open runs",
+            f"[from human] {runtime.FIRST_MESSAGE} (#{message.id}, 1 line: call read_messages)",
+        ]
+    finally:
+        runtime.stop_session("s")
+
+
 def test_a_repositorys_own_kit_is_not_read(repo, lado_home):
     kit = repo / ".lado" / "kits" / "team"
     (kit / "agents").mkdir(parents=True)

@@ -35,12 +35,12 @@
 
 ## 5. End to end
 
-- [ ] 5.1 Integration (`tests/integration/test_session_start.py`, `-m integration`): a new
+- [x] 5.1 Integration (`tests/integration/test_session_start.py`, `-m integration`): a new
   session's supervisor gets `[from human] the human's first message` with its first input
   and the message is delivered; a resume's first input has LADO's `session resumed` line
   before the human's. Extend `fake_agent.lado_bodies` to read a first `[from human]` line
   only if the test needs the body.
-- [ ] 5.2 UI e2e (`tests/ui/test_launch.py`, `-m ui`): a session started with a first
+- [x] 5.2 UI e2e (`tests/ui/test_launch.py`, `-m ui`): a session started with a first
   message from the window; the Activity chat shows it as the human's. Screenshots of the
   window and the chat attached as run artifacts.
 

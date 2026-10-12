@@ -1,6 +1,6 @@
 ## 1. Core
 
-- [ ] 1.1 `runtime.FIRST_MESSAGE`, `runtime.check_prompt`, `start_session(prompt=...)`
+- [x] 1.1 `runtime.FIRST_MESSAGE`, `runtime.check_prompt`, `start_session(prompt=...)`
   queued from `human` after LADO's before-start messages (D1–D4). Unit tests
   (`tests/test_runtime.py`): "A new session with a first message", a one-line text is a
   body too, "A resumed session with a first message" (order after `session resumed`),

@@ -487,6 +487,19 @@ def test_a_codex_supervisor_starts_with_lado_s_line(repo, fake_tmux, codex_home)
     assert state.list_messages("s")[0].state == state.DELIVERED
 
 
+def test_a_codex_supervisor_with_a_first_message_gets_no_first_input(repo, fake_tmux, codex_home):
+    """The human's first message starts its session: no turn of LADO's FIRST_INPUT first."""
+    _trust(codex_home, repo.resolve())
+    runtime.start_session(str(repo), "s", None, provider="codex", prompt="Take LAD-19")
+    [first] = state.list_messages("s")
+    assert first.sender == "human"
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv[-1] == (
+        f"[from human] {runtime.FIRST_MESSAGE} (#{first.id}, 1 line: call read_messages)"
+    )
+    assert not [a for a in argv if "LAD-19" in a]
+
+
 # Codex's own rule (0.162.0, checked by hand): the agent's folder, its project root (the
 # nearest folder up with .git), then its repository's main root; the first entry with a
 # trust level decides, trusted or not. Nothing above the git root counts.

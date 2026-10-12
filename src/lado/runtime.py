@@ -210,6 +210,9 @@ WORKTREES_EXCLUDE = "/.lado/worktrees/"
 # The first input of an agent whose CLI starts its session only then and that has nothing
 # else to start with (Capabilities.session_start_on_first_input): one short turn.
 FIRST_INPUT = "session started; wait for the human or a message"
+# The summary of the human's first message to a session's supervisor (start_session's
+# `prompt`): fixed, so the text, only in the body, never goes on a CLI's command line.
+FIRST_MESSAGE = "the human's first message"
 REPORT_REMINDER = (
     '\n\nWhen you are done, report back with send_message(to="supervisor"): summary = your '
     "status and a one-line result, body = the full report."
@@ -525,6 +528,18 @@ class FirstInput:
     records: list[artifacts.Record]
 
 
+def check_prompt(text: str) -> str:
+    """The human's first message to a session's supervisor, stripped; refused when empty or
+    over MAX_MESSAGE, before anything starts (start_session, and `lado start` before a
+    clone)."""
+    text = text.strip()
+    if not text:
+        raise LadoError("the first message is empty")
+    if len(text) > MAX_MESSAGE:
+        raise LadoError(f"the first message is {len(text)} characters, the limit is {MAX_MESSAGE}")
+    return text
+
+
 def start_session(
     path: str,
     name: str | None,
@@ -534,10 +549,12 @@ def start_session(
     without: list[str] | None = None,
     resume: bool | None = None,
     first: FirstInput | None = None,
+    prompt: str | None = None,
 ) -> Started:
     """Start a session whose agents come from `kit_names` (default: the "default" kit), minus
     the `without` items ("agent:x", "skill:y", "mcp:z"). A new session's supervisor may get
-    `first` as its first input.
+    `first` as its first input. `prompt` is the human's first message, for a new session and
+    a resume alike (check_prompt): queued from `human` after LADO's own messages.
 
     A stopped session of that name, or one whose tmux server is gone, is resumed: it keeps
     its history, open runs and gates, and the settings given replace its stored ones. The
@@ -549,6 +566,7 @@ def start_session(
         raise LadoError("a session needs at least one kit")  # not silently the default
     if first is not None and resume is not False:
         raise LadoError("a first input is only for a new session (resume=False)")
+    text = check_prompt(prompt) if prompt is not None else None
     repo = check_repo(path)
     session = slug(name or Path(repo).name)
     old = state.get_session(session)
@@ -620,6 +638,10 @@ def start_session(
                 first.body,
                 before_start=True,
                 attachments=[(c.artifact.id, c.record.id) for c in copies],
+            )
+        if text is not None:
+            state.queue_message(
+                session, state.HUMAN, SUPERVISOR, FIRST_MESSAGE, text, before_start=True
             )
         # None of its agents runs: what an older LADO or a failed launch left goes.
         providers.base.remove_session_config_dirs(session)

@@ -698,6 +698,139 @@ def test_a_resumed_opencode_family_supervisor_gets_its_lines_on_its_command_line
     ]
 
 
+def _from_human(session: str) -> list[state.Message]:
+    return [m for m in state.list_messages(session) if m.sender == state.HUMAN]
+
+
+def test_a_new_session_starts_with_the_humans_first_message(repo, fake_tmux):
+    runtime.start_session(
+        str(repo), "s", None, provider="claude", prompt="  Take LAD-19\nAsk me first \n"
+    )
+    [m] = state.list_messages("s")
+    assert (m.sender, m.recipient, m.summary, m.body, m.state) == (
+        "human",
+        "supervisor",
+        runtime.FIRST_MESSAGE,
+        "Take LAD-19\nAsk me first",
+        state.PENDING,  # handed over at its first hook, as any queued message
+    )
+
+
+def test_a_one_line_first_message_is_a_body_too(repo, fake_tmux):
+    """A summary made of the text would go on Kilo's and OpenCode's command line."""
+    runtime.start_session(str(repo), "s", None, provider="claude", prompt="Go")
+    [m] = state.list_messages("s")
+    assert (m.summary, m.body) == (runtime.FIRST_MESSAGE, "Go")
+
+
+def test_without_a_prompt_nothing_new_is_queued(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    assert state.list_messages("s") == []
+
+
+def test_a_resumed_session_gets_the_humans_message_after_lados(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    assert runtime.start_session(str(repo), "s", None, prompt="Continue").resumed
+    assert [(m.sender, m.summary, m.body, m.state) for m in state.list_messages("s")] == [
+        ("lado", "session resumed: 0 open runs", "", state.PENDING),
+        ("human", runtime.FIRST_MESSAGE, "Continue", state.PENDING),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("prompt", "refused"),
+    [
+        ("  \n ", "the first message is empty"),
+        (
+            "x" * (runtime.MAX_MESSAGE + 1),
+            f"the first message is {runtime.MAX_MESSAGE + 1} characters, "
+            f"the limit is {runtime.MAX_MESSAGE}",
+        ),
+    ],
+)
+def test_a_bad_first_message_is_refused_before_anything(repo, fake_tmux, prompt, refused):
+    with pytest.raises(runtime.LadoError, match=f"^{re.escape(refused)}$"):
+        runtime.start_session(str(repo), "s", None, provider="claude", prompt=prompt)
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+
+
+def test_a_first_message_at_the_limit_is_taken_stripped():
+    text = "x" * runtime.MAX_MESSAGE
+    assert runtime.check_prompt(f" {text}\n") == text
+
+
+def test_a_bad_first_message_leaves_a_stopped_session_as_it_was(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    before = len(fake_tmux)
+    with pytest.raises(runtime.LadoError, match="the first message is empty"):
+        runtime.start_session(str(repo), "s", None, prompt="")
+    assert len(fake_tmux) == before
+    assert state.get_session("s").stopped_at
+    assert state.list_messages("s") == []
+
+
+@pytest.mark.parametrize("resumed", [False, True])
+def test_a_failed_start_drops_the_humans_message(repo, fake_tmux, monkeypatch, resumed):
+    if resumed:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+        runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_session", _fail)
+        with pytest.raises(tmux.TmuxError):
+            runtime.start_session(str(repo), "s", None, provider="claude", prompt="Go")
+    if resumed:
+        # Dropped with LADO's own, never left for a later resume.
+        assert [(m.sender, m.state) for m in state.list_messages("s")] == [
+            ("lado", state.DROPPED),
+            ("human", state.DROPPED),
+        ]
+    else:
+        assert state.get_session("s") is None
+        assert state.list_messages("s") == []
+
+
+@pytest.mark.parametrize("provider", ["kilo", "opencode"])
+def test_an_opencode_family_supervisor_gets_the_fixed_line_not_the_text(repo, fake_tmux, provider):
+    runtime.start_session(
+        str(repo), "s", None, provider=provider, prompt="Take LAD-19\nsecret plan"
+    )
+    [m] = state.list_messages("s")
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv[argv.index("--prompt") + 1] == (
+        f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 2 lines: call read_messages)"
+    )
+    assert not [a for a in argv if "LAD-19" in a or "secret" in a]
+    assert (m.state, m.channel) == (state.SENT, state.TYPED)
+
+
+def test_a_resumed_opencode_family_supervisor_gets_lados_line_and_the_humans(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None, prompt="Continue")
+    [_, m] = state.list_messages("s")
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--prompt") + 1] == (
+        "[from lado] session resumed: 0 open runs\n"
+        f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 1 line: call read_messages)"
+    )
+
+
+def test_an_agent_that_starts_at_its_first_input_takes_the_humans_message(
+    repo, fake_tmux, first_input
+):
+    runtime.start_session(str(repo), "s", None, provider="firstinput", prompt="Go")
+    [m] = state.list_messages("s")
+    assert m.sender == "human"  # no FIRST_INPUT of LADO's before it
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv == [
+        "firstinput",
+        f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 1 line: call read_messages)",
+    ]
+
+
 @pytest.mark.parametrize(
     ("role", "taken", "expected"),
     [

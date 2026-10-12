@@ -808,7 +808,7 @@ that server when the command is missing, and nobody hears of it until a tool cal
 (`runtime._check_commands`), but an agent's MCP server command (`mcp.command[0]` in its
 frontmatter) is not: the agent's CLI only fails to connect it. The command is in the kit
 already, so the kit's author should not have to list it again in `expects.commands` (the
-README says to, for now).
+Kits guide, docs/kits.md, says to, for now).
 Wanted: the same check (`kits.missing_commands`, the same error) also takes the first word
 of each MCP server's command of the agents a launch starts, not only `expects.commands`.
 Found: 2026-10-08, run feature/expects-commands (architect's review).

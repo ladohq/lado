@@ -534,7 +534,7 @@ fixes and docs only: no new feature, no API or schema change.
     origin is another address. `resolve` finds a kit's address for `lado kits add -m`
     (`kits` clones when there is no clone; only for the CLI). Never the network: `listed`
     (the list of the clone there is, None without one), `index` (the clone's `index.json`,
-    format version 1 in the module's docstring and README.md: entries of the listed kits,
+    format version 1 in the module's docstring and docs/kits.md: entries of the listed kits,
     only `address` required, unknown keys passed over, a higher `index` "needs a newer
     LADO"; what does not agree is the `Index.problem`), `available` (each kit of the
     enabled marketplaces with a clone, `Offer`). `update_each` updates one by one, a failure

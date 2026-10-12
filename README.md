@@ -23,19 +23,21 @@ In Russian, *лад* (lad) means harmony or being in tune, the way a well-run te
 - **Providers.** Claude Code, Codex CLI, Kilo CLI and OpenCode, chosen per session and per
   worker.
 - **Kits.** Agent roles, skills, MCP servers and flows in a git repository or a folder,
-  installed with `lado kits add` or from a marketplace.
+  installed with `lado kits add` or from a marketplace ([Kits guide](docs/kits.md)).
 - **Flows.** Steps, outcomes and human gates that LADO enforces, not the agent; you answer a
   gate with `lado answer`, in a tmux popup or in the web UI.
+- **Artifacts.** Named, versioned documents of a session (a design, a plan, a review) that
+  agents write and read, and you read in the web UI.
+- **Task trackers as kits.** Kits for Jira Server and YouGile give agents a `tracker` skill
+  to read, create, move and comment on tasks.
 - **Web UI** (in progress). `lado ui`: sessions, agents and their terminals, messages, gates,
   flow runs, kits.
 
 ## Planned
 
-- **Artifacts.** Named, versioned documents of a session (design, plan, review) shown in the UI.
 - **Desktop app** that bundles the UI and LADO.
 - **Conversations that survive a restart** of a session or an update.
 - **ACP runtime.** Agents driven over the Agent Client Protocol instead of tmux.
-- **Task trackers** (YouGile, Jira) as kits.
 
 ## Install
 
@@ -107,164 +109,30 @@ version accepts the database: an older LADO refuses a newer `lado.db`.
 
 ## Kits
 
-A kit is a team: agent roles, flows and skills, in a git repository (or a folder) with a
-`kit.yaml` at its root. Its versions are the repository's tags `vX.Y.Z` (pre-releases such
-as `v1.3.0-rc.1` too), and `version` in kit.yaml must say the same. It takes skill packs
-from outside, pinned to a version, and may name the LADO it needs:
+**A kit is a team you can install.** Roles, skills, tools and the way of working that
+made one project go well, packed into a git repository, so the next project starts
+where the last one ended instead of from a blank prompt.
 
-```yaml
-name: my-team
-version: 1.0.0
-supervisor: lead        # the agent of this kit that leads a session; optional
-dependencies:
-  lado: ">=0.19"
-  skills:
-    superpowers: https://github.com/obra/superpowers@v6.4.1
-```
-
-```bash
-lado kits add https://github.com/<owner>/my-team   # the latest release; @v1.0.0 for that one
-lado kits add ./my-team                            # a local folder, read in place
-lado kits add lado-dev -m official                 # a kit of a marketplace
-lado kits outdated                                 # newer versions of the installed kits
-lado kits update my-team                           # to the latest release
-lado kits check . --tag "$TAG"                     # a kit's CI: what add would say of that tag
-lado start . --kit default --kit my-team
-```
-
-A kit from anywhere but the official marketplace (github.com/ladohq/marketplace) or a
-folder shows what it installs, its MCP servers too, and asks first (`--yes` to skip).
-Marketplaces are git repositories with a `marketplace.yaml` that maps kit names to their
-repositories:
+- **Start with a team that already knows the job.** `sdlc` takes your tracker's tasks
+  from design to a merged pull request, with you approving the design and the merge.
+- **Mix and match.** Combine a process kit with a tracker kit (`sdlc` +
+  `tracker-jira-server`), and switch off any role, skill, flow or tool per session.
+- **Any agent CLI.** One kit runs on Claude Code, Codex, Kilo and OpenCode alike.
+- **Versioned like code.** A kit is a release `vX.Y.Z` with pinned skill packs: the team
+  behaves the same tomorrow, and `lado kits update` moves it on when you choose.
+- **Build your own by talking.** The `kit-builder` kit interviews you about your process,
+  writes the kit, and a critic checks it before you tag it.
+- **Share it.** Publish a kit in a marketplace, and your team installs it with one command.
 
 ```bash
-lado marketplaces                                  # list them
-lado marketplaces add team https://github.com/<owner>/marketplace
-lado marketplaces update                           # fetch their latest lists
-lado marketplaces disable official                 # remove works for the others
+lado kits add sdlc -m official                     # a kit of the official marketplace
+lado kits add tracker-jira-server -m official
+lado start . --kit sdlc --kit tracker-jira-server  # a session with that team
 ```
 
-The UI's Kits page (`lado ui`, then Kits) does the same: the installed kits, the kits the
-enabled marketplaces offer, the updates (checked only with its button) and the
-marketplaces. Each install and update shows the plan the CLI prints before it asks.
-
-What the page shows of a marketplace's kits comes from an `index.json` at the
-marketplace's root, which its CI builds from the kits; LADO reads it from the marketplace's
-clone, never the network. Version 1:
-
-```json
-{
-  "index": 1,
-  "kits": {
-    "lado-dev": {
-      "address": "https://github.com/ladohq/kit-lado-dev.git",
-      "latest": "v0.9.1",
-      "commit": "4be21c0…",
-      "lado": ">=0.20",
-      "description": "Develop LADO itself.",
-      "agents": {"supervisor": "the first line of the role's description"},
-      "skills": ["lado-checks"],
-      "flows": ["feature", "fix"],
-      "mcp": {"playwright": "npx @playwright/mcp"}
-    }
-  }
-}
-```
-
-`latest` is the latest release (no pre-release) and `commit` its commit, `lado` the kit's
-`dependencies.lado`, `mcp` each MCP server's command on one line. Only `address` is
-required, and it must be the one `marketplace.yaml` gives; keys LADO does not know are
-passed over, so the CI may add some without a new version; a higher `index` needs a newer
-LADO. `marketplace.yaml` stays the list of names and addresses: an entry of a kit it does
-not list is left out. Without `index.json` the page shows each kit's name and address.
-
-Who leads a session: if exactly one of its kits has a supervisor, that one; otherwise
-LADO's built-in supervisor. Then each kit's supervisor hands its rules to the built-in one
-as a skill `lead-<kit>`: its prompt, and where to read the skills its `skills:` names, in
-that kit's versions (copies the lead reads but does not load as its own skills, so two kits
-may take two versions of one skill). Its MCP servers are not passed on, and a supervisor
-without `skills:` passes none: LADO warns about both. Such a supervisor's `skills:` is
-checked as if it led, so a skill its kit does not have stops the start. `lado start` and
-`lado kits show` print who leads; `lado kits show` lists the lead skills. The supervisor starts workers with
-`spawn_worker(role=...)`; the role may be left out only when the session has one.
-
-A role that must not change the repository (a reviewer, a checker, a passive supervisor)
-says `read_only: true` in its frontmatter (`agents/<role>.md`). Its agent's CLI gets no
-tools that edit files (Claude Code, OpenCode and Kilo; LADO refuses to start a read-only
-agent on Codex CLI, which cannot take them away), a read-only supervisor gets none of
-LADO's tools that start or end agents and runs, and LADO compares the repository at each of
-the agent's turns: a commit, an edit or a new file it finds is one line to the supervisor
-(to you for a read-only supervisor) and an event in `lado log`. The agent keeps its shell,
-for `git diff`, linters and tests, so this is no sandbox: nothing is blocked or undone.
-`lado kits show` and `lado kits check` name the read-only roles.
-
-`--without kind:name` switches off an agent, flow, skill or MCP server (kinds `agent`,
-`flow`, `skill`, `mcp`) in the whole session. `--without kind:name@kit` switches it off in
-that kit only, before the kits are combined: so two kits with a role of the same name, or
-each with its supervisor, run together:
-
-```bash
-lado start . --kit default --kit my-team --without agent:supervisor@default
-lado start . --kit kit-a --kit kit-b --without agent:reviewer@kit-b
-```
-
-A kit may use a skill that another kit of the session brings: it lists it under `expects`.
-LADO installs `dependencies` with the kit; what a kit expects, another kit of the session
-must bring. A process kit whose roles use the skill `tracker` of whichever tracker kit the
-project uses:
-
-```yaml
-name: sdlc
-version: 1.0.0
-expects:
-  skills: [tracker]    # a kit of the session must provide it
-  commands: [openspec] # a CLI the kit's agents run, on their PATH
-dependencies:
-  lado: ">=0.30"       # the first LADO that reads expects.commands (expects.skills: 0.29)
-```
-
-```bash
-lado kits check .                                  # passes alone: expects skills: tracker
-lado start . --kit sdlc --kit tracker-jira-server  # the tracker kit provides tracker
-```
-
-`lado kits check` and `lado kits show` take the expected skills as there; `lado kits show`
-says which kit provides each. A session in which no kit provides one, or whose `--without`
-switches it off, does not start, and the error says why.
-
-`expects.commands` names the external CLIs a kit cannot work without, each as PATH finds
-it (`openspec`, `uv`; no path, spaces or arguments). LADO checks only that each is on the
-agents' PATH, the one of your login shell that agents start with: not its version, nor
-whether it is logged in or set up (the kit's own text checks that). `lado start`, a
-resume and each new worker look again; when one is missing, nothing starts, and one error
-names every missing command, its kit and the agents' PATH. A command that only some
-projects of the kit need (a code host's CLI chosen by the project's settings) does not
-belong there. `lado kits check` lists them (`expects commands: openspec`) and warns about
-one that is not on its own PATH, since a kit is also checked where it does not run (a
-marketplace's CI); `lado kits show` gives each one's place on the agents' PATH. LADO does
-not check the commands of a kit's MCP servers yet: list one there too to have it checked.
-
-Names are shared in a session: a flow of kit-b that calls `reviewer` then gets kit-a's.
-A kit's supervisor is no role: `--without agent:<name>` that names one is read as
-`agent:<name>@<its kit>` (so sessions of older LADOs resume as before); when several kits'
-supervisors have that name, give the kit.
-
-An agent of a kit lists its MCP servers (stdio only) in its frontmatter:
-
-```yaml
-mcp:
-  db:
-    command: ["${KIT_DIR}/bin/db-mcp", "--read-only"]
-    env: {DB_TOKEN: "${DB_TOKEN}", MODE: ro}
-```
-
-`${KIT_DIR}` is the kit's folder. `${NAME}` in `env` is a variable of the agent's
-environment (your login shell's, as a new terminal sees it): a missing one stops the agent's
-start. Its value is never written to disk: the agent's CLI starts such a server through
-LADO's wrapper (`lado.mcp_exec`), whose arguments name the variables only; the
-wrapper takes the values from the environment the CLI passes on and starts the server.
-`lado doctor` warns about config folders under `LADO_HOME/agents/` that no running agent
-uses: an older LADO wrote such values there.
+Or open `lado ui`, then Kits. Everything else (finding and installing kits, writing one,
+releasing new versions, combining them in a session, marketplaces) is in the
+**[Kits guide](docs/kits.md)**.
 
 ## The web UI
 

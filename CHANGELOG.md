@@ -4,6 +4,9 @@
 
 - Install guide for macOS, Linux and Windows (WSL2): README's Install section and
   docs/install.md.
+- Kits guide, docs/kits.md: find and install a kit, use kits in a session, create one (the
+  flow format included), release new versions and share it. README's Kits section is a
+  short overview that links it.
 - `lado start` and the UI's New session window say what a folder lacks: a file, git not
   installed, git that does not run (the macOS stub without the Xcode tools), not a
   repository, git refusing to read it, no commits; with the command that fixes it, which

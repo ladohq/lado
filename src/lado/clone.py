@@ -40,8 +40,10 @@ NO_PROMPT = {
 }
 STOP_WAIT = 2  # seconds git's process group gets after SIGTERM, before SIGKILL
 # A clone job of the UI server (server/clones.py): one no request asked about for ABANDONED
-# seconds (its window went away) is cancelled; a finished one is kept KEPT seconds.
-ABANDONED = 10
+# seconds is cancelled (its window went away without its beacon: a lost connection, a
+# sleeping laptop); longer than the minute a browser may leave between the timers of a tab
+# in the background. A finished one is kept KEPT seconds.
+ABANDONED = 150
 KEPT = 60
 
 

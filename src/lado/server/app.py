@@ -459,6 +459,12 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             raise HTTPException(404, f"no clone job {id}")
         return job.info()
 
+    @app.post("/api/clones/{id}/cancel", dependencies=[Depends(guard.changes)])
+    def cancel_clone_beacon(id: str) -> CloneJob:
+        """The same, for the window's beacon when its page goes away (`pagehide`):
+        `navigator.sendBeacon` can only POST; it sends the cookie and the page's Origin."""
+        return cancel_clone(id)
+
     @app.get("/api/folders/recent", dependencies=[Depends(guard)])
     def recent_folders(has_db: bool = Depends(database)) -> list[RecentFolder]:
         """The folders of past sessions, the latest started first."""

@@ -91,8 +91,9 @@ UI.
   hint with a command and Copy, under the URL before the button is pressed, and as the
   same text in the CLI; LADO never waits for a password.
 - AC-7: Cancel clone stops git and removes the temporary folder; the target folder is not
-  made. While the clone runs the window's ×, Esc and Cancel do not close it. A clone
-  whose window stopped asking for it is cancelled by the server within
-  `clone.ABANDONED` seconds, the same way.
+  made. While the clone runs the window's ×, Esc and Cancel do not close it. A tab closed
+  or reloaded during the clone cancels it at once (a beacon); a clone whose window stopped
+  asking for it otherwise is cancelled by the server within `clone.ABANDONED` seconds
+  (150), the same way.
 - AC-8: After the clone the session starts; when the start is refused (e.g. a name
   taken), the clone stays, the window switches to Folder with it and shows the refusal.

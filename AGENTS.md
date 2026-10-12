@@ -774,7 +774,9 @@ fixes and docs only: no new feature, no API or schema change.
     suggestion), and clone jobs: `Jobs`, one per app (`app.state.clones`), each a thread
     of the server running `clone.clone`, in memory only; `POST /api/clones` (`CloneJob`;
     409 while another running job clones into that folder), `GET /api/clones/{id}` (asking
-    keeps it alive), `DELETE /api/clones/{id}` (cancels it and waits for its clone to end);
+    keeps it alive), `DELETE /api/clones/{id}` (cancels it and waits for its clone to end)
+    and `POST /api/clones/{id}/cancel`, the same for the window's `navigator.sendBeacon`
+    when its page goes away (a beacon can only POST);
     a sweeper cancels a running job no request asked about for `clone.ABANDONED` seconds and
     drops a finished one after `clone.KEPT`, and `app.Server`'s shutdown cancels every
     running job (`Jobs.close`). A refusal is 400 `CloneRefused` (`message`, `kind`, `hint`);

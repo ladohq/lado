@@ -333,3 +333,22 @@ def test_a_clone_there_already_is_used_as_it_is(page: Page, server, tmp_path, sh
     expect(dialog.get_by_role("button", name="Folder")).to_have_attribute("aria-pressed", "true")
     expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_value(str(into))
     expect(dialog).to_contain_text("✓ git repository · branch main")
+
+
+def test_a_page_reloaded_during_a_clone_cancels_it_at_once(
+    page: Page, slow_clone, server, tmp_path, shot
+):
+    into = tmp_path / "work" / "app"
+    dialog = clone_window(page, server, slow_clone, into)
+    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_role("button", name="Clone and start").click()
+    expect(dialog).to_contain_text("Receiving objects")
+    [call] = agent_helpers.fake_git_calls(tmp_path / "fake")
+    page.reload()  # pagehide: the window's beacon, long before clone.ABANDONED
+
+    def ended():
+        temps = [p for p in into.parent.iterdir() if ".clone-" in p.name]
+        return not temps and agent_helpers.gone(call["pid"]) and agent_helpers.gone(call["child"])
+
+    agent_helpers.wait_for(ended, "the clone cancelled by the beacon", "none", timeout=15)
+    assert not into.exists()

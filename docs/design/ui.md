@@ -1113,8 +1113,12 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   **Cancel clone** sends `DELETE /api/clones/{id}`: git's process group ends, its
   temporary folder goes, the folder is not made, and the window says "the clone was
   cancelled" (a Cancel clone that came after git ended starts no session: the window
-  switches to Folder with the clone). A job no request asked about for `clone.ABANDONED` seconds (10: its tab was
-  closed or reloaded) is cancelled the same way, a finished one is kept `clone.KEPT`
+  switches to Folder with the clone). A page that goes away during the clone (`pagehide`: its tab
+  closed or reloaded) cancels it at once with `navigator.sendBeacon` to `POST
+  /api/clones/{id}/cancel` (a beacon can only POST, with the cookie and the page's Origin,
+  so `Guard.changes` takes it); a job no request asked about for `clone.ABANDONED` seconds
+  (150: Chrome runs the timers of a tab in the background for five minutes once a minute;
+  a lost connection, a sleeping laptop) is cancelled the same way, a finished one is kept `clone.KEPT`
   seconds (60), and a server that stops cancels its running clones; jobs live in the
   server's memory only. A failed clone shows its text and hint, and the form stays. A
   finished clone starts the session as Start does for a folder; a start refused then

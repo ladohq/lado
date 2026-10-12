@@ -63,6 +63,6 @@
 
 ## 6. Regression
 
-- [ ] 6.1 `make lint`, `make test`, `make web`, the new and changed integration files with
+- [x] 6.1 `make lint`, `make test`, `make web`, the new and changed integration files with
   `-m integration`, `tests/ui/test_launch.py` with `-m ui`, `openspec validate --specs
   --strict`; numbers in the build report. CI's full run on the pull request.

@@ -99,8 +99,13 @@ is shown and editable before anything is made.
   `Job(id: uuid4 hex, url, path, branch, state, progress, error, started, seen)` under a
   lock; each job a daemon thread running `clone.clone` with a `threading.Event`. `GET`
   sets `seen`; a sweeper (a timer every second while any job runs) cancels a running job
-  whose `seen` is older than `ABANDONED` (10 s) and drops finished ones after `KEPT` (60
-  s). One running job per real target path (409 `Busy`). `app.Server`'s shutdown cancels
+  whose `seen` is older than `ABANDONED` (150 s; the human's decision in review, F4: a tab
+  in the background more than five minutes runs its timers once a minute in Chrome, so
+  10 s cancelled live clones) and drops finished ones after `KEPT` (60 s). A page that goes
+  away (`pagehide`) while its clone runs cancels it at once with `navigator.sendBeacon` to
+  `POST /api/clones/{id}/cancel` (a beacon can only POST; it sends the cookie and the
+  page's Origin, so it passes `Guard.changes` as it is); `ABANDONED` is the fallback for a
+  window that could not say so (a lost connection, a sleeping laptop). One running job per real target path (409 `Busy`). `app.Server`'s shutdown cancels
   all jobs and waits up to 3 s for their threads. Models in `models.py`: `RemoteInfo`,
   `CloneTarget`, `CloneStart`, `CloneJob`, `CloneRefused`; `make web-types`.
 - **D10. Why `POST /api/remote-branches`.** It goes to the network with the server's

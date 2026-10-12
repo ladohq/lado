@@ -1453,3 +1453,24 @@ test("under StrictMode the clone is still asked for until it ends (F6)", async (
   fireEvent.click(cloneButton());
   expect(await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 })).toBeTruthy();
 });
+
+test("a window whose page goes away during a clone cancels it at once with a beacon", async () => {
+  const beacon = vi.fn(() => true);
+  Object.defineProperty(navigator, "sendBeacon", { value: beacon, configurable: true });
+  let state: CloneJob["state"] = "running";
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => json(job({ state }));
+  answers["POST /api/sessions"] = () =>
+    json({ session: session("marketplace", { repo: INTO }), resumed: false, changes: [], problems: [], lead: "", warnings: [] });
+  await cloneReady();
+  window.dispatchEvent(new Event("pagehide"));
+  expect(beacon).not.toHaveBeenCalled(); // no clone yet
+  fireEvent.click(cloneButton());
+  await screen.findByRole("button", { name: "Cancel clone" });
+  window.dispatchEvent(new Event("pagehide"));
+  expect(beacon).toHaveBeenCalledWith("/api/clones/j1/cancel");
+  state = "done";
+  await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 });
+  window.dispatchEvent(new Event("pagehide"));
+  expect(beacon).toHaveBeenCalledTimes(1);
+});

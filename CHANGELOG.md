@@ -8,7 +8,7 @@
   uses only the access git has on the machine, never asks for a password, and never
   touches a folder that exists: a clone of the same repository there is offered as it is.
 - API: `POST /api/remote-branches`, `GET /api/clone-target`, `POST /api/clones`,
-  `GET /api/clones/{id}`, `DELETE /api/clones/{id}`.
+  `GET /api/clones/{id}`, `DELETE /api/clones/{id}`, `POST /api/clones/{id}/cancel`.
 - Install guide for macOS, Linux and Windows (WSL2): README's Install section and
   docs/install.md.
 - README's Update section is rewritten for users and says how to update from the web UI;

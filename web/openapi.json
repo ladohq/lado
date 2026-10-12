@@ -509,6 +509,46 @@
         }
       }
     },
+    "/api/clones/{id}/cancel": {
+      "post": {
+        "summary": "Cancel Clone Beacon",
+        "description": "The same, for the window's beacon when its page goes away (`pagehide`):\n`navigator.sendBeacon` can only POST; it sends the cookie and the page's Origin.",
+        "operationId": "cancel_clone_beacon_api_clones__id__cancel_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/folders/recent": {
       "get": {
         "summary": "Recent Folders",

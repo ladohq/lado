@@ -8,6 +8,7 @@ import { useNavigate } from "react-router";
 import {
   ApiError,
   cancelClone,
+  cancelCloneOnLeave,
   getClone,
   getCloneTarget,
   getFolder,
@@ -211,6 +212,16 @@ function LaunchDialog({
       alive.current = false;
     };
   }, []);
+
+  // A page that goes away (tab closed or reloaded) cancels its running clone at once; the
+  // server's clone.ABANDONED is only the fallback for a window that could not say so.
+  const runningId = job?.state === "running" ? job.id : null;
+  useEffect(() => {
+    if (runningId === null) return;
+    const leave = () => cancelCloneOnLeave(runningId);
+    window.addEventListener("pagehide", leave);
+    return () => window.removeEventListener("pagehide", leave);
+  }, [runningId]);
 
   const cloning = source === "url";
   const typedUrl = url.trim();

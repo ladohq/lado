@@ -34,7 +34,8 @@ address.
    switches to Folder with it, as it is (no clone, no pull, no branch switch). A clone of
    another repository with the same name, a folder with other files or a file is refused,
    naming the other origin and, when free, a folder `~/lado/<owner>-<repo>`.
-6. A tab closed or reloaded during a clone: the server cancels the clone within 10 s.
+6. A tab closed or reloaded during a clone: its beacon cancels the clone at once; a window
+   that stops asking otherwise is cancelled by the server within 150 s (review F4).
 
 **In the CLI**
 

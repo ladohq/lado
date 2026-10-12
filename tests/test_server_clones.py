@@ -277,3 +277,23 @@ def test_a_folder_that_cannot_be_read_is_400_not_500(client, tmp_path):
         assert answer.status_code == 400
     finally:
         closed.chmod(0o755)
+
+
+def test_a_window_that_goes_away_cancels_its_clone_at_once(client, tmp_path, slow_git):
+    target = tmp_path / "app"
+    job = client.post("/api/clones", json={"url": "https://h/a/app", "path": str(target)}).json()
+    _until(lambda: fake_git_calls(slow_git))
+    answer = client.post(f"/api/clones/{job['id']}/cancel")  # the window's beacon on pagehide
+    assert answer.status_code == 200
+    assert answer.json()["state"] == "cancelled"
+    assert not target.exists() and _leftovers(tmp_path) == []
+    [call] = fake_git_calls(slow_git)
+    assert gone(call["pid"]) and gone(call["child"])
+    assert client.post("/api/clones/nope/cancel").status_code == 404
+
+
+def test_the_beacons_cancel_needs_the_servers_own_origin(client):
+    del client.headers["origin"]
+    assert client.post("/api/clones/x/cancel").status_code == 403
+    client.headers["origin"] = "http://evil.example"
+    assert client.post("/api/clones/x/cancel").status_code == 403

@@ -269,6 +269,10 @@ export const getClone = (id: string) => get<CloneJob>(`/api/clones/${encodeURICo
 
 export const cancelClone = (id: string) => post<CloneJob>(`/api/clones/${encodeURIComponent(id)}`, undefined, "DELETE");
 
+// The same as a beacon, which still goes out while the page goes away (tab closed, reloaded).
+export const cancelCloneOnLeave = (id: string) =>
+  navigator.sendBeacon?.(`/api/clones/${encodeURIComponent(id)}/cancel`);
+
 // The kits a session of the folder `where` can take, one per name.
 export const getKits = (where: string | null) =>
   get<KitInfo[]>(where ? `/api/kits?${query({ where })}` : "/api/kits");

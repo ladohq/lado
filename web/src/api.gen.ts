@@ -240,6 +240,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clones/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Clone Beacon
+         * @description The same, for the window's beacon when its page goes away (`pagehide`):
+         *     `navigator.sendBeacon` can only POST; it sends the cookie and the page's Origin.
+         */
+        post: operations["cancel_clone_beacon_api_clones__id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/folders/recent": {
         parameters: {
             query?: never;
@@ -2890,6 +2911,37 @@ export interface operations {
         };
     };
     cancel_clone_api_clones__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_clone_beacon_api_clones__id__cancel_post: {
         parameters: {
             query?: never;
             header?: never;

@@ -80,6 +80,7 @@ Step by step for each system, agent CLIs included, and what to do when something
 
 ```bash
 lado start <repo>       # a supervisor for a git repository (with at least one commit), in tmux
+lado start <git-url>    # or clone one first, into ~/lado/<repo> (--branch NAME, or give a folder)
 lado ui                 # the web UI in your browser
 ```
 

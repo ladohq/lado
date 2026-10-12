@@ -337,6 +337,30 @@ fixes and docs only: no new feature, no API or schema change.
     error raised, and a step that fails is noted on it (`__notes__`; the CLI and the MCP
     tools print the notes after the error) and written to `LADO_HOME/loop.log`
     (`loop.log`).
+  - `clone.py`: a repository from its git URL (openspec change clone-from-url), for `lado
+    start <git-url>` and the UI server's clone jobs alike, which print only what it says:
+    `is_url` (`https://`, `http://`, `ssh://`, `git://`, `file://`, or the scp form only
+    with a user; anything else, `/srv/app.git` too, is a folder), `Address` (host and path
+    by which two URLs are `same_repo`; scheme, user and port aside; local ones by real
+    path), `default_folder` (`DEFAULT_PARENT`/<repo>, `~/lado`), `check_target` (a
+    `Target`: `new`, `empty`, `same_repo`, `other_repo` with a free `~/lado/<owner>-<repo>`
+    beside it, `not_empty`, `not_folder`; only `CAN_CLONE` lets a clone start, and LADO
+    changes nothing in a folder of another state: no clone over it, no fetch, no branch
+    switch), `list_branches` (one `git ls-remote --symref`, within `LIST_TIMEOUT`; a
+    `Remote`, its default branch first) and `clone` (one branch, into a temporary folder
+    `.<name>.clone-<random>` beside the target, renamed onto a missing or empty target only
+    once git succeeded; a cancel, a failure or an exception, Ctrl-C too, ends git's process
+    group, SIGTERM then SIGKILL after `STOP_WAIT`, and removes the temporary folder;
+    `Progress` from git's `\r` lines). Each git process of a listing or a clone runs with
+    no terminal and no prompt (`start_new_session`, stdin closed, `NO_PROMPT`:
+    `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS` empty, `SSH_ASKPASS_REQUIRE=never`, `GCM_INTERACTIVE=never`,
+    `LC_ALL=C`): a missing credential is a failure, never a wait; LADO uses the access the
+    machine has and keeps no password or token. A failure is a `CloneError` (a `LadoError`
+    with `kind` and a `runtime.Hint`) by git's words, `KINDS`, the first that matches
+    (`failure`: `cannot read|clone <url>: <reason> (<git's line>)`), a URL in any text only
+    through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
+    `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
+    no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of
@@ -742,6 +766,21 @@ fixes and docs only: no new feature, no API or schema change.
     session's `busy` (0 unless its status is `running`); an agent's `status_reason` (`AgentInfo`, only
     for an agent in `waiting` or `stopped`) is `runtime.status_reason`, which
     `status_reasons` uses too (`lado ls`, `list_agents`);
+    `clones.py`: the New session window's Clone from URL (docs/design/ui.md, Launch and
+    session control): `POST /api/remote-branches` (`RemoteInfo`; under `Guard.changes`, as
+    it goes to the network with the machine's credentials), `GET /api/clone-target`
+    (`CloneTarget`: `clone.check_target` of the folder, by default the URL's default
+    folder, with the name a session there gets, its `name_state` and the server's provider
+    suggestion), and clone jobs: `Jobs`, one per app (`app.state.clones`), each a thread
+    of the server running `clone.clone`, in memory only; `POST /api/clones` (`CloneJob`;
+    409 while another running job clones into that folder), `GET /api/clones/{id}` (asking
+    keeps it alive), `DELETE /api/clones/{id}` (cancels it and waits for its clone to end)
+    and `POST /api/clones/{id}/cancel`, the same for the window's `navigator.sendBeacon`
+    when its page goes away (a beacon can only POST);
+    a sweeper cancels a running job no request asked about for `clone.ABANDONED` seconds and
+    drops a finished one after `clone.KEPT`, and `app.Server`'s shutdown cancels every
+    running job (`Jobs.close`). A refusal is 400 `CloneRefused` (`message`, `kind`, `hint`);
+    a cancelled job has no `error`;
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
     default name and whether a session has it, and `provider`, the core's
@@ -1223,7 +1262,16 @@ fixes and docs only: no new feature, no API or schema change.
 ## Try it locally
 
 `uv run lado start <repo>` runs the working copy (a repository without commits is refused:
-make a first commit). The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
+make a first commit). `lado start <git-url> [<folder>] [--branch NAME]` clones the URL's
+branch (the remote's default without `--branch`) into the folder, a full path, by default
+`~/lado/<repo>`, then starts there as `lado start <folder>` does: the folder must be new or
+empty (a clone of the same repository there is refused with the `lado start <folder>` that
+uses it as it is; LADO never fetches into or switches a folder that exists), and a name a
+session of another folder has is refused before the clone (`runtime.check_name`). git's
+progress goes to stderr; Ctrl-C ends git's process group, removes the temporary folder and
+exits 130 (`lado: clone cancelled`), a SIGTERM or SIGHUP the same way with 128 + its
+number; a start refused after the clone says `the clone stays
+in <folder>`. `<folder>` and `--branch` without a git URL exit 2. The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
 `lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository (a row in lado.db; its

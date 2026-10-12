@@ -1030,8 +1030,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 `forget_session`), so the decisions and their texts are the core's; the UI shows them.
 
 - **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
-  list's "+"): **Where** is a folder only for now (the request's `where` is
-  `{kind: "folder", path}`; another kind is refused, so Projects can add theirs). The path
+  list's "+"): **Where** is a folder, or a clone of a git URL made first (the switch
+  **Folder | Clone from URL** beside its label, below); the start's request is the same
+  for both (its `where` is `{kind: "folder", path}`; another kind is refused, so Projects
+  can add theirs). The path
   is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
   under the field "✓ git repository · branch X", or the core's reason from
   `runtime.check_repo` (`FolderInfo.problem_kind`: does not exist, a file, git not
@@ -1076,6 +1078,58 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   prints on stderr: kit supervisors not used, what the supervisor's CLI asks the human
   before its first hook, such as Claude Code's "trust this folder?") and a resume's
   `changes` show under the session's head until closed. No first message, no tmux attach.
+- **Clone from URL** (decided 2026-10-12, LAD-6; mockup `task/lad-6/mockup-clone.html`
+  v3): the Where field takes a git URL (`lado.clone.is_url`: `https://`, `http://`,
+  `ssh://`, `git://`, `file://`, or `user@host:path`). **Clone into** is the default folder
+  (`~/lado/<repo>`, the server's `CloneTarget.path`) until the human edits it, with the
+  folder's state from `GET /api/clone-target` (200 ms after typing, like the folder): "✓ a
+  new folder", "✓ an empty folder", or the core's text for a folder that holds something.
+  **Branch** lists the remote's branches by itself, from `POST /api/remote-branches` (one
+  `git ls-remote`, half a second after the URL stops changing, each URL asked once in the
+  window's life; "fetching branches…" meanwhile, "✓ repository found · N branches" under
+  the URL once listed); the remote's default branch is chosen and marked `(default)`
+  (with no default said, main, else master, else the first); above 30 branches it is a
+  field that lists the branches holding what is typed (Enter takes a branch typed in full
+  or highlighted; other text is never sent). A listing that fails shows under
+  the URL with the core's text (`CloneRefused`: `message`, `kind`, `hint`) and, where the
+  human can act (an ssh key refused, an unknown host key, a GitHub login, a GitHub
+  repository not shown), the hint's sentence and command with Copy, before anything is
+  pressed. Name, Kits, Provider (the server's suggestion for a folder with no sessions,
+  `CloneTarget.provider`) and Permission mode are the folder's. The one button **Clone and
+  start** is on once the branches are listed and the folder is new or empty. A folder
+  that holds a clone of the same repository (same host and path; scheme, user and port
+  aside) shows "✓ <the core's text>. LADO will use it as it is: no clone, no pull, no
+  branch switch." and the button **Use this clone**, which switches the window to Folder
+  with that folder and changes nothing on disk; a clone of another repository shows its
+  origin and a free folder beside it (`~/lado/<owner>-<repo>`), and the button stays off.
+  LADO never clones over, fetches into or switches the branch of a folder that exists.
+  The clone is a job of the server (`server/clones.py`): `POST /api/clones` (`{url, path,
+  branch}`; 400 `CloneRefused`, 409 while another job clones into that folder) starts it,
+  and the window asks `GET /api/clones/{id}` every 500 ms: a progress block with git's
+  phase, its percent with a bar (`role="progressbar"`), the rest of git's line and the
+  time it runs; a poll that fails is asked again (the clone goes on), and one the server
+  answers 404 ends the clone: when the folder now holds the clone (it ended while the
+  window did not ask, and the server dropped it after `clone.KEPT`), the window switches
+  to Folder with it ("the clone ended while this window was away; it is in <folder>"),
+  else it shows the server's text (it restarted). Meanwhile the fields are off,
+  Resume it too, and ×, Esc and Cancel do not close the window;
+  **Cancel clone** sends `DELETE /api/clones/{id}`: git's process group ends, its
+  temporary folder goes, the folder is not made, and the window says "the clone was
+  cancelled" (a Cancel clone that came after git ended starts no session: the window
+  switches to Folder with the clone). A page that goes away during the clone (`pagehide`: its tab
+  closed or reloaded) cancels it at once with `navigator.sendBeacon` to `POST
+  /api/clones/{id}/cancel` (a beacon can only POST, with the cookie and the page's Origin,
+  so `Guard.changes` takes it); a job no request asked about for `clone.ABANDONED` seconds
+  (150: Chrome runs the timers of a tab in the background for five minutes once a minute;
+  a lost connection, a sleeping laptop) is cancelled the same way, a finished one is kept `clone.KEPT`
+  seconds (60), and a server that stops cancels its running clones; jobs live in the
+  server's memory only. A failed clone shows its text and hint, and the form stays. A
+  finished clone starts the session as Start does for a folder; a start refused then
+  switches the window to Folder with the cloned folder and shows the refusal there (the
+  clone stays). The server's git runs with no terminal and no prompt, with the access the
+  server's machine has (ssh keys, `gh auth`, a credential helper): a server started where
+  the human's ssh-agent is not reachable cannot use its keys, and the hints point at the
+  command to check that.
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
   changeable; it sends only what changed (`POST /api/sessions/{name}/resume`).

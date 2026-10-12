@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lado import (
     artifacts,
+    clone,
     flows,
     gitcache,
     gui_session,
@@ -90,6 +91,69 @@ class HintInfo(BaseModel):
 
     text: str  # a sentence
     command: str  # one command to copy
+
+
+class RemoteAsk(BaseModel):
+    url: str  # a git URL (lado.clone.is_url)
+
+
+class RemoteInfo(BaseModel):
+    """A remote's branches (lado.clone.list_branches)."""
+
+    url: str  # without a secret (runtime.public_remote)
+    branches: list[str]  # the default one first
+    default: str | None  # None when the remote does not say
+
+
+CloneTargetState = clone.TargetState
+
+
+class CloneTarget(BaseModel):
+    """The folder a clone would go to, as the core finds it (lado.clone.check_target)."""
+
+    path: str  # `~` expanded; the default folder when none was given
+    state: CloneTargetState  # only new and empty take a clone
+    text: str  # the state as the core says it
+    origin: str | None  # the folder's origin, without a secret
+    branch: str | None  # its current branch, for same_repo
+    suggestion: str | None  # a free folder beside it, for other_repo
+    default_name: str  # the name a session started there gets
+    name_state: NameState  # as FolderInfo's, before anything is cloned
+    provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
+
+
+class CloneRefused(BaseModel):
+    """The detail of a 400 to a listing or a clone: why, by kind, and what the human can do."""
+
+    message: str
+    # lado.clone's kinds (ssh_denied, login_needed, not_found, ...), a target state, no_git
+    kind: str
+    hint: "HintInfo | None"
+
+
+class CloneStart(BaseModel):
+    url: str
+    path: str | None = None  # the default folder when none
+    branch: str | None = None  # the remote's default when none
+
+
+class CloneProgress(BaseModel):
+    phase: str  # git's, e.g. "Receiving objects"
+    percent: int
+    detail: str  # the rest of git's line, e.g. "12.30 MiB | 2.10 MiB/s"
+
+
+class CloneJob(BaseModel):
+    """A clone the server runs for the New session window (server/clones.py)."""
+
+    id: str
+    url: str  # without a secret
+    path: str
+    branch: str | None
+    state: Literal["running", "done", "failed", "cancelled"]
+    progress: CloneProgress | None  # git's latest progress line, none before the first
+    error: CloneRefused | None  # why it failed
+    seconds: float  # since it started, until it ended
 
 
 class ProviderSuggestion(BaseModel):

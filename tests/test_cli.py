@@ -2048,3 +2048,142 @@ def test_kits_show_says_when_it_cannot_tell_the_agents_path(repo, capsys, monkey
             f"    expects command {name}: cannot tell: your shell failed with exit status 1\n"
             in out
         )
+
+
+# lado start <git-url> [<folder>] [--branch NAME] (openspec change clone-from-url)
+
+
+def test_branch_or_a_second_folder_needs_a_git_url(repo, capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(["start", str(repo), "--branch", "dev"])
+    assert exited.value.code == 2
+    assert "--branch needs a git URL" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as exited:
+        main(["start", str(repo), str(repo.parent / "other")])
+    assert exited.value.code == 2
+    assert "a second folder needs a git URL" in capsys.readouterr().err
+
+
+def test_the_clone_is_there_already(tmp_path, fake_tmux, capsys):
+    folder = init_repo(tmp_path / "lado")
+    subprocess.run(
+        ["git", "-C", str(folder), "remote", "add", "origin", "https://github.com/ladohq/lado"],
+        check=True,
+    )
+    assert main(["start", "git@github.com:ladohq/lado.git", str(folder), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {folder} is already a clone of this repository "
+        "(origin https://github.com/ladohq/lado), on branch main",
+        f"lado: To start a session in it as it is: lado start {folder}",
+    ]
+    assert state.list_sessions() == []
+
+
+def test_a_folder_of_another_repository_or_with_files_is_refused(tmp_path, fake_tmux, capsys):
+    folder = init_repo(tmp_path / "app")
+    subprocess.run(
+        ["git", "-C", str(folder), "remote", "add", "origin", "git@github.com:acme/app.git"],
+        check=True,
+    )
+    assert main(["start", "git@github.com:ladohq/app.git", str(folder), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: {folder} is a clone of another repository (origin git@github.com:acme/app.git): "
+        f"choose another folder, e.g. {tmp_path / 'ladohq-app'}"
+    ]
+    (tmp_path / "files").mkdir()
+    (tmp_path / "files" / "a.txt").write_text("x")
+    assert main(["start", "https://h/a/b", str(tmp_path / "files"), "--no-attach"]) == 1
+    assert "is not empty and is not a clone of https://h/a/b" in capsys.readouterr().err
+
+
+def test_a_relative_folder_is_refused(tmp_path, fake_tmux, capsys):
+    assert main(["start", "https://h/a/app", "app", "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: app is not a full path: give one from / or ~"
+    ]
+
+
+def test_a_name_of_a_session_in_another_folder_is_refused_before_the_clone(
+    tmp_path, repo, fake_tmux, capsys, monkeypatch
+):
+    assert main(["start", str(repo), "--name", "app", "--provider", "kilo", "--no-attach"]) == 0
+    capsys.readouterr()
+    for key, value in agent_helpers.fake_git(tmp_path / "fake", "ok").items():
+        monkeypatch.setenv(key, value)
+    assert main(["start", "https://h/a/app", str(tmp_path / "work" / "app"), "--no-attach"]) == 1
+    assert f'session "app" was started in {repo}' in capsys.readouterr().err
+    assert agent_helpers.fake_git_calls(tmp_path / "fake") == []
+    assert not (tmp_path / "work").exists()
+
+
+def _branch_of(folder: Path) -> str:
+    return runtime.branch(str(folder))
+
+
+def test_clone_and_start(tmp_path, fake_tmux, capsys):
+    url = agent_helpers.bare_remote(tmp_path)
+    folder = tmp_path / "work" / "app"
+    start = ["start", url, str(folder), "--branch", "develop", "--provider", "kilo"]
+    assert main([*start, "--no-attach"]) == 0
+    assert _branch_of(folder) == "develop"
+    sess = state.get_session("app")
+    assert sess.repo == os.path.realpath(folder)
+    captured = capsys.readouterr()
+    assert f"Cloning branch develop of {url} into {folder}" in captured.err
+    assert f'Started session "app" in {sess.repo}' in captured.out
+
+
+def test_clone_into_the_default_folder_with_the_remotes_default_branch(
+    tmp_path, fake_tmux, capsys, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    url = agent_helpers.bare_remote(tmp_path)
+    assert main(["start", url, "--provider", "kilo", "--no-attach"]) == 0
+    folder = tmp_path / "home" / "lado" / "app"
+    assert _branch_of(folder) == "main"
+    assert f"Cloning the default branch of {url} into {folder}" in capsys.readouterr().err
+
+
+def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, capsys):
+    url = agent_helpers.bare_remote(tmp_path)
+    folder = tmp_path / "app"
+    assert main(["start", url, str(folder), "--provider", "nosuch", "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines()[-1] == f"lado: the clone stays in {folder}"
+    assert _branch_of(folder) == "main"
+
+
+def test_ctrl_c_during_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli.clone, "clone", interrupted)
+    assert main(["start", "https://h/a/app", str(tmp_path / "app"), "--no-attach"]) == 130
+    assert capsys.readouterr().err.splitlines()[-1] == "lado: clone cancelled"
+
+
+def test_clone_progress_keeps_the_last_line_of_each_phase(capsys):
+    shown = cli._CloneProgress(sys.stderr)
+    for line in ("Counting objects:  50% (1/2)", "Counting objects: 100% (2/2), done."):
+        shown(lado.clone.parse_progress(line))
+    shown(lado.clone.parse_progress("Receiving objects:  10% (1/10)"))
+    shown.done()
+    assert capsys.readouterr().err.splitlines() == [
+        "Counting objects: 100% (2/2), done.",
+        "Receiving objects:  10% (1/10)",
+    ]
+
+
+def test_a_clone_failure_prints_its_hint(tmp_path, fake_tmux, capsys, monkeypatch):
+    def refused(*args, **kwargs):
+        raise lado.clone.CloneError(
+            "ssh_denied",
+            "cannot clone git@github.com:a/b.git: github.com refused this machine's ssh key (x)",
+            runtime.Hint("Check that this machine's ssh key is added:", "ssh -T git@github.com"),
+        )
+
+    monkeypatch.setattr(cli.clone, "clone", refused)
+    assert main(["start", "git@github.com:a/b.git", str(tmp_path / "b"), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines()[-2:] == [
+        "lado: cannot clone git@github.com:a/b.git: github.com refused this machine's ssh key (x)",
+        "lado: Check that this machine's ssh key is added: ssh -T git@github.com",
+    ]

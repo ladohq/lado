@@ -3,7 +3,6 @@ sessions, the kits a session of a folder can take and the providers. The decisio
 the core: whether a folder will do is runtime.check_repo, a kit is the one kits.find takes,
 a provider's state is doctor.provider_status."""
 
-import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -15,17 +14,8 @@ SUBFOLDERS = 50  # at most this many subfolders of a folder
 RECENT = 10  # at most this many recent folders
 
 
-def full_path(path: str) -> str:
-    """`path` with `~` expanded; a relative path is refused: the server's own folder means
-    nothing to the human."""
-    expanded = os.path.expanduser(path)
-    if not os.path.isabs(expanded):
-        raise runtime.LadoError(f"{path} is not a full path: give one from / or ~")
-    return expanded
-
-
 def folder_info(path: str, has_db: bool) -> models.FolderInfo:
-    path = full_path(path)
+    path = runtime.full_path(path)
     kind, hint = None, None
     try:
         root = runtime.check_repo(path)
@@ -38,7 +28,6 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
                 hint = models.HintInfo(text=refused.hint.text, command=refused.hint.command)
         root = _root_or_none(path)
     name = runtime.slug(Path(root).name) if root else None
-    suggestion = runtime.suggested_provider(root if has_db else None, _installed)
     return models.FolderInfo(
         path=path,
         ok=ok,
@@ -49,11 +38,18 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         hint=hint,
         subfolders=_subfolders(Path(path)),
         default_name=name,
-        name_state=_name_state(name, root, has_db) if name and root else None,
-        provider=models.ProviderSuggestion(name=suggestion.provider, reason=suggestion.reason)
-        if suggestion
-        else None,
+        name_state=name_state(name, root, has_db) if name and root else None,
+        provider=provider_suggestion(root if has_db else None),
     )
+
+
+def provider_suggestion(root: str | None) -> models.ProviderSuggestion | None:
+    """The provider a new session in `root` takes (runtime.suggested_provider; None: a
+    folder with no sessions known), its CLI looked for on the server's PATH."""
+    suggestion = runtime.suggested_provider(root, _installed)
+    if suggestion is None:
+        return None
+    return models.ProviderSuggestion(name=suggestion.provider, reason=suggestion.reason)
 
 
 def _installed(provider: providers.Provider) -> bool:
@@ -79,7 +75,7 @@ def _subfolders(path: Path) -> list[str]:
     return names[:SUBFOLDERS]
 
 
-def _name_state(name: str, root: str, has_db: bool) -> models.NameState:
+def name_state(name: str, root: str, has_db: bool) -> models.NameState:
     sess = state.get_session(name) if has_db else None
     if sess is None:
         return "free"

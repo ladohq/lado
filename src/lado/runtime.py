@@ -380,6 +380,32 @@ def repo_root(path: str) -> str:
         raise LadoError(f"{path} is not inside a git repository") from exc
 
 
+def full_path(path: str) -> str:
+    """`path` with `~` expanded; a relative path is refused: the server's own folder means
+    nothing to the human, and a clone's folder is given as the window gives it."""
+    expanded = os.path.expanduser(path)
+    if not os.path.isabs(expanded):
+        raise LadoError(f"{path} is not a full path: give one from / or ~")
+    return expanded
+
+
+def _elsewhere(old: "state.Session", repo: str) -> LadoError:
+    return LadoError(
+        f'session "{old.name}" was started in {old.repo}; to start a fresh session for '
+        f"{repo}, give it another name with --name, or drop the old one with "
+        f"`lado forget {old.name}`"
+    )
+
+
+def check_name(name: str, folder: str) -> None:
+    """Refuse a session name a session of another folder has, as a start in `folder` would,
+    before that folder exists (a clone's): its repository's root will be its real path."""
+    old = state.get_session(name)
+    repo = os.path.realpath(folder)
+    if old and old.repo != repo:
+        raise _elsewhere(old, repo)
+
+
 def check_repo(path: str) -> str:
     """The root of the repository a session can start in at `path`, or why there is none.
     `lado start` and the UI's folder check both ask this, so they refuse alike: a
@@ -535,11 +561,7 @@ def start_session(
             loop.ensure(session)
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
         if old.repo != repo:
-            raise LadoError(
-                f'session "{session}" was started in {old.repo}; to start a fresh session for '
-                f"{repo}, give it another name with --name, or drop the old one with "
-                f"`lado forget {session}`"
-            )
+            raise _elsewhere(old, repo)
     base_env, chosen = None, None
     if not provider and not old:
         # Resolved before the provider is chosen: it is the one on the agents' PATH. A

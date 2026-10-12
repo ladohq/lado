@@ -249,6 +249,30 @@ export const getFolder = (path: string) => get<FolderInfo>(`/api/folders?${query
 
 export const getRecentFolders = () => get<RecentFolder[]>("/api/folders/recent");
 
+export type RemoteInfo = components["schemas"]["RemoteInfo"];
+export type CloneTarget = components["schemas"]["CloneTarget"];
+export type CloneRefused = components["schemas"]["CloneRefused"];
+export type CloneStart = components["schemas"]["CloneStart"];
+export type CloneJob = components["schemas"]["CloneJob"];
+
+// A remote's branches, its default one first (400 CloneRefused: why it cannot be read).
+export const getRemoteBranches = (url: string) => post<RemoteInfo>("/api/remote-branches", { url });
+
+// The folder a clone of `url` would go to (`path`, else the default one), as the core finds it.
+export const getCloneTarget = (url: string, path: string | null) =>
+  get<CloneTarget>(`/api/clone-target?${query(path ? { url, path } : { url })}`);
+
+// A clone job of the server: asking for it keeps it alive.
+export const startClone = (start: CloneStart) => post<CloneJob>("/api/clones", start);
+
+export const getClone = (id: string) => get<CloneJob>(`/api/clones/${encodeURIComponent(id)}`);
+
+export const cancelClone = (id: string) => post<CloneJob>(`/api/clones/${encodeURIComponent(id)}`, undefined, "DELETE");
+
+// The same as a beacon, which still goes out while the page goes away (tab closed, reloaded).
+export const cancelCloneOnLeave = (id: string) =>
+  navigator.sendBeacon?.(`/api/clones/${encodeURIComponent(id)}/cancel`);
+
 // The kits a session of the folder `where` can take, one per name.
 export const getKits = (where: string | null) =>
   get<KitInfo[]>(where ? `/api/kits?${query({ where })}` : "/api/kits");

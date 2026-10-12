@@ -64,6 +64,6 @@
 
 ## 7. Regression
 
-- [ ] 7.1 `make lint`, `make test`, `make web`, the changed integration and UI files with
+- [x] 7.1 `make lint`, `make test`, `make web`, the changed integration and UI files with
   their markers, `openspec validate --specs --strict`; CI green on the pull request (the
   full `make check` and the smoke).

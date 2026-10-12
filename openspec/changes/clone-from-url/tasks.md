@@ -58,7 +58,7 @@
 
 ## 5. Docs
 
-- [ ] 5.1 `docs/design/ui.md` (Launch and session control), AGENTS.md (Layout, server
+- [x] 5.1 `docs/design/ui.md` (Launch and session control), AGENTS.md (Layout, server
   endpoints, `lado start`), README's start, CHANGELOG.md under 0.36.0 (D13).
 
 ## 6. Regression

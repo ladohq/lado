@@ -38,7 +38,7 @@ UI.
   went away (tab closed or reloaded) is cancelled by the server. A folder holding a clone
   of the same repository offers **Use this clone**, which switches the window to Folder
   with that folder (mockup `mockup-clone.html`, v3).
-- **API**: `GET /api/remote` (the branches), `GET /api/clone-target` (the target folder),
+- **API**: `POST /api/remote-branches` (the branches), `GET /api/clone-target` (the target folder),
   `POST /api/clones`, `GET /api/clones/{id}`, `DELETE /api/clones/{id}` (a clone job).
 - New minor release: the feature goes into the unreleased 0.36.0. No schema migration,
   no MCP tool change.

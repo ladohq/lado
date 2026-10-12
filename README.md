@@ -148,6 +148,24 @@ Or open `lado ui`, then Kits. Everything else (finding and installing kits, writ
 releasing new versions, combining them in a session, marketplaces) is in the
 **[Kits guide](docs/kits.md)**.
 
+## Marketplaces
+
+**Your team's own list of kits.** A marketplace is a git repository that names the kits
+your team trusts, so everyone installs them by name instead of passing addresses around.
+
+- **One command for everyone.** `lado marketplaces add team <git-url>` once, then
+  `lado kits add <kit> -m team`; the UI's Kits page lists its kits with their roles,
+  flows and versions.
+- **You decide what is in it.** Only the kits you reviewed are listed; a pull request to
+  the list is your review step.
+- **Private is fine.** LADO clones it with your own git access, so it can live next to
+  your code.
+- **Nothing to host.** No server: a repository with one YAML file, and an optional CI job
+  that keeps its index fresh.
+
+How to make one, its index and how to propose a kit to the official marketplace:
+**[Marketplaces guide](docs/marketplaces.md)**.
+
 ## The web UI
 
 ```bash

@@ -1679,7 +1679,7 @@ page (LADO has one source of kits, git).
   does not load; in ⋯ Update… (a kit from git) and Remove….
 - **Available**: each kit the enabled marketplaces list that is not installed, from their
   clones (no network): `marketplace.yaml` for the names and addresses, `index.json` for
-  the rest (docs/kits.md, Share your kit: version 1), only the name and address without an entry
+  the rest (docs/marketplaces.md, index.json: version 1), only the name and address without an entry
   ("No description in the index"); + by the version and Install… in ⋯.
   An installed kit is in Installed and a new version of it in Updates, never here: the
   list and the tab's count are one set, the offers whose `installed` (the server's) is

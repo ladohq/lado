@@ -18,7 +18,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -305,6 +305,24 @@ MESSAGES_PRINTED = "ALTER TABLE messages ADD COLUMN printed_at REAL"
 # written at its launch, as the role does not change while it runs. Its hooks check the
 # repository at each turn (lado.fingerprint) and its `lado mcp` hides LADO's command tools.
 AGENTS_READ_ONLY = "ALTER TABLE agents ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0"
+# The lead's recommendation on a gate or on another agent's question to the human, from
+# version 26 on (lado.runtime.recommend): its state (NULL: never asked; REC_ASKED,
+# REC_GIVEN, REC_MISSING), its text, the option it recommends (NULL for none), whether the
+# lead disagrees with the agent whose report led there or who asks, when it was given (UTC),
+# and the id of the message from LADO that asked for it (NULL for none: a notice in a
+# tool's result). On messages only a question's are used.
+RECOMMENDATION = [
+    f"ALTER TABLE {table} ADD COLUMN {column}"
+    for table in ("gates", "messages")
+    for column in (
+        "recommendation_state TEXT",
+        "recommendation TEXT NOT NULL DEFAULT ''",
+        "recommended_choice TEXT",
+        "recommendation_disagrees INTEGER NOT NULL DEFAULT 0",
+        "recommended_at TEXT",
+        "recommendation_request INTEGER",
+    )
+]
 
 # The human in messages, from version 13 on: an agent's question to the human (ask_human)
 # and its outcome, the answer to it, and whether an agent replied to the human's message.
@@ -387,6 +405,7 @@ SCHEMA += (
             GATES_NOTE,
             MESSAGES_PRINTED,
             AGENTS_READ_ONLY,
+            *RECOMMENDATION,
         ]
     )
     + ";\n"
@@ -458,6 +477,7 @@ MIGRATIONS = {
     22: [closed_runs_without_needs],
     23: [MESSAGES_PRINTED],
     24: [AGENTS_READ_ONLY],
+    25: RECOMMENDATION,
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -571,6 +591,12 @@ CLOSED = "closed"
 # Reply states of the human's message to an agent, set when the turn it started ends.
 REPLIED = "replied"
 MISSING = "missing"  # the agent wrote nothing to the human: it replied only in its terminal
+# States of the lead's recommendation on a gate or a question (RECOMMENDATION): LADO asked
+# for it, the lead gave it, or the lead's turn (or the lead) ended without it. None: never
+# asked.
+REC_ASKED = "asked"
+REC_GIVEN = "given"
+REC_MISSING = "missing"
 
 # Run statuses.
 ACTIVE = "active"
@@ -664,6 +690,13 @@ class Message:
     channel: str | None = None  # how it was handed over: TYPED | HOOK_OUTPUT; None for none
     printed_at: float | None = None  # when its turn-end hook printed it (MESSAGES_PRINTED)
     attachments: int = 0  # how many artifacts it carries (message_attachments)
+    # A question's: the lead's recommendation on it (RECOMMENDATION).
+    recommendation_state: str | None = None
+    recommendation: str = ""
+    recommended_choice: str | None = None
+    recommendation_disagrees: bool = False
+    recommended_at: str | None = None
+    recommendation_request: int | None = None
 
     @property
     def title(self) -> str:
@@ -728,6 +761,13 @@ class Gate:
     answered_at: str | None = None
     note_id: int | None = None  # the note that led here (GATES_NOTE); None for none kept
     attachments: int = 0  # how many artifacts that note carries
+    # The lead's recommendation on it (RECOMMENDATION).
+    recommendation_state: str | None = None
+    recommendation: str = ""
+    recommended_choice: str | None = None
+    recommendation_disagrees: bool = False
+    recommended_at: str | None = None
+    recommendation_request: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1802,7 +1842,9 @@ def agent_times(
 MESSAGE_COLUMNS = (
     "id, sender, summary, body, recipient, state, created_at, attempts, sent_at, kind, choices,"
     " free_answer, question_state, answered_by, reply_to, choice, reply_state, channel,"
-    " printed_at, (SELECT count(*) FROM attachments WHERE message = messages.id) AS attachments"
+    " printed_at, (SELECT count(*) FROM attachments WHERE message = messages.id) AS attachments,"
+    " recommendation_state, recommendation, recommended_choice, recommendation_disagrees,"
+    " recommended_at, recommendation_request"
 )
 
 
@@ -1822,6 +1864,7 @@ def _message(row: sqlite3.Row, **changed) -> Message:
         channel=row["channel"],
         printed_at=row["printed_at"],
         attachments=row["attachments"],
+        **_recommendation(row),
     )
     return replace(message, **changed) if changed else message
 
@@ -2398,7 +2441,20 @@ def _gate(row: sqlite3.Row) -> Gate:
         answered_at=row["answered_at"],
         note_id=row["note_id"],
         attachments=row["attachments"],
+        **_recommendation(row),
     )
+
+
+def _recommendation(row: sqlite3.Row) -> dict:
+    """The recommendation fields of a gate's or a message's row (RECOMMENDATION)."""
+    return {
+        "recommendation_state": row["recommendation_state"],
+        "recommendation": row["recommendation"],
+        "recommended_choice": row["recommended_choice"],
+        "recommendation_disagrees": bool(row["recommendation_disagrees"]),
+        "recommended_at": row["recommended_at"],
+        "recommendation_request": row["recommendation_request"],
+    }
 
 
 def list_marketplaces() -> list[Marketplace]:

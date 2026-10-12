@@ -308,7 +308,7 @@ def test_the_migration_gives_gates_the_note_before_them_as_a_new_database_has_it
 
 def test_the_migration_gives_agents_their_read_only_flag(lado_home):
     _session_with(_agent(status=state.BUSY))
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(25)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert "read_only" not in [row[1] for row in db.execute("PRAGMA table_info(agents)")]
     db.close()
@@ -320,6 +320,87 @@ def test_the_migration_gives_agents_their_read_only_flag(lado_home):
         )
     )
     assert state.get_agent("s", "w2").read_only is True
+
+
+RECOMMENDATION_COLUMNS = {
+    "recommendation_state",
+    "recommendation",
+    "recommended_choice",
+    "recommendation_disagrees",
+    "recommended_at",
+    "recommendation_request",
+}
+
+
+def _columns(db, table: str) -> set[str]:
+    return {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+
+
+def test_schema_26_adds_the_recommendation_columns(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    with state.connect() as db:
+        fresh = {
+            t: db.execute(f"SELECT sql FROM sqlite_master WHERE name = '{t}'").fetchone()[0]
+            for t in ("gates", "messages")
+        }
+        assert RECOMMENDATION_COLUMNS <= _columns(db, "gates")
+        assert RECOMMENDATION_COLUMNS <= _columns(db, "messages")
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert not RECOMMENDATION_COLUMNS & _columns(db, "gates")
+    assert not RECOMMENDATION_COLUMNS & _columns(db, "messages")
+    db.execute(
+        "INSERT INTO gates (session, run, state, kind, question, options)"
+        " VALUES ('s', 'f/x', 'ok', 'approval', 'Ship?', '[]')"
+    )
+    db.execute("INSERT INTO messages (session, sender, recipient) VALUES ('s', 'w1', 'human')")
+    db.commit()
+    db.close()
+    assert state.migrate() == state.SCHEMA_VERSION
+    with state.connect() as db:
+        for table, sql in fresh.items():
+            assert (
+                db.execute(f"SELECT sql FROM sqlite_master WHERE name = '{table}'").fetchone()[0]
+                == sql
+            )
+    [gate] = state.session_gates("s")
+    assert (gate.recommendation_state, gate.recommendation, gate.recommendation_disagrees) == (
+        None,
+        "",
+        False,
+    )
+    [message] = state.list_messages("s")
+    assert (message.recommendation_state, message.recommended_choice) == (None, None)
+
+
+def test_a_gate_and_a_question_read_back_their_recommendation_fields(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    question = state.add_question("s", "w1", "Ship?", "", ["yes", "no"], False)
+    with state.connect() as db:
+        db.execute(
+            "INSERT INTO gates (session, run, state, kind, question, options,"
+            " recommendation_state, recommendation, recommended_choice,"
+            " recommendation_disagrees, recommended_at, recommendation_request)"
+            " VALUES ('s', 'f/x', 'ok', 'approval', 'Ship?', '[]', 'given', 'Reject',"
+            " 'reject', 1, '2026-10-12 10:00:00.000', 9)"
+        )
+        db.execute(
+            "UPDATE messages SET recommendation_state = 'asked', recommendation_request = 4"
+            " WHERE id = ?",
+            (question,),
+        )
+    [gate] = state.session_gates("s")
+    assert (
+        gate.recommendation_state,
+        gate.recommendation,
+        gate.recommended_choice,
+        gate.recommendation_disagrees,
+        gate.recommended_at,
+        gate.recommendation_request,
+    ) == (state.REC_GIVEN, "Reject", "reject", True, "2026-10-12 10:00:00.000", 9)
+    asked = state.get_message("s", question)
+    assert (asked.recommendation_state, asked.recommendation_request) == (state.REC_ASKED, 4)
+    assert asked.recommendation == "" and asked.recommendation_disagrees is False
 
 
 # A flow of LADO 0.26: `needs` names states.

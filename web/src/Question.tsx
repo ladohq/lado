@@ -2,14 +2,17 @@
 // card in its agent's row (FeedRow), without a head of its own. Open, it is answered with a
 // choice, own words or both, or dismissed; closed, its choices faded, the chosen one marked
 // (and only there), and the human's reply under them (docs/design/ui.md, Answer in the
-// question card). The card changes only when the feed brings the question closed, whoever
-// answered it. Also what the chat says of the human's answer, from the answer's fields.
+// question card). The supervisor's recommendation on another agent's question is part of the
+// card (Recommendation.tsx): its choice is the primary button. The card changes only when
+// the feed brings the question closed, whoever answered it. Also what the chat says of the
+// human's answer, from the answer's fields.
 import { useState, type FormEvent } from "react";
 
 import { answerQuestion, ApiError, dismissQuestion, HUMAN, type MessageInfo } from "./api";
 import { Attachments } from "./Attachments";
 import { Body, clock } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
+import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
 
 // The DOM id of a message's place in the chat: a link to it scrolls there.
 export const messageAnchor = (id: number) => `message-${id}`;
@@ -85,15 +88,16 @@ export function Question({
       <h4 className="chat-summary">{question.summary}</h4>
       {question.body && <Body text={question.body} />}
       <Attachments session={session} attachments={question.attachments} />
+      {open && <Recommendation rec={question.recommendation} />}
       {open ? (
         <form className="answer" onSubmit={submit}>
           {question.choices && (
             <div className="choices">
-              {question.choices.map((choice, i) => (
+              {question.choices.map((choice) => (
                 <button
                   key={choice}
                   type="button"
-                  className={i === 0 ? "primary" : "quiet"}
+                  className={choice === primaryOf(question.choices ?? [], question.recommendation) ? "primary" : "quiet"}
                   disabled={busy}
                   onClick={() =>
                     // What the human wrote in the field goes along as a comment.
@@ -150,6 +154,7 @@ export function Question({
               )}
             </ul>
           )}
+          <RecommendationLine rec={question.recommendation} />
           {question.question_state === "closed" ? (
             <p className="chat-outcome">Closed: the agent left</p>
           ) : (

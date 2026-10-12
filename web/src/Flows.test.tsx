@@ -616,6 +616,17 @@ test("an ended and a cancelled run's now: when, the event's detail and how long 
   expect(nowCard(region).textContent).toBe(`Cancelled · ${clock(CANCELLED.ended_at!)}not needed · took 1 d 2 h`);
 });
 
+test("the compact gate on a run's page shows the supervisor's recommendation and its primary button", async () => {
+  const recommendation = { state: "given" as const, text: "Reject it.", choice: "reject", disagrees: true, by: "reviewer", at: null };
+  serve({ runs: [WAITING], gates: [gate(41, { recommendation })] });
+  open(runPath("lado", WAITING.name));
+  const card = await screen.findByRole("article", { name: "Gate #41" });
+  const block = within(card).getByRole("region", { name: "Supervisor's recommendation" });
+  expect(block.querySelector(".rec-differs")?.textContent).toBe("disagrees with reviewer");
+  expect(within(card).getByRole("button", { name: "Reject" }).className).toBe("primary");
+  expect(within(card).getByRole("button", { name: "Approve" }).className).toBe("quiet");
+});
+
 test("in a stopped session the gate on the run's page cannot be answered", async () => {
   serve({ runs: [WAITING], gates: [gate(41)] });
   open(runPath("old", WAITING.name));

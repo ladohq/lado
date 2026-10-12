@@ -38,7 +38,7 @@ steps). Design doc: `docs/superpowers/specs/2026-10-12-lead-recommendation-desig
 
 ## 5. Web UI (D8)
 
-- [ ] 5.1 `web/src/Recommendation.tsx`, `GateCard.tsx` (also compact and the closed
+- [x] 5.1 `web/src/Recommendation.tsx`, `GateCard.tsx` (also compact and the closed
   view), `Question.tsx` (open and closed), `styles.css`; the recommended button primary.
   Check: vitest in `web/src/Recommendation.test.tsx`, `Chat.test.tsx`, `make web`.
 

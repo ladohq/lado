@@ -167,6 +167,7 @@ export function Question({
 function Given({ question, answer, anchored }: { question: MessageInfo; answer?: MessageInfo; anchored: boolean }) {
   const dismissed = question.question_state === "dismissed";
   const reply = answer && replyOf(answer, question);
+  const shown = reply && ("dismissed" in reply || answer?.choice ? reply.comment : reply.text);
   return (
     <div
       className={`question-answer${dismissed ? " dismissed" : ""}`}
@@ -177,13 +178,7 @@ function Given({ question, answer, anchored }: { question: MessageInfo; answer?:
         <span className="answer-head">You · {dismissed ? "dismissed" : "answered"}</span>
         {answer && <time dateTime={answer.created_at}>{clock(answer.created_at)}</time>}
       </div>
-      {reply && "text" in reply &&
-        (answer?.choice ? (
-          reply.comment && <Body text={reply.comment} breaks />
-        ) : (
-          <Body text={reply.text} breaks />
-        ))}
-      {reply && "dismissed" in reply && reply.comment && <Body text={reply.comment} breaks />}
+      {shown && <Body text={shown} breaks />}
     </div>
   );
 }

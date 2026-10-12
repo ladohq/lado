@@ -8,10 +8,16 @@ credential helper): its git calls run with no terminal and no prompt, so a missi
 credential is a failure, never a wait. A URL reaches a text only through
 `runtime.public_remote`."""
 
+import codecs
 import os
 import re
+import select
+import shutil
 import signal
 import subprocess
+import tempfile
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -363,3 +369,105 @@ def list_branches(url: str) -> Remote:
     else:
         default = None
     return Remote(branches, default)
+
+
+# A line of git's progress: `Receiving objects:  45% (450/1000), 12.30 MiB | 2.10 MiB/s`.
+_PROGRESS = re.compile(r"(?:remote: )?([A-Z][A-Za-z ]*?):\s+(\d+)%\s*(?:\(\d+/\d+\),?\s*)?(.*)")
+POLL = 0.2  # seconds between two looks at whether a clone was cancelled
+KEPT_LINES = 50  # git's last lines that are no progress, read for a failure's kind
+
+
+@dataclass(frozen=True)
+class Progress:
+    """Where a clone is: git's phase, its percent and the rest of its line."""
+
+    phase: str
+    percent: int
+    detail: str
+    line: str
+
+
+def parse_progress(line: str) -> Progress | None:
+    found = _PROGRESS.fullmatch(line.strip())
+    if not found:
+        return None
+    return Progress(found.group(1), int(found.group(2)), found.group(3).strip(), line)
+
+
+def clone(
+    url: str,
+    path: str,
+    branch: str | None = None,
+    on_progress: Callable[[Progress], None] | None = None,
+    cancelled: threading.Event | None = None,
+) -> str:
+    """Clone `branch` of `url` (the remote's default without one) into the folder `path`
+    (a full path; `check_target` must let it): into a temporary folder beside it, renamed
+    to `path` only once git succeeded. A cancel (`cancelled` set), a failure or an
+    exception (Ctrl-C too) ends git's process group and removes the temporary folder;
+    `path` stays as it was. Returns `path`."""
+    target = check_target(url, path)
+    if target.state not in CAN_CLONE:
+        raise CloneError(target.state, target.text)
+    folder = Path(path)
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    temp = tempfile.mkdtemp(prefix=f".{folder.name}.clone-", dir=folder.parent)
+    try:
+        _run_clone(url, temp, branch, on_progress, cancelled)
+        try:
+            os.rename(temp, path)  # onto a missing or an empty folder
+        except OSError as exc:
+            now = check_target(url, path)
+            if now.state not in CAN_CLONE:
+                raise CloneError(now.state, now.text) from None
+            raise CloneError(
+                GIT_FAILED, f"cannot clone {runtime.public_remote(url)} into {path}: {exc}"
+            ) from None
+    except BaseException:
+        shutil.rmtree(temp, ignore_errors=True)
+        raise
+    return path
+
+
+def _run_clone(
+    url: str,
+    temp: str,
+    branch: str | None,
+    on_progress: Callable[[Progress], None] | None,
+    cancelled: threading.Event | None,
+) -> None:
+    chosen = ["--branch", branch] if branch else []
+    process = _start_git("clone", "--progress", "--no-recurse-submodules", *chosen, "--", url, temp)
+    assert process.stderr is not None
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    pending, kept = "", []
+    try:
+        while True:
+            if cancelled is not None and cancelled.is_set():
+                raise CloneError(
+                    "cancelled", f"the clone of {runtime.public_remote(url)} was cancelled"
+                )
+            ready, _, _ = select.select([process.stderr], [], [], POLL)
+            if not ready:
+                continue
+            chunk = os.read(process.stderr.fileno(), 65536)
+            if not chunk:
+                break
+            *lines, pending = re.split(r"[\r\n]", pending + decoder.decode(chunk))
+            for line in lines:
+                progress = parse_progress(line)
+                if progress is None:
+                    if line.strip():
+                        kept = [*kept[-KEPT_LINES + 1 :], line]
+                elif on_progress is not None:
+                    on_progress(progress)
+        process.wait()
+    except BaseException:
+        _stop(process)
+        raise
+    finally:
+        process.stderr.close()
+    if pending.strip():
+        kept.append(pending)
+    if process.returncode != 0:
+        raise failure("clone", url, "\n".join(kept), branch)

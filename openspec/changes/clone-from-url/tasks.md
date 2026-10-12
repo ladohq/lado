@@ -1,21 +1,21 @@
 ## 1. Core: `lado.clone`
 
-- [ ] 1.1 URL forms, `Address`, `default_folder`, `same_repo` (D1, D2, D3). Unit tests
+- [x] 1.1 URL forms, `Address`, `default_folder`, `same_repo` (D1, D2, D3). Unit tests
   (`tests/test_clone.py`): "An ssh address in scp form", "A folder", "Default folder",
   "The same repository over another protocol" (pairs table), "A token in the URL is never
   shown".
-- [ ] 1.2 `check_target` with its six states and texts, the `other_repo` suggestion (D3).
+- [x] 1.2 `check_target` with its six states and texts, the `other_repo` suggestion (D3).
   Unit tests with real git repos: each state, "Another repository with the same name", "A
   folder with other files", a subfolder of a repository is `not_empty`.
-- [ ] 1.3 The git runner without prompts and `KINDS` (D4, D5). Unit tests: each kind
+- [x] 1.3 The git runner without prompts and `KINDS` (D4, D5). Unit tests: each kind
   against a recorded git line ("An ssh key the host refuses", "A private https repository
   without a login", "A repository GitHub does not show", host key, unreachable, no
   branch, other), the hints for github.com and another host, `-p <port>`, git missing
   (LAD-5's `no_git`).
-- [ ] 1.4 `list_branches` (D6). Unit tests on a `file://` bare repo: "Branches and the
+- [x] 1.4 `list_branches` (D6). Unit tests on a `file://` bare repo: "Branches and the
   default one", an empty repository, "A remote that does not answer" (a fake slow `git`
   on PATH, `LIST_TIMEOUT` patched).
-- [ ] 1.5 `clone` with progress and cancel (D7). Unit tests: a `file://` clone of branch
+- [x] 1.5 `clone` with progress and cancel (D7). Unit tests: a `file://` clone of branch
   `dev` lands in the target with the branch checked out and no temp folder left; into an
   empty folder; "A branch that is not there"; "Cancel during the clone" (fake slow git
   printing progress: `Progress` values seen, temp gone, target absent); the progress

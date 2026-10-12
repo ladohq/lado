@@ -1,6 +1,7 @@
 """lado.clone: a repository from its git URL (openspec change clone-from-url)."""
 
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -354,3 +355,149 @@ def test_a_remote_that_does_not_answer(tmp_path, monkeypatch):
     )
     [call] = fake_git_calls(tmp_path)
     assert gone(call["pid"]) and gone(call["child"])
+
+
+def _branch(folder: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(folder), "symbolic-ref", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _leftovers(parent: Path) -> list[str]:
+    return [p.name for p in parent.iterdir() if ".clone-" in p.name]
+
+
+def test_a_clone_of_a_branch_lands_in_the_target(tmp_path):
+    url = bare_remote(tmp_path)
+    target = tmp_path / "deep" / "er" / "app"
+    assert clone.clone(url, str(target), "develop") == str(target)
+    assert _branch(target) == "develop"
+    assert runtime.remote(str(target)) == url
+    log = subprocess.run(
+        ["git", "-C", str(target), "log", "--format=%s"], capture_output=True, text=True
+    ).stdout.split()
+    assert log == ["develop", "init"]  # all its history
+    assert _leftovers(target.parent) == []
+
+
+def test_a_clone_without_a_branch_takes_the_default_one_into_an_empty_folder(tmp_path):
+    url = bare_remote(tmp_path)
+    (tmp_path / "app").mkdir()
+    clone.clone(url, str(tmp_path / "app"))
+    assert _branch(tmp_path / "app") == "main"
+    assert _leftovers(tmp_path) == []
+
+
+def test_a_branch_that_is_not_there(tmp_path):
+    url = bare_remote(tmp_path)
+    with pytest.raises(clone.CloneError) as refused:
+        clone.clone(url, str(tmp_path / "app"), "dev")
+    assert refused.value.kind == "no_branch"
+    assert f"cannot clone {url}: no branch dev (" in str(refused.value)
+    assert not (tmp_path / "app").exists()
+    assert _leftovers(tmp_path) == []
+
+
+def test_a_folder_that_may_not_take_a_clone_is_refused_before_git(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "ok").items():
+        monkeypatch.setenv(key, value)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "mine.txt").write_text("x")
+    with pytest.raises(clone.CloneError) as refused:
+        clone.clone("https://github.com/acme/app", str(tmp_path / "app"))
+    assert refused.value.kind == "not_empty"
+    assert fake_git_calls(tmp_path / "fake") == []
+    assert sorted(p.name for p in (tmp_path / "app").iterdir()) == ["mine.txt"]
+
+
+def _cancel_after_first_progress(seen, cancelled):
+    def on_progress(progress):
+        seen.append(progress)
+        cancelled.set()
+
+    return on_progress
+
+
+def test_cancel_during_the_clone(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "slow").items():
+        monkeypatch.setenv(key, value)
+    seen, cancelled = [], threading.Event()
+    started = time.monotonic()
+    with pytest.raises(clone.CloneError) as refused:
+        clone.clone(
+            "https://github.com/acme/app",
+            str(tmp_path / "app"),
+            "dev",
+            _cancel_after_first_progress(seen, cancelled),
+            cancelled,
+        )
+    assert time.monotonic() - started < 5
+    assert refused.value.kind == "cancelled"
+    assert str(refused.value) == "the clone of https://github.com/acme/app was cancelled"
+    assert seen[0] == clone.Progress(
+        "Receiving objects",
+        0,
+        "1.00 MiB | 2.00 MiB/s",
+        "Receiving objects:  0% (0/100), 1.00 MiB | 2.00 MiB/s",
+    )
+    [call] = fake_git_calls(tmp_path / "fake")
+    assert call["args"][:5] == ["clone", "--progress", "--no-recurse-submodules", "--branch", "dev"]
+    assert gone(call["pid"]) and gone(call["child"])
+    assert not (tmp_path / "app").exists()
+    assert _leftovers(tmp_path) == []
+
+
+def test_ctrl_c_during_the_clone_cleans_up_alike(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "slow").items():
+        monkeypatch.setenv(key, value)
+
+    def interrupted(progress):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        clone.clone("https://github.com/acme/app", str(tmp_path / "app"), None, interrupted)
+    [call] = fake_git_calls(tmp_path / "fake")
+    assert gone(call["pid"]) and gone(call["child"])
+    assert not (tmp_path / "app").exists()
+    assert _leftovers(tmp_path) == []
+
+
+def test_a_target_filled_during_the_clone(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "ok").items():
+        monkeypatch.setenv(key, value)
+
+    def meanwhile(progress):
+        (tmp_path / "app").mkdir(exist_ok=True)
+        (tmp_path / "app" / "theirs.txt").write_text("x")
+
+    with pytest.raises(clone.CloneError) as refused:
+        clone.clone("https://github.com/acme/app", str(tmp_path / "app"), None, meanwhile)
+    assert refused.value.kind == "not_empty"
+    assert sorted(p.name for p in (tmp_path / "app").iterdir()) == ["theirs.txt"]
+    assert _leftovers(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("line", "progress"),
+    [
+        (
+            "Receiving objects:  45% (450/1000), 12.30 MiB | 2.10 MiB/s",
+            ("Receiving objects", 45, "12.30 MiB | 2.10 MiB/s"),
+        ),
+        ("remote: Counting objects: 100% (3/3), done.", ("Counting objects", 100, "done.")),
+        ("Resolving deltas:  12% (1/8)", ("Resolving deltas", 12, "")),
+        ("Updating files: 100% (12/12), done.", ("Updating files", 100, "done.")),
+        ("Cloning into 'app'...", None),
+        ("remote: Enumerating objects: 5, done.", None),
+    ],
+)
+def test_progress_lines(line, progress):
+    parsed = clone.parse_progress(line)
+    if progress is None:
+        assert parsed is None
+    else:
+        assert (parsed.phase, parsed.percent, parsed.detail) == progress
+        assert parsed.line == line

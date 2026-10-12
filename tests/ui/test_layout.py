@@ -109,10 +109,11 @@ def chip_box(chip) -> dict:
 def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_to_flows(
     page: Page, server, repo, shot
 ):
-    kit = repo / ".lado" / "kits" / "uibuild"
+    kit = repo.parent / "kits" / "uibuild"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uibuild\nversion: 1.0.0\n")
     (kit / "flows" / "build.yaml").write_text(BUILD)
+    agent_helpers.install_kit(kit)
     session = f"ui-{uuid.uuid4().hex[:6]}"
     runtime.start_session(str(repo), session, None, "fake", ["default", "uibuild"])
     agent_helpers.wait_for(

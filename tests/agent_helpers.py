@@ -89,9 +89,11 @@ def no_maintenance_env(environ: dict[str, str]) -> dict[str, str]:
 
 def install_kit(folder: Path) -> str:
     """Install the kit in `folder` as `lado kits add <folder>` would, in the test's LADO_HOME
-    (read in place, no question); its name, from its kit.yaml."""
+    (read in place, no question); its name, from its kit.yaml. The same folder again is no
+    error."""
     name = yaml.safe_load((folder / "kit.yaml").read_text())["name"]
-    assert state.add_kit(state.InstalledKit(name, folder=str(folder))), f"{name} installed"
+    if not state.add_kit(state.InstalledKit(name, folder=str(folder))):
+        assert state.get_kit(name).folder == str(folder), f"another {name} is installed"
     return name
 
 

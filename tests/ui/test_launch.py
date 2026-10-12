@@ -64,12 +64,13 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
 
 def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server, repo, shot):
     for kit in ("kit-a", "kit-b"):
-        folder = repo / ".lado" / "kits" / kit
+        folder = repo.parent / "kits" / kit
         (folder / "agents").mkdir(parents=True)
         (folder / "kit.yaml").write_text(f"name: {kit}\nversion: 1.0.0\n")
         (folder / "agents" / "reviewer.md").write_text(
             f"---\nname: reviewer\ndescription: reviews for {kit}\n---\nReview.\n"
         )
+        agent_helpers.install_kit(folder)
     log_in(page, server)
     page.get_by_role("button", name="New session").click()
     dialog = page.get_by_role("dialog", name="New session")

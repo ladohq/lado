@@ -291,7 +291,7 @@ def test_the_head_shows_the_remote_and_branch_and_a_kits_version_on_hover(
         )
     )
     head(page).locator(".session-kit").filter(has_text="default").hover()
-    version = kits.find("default", str(repo)).load().version
+    version = kits.find("default").load().version
     tip = page.get_by_role("tooltip")
     expect(tip).to_contain_text(f"default v{version}")
     expect(tip).to_contain_text("installed now: the next agent starts with it")

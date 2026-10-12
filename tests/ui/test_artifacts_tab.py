@@ -62,10 +62,11 @@ def designed_session(repo, tmp_path) -> str:
     """A running session of the fake agent with run ship/x waiting at gate "check": its
     design note carries ship/x/design; the session has a plan, ship/x a screenshot and
     run ship/y a mockup too."""
-    kit = repo / ".lado" / "kits" / "uiflow"
+    kit = repo.parent / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
+    agent_helpers.install_kit(kit)
     session = f"ui-{uuid.uuid4().hex[:6]}"
     runtime.start_session(str(repo), session, None, "fake", ["default", "uiflow"])
     agent_helpers.wait_for(

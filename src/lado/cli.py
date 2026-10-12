@@ -88,8 +88,8 @@ def _start_clone(args: argparse.Namespace) -> int:
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
     runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
-    which = f"branch {args.branch}" if args.branch else "its default branch"
-    print(f"Cloning {runtime.public_remote(url)} ({which}) into {folder}", file=sys.stderr)
+    which = f"branch {args.branch}" if args.branch else "the default branch"
+    print(f"Cloning {which} of {runtime.public_remote(url)} into {folder}", file=sys.stderr)
     shown = _CloneProgress(sys.stderr)
     try:
         clone.clone(url, folder, args.branch, shown)

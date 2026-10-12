@@ -2129,7 +2129,7 @@ def test_clone_and_start(tmp_path, fake_tmux, capsys):
     sess = state.get_session("app")
     assert sess.repo == os.path.realpath(folder)
     captured = capsys.readouterr()
-    assert f"Cloning {url} (branch develop) into {folder}" in captured.err
+    assert f"Cloning branch develop of {url} into {folder}" in captured.err
     assert f'Started session "app" in {sess.repo}' in captured.out
 
 
@@ -2141,7 +2141,7 @@ def test_clone_into_the_default_folder_with_the_remotes_default_branch(
     assert main(["start", url, "--provider", "kilo", "--no-attach"]) == 0
     folder = tmp_path / "home" / "lado" / "app"
     assert _branch_of(folder) == "main"
-    assert f"Cloning {url} (its default branch) into {folder}" in capsys.readouterr().err
+    assert f"Cloning the default branch of {url} into {folder}" in capsys.readouterr().err
 
 
 def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, capsys):

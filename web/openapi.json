@@ -3078,6 +3078,16 @@
               "taken_elsewhere"
             ],
             "title": "Name State"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderSuggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3089,7 +3099,8 @@
           "branch",
           "suggestion",
           "default_name",
-          "name_state"
+          "name_state",
+          "provider"
         ],
         "title": "CloneTarget",
         "description": "The folder a clone would go to, as the core finds it (lado.clone.check_target)."

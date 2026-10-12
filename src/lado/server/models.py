@@ -119,6 +119,7 @@ class CloneTarget(BaseModel):
     suggestion: str | None  # a free folder beside it, for other_repo
     default_name: str  # the name a session started there gets
     name_state: NameState  # as FolderInfo's, before anything is cloned
+    provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
 
 
 class CloneRefused(BaseModel):

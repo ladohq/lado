@@ -1240,6 +1240,7 @@ export interface components {
              * @enum {string}
              */
             name_state: "free" | "running" | "stopped_here" | "taken_elsewhere";
+            provider: components["schemas"]["ProviderSuggestion"] | null;
         };
         /** CommitInfo */
         CommitInfo: {

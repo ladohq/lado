@@ -62,6 +62,7 @@ def target_info(url: str, path: str | None, has_db: bool) -> models.CloneTarget:
         suggestion=target.suggestion,
         default_name=name,
         name_state=launch.name_state(name, os.path.realpath(folder), has_db),
+        provider=launch.provider_suggestion(None),  # a new folder has no last session
     )
 
 

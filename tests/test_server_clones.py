@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from lado import clone, runtime
 from lado.server import app as server_app
-from lado.server import auth, clones
+from lado.server import auth, clones, launch
 
 PORT = 8123
 OWN = "http://testserver"
@@ -88,6 +88,7 @@ def test_a_listing_failure_with_a_hint(client, tmp_path, monkeypatch):
 
 def test_the_clone_target_by_default(client, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(launch, "_installed", lambda provider: False)
     answer = client.get("/api/clone-target", params={"url": "git@github.com:ladohq/lado.git"})
     assert answer.status_code == 200
     assert answer.json() == {
@@ -99,6 +100,7 @@ def test_the_clone_target_by_default(client, tmp_path, monkeypatch):
         "suggestion": None,
         "default_name": "lado",
         "name_state": "free",
+        "provider": None,
     }
 
 
@@ -250,3 +252,11 @@ def test_clone_target_without_lado_db_makes_none(client, lado_home, tmp_path):
     )
     assert answer.json()["name_state"] == "free"
     assert not (lado_home / "lado.db").exists()
+
+
+def test_the_clone_target_suggests_the_only_provider_installed(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(launch, "_installed", lambda provider: provider.name == "codex")
+    answer = client.get(
+        "/api/clone-target", params={"url": "https://h/a/app", "path": str(tmp_path / "app")}
+    )
+    assert answer.json()["provider"] == {"name": "codex", "reason": "only_installed"}

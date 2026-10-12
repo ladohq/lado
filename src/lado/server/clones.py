@@ -11,6 +11,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from lado import clone, runtime
 from lado.server import launch, models
@@ -74,7 +75,7 @@ class Job:
     branch: str | None
     started: float  # time.monotonic()
     seen: float  # when a request last asked about it
-    state: str = "running"
+    state: Literal["running", "done", "failed", "cancelled"] = "running"
     progress: clone.Progress | None = None
     error: runtime.LadoError | None = None
     ended: float | None = None
@@ -88,7 +89,7 @@ class Job:
             url=runtime.public_remote(self.url),
             path=self.path,
             branch=self.branch,
-            state=self.state,  # type: ignore[arg-type]
+            state=self.state,
             progress=models.CloneProgress(
                 phase=progress.phase, percent=progress.percent, detail=progress.detail
             )

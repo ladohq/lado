@@ -46,7 +46,7 @@
 
 ## 4. Web UI
 
-- [ ] 4.1 `Launch.tsx` Clone from URL (D12, mockup v3): vitest in `Launch.test.tsx` for
+- [x] 4.1 `Launch.tsx` Clone from URL (D12, mockup v3): vitest in `Launch.test.tsx` for
   "Branches come by themselves", the default branch marked, a listing failure with the
   hint and Copy, `same_repo` → Use this clone switches to Folder, `other_repo` with the
   suggestion and the button off, the progress bar and Cancel clone (`DELETE` sent), "The

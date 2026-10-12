@@ -3394,6 +3394,45 @@ h3 {
   animation: file-progress 1.1s ease-in-out infinite;
 }
 
+/* A clone from a URL under way (Launch): git tells its phase and percent, so the bar is a
+   real share, unlike .file-progress. */
+.clone-progress {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+}
+
+.clone-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.clone-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--action);
+}
+
+.clone-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.clone-line b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 @keyframes file-progress {
   from {
     left: -40%;
@@ -3800,6 +3839,15 @@ h3 {
 
 .where-box {
   position: relative;
+}
+
+/* The Where field's label and its switch, Folder | Clone from URL. */
+.where-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .where-list {

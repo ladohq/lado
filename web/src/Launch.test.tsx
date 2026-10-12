@@ -5,7 +5,16 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { FolderInfo, KitInfo, ProviderInfo, RecentFolder, SessionAbout, SessionInfo } from "./api";
+import type {
+  CloneJob,
+  CloneTarget,
+  FolderInfo,
+  KitInfo,
+  ProviderInfo,
+  RecentFolder,
+  SessionAbout,
+  SessionInfo,
+} from "./api";
 import { App } from "./App";
 import { FakeEventSource, FakeSocket, stubDialogs, stubLegacyCopy, unstubLegacyCopy } from "./fakes";
 import { BUNDLE_VERSION } from "./version";
@@ -1057,4 +1066,252 @@ test("about is asked again when a kit changes, or the session's kits, and not fo
   await waitFor(() => expect(aboutCalls()).toBe(2));
   stream.send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: changed(["default"]) }, "13");
   await waitFor(() => expect(aboutCalls()).toBe(3));
+});
+
+// Clone from URL (openspec change clone-from-url)
+
+const URL_ = "git@github.com:ladohq/marketplace.git";
+const INTO = "/home/me/lado/marketplace";
+
+function target(more: Partial<CloneTarget> = {}): CloneTarget {
+  return {
+    path: INTO,
+    state: "new",
+    text: "a new folder",
+    origin: null,
+    branch: null,
+    suggestion: null,
+    default_name: "marketplace",
+    name_state: "free",
+    provider: { name: "claude", reason: "only_installed" },
+    ...more,
+  };
+}
+
+function job(more: Partial<CloneJob> = {}): CloneJob {
+  return {
+    id: "j1",
+    url: URL_,
+    path: INTO,
+    branch: "main",
+    state: "running",
+    progress: null,
+    error: null,
+    seconds: 0,
+    ...more,
+  };
+}
+
+const remote = (branches = ["main", "develop", "release/1.2"], fallback: string | null = "main") => () =>
+  json({ url: URL_, branches, default: fallback });
+
+const urlInput = () => screen.getByRole("textbox", { name: /Where/ }) as HTMLInputElement;
+const cloneButton = () => screen.getByRole("button", { name: "Clone and start" }) as HTMLButtonElement;
+const branchSelect = () => screen.getByRole("combobox", { name: "Branch" }) as HTMLSelectElement;
+
+async function cloneSource(url = URL_) {
+  const dialog = await openLaunch();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Clone from URL" }));
+  fireEvent.change(urlInput(), { target: { value: url } });
+  return dialog;
+}
+
+// The form ready to clone: branches listed, the folder new, claude chosen.
+async function cloneReady() {
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = remote();
+  const dialog = await cloneSource();
+  await screen.findByText("✓ repository found · 3 branches");
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+  return dialog;
+}
+
+test("branches come by themselves, the default one chosen and marked; Clone and start waits for them", async () => {
+  let listed: () => void = () => {};
+  const pending = new Promise<void>((resolve) => (listed = resolve));
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = async () => {
+    await pending;
+    return remote()();
+  };
+  const dialog = await cloneSource();
+  expect(within(dialog).getByRole("button", { name: "Clone from URL" }).getAttribute("aria-pressed")).toBe("true");
+  expect(await screen.findByText("fetching branches…")).toBeTruthy();
+  expect(await screen.findByText("✓ a new folder")).toBeTruthy();
+  expect((screen.getByRole("textbox", { name: "Clone into" }) as HTMLInputElement).value).toBe(INTO);
+  expect(cloneButton().disabled).toBe(true);
+  await act(async () => listed());
+  await screen.findByText("✓ repository found · 3 branches");
+  expect(branchSelect().value).toBe("main");
+  expect([...branchSelect().options].map((one) => one.textContent)).toEqual([
+    "main (default)",
+    "develop",
+    "release/1.2",
+  ]);
+  expect(screen.getByText("the repository's default branch")).toBeTruthy();
+  expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("marketplace");
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+  const asked = calls.filter((c) => c.path === "/api/remote-branches");
+  expect(asked).toEqual([{ method: "POST", path: "/api/remote-branches", body: { url: URL_ } }]);
+  const checked = calls.find((c) => c.path.startsWith("/api/clone-target"))!;
+  expect(new URL(checked.path, "http://lado.test").searchParams.get("url")).toBe(URL_);
+});
+
+test("a listing failure shows under the URL with its hint and Copy, and Clone and start stays off", async () => {
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = () =>
+    json(
+      {
+        detail: {
+          message: `cannot read ${URL_}: github.com refused this machine's ssh key (fatal: x)`,
+          kind: "ssh_denied",
+          hint: { text: "Check that this machine's ssh key is added to your account on github.com:", command: "ssh -T git@github.com" },
+        },
+      },
+      400,
+    );
+  await cloneSource();
+  expect(await screen.findByText(/github.com refused this machine's ssh key/)).toBeTruthy();
+  expect(screen.getByText("ssh -T git@github.com").tagName).toBe("CODE");
+  expect(screen.getByRole("button", { name: "Copy command" })).toBeTruthy();
+  expect(cloneButton().disabled).toBe(true);
+});
+
+test("a clone of this repository there offers Use this clone, which switches to Folder and clones nothing", async () => {
+  answers["GET /api/clone-target"] = () =>
+    json(
+      target({
+        state: "same_repo",
+        text: `${INTO} is already a clone of this repository (origin ${URL_}), on branch develop`,
+        origin: URL_,
+        branch: "develop",
+      }),
+    );
+  answers["POST /api/remote-branches"] = remote();
+  folders[INTO] = folder(INTO);
+  const dialog = await cloneSource();
+  expect(await screen.findByText(/is already a clone of this repository/)).toBeTruthy();
+  expect(screen.getByText(/LADO will use it as it is: no clone, no pull, no branch switch/)).toBeTruthy();
+  fireEvent.click(await screen.findByRole("button", { name: "Use this clone" }));
+  expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
+  expect(where().value).toBe(INTO);
+  expect(await screen.findByText(/✓ git repository · branch main/)).toBeTruthy();
+  expect(calls.some((c) => c.path === "/api/clones")).toBe(false);
+});
+
+test("a clone of another repository there says so with a free folder, and Clone and start is off", async () => {
+  const text = `${INTO} is a clone of another repository (origin git@github.com:acme/marketplace.git): choose another folder, e.g. /home/me/lado/ladohq-marketplace`;
+  answers["GET /api/clone-target"] = () => json(target({ state: "other_repo", text }));
+  answers["POST /api/remote-branches"] = remote();
+  await cloneSource();
+  expect(await screen.findByText(text)).toBeTruthy();
+  await screen.findByText("✓ repository found · 3 branches");
+  expect(cloneButton().disabled).toBe(true);
+});
+
+test("a long branch list is a field that filters as the human types", async () => {
+  const many = ["main", ...Array.from({ length: 40 }, (_, i) => `feature/f${String(i).padStart(2, "0")}`)];
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = remote(many);
+  await cloneSource();
+  await screen.findByText("✓ repository found · 41 branches");
+  const field = screen.getByRole("combobox", { name: "Branch" }) as HTMLInputElement;
+  expect(field.tagName).toBe("INPUT");
+  expect(field.value).toBe("main");
+  fireEvent.change(field, { target: { value: "f1" } });
+  const listed = await screen.findByRole("listbox", { name: "Branches" });
+  expect(within(listed).getAllByRole("option").map((one) => one.textContent)).toEqual(
+    Array.from({ length: 10 }, (_, i) => `feature/f1${i}`),
+  );
+  fireEvent.mouseDown(within(listed).getByText("feature/f12"));
+  expect(field.value).toBe("feature/f12");
+});
+
+test("the clone shows its progress, the window cannot be closed, and Cancel clone stops it", async () => {
+  let current = job({ branch: "develop" });
+  answers["POST /api/clones"] = () => json(current);
+  answers["GET /api/clones/j1"] = () => json(current);
+  answers["DELETE /api/clones/j1"] = () => {
+    current = job({ branch: "develop", state: "cancelled", seconds: 7 });
+    return json(current);
+  };
+  const dialog = await cloneReady();
+  fireEvent.change(branchSelect(), { target: { value: "develop" } });
+  fireEvent.click(cloneButton());
+  expect(await screen.findByRole("button", { name: "Cloning…" })).toBeTruthy();
+  const sent = calls.find((c) => c.method === "POST" && c.path === "/api/clones")!;
+  expect(sent.body).toEqual({ url: URL_, path: INTO, branch: "develop" });
+  current = job({
+    branch: "develop",
+    progress: { phase: "Receiving objects", percent: 45, detail: "12.30 MiB | 2.10 MiB/s" },
+    seconds: 6,
+  });
+  expect(await screen.findByText("Receiving objects")).toBeTruthy();
+  expect(screen.getByText(/· 45%/)).toBeTruthy();
+  expect(screen.getByText("12.30 MiB | 2.10 MiB/s")).toBeTruthy();
+  expect(screen.getByText(`cloning branch develop into ${INTO} · 0:06`)).toBeTruthy();
+  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("45");
+  expect((within(dialog).getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(urlInput().disabled).toBe(true);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.getByRole("dialog", { name: "New session" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel clone" }));
+  await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.path === "/api/clones/j1")).toBe(true));
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+  expect(screen.getByText("the clone was cancelled")).toBeTruthy();
+  expect(calls.some((c) => c.path === "/api/sessions" && c.method === "POST")).toBe(false);
+});
+
+test("a finished clone starts the session in the cloned folder and opens it", async () => {
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => json(job({ state: "done", seconds: 3 }));
+  answers["POST /api/sessions"] = () =>
+    json({ session: session("marketplace", { repo: INTO }), resumed: false, changes: [], problems: [], lead: "", warnings: [] });
+  await cloneReady();
+  fireEvent.click(cloneButton());
+  expect(await screen.findByRole("region", { name: "Session marketplace" })).toBeTruthy();
+  const sent = calls.find((c) => c.method === "POST" && c.path === "/api/sessions")!;
+  expect(sent.body).toEqual({
+    where: { kind: "folder", path: INTO },
+    name: "marketplace",
+    kits: ["default"],
+    provider: "claude",
+  });
+});
+
+test("a failed clone shows why with its hint and keeps the form", async () => {
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () =>
+    json(
+      job({
+        state: "failed",
+        error: { message: `cannot clone ${URL_}: no branch dev (fatal: x)`, kind: "no_branch", hint: null },
+      }),
+    );
+  const dialog = await cloneReady();
+  fireEvent.click(cloneButton());
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(`cannot clone ${URL_}: no branch dev (fatal: x)`);
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+});
+
+test("a name taken after the clone switches the window to Folder with the clone and the refusal", async () => {
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => json(job({ state: "done" }));
+  answers["POST /api/sessions"] = () =>
+    json(
+      {
+        detail: {
+          message: 'session "marketplace" exists already (running, in /src/other)',
+          status: "running",
+          repo: "/src/other",
+        },
+      },
+      409,
+    );
+  folders[INTO] = folder(INTO);
+  const dialog = await cloneReady();
+  fireEvent.click(cloneButton());
+  expect((await within(dialog).findByRole("alert")).textContent).toContain('session "marketplace" exists already');
+  expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
+  expect(where().value).toBe(INTO);
 });

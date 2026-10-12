@@ -7,17 +7,26 @@ import { useNavigate } from "react-router";
 
 import {
   ApiError,
+  cancelClone,
+  getClone,
+  getCloneTarget,
   getFolder,
   getKits,
   getProviders,
   getRecentFolders,
+  getRemoteBranches,
   resumeSession,
+  startClone,
   startSession,
+  type CloneJob,
+  type CloneRefused,
+  type CloneTarget,
   type FolderInfo,
   type KitInfo,
   type ProviderInfo,
   type ProviderSuggestion,
   type RecentFolder,
+  type RemoteInfo,
   type SessionInfo,
   type Refused,
   type Started,
@@ -29,6 +38,14 @@ import { sessionPath } from "./paths";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
+// The same before it asks a remote for its branches, which goes to the network.
+export const BRANCHES_DEBOUNCE = 500;
+// How often the window asks for its clone job; the server cancels one no one asks about.
+export const CLONE_POLL = 500;
+// Up to this many branches the Branch field is a list; more, a field that filters them.
+export const BRANCH_LIST = 30;
+// The target states a clone may start in (lado.clone.CAN_CLONE).
+const CAN_CLONE = new Set<CloneTarget["state"]>(["new", "empty"]);
 
 const DEFAULT_KIT = "default";
 const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
@@ -77,7 +94,8 @@ function useDebounced<T>(value: T, ms = DEBOUNCE): T {
   return settled;
 }
 
-type Asked<T> = { value: T } | { error: string } | null; // null: asking
+// null: asking; an error's `detail` is the server's (a CloneRefused for a clone)
+type Asked<T> = { value: T } | { error: string; detail?: unknown } | null;
 
 // The server's answer to `ask(key)`, asked again when `key` changes; nothing for a null key.
 function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>): Asked<T> {
@@ -87,7 +105,12 @@ function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>): Aske
     let current = true;
     ask(key).then(
       (value) => current && setAsked({ key, answer: { value } }),
-      (error: unknown) => current && setAsked({ key, answer: { error: messageOf(error) } }),
+      (error: unknown) =>
+        current &&
+        setAsked({
+          key,
+          answer: { error: messageOf(error), detail: error instanceof ApiError ? error.detail : undefined },
+        }),
     );
     return () => {
       current = false;
@@ -124,6 +147,22 @@ const switchOffLabel = (item: string) => {
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((one, i) => one === b[i]);
 
+// A refusal's detail as a CloneRefused, when it is one (its hint shown with Copy).
+const cloneRefused = (detail: unknown): CloneRefused | null =>
+  detail !== null && typeof detail === "object" && "kind" in detail ? (detail as CloneRefused) : null;
+
+const elapsed = (seconds: number) => {
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+};
+
+// The branch a clone takes unless the human picks one: the remote's default, else main,
+// else master, else the first.
+const defaultBranch = (remote: RemoteInfo) =>
+  remote.default ?? ["main", "master"].find((one) => remote.branches.includes(one)) ?? remote.branches[0];
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function LaunchDialog({
   mode,
   onMode,
@@ -153,10 +192,50 @@ function LaunchDialog({
   const [modeNote, setModeNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<ApiError | null>(null);
+  // Clone from URL: the URL, the folder (null: the default one), the branch the human picked
+  // for which URL, the running job, and what the last clone ended in.
+  const [source, setSource] = useState<"folder" | "url">("folder");
+  const [url, setUrl] = useState("");
+  const [into, setInto] = useState<string | null>(null);
+  const [picked, setPicked] = useState<{ url: string; branch: string } | null>(null);
+  const [job, setJob] = useState<CloneJob | null>(null);
+  const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
+  const branchesAsked = useRef(new Map<string, Promise<RemoteInfo>>());
+  const alive = useRef(true);
 
   useEffect(() => {
     dialog.current?.showModal();
+    return () => {
+      alive.current = false;
+    };
   }, []);
+
+  const cloning = source === "url";
+  const typedUrl = url.trim();
+  const typedInto = (into ?? "").trim();
+  const settledUrl = useDebounced(typedUrl);
+  const settledInto = useDebounced(typedInto);
+  const targetAsked = useAsked(cloning && settledUrl ? JSON.stringify([settledUrl, settledInto]) : null, (key) => {
+    const [asked, path] = JSON.parse(key) as [string, string];
+    return getCloneTarget(asked, path || null);
+  });
+  const target = settledUrl === typedUrl && settledInto === typedInto ? valueOf(targetAsked) : null;
+  const branchesUrl = useDebounced(typedUrl, BRANCHES_DEBOUNCE);
+  // Each URL's branches are asked once in the window's life.
+  const remoteAsked = useAsked(cloning && branchesUrl ? branchesUrl : null, (asked) => {
+    const known = branchesAsked.current.get(asked);
+    if (known) return known;
+    const listing = getRemoteBranches(asked);
+    listing.catch(() => branchesAsked.current.delete(asked)); // asked again after a failure
+    branchesAsked.current.set(asked, listing);
+    return listing;
+  });
+  const remote = branchesUrl === typedUrl ? valueOf(remoteAsked) : null;
+  const branch = remote
+    ? picked?.url === typedUrl && remote.branches.includes(picked.branch)
+      ? picked.branch
+      : defaultBranch(remote)
+    : null;
 
   const settled = useDebounced(path.trim());
   const checked = useAsked(resuming || !settled ? null : settled, getFolder);
@@ -183,17 +262,20 @@ function LaunchDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [last?.name, folder?.root]);
 
-  // No provider is the default: the folder's suggestion, with its reason, or none.
+  // No provider is the default: the folder's suggestion (a clone's folder's), with its
+  // reason, or none.
+  const suggesting = cloning ? target : folder;
   useEffect(() => {
-    if (resuming || folder === null || touched.has("provider")) return;
-    setProvider(folder.provider?.name ?? null);
-    setSuggested(folder.provider?.reason ?? null);
+    if (resuming || suggesting === null || touched.has("provider")) return;
+    setProvider(suggesting.provider?.name ?? null);
+    setSuggested(suggesting.provider?.reason ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folder?.path, folder?.provider?.name, folder?.provider?.reason]);
+  }, [suggesting?.path, suggesting?.provider?.name, suggesting?.provider?.reason]);
 
   const touch = (field: string) => setTouched((before) => new Set(before).add(field));
 
-  const shownName = name ?? current?.default_name ?? "";
+  const named = cloning ? target : current;
+  const shownName = name ?? named?.default_name ?? "";
   const resumable = (sessionName: string) => {
     const loaded = live.sessions;
     return loaded && "sessions" in loaded ? loaded.sessions.find((one) => one.name === sessionName) : undefined;
@@ -219,6 +301,77 @@ function LaunchDialog({
 
   const ready =
     (resuming !== null || ((current?.ok ?? false) && providerInfo?.installed === true)) && kits.length > 0;
+  const cloneReady =
+    remote !== null &&
+    target !== null &&
+    CAN_CLONE.has(target.state) &&
+    providerInfo?.installed === true &&
+    kits.length > 0 &&
+    shownName !== "";
+
+  // A new session in `where`, as the window's fields say.
+  const startIn = (where: string) => {
+    const off = splitWithout(without);
+    return startSession({
+      where: { kind: "folder", path: where },
+      ...(shownName ? { name: shownName } : {}),
+      kits,
+      ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
+      ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
+      ...(off.length ? { without: off } : {}),
+    });
+  };
+
+  const opened = (started: Started) => {
+    onClose();
+    const state: StartedState = { started };
+    navigate(sessionPath(started.session.name, "activity"), { state });
+  };
+
+  const toFolder = (where: string) => {
+    setSource("folder");
+    setPath(where);
+  };
+
+  // Clone, then start in the clone as Start does for a folder; a start refused after the
+  // clone leaves the window in Folder with the clone and the refusal.
+  const cloneAndStart = async () => {
+    if (target === null || branch === null) return;
+    setBusy(true);
+    setRefused(null);
+    setCloneEnd(null);
+    let running: CloneJob;
+    try {
+      running = await startClone({ url: typedUrl, path: target.path, branch });
+      setJob(running);
+      while (running.state === "running") {
+        await pause(CLONE_POLL);
+        if (!alive.current) return;
+        running = await getClone(running.id);
+        setJob(running);
+      }
+    } catch (error) {
+      const given = error instanceof ApiError ? error : new ApiError(0, String(error));
+      const why = cloneRefused(given.detail);
+      setCloneEnd({ refused: why ?? { message: given.message, kind: "refused", hint: null } });
+      setJob(null);
+      setBusy(false);
+      return;
+    }
+    setJob(null);
+    if (running.state !== "done") {
+      setCloneEnd(running.error ? { refused: running.error } : { note: "the clone was cancelled" });
+      setBusy(false);
+      return;
+    }
+    try {
+      opened(await startIn(running.path));
+    } catch (error) {
+      toFolder(running.path);
+      setRefused(error instanceof ApiError ? error : new ApiError(0, String(error)));
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -234,18 +387,9 @@ function LaunchDialog({
         if (!sameList(off, resuming.without)) changed.without = off;
         started = await resumeSession(resuming.name, changed);
       } else {
-        started = await startSession({
-          where: { kind: "folder", path: path.trim() },
-          ...(shownName ? { name: shownName } : {}),
-          kits,
-          ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
-          ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
-          ...(off.length ? { without: off } : {}),
-        });
+        started = await startIn(path.trim());
       }
-      onClose();
-      const state: StartedState = { started };
-      navigate(sessionPath(started.session.name, "activity"), { state });
+      opened(started);
     } catch (error) {
       setRefused(error instanceof ApiError ? error : new ApiError(0, String(error)));
       setBusy(false);
@@ -281,7 +425,9 @@ function LaunchDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (ready && !busy) void submit();
+          if (busy) return;
+          if (!cloning && ready) void submit();
+          if (cloning && cloneReady) void cloneAndStart();
         }}
       >
         <div className="launch-head">
@@ -291,20 +437,64 @@ function LaunchDialog({
           </button>
         </div>
 
-        <WhereField
-          path={path}
-          onPath={(next) => {
-            setPath(next);
-            setRefused(null);
-          }}
-          folder={current}
-          checking={!resuming && path.trim() !== "" && current === null}
-          problem={checked !== null && "error" in checked ? checked.error : null}
-          recent={recent}
-          disabled={busy || resuming !== null}
-        />
+        {cloning ? (
+          <UrlField
+            url={url}
+            onUrl={(next) => {
+              setUrl(next);
+              setRefused(null);
+              setCloneEnd(null);
+            }}
+            listing={typedUrl !== "" && remote === null && (remoteAsked === null || branchesUrl !== typedUrl)}
+            remote={remote}
+            failed={branchesUrl === typedUrl && remoteAsked !== null && "error" in remoteAsked ? remoteAsked : null}
+            head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
+            disabled={busy}
+          />
+        ) : (
+          <WhereField
+            path={path}
+            onPath={(next) => {
+              setPath(next);
+              setRefused(null);
+            }}
+            folder={current}
+            checking={!resuming && path.trim() !== "" && current === null}
+            problem={checked !== null && "error" in checked ? checked.error : null}
+            recent={recent}
+            disabled={busy || resuming !== null}
+            head={resuming ? null : <SourceSwitch source={source} onSource={setSource} disabled={busy} />}
+          />
+        )}
 
         <div className="launch-grid">
+          {cloning && (
+            <>
+              <div className="field launch-where">
+                <label htmlFor={`${ids}-into`}>Clone into</label>
+                <input
+                  id={`${ids}-into`}
+                  value={into ?? target?.path ?? ""}
+                  placeholder="~/lado/<repo>"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={busy}
+                  onChange={(event) => setInto(event.target.value)}
+                />
+                <TargetNote
+                  target={target}
+                  problem={targetAsked !== null && "error" in targetAsked ? targetAsked.error : null}
+                />
+              </div>
+              <BranchField
+                remote={remote}
+                failed={typedUrl !== "" && remoteAsked !== null && "error" in remoteAsked}
+                branch={branch}
+                onBranch={(next) => setPicked({ url: typedUrl, branch: next })}
+                disabled={busy}
+              />
+            </>
+          )}
           <div className="field">
             <label htmlFor={`${ids}-name`}>Name</label>
             <input
@@ -313,8 +503,8 @@ function LaunchDialog({
               disabled={busy || resuming !== null}
               onChange={(event) => setName(event.target.value)}
             />
-            {!resuming && name === null && current && (
-              <NameHint folder={current} onResume={() => resumeIt(current.default_name ?? "")} />
+            {!resuming && name === null && named && (
+              <NameHint folder={named} onResume={() => resumeIt(named.default_name ?? "")} />
             )}
           </div>
 
@@ -409,6 +599,32 @@ function LaunchDialog({
           </span>
         </details>
 
+        {cloning && target && (target.state === "same_repo" || target.state === "other_repo") && (
+          <div className={`field-note ${target.state === "same_repo" ? "ok" : "bad"}`}>
+            {target.state === "same_repo"
+              ? `✓ ${target.text}. LADO will use it as it is: no clone, no pull, no branch switch.`
+              : target.text}
+          </div>
+        )}
+
+        {job && <CloneProgress job={job} />}
+
+        {cloneEnd && "note" in cloneEnd && (
+          <p className="field-note" role="status">
+            {cloneEnd.note}
+          </p>
+        )}
+        {cloneEnd && "refused" in cloneEnd && (
+          <div className="launch-refused">
+            <p className="problem" role="alert">
+              {cloneEnd.refused.message}
+            </p>
+            {cloneEnd.refused.hint && (
+              <FolderHint text={cloneEnd.refused.hint.text} command={cloneEnd.refused.hint.command} />
+            )}
+          </div>
+        )}
+
         {refused && (
           <div className="launch-refused">
             <p className="problem" role="alert">
@@ -446,12 +662,35 @@ function LaunchDialog({
         )}
 
         <div className="launch-buttons">
-          <button type="button" className="quiet" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button type="submit" className="primary" disabled={busy || !ready}>
-            {busy ? (resuming ? "Resuming…" : "Starting…") : title === "New session" ? "Start session" : title}
-          </button>
+          {job ? (
+            <button type="button" className="quiet" onClick={() => void cancelClone(job.id).catch(() => {})}>
+              Cancel clone
+            </button>
+          ) : (
+            <button type="button" className="quiet" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+          )}
+          {!cloning ? (
+            <button type="submit" className="primary" disabled={busy || !ready}>
+              {busy ? (resuming ? "Resuming…" : "Starting…") : title === "New session" ? "Start session" : title}
+            </button>
+          ) : target?.state === "same_repo" && !busy ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setRefused(null);
+                toFolder(target.path);
+              }}
+            >
+              Use this clone
+            </button>
+          ) : (
+            <button type="submit" className="primary" disabled={busy || !cloneReady}>
+              {job ? "Cloning…" : busy ? "Starting…" : "Clone and start"}
+            </button>
+          )}
         </div>
       </form>
     </dialog>
@@ -466,6 +705,7 @@ function WhereField({
   problem,
   recent,
   disabled,
+  head,
 }: {
   path: string;
   onPath: (path: string) => void;
@@ -474,6 +714,7 @@ function WhereField({
   problem: string | null;
   recent: RecentFolder[];
   disabled: boolean;
+  head: ReactNode; // the switch to Clone from URL, beside the label
 }) {
   const ids = useId();
   const [open, setOpen] = useState(false);
@@ -496,9 +737,10 @@ function WhereField({
 
   return (
     <div className="field launch-where">
-      <label htmlFor={`${ids}-where`}>
-        Where <span className="muted">· a folder (projects come later)</span>
-      </label>
+      <div className="where-head">
+        <label htmlFor={`${ids}-where`}>Where</label>
+        {head}
+      </div>
       <div className="where-box">
         <input
           id={`${ids}-where`}
@@ -579,6 +821,239 @@ function WhereField({
   );
 }
 
+// Where a session's folder comes from: one there is, or a clone of a git URL.
+function SourceSwitch({
+  source,
+  onSource,
+  disabled,
+}: {
+  source: "folder" | "url";
+  onSource: (source: "folder" | "url") => void;
+  disabled: boolean;
+}) {
+  return (
+    <span className="segments" role="group" aria-label="Source">
+      <button type="button" aria-pressed={source === "folder"} disabled={disabled} onClick={() => onSource("folder")}>
+        Folder
+      </button>
+      <button type="button" aria-pressed={source === "url"} disabled={disabled} onClick={() => onSource("url")}>
+        Clone from URL
+      </button>
+    </span>
+  );
+}
+
+function UrlField({
+  url,
+  onUrl,
+  listing,
+  remote,
+  failed,
+  head,
+  disabled,
+}: {
+  url: string;
+  onUrl: (url: string) => void;
+  listing: boolean;
+  remote: RemoteInfo | null;
+  failed: { error: string; detail?: unknown } | null;
+  head: ReactNode;
+  disabled: boolean;
+}) {
+  const ids = useId();
+  const why = failed ? cloneRefused(failed.detail) : null;
+  return (
+    <div className="field launch-where">
+      <div className="where-head">
+        <label htmlFor={`${ids}-url`}>Where</label>
+        {head}
+      </div>
+      <input
+        id={`${ids}-url`}
+        value={url}
+        placeholder="git@github.com:owner/repo.git or https://…"
+        autoComplete="off"
+        spellCheck={false}
+        disabled={disabled}
+        onChange={(event) => onUrl(event.target.value)}
+      />
+      {listing && <span className="field-note">checking the repository…</span>}
+      {remote && (
+        <span className="field-note ok">
+          ✓ repository found · {remote.branches.length} branch{remote.branches.length === 1 ? "" : "es"}
+        </span>
+      )}
+      {failed && (
+        <div className="field-note bad">
+          <div>{why?.message ?? failed.error}</div>
+          {why?.hint && <FolderHint text={why.hint.text} command={why.hint.command} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The clone's folder as the core finds it; another repository's clone or a clone of this
+// one are told under the fields, in full.
+function TargetNote({ target, problem }: { target: CloneTarget | null; problem: string | null }) {
+  if (problem) return <span className="field-note bad">{problem}</span>;
+  if (target === null || target.state === "same_repo" || target.state === "other_repo") return null;
+  if (CAN_CLONE.has(target.state)) return <span className="field-note ok">✓ {target.text}</span>;
+  return <span className="field-note bad">{target.text}</span>;
+}
+
+function BranchField({
+  remote,
+  failed,
+  branch,
+  onBranch,
+  disabled,
+}: {
+  remote: RemoteInfo | null;
+  failed: boolean;
+  branch: string | null;
+  onBranch: (branch: string) => void;
+  disabled: boolean;
+}) {
+  const ids = useId();
+  const label = (one: string) => (one === remote?.default ? `${one} (default)` : one);
+  return (
+    <div className="field">
+      <label htmlFor={`${ids}-branch`}>Branch</label>
+      {remote && remote.branches.length > BRANCH_LIST ? (
+        <BranchCombo id={`${ids}-branch`} remote={remote} branch={branch} onBranch={onBranch} disabled={disabled} />
+      ) : (
+        <select
+          id={`${ids}-branch`}
+          value={remote ? (branch ?? "") : ""}
+          disabled={disabled || remote === null}
+          onChange={(event) => onBranch(event.target.value)}
+        >
+          {remote === null ? (
+            <option value="">{failed ? "—" : "fetching branches…"}</option>
+          ) : (
+            remote.branches.map((one) => (
+              <option key={one} value={one}>
+                {label(one)}
+              </option>
+            ))
+          )}
+        </select>
+      )}
+      {remote && branch === remote.default && <span className="field-note">the repository's default branch</span>}
+    </div>
+  );
+}
+
+// A long branch list: a field that lists the branches holding what is typed.
+function BranchCombo({
+  id,
+  remote,
+  branch,
+  onBranch,
+  disabled,
+}: {
+  id: string;
+  remote: RemoteInfo;
+  branch: string | null;
+  onBranch: (branch: string) => void;
+  disabled: boolean;
+}) {
+  const [typed, setTyped] = useState<string | null>(null); // null: the branch chosen
+  const [active, setActive] = useState(-1);
+  const shown = typed ?? branch ?? "";
+  const options = typed === null ? [] : remote.branches.filter((one) => one.includes(typed) && one !== typed);
+  const pick = (one: string) => {
+    onBranch(one);
+    setTyped(null);
+    setActive(-1);
+  };
+  return (
+    <div className="where-box">
+      <input
+        id={id}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={options.length > 0}
+        aria-controls={`${id}-list`}
+        aria-activedescendant={active >= 0 && options[active] ? `${id}-option-${active}` : undefined}
+        value={shown}
+        autoComplete="off"
+        spellCheck={false}
+        disabled={disabled}
+        onChange={(event) => {
+          setTyped(event.target.value);
+          setActive(-1);
+          if (remote.branches.includes(event.target.value)) onBranch(event.target.value);
+        }}
+        onBlur={() => setTyped(null)}
+        onKeyDown={(event) => {
+          if (options.length === 0) return;
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            const step = event.key === "ArrowDown" ? 1 : -1;
+            setActive((at) => (at + step + options.length) % options.length);
+          } else if (event.key === "Enter" && active >= 0) {
+            event.preventDefault();
+            pick(options[active]);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setTyped(null);
+          }
+        }}
+      />
+      {options.length > 0 && (
+        <ul id={`${id}-list`} role="listbox" aria-label="Branches" className="where-list">
+          {options.map((one, i) => (
+            <li
+              key={one}
+              id={`${id}-option-${i}`}
+              role="option"
+              aria-selected={i === active}
+              onMouseDown={(event) => {
+                event.preventDefault(); // keep the input's focus
+                pick(one);
+              }}
+            >
+              {one === remote.default ? `${one} (default)` : one}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CloneProgress({ job }: { job: CloneJob }) {
+  const progress = job.progress;
+  const percent = progress?.percent ?? 0;
+  return (
+    <div className="clone-progress" role="status">
+      <div className="clone-line">
+        <span>
+          <b>{progress?.phase ?? "Starting git"}</b> · {percent}%
+        </span>
+        <span>{progress?.detail ?? ""}</span>
+      </div>
+      <div
+        className="clone-bar"
+        role="progressbar"
+        aria-label="Clone"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+      >
+        <span style={{ width: `${percent}%` }} />
+      </div>
+      <div className="clone-line">
+        <span>
+          cloning {job.branch ? `branch ${job.branch}` : "the default branch"} into {job.path} · {elapsed(job.seconds)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // What the human can do about the folder (the core's hint): its sentence, then its command
 // to copy. When no copy works, the command is selected to copy by hand.
 function FolderHint({ text, command }: { text: string; command: string }) {
@@ -606,7 +1081,13 @@ function FolderHint({ text, command }: { text: string; command: string }) {
   );
 }
 
-function NameHint({ folder, onResume }: { folder: FolderInfo; onResume: () => void }) {
+function NameHint({
+  folder,
+  onResume,
+}: {
+  folder: Pick<FolderInfo, "default_name" | "name_state">;
+  onResume: () => void;
+}) {
   const name = folder.default_name;
   if (folder.name_state === "running") return <span className="field-note">"{name}" is taken by a running session</span>;
   if (folder.name_state === "taken_elsewhere") {

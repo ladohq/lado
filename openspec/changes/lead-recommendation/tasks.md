@@ -6,7 +6,7 @@ steps). Design doc: `docs/superpowers/specs/2026-10-12-lead-recommendation-desig
 - [x] 1.1 Schema 26: six columns on `gates` and `messages`, the `MIGRATIONS` step,
   `state.Gate` / `state.Message` fields, `tests/agent_helpers.previous_schema`. Check:
   `tests/test_state.py` migration tests, `make test`.
-- [ ] 1.2 `state.ask_recommendation`, `state.recommend` (conditional update),
+- [x] 1.2 `state.ask_recommendation`, `state.recommend` (conditional update),
   `state._drop_request` in every gate- and question-closing transaction,
   `state.recommendations_missed`, `missing` on the lead's end and on `stop_session`.
   Check: `uv run pytest tests/test_state.py -n auto -k recommend`.

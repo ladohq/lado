@@ -502,6 +502,7 @@ def accepts_input(status: str) -> bool:
 LADO = "lado"  # the sender of LADO's own messages and the actor of its own events
 HUMAN = "human"  # the human as a participant of messages: no agent, no window
 RESERVED = frozenset({LADO, HUMAN})  # senders of messages that no agent may be named
+LEAD = "supervisor"  # the lead's agent name (lado.runtime.SUPERVISOR)
 
 # Message states. A message typed into an agent's window is only "sent" until the agent's
 # prompt-submit hook confirms it, or the agent reads it (read_messages); a modal dialog in
@@ -1036,6 +1037,7 @@ def _stop_session(db: sqlite3.Connection, name: str, note: str) -> tuple[list, i
         if row["status"] != STOPPED:
             _add_event(db, name, row["name"], STATUS, STOPPED)
     db.execute("DELETE FROM agents WHERE session = ?", (name,))
+    _missed(db, name)
     _close_questions(db, name)
     dropped = db.execute(
         f"UPDATE messages SET state = ? WHERE session = ? AND {UNRECEIVED}",
@@ -1167,12 +1169,12 @@ def delete_agent(session: str, name: str) -> None:
 
 def _close_questions(db: sqlite3.Connection, session: str, sender: str | None = None) -> None:
     """Close the open questions of `sender` (default: of every agent of the session): no
-    agent is left to get their answer."""
-    db.execute(
-        "UPDATE messages SET question_state = ? WHERE session = ? AND kind = ?"
-        " AND question_state = ? AND (? IS NULL OR sender = ?)",
-        (CLOSED, session, QUESTION, OPEN_QUESTION, sender, sender),
-    )
+    agent is left to get their answer. A request for the lead's recommendation on one of
+    them still in its queue is dropped."""
+    where = "session = ? AND kind = ? AND question_state = ? AND (? IS NULL OR sender = ?)"
+    args = (session, QUESTION, OPEN_QUESTION, sender, sender)
+    _drop_requests(db, "messages", where, args)
+    db.execute(f"UPDATE messages SET question_state = ? WHERE {where}", (CLOSED, *args))
 
 
 def agent_ended(session: str, name: str, reason: str) -> list["Message"] | None:
@@ -1197,6 +1199,8 @@ def agent_ended(session: str, name: str, reason: str) -> list["Message"] | None:
             f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE {where} ORDER BY id", args
         ).fetchall()
         db.execute(f"UPDATE messages SET state = ? WHERE {where}", (DROPPED, *args))
+        if name == LEAD:
+            _missed(db, session)
         _close_questions(db, session, name)
         db.execute("COMMIT")
     return [_message(r, state=DROPPED) for r in rows]
@@ -1681,6 +1685,7 @@ def _close_gate(
     ).fetchone()
     if row is None or (gate_id is not None and row["id"] != gate_id):
         return gate_id is None
+    _drop_requests(db, "gates", "id = ?", (row["id"],))
     db.execute(
         "UPDATE gates SET answer = ?, comment = ?, answered_by = ?,"
         " answered_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
@@ -2039,6 +2044,7 @@ def reply_to_question(
             " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (session, HUMAN, row["sender"], summary, body, question, choice),
         ).lastrowid
+        _drop_requests(db, "messages", "id = ?", (question,))
         db.execute(
             "UPDATE messages SET question_state = ?, answered_by = ? WHERE id = ?",
             (outcome, reply, question),
@@ -2064,6 +2070,111 @@ def check_replies(session: str, agent: str) -> None:
             " WHERE session = ? AND sender = ? AND recipient = ? AND state IN (?, ?)"
             " AND reply_state IS NULL AND reply_to IS NULL",
             (HUMAN, REPLIED, MISSING, session, HUMAN, agent, DELIVERED, READ),
+        )
+
+
+# What the lead's recommendation is on: a gate, or a question to the human (a message of
+# kind QUESTION). Each with its table and the condition of an open one.
+GATE = "gate"
+RECOMMENDED = {
+    GATE: ("gates", "answer IS NULL"),
+    QUESTION: ("messages", f"kind = '{QUESTION}' AND question_state = '{OPEN_QUESTION}'"),
+}
+
+
+def ask_recommendation(
+    session: str,
+    kind: str,
+    item: int,
+    summary: str | None,
+    body: str,
+    attachments: Attached = (),
+    before_start: bool = False,
+) -> int | None:
+    """Ask the lead for its recommendation on the open gate or question `item` (`kind` GATE
+    or QUESTION): queue a message from LADO to the lead, pending, with the artifacts
+    attached, and mark the item REC_ASKED with the request's id, in one transaction.
+    `summary` None: the request goes in a tool's result (a notice), so only the mark.
+    Returns the request's id; None for a notice, and with nothing changed when the item is
+    not open. NotRunning, with nothing changed, when the lead does not run, but with
+    `before_start` (a resumed session's lead, before its first hook)."""
+    table, open_ = RECOMMENDED[kind]
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        request = None
+        if summary is not None:
+            if not before_start:
+                _check_running(db, session, LEAD)
+            request = db.execute(
+                "INSERT INTO messages (session, sender, recipient, summary, body, created_at)"
+                " VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+                (session, LADO, LEAD, summary, body),
+            ).lastrowid
+            _attach(db, "message", request, attachments)
+        if not db.execute(
+            f"UPDATE {table} SET recommendation_state = ?, recommendation_request = ?"
+            f" WHERE session = ? AND id = ? AND {open_}",
+            (REC_ASKED, request, session, item),
+        ).rowcount:
+            db.execute("ROLLBACK")
+            return None
+        db.execute("COMMIT")
+    return request
+
+
+def recommend(kind: str, item: int, text: str, choice: str | None, disagrees: bool) -> bool:
+    """Store the lead's recommendation on the gate or question `item` (`kind` as for
+    ask_recommendation), replacing an earlier one, in one conditional update: False, with
+    nothing changed, when it is not open (an answer came in between)."""
+    table, open_ = RECOMMENDED[kind]
+    with connect() as db:
+        return bool(
+            db.execute(
+                f"UPDATE {table} SET recommendation_state = ?, recommendation = ?,"
+                " recommended_choice = ?, recommendation_disagrees = ?,"
+                " recommended_at = strftime('%Y-%m-%d %H:%M:%f', 'now')"
+                f" WHERE id = ? AND {open_}",
+                (REC_GIVEN, text, choice, int(disagrees), item),
+            ).rowcount
+        )
+
+
+def _drop_requests(db: sqlite3.Connection, table: str, where: str, args: tuple) -> None:
+    """Drop the requests for a recommendation still pending in the lead's queue of the
+    rows of `table` that `where` selects, which are being closed: the lead never gets them.
+    One handed over already stays."""
+    db.execute(
+        "UPDATE messages SET state = ? WHERE state = ? AND id IN"
+        f" (SELECT recommendation_request FROM {table} WHERE {where})",
+        (DROPPED, PENDING, *args),
+    )
+
+
+def recommendations_missed(session: str) -> None:
+    """At the end of the lead's turn: each open gate and question of the session whose
+    recommendation is asked and whose request the lead got (a notice in a tool's result,
+    or a message handed over and confirmed) is REC_MISSING. One whose request still waits in
+    the queue, or is handed over and not confirmed, stays asked."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        _missed(
+            db,
+            session,
+            "AND (recommendation_request IS NULL OR recommendation_request IN"
+            " (SELECT id FROM messages WHERE state IN (?, ?)))",
+            (DELIVERED, READ),
+        )
+        db.execute("COMMIT")
+
+
+def _missed(db: sqlite3.Connection, session: str, where: str = "", args: tuple = ()) -> None:
+    """Every open gate and question of the session whose recommendation is asked, and that
+    `where` selects, is REC_MISSING: the lead ended, or the session stops, without it."""
+    for table, open_ in RECOMMENDED.values():
+        db.execute(
+            f"UPDATE {table} SET recommendation_state = ? WHERE session = ? AND {open_}"
+            f" AND recommendation_state = ? {where}",
+            (REC_MISSING, session, REC_ASKED, *args),
         )
 
 

@@ -19,9 +19,9 @@ relative to the kit's. A pack is SKILL.md folders (anywhere under skills/, or un
 
 Kits are looked up by name among the kits the user installed, then among the kits built
 into LADO; the first hit wins. A repository's own folders are never read for kits, so the
-kits are the same whatever the session's folder. An installed kit is a
-row in lado.db (state.InstalledKit), made by `lado kits add`: a kit from git by its address,
-version tag and the tag's commit, read from its clone in the git cache
+kits are the same whatever the session's folder. An installed kit is a row in lado.db
+(state.InstalledKit), made by `lado kits add`: a kit from git by its address, version tag
+and the tag's commit, read from its clone in the git cache
 (gitcache.clone_dir(address, tag), not kept), or a folder read in place; the marketplace it
 was added from (-m) is kept with it. Its folder's name need not be the kit's, but its
 kit.yaml must still give the row's name. A kit is one repository with kit.yaml at its root,

@@ -263,12 +263,14 @@ test("a question is answered with a choice; the card waits for the feed to say s
   stream().send("change", changed(message(6, "human", "w1", "Answer to #5: yes", { reply_to: 5, choice: "yes" })), "12");
   const answered = within(await chat()).getByRole("article", { name: "Question from w1" });
   expect(within(answered).queryByRole("button")).toBeNull();
-  // The answer is in the card: the choice marked, who answered and when; no row of its own.
+  // The answer is in the card: the choice marked in the list, who answered and when under
+  // it, the choice not repeated there; no row of its own.
   expect(answered.querySelector(".choices .chosen")?.textContent).toBe("✓ yes");
   const given = answered.querySelector(".question-answer") as HTMLElement;
   expect(given.id).toBe("message-6");
   expect(given.querySelector(".answer-head")?.textContent).toContain("You · answered");
-  expect(given.querySelector(".answer-choice")?.textContent).toBe("✓ yes");
+  expect(given.querySelector(".answer-choice")).toBeNull();
+  expect(given.textContent).toBe(given.querySelector(".answer-top")?.textContent);
   expect(answered.querySelector(".chat-outcome")).toBeNull();
   expect(within(await chat()).queryByRole("article", { name: "Message from you" })).toBeNull();
   expect((await chat()).textContent).not.toMatch(/Answered|Answer to #5/);
@@ -293,6 +295,8 @@ test("an answer given after other rows is in its question's card and one quiet l
   expect(own.querySelector(".question-answer .chat-body")?.textContent).toBe("after the release");
   expect(chose.querySelector(".choices .chosen")?.textContent).toBe("✓ later");
   expect(chose.querySelector(".question-answer .chat-body")?.textContent).toBe("after the tag"); // the comment
+  expect(chose.textContent?.match(/later/g)).toHaveLength(1); // the choice once, in the list
+  expect(own.querySelector(".choices .chosen")).toBeNull();
   const lines = within(log).getAllByRole("article", { name: /^You answered question/ });
   expect(lines.map((one) => [one.id, one.textContent])).toEqual([
     ["message-7", expect.stringContaining("after the release")],

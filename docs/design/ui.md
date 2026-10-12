@@ -842,8 +842,9 @@ Built in the chat task (2026-10-03):
     an agent's task keeps its size; code 13 px mono.
 - **A question**: open, an orange card (a 4 px band on its left) "Question #N · waits for
   you"; closed, a neutral card "Question #N",
-  its choices faded, the chosen one marked "✓" in `--done`, and the human's reply in the
-  card (Answer in the question card); "Closed: the agent left" when its agent was
+  its choices faded, the chosen one marked "✓" in `--done` (the only place the choice
+  shows), and the human's reply in the card (Answer in the question card); "Closed: the
+  agent left" when its agent was
   forgotten. The reply's text comes from the answer's fields, never from parsing the
   core's line (`replyOf`): the `choice` with the body under it as a comment; else a body
   that is not empty (the whole text, `runtime._human_text`); else the summary without
@@ -863,9 +864,11 @@ Built in the chat task (2026-10-03):
 - **Answer in the question card** (decided 2026-10-07, feature/chat-message-text, mockup
   `question-answer.html`): with its question in the window, the reply is drawn in the
   question's card under the choices, on the human's ground: a small "Y", "You ·
-  answered" (or "You · dismissed", quieter), its time, and the answer (the choice in
-  bold "✓", the comment under it; else the own words; a dismissal's comment) as Markdown
-  with `breaks`. Without
+  answered" (or "You · dismissed", quieter), its time, and the comment that came with a
+  choice (else the own words; a dismissal's comment) as Markdown with `breaks`. The choice
+  itself is not repeated there: it is marked "✓" only in the list above (decided
+  2026-10-12, LAD-25, mockup `mockup-closed-question.html`, option A; before, the block
+  repeated it in bold "✓", which read as if the human had typed it). Without
   the reply in the window, the block says only "You · answered" or "You · dismissed".
   When the reply is the row right under its question, it is no row; when other rows came
   between, one quiet line stands where it was given (it ends a group): "Y", "You answered

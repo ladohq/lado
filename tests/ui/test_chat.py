@@ -59,10 +59,11 @@ def test_the_supervisor_asks_and_the_human_answers_in_a_card(page: Page, server,
     expect(card.get_by_role("button", name="later")).to_be_visible()
     shot(page, "open")
     card.get_by_role("button", name="yes").click()
-    # The answer is in the card: the choice marked, who answered; no row of its own.
+    # The answer is in the card: the choice marked in the list only, who answered under it;
+    # no row of its own.
     expect(card.locator(".chosen")).to_have_text("✓ yes")
     expect(card.locator(".question-answer .answer-head")).to_have_text("You · answered")
-    expect(card.locator(".answer-choice")).to_have_text("✓ yes")
+    expect(card.locator(".question-answer")).not_to_contain_text("yes")
     expect(page.get_by_role("article", name="Message from you")).to_have_count(1)  # the ask
     question = next(m for m in state.list_messages(session) if m.kind == state.QUESTION)
     line = f"[from human] Answer to #{question.id}: yes"
@@ -245,8 +246,12 @@ def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_
     late = chat.get_by_role("article", name=f"You answered question #{first_q.id}")
     expect(late).to_contain_text("Inter · closest to Slack")
     cards = chat.get_by_role("article", name="Question from supervisor")
-    expect(cards.nth(0).locator(".answer-choice")).to_have_text("✓ Inter")
-    expect(cards.nth(1).locator(".answer-choice")).to_have_text("✓ yes")
+    # The choice once, in the list; the reply block has only the comment.
+    expect(cards.nth(0).locator(".chosen")).to_have_text("✓ Inter")
+    expect(cards.nth(0).locator(".question-answer")).not_to_contain_text("Inter")
+    expect(cards.nth(0).locator(".question-answer .chat-body")).to_have_text("closest to Slack")
+    expect(cards.nth(1).locator(".chosen")).to_have_text("✓ yes")
+    expect(cards.nth(1).locator(".question-answer")).not_to_contain_text("yes")
     page.get_by_role("checkbox", name="Show agent messages").check()
     between = chat.get_by_role("article", name="Message from supervisor to w1")
     expect(between.locator("summary")).to_contain_text("please review the branch")

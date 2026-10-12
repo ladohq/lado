@@ -1,9 +1,9 @@
 // An agent's question to the human (ask_human), in its session's chat and on Needs you: the
 // card in its agent's row (FeedRow), without a head of its own. Open, it is answered with a
-// choice, own words or both, or dismissed; closed, its choices faded, the chosen one marked,
-// and the human's reply under them (docs/design/ui.md, Answer in the question card). The
-// card changes only when the feed brings the question closed, whoever answered it. Also what
-// the chat says of the human's answer, from the answer's fields.
+// choice, own words or both, or dismissed; closed, its choices faded, the chosen one marked
+// (and only there), and the human's reply under them (docs/design/ui.md, Answer in the
+// question card). The card changes only when the feed brings the question closed, whoever
+// answered it. Also what the chat says of the human's answer, from the answer's fields.
 import { useState, type FormEvent } from "react";
 
 import { answerQuestion, ApiError, dismissQuestion, HUMAN, type MessageInfo } from "./api";
@@ -161,11 +161,13 @@ export function Question({
   );
 }
 
-// The human's reply in the question's card: who and when, and the answer (the choice and
-// the comment, else the own words) as the human typed it; a dismissal, its comment if any.
+// The human's reply in the question's card: who and when, then a choice's comment (the
+// choice itself is marked only in the card's list) or the own words, as the human typed
+// them; a dismissal, its comment if any.
 function Given({ question, answer, anchored }: { question: MessageInfo; answer?: MessageInfo; anchored: boolean }) {
   const dismissed = question.question_state === "dismissed";
   const reply = answer && replyOf(answer, question);
+  const shown = reply && ("dismissed" in reply || answer?.choice ? reply.comment : reply.text);
   return (
     <div
       className={`question-answer${dismissed ? " dismissed" : ""}`}
@@ -176,16 +178,7 @@ function Given({ question, answer, anchored }: { question: MessageInfo; answer?:
         <span className="answer-head">You · {dismissed ? "dismissed" : "answered"}</span>
         {answer && <time dateTime={answer.created_at}>{clock(answer.created_at)}</time>}
       </div>
-      {reply && "text" in reply &&
-        (answer?.choice ? (
-          <>
-            <p className="answer-choice">✓ {reply.text}</p>
-            {reply.comment && <Body text={reply.comment} breaks />}
-          </>
-        ) : (
-          <Body text={reply.text} breaks />
-        ))}
-      {reply && "dismissed" in reply && reply.comment && <Body text={reply.comment} breaks />}
+      {shown && <Body text={shown} breaks />}
     </div>
   );
 }

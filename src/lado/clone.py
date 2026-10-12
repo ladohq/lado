@@ -10,6 +10,8 @@ credential is a failure, never a wait. A URL reaches a text only through
 
 import os
 import re
+import signal
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -22,8 +24,21 @@ SCP = re.compile(r"([^\s@/:]+)@([^\s@/:]+):(.+)")
 DEFAULT_PARENT = "~/lado"  # a clone's folder is DEFAULT_PARENT/<repo> unless given
 
 
+LIST_TIMEOUT = 20  # seconds a listing of the remote's branches may take
+# Each git process of a clone or listing: no prompt, git's words in English (KINDS).
+NO_PROMPT = {
+    "GIT_TERMINAL_PROMPT": "0",
+    "SSH_ASKPASS_REQUIRE": "never",
+    "GCM_INTERACTIVE": "never",
+    "LC_ALL": "C",
+}
+STOP_WAIT = 2  # seconds git's process group gets after SIGTERM, before SIGKILL
+
+
 def is_url(source: str) -> bool:
     """Whether `source` is a git URL to clone; anything else is a folder."""
+    if source.startswith("-"):  # never an option of git's
+        return False
     return bool(URL.fullmatch(source) or SCP.fullmatch(source))
 
 
@@ -171,3 +186,180 @@ def _origin_of_root(path: str) -> str | None:
     if os.path.realpath(top) != os.path.realpath(path):
         return None
     return runtime.remote(path)
+
+
+# A failure's kind by git's words (LC_ALL=C), the first that matches.
+KINDS: tuple[tuple[str, re.Pattern], ...] = (
+    ("ssh_denied", re.compile(r"Permission denied \(publickey")),
+    ("host_key", re.compile(r"Host key verification failed")),
+    (
+        "login_needed",
+        re.compile(r"could not read Username|Authentication failed|terminal prompts disabled"),
+    ),
+    (
+        "not_found",
+        re.compile(
+            r"Repository not found|does not appear to be a git repository"
+            r"|repository '[^']*' not found"
+        ),
+    ),
+    (
+        "unreachable",
+        re.compile(
+            r"Could not resolve host|Connection refused|Connection timed out"
+            r"|Network is unreachable|Operation timed out"
+        ),
+    ),
+    ("no_branch", re.compile(r"Remote branch .* not found")),
+)
+GIT_FAILED = "git_failed"
+GITHUB = "github.com"
+_LINE = re.compile(r"(fatal|error|ERROR):")
+_ANY_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"]+")
+
+
+def kind_of(stderr: str) -> str:
+    for kind, words in KINDS:
+        if words.search(stderr):
+            return kind
+    return GIT_FAILED
+
+
+def _gits_line(stderr: str) -> str:
+    """git's first error line, else its last line; any URL in it without a secret."""
+    lines = [line.strip() for line in re.split(r"[\r\n]", stderr) if line.strip()]
+    line = next((line for line in lines if _LINE.match(line)), lines[-1] if lines else "")
+    return _ANY_URL.sub(lambda url: runtime.public_remote(url.group()), line)
+
+
+def _ssh_check(address: Address) -> str:
+    port = f"-p {address.port} " if address.port else ""
+    return f"ssh -T {port}{address.user or 'git'}@{address.host}"
+
+
+def _reason(kind: str, address: Address, branch: str | None) -> tuple[str, runtime.Hint | None]:
+    host, github = address.host, address.host == GITHUB
+    if kind == "ssh_denied":
+        hint = f"Check that this machine's ssh key is added to your account on {host}:"
+        return f"{host} refused this machine's ssh key", runtime.Hint(hint, _ssh_check(address))
+    if kind == "host_key":
+        hint = runtime.Hint(
+            "Connect once in a terminal and accept the host key:", _ssh_check(address)
+        )
+        return f"this machine does not know {host}'s ssh host key yet", hint
+    if kind == "login_needed":
+        if github:
+            hint = runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
+            return f"{host} asks for a login", hint
+        return (
+            f"{host} asks for a login; set up a git credential helper for it on this machine",
+            None,
+        )
+    if kind == "not_found":
+        hint = (
+            runtime.Hint("See which GitHub account this machine uses:", "gh auth status")
+            if github
+            else None
+        )
+        return "no repository there, or this machine's account cannot read it", hint
+    if kind == "unreachable":
+        return f"{host} cannot be reached", None
+    return f"no branch {branch}", None  # no_branch
+
+
+def failure(op: str, url: str, stderr: str, branch: str | None = None) -> CloneError:
+    """git's failure of a listing (`op` "list") or a clone as LADO tells it: `cannot read
+    <url>: <reason> (<git's line>)` or `cannot clone ...`, with a hint by its kind."""
+    verb = "read" if op == "list" else "clone"
+    line, kind = _gits_line(stderr), kind_of(stderr)
+    head = f"cannot {verb} {runtime.public_remote(url)}"
+    if kind == GIT_FAILED:
+        return CloneError(kind, f"{head}: {line}")
+    reason, hint = _reason(kind, Address.parse(url), branch)
+    return CloneError(kind, f"{head}: {reason} ({line})", hint)
+
+
+def _start_git(*args: str, stdout: int | None = subprocess.DEVNULL) -> subprocess.Popen:
+    """A git process with no terminal and no prompt, in a process group of its own (Ctrl-C
+    reaches LADO, which then ends the group: `_stop`)."""
+    _git_runs()
+    try:
+        return subprocess.Popen(
+            ["git", *args],
+            stdin=subprocess.DEVNULL,
+            stdout=stdout,
+            stderr=subprocess.PIPE,
+            env={**os.environ, **NO_PROMPT},
+            start_new_session=True,
+        )
+    except OSError:
+        _git_runs()  # gone since: its text
+        raise
+
+
+def _stop(process: subprocess.Popen) -> None:
+    """End git's whole process group (ssh and helpers too): SIGTERM, SIGKILL after
+    STOP_WAIT seconds for what is left."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except OSError:  # the group is gone
+            pass
+        if sig == signal.SIGTERM:
+            try:
+                process.wait(STOP_WAIT)
+            except subprocess.TimeoutExpired:
+                pass
+    process.wait()
+
+
+@dataclass(frozen=True)
+class Remote:
+    """A remote's branches, its default one first; `default` None when it does not say."""
+
+    branches: list[str]
+    default: str | None
+
+
+def list_branches(url: str) -> Remote:
+    """The remote's branches and its default one, by one `git ls-remote`, within
+    LIST_TIMEOUT seconds; a CloneError else."""
+    process = _start_git(
+        "ls-remote", "--symref", "--", url, "HEAD", "refs/heads/*", stdout=subprocess.PIPE
+    )
+    try:
+        out, err = process.communicate(timeout=LIST_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _stop(process)
+        process.communicate()
+        host = Address.parse(url).host or runtime.public_remote(url)
+        raise CloneError(
+            "unreachable",
+            f"cannot read {runtime.public_remote(url)}: {host} did not answer within "
+            f"{LIST_TIMEOUT:g} s",
+        ) from None
+    except BaseException:
+        _stop(process)
+        raise
+    stderr = err.decode(errors="replace")
+    if process.returncode != 0:
+        raise failure("list", url, stderr)
+    default, branches = None, []
+    for line in out.decode(errors="replace").splitlines():
+        value, _, ref = line.partition("\t")
+        if ref == "HEAD" and value.startswith("ref: refs/heads/"):
+            default = value[len("ref: refs/heads/") :]
+        elif ref.startswith("refs/heads/"):
+            branches.append(ref[len("refs/heads/") :])
+    if not branches:
+        raise CloneError(
+            "no_branches",
+            f"cannot read {runtime.public_remote(url)}: the repository has no branches yet",
+        )
+    branches.sort()
+    if default in branches:
+        branches.remove(default)
+        branches.insert(0, default)
+    else:
+        default = None
+    return Remote(branches, default)

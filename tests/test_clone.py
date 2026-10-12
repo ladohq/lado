@@ -1,12 +1,11 @@
 """lado.clone: a repository from its git URL (openspec change clone-from-url)."""
 
-import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
-
-from agent_helpers import init_repo
+from agent_helpers import bare_remote, fake_git, fake_git_calls, gone, init_repo
 
 from lado import clone, runtime
 
@@ -185,3 +184,173 @@ def test_a_file(tmp_path):
         "not_folder",
         f"{tmp_path / 'app'} is a file, not a folder",
     )
+
+
+KIND_LINES = [
+    (
+        "git@github.com: Permission denied (publickey).\n"
+        "fatal: Could not read from remote repository.\n",
+        "ssh_denied",
+    ),
+    ("Host key verification failed.\nfatal: Could not read from remote repository.", "host_key"),
+    (
+        "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+        "login_needed",
+    ),
+    ("remote: Invalid username or password.\nfatal: Authentication failed for 'x'", "login_needed"),
+    ("ERROR: Repository not found.\nfatal: Could not read from remote repository.", "not_found"),
+    ("remote: Repository not found.\nfatal: repository 'https://x/a/b/' not found", "not_found"),
+    ("fatal: '/x' does not appear to be a git repository", "not_found"),
+    (
+        "ssh: Could not resolve hostname nohost: nodename nor servname provided, or not known",
+        "unreachable",
+    ),
+    ("fatal: unable to access 'https://x/': Could not resolve host: x", "unreachable"),
+    ("ssh: connect to host h port 22: Connection refused", "unreachable"),
+    ("ssh: connect to host h port 22: Operation timed out", "unreachable"),
+    (
+        "warning: Could not find remote branch dev to clone.\n"
+        "fatal: Remote branch dev not found in upstream origin",
+        "no_branch",
+    ),
+    ("fatal: something else entirely", "git_failed"),
+]
+
+
+@pytest.mark.parametrize(("stderr", "kind"), KIND_LINES)
+def test_each_failure_kind_by_gits_words(stderr, kind):
+    assert clone.failure("clone", "git@github.com:acme/app.git", stderr, "dev").kind == kind
+
+
+def test_an_ssh_key_the_host_refuses():
+    error = clone.failure("list", "git@github.com:acme/app.git", KIND_LINES[0][0])
+    assert str(error) == (
+        "cannot read git@github.com:acme/app.git: github.com refused this machine's ssh key "
+        "(fatal: Could not read from remote repository.)"
+    )
+    assert error.hint == runtime.Hint(
+        "Check that this machine's ssh key is added to your account on github.com:",
+        "ssh -T git@github.com",
+    )
+
+
+def test_an_unknown_host_key_with_a_port_and_a_user():
+    error = clone.failure("clone", "ssh://deploy@git.example.com:2222/a/b", KIND_LINES[1][0])
+    assert str(error).startswith(
+        "cannot clone ssh://deploy@git.example.com:2222/a/b: this machine does not know "
+        "git.example.com's ssh host key yet ("
+    )
+    assert error.hint == runtime.Hint(
+        "Connect once in a terminal and accept the host key:",
+        "ssh -T -p 2222 deploy@git.example.com",
+    )
+
+
+def test_a_private_https_repository_without_a_login():
+    error = clone.failure("clone", "https://github.com/acme/private", KIND_LINES[2][0])
+    assert str(error) == (
+        "cannot clone https://github.com/acme/private: github.com asks for a login "
+        "(fatal: could not read Username for 'https://github.com': terminal prompts disabled)"
+    )
+    assert error.hint == runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
+    other = clone.failure("clone", "https://git.example.com/a/b", KIND_LINES[2][0])
+    assert (
+        "git.example.com asks for a login; set up a git credential helper for it on this "
+        "machine (" in str(other)
+    )
+    assert other.hint is None
+
+
+def test_a_repository_github_does_not_show():
+    error = clone.failure("list", "git@github.com:acme/app.git", KIND_LINES[4][0])
+    assert str(error) == (
+        "cannot read git@github.com:acme/app.git: no repository there, or this machine's "
+        "account cannot read it (ERROR: Repository not found.)"
+    )
+    assert error.hint == runtime.Hint(
+        "See which GitHub account this machine uses:", "gh auth status"
+    )
+    assert clone.failure("list", "https://gitlab.com/a/b", KIND_LINES[4][0]).hint is None
+
+
+def test_unreachable_no_branch_and_other_failures_have_no_hint():
+    unreachable = clone.failure("clone", "https://x/a/b", KIND_LINES[8][0])
+    assert str(unreachable) == (
+        "cannot clone https://x/a/b: x cannot be reached "
+        "(fatal: unable to access 'https://x/': Could not resolve host: x)"
+    )
+    no_branch = clone.failure("clone", "https://x/a/b", KIND_LINES[11][0], "dev")
+    assert str(no_branch) == (
+        "cannot clone https://x/a/b: no branch dev "
+        "(fatal: Remote branch dev not found in upstream origin)"
+    )
+    other = clone.failure("clone", "https://x/a/b", "hint: something\nlast words")
+    assert str(other) == "cannot clone https://x/a/b: last words"
+    assert (unreachable.hint, no_branch.hint, other.hint) == (None, None, None)
+
+
+def test_a_token_in_the_url_is_never_shown():
+    url = "https://ghp_secret@github.com/acme/app"
+    stderr = (
+        "fatal: unable to access 'https://ghp_secret@github.com/acme/app/': Could not resolve host"
+    )
+    error = clone.failure("clone", url, stderr)
+    assert "https://github.com/acme/app" in str(error)
+    assert "ghp_secret" not in str(error)
+
+
+def test_git_runs_with_no_terminal_and_no_prompt(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path, "fail").items():
+        monkeypatch.setenv(key, value)
+    with pytest.raises(clone.CloneError):
+        clone.list_branches("https://github.com/acme/app")
+    [call] = fake_git_calls(tmp_path)
+    assert call["args"][0] == "ls-remote"
+    assert call["sid"] == call["pid"]  # a session, and so a process group, of its own
+    assert call["tty"] is False
+    env = call["env"]
+    assert (env["GIT_TERMINAL_PROMPT"], env["SSH_ASKPASS_REQUIRE"]) == ("0", "never")
+    assert (env["GCM_INTERACTIVE"], env["LC_ALL"]) == ("never", "C")
+    assert "GIT_SSH_COMMAND" not in env
+
+
+def test_no_git(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches("https://github.com/acme/app")
+    assert refused.value.kind == "no_git"
+    assert refused.value.hint is not None
+
+
+def test_branches_and_the_default_one(tmp_path):
+    remote = clone.list_branches(bare_remote(tmp_path))
+    assert remote.branches == ["main", "develop", "release/1.2"]
+    assert remote.default == "main"
+
+
+def test_an_empty_repository(tmp_path):
+    subprocess.run(["git", "init", "-q", "--bare", str(tmp_path / "empty.git")], check=True)
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches((tmp_path / "empty.git").as_uri())
+    assert str(refused.value).endswith(": the repository has no branches yet")
+
+
+def test_a_remote_that_is_not_there(tmp_path):
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches((tmp_path / "nothing.git").as_uri())
+    assert refused.value.kind == "not_found"
+
+
+def test_a_remote_that_does_not_answer(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path, "slow").items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(clone, "LIST_TIMEOUT", 0.5)
+    started = time.monotonic()
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches("https://git.example.com/a/b")
+    assert time.monotonic() - started < 5
+    assert str(refused.value) == (
+        "cannot read https://git.example.com/a/b: git.example.com did not answer within 0.5 s"
+    )
+    [call] = fake_git_calls(tmp_path)
+    assert gone(call["pid"]) and gone(call["child"])

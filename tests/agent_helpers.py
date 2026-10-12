@@ -3,10 +3,12 @@
 
 import atexit
 import json
+import os
 import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -371,3 +373,89 @@ def diagnostics(session: str) -> str:
     out.append("--- events")
     out += [f"{e.agent}: {e.kind} {e.detail}" for e in state.list_events(session)]
     return "\n".join(out)
+
+
+def bare_remote(folder: Path, branches: tuple[str, ...] = ("develop", "release/1.2")) -> str:
+    """A bare repository `folder`/app.git with `main` (its HEAD) and `branches`, each a
+    commit past main; its file:// URL. The remote of the clone tests (lado.clone)."""
+    work = init_repo(folder / "app-work")
+    git = ["git", "-C", str(work)]
+    for name in branches:
+        subprocess.run([*git, "checkout", "-q", "-b", name, "main"], check=True)
+        subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", name], check=True)
+    subprocess.run([*git, "checkout", "-q", "main"], check=True)
+    remote = folder / "app.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(work), str(remote)], check=True)
+    return remote.as_uri()
+
+
+# A stand-in for git's network commands (clone, ls-remote); every other command is the real
+# git's. Each call is a line in $FAKE_GIT_LOG: its args, pid, session, whether stdin is a
+# terminal, its environment and the pid of a child it keeps (its process group's), but
+# when it fails. By
+# $FAKE_GIT: `slow` prints clone progress, then waits; `fail` prints $FAKE_GIT_STDERR and
+# exits 128.
+FAKE_GIT = """#!{python}
+import json, os, subprocess, sys, time
+args = sys.argv[1:]
+if args[:1] not in (["clone"], ["ls-remote"]):
+    os.execv({real!r}, [{real!r}, *args])
+failing = os.environ.get("FAKE_GIT") == "fail"
+quiet = {{"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}}
+child = None if failing else subprocess.Popen(["sleep", "60"], **quiet)
+log = os.environ.get("FAKE_GIT_LOG")
+if log:
+    with open(log, "a") as out:
+        out.write(json.dumps({{
+            "args": args, "pid": os.getpid(), "sid": os.getsid(0), "tty": os.isatty(0),
+            "env": dict(os.environ), "child": child and child.pid,
+        }}) + "\\n")
+if failing:
+    sys.stderr.write(os.environ.get("FAKE_GIT_STDERR", "fatal: failed") + "\\n")
+    sys.exit(128)
+if args[0] == "clone":
+    os.makedirs(args[-1], exist_ok=True)
+    sys.stderr.write("Cloning into '" + args[-1] + "'...\\n")
+    for i in range(0, 50, 10):
+        sys.stderr.write(f"Receiving objects:  {{i}}% ({{i}}/100), 1.00 MiB | 2.00 MiB/s\\r")
+        sys.stderr.flush()
+        time.sleep(0.05)
+time.sleep(60)
+"""
+
+
+def fake_git(folder: Path, mode: str = "slow") -> dict[str, str]:
+    """A fake git (FAKE_GIT) in `folder`/bin; the environment that puts it first on PATH,
+    with its mode and log (`folder`/fake-git.jsonl, read with `fake_git_calls`)."""
+    real = shutil.which("git")
+    assert real, "git is needed"
+    bin_dir = folder / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    script = bin_dir / "git"
+    script.write_text(FAKE_GIT.format(python=sys.executable, real=real))
+    script.chmod(0o755)
+    return {
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "FAKE_GIT": mode,
+        "FAKE_GIT_LOG": str(folder / "fake-git.jsonl"),
+    }
+
+
+def fake_git_calls(folder: Path) -> list[dict]:
+    log = folder / "fake-git.jsonl"
+    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+
+def gone(pid: int) -> bool:
+    """Whether no process `pid` runs (a zombie of another parent counts as gone)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    try:
+        state_ = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True
+        ).stdout.strip()
+    except OSError:
+        return False
+    return state_.startswith("Z") or not state_

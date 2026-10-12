@@ -756,8 +756,11 @@ def _choose(gate: state.Gate, reads: list[str]) -> str | None:
     """The option the human picks for the gate, by number or name; None to leave it. The
     note shows as its summary with its artifacts, then a line per artifact the gate
     `reads`; when there is more, "v" shows all of it in a pager. Each show reads the
-    artifacts' latest records anew: they may change while the gate is open."""
+    artifacts' latest records anew: they may change while the gate is open; and so is the
+    gate, for the lead's recommendation."""
     full_note = gate.note_body.strip() != "" or bool(reads) or gate.attachments > 0
+    # The lead's recommendation is "v"'s too, also while it is prepared.
+    full_note = full_note or gate.recommendation_state in (state.REC_ASKED, state.REC_GIVEN)
     v = ", v for the full note" if full_note else ""
     _show_gate(gate, reads)
     while True:
@@ -765,7 +768,9 @@ def _choose(gate: state.Gate, reads: list[str]) -> str | None:
         if not chosen:
             return None
         if full_note and chosen.lower() == "v":
+            gate = state.get_gate(gate.id) or gate
             _page(_full_gate(gate, reads))
+            gate = state.get_gate(gate.id) or gate
             _show_gate(gate, reads)
             continue
         if chosen.isdigit() and 1 <= int(chosen) <= len(gate.options):
@@ -781,6 +786,8 @@ def _full_gate(gate: state.Gate, reads: list[str]) -> str:
     artifact the gate reads as of its latest record; an artifact by its content when it is
     text, else by its type and size."""
     parts = [f"Note: {gate.note}\n\n{gate.note_body.strip()}".rstrip() + "\n"]
+    if gate.recommendation_state == state.REC_GIVEN:
+        parts.append(f"Supervisor's recommendation:\n\n{gate.recommendation.strip()}\n")
     try:
         attached = runs.gate_attachments(gate)
     except artifacts.STORE_ERRORS as exc:
@@ -829,6 +836,8 @@ def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = 
         listed = f"Its artifacts cannot be read now: {exc}"
     if listed:
         print(listed)
+    for line in _recommendation_lines(gate):
+        print(line)
     if problem:
         print(problem)
         return
@@ -838,7 +847,34 @@ def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = 
             print(f"  {runs.read_line(gate, name)}")
     print("Options:")
     for n, option in enumerate(gate.options, 1):
-        print(f"  {n}) {option}")
+        mark = RECOMMENDED_MARK if option == gate.recommended_choice else ""
+        print(f"  {n}) {option}{mark}")
+
+
+RECOMMENDED_MARK = "   ← supervisor recommends"
+
+
+def _recommendation_lines(gate: state.Gate) -> list[str]:
+    """The lead's recommendation on the gate as `lado answer` shows it: its head with the
+    option and a disagreement, and its first line; "v" shows the rest. While it is asked,
+    or when none was given, a line that says so; nothing when it was never asked."""
+    if gate.recommendation_state == state.REC_ASKED:
+        return ["Supervisor is preparing a recommendation… (v shows it once it is given)"]
+    if gate.recommendation_state == state.REC_MISSING:
+        return ["The supervisor gave no recommendation."]
+    if gate.recommendation_state != state.REC_GIVEN:
+        return []
+    head = (
+        f"Supervisor recommends: {gate.recommended_choice}"
+        if gate.recommended_choice
+        else "Supervisor's recommendation:"
+    )
+    if gate.recommendation_disagrees:
+        head += f" (disagrees with {runs.recommendation_by(gate) or 'the step'})"
+    first, *rest = gate.recommendation.strip().splitlines() or [""]
+    if rest:
+        head += f" (v: the full text, {len(rest)} more line{'' if len(rest) == 1 else 's'})"
+    return [head, f"  {first}"]
 
 
 def _page(text: str) -> None:

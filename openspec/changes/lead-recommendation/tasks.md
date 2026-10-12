@@ -26,7 +26,7 @@ steps). Design doc: `docs/superpowers/specs/2026-10-12-lead-recommendation-desig
 
 ## 3. CLI (D9)
 
-- [ ] 3.1 `cli._show_gate` and the `v` page: the recommendation's lines, the marked
+- [x] 3.1 `cli._show_gate` and the `v` page: the recommendation's lines, the marked
   option, `asked` and `missing`. Check: `uv run pytest tests/test_cli.py -n auto -k
   recommend`.
 

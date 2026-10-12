@@ -767,6 +767,13 @@ def recommendation_request(gate: state.Gate) -> tuple[str, str]:
     return summary, "\n".join(lines)
 
 
+def recommendation_by(gate: state.Gate) -> str | None:
+    """Whom the lead's recommendation on the gate disagrees with, when it does: who
+    reported the note that led to the gate; None for a gate that keeps no such note."""
+    note = state.get_note(gate.session, gate.note_id) if gate.note_id else None
+    return note.actor or None if note else None
+
+
 def read_line(gate: state.Gate, name: str) -> str:
     """The line of an artifact the gate reads, as of its latest record; what the store
     cannot read is said in it, and the gate is asked all the same."""

@@ -89,23 +89,36 @@ shows the sessions and their agents, `lado attach <session>` their tmux windows,
 
 ## Update
 
+LADO tells you when a newer version is out: `lado ls` and `lado doctor` print
+`LADO X.Y.Z is available: lado update`, and the web UI shows `↑ X.Y.Z` next to `live`
+in its top bar.
+
+**In the terminal**
+
 ```bash
-lado update             # the latest version; lado update X.Y.Z for another one
+lado update             # the latest version (lado update X.Y.Z for another one)
 ```
 
-`lado ls`, `lado doctor` and the web UI say when a newer LADO is out (they look on PyPI at
-most once a day; `LADO_NO_UPDATE_CHECK=1` switches that off). `lado update` shows its plan
-(the versions, the installer's command, the sessions and the UI server it restarts) and
-asks `Update? [y/N]` (`--yes` skips the question; without a terminal it is required). Then
-it stops the running sessions and the UI server, installs exactly that version with the
-installer LADO came with (`uv tool install lado==X.Y.Z`, or `pipx install --force`), checks
-the installed version and resumes the sessions and the server with the installed `lado`.
-Runs, gates, branches and worktrees stay; agents start a new conversation, and a busy
-agent loses its current turn. A LADO installed otherwise (pip in a venv, a working copy or
-a git address, also through uv tool or pipx) is not upgraded: `lado update` prints the commands to run by hand. If an update does not
-finish, `lado ls` names the sessions left stopped and the `lado start` that resumes each.
-Going back to an older version works the same way (`lado update 0.20.0`), as far as that
-version accepts the database: an older LADO refuses a newer `lado.db`.
+It shows what it will do and asks `Update? [y/N]` before it starts.
+
+**In the web UI**
+
+Click `live` in the top bar, then **Update…**. The window shows the same plan;
+**Restart and update** starts it. The page waits while the server restarts, then says
+how the update went.
+
+**What happens to your work**
+
+The update restarts your running sessions and the UI server. Runs, gates, branches and
+worktrees stay; each agent starts a new conversation, and a busy agent loses its current
+turn, so update while your agents are idle. If the new version does not start, LADO
+puts back the one you had.
+
+Installed with pip, from a git checkout or a git address? Then LADO cannot update
+itself: `lado update` and the web UI show the commands to run by hand.
+
+More (going back to an older version, an update that stops half way, the log):
+[docs/install.md](docs/install.md#update).
 
 ## Kits
 

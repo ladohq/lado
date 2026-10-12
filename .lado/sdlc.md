@@ -7,7 +7,8 @@ at the start of every step.
 
 - Chat with the human: Russian
 - Pull request description and comments: English
-- Tracker comments: Russian
+- Tracker (Yougile): Russian, everything written there: task titles, descriptions and
+  comments; the team has no English-speaking developers
 - Commit messages: English, the repository's own style: a plain sentence that says what
   the change does (no `<type>:` prefix), the task key at its end in parentheses
   (`The artifact tab scrolls a long record (DEV-12)`); the body says why, not what
@@ -27,6 +28,11 @@ at the start of every step.
 
 - Waiting for release label: `waiting for release` (the sticker `Release: Waiting`,
   mapped in `.lado/tracker.yaml`)
+- Component labels: the sticker `Component` says which part of the system a task
+  changes, one of `component lado`, `component kit-sdlc`, `component kit-builder`,
+  `component kit-tracker-yougile`, `component kit-tracker-jira-server` (mapped in
+  `.lado/tracker.yaml`). A task created through LADO gets the label of the part it
+  changes; a task of this repository is `component lado`.
 - Skipped issue types: none
 - Merge comment (Markdown):
 
@@ -96,6 +102,9 @@ at the start of every step.
   fails its stale-types check — run `make web-types` and commit both files.
 - A live test added or changed — it only collects without real CLIs — say "written, not
   run" in the build report; never claim it passed.
+- An HTML mockup that inlines `web/src/index.css` — it does not scroll in a window wider
+  than 900px (`html, body { overflow: hidden }`) — end its `<style>` with
+  `html, body { height: auto; overflow: auto; }` and check it scrolls to its end.
 
 ## Extra instructions
 
@@ -120,7 +129,13 @@ Analyst:
   its bugs); behaviour that crosses processes needs an integration test with the fake
   agent.
 - UI work: name the change to `docs/design/ui.md`, and attach an HTML mockup of each new
-  or changed screen as a run artifact.
+  or changed screen as a run artifact. A mockup that inlines the UI's CSS
+  (`web/src/index.css`) takes its app-shell rules too: on a window wider than 900px
+  `html, body { overflow: hidden }` stops the page from scrolling, as only `.content`
+  scrolls in the app. End the mockup's `<style>` with
+  `html, body { height: auto; overflow: auto; }`, or put the screens inside the
+  `.app`/`.content` frame, and before attaching check that the page scrolls in a wide
+  window to its last screen.
 - Say in the design whether the change bumps the minor (feature, MCP tool or CLI change,
   schema migration) or the patch (fixes and docs only).
 

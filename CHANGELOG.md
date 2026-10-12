@@ -4,6 +4,8 @@
 
 - Install guide for macOS, Linux and Windows (WSL2): README's Install section and
   docs/install.md.
+- README's Update section is rewritten for users and says how to update from the web UI;
+  the details (the steps, the rollback, updating by hand) moved to docs/install.md.
 - Kits guide, docs/kits.md: find and install a kit, use kits in a session, create one (the
   flow format included), release new versions and share it. README's Kits section is a
   short overview that links it.

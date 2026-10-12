@@ -1,3 +1,4 @@
+import io
 import os
 import shutil
 import sqlite3
@@ -2187,3 +2188,119 @@ def test_a_clone_failure_prints_its_hint(tmp_path, fake_tmux, capsys, monkeypatc
         "lado: cannot clone git@github.com:a/b.git: github.com refused this machine's ssh key (x)",
         "lado: Check that this machine's ssh key is added: ssh -T git@github.com",
     ]
+
+
+# lado start --prompt / --prompt-file (openspec change first-message)
+
+
+def _humans(session: str) -> list[str]:
+    return [m.body for m in state.list_messages(session) if m.sender == state.HUMAN]
+
+
+def _start(repo, name: str, *more: str) -> list[str]:
+    return ["start", str(repo), "--name", name, "--provider", "kilo", "--no-attach", *more]
+
+
+def test_start_with_a_prompt_queues_it_and_says_so(repo, fake_tmux, capsys):
+    assert main(_start(repo, "s", "--prompt", "Take LAD-19")) == 0
+    out = capsys.readouterr().out.splitlines()
+    started = next(i for i, line in enumerate(out) if line.startswith('Started session "s"'))
+    assert out[started + 1] == "first message: queued for the supervisor"
+    assert _humans("s") == ["Take LAD-19"]
+
+
+def test_start_without_a_prompt_says_nothing_of_it(repo, fake_tmux, capsys):
+    assert main(_start(repo, "s")) == 0
+    assert "first message" not in capsys.readouterr().out
+    assert _humans("s") == []
+
+
+def test_start_reads_the_prompt_from_a_file_and_from_stdin(repo, tmp_path, fake_tmux, monkeypatch):
+    brief = tmp_path / "brief.md"
+    brief.write_text("Это первое\nсообщение\n", encoding="utf-8")
+    assert main(_start(repo, "a", "--prompt-file", str(brief))) == 0
+    assert _humans("a") == ["Это первое\nсообщение"]
+    monkeypatch.setattr("sys.stdin", io.StringIO("Line one\nLine two\n"))
+    assert main(_start(repo, "b", "--prompt-file", "-")) == 0
+    assert _humans("b") == ["Line one\nLine two"]
+
+
+def test_start_refuses_both_prompt_options(repo, fake_tmux, capsys):
+    with pytest.raises(SystemExit) as exited:
+        main(_start(repo, "s", "--prompt", "a", "--prompt-file", "b"))
+    assert exited.value.code == 2
+    assert "not allowed with" in capsys.readouterr().err
+    assert state.get_session("s") is None
+
+
+def test_start_refuses_a_prompt_file_it_cannot_read(repo, tmp_path, fake_tmux, capsys):
+    missing = tmp_path / "missing.md"
+    assert main(_start(repo, "s", "--prompt-file", str(missing))) == 1
+    err = capsys.readouterr().err
+    assert err.startswith(f"lado: cannot read the first message from {missing}: ")
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+
+
+def test_start_refuses_a_prompt_file_that_is_no_utf8(repo, tmp_path, fake_tmux, capsys):
+    binary = tmp_path / "image.png"
+    binary.write_bytes(b"\x89PNG\xff\xfe")
+    assert main(_start(repo, "s", "--prompt-file", str(binary))) == 1
+    assert f"cannot read the first message from {binary}: " in capsys.readouterr().err
+    assert state.get_session("s") is None
+
+
+def test_start_refuses_an_empty_prompt(repo, fake_tmux, capsys):
+    assert main(_start(repo, "s", "--prompt", "")) == 1
+    assert capsys.readouterr().err.splitlines() == ["lado: the first message is empty"]
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+
+
+def test_a_git_url_with_a_bad_prompt_clones_nothing(tmp_path, fake_tmux, capsys, monkeypatch):
+    def no_clone(*args, **kwargs):
+        raise AssertionError("cloned")
+
+    monkeypatch.setattr(cli.clone, "clone", no_clone)
+    start = ["start", "file:///nowhere/app.git", str(tmp_path / "app"), "--no-attach"]
+    assert main([*start, "--prompt", " "]) == 1
+    assert "lado: the first message is empty" in capsys.readouterr().err
+    assert not (tmp_path / "app").exists()
+
+
+def test_a_git_url_reads_stdin_once_before_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
+    url = agent_helpers.bare_remote(tmp_path)
+    read = []
+
+    class Stdin(io.StringIO):
+        def read(self, *args):
+            read.append(1)
+            return super().read(*args)
+
+    monkeypatch.setattr("sys.stdin", Stdin("Go\n"))
+    start = ["start", url, str(tmp_path / "work" / "app"), "--provider", "kilo", "--no-attach"]
+    assert main([*start, "--prompt-file", "-"]) == 0
+    assert read == [1]  # a second read after the clone would give "" and refuse
+    assert _humans("app") == ["Go"]
+    assert "first message: queued for the supervisor" in capsys.readouterr().out
+
+
+def test_a_resume_with_a_prompt(repo, fake_tmux, capsys):
+    assert main(_start(repo, "s")) == 0
+    assert main(["stop", "s"]) == 0
+    capsys.readouterr()
+    assert main(["start", str(repo), "--name", "s", "--no-attach", "--prompt", "Continue"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith('Resumed session "s"')
+    assert out[1] == "first message: queued for the supervisor"
+    last = state.list_messages("s")[-1]
+    assert (last.sender, last.body) == ("human", "Continue")
+
+
+def test_start_help_names_the_prompt_options(capsys):
+    with pytest.raises(SystemExit):
+        main(["start", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--prompt TEXT" in out
+    assert "--prompt-file FILE" in out
+    assert "- reads it from stdin" in out

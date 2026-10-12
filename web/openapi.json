@@ -4308,6 +4308,17 @@
               }
             ],
             "title": "Without"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
           }
         },
         "type": "object",
@@ -5564,6 +5575,17 @@
               }
             ],
             "title": "Without"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
           }
         },
         "type": "object",

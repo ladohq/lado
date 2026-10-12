@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.37.0 (unreleased)
+
+- `lado start --prompt TEXT` / `--prompt-file FILE` (`-` reads stdin) and the New session
+  window's First message row give the supervisor a first message from you, also on a
+  resume, where it comes after LADO's `session resumed`. The supervisor answers in the
+  chat; the text never goes on an agent's command line.
+- API: `prompt` in `POST /api/sessions` and `POST /api/sessions/{name}/resume`.
+
 ## 0.36.0 (2026-10-12)
 
 - `lado start <git-url> [<folder>] [--branch NAME]` and the New session window's Clone

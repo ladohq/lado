@@ -42,6 +42,8 @@ POLL = 1.0  # seconds between two checks that a gate the human is asked about is
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    if not hasattr(args, "prompt_text"):  # once: a clone calls this again after it
+        args.prompt_text = _read_prompt(args)
     if clone.is_url(args.path):
         return _start_clone(args)
     if args.branch:
@@ -50,7 +52,13 @@ def cmd_start(args: argparse.Namespace) -> int:
         args.start_parser.error("a second folder needs a git URL")
     try:
         started = runtime.start_session(
-            args.path, args.name, args.permission_mode, args.provider, args.kit, args.without
+            args.path,
+            args.name,
+            args.permission_mode,
+            args.provider,
+            args.kit,
+            args.without,
+            prompt=args.prompt_text,
         )
     except Exception as exc:
         _sources_warning(unless_in=str(exc))  # a kit not found says it already
@@ -67,6 +75,8 @@ def cmd_start(args: argparse.Namespace) -> int:
             print(f"lado: {problem}", file=sys.stderr)
     else:
         print(f'Started session "{sess.name}" in {sess.repo}')
+    if args.prompt_text is not None:
+        print("first message: queued for the supervisor")
     if started.chosen:
         print(f"provider: {started.chosen.line()}")
     print(started.lead)
@@ -76,6 +86,25 @@ def cmd_start(args: argparse.Namespace) -> int:
         print(f"Attach with: lado attach {sess.name}")
         return 0
     return _attach(sess.name)
+
+
+def _read_prompt(args: argparse.Namespace) -> str | None:
+    """The first message of `--prompt` or `--prompt-file` (`-`: stdin), checked, before
+    anything starts or is cloned; None without either."""
+    if args.prompt is not None:
+        return runtime.check_prompt(args.prompt)
+    if args.prompt_file is None:
+        return None
+    try:
+        if args.prompt_file == "-":
+            text = sys.stdin.read()
+        else:
+            text = Path(args.prompt_file).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise runtime.LadoError(
+            f"cannot read the first message from {args.prompt_file}: {error}"
+        ) from error
+    return runtime.check_prompt(text)
 
 
 def _start_clone(args: argparse.Namespace) -> int:
@@ -1123,6 +1152,18 @@ def main(argv: list[str] | None = None) -> int:
         f"(default: {kits.DEFAULT_KIT}; a resumed session keeps its kits)",
     )
     _without_arg(start)  # a resumed session keeps its own unless given
+    first = start.add_mutually_exclusive_group()
+    first.add_argument(
+        "--prompt",
+        metavar="TEXT",
+        help="a first message to the supervisor, from you, also on a resume; it answers in "
+        "the UI's chat",
+    )
+    first.add_argument(
+        "--prompt-file",
+        metavar="FILE",
+        help="the first message from a file; - reads it from stdin",
+    )
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
     start.set_defaults(func=cmd_start, start_parser=start)
 

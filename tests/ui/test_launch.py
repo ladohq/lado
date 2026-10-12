@@ -62,6 +62,43 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
     shot(page)
 
 
+def test_a_session_starts_with_a_first_message(page: Page, server, repo, shot):
+    """The folded row above Advanced takes the human's first message; the session's chat
+    shows it as the human's (openspec change first-message)."""
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+    dialog.get_by_label("Provider").select_option("fake")
+    field = dialog.get_by_role("textbox", name="First message")
+    expect(field).to_be_hidden()  # folded when the window opens
+    row = dialog.locator("details.launch-first > summary")
+    expect(row).to_have_text("First message to the supervisor (optional)")
+    row.click()
+    field.fill("Take LAD-19 from the tracker.\nAsk me about the scope first.")
+    shot(page, "window")
+    row.click()
+    expect(field).to_be_hidden()
+    expect(dialog).to_contain_text("First message to the supervisor: Take LAD-19 from the tracker.")
+    shot(page, "folded")
+
+    dialog.get_by_role("button", name="Start session").click()
+    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    chat = page.get_by_role("log", name="Chat with the session")
+    mine = chat.get_by_role("article", name="Message from you")
+    expect(mine).to_contain_text("Take LAD-19 from the tracker.")
+    expect(mine).to_contain_text("Ask me about the scope first.")
+    [message] = [m for m in state.list_messages("my-repo") if m.sender == state.HUMAN]
+    assert message.summary == runtime.FIRST_MESSAGE
+    agent_helpers.wait_for(
+        lambda: state.get_message("my-repo", message.id).state == state.DELIVERED,
+        "the first message delivered",
+        "my-repo",
+    )
+    shot(page, "chat")
+
+
 def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server, repo, shot):
     for kit in ("kit-a", "kit-b"):
         folder = repo.parent / "kits" / kit

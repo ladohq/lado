@@ -1,5 +1,6 @@
-"""Flow gates in a session's chat, in a browser: the human answers a gate on its card, and
-a gate answered elsewhere (`lado answer`) folds into a line on the open page."""
+"""Flow gates in a session's chat, in a browser: the human answers a gate on its tab of the
+waiting card, and a gate answered elsewhere (`lado answer`) leaves the card and is a closed
+line on the open page."""
 
 import subprocess
 import sys
@@ -43,6 +44,11 @@ def wide(page: Page):
     page.set_viewport_size({"width": 1280, "height": 900})
 
 
+def waiting_card(page: Page, session: str):
+    """The session's waiting card above the composer (or on Needs you)."""
+    return page.get_by_role("region", name=f"What waits for you in {session}")
+
+
 def gated_session(repo) -> str:
     """A running session of the fake agent whose run ship/x waits at gate "check": review's
     note before it carries the artifact review, and the gate reads plan."""
@@ -76,16 +82,17 @@ def gated_session(repo) -> str:
     return session
 
 
-def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
+def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("article", name="Gate #1", exact=True)
-    expect(card.locator(".feed-head")).to_contain_text("Gate #1ship/x · check")
+    waits = page.get_by_role("article", name="Gate #1 waits")
+    expect(waits).to_contain_text("Gate #1 ship/x · check waits: Build it as planned?")
+    expect(waiting_card(page, session).get_by_role("tab", name="ship/x 1")).to_be_visible()
+    card = waiting_card(page, session).get_by_role("tabpanel")
     expect(card).to_contain_text("Build it as planned?")
     expect(card.locator("strong").first).to_have_text("the plan is reviewed")
     expect(card).to_contain_text("Split it in two, then ship.")
-    expect(page.get_by_text("Gate #1 waits:")).to_be_visible()
     # The note in full with its artifact, then the artifact the gate reads, under it.
     note = card.locator(".gate-note")
     expect(note.get_by_role("button", name="Open artifact ship/x/review")).to_be_visible()
@@ -107,7 +114,8 @@ def test_the_human_answers_a_gate_on_its_card(page: Page, server, repo, shot):
     expect(line).to_contain_text("Gate #1 · ship/x · check: reject by human")
     expect(line).to_contain_text("split the form first")
     expect(line.get_by_role("button", name="Approve", exact=True)).to_have_count(0)
-    expect(page.get_by_text("Gate #1 waits:")).to_have_count(0)
+    expect(waiting_card(page, session)).to_have_count(0)
+    expect(waits).to_have_count(0)
     run = state.get_run(session, "ship/x")
     assert (run.state, run.note) == ("plan", "rejected: split the form first")
     step = [m for m in state.list_messages(session) if m.recipient == "supervisor"][-1]
@@ -124,7 +132,7 @@ def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     feed = page.get_by_role("log", name="Chat with the session")
-    card = feed.get_by_role("article", name="Gate #1", exact=True)
+    card = waiting_card(page, session).get_by_role("tabpanel")
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it\nnow")
     card.get_by_role("button", name="Approve", exact=True).click()
     # One line: the run's move from You, the comment under it; the run's end may follow it.
@@ -136,17 +144,20 @@ def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     expect(feed.get_by_role("article", name="Your answer to gate #1")).to_have_count(0)
     expect(move).to_be_in_viewport()
     shot(page, "move")
-    expect(card).to_contain_text("Gate #1 · ship/x · check: approve by human")
+    line = feed.get_by_role("article", name="Gate #1", exact=True)
+    expect(line).to_contain_text("Gate #1 · ship/x · check: approve by human")
     link = feed.locator(":scope > .run-group").last.get_by_role("link", name="ship/x")
     expect(link).to_have_attribute("href", f"/sessions/{session}/flows/ship%2Fx")
 
 
-def test_a_gate_answered_with_lado_answer_folds_on_the_open_page(page: Page, server, repo, shot):
+def test_a_gate_answered_with_lado_answer_leaves_the_card_on_the_open_page(
+    page: Page, server, repo, shot
+):
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("article", name="Gate #1", exact=True)
-    expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+    tab = waiting_card(page, session).get_by_role("tabpanel")
+    expect(tab.get_by_role("button", name="Approve", exact=True)).to_be_visible()
     answer = subprocess.run(
         [sys.executable, "-m", "lado.cli", "answer", session, "1", "approve", "-m", "ship it"],
         capture_output=True,
@@ -154,7 +165,8 @@ def test_a_gate_answered_with_lado_answer_folds_on_the_open_page(page: Page, ser
         check=False,
     )
     assert answer.returncode == 0, answer.stderr
-    expect(card).to_contain_text("Gate #1 · ship/x · check: approve by human")
-    expect(card).to_contain_text("ship it")
-    expect(card.get_by_role("button", name="Approve", exact=True)).to_have_count(0)
+    expect(waiting_card(page, session)).to_have_count(0)
+    line = page.get_by_role("article", name="Gate #1", exact=True)
+    expect(line).to_contain_text("Gate #1 · ship/x · check: approve by human")
+    expect(line).to_contain_text("ship it")
     shot(page)

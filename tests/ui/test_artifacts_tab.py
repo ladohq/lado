@@ -152,7 +152,9 @@ def test_a_gates_chip_opens_the_attached_record_and_says_when_it_changed(
     session = designed_session(repo, tmp_path)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("article", name="Gate #1", exact=True)
+    card = page.get_by_role("region", name=f"What waits for you in {session}").get_by_role(
+        "tabpanel"
+    )
     chip = card.get_by_role("button", name="Open artifact ship/x/design")
     expect(chip).to_contain_text("design")
     chip.click()

@@ -6,7 +6,7 @@ LADO looks a kit up by name in the session's repository first (`<repo>/.lado/kit
 among the installed kits (lado.db), then among the built-in ones. So the list of kits
 depends on the folder of the session:
 
-- The New session window cannot show the kits before a folder is chosen, and asks the
+- The New session window cannot show a folder's kits before it is chosen, and asks the
   server again for every folder (`GET /api/kits?where=`); with this change a later task
   can load it once.
 - LAD-6 (start a session from a git URL) would clone a stranger's repository and start the

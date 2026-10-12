@@ -2,7 +2,7 @@
 (docs/design/artifacts.md, Flows)."""
 
 import pytest
-from agent_helpers import spoil_snapshot
+from agent_helpers import install_kit, spoil_snapshot
 
 from lado import artifacts, artifacts_local, runs, runtime, state
 
@@ -42,10 +42,11 @@ READ_IT = "read each with read_artifact"
 
 @pytest.fixture
 def run(repo, fake_tmux):
-    kit = repo / ".lado" / "kits" / "k"
+    kit = repo.parent / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="claude")
     runs.start("s", "ship", "Add x", name="x")
     runs.spawn_worker("s", "ship/x")

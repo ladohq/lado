@@ -4,9 +4,9 @@ agent's MCP server, through real tmux, the session loop and the new supervisor's
 import json
 
 import pytest
-from agent_helpers import fake_logs, wait_for
+from agent_helpers import fake_logs, install_kit, wait_for
 
-from lado import loop, runtime, state, tmux
+from lado import kits, loop, runtime, state, tmux
 
 pytestmark = pytest.mark.integration
 
@@ -21,12 +21,28 @@ def idle(session: str) -> bool:
     return agent is not None and agent.status == state.IDLE
 
 
+def test_a_repositorys_own_kit_is_not_read(repo, lado_home):
+    kit = repo / ".lado" / "kits" / "team"
+    (kit / "agents").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
+    (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\nReview.\n")
+    with pytest.raises(kits.KitError) as exc:
+        runtime.start_session(str(repo), "s", None, "fake", kit_names=["team"])
+    assert str(exc.value) == (
+        f'kit "team" not found; looked in the installed kits in {lado_home / "lado.db"}, '
+        f"{kits.BUILTIN}"
+    )
+    assert state.get_session("s") is None
+    assert not tmux.has_session("s")
+
+
 def test_an_approved_proposal_starts_an_independent_session_with_the_brief(repo):
     (repo / "brief.md").write_text("# Fix the login bug\n")
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "skills" / "style").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "skills" / "style" / "SKILL.md").write_text("---\nname: style\ndescription: d\n---\n")
+    install_kit(kit)
     runtime.start_session(
         str(repo), "a", None, "fake", kit_names=["default", "team"], without=["skill:style"]
     )

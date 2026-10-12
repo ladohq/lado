@@ -1,6 +1,7 @@
 """The supervisor starts a session the human approved (runtime.start_approved_session)."""
 
 import pytest
+from agent_helpers import install_kit
 
 from lado import artifacts, providers, runtime, state, tmux
 
@@ -9,10 +10,11 @@ CHOICE_B = runtime.START_CHOICE.format(name="b")
 
 @pytest.fixture
 def team_kit(repo):
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "skills" / "style").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "skills" / "style" / "SKILL.md").write_text("---\nname: style\ndescription: d\n---\n")
+    install_kit(kit)
     return kit
 
 

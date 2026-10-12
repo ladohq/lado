@@ -236,26 +236,32 @@ def _kit(base: Path, name: str, text: str) -> Path:
     return kit
 
 
-def test_kits_are_the_ones_a_session_of_the_folder_would_take(client, repo, tmp_path):
-    _kit(repo / ".lado" / "kits", "team", "name: team\nversion: 1.0.0\ndescription: ours\n")
-    user = _kit(tmp_path / "dev", "team", "name: team\nversion: 9.9.9\ndescription: shadowed\n")
+def test_kits_are_the_installed_and_the_built_in_ones(client, tmp_path):
+    team = _kit(tmp_path / "dev", "team", "name: team\nversion: 9.9.9\ndescription: ours\n")
     broken = _kit(tmp_path / "dev", "broken", "name: broken\nnope: 1\n")
-    for name, folder in (("team", user), ("broken", broken)):
-        state.add_kit(state.InstalledKit(name, folder=str(folder)))
-    kits = {k["name"]: k for k in client.get("/api/kits", params={"where": str(repo)}).json()}
+    default = _kit(tmp_path / "dev", "default", "name: default\nversion: 2.0.0\n")
+    for folder in (team, broken, default):
+        state.add_kit(state.InstalledKit(folder.name, folder=str(folder)))
+    kits = {k["name"]: k for k in client.get("/api/kits").json()}
+    assert sorted(kits) == ["broken", "default", "team"]
     assert kits["team"] == {
         "name": "team",
-        "version": "1.0.0",
+        "version": "9.9.9",
         "description": "ours",
         "valid": True,
         "problem": None,
     }
-    assert kits["default"]["valid"]
+    assert kits["default"]["version"] == "2.0.0"  # the installed one shadows the built-in one
     assert not kits["broken"]["valid"]
     assert "nope" in kits["broken"]["problem"]
-    # Without the folder its project kits are not there, and the user's kit wins.
-    user = [k for k in client.get("/api/kits").json() if k["name"] == "team"]
-    assert [k["version"] for k in user] == ["9.9.9"]
+
+
+def test_the_kit_list_ignores_a_folder(client, repo):
+    _kit(repo / ".lado" / "kits", "team", "name: team\nversion: 1.0.0\n")
+    answer = client.get("/api/kits", params={"where": str(repo)})
+    assert answer.status_code == 200
+    assert answer.json() == client.get("/api/kits").json()
+    assert [k["name"] for k in answer.json()] == ["default"]
 
 
 def test_kits_never_make_or_migrate_lado_db(client, lado_home):
@@ -271,19 +277,20 @@ def test_kits_never_make_or_migrate_lado_db(client, lado_home):
     assert state.schema_version() == state.SCHEMA_VERSION - 1
 
 
-def test_kits_are_listed_without_fetching_their_packs(client, repo, monkeypatch):
-    _kit(
-        repo / ".lado" / "kits",
+def test_kits_are_listed_without_fetching_their_packs(client, tmp_path, monkeypatch):
+    kit = _kit(
+        tmp_path / "kits",
         "team",
         "name: team\nversion: 1.0.0\ndependencies:\n  skills:\n"
         "    sp: https://example.com/superpowers.git@v1\n",
     )
+    agent_helpers.install_kit(kit)
 
     def no_git(*args, **kwargs):
         raise AssertionError(f"git ran: {args}")
 
     monkeypatch.setattr(gitcache, "_git", no_git)
-    kits = {k["name"]: k for k in client.get("/api/kits", params={"where": str(repo)}).json()}
+    kits = {k["name"]: k for k in client.get("/api/kits").json()}
     assert (kits["team"]["valid"], kits["team"]["problem"]) == (True, None)
 
 
@@ -425,10 +432,11 @@ def test_a_start_without_provider_goes_by_the_cores_rule(client, repo, fake_tmux
 
 def test_a_name_in_two_kits_is_refused_with_the_ways_to_switch_one_off(client, repo, fake_tmux):
     for name in ("a", "b"):
-        kit = repo / ".lado" / "kits" / name
+        kit = repo.parent / "kits" / name
         (kit / "agents").mkdir(parents=True)
         (kit / "kit.yaml").write_text(f"name: {name}\nversion: 1.0.0\n")
         (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\n")
+        agent_helpers.install_kit(kit)
     answer = launch(client, repo, kits=["a", "b"], provider="claude")
     assert answer.status_code == 400
     detail = answer.json()["detail"]
@@ -480,7 +488,7 @@ def test_only_a_folder_and_a_full_path_are_taken(client, repo, fake_tmux):
 def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
     client, repo, fake_tmux
 ):
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "agents").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "agents" / "rev.md").write_text("---\nname: rev\ndescription: d\n---\nYou review.\n")
@@ -490,6 +498,7 @@ def test_a_resume_replaces_settings_and_says_what_changed_and_what_cannot_go_on(
         "  build:\n    agent: rev\n    do: Build.\n    outcomes: {done: end}\n"
         "  end:\n    end: true\n"
     )
+    agent_helpers.install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     runs.start("s", "ship", "Add x", name="x")
     runtime.stop_session("s")

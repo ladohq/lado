@@ -181,10 +181,11 @@ states:
 
 @pytest.fixture
 def run(repo, fake_tmux):
-    kit = repo / ".lado" / "kits" / "k"
+    kit = repo.parent / "kits" / "k"
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: k\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
+    agent_helpers.install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "k"], provider="claude")
     _call("s", "supervisor", "flow_start", {"flow": "ship", "task": "Add x", "name": "x"})
     _call("s", "supervisor", "spawn_worker", {"run": "ship/x"})

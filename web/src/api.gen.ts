@@ -184,7 +184,8 @@ export interface paths {
         };
         /**
          * List Kits
-         * @description The kits a session of the folder `where` can take, one per name.
+         * @description The kits a session can take, one per name: the installed and the built-in ones,
+         *     the same for every folder.
          */
         get: operations["list_kits_api_kits_get"];
         put?: never;
@@ -2564,9 +2565,7 @@ export interface operations {
     };
     list_kits_api_kits_get: {
         parameters: {
-            query?: {
-                where?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -2580,15 +2579,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KitInfo"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

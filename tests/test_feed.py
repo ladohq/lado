@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 import pytest
 import uvicorn
-from agent_helpers import previous_schema, spoil_snapshot
+from agent_helpers import install_kit, previous_schema, spoil_snapshot
 from event_stream import EventStream
 
 from lado import artifacts, kits, loop, runs, runtime, state
@@ -295,7 +295,7 @@ def test_an_installed_kits_change_comes_with_its_item_in_the_form_of_the_rest_ap
 
 
 def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams, repo, fake_tmux):
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(
@@ -306,6 +306,7 @@ def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams,
         " {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     stream = streams()
     stream.next()
@@ -659,7 +660,7 @@ def run_item(stream, acting: str):
 def test_any_change_of_the_sessions_agents_updates_who_acts_in_its_open_runs(
     streams, repo, fake_tmux
 ):
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "agents").mkdir()
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
@@ -671,6 +672,7 @@ def test_any_change_of_the_sessions_agents_updates_who_acts_in_its_open_runs(
         "  build: {agent: developer, do: Build it., outcomes: {done: end}}\n"
         "  end: {end: true}\n"
     )
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     runs.start("s", "ship", "Add x", name="x")
     state.add_run(dataclasses.replace(bare_run(), session="s", name="feature/closed"), [])
@@ -691,7 +693,7 @@ def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
 ):
     monkeypatch.setattr(models, "_logged", set())  # what other tests logged is not counted
     caplog.set_level(logging.WARNING, logger="lado.server")
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(
@@ -700,6 +702,7 @@ def test_a_run_whose_flow_cannot_be_read_does_not_stop_the_feed(
         "  check: {gate: approval, ask: 'Ship it?', outcomes: {approved: end, rejected: plan}}\n"
         "  end: {end: true}\n"
     )
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     runs.start("s", "ship", "Add x", name="x")
     runs.start("s", "ship", "Add y", name="y")  # open and active: its acting needs the flow

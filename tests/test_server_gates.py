@@ -2,7 +2,7 @@
 human's answer. In process, with FastAPI's test client."""
 
 import pytest
-from agent_helpers import spoil_snapshot
+from agent_helpers import install_kit, spoil_snapshot
 from fastapi.testclient import TestClient
 
 from lado import artifacts, runs, runtime, state
@@ -44,10 +44,11 @@ def client():
 
 @pytest.fixture
 def kit(repo):
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
+    install_kit(kit)
     return kit
 
 

@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from agent_helpers import claude_prompt, spoil_snapshot
+from agent_helpers import claude_prompt, install_kit, spoil_snapshot
 
 from lado import kits, runs, runtime, state, tmux
 
@@ -46,9 +46,10 @@ def write(path: Path, text: str) -> None:
 
 @pytest.fixture
 def team(repo):
-    """A project kit with a developer, a reviewer and the feature flow."""
-    kit = repo / ".lado" / "kits" / "team"
+    """An installed kit with a developer, a reviewer and the feature flow."""
+    kit = repo.parent / "kits" / "team"
     write(kit / "kit.yaml", "name: team\nversion: 1.2.0\n")
+    install_kit(kit)
     for role in ("developer", "reviewer"):
         write(
             kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nYou {role}.\n"
@@ -88,7 +89,7 @@ def test_start_creates_the_run_with_its_own_worktree_and_snapshot(session, repo,
     assert run.kit == {
         "name": "team",
         "version": "1.2.0",
-        "source": f"project: {team.resolve()}",
+        "source": f"user: {team.resolve()}",
     }
     # Later edits of the kit do not change a running run.
     (team / "flows" / "feature.yaml").write_text("broken")
@@ -1125,8 +1126,9 @@ def test_a_step_far_longer_than_a_tmux_command_comes_through_the_queue(session, 
 @pytest.mark.parametrize("kit_names", [["solo"], ["default", "solo"]])
 def test_a_step_of_a_kits_supervisor_is_the_sessions_lead(repo, fake_tmux, kit_names):
     """Kit solo's supervisor is named lead; it leads alone, or LADO's built-in one leads."""
-    kit = repo / ".lado" / "kits" / "solo"
+    kit = repo.parent / "kits" / "solo"
     write(kit / "kit.yaml", "name: solo\nversion: 1.0.0\nsupervisor: lead\n")
+    install_kit(kit)
     for role in ("lead", "developer", "reviewer"):
         write(kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nx\n")
     flow = FEATURE.replace("agent: supervisor", "agent: lead")
@@ -1378,8 +1380,9 @@ def test_flow_set_is_a_step_of_the_human_with_no_outcome(session):
 @pytest.fixture
 def read_only_lead(repo, fake_tmux):
     """Session s led by kit watch's read-only supervisor, with the feature flow."""
-    kit = repo / ".lado" / "kits" / "watch"
+    kit = repo.parent / "kits" / "watch"
     write(kit / "kit.yaml", "name: watch\nversion: 1.0.0\nsupervisor: lead\n")
+    install_kit(kit)
     write(kit / "agents" / "lead.md", "---\nname: lead\ndescription: d\nread_only: true\n---\nx\n")
     for role in ("developer", "reviewer"):
         write(kit / "agents" / f"{role}.md", f"---\nname: {role}\ndescription: d\n---\nx\n")

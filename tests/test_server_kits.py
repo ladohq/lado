@@ -387,6 +387,20 @@ def test_remove_preview_names_the_sessions_and_remove_forgets_the_kit(
     assert answer.json()["detail"]["message"].startswith('no kit "default" is installed')
 
 
+def test_remove_preview_names_a_session_whose_repository_has_a_kit_folder_of_that_name(
+    client, tmp_path
+):
+    _, url = kit_repo(tmp_path, "1.0.0")
+    ok(install(client, plan(client, url)))
+    (tmp_path / "s" / ".lado" / "kits" / "team").mkdir(parents=True)
+    state.add_session(
+        state.Session("s", str(tmp_path / "s"), None, kits=["team"], provider="claude")
+    )
+    state.stop_session("s")
+    preview = ok(client.get("/api/kits/team/remove-preview"))
+    assert (preview["running"], preview["stopped"]) == ([], ["s"])
+
+
 # Check for updates
 
 

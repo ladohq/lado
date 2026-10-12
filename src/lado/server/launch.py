@@ -100,12 +100,11 @@ def recent_folders() -> list[models.RecentFolder]:
     ]
 
 
-def kit_infos(where: str | None, has_db: bool) -> list[models.KitInfo]:
-    """The kit of each name a session of the folder `where` would take; one that does not
+def kit_infos(has_db: bool) -> list[models.KitInfo]:
+    """The kit of each name the lookup takes, the same for every folder; one that does not
     load is there too, with why. Without lado.db no kit is installed (and none is made)."""
-    repo = _root_or_none(full_path(where)) if where else None
     try:
-        listed = kits.available(repo, with_installed=has_db)
+        listed = kits.available(with_installed=has_db)
     except kits.KitError as exc:
         raise runtime.LadoError(str(exc)) from exc
     infos = []
@@ -170,14 +169,14 @@ def session_about(sess: state.Session) -> models.SessionAbout:
     )
     return models.SessionAbout(
         repos=[repo],
-        kits=[_session_kit(name, sess.repo) for name in sess.kits],
+        kits=[_session_kit(name) for name in sess.kits],
         provider=provider_info(providers.get(sess.provider)),
     )
 
 
-def _session_kit(name: str, repo: str) -> models.SessionKitInfo:
+def _session_kit(name: str) -> models.SessionKitInfo:
     try:
-        found = kits.find(name, repo)
+        found = kits.find(name)
     except kits.KitError as exc:
         return models.SessionKitInfo(
             name=name, version="", source="", valid=False, problem=str(exc)

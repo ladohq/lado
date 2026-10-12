@@ -120,13 +120,6 @@ If a tag now points to another commit than the one installed, `outdated`, `updat
 updates (checked only when you press its button) and the marketplaces. Each install and
 update shows the same plan the CLI prints before it asks.
 
-### Project kits
-
-A kit in `<repo>/.lado/kits/<name>/` belongs to that project and needs no install. LADO
-looks a kit up by name in the project first, then among the installed kits, then among
-the built-in ones; the first one found wins. `lado kits --repo <repo>` lists what a
-project sees.
-
 ## 3. Use kits in a session
 
 ```bash
@@ -505,8 +498,9 @@ not list is left out. Without `index.json` the page shows each kit's name and ad
   again.
 - **A name in two kits**: two kits define the same role, skill or flow. The
   error gives each `--without kind:name@kit` that resolves it; pick one.
-- **`kit not found`**: check `lado kits` (and `lado kits --repo <repo>` for a project's
-  kits). A kit installed by an older LADO in `LADO_HOME/kits` must be added again: `lado
+- **`kit not found`**: check `lado kits`: LADO takes only the installed kits and the
+  built-in ones, never a kit folder in the repository (`lado kits add <folder>` installs
+  one). A kit installed by an older LADO in `LADO_HOME/kits` must be added again: `lado
   kits` prints the `lado kits add` of each.
 - **`hardcoded path`** in `lado kits check`: use `${KIT_DIR}` or a relative path.
 - **An installed kit's folder is missing**: `lado kits remove <name>`, then add it again.

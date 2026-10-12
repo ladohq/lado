@@ -8,6 +8,7 @@ import sys
 import time
 
 import pytest
+from agent_helpers import install_kit
 
 from lado import fingerprint, hooks, providers, runtime, state
 from lado.providers import base
@@ -16,13 +17,14 @@ from lado.providers import base
 @pytest.fixture
 def quiet(repo, fake_tmux):
     """Session "s" with a read-only reviewer "r1" and a developer "d1", both idle."""
-    kit = repo / ".lado" / "kits" / "quiet"
+    kit = repo.parent / "kits" / "quiet"
     (kit / "agents").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: quiet\nversion: 1.0.0\n")
     (kit / "agents" / "reviewer.md").write_text(
         "---\nname: reviewer\ndescription: reviews\nread_only: true\n---\nReview.\n"
     )
     (kit / "agents" / "dev.md").write_text("---\nname: dev\ndescription: d\n---\nDevelop.\n")
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, provider="claude", kit_names=["quiet"])
     runtime.spawn_worker("s", "review", name="r1", role="reviewer")
     runtime.spawn_worker("s", "build", name="d1", role="dev")
@@ -184,12 +186,13 @@ def test_a_turn_s_end_with_nothing_to_compare_writes_its_fingerprint(quiet, lado
 
 
 def test_a_read_only_supervisor_s_change_is_told_to_the_human(repo, fake_tmux):
-    kit = repo / ".lado" / "kits" / "watch"
+    kit = repo.parent / "kits" / "watch"
     (kit / "agents").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: watch\nversion: 1.0.0\nsupervisor: boss\n")
     (kit / "agents" / "boss.md").write_text(
         "---\nname: boss\ndescription: w\nread_only: true\n---\nWatch.\n"
     )
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, provider="claude", kit_names=["watch"])
     _hook("SessionStart", "supervisor")
     _hook("UserPromptSubmit", "supervisor", {"prompt": "go"})

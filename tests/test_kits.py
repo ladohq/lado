@@ -6,14 +6,17 @@ import subprocess
 
 import pytest
 import yaml
-from agent_helpers import init_repo, publish
+from agent_helpers import init_repo, install_kit, publish
 
 import lado
 from lado import agent_env, flows, gitcache, kits, marketplaces, mcp_exec, state
 
+INSTALLED = "installed-kits"  # the kits_dir folder: a kit made there is installed
+
 
 def make_kit(base, name, agents=None, skills=(), **meta):
-    """Write a kit into base/name. `agents`: name -> (frontmatter extras, body)."""
+    """Write a kit into base/name. `agents`: name -> (frontmatter extras, body). A kit made
+    in `kits_dir` is installed (install_kit), so the lookup finds it by its name."""
     path = base / name
     (path / "agents").mkdir(parents=True)
     (path / "kit.yaml").write_text(yaml.safe_dump({"name": name, "version": "1.0.0", **meta}))
@@ -24,17 +27,27 @@ def make_kit(base, name, agents=None, skills=(), **meta):
         (path / "skills" / skill).mkdir(parents=True)
         front = f"name: {skill}\ndescription: use {skill}\nlicense: MIT\n"
         (path / "skills" / skill / "SKILL.md").write_text(f"---\n{front}---\nDo {skill}.\n")
+    if base.name == INSTALLED:
+        install_kit(path)
     return path
 
 
 @pytest.fixture
-def project(repo):
-    """The repo's project kits folder."""
-    return repo / ".lado" / "kits"
+def kits_dir(tmp_path):
+    """A folder of kits in a git repository of their own, outside the session's: each kit
+    made in it (make_kit) is installed."""
+    return init_repo(tmp_path / "kits-repo") / INSTALLED
+
+
+def test_install_kit_installs_a_folder(tmp_path):
+    folder = make_kit(tmp_path / "kits", "team", agents={"w": ({}, "")})
+    assert install_kit(folder) == "team"
+    found = kits.find("team")
+    assert (found.where, found.path, found.installed.folder) == ("user", folder, str(folder))
 
 
 def test_builtin_default_kit():
-    env = kits.resolve(None, ["default"])
+    env = kits.resolve(["default"])
     assert list(env.agents) == ["worker"]
     assert (env.lead.name, env.lead.kit) == ("supervisor", "default")
     assert env.lead_line() == "lead: supervisor of kit default"
@@ -49,9 +62,9 @@ def test_builtin_default_kit():
     assert env.kits[0].where == "built-in"
 
 
-def test_load_reads_agents_and_skills(project):
+def test_load_reads_agents_and_skills(kits_dir):
     path = make_kit(
-        project,
+        kits_dir,
         "k",
         agents={"rev": ({"skills": ["a"]}, "Review. Tools in ${KIT_DIR}/bin; keep ${HOME}.")},
         skills=["a", "b"],
@@ -67,22 +80,22 @@ def test_load_reads_agents_and_skills(project):
     assert kit.supervisor is None
 
 
-def test_a_role_may_be_read_only(project):
-    path = make_kit(project, "k", agents={"rev": ({"read_only": True}, ""), "w": ({}, "")})
+def test_a_role_may_be_read_only(kits_dir):
+    path = make_kit(kits_dir, "k", agents={"rev": ({"read_only": True}, ""), "w": ({}, "")})
     kit = kits.load(path)
     assert (kit.agents["rev"].read_only, kit.agents["w"].read_only) == (True, False)
 
 
 @pytest.mark.parametrize("value", ["yes", 1, None, [True]])
-def test_read_only_must_be_true_or_false(project, value):
-    path = make_kit(project, "k", agents={"rev": ({"read_only": value}, "")})
+def test_read_only_must_be_true_or_false(kits_dir, value):
+    path = make_kit(kits_dir, "k", agents={"rev": ({"read_only": value}, "")})
     with pytest.raises(kits.KitError) as e:
         kits.load(path)
     assert f"{path / 'agents' / 'rev.md'}: read_only must be true or false" in str(e.value)
 
 
-def test_kit_names_its_supervisor(project):
-    path = make_kit(project, "k", agents={"boss": ({}, ""), "w": ({}, "")}, supervisor="boss")
+def test_kit_names_its_supervisor(kits_dir):
+    path = make_kit(kits_dir, "k", agents={"boss": ({}, ""), "w": ({}, "")}, supervisor="boss")
     assert kits.load(path).supervisor == "boss"
 
 
@@ -146,15 +159,15 @@ def test_kit_names_its_supervisor(project):
         (lambda p: (p / "agents" / "notes.txt").write_text(""), "holds <name>.md files"),
     ],
 )
-def test_load_errors(project, change, error):
-    path = make_kit(project, "k", agents={"w": ({}, "")}, skills=["s"])
+def test_load_errors(kits_dir, change, error):
+    path = make_kit(kits_dir, "k", agents={"w": ({}, "")}, skills=["s"])
     change(path)
     with pytest.raises(kits.KitError, match=error):
         kits.load(path)
 
 
-def test_load_reports_every_problem(project):
-    path = make_kit(project, "k", skills=["s"])
+def test_load_reports_every_problem(kits_dir):
+    path = make_kit(kits_dir, "k", skills=["s"])
     (path / "kit.yaml").write_text("name: k\nbogus: 1\n")
     (path / "skills" / "s" / "SKILL.md").write_text("---\nname: t\ndescription: d\n---\n")
     with pytest.raises(kits.KitError) as exc:
@@ -173,16 +186,16 @@ def test_load_reports_every_problem(project):
         ([], "mcp must map server names"),
     ],
 )
-def test_mcp_errors(project, mcp, error):
-    path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, "")})
+def test_mcp_errors(kits_dir, mcp, error):
+    path = make_kit(kits_dir, "k", agents={"w": ({"mcp": mcp}, "")})
     with pytest.raises(kits.KitError, match=error):
         kits.load(path)
 
 
-def test_mcp_variables(project, monkeypatch):
+def test_mcp_variables(kits_dir, monkeypatch):
     mcp = {"db": {"command": ["${KIT_DIR}/srv", "--x"], "env": {"T": "${TOKEN}-${KIT_DIR}"}}}
-    path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, "")})
-    env = kits.resolve(None, [kits.load(path)])
+    path = make_kit(kits_dir, "k", agents={"w": ({"mcp": mcp}, "")})
+    env = kits.resolve([kits.load(path)])
     servers = env.resolve("w").mcp_servers({"TOKEN": "s3cr3t"})
     kit_dir = path.resolve()
     # The value stays in the agent's environment: the server is started by the wrapper.
@@ -198,110 +211,107 @@ def test_mcp_variables(project, monkeypatch):
         env.resolve("w").mcp_servers()
 
 
-def test_mcp_without_references_is_not_wrapped(project):
+def test_mcp_without_references_is_not_wrapped(kits_dir):
     mcp = {"db": {"command": ["srv"], "env": {"MODE": "${KIT_DIR}/ro"}}}
-    path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, "")})
-    servers = kits.resolve(None, [kits.load(path)]).resolve("w").mcp_servers({})
+    path = make_kit(kits_dir, "k", agents={"w": ({"mcp": mcp}, "")})
+    servers = kits.resolve([kits.load(path)]).resolve("w").mcp_servers({})
     assert servers["db"].command == ["srv"]
     assert servers["db"].env == {"MODE": f"{path.resolve()}/ro"}
     assert servers["db"].env_vars == []
 
 
-def test_mcp_literals_stay_beside_the_templates(project):
+def test_mcp_literals_stay_beside_the_templates(kits_dir):
     mcp = {"db": {"command": ["srv"], "env": {"MODE": "ro", "T": "${TOKEN}"}}}
-    path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, "")})
-    servers = kits.resolve(None, [kits.load(path)]).resolve("w").mcp_servers({"TOKEN": "s"})
+    path = make_kit(kits_dir, "k", agents={"w": ({"mcp": mcp}, "")})
+    servers = kits.resolve([kits.load(path)]).resolve("w").mcp_servers({"TOKEN": "s"})
     assert servers["db"].env == {"MODE": "ro"}
     assert servers["db"].command == mcp_exec.wrap("db", ["srv"], {"T": "${TOKEN}"})
 
 
-def test_lookup_order(tmp_path, repo, project, lado_home):
+def test_a_repository_kit_is_not_read(repo, lado_home):
+    make_kit(repo / ".lado" / "kits", "team", agents={"w": ({}, "")})
+    with pytest.raises(kits.KitError) as exc:
+        kits.find("team")
+    assert str(exc.value) == (
+        f'kit "team" not found; looked in the installed kits in '
+        f"{lado_home / 'lado.db'}, {kits.BUILTIN}"
+    )
+    assert "team" not in [f.name for f, _ in kits.available()]
+    # A kit in LADO_HOME/kits, the place of older LADOs, is not found either.
+    make_kit(lado_home / "kits", "old")
+    with pytest.raises(kits.KitError, match='kit "old" not found'):
+        kits.find("old")
+
+
+def test_an_installed_kit_shadows_the_built_in_one(tmp_path):
     user = make_kit(
         tmp_path / "dev", "default", agents={"boss": ({}, "user boss")}, supervisor="boss"
     )
-    state.add_kit(state.InstalledKit("default", folder=str(user)))
-    found = kits.find("default", repo)
+    install_kit(user)
+    found = kits.find("default")
     assert (found.where, found.path, found.installed) == ("user", user, state.get_kit("default"))
-    make_kit(project, "default", agents={"boss": ({}, "project boss")}, supervisor="boss")
-    found = kits.find("default", repo)
-    assert (found.where, found.path) == ("project", project / "default")
-    assert kits.resolve(repo, ["default"]).lead.body == "project boss"
-    assert kits.find("default", None).where == "user"
-    found = [(f.name, f.where, by) for f, by in kits.available(repo)]
-    assert found == [
-        ("default", "project", None),
-        ("default", "user", "project"),
-        ("default", "built-in", "project"),
-    ]
-    with pytest.raises(kits.KitError) as exc:
-        kits.find("nope", repo)
-    assert str(exc.value) == (
-        f'kit "nope" not found; looked in {project}, the installed kits in '
-        f"{lado_home / 'lado.db'}, {kits.BUILTIN}"
-    )
-    # A kit in LADO_HOME/kits, the place of older LADOs, is not found.
-    make_kit(lado_home / "kits", "old")
-    with pytest.raises(kits.KitError, match='kit "old" not found'):
-        kits.find("old", repo)
+    assert kits.resolve(["default"]).lead.body == "user boss"
+    found = [(f.name, f.where, by) for f, by in kits.available()]
+    assert found == [("default", "user", None), ("default", "built-in", "user")]
 
 
-def test_kits_combine_in_a_session(repo, project):
-    make_kit(project, "base", agents={"w": ({}, "")}, skills=["s1"])
-    make_kit(project, "extra", skills=["s2"])
-    make_kit(project, "top", agents={"rev": ({}, "")})
-    env = kits.resolve(repo, ["base", "extra", "default", "top"])
+def test_kits_combine_in_a_session(repo, kits_dir):
+    make_kit(kits_dir, "base", agents={"w": ({}, "")}, skills=["s1"])
+    make_kit(kits_dir, "extra", skills=["s2"])
+    make_kit(kits_dir, "top", agents={"rev": ({}, "")})
+    env = kits.resolve(["base", "extra", "default", "top"])
     assert [k.name for k in env.kits] == ["base", "extra", "default", "top"]
     assert list(env.agents) == ["w", "worker", "rev"]
     assert list(env.shared) == ["s1", "s2"]
     # The same kit given twice is one kit.
-    assert len(kits.resolve(repo, ["top", "base", "top"]).kits) == 2
+    assert len(kits.resolve(["top", "base", "top"]).kits) == 2
 
 
-def test_name_clash_names_both_kits(repo, project):
-    make_kit(project, "a", skills=["s"])
-    make_kit(project, "b", skills=["s"])
+def test_name_clash_names_both_kits(repo, kits_dir):
+    make_kit(kits_dir, "a", skills=["s"])
+    make_kit(kits_dir, "b", skills=["s"])
     with pytest.raises(kits.KitError, match='skill "s" is defined by two kits: a .* and b'):
-        kits.resolve(repo, ["a", "b"])
-    make_kit(project, "c", agents={"worker": ({}, "")})
+        kits.resolve(["a", "b"])
+    make_kit(kits_dir, "c", agents={"worker": ({}, "")})
     with pytest.raises(kits.KitError, match='agent "worker" is defined by two kits: default') as e:
-        kits.resolve(repo, ["default", "c"])
+        kits.resolve(["default", "c"])
     assert "switch one off: --without agent:worker@default or --without agent:worker@c" in str(
         e.value
     )
     assert e.value.switch_off == ["agent:worker@default", "agent:worker@c"]
 
 
-def test_one_kit_supervisor_leads(repo, project):
-    make_kit(project, "mine", agents={"lead": ({}, "boss"), "w": ({}, "")}, supervisor="lead")
-    make_kit(project, "extra", skills=["s"])  # a kit without agents changes nothing
-    env = kits.resolve(repo, ["mine", "extra"])
+def test_one_kit_supervisor_leads(repo, kits_dir):
+    make_kit(kits_dir, "mine", agents={"lead": ({}, "boss"), "w": ({}, "")}, supervisor="lead")
+    make_kit(kits_dir, "extra", skills=["s"])  # a kit without agents changes nothing
+    env = kits.resolve(["mine", "extra"])
     assert (env.lead.name, env.lead.kit, env.lead.body) == ("lead", "mine", "boss")
     assert list(env.agents) == ["w"] and [a.name for a in env.roles()] == ["w"]
     assert env.lead_line() == "lead: lead of kit mine" and env.warnings == []
     assert list(env.resolve("lead").skills) == ["s"]
 
 
-def test_no_kit_supervisor_the_builtin_one_leads(repo, project):
-    make_kit(project, "team", agents={"w": ({}, "")})
-    env = kits.resolve(repo, ["team"])
+def test_no_kit_supervisor_the_builtin_one_leads(repo, kits_dir):
+    make_kit(kits_dir, "team", agents={"w": ({}, "")})
+    env = kits.resolve(["team"])
     assert (env.lead.name, env.lead.kit) == ("supervisor", "default")
     assert env.lead.path == kits.BUILTIN / "default" / "agents" / "supervisor.md"
     assert list(env.agents) == ["w"]  # not the built-in worker
     assert env.lead_line() == "lead: LADO's built-in supervisor (no kit has a supervisor)"
     assert env.warnings == []
-    env = kits.resolve(repo, ["team", "default"], ["agent:supervisor@default"])
+    env = kits.resolve(["team", "default"], ["agent:supervisor@default"])
     assert env.lead.path == kits.BUILTIN / "default" / "agents" / "supervisor.md"
     assert list(env.agents) == ["w", "worker"]
 
 
-def test_several_kit_supervisors_the_builtin_one_leads(repo, project):
+def test_several_kit_supervisors_the_builtin_one_leads(repo, kits_dir):
     make_kit(
-        project, "a", agents={"supervisor": ({}, "a boss"), "x": ({}, "")}, supervisor=kits.LEAD
+        kits_dir, "a", agents={"supervisor": ({}, "a boss"), "x": ({}, "")}, supervisor=kits.LEAD
     )
     make_kit(
-        project, "b", agents={"supervisor": ({}, "b boss"), "y": ({}, "")}, supervisor=kits.LEAD
+        kits_dir, "b", agents={"supervisor": ({}, "b boss"), "y": ({}, "")}, supervisor=kits.LEAD
     )
-    env = kits.resolve(repo, ["a", "b"])
+    env = kits.resolve(["a", "b"])
     assert env.lead.path == kits.BUILTIN / "default" / "agents" / "supervisor.md"
     assert list(env.agents) == ["x", "y"]
     assert env.lead_line() == (
@@ -317,36 +327,36 @@ def test_several_kit_supervisors_the_builtin_one_leads(repo, project):
         "--without agent:supervisor@a",
         "kit b's supervisor lists no skills: its lead skill carries none",
     ]
-    env = kits.resolve(repo, ["a", "b"], ["agent:supervisor@b"])
+    env = kits.resolve(["a", "b"], ["agent:supervisor@b"])
     assert (env.lead.kit, env.lead.body, env.warnings) == ("a", "a boss", [])
 
 
-def lead_kit(project, name, sup=None, pack=None, skills=(), body=None):
+def lead_kit(kits_dir, name, sup=None, pack=None, skills=(), body=None):
     """Kit `name` with a supervisor (frontmatter `sup`), a role and, with `pack`, a local
     pack of those skills whose SKILL.md says which kit it is."""
     packs = {}
     if pack:
-        folder = make_pack(project.parent / f"pack-{name}", pack)
+        folder = make_pack(kits_dir.parent / f"pack-{name}", pack)
         for skill in pack:
             md = folder / "skills" / skill / "SKILL.md"
             md.write_text(md.read_text() + f"Version of {name}.\n")
         packs = {"p": f"../../pack-{name}"}
     agents = {"supervisor": (sup or {}, body or f"{name} boss"), f"w{name}": ({}, "")}
-    return pack_kit(project, name, packs=packs, agents=agents, skills=skills, supervisor=kits.LEAD)
+    return pack_kit(kits_dir, name, packs=packs, agents=agents, skills=skills, supervisor=kits.LEAD)
 
 
-def test_no_lead_skills_when_a_kit_supervisor_leads(repo, project):
-    lead_kit(project, "a", {"skills": ["tdd"]}, pack=["tdd"])
-    env = kits.resolve(repo, ["a"])
+def test_no_lead_skills_when_a_kit_supervisor_leads(repo, kits_dir):
+    lead_kit(kits_dir, "a", {"skills": ["tdd"]}, pack=["tdd"])
+    env = kits.resolve(["a"])
     assert env.kit_supervisors == {} and env.lead_skills() == []
 
 
-def test_each_kit_supervisor_that_does_not_lead_gives_a_lead_skill(repo, project):
+def test_each_kit_supervisor_that_does_not_lead_gives_a_lead_skill(repo, kits_dir):
     lead_kit(
-        project, "a", {"skills": ["tdd", "own-a"], "description": "Leads a."}, ["tdd"], ["own-a"]
+        kits_dir, "a", {"skills": ["tdd", "own-a"], "description": "Leads a."}, ["tdd"], ["own-a"]
     )
-    lead_kit(project, "b", {"skills": ["tdd"]}, pack=["tdd"])
-    env = kits.resolve(repo, ["a", "b", "default"])
+    lead_kit(kits_dir, "b", {"skills": ["tdd"]}, pack=["tdd"])
+    env = kits.resolve(["a", "b", "default"])
     assert list(env.kit_supervisors) == ["a", "b"]  # not the built-in default's
     a, b = env.lead_skills()
     assert (a.name, a.kit, a.body) == ("lead-a", "a", "a boss")
@@ -363,43 +373,43 @@ def test_each_kit_supervisor_that_does_not_lead_gives_a_lead_skill(repo, project
     assert "tdd" not in env.resolve("supervisor").skills
 
 
-def test_a_kit_supervisor_switched_off_gives_no_lead_skill(repo, project):
-    lead_kit(project, "a")
-    lead_kit(project, "b")
-    lead_kit(project, "c")
-    env = kits.resolve(repo, ["a", "b", "c"], ["agent:supervisor@b"])
+def test_a_kit_supervisor_switched_off_gives_no_lead_skill(repo, kits_dir):
+    lead_kit(kits_dir, "a")
+    lead_kit(kits_dir, "b")
+    lead_kit(kits_dir, "c")
+    env = kits.resolve(["a", "b", "c"], ["agent:supervisor@b"])
     assert [s.name for s in env.lead_skills()] == ["lead-a", "lead-c"]
 
 
-def test_a_lead_skill_without_the_skills_switched_off(repo, project):
-    lead_kit(project, "a", {"skills": ["tdd", "plan"]}, pack=["tdd", "plan"])
-    lead_kit(project, "b", {"skills": ["own-b"]}, skills=["own-b"])
-    env = kits.resolve(repo, ["a", "b"], ["skill:tdd@a", "skill:own-b"])
+def test_a_lead_skill_without_the_skills_switched_off(repo, kits_dir):
+    lead_kit(kits_dir, "a", {"skills": ["tdd", "plan"]}, pack=["tdd", "plan"])
+    lead_kit(kits_dir, "b", {"skills": ["own-b"]}, skills=["own-b"])
+    env = kits.resolve(["a", "b"], ["skill:tdd@a", "skill:own-b"])
     a, b = env.lead_skills()
     assert list(a.skills) == ["plan"] and b.skills == {}
 
 
-def test_a_skill_a_kit_supervisor_cannot_see_is_an_error(repo, project):
+def test_a_skill_a_kit_supervisor_cannot_see_is_an_error(repo, kits_dir):
     """As if it led: its skills are checked when it does not lead too."""
-    lead_kit(project, "a", {"skills": ["nope"]})
-    lead_kit(project, "b")
+    lead_kit(kits_dir, "a", {"skills": ["nope"]})
+    lead_kit(kits_dir, "b")
     with pytest.raises(kits.KitError, match='skill "nope" is not visible to agent "supervisor"'):
-        kits.resolve(repo, ["a", "b"])
+        kits.resolve(["a", "b"])
 
 
-def test_the_mcp_servers_of_a_kit_supervisor_are_named(repo, project):
+def test_the_mcp_servers_of_a_kit_supervisor_are_named(repo, kits_dir):
     mcp = {"db": {"command": ["db"]}, "web": {"command": ["web"]}}
-    lead_kit(project, "a", {"mcp": mcp})
-    lead_kit(project, "b")
-    assert kits.resolve(repo, ["a", "b"]).lead_skills()[0].missing_mcp == ["db", "web"]
+    lead_kit(kits_dir, "a", {"mcp": mcp})
+    lead_kit(kits_dir, "b")
+    assert kits.resolve(["a", "b"]).lead_skills()[0].missing_mcp == ["db", "web"]
     for item in ("mcp:db@a", "mcp:db"):
-        assert kits.resolve(repo, ["a", "b"], [item]).lead_skills()[0].missing_mcp == ["web"]
+        assert kits.resolve(["a", "b"], [item]).lead_skills()[0].missing_mcp == ["web"]
 
 
-def test_warnings_say_how_kit_supervisors_are_used(repo, project):
+def test_warnings_say_how_kit_supervisors_are_used(repo, kits_dir):
     mcp = {"db": {"command": ["db"]}, "web": {"command": ["web"]}}
-    lead_kit(project, "a", {"skills": [], "mcp": mcp})
-    env = kits.resolve(repo, ["a", "default"])
+    lead_kit(kits_dir, "a", {"skills": [], "mcp": mcp})
+    env = kits.resolve(["a", "default"])
     assert env.warnings == [
         "kit a's supervisor does not lead (several kits have a supervisor): its prompt is the "
         "built-in supervisor's skill lead-a; to make it the lead, switch the others off: "
@@ -409,71 +419,71 @@ def test_warnings_say_how_kit_supervisors_are_used(repo, project):
         "kit default's supervisor leads as LADO's built-in supervisor (several kits have a "
         "supervisor)",
     ]
-    assert kits.resolve(repo, ["a", "default"], ["mcp:db", "mcp:web@a"]).warnings[1:] == [
-        env.warnings[2]
-    ]
+    assert kits.resolve(["a", "default"], ["mcp:db", "mcp:web@a"]).warnings[1:] == [env.warnings[2]]
 
 
-def test_a_read_only_kit_supervisor_that_does_not_lead_is_named(repo, project):
-    lead_kit(project, "a", {"read_only": True})
-    env = kits.resolve(repo, ["a", "default"])
+def test_a_read_only_kit_supervisor_that_does_not_lead_is_named(repo, kits_dir):
+    lead_kit(kits_dir, "a", {"read_only": True})
+    env = kits.resolve(["a", "default"])
     assert env.lead.read_only is False
     assert "read_only of supervisor (kit a) has no effect: it does not lead" in env.warnings
-    lead_kit(project, "b")
-    assert not [w for w in kits.resolve(repo, ["b", "default"]).warnings if "read_only" in w]
+    lead_kit(kits_dir, "b")
+    assert not [w for w in kits.resolve(["b", "default"]).warnings if "read_only" in w]
 
 
-def test_a_skill_named_like_a_lead_skill_is_an_error(repo, project):
-    lead_kit(project, "x")
-    lead_kit(project, "y", skills=["lead-x"])
+def test_a_skill_named_like_a_lead_skill_is_an_error(repo, kits_dir):
+    lead_kit(kits_dir, "x")
+    lead_kit(kits_dir, "y", skills=["lead-x"])
     with pytest.raises(kits.KitError) as e:
-        kits.resolve(repo, ["x", "y"])
+        kits.resolve(["x", "y"])
     message = str(e.value)
     assert 'skill "lead-x" of kit y' in message
-    assert str((project / "y" / "skills" / "lead-x").resolve()) in message
+    assert str((kits_dir / "y" / "skills" / "lead-x").resolve()) in message
     assert "the lead skill of kit x's supervisor" in message
     assert e.value.switch_off == ["skill:lead-x", "agent:supervisor@x"]
     for way_out in e.value.switch_off:
-        kits.resolve(repo, ["x", "y"], [way_out])
+        kits.resolve(["x", "y"], [way_out])
 
 
-def test_a_kit_supervisor_is_switched_off_with_its_kit(repo, project):
-    make_kit(project, "mine", agents={"lead": ({}, ""), "w": ({}, "")}, supervisor="lead")
-    env = kits.resolve(repo, ["mine"], ["agent:lead@mine"])
+def test_a_kit_supervisor_is_switched_off_with_its_kit(repo, kits_dir):
+    make_kit(kits_dir, "mine", agents={"lead": ({}, ""), "w": ({}, "")}, supervisor="lead")
+    env = kits.resolve(["mine"], ["agent:lead@mine"])
     assert env.lead.kit == "default"
     # Without @kit, as sessions of older LADOs stored it: the supervisor of the one kit
     # that has it by that name.
-    env = kits.resolve(repo, ["default", "mine"], ["agent:supervisor"])
+    env = kits.resolve(["default", "mine"], ["agent:supervisor"])
     assert (env.lead.name, env.lead.kit, env.warnings) == ("lead", "mine", [])
     assert env.without == ["agent:supervisor"]
-    assert kits.resolve(repo, ["mine"], ["agent:lead"]).lead.kit == "default"
+    assert kits.resolve(["mine"], ["agent:lead"]).lead.kit == "default"
 
 
-def test_a_supervisor_name_of_several_kits_needs_its_kit(repo, project):
-    make_kit(project, "a", agents={"supervisor": ({}, ""), "x": ({}, "")}, supervisor=kits.LEAD)
-    make_kit(project, "b", agents={"supervisor": ({}, ""), "y": ({}, "")}, supervisor=kits.LEAD)
+def test_a_supervisor_name_of_several_kits_needs_its_kit(repo, kits_dir):
+    make_kit(kits_dir, "a", agents={"supervisor": ({}, ""), "x": ({}, "")}, supervisor=kits.LEAD)
+    make_kit(kits_dir, "b", agents={"supervisor": ({}, ""), "y": ({}, "")}, supervisor=kits.LEAD)
     with pytest.raises(
         kits.KitError,
         match="cannot switch off agent:supervisor: it is the supervisor of kits a and b; "
         "use --without agent:supervisor@a or --without agent:supervisor@b",
     ) as e:
-        kits.resolve(repo, ["a", "b"], ["agent:supervisor"])
+        kits.resolve(["a", "b"], ["agent:supervisor"])
     assert e.value.switch_off == ["agent:supervisor@a", "agent:supervisor@b"]
 
 
-def test_the_leads_mcp_server_is_switched_off_by_name(repo, project):
+def test_the_leads_mcp_server_is_switched_off_by_name(repo, kits_dir):
     mcp = {"db": {"command": ["db"]}}
-    make_kit(project, "mine", agents={"lead": ({"mcp": mcp}, ""), "w": ({}, "")}, supervisor="lead")
-    env = kits.resolve(repo, ["mine"], ["mcp:db"])
+    make_kit(
+        kits_dir, "mine", agents={"lead": ({"mcp": mcp}, ""), "w": ({}, "")}, supervisor="lead"
+    )
+    env = kits.resolve(["mine"], ["mcp:db"])
     assert env.resolve("lead").mcp == {}
-    assert list(kits.resolve(repo, ["mine"]).resolve("lead", ["mcp:db@mine"]).mcp) == []
+    assert list(kits.resolve(["mine"]).resolve("lead", ["mcp:db@mine"]).mcp) == []
 
 
-def test_a_lead_step_of_a_kit_flow_is_the_sessions_lead(repo, project):
-    path = make_kit(project, "mine", agents={"lead": ({}, ""), "w": ({}, "")}, supervisor="lead")
+def test_a_lead_step_of_a_kit_flow_is_the_sessions_lead(repo, kits_dir):
+    path = make_kit(kits_dir, "mine", agents={"lead": ({}, ""), "w": ({}, "")}, supervisor="lead")
     (path / "flows").mkdir()
     (path / "flows" / "f.yaml").write_text(LEAD_FLOW)
-    flow = kits.resolve(repo, ["mine"]).flow("f")
+    flow = kits.resolve(["mine"]).flow("f")
     assert flow.states["plan"].agent == kits.LEAD
     assert flow.states["build"].agent == "w"
     assert flow.snapshot["states"]["plan"]["agent"] == kits.LEAD
@@ -492,9 +502,9 @@ states:
 """
 
 
-def test_role_is_required_when_the_session_has_several(repo, project):
-    make_kit(project, "k", agents={"rev": ({}, ""), "dev": ({}, "")})
-    env = kits.resolve(repo, ["k"])
+def test_role_is_required_when_the_session_has_several(repo, kits_dir):
+    make_kit(kits_dir, "k", agents={"rev": ({}, ""), "dev": ({}, "")})
+    env = kits.resolve(["k"])
     with pytest.raises(
         kits.KitError, match="role is required: this session has several worker roles: dev, rev"
     ):
@@ -502,22 +512,22 @@ def test_role_is_required_when_the_session_has_several(repo, project):
     assert env.role("rev").name == "rev"
     with pytest.raises(kits.KitError, match='no worker role "supervisor" in this session'):
         env.role("supervisor")
-    assert kits.resolve(repo, ["k"], ["agent:dev"]).role(None).name == "rev"
+    assert kits.resolve(["k"], ["agent:dev"]).role(None).name == "rev"
 
 
-def test_the_same_name_in_two_kits_is_resolved_with_at_kit(repo, project):
-    a = make_kit(project, "a", agents={"reviewer": ({}, "a rev")})
-    b = make_kit(project, "b", agents={"reviewer": ({}, "b rev")})
+def test_the_same_name_in_two_kits_is_resolved_with_at_kit(repo, kits_dir):
+    a = make_kit(kits_dir, "a", agents={"reviewer": ({}, "a rev")})
+    b = make_kit(kits_dir, "b", agents={"reviewer": ({}, "b rev")})
     for kit, flow in ((a, "fa"), (b, "fb"), (b, "same")):
         (kit / "flows").mkdir(exist_ok=True)
         (kit / "flows" / f"{flow}.yaml").write_text(REVIEW_FLOW.format(name=flow))
     (a / "flows" / "same.yaml").write_text(REVIEW_FLOW.format(name="same"))
     with pytest.raises(kits.KitError, match='agent "reviewer" is defined by two kits'):
-        kits.resolve(repo, ["a", "b"])
+        kits.resolve(["a", "b"])
     with pytest.raises(kits.KitError, match='flow "same" is defined by two kits') as e:
-        kits.resolve(repo, ["a", "b"], ["agent:reviewer@b"])
+        kits.resolve(["a", "b"], ["agent:reviewer@b"])
     assert e.value.switch_off == ["flow:same@a", "flow:same@b"]
-    env = kits.resolve(repo, ["a", "b"], ["agent:reviewer@b", "flow:same@a"])
+    env = kits.resolve(["a", "b"], ["agent:reviewer@b", "flow:same@a"])
     assert env.agents["reviewer"].body == "a rev"
     assert env.flow("fb").kit == "b"  # kit b's flow calls kit a's reviewer
     assert env.flows["same"].kit == "b"
@@ -534,19 +544,19 @@ states:
 """
 
 
-def test_skills_and_mcp_are_switched_off_in_one_kit(repo, project):
+def test_skills_and_mcp_are_switched_off_in_one_kit(repo, kits_dir):
     mcp = {"db": {"command": ["db"]}}
-    a = make_kit(project, "a", agents={"x": ({"mcp": mcp}, "")}, skills=["s"])
+    a = make_kit(kits_dir, "a", agents={"x": ({"mcp": mcp}, "")}, skills=["s"])
     make_pack(a / "pack", ["tdd"])
     (a / "kit.yaml").write_text(
         yaml.safe_dump({"name": "a", "version": "1.0.0", "dependencies": {"skills": {"p": "pack"}}})
     )
-    make_kit(project, "b", agents={"y": ({"mcp": mcp}, "")}, skills=["t"])
-    env = kits.resolve(repo, ["a", "b"], ["skill:s@a", "skill:tdd@a", "mcp:db@b"])
+    make_kit(kits_dir, "b", agents={"y": ({"mcp": mcp}, "")}, skills=["t"])
+    env = kits.resolve(["a", "b"], ["skill:s@a", "skill:tdd@a", "mcp:db@b"])
     assert list(env.resolve("x").skills) == ["t"]
     assert list(env.resolve("x").mcp) == ["db"]
     assert list(env.resolve("y").mcp) == []
-    env = kits.resolve(repo, ["a", "b"])
+    env = kits.resolve(["a", "b"])
     # For one agent: only the skill or server from that kit.
     assert list(env.resolve("y", ["skill:s@a"]).skills) == ["t"]
     assert list(env.resolve("x", ["skill:tdd@a", "skill:t@b"]).skills) == ["s"]
@@ -558,12 +568,12 @@ def test_skills_and_mcp_are_switched_off_in_one_kit(repo, project):
         env.resolve("x", ["agent:y@b"])
 
 
-def test_a_skill_an_agent_names_may_be_switched_off_in_its_kit(repo, project):
+def test_a_skill_an_agent_names_may_be_switched_off_in_its_kit(repo, kits_dir):
     """As with skill:style for the whole session: switched off is no error."""
-    make_kit(project, "a", agents={"dev": ({"skills": ["style"]}, "")})
-    make_kit(project, "b", skills=["style"])
+    make_kit(kits_dir, "a", agents={"dev": ({"skills": ["style"]}, "")})
+    make_kit(kits_dir, "b", skills=["style"])
     for item in ("skill:style", "skill:style@b"):
-        assert kits.resolve(repo, ["a", "b"], [item]).resolve("dev").skills == {}
+        assert kits.resolve(["a", "b"], [item]).resolve("dev").skills == {}
 
 
 @pytest.mark.parametrize(
@@ -577,22 +587,22 @@ def test_a_skill_an_agent_names_may_be_switched_off_in_its_kit(repo, project):
         ("agent:x@", "expected agent:<name>"),
     ],
 )
-def test_without_at_kit_errors(repo, project, item, error):
-    make_kit(project, "a", agents={"x": ({"mcp": {"db": {"command": ["db"]}}}, "")}, skills=["s"])
-    make_kit(project, "b", agents={"y": ({}, "")}, skills=["t"])
+def test_without_at_kit_errors(repo, kits_dir, item, error):
+    make_kit(kits_dir, "a", agents={"x": ({"mcp": {"db": {"command": ["db"]}}}, "")}, skills=["s"])
+    make_kit(kits_dir, "b", agents={"y": ({}, "")}, skills=["t"])
     with pytest.raises(kits.KitError, match=re.escape(error)):
-        kits.resolve(repo, ["a", "b"], [item])
+        kits.resolve(["a", "b"], [item])
 
 
-def test_without(repo, project):
+def test_without(repo, kits_dir):
     mcp = {"db": {"command": ["db"]}, "web": {"command": ["web"]}}
     make_kit(
-        project,
+        kits_dir,
         "k",
         agents={"w": ({"mcp": mcp}, ""), "rev": ({"skills": ["s1", "s2"]}, "")},
         skills=["s1", "s2", "s3"],
     )
-    env = kits.resolve(repo, ["k"], ["skill:s2", "mcp:web"])
+    env = kits.resolve(["k"], ["skill:s2", "mcp:web"])
     assert list(env.shared) == ["s1", "s3"]
     w = env.resolve("w")
     assert (list(w.skills), list(w.mcp)) == (["s1", "s3"], ["db"])
@@ -603,7 +613,7 @@ def test_without(repo, project):
     with pytest.raises(kits.KitError, match="cannot be switched off for one agent"):
         env.resolve("w", ["agent:rev"])
     with pytest.raises(kits.KitError, match="no worker role"):
-        kits.resolve(repo, ["k"], ["agent:w"]).role("w")
+        kits.resolve(["k"], ["agent:w"]).role("w")
 
 
 @pytest.mark.parametrize(
@@ -616,26 +626,26 @@ def test_without(repo, project):
         ("skill", "expected agent:<name>"),
     ],
 )
-def test_without_errors(repo, project, item, error):
-    make_kit(project, "k", skills=["s"])
+def test_without_errors(repo, kits_dir, item, error):
+    make_kit(kits_dir, "k", skills=["s"])
     with pytest.raises(kits.KitError, match=error):
-        kits.resolve(repo, ["default", "k"], [item])
+        kits.resolve(["default", "k"], [item])
 
 
-def test_agent_skills(repo, project):
-    make_kit(project, "k", agents={"a": ({"skills": []}, ""), "b": ({}, "")}, skills=["s"])
-    env = kits.resolve(repo, ["k"])
+def test_agent_skills(repo, kits_dir):
+    make_kit(kits_dir, "k", agents={"a": ({"skills": []}, ""), "b": ({}, "")}, skills=["s"])
+    env = kits.resolve(["k"])
     assert env.resolve("a").skills == {}
     assert list(env.resolve("b").skills) == ["s"]
-    make_kit(project, "bad", agents={"a": ({"skills": ["missing"]}, "")})
+    make_kit(kits_dir, "bad", agents={"a": ({"skills": ["missing"]}, "")})
     with pytest.raises(kits.KitError, match='skill "missing" is not visible to agent "a"'):
-        kits.resolve(repo, ["bad"])
+        kits.resolve(["bad"])
 
 
-def test_lint_finds_hardcoded_paths(project):
+def test_lint_finds_hardcoded_paths(kits_dir):
     mcp = {"x": {"command": ["/usr/local/bin/srv"], "env": {"D": "~/data"}}}
     body = "Read ${KIT_DIR}/docs, src/lado/ and https://x.org/a/b; not /Users/me/notes.md."
-    path = make_kit(project, "k", agents={"w": ({"mcp": mcp}, body)}, skills=["s"])
+    path = make_kit(kits_dir, "k", agents={"w": ({"mcp": mcp}, body)}, skills=["s"])
     (path / "skills" / "s" / "SKILL.md").write_text(
         "---\nname: s\ndescription: d\n---\nRun `~/bin/tool`.\n"
     )
@@ -649,7 +659,7 @@ def test_lint_finds_hardcoded_paths(project):
 
 
 def test_builtin_kits_are_clean():
-    for found, _ in kits.available(None):
+    for found, _ in kits.available():
         assert kits.lint(found.load()) == []
 
 
@@ -686,8 +696,8 @@ def make_flow(kit, name, role="worker"):
     (kit / "flows" / f"{name}.yaml").write_text(FLOW.format(name=name, role=role))
 
 
-def test_flows_are_found_in_the_flows_folder(project):
-    kit = make_kit(project, "k")
+def test_flows_are_found_in_the_flows_folder(kits_dir):
+    kit = make_kit(kits_dir, "k")
     make_flow(kit, "ship")
     flow = kits.load(kit).flows["ship"]
     assert (flow.kit, flow.description, flow.path) == (
@@ -705,16 +715,16 @@ def test_flows_are_found_in_the_flows_folder(project):
         (lambda f: (f / "ship.yaml").write_text("name: other\n"), "differs from the file name"),
     ],
 )
-def test_flow_load_errors(project, write, error):
-    kit = make_kit(project, "k")
+def test_flow_load_errors(kits_dir, write, error):
+    kit = make_kit(kits_dir, "k")
     (kit / "flows").mkdir()
     write(kit / "flows")
     with pytest.raises(kits.KitError, match=error):
         kits.load(kit)
 
 
-def test_lint_names_the_graph_problems_of_each_flow(project):
-    kit = make_kit(project, "k", agents={"worker": ({}, "")})
+def test_lint_names_the_graph_problems_of_each_flow(kits_dir):
+    kit = make_kit(kits_dir, "k", agents={"worker": ({}, "")})
     make_flow(kit, "ship")
     (kit / "flows" / "loop.yaml").write_text(
         FLOW.format(name="loop", role="worker").replace(
@@ -729,9 +739,9 @@ def test_lint_names_the_graph_problems_of_each_flow(project):
     ]
 
 
-def test_warnings_name_a_role_that_acts_in_no_flow(project):
+def test_warnings_name_a_role_that_acts_in_no_flow(kits_dir):
     agents = {"boss": ({}, ""), "worker": ({}, ""), "idle": ({}, "")}
-    kit = make_kit(project, "k", agents=agents, supervisor="boss")
+    kit = make_kit(kits_dir, "k", agents=agents, supervisor="boss")
     assert kits.warnings(kits.load(kit)) == []  # no flows: roles are spawned without them
     make_flow(kit, "ship")
     loaded = kits.load(kit)
@@ -741,8 +751,8 @@ def test_warnings_name_a_role_that_acts_in_no_flow(project):
     ]
 
 
-def test_warnings_name_a_flow_role_that_is_not_in_the_kit(project):
-    kit = make_kit(project, "k", agents={"worker": ({}, "")})
+def test_warnings_name_a_flow_role_that_is_not_in_the_kit(kits_dir):
+    kit = make_kit(kits_dir, "k", agents={"worker": ({}, "")})
     make_flow(kit, "ship", role="worker")
     make_flow(kit, "other", role="reviewer")
     make_flow(kit, "lead", role=kits.LEAD)  # the session's lead's step
@@ -753,47 +763,47 @@ def test_warnings_name_a_flow_role_that_is_not_in_the_kit(project):
     ]
 
 
-def test_flows_of_the_kits_combine_and_can_be_switched_off(repo, project):
-    make_flow(make_kit(project, "base"), "ship")
-    make_flow(make_kit(project, "team"), "hotfix")
-    env = kits.resolve(repo, ["default", "base", "team"])
+def test_flows_of_the_kits_combine_and_can_be_switched_off(repo, kits_dir):
+    make_flow(make_kit(kits_dir, "base"), "ship")
+    make_flow(make_kit(kits_dir, "team"), "hotfix")
+    env = kits.resolve(["default", "base", "team"])
     assert sorted(env.flows) == ["hotfix", "ship"]
-    env = kits.resolve(repo, ["default", "base", "team"], ["flow:ship"])
+    env = kits.resolve(["default", "base", "team"], ["flow:ship"])
     assert list(env.flows) == ["hotfix"]
     with pytest.raises(kits.KitError, match="cannot switch off flow:nope: no such flow"):
-        kits.resolve(repo, ["default", "base", "team"], ["flow:nope"])
+        kits.resolve(["default", "base", "team"], ["flow:nope"])
     with pytest.raises(kits.KitError, match="cannot be switched off for one agent"):
         env.resolve("worker", ["flow:hotfix"])
 
 
-def test_same_flow_name_in_two_kits_names_both(repo, project):
-    make_flow(make_kit(project, "a"), "ship")
-    make_flow(make_kit(project, "b"), "ship")
+def test_same_flow_name_in_two_kits_names_both(repo, kits_dir):
+    make_flow(make_kit(kits_dir, "a"), "ship")
+    make_flow(make_kit(kits_dir, "b"), "ship")
     with pytest.raises(kits.KitError, match='flow "ship" is defined by two kits: a .* and b'):
-        kits.resolve(repo, ["a", "b"])
+        kits.resolve(["a", "b"])
 
 
-def test_a_flow_role_must_exist_in_the_environment(repo, project):
-    kit = make_kit(project, "k", agents={"rev": ({}, "")})
+def test_a_flow_role_must_exist_in_the_environment(repo, kits_dir):
+    kit = make_kit(kits_dir, "k", agents={"rev": ({}, "")})
     make_flow(kit, "ship", role="rev")
-    env = kits.resolve(repo, ["default", "k"])
+    env = kits.resolve(["default", "k"])
     assert env.flow("ship").name == "ship"
-    env = kits.resolve(repo, ["default", "k"], ["agent:rev"])
+    env = kits.resolve(["default", "k"], ["agent:rev"])
     with pytest.raises(kits.KitError, match='state "build": no role "rev" in this session'):
         env.flow("ship")
     with pytest.raises(kits.KitError, match='no flow "nope"; flows: ship'):
         env.flow("nope")
 
 
-def pack_kit(project, name="k", packs=None, agents=None, skills=(), **meta):
+def pack_kit(kits_dir, name="k", packs=None, agents=None, skills=(), **meta):
     """A kit whose dependencies.skills are `packs`."""
     deps = {"skills": packs or {}}
-    return make_kit(project, name, agents=agents, skills=skills, dependencies=deps, **meta)
+    return make_kit(kits_dir, name, agents=agents, skills=skills, dependencies=deps, **meta)
 
 
-def test_a_local_pack_is_read_in_place(project):
-    pack = make_pack(project.parent / "packs" / "mine", ["eng/tdd", "plan"])
-    kit = kits.load(pack_kit(project, packs={"mine": "../../packs/mine"}, skills=["own"]))
+def test_a_local_pack_is_read_in_place(kits_dir):
+    pack = make_pack(kits_dir.parent / "packs" / "mine", ["eng/tdd", "plan"])
+    kit = kits.load(pack_kit(kits_dir, packs={"mine": "../../packs/mine"}, skills=["own"]))
     (found,) = kit.packs.values()
     assert (found.name, found.address, found.ref, found.path) == (
         "mine",
@@ -811,10 +821,10 @@ def test_a_local_pack_is_read_in_place(project):
     assert list(kit.skills) == ["own"] and kit.skills["own"].pack is None
 
 
-def test_pack_folders_choose_the_skills(project):
-    make_pack(project.parent / "p", ["engineering/tdd", "productivity/grill", "misc/tdd"])
+def test_pack_folders_choose_the_skills(kits_dir):
+    make_pack(kits_dir.parent / "p", ["engineering/tdd", "productivity/grill", "misc/tdd"])
     spec = {"from": "../../p", "folders": ["skills/engineering", "skills/productivity/"]}
-    kit = kits.load(pack_kit(project, packs={"p": spec}))
+    kit = kits.load(pack_kit(kits_dir, packs={"p": spec}))
     assert kit.packs["p"].folders == ("skills/engineering", "skills/productivity")
     assert list(kit.packs["p"].skills) == ["tdd", "grill"]
 
@@ -838,9 +848,9 @@ def test_pack_folders_choose_the_skills(project):
         ({"p": {"from": "../p", "folders": ["nope"]}}, r"folder .*nope does not exist"),
     ],
 )
-def test_dependency_errors_name_the_file_and_the_entry(project, packs, error):
-    make_pack(project / "p", ["s"])
-    path = pack_kit(project, packs=packs)
+def test_dependency_errors_name_the_file_and_the_entry(kits_dir, packs, error):
+    make_pack(kits_dir / "p", ["s"])
+    path = pack_kit(kits_dir, packs=packs)
     with pytest.raises(kits.KitError, match=error) as exc:
         kits.load(path)
     assert str(exc.value).startswith(str(path.resolve() / "kit.yaml"))
@@ -857,19 +867,19 @@ def test_dependency_errors_name_the_file_and_the_entry(project, packs, error):
         ([], "dependencies must be a mapping"),
     ],
 )
-def test_dependencies_errors(project, deps, error):
-    path = make_kit(project, "k", dependencies=deps)
+def test_dependencies_errors(kits_dir, deps, error):
+    path = make_kit(kits_dir, "k", dependencies=deps)
     with pytest.raises(kits.KitError, match=error):
         kits.load(path)
 
 
-def test_a_kit_may_need_an_older_lado(project):
-    kits.load(make_kit(project, "k", dependencies={"lado": ">=0.1"}))
-    kits.load(make_kit(project, "j", dependencies={"lado": ">=0.1.5"}))
+def test_a_kit_may_need_an_older_lado(kits_dir):
+    kits.load(make_kit(kits_dir, "k", dependencies={"lado": ">=0.1"}))
+    kits.load(make_kit(kits_dir, "j", dependencies={"lado": ">=0.1.5"}))
 
 
-def test_include_is_gone(project):
-    path = make_kit(project, "k", include=["default"])
+def test_include_is_gone(kits_dir):
+    path = make_kit(kits_dir, "k", include=["default"])
     with pytest.raises(kits.KitError) as exc:
         kits.load(path)
     assert (
@@ -879,29 +889,29 @@ def test_include_is_gone(project):
 
 
 @pytest.mark.parametrize("where", [".", "kits/team", "deep/er"])
-def test_a_pack_with_a_kit_yaml_is_a_kit(project, where):
-    pack = make_pack(project.parent / "p", ["s"])
+def test_a_pack_with_a_kit_yaml_is_a_kit(kits_dir, where):
+    pack = make_pack(kits_dir.parent / "p", ["s"])
     (pack / where).mkdir(parents=True, exist_ok=True)
     (pack / where / "kit.yaml").write_text("name: team\n")
     with pytest.raises(kits.KitError, match=r"\.\./\.\./p is a kit, not a skill pack"):
-        kits.load(pack_kit(project, packs={"p": "../../p"}))
+        kits.load(pack_kit(kits_dir, packs={"p": "../../p"}))
 
 
-def test_one_skill_name_twice_in_a_kit_names_both_folders(project):
-    one = make_pack(project.parent / "one", ["tdd"])
-    two = make_pack(project.parent / "two", ["eng/tdd"])
+def test_one_skill_name_twice_in_a_kit_names_both_folders(kits_dir):
+    one = make_pack(kits_dir.parent / "one", ["tdd"])
+    two = make_pack(kits_dir.parent / "two", ["eng/tdd"])
     with pytest.raises(kits.KitError) as exc:
-        kits.load(pack_kit(project, "k", packs={"one": "../../one", "two": "../../two"}))
+        kits.load(pack_kit(kits_dir, "k", packs={"one": "../../one", "two": "../../two"}))
     message = str(exc.value)
     assert 'skill "tdd"' in message and "choose them with folders" in message
     assert str((one / "skills" / "tdd").resolve()) in message
     assert str((two / "skills" / "eng" / "tdd").resolve()) in message
     with pytest.raises(kits.KitError, match='skill "tdd"'):
-        kits.load(pack_kit(project, "j", packs={"one": "../../one"}, skills=["tdd"]))
+        kits.load(pack_kit(kits_dir, "j", packs={"one": "../../one"}, skills=["tdd"]))
     # Within one pack too.
     make_pack(one / "skills" / "other", ["tdd"])
     with pytest.raises(kits.KitError, match='skill "tdd"'):
-        kits.load(pack_kit(project, "i", packs={"one": "../../one"}))
+        kits.load(pack_kit(kits_dir, "i", packs={"one": "../../one"}))
 
 
 def no_git(monkeypatch):
@@ -911,9 +921,9 @@ def no_git(monkeypatch):
     monkeypatch.setattr(gitcache.subprocess, "run", run)
 
 
-def test_load_does_not_fetch_and_fetch_does(tmp_path, project, monkeypatch, lado_home):
+def test_load_does_not_fetch_and_fetch_does(tmp_path, kits_dir, monkeypatch, lado_home):
     url = publish(init_repo(tmp_path / "pack"), {"skills/eng/tdd/SKILL.md": SKILL_MD}, tag="v1")
-    path = pack_kit(project, packs={"pack": f"{url}@v1"}, agents={"w": ({}, "")})
+    path = pack_kit(kits_dir, packs={"pack": f"{url}@v1"}, agents={"w": ({}, "")})
     with monkeypatch.context() as patch:
         no_git(patch)
         kit = kits.load(path)
@@ -934,21 +944,21 @@ def test_load_does_not_fetch_and_fetch_does(tmp_path, project, monkeypatch, lado
         assert kits.fetch(kits.load(path)).packs == fetched.packs
 
 
-def test_fetch_errors_name_the_kit(tmp_path, project):
+def test_fetch_errors_name_the_kit(tmp_path, kits_dir):
     work = init_repo(tmp_path / "pack")
     url = publish(work, {"skills/tdd/SKILL.md": SKILL_MD}, tag="v1")
-    kit = kits.load(pack_kit(project, "k", packs={"pack": f"{url}@main"}))
+    kit = kits.load(pack_kit(kits_dir, "k", packs={"pack": f"{url}@main"}))
     with pytest.raises(
         kits.KitError, match=r"kit.yaml: dependencies.skills.pack: .*main is a branch"
     ):
         kits.fetch(kit)
     publish(work, {"kit.yaml": "name: team\n"}, tag="v2")
-    kit = kits.load(pack_kit(project, "j", packs={"pack": f"{url}@v2"}))
+    kit = kits.load(pack_kit(kits_dir, "j", packs={"pack": f"{url}@v2"}))
     with pytest.raises(kits.KitError, match=f"{url}@v2 is a kit, not a skill pack"):
         kits.fetch(kit)
 
 
-def test_a_local_pack_of_a_kit_from_the_cache_stays_in_its_clone(tmp_path, project):
+def test_a_local_pack_of_a_kit_from_the_cache_stays_in_its_clone(tmp_path, kits_dir):
     files = {
         "kits/team/kit.yaml": (
             "name: team\nversion: 1.0.0\ndependencies:\n  skills:\n    p: ../../packs/p\n"
@@ -971,68 +981,68 @@ def test_a_local_pack_of_a_kit_from_the_cache_stays_in_its_clone(tmp_path, proje
 
 
 @pytest.fixture
-def three_kits(project):
+def three_kits(kits_dir):
     """Kits a and b with agents and a pack each, kit n without agents with a pack."""
     for name in ("pa", "pb", "pn"):
-        make_pack(project.parent / name, [f"{name}-skill"])
-    pack_kit(project, "a", packs={"pa": "../../pa"}, agents={"wa": ({}, "")}, skills=["own-a"])
-    pack_kit(project, "b", packs={"pb": "../../pb"}, agents={"wb": ({}, "")})
-    pack_kit(project, "n", packs={"pn": "../../pn"}, skills=["own-n"])
+        make_pack(kits_dir.parent / name, [f"{name}-skill"])
+    pack_kit(kits_dir, "a", packs={"pa": "../../pa"}, agents={"wa": ({}, "")}, skills=["own-a"])
+    pack_kit(kits_dir, "b", packs={"pb": "../../pb"}, agents={"wb": ({}, "")})
+    pack_kit(kits_dir, "n", packs={"pn": "../../pn"}, skills=["own-n"])
 
 
-def test_an_agent_sees_its_kits_packs_and_the_sessions_shared_skills(repo, project, three_kits):
-    env = kits.resolve(repo, ["a", "b", "n"])
+def test_an_agent_sees_its_kits_packs_and_the_sessions_shared_skills(repo, kits_dir, three_kits):
+    env = kits.resolve(["a", "b", "n"])
     assert sorted(env.resolve("wa").skills) == ["own-a", "own-n", "pa-skill", "pn-skill"]
     assert sorted(env.resolve("wb").skills) == ["own-a", "own-n", "pb-skill", "pn-skill"]
     assert sorted(env.shared) == ["own-a", "own-n", "pn-skill"]
     assert {k: sorted(v) for k, v in env.private.items()} == {"a": ["pa-skill"], "b": ["pb-skill"]}
-    pack_kit(project, "c", agents={"wc": ({"skills": ["own-a", "pa-skill"]}, "")})
+    pack_kit(kits_dir, "c", agents={"wc": ({"skills": ["own-a", "pa-skill"]}, "")})
     with pytest.raises(kits.KitError) as exc:
-        kits.resolve(repo, ["a", "c"])
+        kits.resolve(["a", "c"])
     assert (
         'skill "pa-skill" is not visible to agent "wc" (kit "c"): not a skill of the '
         "session's kits or of kit \"c\"'s dependencies"
     ) in str(exc.value)
-    env = kits.resolve(repo, ["a", "c"], ["skill:pa-skill"])
+    env = kits.resolve(["a", "c"], ["skill:pa-skill"])
     assert list(env.resolve("wc").skills) == ["own-a"]
     assert list(env.resolve("wa").skills) == ["own-a"]
 
 
-def test_a_kit_without_agents_shares_its_packs(repo, project, three_kits):
-    env = kits.resolve(repo, ["default", "n"])
+def test_a_kit_without_agents_shares_its_packs(repo, kits_dir, three_kits):
+    env = kits.resolve(["default", "n"])
     assert sorted(env.resolve("worker").skills) == ["own-n", "pn-skill"]
     # Without agents means by what the kit holds, not after --without.
-    env = kits.resolve(repo, ["default", "a"], ["agent:wa"])
+    env = kits.resolve(["default", "a"], ["agent:wa"])
     assert sorted(env.resolve("worker").skills) == ["own-a"]
 
 
-def test_one_skill_name_from_two_folders_for_an_agent_is_an_error(repo, project, three_kits):
-    clash = make_pack(project.parent / "clash", ["own-a"])
-    pack_kit(project, "d", packs={"clash": "../../clash"}, agents={"wd": ({}, "")})
+def test_one_skill_name_from_two_folders_for_an_agent_is_an_error(repo, kits_dir, three_kits):
+    clash = make_pack(kits_dir.parent / "clash", ["own-a"])
+    pack_kit(kits_dir, "d", packs={"clash": "../../clash"}, agents={"wd": ({}, "")})
     with pytest.raises(kits.KitError) as exc:
-        kits.resolve(repo, ["a", "d"])
+        kits.resolve(["a", "d"])
     message = str(exc.value)
     assert 'skill "own-a" comes from two folders for the agents of kit "d"' in message
-    assert str((project / "a" / "skills" / "own-a").resolve()) in message
+    assert str((kits_dir / "a" / "skills" / "own-a").resolve()) in message
     assert str((clash / "skills" / "own-a").resolve()) in message
     # A kit without agents shares its packs: the same clash for every agent.
-    pack_kit(project, "e", packs={"clash": "../../clash"})
+    pack_kit(kits_dir, "e", packs={"clash": "../../clash"})
     with pytest.raises(kits.KitError, match='skill "own-a" is defined by two kits'):
-        kits.resolve(repo, ["a", "e"])
+        kits.resolve(["a", "e"])
     # The same folder by two ways is one skill.
-    pack_kit(project, "f", packs={"pa": "../../pa"})
-    pack_kit(project, "g", packs={"pa": "../../pa"}, agents={"wg": ({}, "")})
-    env = kits.resolve(repo, ["a", "f", "g"])
+    pack_kit(kits_dir, "f", packs={"pa": "../../pa"})
+    pack_kit(kits_dir, "g", packs={"pa": "../../pa"}, agents={"wg": ({}, "")})
+    env = kits.resolve(["a", "f", "g"])
     assert sorted(env.resolve("wg").skills) == ["own-a", "pa-skill"]
 
 
-def test_two_kits_take_two_versions_of_one_pack(tmp_path, repo, project):
+def test_two_kits_take_two_versions_of_one_pack(tmp_path, repo, kits_dir):
     work = init_repo(tmp_path / "pack")
     url = publish(work, {"skills/tdd/SKILL.md": SKILL_MD}, tag="v1")
     publish(work, {"skills/tdd/SKILL.md": SKILL_MD + "Second version.\n"}, tag="v2")
-    pack_kit(project, "one", packs={"pack": f"{url}@v1"}, agents={"w1": ({}, "")})
-    pack_kit(project, "two", packs={"pack": f"{url}@v2"}, agents={"w2": ({}, "")})
-    env = kits.resolve(repo, ["one", "two"])
+    pack_kit(kits_dir, "one", packs={"pack": f"{url}@v1"}, agents={"w1": ({}, "")})
+    pack_kit(kits_dir, "two", packs={"pack": f"{url}@v2"}, agents={"w2": ({}, "")})
+    env = kits.resolve(["one", "two"])
     first, second = env.resolve("w1").skills["tdd"], env.resolve("w2").skills["tdd"]
     assert first.path == gitcache.clone_dir(url, "v1").resolve() / "skills" / "tdd"
     assert second.path == gitcache.clone_dir(url, "v2").resolve() / "skills" / "tdd"
@@ -1040,12 +1050,12 @@ def test_two_kits_take_two_versions_of_one_pack(tmp_path, repo, project):
     assert "Second version." not in (first.path / "SKILL.md").read_text()
 
 
-def test_no_environment_from_a_kit_with_a_pack_not_fetched(tmp_path, project):
+def test_no_environment_from_a_kit_with_a_pack_not_fetched(tmp_path, kits_dir):
     url = publish(init_repo(tmp_path / "pack"), {"skills/tdd/SKILL.md": SKILL_MD}, tag="v1")
-    kit = kits.load(pack_kit(project, packs={"pack": f"{url}@v1"}, agents={"w": ({}, "")}))
+    kit = kits.load(pack_kit(kits_dir, packs={"pack": f"{url}@v1"}, agents={"w": ({}, "")}))
     with pytest.raises(kits.KitError, match='kit "k": pack not fetched yet: pack'):
-        kits.resolve(None, [kit])
-    assert list(kits.resolve(None, [kits.fetch(kit)]).resolve("w").skills) == ["tdd"]
+        kits.resolve([kit])
+    assert list(kits.resolve([kits.fetch(kit)]).resolve("w").skills) == ["tdd"]
 
 
 TEAM = "name: team\nversion: 1.0.0\n"
@@ -1117,7 +1127,7 @@ def test_add_takes_the_latest_release_and_the_plan_changes_nothing(
     assert row.installed_at and row.updated_at is None and rows(lado_home) == ["team"]
     clone = gitcache.clone_dir(url, "v1.1.0").resolve()
     assert kit.path == clone and kit.source == f"user {url}@v1.1.0: {clone}"
-    found = kits.find("team", repo)
+    found = kits.find("team")
     assert (found.where, found.path.resolve(), found.link()) == ("user", clone, f"{url}@v1.1.0")
     # The clone's folder is named after its tag, not the kit: an installed kit loads anyway.
     loaded = found.load()
@@ -1298,7 +1308,7 @@ def test_add_a_local_folder_installs_it_in_place(tmp_path, repo, lado_home):
         None,
     )
     assert rows(lado_home) == ["team"]
-    found = kits.find("team", repo)
+    found = kits.find("team")
     assert (found.path, found.link()) == (folder.resolve(), str(folder.resolve()))
     # Read in place: a change in the folder is the kit's.
     (folder / "agents" / "w.md").write_text(AGENT.replace("Work.", "Changed."))
@@ -1392,7 +1402,7 @@ def test_update_goes_to_the_latest_and_names_new_mcp_servers(tmp_path, repo, lad
     row = state.get_kit("team")
     assert (row.tag, row.commit) == ("v1.1.0", rev(work, "v1.1.0"))
     assert rows(lado_home) == ["team"]
-    assert kits.find("team", repo).link() == f"{url}@v1.1.0"
+    assert kits.find("team").link() == f"{url}@v1.1.0"
     # The old version stays in the cache for the agents that run it.
     assert gitcache.clone_dir(url, "v1.0.0").is_dir()
     back = kits.plan_update("team", "v1.0.0")
@@ -1482,7 +1492,7 @@ def test_an_installed_kit_whose_folder_is_gone_does_not_stop_other_kits(
     clone = gitcache.clone_dir(url, "v1.0.0")
     shutil.rmtree(tmp_path / "dev")
     shutil.rmtree(clone)
-    found = {f.name: f for f, _ in kits.available(repo)}
+    found = {f.name: f for f, _ in kits.available()}
     no_git(monkeypatch)
     with pytest.raises(kits.KitError) as exc:
         found["gone"].load()
@@ -1497,7 +1507,7 @@ def test_an_installed_kit_whose_folder_is_gone_does_not_stop_other_kits(
         f'kit "team": its folder {clone} is missing; `lado kits remove team`, then to have it '
         f"back `lado kits add {url}@v1.0.0`"
     )
-    assert kits.resolve(repo, ["default"]).lead.name == "supervisor"
+    assert kits.resolve(["default"]).lead.name == "supervisor"
     # Removing it is no error: the row goes, and the folder that was there is named.
     assert kits.remove("gone") == gone
     assert kits.remove("team") == clone
@@ -1561,13 +1571,13 @@ def test_find_says_how_to_move_from_sources_yaml(tmp_path, repo, lado_home):
     ) in hint
     assert f"then delete {lado_home / 'sources.yaml'} and {lado_home / 'sources'}" in hint
     with pytest.raises(kits.KitError) as exc:
-        kits.find("mine", repo)
+        kits.find("mine")
     assert str(exc.value).startswith('kit "mine" not found; looked in ')
     assert hint in str(exc.value)
     (lado_home / "sources.yaml").unlink()
     assert kits.migration_hint() is None
     with pytest.raises(kits.KitError) as exc:
-        kits.find("mine", repo)
+        kits.find("mine")
     assert "sources.yaml" not in str(exc.value)
 
 
@@ -1605,7 +1615,7 @@ def test_kits_in_lado_home_kits_of_older_lados_are_named_with_how_to_add_them(
         ]
     )
     with pytest.raises(kits.KitError) as exc:
-        kits.find("team", repo)
+        kits.find("team")
     assert str(exc.value).endswith("\n" + hint)
     # LADO leaves the folder as it is.
     assert sorted((p.name, p.is_symlink()) for p in old.iterdir()) == before
@@ -1623,14 +1633,14 @@ def test_a_damaged_clone_is_a_kit_error_not_a_crash(tmp_path, lado_home):
     assert warning.startswith(f"team: cannot read the version tags of {kit.path}: ")
 
 
-def sdlc_kit(project, name="sdlc", supervisor=False, **meta):
+def sdlc_kit(kits_dir, name="sdlc", supervisor=False, **meta):
     """A process kit whose role analyst uses skill tracker, which it expects; with
     `supervisor`, its supervisor uses it too."""
     agents = {"analyst": ({"skills": ["tracker"]}, "")}
     if supervisor:
         agents["supervisor"] = ({"skills": ["tracker"]}, f"{name} boss")
         meta["supervisor"] = kits.LEAD
-    return make_kit(project, name, agents=agents, expects={"skills": ["tracker"]}, **meta)
+    return make_kit(kits_dir, name, agents=agents, expects={"skills": ["tracker"]}, **meta)
 
 
 @pytest.mark.parametrize(
@@ -1667,22 +1677,22 @@ def sdlc_kit(project, name="sdlc", supervisor=False, **meta):
         ),
     ],
 )
-def test_expects_errors(project, expects, error):
-    make_pack(project.parent / "p", ["tdd"])
-    kit = pack_kit(project, packs={"p": "../../p"}, skills=["own"], expects=expects)
+def test_expects_errors(kits_dir, expects, error):
+    make_pack(kits_dir.parent / "p", ["tdd"])
+    kit = pack_kit(kits_dir, packs={"p": "../../p"}, skills=["own"], expects=expects)
     with pytest.raises(kits.KitError) as exc:
         kits.load(kit)
     assert f"{(kit / 'kit.yaml').resolve()}: {error}" in str(exc.value)
 
 
-def test_expects_is_read(project):
-    assert kits.load(sdlc_kit(project)).expects == kits.Expects(skills=("tracker",))
-    assert kits.load(make_kit(project, "plain")).expects == kits.Expects()
+def test_expects_is_read(kits_dir):
+    assert kits.load(sdlc_kit(kits_dir)).expects == kits.Expects(skills=("tracker",))
+    assert kits.load(make_kit(kits_dir, "plain")).expects == kits.Expects()
     assert kits.EXPECTS_KEYS == {"skills", "commands"}
     names = ["gh", "python3.12", "g++", "docker-compose", "7z", "openspec"]
-    both = make_kit(project, "both", expects={"skills": ["tracker"], "commands": names})
+    both = make_kit(kits_dir, "both", expects={"skills": ["tracker"], "commands": names})
     assert kits.load(both).expects == kits.Expects(skills=("tracker",), commands=tuple(names))
-    empty = make_kit(project, "empty", expects={"commands": []})
+    empty = make_kit(kits_dir, "empty", expects={"commands": []})
     assert kits.load(empty).expects == kits.Expects()
 
 
@@ -1695,13 +1705,13 @@ def command(folder, name, executable=True):
     return path
 
 
-def test_missing_commands_looks_on_the_path_it_is_given(tmp_path, project):
-    a = make_kit(project, "a", expects={"commands": ["one", "two", "three"]})
-    b = make_kit(project, "b", expects={"commands": ["four"]})
+def test_missing_commands_looks_on_the_path_it_is_given(tmp_path, kits_dir):
+    a = make_kit(kits_dir, "a", expects={"commands": ["one", "two", "three"]})
+    b = make_kit(kits_dir, "b", expects={"commands": ["four"]})
     command(tmp_path / "bin1", "one")
     command(tmp_path / "bin2", "three")
     command(tmp_path / "bin2", "two", executable=False)
-    loaded = [kits.load(a), kits.load(b), kits.load(make_kit(project, "plain"))]
+    loaded = [kits.load(a), kits.load(b), kits.load(make_kit(kits_dir, "plain"))]
     path = f"{tmp_path / 'bin1'}{os.pathsep}{tmp_path / 'bin2'}"
     missing = kits.missing_commands(loaded, path)
     assert [(k.name, c) for k, c in missing] == [("a", "two"), ("b", "four")]
@@ -1712,9 +1722,9 @@ def test_missing_commands_looks_on_the_path_it_is_given(tmp_path, project):
     ]
 
 
-def test_commands_error_names_each_kit_its_commands_and_the_path(project):
-    a = kits.load(make_kit(project, "a", expects={"commands": ["one", "two"]}))
-    b = kits.load(make_kit(project, "b", expects={"commands": ["four"]}))
+def test_commands_error_names_each_kit_its_commands_and_the_path(kits_dir):
+    a = kits.load(make_kit(kits_dir, "a", expects={"commands": ["one", "two"]}))
+    b = kits.load(make_kit(kits_dir, "b", expects={"commands": ["four"]}))
     text = kits.commands_error([(a, "one"), (a, "two"), (b, "four")], "/x:/y")
     assert text == (
         'kit "a" expects commands "one", "two", which are not on the agents\' PATH: install '
@@ -1725,58 +1735,58 @@ def test_commands_error_names_each_kit_its_commands_and_the_path(project):
     )
 
 
-def test_expects_of_a_pack_fetched_later_is_an_error(tmp_path, project, lado_home):
+def test_expects_of_a_pack_fetched_later_is_an_error(tmp_path, kits_dir, lado_home):
     url = publish(
         init_repo(tmp_path / "pack"),
         {"skills/tracker/SKILL.md": SKILL_MD.replace("tdd", "tracker")},
         tag="v1",
     )
-    kit = pack_kit(project, packs={"p": f"{url}@v1"}, expects={"skills": ["tracker"]})
+    kit = pack_kit(kits_dir, packs={"p": f"{url}@v1"}, expects={"skills": ["tracker"]})
     loaded = kits.load(kit)
     with pytest.raises(kits.KitError, match='"tracker" comes with its pack "p"'):
         kits.fetch(loaded)
 
 
-def test_a_kit_alone_may_name_a_skill_it_expects_when_assumed(repo, project):
-    sdlc_kit(project, supervisor=True)
-    env = kits.resolve(repo, ["sdlc"], expected=kits.ASSUME)
+def test_a_kit_alone_may_name_a_skill_it_expects_when_assumed(repo, kits_dir):
+    sdlc_kit(kits_dir, supervisor=True)
+    env = kits.resolve(["sdlc"], expected=kits.ASSUME)
     assert env.resolve("analyst").skills == {}
-    make_kit(project, "loose", agents={"rev": ({"skills": ["tracker"]}, "")})
+    make_kit(kits_dir, "loose", agents={"rev": ({"skills": ["tracker"]}, "")})
     with pytest.raises(kits.KitError) as exc:
-        kits.resolve(repo, ["loose"], expected=kits.ASSUME)
+        kits.resolve(["loose"], expected=kits.ASSUME)
     assert str(exc.value) == (
-        f'{(project / "loose" / "agents" / "rev.md").resolve()}: skill "tracker" is not '
+        f'{(kits_dir / "loose" / "agents" / "rev.md").resolve()}: skill "tracker" is not '
         'visible to agent "rev" (kit "loose"): not a skill of the session\'s kits or of kit '
         '"loose"\'s dependencies'
     )
 
 
-def test_a_non_leading_kit_supervisor_may_name_a_skill_its_kit_expects_when_assumed(repo, project):
-    sdlc_kit(project, supervisor=True)
-    lead_kit(project, "b")
-    env = kits.resolve(repo, ["sdlc", "b"], expected=kits.ASSUME)
+def test_a_non_leading_kit_supervisor_may_name_a_skill_its_kit_expects_when_assumed(repo, kits_dir):
+    sdlc_kit(kits_dir, supervisor=True)
+    lead_kit(kits_dir, "b")
+    env = kits.resolve(["sdlc", "b"], expected=kits.ASSUME)
     assert [s.name for s in env.lead_skills()] == ["lead-sdlc", "lead-b"]
 
 
-def test_a_kit_that_provides_an_expected_skill_gives_it(repo, project):
-    sdlc_kit(project)
-    make_kit(project, "tracker-jira-server", skills=["tracker"])
-    env = kits.resolve(repo, ["sdlc", "tracker-jira-server"])
+def test_a_kit_that_provides_an_expected_skill_gives_it(repo, kits_dir):
+    sdlc_kit(kits_dir)
+    make_kit(kits_dir, "tracker-jira-server", skills=["tracker"])
+    env = kits.resolve(["sdlc", "tracker-jira-server"])
     assert env.resolve("analyst").skills["tracker"].kit == "tracker-jira-server"
     # A pack of a kit without agents provides it as well.
-    make_pack(project.parent / "tp", ["tracker"])
-    pack_kit(project, "tracker-pack", packs={"tp": "../../tp"})
-    env = kits.resolve(repo, ["sdlc", "tracker-pack"])
+    make_pack(kits_dir.parent / "tp", ["tracker"])
+    pack_kit(kits_dir, "tracker-pack", packs={"tp": "../../tp"})
+    env = kits.resolve(["sdlc", "tracker-pack"])
     assert env.resolve("analyst").skills["tracker"].pack == "tp"
 
 
-def test_an_expected_skill_reaches_the_kits_supervisor_leading_or_not(repo, project):
-    sdlc_kit(project, supervisor=True)
-    make_kit(project, "tracker-jira-server", skills=["tracker"])
-    env = kits.resolve(repo, ["sdlc", "tracker-jira-server"])
+def test_an_expected_skill_reaches_the_kits_supervisor_leading_or_not(repo, kits_dir):
+    sdlc_kit(kits_dir, supervisor=True)
+    make_kit(kits_dir, "tracker-jira-server", skills=["tracker"])
+    env = kits.resolve(["sdlc", "tracker-jira-server"])
     assert list(env.resolve("supervisor").skills) == ["tracker"]
-    lead_kit(project, "b")
-    env = kits.resolve(repo, ["sdlc", "tracker-jira-server", "b"])
+    lead_kit(kits_dir, "b")
+    env = kits.resolve(["sdlc", "tracker-jira-server", "b"])
     sdlc = next(s for s in env.lead_skills() if s.kit == "sdlc")
     assert list(sdlc.skills) == ["tracker"]
 
@@ -1787,24 +1797,24 @@ NOT_PROVIDED = (
 )
 
 
-def test_a_session_without_a_kit_that_provides_an_expected_skill_is_refused(repo, project):
-    sdlc_kit(project)
+def test_a_session_without_a_kit_that_provides_an_expected_skill_is_refused(repo, kits_dir):
+    sdlc_kit(kits_dir)
     with pytest.raises(kits.KitError) as exc:
-        kits.resolve(repo, ["sdlc"])
+        kits.resolve(["sdlc"])
     assert str(exc.value) == NOT_PROVIDED  # not "is not visible to agent"
     assert "tracker-" not in str(exc.value) and "jira" not in str(exc.value)
     # Also when no role names it.
-    make_kit(project, "quiet", expects={"skills": ["tracker"]})
+    make_kit(kits_dir, "quiet", expects={"skills": ["tracker"]})
     with pytest.raises(kits.KitError, match='kit "quiet" expects skill "tracker", which no kit'):
-        kits.resolve(repo, ["default", "quiet"])
+        kits.resolve(["default", "quiet"])
 
 
-def test_an_expected_skill_only_in_a_private_pack_is_refused(repo, project):
-    sdlc_kit(project)
-    make_pack(project.parent / "tp", ["tracker"])
-    pack_kit(project, "x", packs={"tp": "../../tp"}, agents={"wx": ({}, "")})
+def test_an_expected_skill_only_in_a_private_pack_is_refused(repo, kits_dir):
+    sdlc_kit(kits_dir)
+    make_pack(kits_dir.parent / "tp", ["tracker"])
+    pack_kit(kits_dir, "x", packs={"tp": "../../tp"}, agents={"wx": ({}, "")})
     with pytest.raises(kits.KitError) as exc:
-        kits.resolve(repo, ["sdlc", "x"])
+        kits.resolve(["sdlc", "x"])
     assert str(exc.value) == (
         'kit "sdlc" expects skill "tracker", which kit "x" has only for its own agents (its '
         "dependencies.skills): add a kit that provides it with --kit <kit>"
@@ -1812,34 +1822,34 @@ def test_an_expected_skill_only_in_a_private_pack_is_refused(repo, project):
 
 
 @pytest.mark.parametrize("item", ["skill:tracker", "skill:tracker@tracker-jira-server"])
-def test_a_session_without_that_switches_off_an_expected_skill_is_refused(repo, project, item):
-    sdlc_kit(project)
-    make_kit(project, "tracker-jira-server", skills=["tracker"])
+def test_a_session_without_that_switches_off_an_expected_skill_is_refused(repo, kits_dir, item):
+    sdlc_kit(kits_dir)
+    make_kit(kits_dir, "tracker-jira-server", skills=["tracker"])
     with pytest.raises(kits.KitError) as exc:
-        kits.resolve(repo, ["sdlc", "tracker-jira-server"], [item])
+        kits.resolve(["sdlc", "tracker-jira-server"], [item])
     assert str(exc.value) == (
         f'kit "sdlc" expects skill "tracker", which --without {item} switches off; the kit '
         "does not work without it: drop that --without item"
     )
 
 
-def test_without_one_of_two_providers_keeps_the_other(repo, project):
-    sdlc_kit(project)
-    make_kit(project, "ta", skills=["tracker"])
-    make_pack(project.parent / "tp", ["tracker"])
-    pack_kit(project, "tb", packs={"tp": "../../tp"})
+def test_without_one_of_two_providers_keeps_the_other(repo, kits_dir):
+    sdlc_kit(kits_dir)
+    make_kit(kits_dir, "ta", skills=["tracker"])
+    make_pack(kits_dir.parent / "tp", ["tracker"])
+    pack_kit(kits_dir, "tb", packs={"tp": "../../tp"})
     # Two providers clash as any skill of two kits does; switching one off is the way out.
     with pytest.raises(kits.KitError, match='skill "tracker" is defined by two kits'):
-        kits.resolve(repo, ["sdlc", "ta", "tb"])
-    env = kits.resolve(repo, ["sdlc", "ta", "tb"], ["skill:tracker@ta"])
+        kits.resolve(["sdlc", "ta", "tb"])
+    env = kits.resolve(["sdlc", "ta", "tb"], ["skill:tracker@ta"])
     assert env.resolve("analyst").skills["tracker"].kit == "tb"
 
 
-def test_one_agents_without_may_not_switch_off_a_skill_its_kit_expects(repo, project):
-    sdlc_kit(project)
-    make_kit(project, "tracker-jira-server", skills=["tracker"])
-    make_kit(project, "other", agents={"dev": ({}, "")})
-    env = kits.resolve(repo, ["sdlc", "tracker-jira-server", "other"])
+def test_one_agents_without_may_not_switch_off_a_skill_its_kit_expects(repo, kits_dir):
+    sdlc_kit(kits_dir)
+    make_kit(kits_dir, "tracker-jira-server", skills=["tracker"])
+    make_kit(kits_dir, "other", agents={"dev": ({}, "")})
+    env = kits.resolve(["sdlc", "tracker-jira-server", "other"])
     for item in ("skill:tracker", "skill:tracker@tracker-jira-server"):
         with pytest.raises(kits.KitError) as exc:
             env.resolve("analyst", [item])
@@ -1850,13 +1860,13 @@ def test_one_agents_without_may_not_switch_off_a_skill_its_kit_expects(repo, pro
     assert "tracker" not in env.resolve("dev", ["skill:tracker"]).skills
 
 
-def test_warnings_name_expects_without_a_lado_dependency(project, monkeypatch):
+def test_warnings_name_expects_without_a_lado_dependency(kits_dir, monkeypatch):
     monkeypatch.setattr(lado, "__version__", "0.30.0")  # a kit may need up to this LADO
     message = (
         'kit.yaml: expects.skills needs LADO 0.29 or newer; add dependencies.lado: ">=0.29" so an '
         "older LADO says to upgrade"
     )
-    kit = sdlc_kit(project)
+    kit = sdlc_kit(kits_dir)
     assert any(message in w for w in kits.warnings(kits.load(kit)))
     (kit / "kit.yaml").write_text(
         yaml.safe_dump(
@@ -1874,10 +1884,10 @@ def test_warnings_name_expects_without_a_lado_dependency(project, monkeypatch):
         meta["dependencies"]["lado"] = need
         (kit / "kit.yaml").write_text(yaml.safe_dump(meta))
         assert not any("expects" in w for w in kits.warnings(kits.load(kit)))
-    assert not any("expects" in w for w in kits.warnings(kits.load(make_kit(project, "plain"))))
+    assert not any("expects" in w for w in kits.warnings(kits.load(make_kit(kits_dir, "plain"))))
 
 
-def test_warnings_name_expects_commands_without_a_lado_that_reads_them(project, monkeypatch):
+def test_warnings_name_expects_commands_without_a_lado_that_reads_them(kits_dir, monkeypatch):
     monkeypatch.setattr(lado, "__version__", "0.30.0")
     message = (
         'kit.yaml: expects.commands needs LADO 0.30 or newer; add dependencies.lado: ">=0.30" '
@@ -1886,8 +1896,8 @@ def test_warnings_name_expects_commands_without_a_lado_that_reads_them(project, 
     expects = {"skills": ["tracker"], "commands": ["openspec"]}
     for name, need in (("none", None), ("old", ">=0.29")):
         deps = {"dependencies": {"lado": need}} if need else {}
-        kit = make_kit(project, name, expects=expects, **deps)
+        kit = make_kit(kits_dir, name, expects=expects, **deps)
         doubts = [w for w in kits.warnings(kits.load(kit)) if "expects" in w]
         assert len(doubts) == 1 and message in doubts[0]
-    kit = make_kit(project, "new", expects=expects, dependencies={"lado": ">=0.30"})
+    kit = make_kit(kits_dir, "new", expects=expects, dependencies={"lado": ">=0.30"})
     assert not any("expects" in w for w in kits.warnings(kits.load(kit)))

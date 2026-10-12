@@ -279,7 +279,9 @@ test("an open question is one line in the feed whose arrow leads to its tab; it 
   const line = await within(await chat()).findByRole("article", { name: "Question from w1" });
   expect(line.className).toContain("chat-quiet");
   expect(line.id).toBe("message-5");
-  expect(line.querySelector(".late-text")?.textContent).toBe("w1 asked: Merge w1 now? ↓");
+  expect(line.querySelector(".late-text")?.textContent).toBe("w1 asked: Merge w1 now?");
+  // The arrow stands beside the text, which a long line cuts, never in it.
+  expect(line.querySelector(".late-text button")).toBeNull();
   expect(within(line).queryByText("Tests pass.")).toBeNull(); // the details are in the card
   expect(within(await chat()).queryByRole("button", { name: "yes" })).toBeNull();
   const card = await waitingCard();
@@ -795,7 +797,7 @@ test("an open gate is a line in the feed and a tab of the card: its question, th
   const line = await gateLine();
   expect(line.id).toBe("gate-1");
   expect(line.querySelector(".avatar-gate")).toBeTruthy();
-  expect(line.querySelector(".late-text")?.textContent).toBe("Gate #1 feature/x · check waits: Ship it? ↓");
+  expect(line.querySelector(".late-text")?.textContent).toBe("Gate #1 feature/x · check waits: Ship it?");
   expect(within(line).queryByRole("button", { name: "Approve" })).toBeNull();
   const tab = within(await waitingCard()).getByRole("tab", { name: "feature/x 1" });
   expect(tab.getAttribute("aria-selected")).toBe("true");

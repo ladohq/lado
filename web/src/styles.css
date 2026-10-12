@@ -2906,6 +2906,7 @@ h3 {
 /* An open question or gate in the feed (Chat.tsx, OpenLine): a quiet line, its arrow leading
    to its tab in the waiting card. */
 .open-arrow {
+  flex: none;
   padding: 0 4px;
   border: 0;
   border-radius: 4px;

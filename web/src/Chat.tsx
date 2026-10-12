@@ -547,12 +547,11 @@ function OpenLine({
   return (
     <article className="chat-quiet open-line" id={anchor} aria-label={label}>
       {mark}
-      <span className="late-text">
-        {text}{" "}
-        <button type="button" className="open-arrow" aria-label={arrow} title={arrow} onClick={() => go(anchor)}>
-          ↓
-        </button>
-      </span>
+      <span className="late-text">{text}</span>
+      {/* Beside the text, not in it: a long text is cut at the line's end, the arrow stays. */}
+      <button type="button" className="open-arrow" aria-label={arrow} title={arrow} onClick={() => go(anchor)}>
+        ↓
+      </button>
       <time dateTime={at}>{clock(at)}</time>
     </article>
   );

@@ -16,6 +16,7 @@ import lado
 from lado import (
     agent_env,
     artifacts,
+    clone,
     flows,
     kits,
     log,
@@ -39,6 +40,12 @@ POLL = 1.0  # seconds between two checks that a gate the human is asked about is
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    if clone.is_url(args.path):
+        return _start_clone(args)
+    if args.branch:
+        args.start_parser.error("--branch needs a git URL")
+    if args.folder:
+        args.start_parser.error("a second folder needs a git URL")
     try:
         started = runtime.start_session(
             args.path, args.name, args.permission_mode, args.provider, args.kit, args.without
@@ -67,6 +74,64 @@ def cmd_start(args: argparse.Namespace) -> int:
         print(f"Attach with: lado attach {sess.name}")
         return 0
     return _attach(sess.name)
+
+
+def _start_clone(args: argparse.Namespace) -> int:
+    """`lado start <git-url> [<folder>] [--branch NAME]`: check the folder and the name,
+    clone, then start in the clone as `lado start <folder>` does."""
+    url = args.path
+    folder = runtime.full_path(args.folder) if args.folder else str(clone.default_folder(url))
+    target = clone.check_target(url, folder)
+    if target.state not in clone.CAN_CLONE:
+        print(f"lado: {target.text}", file=sys.stderr)
+        if target.state == "same_repo":
+            print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
+        return 1
+    runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
+    which = f"branch {args.branch}" if args.branch else "its default branch"
+    print(f"Cloning {runtime.public_remote(url)} ({which}) into {folder}", file=sys.stderr)
+    shown = _CloneProgress(sys.stderr)
+    try:
+        clone.clone(url, folder, args.branch, shown)
+    except KeyboardInterrupt:
+        shown.done()  # before the line below, not after it
+        print("lado: clone cancelled", file=sys.stderr)
+        return 130
+    finally:
+        shown.done()
+    args.path, args.folder, args.branch = folder, None, None
+    try:
+        return cmd_start(args)
+    except Exception as exc:
+        exc.__notes__ = [*getattr(exc, "__notes__", []), f"the clone stays in {folder}"]
+        raise
+
+
+class _CloneProgress:
+    """git's progress lines on a stream: on a terminal each line over the one before, the
+    last line of each phase kept; elsewhere only that last line."""
+
+    def __init__(self, out: TextIO) -> None:
+        self.out, self.tty = out, out.isatty()
+        self.last: clone.Progress | None = None
+
+    def __call__(self, progress: clone.Progress) -> None:
+        if self.last and progress.phase != self.last.phase:
+            self._keep()
+        self.last = progress
+        if self.tty:
+            self.out.write(f"\r{progress.line.strip()}\x1b[K")
+            self.out.flush()
+
+    def _keep(self) -> None:
+        assert self.last is not None
+        self.out.write("\n" if self.tty else f"{self.last.line.strip()}\n")
+        self.out.flush()
+
+    def done(self) -> None:
+        if self.last:
+            self._keep()
+            self.last = None
 
 
 def cmd_kits(args: argparse.Namespace) -> int:
@@ -984,8 +1049,26 @@ def main(argv: list[str] | None = None) -> int:
 
     commands.add_parser("doctor", help="check that tmux and the agent CLIs are installed")
 
-    start = commands.add_parser("start", help="start a supervisor agent for a git repository")
-    start.add_argument("path", nargs="?", default=".", help="repository (default: current dir)")
+    start = commands.add_parser(
+        "start",
+        help="start a supervisor agent for a git repository, or for a clone of a git URL",
+    )
+    start.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="repository (default: current dir), or a git URL to clone (https://, ssh://, "
+        "git://, file:// or user@host:path)",
+    )
+    start.add_argument(
+        "folder",
+        nargs="?",
+        help=f"with a git URL: the folder to clone into (default: {clone.DEFAULT_PARENT}/<repo>); "
+        "it must be new or empty",
+    )
+    start.add_argument(
+        "--branch", help="with a git URL: the branch to clone (default: the remote's default)"
+    )
     start.add_argument("--name", help="session name (default: repository folder name)")
     start.add_argument(
         "--provider",
@@ -1009,7 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     _without_arg(start)  # a resumed session keeps its own unless given
     start.add_argument("--no-attach", action="store_true", help="do not attach to the session")
-    start.set_defaults(func=cmd_start)
+    start.set_defaults(func=cmd_start, start_parser=start)
 
     kits_cmd = commands.add_parser(
         "kits", help="list, show and check kits; add, update and remove installed ones"

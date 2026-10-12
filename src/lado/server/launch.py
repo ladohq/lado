@@ -3,7 +3,6 @@ sessions, the kits a session of a folder can take and the providers. The decisio
 the core: whether a folder will do is runtime.check_repo, a kit is the one kits.find takes,
 a provider's state is doctor.provider_status."""
 
-import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -15,17 +14,8 @@ SUBFOLDERS = 50  # at most this many subfolders of a folder
 RECENT = 10  # at most this many recent folders
 
 
-def full_path(path: str) -> str:
-    """`path` with `~` expanded; a relative path is refused: the server's own folder means
-    nothing to the human."""
-    expanded = os.path.expanduser(path)
-    if not os.path.isabs(expanded):
-        raise runtime.LadoError(f"{path} is not a full path: give one from / or ~")
-    return expanded
-
-
 def folder_info(path: str, has_db: bool) -> models.FolderInfo:
-    path = full_path(path)
+    path = runtime.full_path(path)
     kind, hint = None, None
     try:
         root = runtime.check_repo(path)

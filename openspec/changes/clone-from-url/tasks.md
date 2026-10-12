@@ -23,7 +23,7 @@
 
 ## 2. CLI
 
-- [ ] 2.1 `lado start <git-url> [<folder>] [--branch NAME]` (D8). Unit tests
+- [x] 2.1 `lado start <git-url> [<folder>] [--branch NAME]` (D8). Unit tests
   (`tests/test_cli.py`): "--branch with a folder" and `<folder>` without a URL exit 2;
   "The clone is there already" (exit 1, the command printed, nothing changed); `other_repo`
   and `not_empty` refused; a name of a session of another folder refused before any

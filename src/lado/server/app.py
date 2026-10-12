@@ -760,7 +760,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             raise HTTPException(400, f'where of kind "{given.where.kind}" is not supported yet')
         try:
             done = runtime.start_session(
-                launch.full_path(given.where.path),
+                runtime.full_path(given.where.path),
                 given.name,
                 given.permission_mode,
                 given.provider,

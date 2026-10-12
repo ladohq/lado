@@ -52,7 +52,7 @@
   suggestion and the button off, the progress bar and Cancel clone (`DELETE` sent), "The
   window cannot be closed during a clone", "A name taken after the clone", a long branch
   list as the combobox.
-- [ ] 4.2 UI e2e (`tests/ui/test_launch.py`, `-m ui`): clone a `file://` bare repo and
+- [x] 4.2 UI e2e (`tests/ui/test_launch.py`, `-m ui`): clone a `file://` bare repo and
   start, Activity opens; screenshots of the form, the progress and Use this clone, attached
   to the build report.
 

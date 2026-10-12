@@ -392,15 +392,17 @@ def bare_remote(folder: Path, branches: tuple[str, ...] = ("develop", "release/1
 # A stand-in for git's network commands (clone, ls-remote); every other command is the real
 # git's. Each call is a line in $FAKE_GIT_LOG: its args, pid, session, whether stdin is a
 # terminal, its environment and the pid of a child it keeps (its process group's), but
-# when it fails. By
-# $FAKE_GIT: `slow` prints clone progress, then waits; `fail` prints $FAKE_GIT_STDERR and
-# exits 128; `ok` clones as `slow` prints, then exits 0.
+# when it fails. By $FAKE_GIT: `slow` prints clone progress, then waits; `fail` prints
+# $FAKE_GIT_STDERR and exits 128; `ok` clones as `slow` prints, then exits 0;
+# `slow-clone` is `slow` for a clone only, ls-remote the real git's.
 FAKE_GIT = """#!{python}
 import json, os, subprocess, sys, time
 args = sys.argv[1:]
-if args[:1] not in (["clone"], ["ls-remote"]):
+mode = os.environ.get("FAKE_GIT")
+faked = (["clone"],) if mode == "slow-clone" else (["clone"], ["ls-remote"])
+if args[:1] not in faked:
     os.execv({real!r}, [{real!r}, *args])
-failing = os.environ.get("FAKE_GIT") == "fail"
+failing = mode == "fail"
 quiet = {{"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}}
 child = None if failing else subprocess.Popen(["sleep", "60"], **quiet)
 log = os.environ.get("FAKE_GIT_LOG")
@@ -420,7 +422,7 @@ if args[0] == "clone":
         sys.stderr.write(f"Receiving objects:  {{i}}% ({{i}}/100), 1.00 MiB | 2.00 MiB/s\\r")
         sys.stderr.flush()
         time.sleep(0.05)
-    if os.environ.get("FAKE_GIT") == "ok":
+    if mode == "ok":
         sys.exit(0)
 time.sleep(60)
 """

@@ -139,7 +139,8 @@ class Jobs:
             clone.clone(job.url, job.path, job.branch, on_progress, job.cancelled)
             outcome, error = "done", None
         except clone.CloneError as exc:
-            outcome, error = ("cancelled" if exc.kind == "cancelled" else "failed"), exc
+            cancelled = exc.kind == "cancelled"
+            outcome, error = ("cancelled", None) if cancelled else ("failed", exc)
         except Exception as exc:  # told to the window, never lost in a thread
             outcome = "failed"
             error = clone.CloneError(

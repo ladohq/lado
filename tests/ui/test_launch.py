@@ -255,3 +255,81 @@ def test_forget_a_stopped_session(page: Page, server, repo, shot):
     expect(page.get_by_role("navigation", name="Sessions").get_by_role("link")).to_have_count(0)
     assert state.get_session(session) is None
     shot(page)
+
+
+# Clone from URL (openspec change clone-from-url)
+
+
+def clone_window(page: Page, server, url: str, into) -> object:
+    log_in(page, server)
+    page.get_by_role("button", name="New session").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    dialog.get_by_role("button", name="Clone from URL").click()
+    dialog.get_by_role("textbox", name=re.compile("Where")).fill(url)
+    dialog.get_by_role("textbox", name="Clone into").fill(str(into))
+    expect(dialog).to_contain_text("✓ repository found · 3 branches")
+    return dialog
+
+
+def test_a_session_starts_in_a_clone_of_a_url(page: Page, server, tmp_path, shot):
+    url = agent_helpers.bare_remote(tmp_path)
+    into = tmp_path / "work" / "app"
+    dialog = clone_window(page, server, url, into)
+    expect(dialog).to_contain_text("✓ a new folder")
+    expect(dialog.get_by_label("Branch")).to_have_value("main")
+    dialog.get_by_label("Branch").select_option("develop")
+    dialog.get_by_label("Provider").select_option("fake")
+    expect(dialog.get_by_role("textbox", name="Name")).to_have_value("app")
+    shot(page, "form")
+
+    dialog.get_by_role("button", name="Clone and start").click()
+    expect(page).to_have_url(f"{server['url']}/sessions/app/activity", timeout=30_000)
+    idle("app")
+    assert runtime.branch(str(into)) == "develop"
+    assert state.get_session("app").repo == str(into.resolve())
+
+
+@pytest.fixture
+def slow_clone(tmp_path, monkeypatch):
+    """A remote's URL, and a git whose clone prints progress and then waits, on the
+    server's PATH (before the server starts); ls-remote is the real git's."""
+    url = agent_helpers.bare_remote(tmp_path)  # by the real git
+    for key, value in agent_helpers.fake_git(tmp_path / "fake", "slow-clone").items():
+        monkeypatch.setenv(key, value)
+    return url
+
+
+def test_a_clone_shows_its_progress_and_cancel_clone_stops_it(
+    page: Page, slow_clone, server, tmp_path, shot
+):
+    into = tmp_path / "work" / "app"
+    dialog = clone_window(page, server, slow_clone, into)
+    dialog.get_by_label("Provider").select_option("fake")
+    dialog.get_by_role("button", name="Clone and start").click()
+    expect(dialog.get_by_role("progressbar", name="Clone")).to_be_visible()
+    expect(dialog).to_contain_text("Receiving objects")
+    expect(dialog.get_by_role("button", name="Close")).to_be_disabled()
+    page.keyboard.press("Escape")
+    expect(dialog).to_be_visible()
+    shot(page, "progress")
+
+    dialog.get_by_role("button", name="Cancel clone").click()
+    expect(dialog).to_contain_text("the clone was cancelled", timeout=15_000)
+    expect(dialog.get_by_role("button", name="Clone and start")).to_be_enabled()
+    assert not into.exists()
+    assert [p.name for p in into.parent.iterdir() if ".clone-" in p.name] == []
+
+
+def test_a_clone_there_already_is_used_as_it_is(page: Page, server, tmp_path, shot):
+    url = agent_helpers.bare_remote(tmp_path)
+    into = tmp_path / "app"
+    subprocess.run(["git", "clone", "-q", url, str(into)], check=True)
+    dialog = clone_window(page, server, url, into)
+    expect(dialog).to_contain_text("is already a clone of this repository")
+    expect(dialog).to_contain_text("LADO will use it as it is: no clone, no pull, no branch switch")
+    shot(page, "use-this-clone")
+
+    dialog.get_by_role("button", name="Use this clone").click()
+    expect(dialog.get_by_role("button", name="Folder")).to_have_attribute("aria-pressed", "true")
+    expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_value(str(into))
+    expect(dialog).to_contain_text("✓ git repository · branch main")

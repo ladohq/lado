@@ -172,7 +172,7 @@ def test_delete_cancels_a_clone(client, tmp_path, slow_git):
     assert (progress["phase"], progress["detail"]) == ("Receiving objects", "1.00 MiB | 2.00 MiB/s")
     answer = client.delete(f"/api/clones/{job['id']}")
     assert answer.status_code == 200
-    assert answer.json()["state"] == "cancelled"
+    assert (answer.json()["state"], answer.json()["error"]) == ("cancelled", None)
     assert not target.exists() and _leftovers(tmp_path) == []
     [call] = fake_git_calls(slow_git)
     assert gone(call["pid"]) and gone(call["child"])

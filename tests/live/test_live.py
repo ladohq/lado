@@ -99,11 +99,17 @@ for line in sys.stdin:
 MCP_TOKEN = "live-s3cr3t"
 
 
-def passive_kit(repo, token_server: bool) -> str:
-    """A project kit: the default kit's worker with a supervisor that does nothing, and the
-    flow `tiny`. With `token_server` the supervisor has an MCP server whose env refers to
-    LIVE_MCP_TOKEN."""
-    kit = repo / ".lado" / "kits" / "live"
+def live_kit() -> Path:
+    """The folder of kit live: beside the test's LADO_HOME, outside the repository (the
+    Claude test's repository has a fixed path)."""
+    return state.home().parent / "kits" / "live"
+
+
+def passive_kit(token_server: bool) -> str:
+    """An installed folder kit: the default kit's worker with a supervisor that does
+    nothing, and the flow `tiny`. With `token_server` the supervisor has an MCP server whose
+    env refers to LIVE_MCP_TOKEN."""
+    kit = live_kit()
     (kit / "agents").mkdir(parents=True)
     (kit / "flows").mkdir()
     (kit / "kit.yaml").write_text("name: live\nversion: 1.0.0\nsupervisor: passive\n")
@@ -115,13 +121,13 @@ def passive_kit(repo, token_server: bool) -> str:
         (kit / "token.py").write_text(TOKEN_SERVER)
     (kit / "agents" / "passive.md").write_text(passive)
     (kit / "flows" / "tiny.yaml").write_text(TINY_FLOW)
-    return kit.name
+    return agent_helpers.install_kit(kit)
 
 
-def check_mcp_token(repo) -> None:
+def check_mcp_token() -> None:
     """The kit's MCP server got LIVE_MCP_TOKEN from the agent's environment, through
     lado.mcp_exec: the config holds only its name."""
-    got = repo / ".lado" / "kits" / "live" / "mcp-token"
+    got = live_kit() / "mcp-token"
     wait_for(lambda: got.exists() and got.read_text() == MCP_TOKEN, "the MCP server's token", 60)
     configs = state.home() / "agents" / SESSION
     token = MCP_TOKEN.encode()
@@ -133,7 +139,7 @@ def start_session(repo, provider: str, monkeypatch=None) -> None:
     `monkeypatch` the supervisor has the token server, and the token is checked."""
     if monkeypatch:
         monkeypatch.setenv("LIVE_MCP_TOKEN", MCP_TOKEN)
-    kit = passive_kit(repo, token_server=bool(monkeypatch))
+    kit = passive_kit(token_server=bool(monkeypatch))
     # The default kit's supervisor is switched off in its kit only, so the live kit's leads.
     started = runtime.start_session(
         str(repo),
@@ -159,7 +165,7 @@ def start_session(repo, provider: str, monkeypatch=None) -> None:
     wait_for(supervisor_idle, "the supervisor to be idle", 60)
     assert loop.running(SESSION)
     if monkeypatch:
-        check_mcp_token(repo)
+        check_mcp_token()
 
 
 def check_supervisor_tools() -> None:

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from agent_helpers import install_kit
 from test_agents import (
     SESSION,
     inputs,
@@ -98,7 +99,7 @@ states:
 
 @pytest.fixture
 def flow_kit(repo):
-    kit = repo / ".lado" / "kits" / "itflow"
+    kit = repo.parent / "kits" / "itflow"
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: itflow\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
@@ -108,6 +109,7 @@ def flow_kit(repo):
     (kit / "flows" / "tiny.yaml").write_text(TINY)
     (kit / "flows" / "designed.yaml").write_text(DESIGNED)
     (kit / "flows" / "produced.yaml").write_text(PRODUCED)
+    install_kit(kit)
     runtime.start_session(str(repo), SESSION, None, "fake", ["default", "itflow"])
     wait_status("supervisor", state.IDLE)
     return kit

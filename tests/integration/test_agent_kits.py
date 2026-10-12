@@ -1,10 +1,11 @@
-"""Kits for real: a project kit in the test repo, agents started from it by the fake agent."""
+"""Kits for real: a folder kit installed in the test's LADO_HOME, agents started from it by
+the fake agent."""
 
 import json
 from pathlib import Path
 
 import pytest
-from agent_helpers import fake_logs
+from agent_helpers import fake_logs, install_kit
 from test_agents import SESSION, wait_for, wait_status
 
 from lado import runtime, state
@@ -19,8 +20,8 @@ def write(path: Path, text: str) -> None:
 
 @pytest.fixture
 def kit(repo):
-    """A project kit: the default kit plus a reviewer with a skill and an MCP server."""
-    kit = repo / ".lado" / "kits" / "itkit"
+    """An installed kit: the default kit plus a reviewer with a skill and an MCP server."""
+    kit = repo.parent / "kits" / "itkit"
     write(kit / "kit.yaml", "name: itkit\nversion: 1.0.0\n")
     write(
         kit / "agents" / "reviewer.md",
@@ -36,6 +37,7 @@ def kit(repo):
     # The MCP server: writes the token it got next to itself.
     write(kit / "echo.sh", '#!/bin/sh\nprintf %s "$TOKEN" > "$(dirname "$0")/got"\n')
     (kit / "echo.sh").chmod(0o755)
+    install_kit(kit)
     return kit
 
 

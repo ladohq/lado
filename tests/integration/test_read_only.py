@@ -35,7 +35,7 @@ def events(kind: str) -> list[tuple[str, str]]:
 
 
 def kit(repo, supervisor: str | None = None):
-    folder = repo / ".lado" / "kits" / "quiet"
+    folder = repo.parent / "kits" / "quiet"
     (folder / "agents").mkdir(parents=True)
     lead = f"supervisor: {supervisor}\n" if supervisor else ""
     (folder / "kit.yaml").write_text(f"name: quiet\nversion: 1.0.0\n{lead}")
@@ -43,6 +43,7 @@ def kit(repo, supervisor: str | None = None):
         (folder / "agents" / f"{name}.md").write_text(
             f"---\nname: {name}\ndescription: {name}\n{extra}---\nWork.\n"
         )
+    agent_helpers.install_kit(folder)
 
 
 def test_a_read_only_worker_s_commit_and_file_reach_the_supervisor_a_normal_one_s_do_not(repo):

@@ -39,6 +39,10 @@ NO_PROMPT = {
     "LC_ALL": "C",
 }
 STOP_WAIT = 2  # seconds git's process group gets after SIGTERM, before SIGKILL
+# A clone job of the UI server (server/clones.py): one no request asked about for ABANDONED
+# seconds (its window went away) is cancelled; a finished one is kept KEPT seconds.
+ABANDONED = 10
+KEPT = 60
 
 
 def is_url(source: str) -> bool:

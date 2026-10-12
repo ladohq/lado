@@ -39,7 +39,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         hint=hint,
         subfolders=_subfolders(Path(path)),
         default_name=name,
-        name_state=_name_state(name, root, has_db) if name and root else None,
+        name_state=name_state(name, root, has_db) if name and root else None,
         provider=models.ProviderSuggestion(name=suggestion.provider, reason=suggestion.reason)
         if suggestion
         else None,
@@ -69,7 +69,7 @@ def _subfolders(path: Path) -> list[str]:
     return names[:SUBFOLDERS]
 
 
-def _name_state(name: str, root: str, has_db: bool) -> models.NameState:
+def name_state(name: str, root: str, has_db: bool) -> models.NameState:
     sess = state.get_session(name) if has_db else None
     if sess is None:
         return "free"

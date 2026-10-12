@@ -155,6 +155,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remote-branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remote Branches
+         * @description A remote's branches and its default one, by one `git ls-remote`.
+         */
+        post: operations["remote_branches_api_remote_branches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clone-target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Clone Target
+         * @description The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it
+         *     takes one, and the session name it gives.
+         */
+        get: operations["clone_target_api_clone_target_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Clone
+         * @description Start a clone job; the window asks for it with GET until it ends.
+         */
+        post: operations["start_clone_api_clones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clones/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Clone Job
+         * @description A clone job; asking keeps it alive (clone.ABANDONED).
+         */
+        get: operations["clone_job_api_clones__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Clone
+         * @description Cancel a clone job: git stops, its temporary folder goes; the job as it ended.
+         */
+        delete: operations["cancel_clone_api_clones__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/folders/recent": {
         parameters: {
             query?: never;
@@ -1076,6 +1161,86 @@ export interface components {
             /** Hash */
             hash: string;
         };
+        /**
+         * CloneJob
+         * @description A clone the server runs for the New session window (server/clones.py).
+         */
+        CloneJob: {
+            /** Id */
+            id: string;
+            /** Url */
+            url: string;
+            /** Path */
+            path: string;
+            /** Branch */
+            branch: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "done" | "failed" | "cancelled";
+            progress: components["schemas"]["CloneProgress"] | null;
+            error: components["schemas"]["CloneRefused"] | null;
+            /** Seconds */
+            seconds: number;
+        };
+        /** CloneProgress */
+        CloneProgress: {
+            /** Phase */
+            phase: string;
+            /** Percent */
+            percent: number;
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * CloneRefused
+         * @description The detail of a 400 to a listing or a clone: why, by kind, and what the human can do.
+         */
+        CloneRefused: {
+            /** Message */
+            message: string;
+            /** Kind */
+            kind: string;
+            hint: components["schemas"]["HintInfo"] | null;
+        };
+        /** CloneStart */
+        CloneStart: {
+            /** Url */
+            url: string;
+            /** Path */
+            path?: string | null;
+            /** Branch */
+            branch?: string | null;
+        };
+        /**
+         * CloneTarget
+         * @description The folder a clone would go to, as the core finds it (lado.clone.check_target).
+         */
+        CloneTarget: {
+            /** Path */
+            path: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "new" | "empty" | "same_repo" | "other_repo" | "not_empty" | "not_folder";
+            /** Text */
+            text: string;
+            /** Origin */
+            origin: string | null;
+            /** Branch */
+            branch: string | null;
+            /** Suggestion */
+            suggestion: string | null;
+            /** Default Name */
+            default_name: string;
+            /**
+             * Name State
+             * @enum {string}
+             */
+            name_state: "free" | "running" | "stopped_here" | "taken_elsewhere";
+        };
         /** CommitInfo */
         CommitInfo: {
             /** Sha */
@@ -1819,6 +1984,23 @@ export interface components {
             /** Switch Off */
             switch_off: string[];
         };
+        /** RemoteAsk */
+        RemoteAsk: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * RemoteInfo
+         * @description A remote's branches (lado.clone.list_branches).
+         */
+        RemoteInfo: {
+            /** Url */
+            url: string;
+            /** Branches */
+            branches: string[];
+            /** Default */
+            default: string | null;
+        };
         /**
          * RepoInfo
          * @description A repository of a session: now its one folder; a project will have several.
@@ -2530,6 +2712,200 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FolderInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remote_branches_api_remote_branches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoteAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_target_api_clone_target_get: {
+        parameters: {
+            query: {
+                url: string;
+                path?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneTarget"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_clone_api_clones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloneStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneJob"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneRefused"];
+                };
+            };
+            /** @description a clone into that folder runs already */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_job_api_clones__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_clone_api_clones__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloneJob"];
                 };
             };
             /** @description Validation Error */

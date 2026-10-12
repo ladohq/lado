@@ -39,13 +39,17 @@ from lado import (
     terminal,
     update,
 )
-from lado.server import feed, launch, models, terminals
+from lado.server import clones, feed, launch, models, terminals
 from lado.server.auth import Guard
 from lado.server.models import (
     AgentDetails,
     AgentInfo,
     Answer,
     ArtifactInfo,
+    CloneJob,
+    CloneRefused,
+    CloneStart,
+    CloneTarget,
     Dismissal,
     Finish,
     FinishPreviewInfo,
@@ -78,6 +82,8 @@ from lado.server.models import (
     RecentFolder,
     RecordView,
     Refused,
+    RemoteAsk,
+    RemoteInfo,
     Resume,
     RunEventInfo,
     RunInfo,
@@ -397,6 +403,61 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         """A folder as the New session window checks it: whether a session can start
         there (the core's reason when not), its subfolders and the session name it gives."""
         return core(launch.folder_info, path, has_db)
+
+    # Clone from URL (docs/design/ui.md, Launch and session control): the listing goes to
+    # the network with this machine's credentials, so it is a change too.
+    jobs = clones.Jobs()
+    clone_refused = {400: {"model": CloneRefused}}
+
+    def clone_core(action: Callable[..., T], *args) -> T:
+        """What the core refuses of a clone is 400 with CloneRefused."""
+        try:
+            return action(*args)
+        except clones.Busy as busy:
+            raise HTTPException(409, str(busy)) from busy
+        except runtime.LadoError as error:
+            detail = clones.refused(error).model_dump(mode="json")
+            raise HTTPException(400, detail) from error
+
+    @app.post(
+        "/api/remote-branches", dependencies=[Depends(guard.changes)], responses=clone_refused
+    )
+    def remote_branches(given: RemoteAsk) -> RemoteInfo:
+        """A remote's branches and its default one, by one `git ls-remote`."""
+        return clone_core(clones.remote_info, given.url)
+
+    @app.get("/api/clone-target", dependencies=[Depends(guard)], responses=clone_refused)
+    def clone_target(
+        url: str, path: str | None = None, has_db: bool = Depends(database)
+    ) -> CloneTarget:
+        """The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it
+        takes one, and the session name it gives."""
+        return clone_core(clones.target_info, url, path, has_db)
+
+    @app.post(
+        "/api/clones",
+        dependencies=[Depends(guard.changes)],
+        responses={**clone_refused, 409: {"description": "a clone into that folder runs already"}},
+    )
+    def start_clone(given: CloneStart) -> CloneJob:
+        """Start a clone job; the window asks for it with GET until it ends."""
+        return clone_core(jobs.start, given.url, given.path, given.branch).info()
+
+    @app.get("/api/clones/{id}", dependencies=[Depends(guard)])
+    def clone_job(id: str) -> CloneJob:
+        """A clone job; asking keeps it alive (clone.ABANDONED)."""
+        job = jobs.get(id)
+        if job is None:
+            raise HTTPException(404, f"no clone job {id}")
+        return job.info()
+
+    @app.delete("/api/clones/{id}", dependencies=[Depends(guard.changes)])
+    def cancel_clone(id: str) -> CloneJob:
+        """Cancel a clone job: git stops, its temporary folder goes; the job as it ended."""
+        job = jobs.cancel(id)
+        if job is None:
+            raise HTTPException(404, f"no clone job {id}")
+        return job.info()
 
     @app.get("/api/folders/recent", dependencies=[Depends(guard)])
     def recent_folders(has_db: bool = Depends(database)) -> list[RecentFolder]:
@@ -908,6 +969,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         return FileResponse(static / "index.html")
 
     app.state.hub = hub
+    app.state.clones = jobs
     return app
 
 
@@ -918,6 +980,7 @@ class Server(uvicorn.Server):
 
     async def shutdown(self, sockets=None) -> None:
         self.config.app.state.hub.close()
+        await run_in_threadpool(self.config.app.state.clones.close)  # its clones cancelled
         await super().shutdown(sockets)
 
 

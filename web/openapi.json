@@ -264,6 +264,251 @@
         }
       }
     },
+    "/api/remote-branches": {
+      "post": {
+        "summary": "Remote Branches",
+        "description": "A remote's branches and its default one, by one `git ls-remote`.",
+        "operationId": "remote_branches_api_remote_branches_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteAsk"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clone-target": {
+      "get": {
+        "summary": "Clone Target",
+        "description": "The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it\ntakes one, and the session name it gives.",
+        "operationId": "clone_target_api_clone_target_get",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Url"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneRefused"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clones": {
+      "post": {
+        "summary": "Start Clone",
+        "description": "Start a clone job; the window asks for it with GET until it ends.",
+        "operationId": "start_clone_api_clones_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneRefused"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "a clone into that folder runs already"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clones/{id}": {
+      "get": {
+        "summary": "Clone Job",
+        "description": "A clone job; asking keeps it alive (clone.ABANDONED).",
+        "operationId": "clone_job_api_clones__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel Clone",
+        "description": "Cancel a clone job: git stops, its temporary folder goes; the job as it ended.",
+        "operationId": "cancel_clone_api_clones__id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloneJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/folders/recent": {
       "get": {
         "summary": "Recent Folders",
@@ -2603,6 +2848,252 @@
         "title": "AttachmentInfo",
         "description": "An artifact as a message or a note has it attached: the record it was at then. It\nchanged since when its artifact's latest record has another hash (the UI compares)."
       },
+      "CloneJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloneProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloneRefused"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "path",
+          "branch",
+          "state",
+          "progress",
+          "error",
+          "seconds"
+        ],
+        "title": "CloneJob",
+        "description": "A clone the server runs for the New session window (server/clones.py)."
+      },
+      "CloneProgress": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "title": "Phase"
+          },
+          "percent": {
+            "type": "integer",
+            "title": "Percent"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase",
+          "percent",
+          "detail"
+        ],
+        "title": "CloneProgress"
+      },
+      "CloneRefused": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HintInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "kind",
+          "hint"
+        ],
+        "title": "CloneRefused",
+        "description": "The detail of a 400 to a listing or a clone: why, by kind, and what the human can do."
+      },
+      "CloneStart": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "CloneStart"
+      },
+      "CloneTarget": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "new",
+              "empty",
+              "same_repo",
+              "other_repo",
+              "not_empty",
+              "not_folder"
+            ],
+            "title": "State"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion"
+          },
+          "default_name": {
+            "type": "string",
+            "title": "Default Name"
+          },
+          "name_state": {
+            "type": "string",
+            "enum": [
+              "free",
+              "running",
+              "stopped_here",
+              "taken_elsewhere"
+            ],
+            "title": "Name State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "state",
+          "text",
+          "origin",
+          "branch",
+          "suggestion",
+          "default_name",
+          "name_state"
+        ],
+        "title": "CloneTarget",
+        "description": "The folder a clone would go to, as the core finds it (lado.clone.check_target)."
+      },
       "CommitInfo": {
         "properties": {
           "sha": {
@@ -4885,6 +5376,53 @@
         ],
         "title": "Refused",
         "description": "The detail of a 400 to a start or resume that the session's kits refuse: why, and\nthe --without items that would each resolve it (a name in two kits), if any."
+      },
+      "RemoteAsk": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "RemoteAsk"
+      },
+      "RemoteInfo": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "branches": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Branches"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "branches",
+          "default"
+        ],
+        "title": "RemoteInfo",
+        "description": "A remote's branches (lado.clone.list_branches)."
       },
       "RepoInfo": {
         "properties": {

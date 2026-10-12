@@ -35,14 +35,14 @@
 
 ## 3. API
 
-- [ ] 3.1 `server/clones.py` jobs, the five endpoints and models, shutdown cancel (D9,
+- [x] 3.1 `server/clones.py` jobs, the five endpoints and models, shutdown cancel (D9,
   D10, D11). Unit tests (`tests/test_server_clones.py`): branches and refusals (400
   `CloneRefused` with kind and hint), clone target states with `default_name` and
   `name_state`, a job to `done`, `DELETE` cancels, "Two clones into one folder" (409), an
   unknown job 404, "A window that went away" (`ABANDONED` patched short), a finished job
   dropped after `KEPT`, the server's shutdown cancels a running job, the POSTs and DELETE
   refused without the Origin.
-- [ ] 3.2 `make web-types`; commit `web/openapi.json` and `web/src/api.gen.ts`.
+- [x] 3.2 `make web-types`; commit `web/openapi.json` and `web/src/api.gen.ts`.
 
 ## 4. Web UI
 

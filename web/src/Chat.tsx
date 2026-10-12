@@ -258,8 +258,8 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
     if (!ready) return;
     const [, kind, id] = /^(message|gate)-(\d+)$/.exec(anchor) ?? [];
     const asked = kind === "message" ? questions.find((one) => one.id === Number(id)) : undefined;
-    const waits = kind === "gate" ? gates.find((one) => one.id === Number(id)) : undefined;
-    if (asked || waits) {
+    const open = kind === "gate" ? gates.find((one) => one.id === Number(id)) : undefined;
+    if (asked || open) {
       const key = asked ? agentTab(asked.from) : gateTab(Number(id));
       setFocus({ key, item: Number(id), at: Date.now() });
       return;

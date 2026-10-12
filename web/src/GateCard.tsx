@@ -155,7 +155,7 @@ export function GatePanel({
 
 // The note of the step that led to the gate: its summary, then its body at once, and its
 // artifacts as chips with their short names (they are the run's).
-export function Note({ session, gate }: { session: string; gate: GateInfo }) {
+function Note({ session, gate }: { session: string; gate: GateInfo }) {
   if (!gate.note && !gate.note_body && gate.attachments.length === 0) return null;
   return (
     <div className="gate-note">
@@ -174,7 +174,7 @@ export function Note({ session, gate }: { session: string; gate: GateInfo }) {
 // carries), under a muted "It reads": each as of its latest record among the feed's
 // artifacts, so a write while the gate is open shows at once. A chip opens that record;
 // before the session's artifacts are loaded, a name alone.
-export function Reads({ session, names }: { session: string; names: string[] }) {
+function Reads({ session, names }: { session: string; names: string[] }) {
   const artifacts = useLive().artifacts[session];
   const view = useView(session);
   if (names.length === 0) return null;

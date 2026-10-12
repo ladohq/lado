@@ -103,8 +103,8 @@ no MCP change, no schema change, the two endpoints nothing calls any more are re
   true, text}` (no `text` when the comment is blank); while it runs the tab's controls are
   off; a refusal shows as `.field-problem` on the panel and the picks stay. Nothing shows
   ahead of the server: the tab goes when `waiting` brings the questions closed.
-- **D8. The gate's tab** reuses `GateCard.tsx`'s pieces: `Note` and `Reads` are exported,
-  and a new `GatePanel({session, gate, stopped})` holds the question, the note, the reads,
+- **D8. The gate's tab** reuses `GateCard.tsx`'s pieces (`Note` and `Reads` stay in it, used
+  only by the panel), and a new `GatePanel({session, gate, stopped})` holds the question, the note, the reads,
   the comment field and the option buttons (`LABELS`, `answerGate`) — what `GateCard` drew
   for an open gate. `GateCard` with `compact` (a run's page in Flows) stays and uses
   `GatePanel`'s form. `GateRow` (the open gate's row in the chat and on Needs you) is

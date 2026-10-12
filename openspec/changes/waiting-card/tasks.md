@@ -24,7 +24,7 @@
 
 ## 3. UI
 
-- [x] 3.1 `GateCard.tsx`: `GatePanel` shared, `Note` and `Reads` exported (D8). vitest
+- [x] 3.1 `GateCard.tsx`: `GatePanel` shared, `Note` and `Reads` in it (D8; not exported: no other file uses them). vitest
   (`GateCard.test.tsx`, `Flows.test.tsx`): the compact card answers; a gate's `problem`
   line; stopped. Check: `make web`. (No `GateCard.test.tsx`: the panel's problem line,
   buttons and stopped line are tested on the gate's tab, `WaitingCard.test.tsx` and

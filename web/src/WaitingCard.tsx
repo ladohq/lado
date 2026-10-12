@@ -56,7 +56,7 @@ const MARKED_FOR = 1500; // ms an item asked for stays marked
 const answered = (pick: Pick | undefined) =>
   pick !== undefined && ("choice" in pick || "skip" in pick || pick.own.trim() !== "");
 
-function replyOf(question: number, pick: Pick): Reply {
+function toReply(question: number, pick: Pick): Reply {
   if ("choice" in pick) return { question, choice: pick.choice, skip: false };
   if ("own" in pick) return { question, text: pick.own, skip: false };
   return pick.skip.trim() ? { question, skip: true, text: pick.skip } : { question, skip: true };
@@ -162,7 +162,7 @@ export function WaitingCard({
     try {
       await answerQuestions(
         session,
-        tab.questions.map((one) => replyOf(one.id, picks[one.id])),
+        tab.questions.map((one) => toReply(one.id, picks[one.id])),
       );
     } catch (error) {
       setProblem({ key: tab.key, text: error instanceof ApiError ? error.message : String(error) });

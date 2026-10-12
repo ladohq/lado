@@ -690,16 +690,17 @@ reaches the feed. LADO takes the model and builds it on what it has:
   summary"; "<name>: no record yet"; the name alone while the session's artifacts are not
   loaded): the latest record comes from the feed's artifacts, so a write while the gate is
   open shows at once, and the note's chip of an artifact written since says "changed
-  since" (docs/design/artifacts.md, Flows), an optional comment for the next
-  step, and a button per option (Approve / Reject, a choice gate's own options, Continue /
-  Cancel run at a loop limit; the first one primary). The buttons are off while the answer
+  since" (docs/design/artifacts.md, Flows), the supervisor's recommendation (below), an
+  optional comment for the next step, and a button per option (Approve / Reject, a choice
+  gate's own options, Continue / Cancel run at a loop limit; the recommended one primary,
+  else the first). The buttons are off while the answer
   is sent and in a stopped session (it says to resume it); a refusal shows on the card.
   The card changes only when the feed brings the closed gate, wherever it was answered
   (the popup, `lado answer`, another tab). A **closed gate** is a quiet line at the text's
   column, as the run events: "Gate #id · run · state: <answer> by <who>" (one title,
   `gateTitle`, also on a run's page in Flows; also `overridden` by `lado flow-set`,
-  `cancelled`), its comment and time; a click shows its question and note, read only,
-  without the artifacts it read, which are not kept as they were when it was answered. The
+  `cancelled`), its comment and time; a click shows its question, note and the
+  supervisor's recommendation's quiet line, read only, without the artifacts it read, which are not kept as they were when it was answered. The
   line stays where the gate opened, often far above the bottom; the **human's answer** is
   where it was given as one line, the run's move it made (a `flow` event of `human`), with
   the answer's comment under it (Flow events in Look of the feed; since
@@ -843,8 +844,9 @@ Built in the chat task (2026-10-03):
 - **A question**: open, an orange card (a 4 px band on its left) "Question #N · waits for
   you"; closed, a neutral card "Question #N",
   its choices faded, the chosen one marked "✓" in `--done` (the only place the choice
-  shows), and the human's reply in the card (Answer in the question card); "Closed: the
-  agent left" when its agent was
+  shows), the supervisor's recommendation's quiet line, if one was given (The
+  supervisor's recommendation, below), and the human's reply in the card (Answer in the
+  question card); "Closed: the agent left" when its agent was
   forgotten. The reply's text comes from the answer's fields, never from parsing the
   core's line (`replyOf`): the `choice` with the body under it as a comment; else a body
   that is not empty (the whole text, `runtime._human_text`); else the summary without
@@ -852,10 +854,35 @@ Built in the chat task (2026-10-03):
   question (`dismissed` and `answered_by` this message; with no question in the window, by
   the summary `Dismissed #N` of `runtime.dismiss_question` and no `choice`), its body is
   its comment.
+- **The supervisor's recommendation** (decided 2026-10-12, LAD-27, mockup
+  `task/lad-27/mockup-recommendation.html` v3; `Recommendation.tsx`): LADO asks the
+  supervisor for its view on each gate and each other agent's question (AGENTS.md, How
+  agents talk), and it is part of that card, never an entry of its own: `recommendation`
+  of `GateInfo` and of a question's `MessageInfo` (`RecommendationInfo`: state, text,
+  choice, disagrees, by, at; none when never asked), brought by the feed with the item.
+  Open, a block between the question's text (the gate's note and what it reads) and the
+  answer, also in Needs you and on a run's page in Flows: the supervisor's small avatar,
+  "Supervisor's recommendation", "disagrees with <agent>" as an orange chip when the
+  supervisor disagrees with the agent whose report led to the gate or who asks, the time
+  on the right, then the whole text as Markdown (no length limit or Show more: the
+  supervisor is told to keep it short). Its left band is the supervisor's avatar colour,
+  orange when it disagrees. The recommended option's button is the card's only primary
+  one, the others quiet, with no other label, whether the supervisor agrees or not; the
+  option is not named in the block's head (the blue button says it). Without a
+  recommended option the first button stays primary. While it is asked, one muted
+  italic line "Supervisor is preparing a recommendation…"; when the supervisor's turn
+  ended without it, "The supervisor gave no recommendation"; never asked, nothing. The
+  human answers in every state; a recommendation given later replaces the line and moves
+  the primary button. Closed (a gate opened by a click, a closed question under its
+  choices), one quiet line with the small avatar, "Supervisor recommended: <option>" (the
+  button's label) or "Supervisor's recommendation" without one, " · disagreed with
+  <agent>" in orange, the text on a click (`details`); the human's choice stays marked only
+  in the list.
 - **The open question's card** (decided 2026-10-10, feature/question-answer, mockup
   `feature/question-answer/mockup-question-buttons-v3.html`, B v3), top to bottom: the
-  choices in a row (the first `.primary`, the others `.quiet`; a choice takes the field's
-  text along as its comment); the field, full width, "Your answer or a comment: it goes
+  supervisor's recommendation, if any; the choices in a row (the recommended one
+  `.primary`, else the first, the others `.quiet`; a choice takes the field's text along
+  as its comment); the field, full width, "Your answer or a comment: it goes
   with a choice, Send or Dismiss" (none for a question without a free answer); one row
   with **Send** at the left (disabled and quiet while the field is blank, primary once it
   has text) and **Dismiss** at the right, a muted button (`.quiet.subdued`) that reads

@@ -24,31 +24,34 @@
 
 ## 3. UI
 
-- [ ] 3.1 `GateCard.tsx`: `GatePanel` shared, `Note` and `Reads` exported (D8). vitest
+- [x] 3.1 `GateCard.tsx`: `GatePanel` shared, `Note` and `Reads` exported (D8). vitest
   (`GateCard.test.tsx`, `Flows.test.tsx`): the compact card answers; a gate's `problem`
-  line; stopped. Check: `make web`.
-- [ ] 3.2 `WaitingCard.tsx` with `waitingTabs`, tabs, colours, picks, Send, the gate's
+  line; stopped. Check: `make web`. (No `GateCard.test.tsx`: the panel's problem line,
+  buttons and stopped line are tested on the gate's tab, `WaitingCard.test.tsx` and
+  `Chat.test.tsx`; the compact card in `Flows.test.tsx`, unchanged.)
+- [x] 3.2 `WaitingCard.tsx` with `waitingTabs`, tabs, colours, picks, Send, the gate's
   panel, the look (D6, D7, D9; mockup `task/lad-28/mockup-question-card-final.html`);
   `Question.tsx` closed card only, "skipped" (D12, D13); `api.ts` without
   `answerQuestion` / `dismissQuestion`; icons `ExpandIcon`, `CollapseIcon`. vitest
   (`WaitingCard.test.tsx`): "Three things wait", "Nothing waits", "Colours of an agent and a
   run", "A new question meanwhile", "Two questions, one answered", "All answered", "A
   question that takes no own answer", a refusal keeps the picks, typing keeps focus, `focus`
-  selects and marks. Check: `make web`.
-- [ ] 3.3 `Chat.tsx`: the card between the feed and the composer from `waiting` and the
+  selects and marks. Check: `make web`. (No new icons: `icons.tsx`'s `ExpandIcon` already
+  draws both, `expanded` or not, as the terminal and the artifact panel use it.)
+- [x] 3.3 `Chat.tsx`: the card between the feed and the composer from `waiting` and the
   session's gates, `runs` watched; open items as lines with their arrow; links to open items
   select their tab; `GateHint` removed; "skipped" in the late line and the quiet line;
   expanded over the window with Esc (D10, D11). vitest (`Chat.test.tsx`,
   `WaitingCard.test.tsx`): "An open question in the feed", "After the answer", a gate's
   line, no hint, "Expanded and back", Esc not expanded does nothing, the dialog folds when
   empty, "A stopped session". Check: `make web`.
-- [ ] 3.4 `NeedsYou.tsx`: a card per session, "In the chat", waiting agents as rows;
+- [x] 3.4 `NeedsYou.tsx`: a card per session, "In the chat", waiting agents as rows;
   `GateRow` removed (D14). vitest (`NeedsYou.test.tsx`): "Two sessions", answering posts to
   that session. Check: `make web`.
 
 ## 4. End to end
 
-- [ ] 4.1 UI e2e (`tests/ui/test_chat.py`, `tests/ui/test_needs_you.py`, `-m ui`): two
+- [x] 4.1 UI e2e (`tests/ui/test_chat.py`, `tests/ui/test_needs_you.py`, `-m ui`): two
   questions of the supervisor answered in one tab reach the agent; three tabs (a worker's
   question, a gate) switch and the gate's Approve moves the run; the expanded card and Esc;
   Needs you answers in place; the cards' buttons one height in light and dark. Screenshots
@@ -58,7 +61,7 @@
 
 ## 5. Docs and release notes
 
-- [ ] 5.1 `docs/design/ui.md` (Flow gates; A question; the open question's card replaced by
+- [x] 5.1 `docs/design/ui.md` (Flow gates; A question; the open question's card replaced by
   The waiting card, decided 2026-10-13, LAD-28, mockup
   `task/lad-28/mockup-question-card-final.html`; Answer in the question card, "skipped";
   Structure: Needs you; Look), AGENTS.md (Layout: `POST …/answers`; How agents talk: replies

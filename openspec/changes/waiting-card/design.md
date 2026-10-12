@@ -121,7 +121,8 @@ no MCP change, no schema change, the two endpoints nothing calls any more are re
   The avatar 20 px, radius 6, `--on-avatar` letter; the gate's Flows icon in `--who`; the
   badge 18 px, `--muted` on 18 % `--muted`. Options: 32 px buttons, picked `--action` on
   `--action-ground`; Other… and Skip `--muted`. The expand and fold buttons: 36 px, a 20 px
-  icon (two new icons in `icons.tsx`, `ExpandIcon`, `CollapseIcon`), the UI's Tooltip.
+  icon (`icons.tsx`'s `ExpandIcon`, which draws both, `expanded` or not, as the terminal and
+  the artifact panel use it; no new icon), the UI's Tooltip.
 - **D10. Expanded.** Component state `expanded`. Expanded, the card renders through a
   portal into `document.body` as `role="dialog" aria-modal="true" aria-label="What waits
   for you in <session>"`, fixed at 16 px from the window's edges over a `--scrim` ground,

@@ -9,6 +9,16 @@
 - API: `prompt` in `POST /api/sessions` and `POST /api/sessions/{name}/resume`.
 - The chat: a closed question card shows the choice you picked once, marked in its list;
   the reply block under it keeps who answered, when, and your comment.
+- The chat and Needs you: one card above the composer holds what waits for you in a
+  session, a tab per agent with open questions and per open gate, each in that agent's or
+  run's colour. An agent's tab takes a choice, your own answer (Other…) or Skip for each of
+  its questions and sends them together: the agent gets all the answers at once and
+  starts one turn. A gate's tab answers the gate as its card did. The card expands over
+  the window (Esc folds it). In the feed an open question or gate is one line whose arrow
+  leads to its tab; the hint over the composer is gone; a dismissed question reads
+  "skipped".
+- API: `POST /api/sessions/{name}/answers` takes the answers to one agent's questions
+  together; `POST …/questions/{id}/answer` and `…/dismiss` are gone.
 
 ## 0.36.0 (2026-10-12)
 

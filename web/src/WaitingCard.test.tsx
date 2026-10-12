@@ -160,6 +160,15 @@ test("a click shows a tab; a new question meanwhile adds to its tab and switches
   expect(selected()).toEqual([tab("supervisor 2")]);
 });
 
+test("until the human picks a tab the first one shows, also when an older item loads after the others", () => {
+  const questions = [question(5, "supervisor")];
+  const view = show({ questions });
+  expect(selected()).toEqual([tab("supervisor 1")]);
+  // The session's gates load after what waits: the gate, older, comes first.
+  view.rerender(<Card questions={questions} gates={[gate(1, "ship/x", "2026-10-03T12:00:01.000Z")]} />);
+  expect(selected()).toEqual([tab("ship/x 1")]);
+});
+
 test("two questions, one answered: Send is off and says how many are answered; a choice unpicks on a second click", () => {
   show({ questions: [question(5, "supervisor"), question(6, "supervisor")] });
   const [one, two] = within(card()).getAllByRole("listitem");

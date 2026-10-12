@@ -93,9 +93,10 @@ export function WaitingCard({
   const open = new Set(questions.map((one) => one.id));
   const colours = runs ? runColours(runs) : new Map<string, number>();
 
-  // The shown tab stays shown while it exists; when it goes, the first one.
+  // The tab the human chose (a click, a link) stays shown while it exists; when it goes, and
+  // until they choose one, the first one shows.
   useEffect(() => {
-    if (shown && shown.key !== chosen) setChosen(shown.key);
+    if (chosen !== null && !tabs.some((tab) => tab.key === chosen)) setChosen(null);
   });
   // Picks of questions no longer open go.
   const openKey = [...open].sort((a, b) => a - b).join(",");

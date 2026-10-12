@@ -213,10 +213,8 @@ does the same: click `live` in the top bar, then **Update…** and **Restart and
 6. It starts the sessions and the UI server again, on the new version.
 
 `--yes` skips the question. Without a terminal (in a script) it is required: there
-`lado update` refuses to go on without it.
-
-Runs, gates, branches and worktrees stay. Each agent starts a new conversation, and a
-busy agent loses its current turn, so update while your agents are idle.
+`lado update` refuses to go on without it. What happens to your sessions' work:
+[README](../README.md#update).
 
 ### When something goes wrong
 

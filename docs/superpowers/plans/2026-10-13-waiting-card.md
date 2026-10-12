@@ -85,7 +85,8 @@ def test_two_answers_reach_an_idle_agent_in_one_paste(session, sent):
     first = ask(session, "w1", "Short or long?", ["short", "long"])
     second = ask(session, "w1", "Which branch?")  # free answer
     runtime.answer_questions(
-        "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, None, "main, then rebase")]
+        "s",
+        [runtime.HumanReply(first, "short"), runtime.HumanReply(second, None, "main, then rebase")],
     )
     pastes = [text for target, text in sent if target == ("s", "w1")]
     assert len(pastes) == 1
@@ -98,7 +99,8 @@ def test_a_skip_is_a_dismissal_with_its_comment(session, sent):
     first = ask(session, "w1", "Short or long?", ["short", "long"])
     second = ask(session, "w1", "Which branch?")
     runtime.answer_questions(
-        "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="later", skip=True)]
+        "s",
+        [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="later", skip=True)],
     )
     reply = state.list_messages("s")[-1]
     assert (reply.summary, reply.body, reply.reply_to) == (f"Dismissed #{second}", "later", second)
@@ -110,7 +112,9 @@ def test_a_batch_with_a_closed_question_changes_nothing(session, sent):
     runtime.answer_question("s", second, None, "main")
     before = state.list_messages("s")
     with pytest.raises(runtime.LadoError, match=f"question #{second} is answered"):
-        runtime.answer_questions("s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, None, "x")])
+        runtime.answer_questions(
+            "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, None, "x")]
+        )
     assert state.list_messages("s") == before
     assert state.get_message("s", first).question_state == "open"
 
@@ -119,8 +123,14 @@ def test_a_batch_with_a_closed_question_changes_nothing(session, sent):
     "replies, error",
     [
         ([], "no answers"),
-        (lambda q, _: [runtime.HumanReply(q, "short"), runtime.HumanReply(q, "long")], "is answered twice"),
-        (lambda q, other: [runtime.HumanReply(q, "short"), runtime.HumanReply(other, "yes")], "answers go to one agent at a time"),
+        (
+            lambda q, _: [runtime.HumanReply(q, "short"), runtime.HumanReply(q, "long")],
+            "is answered twice",
+        ),
+        (
+            lambda q, other: [runtime.HumanReply(q, "short"), runtime.HumanReply(other, "yes")],
+            "answers go to one agent at a time",
+        ),
         (lambda q, _: [runtime.HumanReply(q, "short", skip=True)], "skip takes no choice"),
         (lambda q, _: [runtime.HumanReply(q, "maybe")], 'has no choice "maybe"'),
     ],
@@ -139,7 +149,9 @@ def test_a_busy_agent_gets_the_batch_at_its_turns_end(session, sent):
     first = ask(session, "w1", "Short or long?", ["short", "long"])
     second = ask(session, "w1", "Which branch?")
     state.set_status("s", "w1", state.BUSY)
-    runtime.answer_questions("s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, None, "main")])
+    runtime.answer_questions(
+        "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, None, "main")]
+    )
     assert [t for t in sent if t[0] == ("s", "w1")] == []
     hooks.handle(turn_end("s", "w1"))  # the existing helper of a Stop hook in this file
     assert len([t for t in sent if t[0] == ("s", "w1")]) == 1
@@ -200,8 +212,15 @@ def reply_to_questions(session: str, replies: Sequence[Reply]) -> list[int]:
                         "INSERT INTO messages (session, sender, recipient, summary, body,"
                         " reply_to, choice, created_at) VALUES (?, ?, ?, ?, ?, ?, ?,"
                         " strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-                        (session, HUMAN, row["sender"], reply.summary, reply.body,
-                         reply.question, reply.choice),
+                        (
+                            session,
+                            HUMAN,
+                            row["sender"],
+                            reply.summary,
+                            reply.body,
+                            reply.question,
+                            reply.choice,
+                        ),
                     ).lastrowid
                 )
                 db.execute(
@@ -291,7 +310,12 @@ def test_the_human_answers_a_tab_in_one_request(client, session):
     ship, port = state.list_messages("s")
     answered = client.post(
         ANSWERS,
-        json={"answers": [{"question": ship.id, "choice": "yes"}, {"question": port.id, "skip": True, "text": "not now"}]},
+        json={
+            "answers": [
+                {"question": ship.id, "choice": "yes"},
+                {"question": port.id, "skip": True, "text": "not now"},
+            ]
+        },
     )
     assert answered.status_code == 200
     _, _, answer, dismissal = state.list_messages("s")
@@ -308,7 +332,9 @@ def test_an_empty_tab_is_refused(client, session):
 
 
 def test_the_old_question_endpoints_are_gone(client, session):
-    assert client.post("/api/sessions/s/questions/1/answer", json={"choice": "yes"}).status_code in (404, 405)
+    assert client.post(
+        "/api/sessions/s/questions/1/answer", json={"choice": "yes"}
+    ).status_code in (404, 405)
 ```
 
   and replace the two old paths in the guard's parametrized tests (`MESSAGES,

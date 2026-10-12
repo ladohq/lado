@@ -74,8 +74,7 @@ def cmd_kits(args: argparse.Namespace) -> int:
     legacy = kits.legacy_hint()
     if legacy:
         print(f"lado: {legacy}", file=sys.stderr)
-    repo = _repo_or_none(args.repo)
-    found = kits.available(repo)
+    found = kits.available()
     markets = {m.name for m in marketplaces.list_()}
     for kit, shadowed_by in found:
         note = f"  (shadowed by {shadowed_by})" if shadowed_by else ""
@@ -244,9 +243,8 @@ def _sources_warning(unless_in: str = "") -> None:
 
 
 def cmd_kits_show(args: argparse.Namespace) -> int:
-    repo = _repo_or_none(args.repo)
     # A kit shown alone works without the kit that brings what it expects.
-    env = kits.resolve(repo, args.names, args.without, expected=kits.ASSUME)
+    env = kits.resolve(args.names, args.without, expected=kits.ASSUME)
     print(env.lead_line())
     for warning in env.warnings:
         print(f"warning: {warning}", file=sys.stderr)
@@ -320,7 +318,6 @@ def cmd_kits_show(args: argparse.Namespace) -> int:
 
 def cmd_kits_check(args: argparse.Namespace) -> int:
     target = Path(args.kit)
-    repo = _repo_or_none(str(target) if target.is_dir() else args.repo)
     try:
         # A folder may be any kit, e.g. a kit at the root of its repository; with --tag,
         # what `lado kits add <address>@<tag>` would say of it.
@@ -328,8 +325,8 @@ def cmd_kits_check(args: argparse.Namespace) -> int:
             spec = f"{args.kit}@{args.tag}" if args.tag is not None else args.kit
             kit = kits.load_release(target, spec, args.tag)
         else:
-            kit = kits.find(args.kit, repo).release(args.tag)
-        env = kits.resolve(repo, [kit], expected=kits.ASSUME)
+            kit = kits.find(args.kit).release(args.tag)
+        env = kits.resolve([kit], expected=kits.ASSUME)
         problems = kits.lint(kit)
         doubts = kits.warnings(kit)
     except kits.KitError as exc:
@@ -369,13 +366,6 @@ def _agents_path(kits_: list[kits.Kit]) -> str | agent_env.AgentEnvError | None:
         return agent_env.resolve().get("PATH", os.defpath)
     except agent_env.AgentEnvError as exc:
         return exc
-
-
-def _repo_or_none(path: str) -> str | None:
-    try:
-        return runtime.repo_root(path)
-    except runtime.LadoError:
-        return None
 
 
 def cmd_ls(args: argparse.Namespace) -> int:
@@ -1024,7 +1014,6 @@ def main(argv: list[str] | None = None) -> int:
     kits_cmd = commands.add_parser(
         "kits", help="list, show and check kits; add, update and remove installed ones"
     )
-    kits_cmd.add_argument("--repo", default=".", help="repository for project kits")
     kits_cmd.set_defaults(func=cmd_kits)
     kits_sub = kits_cmd.add_subparsers(metavar="<command>")
     show = kits_sub.add_parser("show", help="what kits combine into: agents, skills, MCP")

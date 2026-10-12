@@ -17,8 +17,9 @@ relative to the kit's. A pack is SKILL.md folders (anywhere under skills/, or un
 (lado.gitcache): load reads what is there and never uses the network, fetch clones the rest.
 `dependencies.lado: ">=X.Y"` names the oldest LADO the kit runs with.
 
-Kits are looked up by name in the project (<repo>/.lado/kits), then among the kits the user
-installed, then among the kits built into LADO; the first hit wins. An installed kit is a
+Kits are looked up by name among the kits the user installed, then among the kits built
+into LADO; the first hit wins. A repository's own folders are never read for kits, so the
+kits are the same whatever the session's folder. An installed kit is a
 row in lado.db (state.InstalledKit), made by `lado kits add`: a kit from git by its address,
 version tag and the tag's commit, read from its clone in the git cache
 (gitcache.clone_dir(address, tag), not kept), or a folder read in place; the marketplace it
@@ -166,7 +167,7 @@ class AgentDef:
 class Kit:
     name: str
     path: Path
-    where: str  # project, user or built-in; "path" for a kit loaded from a path
+    where: str  # user or built-in; "path" for a kit loaded from a path
     version: str
     description: str
     supervisor: str | None  # the agent of this kit that leads a session (kit.yaml)
@@ -193,8 +194,8 @@ class Found:
     """A kit in the lookup, not loaded yet."""
 
     name: str
-    where: str  # project, user or built-in
-    path: Path  # its folder: an entry of a kits folder, or an installed kit's
+    where: str  # user or built-in
+    path: Path  # its folder: an entry of the built-in kits folder, or an installed kit's
     installed: state.InstalledKit | None = None  # an installed kit's row (where "user")
 
     def load(self) -> Kit:
@@ -209,10 +210,6 @@ class Found:
         return self._checked(load_release(self.path, spec, tag, self.where, named=named))
 
     def _check(self) -> None:
-        if self.path.is_symlink() and not self.path.exists():
-            raise KitError(
-                f"{self.name}: broken link → {os.readlink(self.path)}; delete {self.path}"
-            )
         if self.installed and not self.path.is_dir():
             raise KitError(
                 f'kit "{self.name}": its folder {self.path} is missing; `lado kits remove '
@@ -469,11 +466,6 @@ class Environment:
         return {m for a in [*self.agents.values(), self.lead] for m in a.mcp}
 
 
-def project_kits(repo: str | Path | None) -> Path | None:
-    """The folder of a repository's own kits."""
-    return Path(repo) / ".lado" / "kits" if repo else None
-
-
 def installed() -> Path:
     """LADO_HOME/kits, where older LADOs kept the installed kits; only legacy_hint reads it."""
     return state.home() / "kits"
@@ -506,38 +498,26 @@ def _installed_path(row: state.InstalledKit) -> Path:
     return gitcache.clone_dir(row.address, row.tag)
 
 
-def candidates(repo: str | Path | None, with_installed: bool = True) -> list[Found]:
-    """Every kit in lookup order: the project's, the installed ones, the built-in ones; a
-    name may come more than once. Without `with_installed`, lado.db is not read."""
-    project = project_kits(repo)
-    return [
-        *(_in_folder(project, "project") if project else []),
-        *(installed_kits() if with_installed else []),
-        *builtin_kits(),
-    ]
+def candidates(with_installed: bool = True) -> list[Found]:
+    """Every kit in lookup order: the installed ones, the built-in ones; a name may come
+    more than once. Without `with_installed`, lado.db is not read."""
+    return [*(installed_kits() if with_installed else []), *builtin_kits()]
 
 
-def find(name: str, repo: str | Path | None) -> Found:
-    for found in candidates(repo):
+def find(name: str) -> Found:
+    for found in candidates():
         if found.name == name:
             return found
-    project = project_kits(repo)
-    places = [
-        *([str(project)] if project else []),
-        f"the installed kits in {state.home() / 'lado.db'}",
-    ]
-    looked = ", ".join([*places, str(BUILTIN)])
+    looked = f"the installed kits in {state.home() / 'lado.db'}, {BUILTIN}"
     hints = [migration_hint(), legacy_hint()]
     raise KitError("\n".join(filter(None, [f'kit "{name}" not found; looked in {looked}', *hints])))
 
 
-def available(
-    repo: str | Path | None, with_installed: bool = True
-) -> list[tuple[Found, str | None]]:
+def available(with_installed: bool = True) -> list[tuple[Found, str | None]]:
     """All kits in the lookup, each with where the kit that shadows it is (or None)."""
     winners: dict[str, Found] = {}
     listed = []
-    for found in candidates(repo, with_installed):
+    for found in candidates(with_installed):
         winner = winners.setdefault(found.name, found)
         listed.append((found, None if winner is found else winner.where))
     return listed
@@ -938,7 +918,7 @@ def _check_root(root: Path, spec: str) -> None:
     """A kit to install has kit.yaml at the root of its repository or folder."""
     if (root / KIT_FILE).is_file():
         return
-    if _in_folder_paths(root / "kits"):
+    if _in_folder(root / "kits", "path"):
         raise KitError(
             f"{spec}: kits in kits/<name>/ are no longer supported: a kit is one repository "
             "with kit.yaml at its root"
@@ -1047,18 +1027,10 @@ def migration_hint() -> str | None:
 
 
 def _in_folder(base: Path, where: str) -> list[Found]:
-    """The kits in a kits folder; a link whose folder is gone is there too (load says so)."""
-    broken = (
-        [p for p in base.iterdir() if p.is_symlink() and not p.exists()] if base.is_dir() else []
-    )
-    paths = sorted([*_in_folder_paths(base), *broken])
-    return [Found(p.name, where, p) for p in paths]
-
-
-def _in_folder_paths(base: Path) -> list[Path]:
+    """The kits in a kits folder."""
     if not base.is_dir():
         return []
-    return sorted(p for p in base.iterdir() if (p / KIT_FILE).is_file())
+    return [Found(p.name, where, p) for p in sorted(base.iterdir()) if (p / KIT_FILE).is_file()]
 
 
 def _kit_name(path: Path) -> str:
@@ -1427,7 +1399,6 @@ def _version(text: str) -> tuple[int, ...]:
 
 
 def resolve(
-    repo: str | Path | None,
     kits: Iterable[str | Kit],
     without: Iterable[str] = (),
     expected: str = REQUIRE,
@@ -1446,7 +1417,7 @@ def resolve(
        that kit's agents instead."""
     taken: dict[Path, Kit] = {}
     for item in kits:
-        kit = item if isinstance(item, Kit) else fetch(find(item, repo).load())
+        kit = item if isinstance(item, Kit) else fetch(find(item).load())
         if kit.unfetched():
             raise KitError(f'kit "{kit.name}": pack not fetched yet: {", ".join(kit.unfetched())}')
         taken.setdefault(kit.path, kit)

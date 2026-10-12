@@ -404,9 +404,10 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         return launch.recent_folders() if has_db else []
 
     @app.get("/api/kits", dependencies=[Depends(guard)])
-    def list_kits(where: str | None = None, has_db: bool = Depends(database)) -> list[KitInfo]:
-        """The kits a session of the folder `where` can take, one per name."""
-        return core(launch.kit_infos, where, has_db)
+    def list_kits(has_db: bool = Depends(database)) -> list[KitInfo]:
+        """The kits a session can take, one per name: the installed and the built-in ones,
+        the same for every folder."""
+        return core(launch.kit_infos, has_db)
 
     @app.get("/api/providers", dependencies=[Depends(guard)])
     def list_providers() -> list[ProviderInfo]:

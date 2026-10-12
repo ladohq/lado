@@ -2,7 +2,7 @@
 with FastAPI's test client."""
 
 import pytest
-from agent_helpers import previous_schema, spoil_snapshot
+from agent_helpers import install_kit, previous_schema, spoil_snapshot
 from fastapi.testclient import TestClient
 
 from lado import artifacts, runs, runtime, state
@@ -43,7 +43,7 @@ def client():
 
 @pytest.fixture
 def session(repo, fake_tmux):
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "agents").mkdir()
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
@@ -51,6 +51,7 @@ def session(repo, fake_tmux):
         "---\nname: developer\ndescription: d\n---\nYou build.\n"
     )
     (kit / "flows" / "ship.yaml").write_text(SHIP)
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     return "s"
 

@@ -2552,8 +2552,9 @@ def _write(path, text):
 
 @pytest.fixture
 def team_kit(repo):
-    """A project kit on top of the default kit: a reviewer role, two skills, an MCP server."""
-    kit = repo / ".lado" / "kits" / "team"
+    """An installed kit on top of the default kit: a reviewer role, two skills, an MCP
+    server."""
+    kit = repo.parent / "kits" / "team"
     _write(kit / "kit.yaml", "name: team\nversion: 1.0.0\n")
     _write(
         kit / "agents" / "reviewer.md",
@@ -2563,6 +2564,7 @@ def team_kit(repo):
     )
     for skill in ("checklist", "style"):
         _write(kit / "skills" / skill / "SKILL.md", f"---\nname: {skill}\ndescription: d\n---\n")
+    agent_helpers.install_kit(kit)
     return kit
 
 
@@ -2756,7 +2758,8 @@ def test_provider_without_skills_fails_loudly(repo, fake_tmux, team_kit, monkeyp
     assert agent_helpers.launched(fake_tmux[0])[1] == ["noskills"]
 
 
-def test_git_exclude_keeps_project_kits_visible(repo, fake_tmux, team_kit):
+def test_git_exclude_keeps_the_projects_lado_files_visible(repo, fake_tmux):
+    _write(repo / ".lado" / "sdlc.md", "# settings\n")
     exclude = repo / ".git" / "info" / "exclude"
     exclude.write_text("# mine\n/.lado/\n")  # what LADO 0.3 wrote
     runtime.start_session(str(repo), "s", None, provider="claude")
@@ -2765,7 +2768,7 @@ def test_git_exclude_keeps_project_kits_visible(repo, fake_tmux, team_kit):
     status = subprocess.run(
         ["git", "-C", str(repo), "status", "--porcelain", "-uall"], capture_output=True, text=True
     )
-    assert ".lado/kits/team/kit.yaml" in status.stdout
+    assert ".lado/sdlc.md" in status.stdout
     assert "worktrees" not in status.stdout
     runtime.spawn_worker("s", "t")
     assert exclude.read_text() == "# mine\n/.lado/worktrees/\n"
@@ -3792,8 +3795,9 @@ def test_only_an_agent_is_told_it_may_write_to_the_human(repo, fake_tmux):
 def boss_kit(repo):
     """Kit boss with a supervisor that names its skill notes (with a script, and a link to a
     file outside the kit) and has an MCP server; with the default kit, it does not lead."""
-    kit = repo / ".lado" / "kits" / "boss"
+    kit = repo.parent / "kits" / "boss"
     _write(kit / "kit.yaml", "name: boss\nversion: 1.0.0\nsupervisor: chief\n")
+    agent_helpers.install_kit(kit)
     _write(
         kit / "agents" / "chief.md",
         "---\nname: chief\ndescription: 'Chief: leads \"boss\" work'\nskills: [notes]\n"
@@ -3870,8 +3874,9 @@ def test_lead_skills_are_written_anew_at_each_start(repo, fake_tmux, boss_kit, l
 
 
 def test_a_lead_skill_says_when_its_supervisor_lists_no_skills(repo, fake_tmux, lado_home):
-    kit = repo / ".lado" / "kits" / "boss"
+    kit = repo.parent / "kits" / "boss"
     _write(kit / "kit.yaml", "name: boss\nversion: 1.0.0\nsupervisor: chief\n")
+    agent_helpers.install_kit(kit)
     _write(kit / "agents" / "chief.md", "---\nname: chief\ndescription: c\n---\nLead.\n")
     runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"], provider="claude")
     skill_md = _lead_dir(lado_home) / "lead-skills" / "lead-boss" / "SKILL.md"
@@ -3929,8 +3934,9 @@ def test_a_provider_without_skills_names_the_way_out_of_lead_skills(
 @pytest.fixture
 def quiet_kit(repo):
     """Kit quiet: a read-only reviewer and a developer."""
-    kit = repo / ".lado" / "kits" / "quiet"
+    kit = repo.parent / "kits" / "quiet"
     _write(kit / "kit.yaml", "name: quiet\nversion: 1.0.0\n")
+    agent_helpers.install_kit(kit)
     _write(
         kit / "agents" / "reviewer.md",
         "---\nname: reviewer\ndescription: reviews\nread_only: true\n---\nYou review.\n",
@@ -4043,14 +4049,12 @@ def test_kit_users_are_the_sessions_that_name_the_kit_split_by_status(
         "c": (["tool"], status.STOPPED),
         "d": (["tool"], status.TMUX_GONE),
         "e": (["default"], status.RUNNING),
-        "f": (["tool"], status.RUNNING),  # its project has a kit "tool" of its own
     }
     for name, (kit_names, _) in sessions.items():
         (tmp_path / name).mkdir()
         state.add_session(
             state.Session(name, str(tmp_path / name), None, kits=kit_names, provider="claude")
         )
-    (tmp_path / "f" / ".lado" / "kits" / "tool").mkdir(parents=True)
     monkeypatch.setattr(runtime, "session_status", lambda sess: sessions[sess.name][1])
     users = runtime.kit_users("tool")
     assert users == runtime.KitUsers(running=["a", "b"], stopped=["c", "d"])
@@ -4067,6 +4071,15 @@ def test_kit_users_are_the_sessions_that_name_the_kit_split_by_status(
     none = runtime.kit_users("nope")
     assert none == runtime.KitUsers([], [])
     assert none.running_line("nope") is None and none.stopped_line("nope") is None
+
+
+def test_a_session_whose_repository_has_a_kit_folder_of_that_name_uses_the_kit(tmp_path, lado_home):
+    (tmp_path / "s" / ".lado" / "kits" / "team").mkdir(parents=True)
+    state.add_session(
+        state.Session("s", str(tmp_path / "s"), None, kits=["team"], provider="claude")
+    )
+    state.stop_session("s")
+    assert runtime.kit_users("team") == runtime.KitUsers(running=[], stopped=["s"])
 
 
 # The time a session ran (runtime.session_time) and the end of one whose tmux died.
@@ -4243,7 +4256,7 @@ def test_the_retry_delays_are_lado_retry_delays_else_lado_s_own(value, delays):
 def _expecting_kits(repo):
     """Kit sdlc whose role analyst uses skill tracker, which it expects; kit tracker, without
     agents, has it."""
-    base = repo / ".lado" / "kits"
+    base = repo.parent / "kits"
     (base / "sdlc" / "agents").mkdir(parents=True)
     (base / "sdlc" / "kit.yaml").write_text(
         "name: sdlc\nversion: 1.0.0\nexpects:\n  skills: [tracker]\n"
@@ -4256,6 +4269,8 @@ def _expecting_kits(repo):
     (base / "tracker" / "skills" / "tracker" / "SKILL.md").write_text(
         "---\nname: tracker\ndescription: t\n---\n"
     )
+    agent_helpers.install_kit(base / "sdlc")
+    agent_helpers.install_kit(base / "tracker")
 
 
 def test_a_session_without_the_kit_an_expected_skill_needs_does_not_start(repo, fake_tmux):
@@ -4297,7 +4312,7 @@ def _command(folder: Path, name: str) -> None:
 
 def _commanding_kits(repo):
     """Kit sdlc (role analyst) expects commands openspec and uv; kit host (role dev) gh."""
-    base = repo / ".lado" / "kits"
+    base = repo.parent / "kits"
     for kit, role, commands in (("sdlc", "analyst", "[openspec, uv]"), ("host", "dev", "[gh]")):
         (base / kit / "agents").mkdir(parents=True)
         (base / kit / "kit.yaml").write_text(
@@ -4306,6 +4321,7 @@ def _commanding_kits(repo):
         (base / kit / "agents" / f"{role}.md").write_text(
             f"---\nname: {role}\ndescription: r\n---\nR.\n"
         )
+        agent_helpers.install_kit(base / kit)
 
 
 def _missing_text(path: str) -> str:

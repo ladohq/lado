@@ -82,8 +82,8 @@ def test_a_stash_is_a_change(base):
 def test_ignored_files_lado_and_a_file_gone_again_are_none(base):
     before = take(base)
     (base / "run.log").write_text("x\n")
-    (base / ".lado" / "kits").mkdir(parents=True)
-    (base / ".lado" / "kits" / "k.yaml").write_text("x\n")
+    (base / ".lado").mkdir()
+    (base / ".lado" / "sdlc.md").write_text("x\n")
     (base / "tmp.txt").write_text("x\n")
     (base / "tmp.txt").unlink()
     assert fingerprint.diff(before, take(base)) == []

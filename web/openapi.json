@@ -290,47 +290,19 @@
     "/api/kits": {
       "get": {
         "summary": "List Kits",
-        "description": "The kits a session of the folder `where` can take, one per name.",
+        "description": "The kits a session can take, one per name: the installed and the built-in ones,\nthe same for every folder.",
         "operationId": "list_kits_api_kits_get",
-        "parameters": [
-          {
-            "name": "where",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Where"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/KitInfo"
                   },
+                  "type": "array",
                   "title": "Response List Kits Api Kits Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }

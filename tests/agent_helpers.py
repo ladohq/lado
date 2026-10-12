@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 from lado import interpreter, log, loop, state, tmux
 
@@ -84,6 +85,14 @@ def no_maintenance_env(environ: dict[str, str]) -> dict[str, str]:
         count += 1
     env["GIT_CONFIG_COUNT"] = str(count)
     return env
+
+
+def install_kit(folder: Path) -> str:
+    """Install the kit in `folder` as `lado kits add <folder>` would, in the test's LADO_HOME
+    (read in place, no question); its name, from its kit.yaml."""
+    name = yaml.safe_load((folder / "kit.yaml").read_text())["name"]
+    assert state.add_kit(state.InstalledKit(name, folder=str(folder))), f"{name} installed"
+    return name
 
 
 def init_repo(path: Path) -> Path:

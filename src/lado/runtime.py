@@ -556,7 +556,7 @@ def start_session(
         without if without is not None else (old.without if old else []),
     )
     _check_permission_mode(agent_cli, sess.permission_mode)
-    env = kits.resolve(repo, sess.kits, sess.without)
+    env = kits.resolve(sess.kits, sess.without)
     if base_env is None:
         base_env = _base_env()
     _check_commands(env, base_env)
@@ -683,7 +683,7 @@ def spawn_worker(
     sess = running_session(session)
     agent_cli = _provider(provider or sess.provider)
     _check_permission_mode(agent_cli, sess.permission_mode)
-    env = kits.resolve(sess.repo, sess.kits, sess.without)
+    env = kits.resolve(sess.kits, sess.without)
     role_def = env.role(role)
     taken = {a.name for a in state.list_agents(session)}
     # A worker of a stopped launch of the session may have left its branch.
@@ -1966,12 +1966,10 @@ def _names(names: list[str]) -> str:
 
 
 def kit_users(kit: str) -> KitUsers:
-    """The sessions whose kits name `kit`, running or not; a session whose project has a
-    kit of that name of its own (`<repo>/.lado/kits/<kit>`) does not use the installed one."""
+    """The sessions whose kits name `kit`, running or not."""
     users = KitUsers([], [])
     for sess in state.list_sessions():
-        project = kits.project_kits(sess.repo)
-        if kit not in sess.kits or (project and (project / kit).exists()):
+        if kit not in sess.kits:
             continue
         running = session_status(sess) in (SessionStatus.RUNNING, SessionStatus.LOOP_DOWN)
         (users.running if running else users.stopped).append(sess.name)
@@ -2396,7 +2394,8 @@ def _next_name(role: str, taken: set[str]) -> str:
 
 def exclude_worktrees(repo: str) -> None:
     """Keep worker worktrees out of `git status` without touching .gitignore. The rest of
-    `.lado/` (project kits) stays visible, so it can be committed."""
+    `.lado/` (the project's own files there, e.g. sdlc.md) stays visible, so it can be
+    committed."""
     exclude = Path(repo, git(repo, "rev-parse", "--git-common-dir"), "info", "exclude")
     lines = exclude.read_text().splitlines() if exclude.exists() else []
     if WORKTREES_EXCLUDE in lines and "/.lado/" not in lines:

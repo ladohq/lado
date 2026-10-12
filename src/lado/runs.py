@@ -50,7 +50,7 @@ def start(
     supervisor would be told about it goes to `notices` instead, if given: it caused it.
     `language` is the human's, e.g. "ru": the steps' notes are written in it."""
     sess = runtime.running_session(session)
-    env = kits.resolve(sess.repo, sess.kits, sess.without)
+    env = kits.resolve(sess.kits, sess.without)
     flow = env.flow(flow_name)
     task = task.strip()
     if not task:

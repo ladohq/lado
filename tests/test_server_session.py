@@ -5,6 +5,7 @@ import shutil
 import subprocess
 
 import pytest
+from agent_helpers import install_kit
 from fastapi.testclient import TestClient
 
 from lado import doctor, providers, runtime, state
@@ -192,30 +193,37 @@ def test_about_a_session_whose_folder_is_gone_has_no_remote_or_branch(
 def test_about_gives_each_kit_in_the_sessions_order_with_its_version_and_source(
     client, repo, fake_tmux, statuses
 ):
-    kits_dir = repo / ".lado" / "kits"
-    for name in ("team", "broken", "gone"):
+    kits_dir = repo.parent / "kits"
+    for name in ("team", "broken", "gone", "removed"):
         (kits_dir / name).mkdir(parents=True)
         (kits_dir / name / "kit.yaml").write_text(f"name: {name}\nversion: 1.2.0\n")
-    runtime.start_session(
-        str(repo), "s", None, kit_names=["team", "default", "broken", "gone"], provider="claude"
-    )
+        install_kit(kits_dir / name)
+    names = ["team", "default", "broken", "gone", "removed"]
+    runtime.start_session(str(repo), "s", None, kit_names=names, provider="claude")
     (kits_dir / "broken" / "kit.yaml").write_text("name: broken\nnope: 1\n")
     shutil.rmtree(kits_dir / "gone")
-    team, default, broken, gone = about(client)["kits"]
+    state.delete_kit("removed")
+    team, default, broken, gone, removed = about(client)["kits"]
     assert team == {
         "name": "team",
         "version": "1.2.0",
-        "source": f"project: {kits_dir / 'team'}",
+        "source": f"user: {(kits_dir / 'team').resolve()}",
         "valid": True,
         "problem": None,
     }
     assert (default["name"], default["valid"]) == ("default", True)
     assert default["source"].startswith("built-in: ")
     assert (broken["valid"], broken["version"]) == (False, "")
-    assert broken["source"] == f"project: {kits_dir / 'broken'}"
+    assert broken["source"] == f"user: {kits_dir / 'broken'}"
     assert "nope" in broken["problem"]
-    assert (gone["valid"], gone["version"], gone["source"]) == (False, "", "")
-    assert gone["problem"].startswith('kit "gone" not found')
+    assert (gone["valid"], gone["version"], gone["source"]) == (
+        False,
+        "",
+        f"user: {kits_dir / 'gone'}",
+    )
+    assert gone["problem"].startswith(f'kit "gone": its folder {kits_dir / "gone"} is missing')
+    assert (removed["valid"], removed["version"], removed["source"]) == (False, "", "")
+    assert removed["problem"].startswith('kit "removed" not found')
 
 
 def test_about_gives_the_sessions_provider_with_its_version_and_warning(client, session, statuses):

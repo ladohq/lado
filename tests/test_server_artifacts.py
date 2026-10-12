@@ -3,6 +3,7 @@ content under the contract's security rules, and the attachments of messages, no
 gates (docs/design/artifacts.md, The human's side). In process, with FastAPI's test client."""
 
 import pytest
+from agent_helpers import install_kit
 from fastapi.testclient import TestClient
 
 from lado import artifacts, artifacts_local, runs, runtime, state
@@ -39,10 +40,11 @@ def client():
 
 @pytest.fixture
 def session(repo, fake_tmux):
-    kit = repo / ".lado" / "kits" / "team"
+    kit = repo.parent / "kits" / "team"
     (kit / "flows").mkdir(parents=True)
     (kit / "kit.yaml").write_text("name: team\nversion: 1.0.0\n")
     (kit / "flows" / "ship.yaml").write_text(SHIP)
+    install_kit(kit)
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     runtime.spawn_worker("s", "task", name="w1")
     return "s"

@@ -1029,6 +1029,23 @@ test("in a stopped session the card keeps its gate, its buttons off, and says wh
 
 // Links from Needs you and from a notification
 
+test("a link to an old open question waits for what waits to load and loads no page for its line", async () => {
+  const { queries } = serve([question(5, { created_at: "2026-10-02T09:00:00.000Z" }), ...history(70, 10)]);
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const plain = globalThis.fetch;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (path === "/api/waiting") await held;
+    return plain(path, init);
+  });
+  open("/sessions/lado/activity#message-5");
+  await within(await chat()).findByText("note 79");
+  release();
+  const card = await waitingCard();
+  await waitFor(() => expect(card.querySelector('[data-item="5"]')?.className).toContain("marked"));
+  expect(queries).toEqual([{ with: "human", limit: "50" }]);
+});
+
 test.each([
   ["#message-5", "w1 1", "5"],
   ["#gate-1", "feature/x 1", "1"],

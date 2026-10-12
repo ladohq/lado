@@ -282,9 +282,12 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
     card.scrollIntoView?.({ block: "center" });
     setGoal(null);
   });
+  // Once per address, when the feed and what waits are loaded (an open item's tab, not its
+  // line, is where it leads).
+  const waitsLoaded = state.waiting !== null;
   useEffect(() => {
-    if (hash) go(decodeURIComponent(hash.slice(1))); // once per address, when loaded
-  }, [ready, hash, waits !== null]);
+    if (hash && waitsLoaded) go(decodeURIComponent(hash.slice(1)));
+  }, [ready, hash, waitsLoaded]);
 
   return (
     <section className="chat" aria-label="Chat">

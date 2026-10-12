@@ -465,8 +465,9 @@ fixes and docs only: no new feature, no API or schema change.
     and `close_viewers`, which `lado stop` and the UI server's start use; viewers are found
     by their tmux labels (`@lado-viewer`, `@lado-home`, `@lado-session`) only. Never a
     read-only tmux client: tmux would refuse LADO's own `send-keys` while one is attached.
-  - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup (project
-    `<repo>/.lado/kits`, then the installed kits, then built-in), `dependencies` (`lado`: the
+  - `kits.py`: kits (agent roles, skills, MCP servers, flows): lookup (the installed kits,
+    then built-in; no folder: a repository's own folders are never read for kits, so the
+    kits are the same for every session and folder), `dependencies` (`lado`: the
     oldest LADO the kit runs with; `skills`: skill packs by `<git-url>@<tag|commit>` or a
     folder relative to the kit), `supervisor` (the kit's agent that leads a session; the
     agent name `supervisor` is reserved for it), `--without` (`kind:name@kit` in one kit
@@ -746,8 +747,8 @@ fixes and docs only: no new feature, no API or schema change.
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
     `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
-    `/api/kits?where=` (the kit of each name the lookup takes, an invalid one
-    `valid: false`) and `/api/providers` (no provider is marked the default);
+    `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
+    `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default);
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and
@@ -763,8 +764,8 @@ fixes and docs only: no new feature, no API or schema change.
     `GET /api/kits/installed` (`InstalledKitInfo`, the installed then the built-in kits;
     with `KitInfo` it shares `KitSummary`), `GET /api/kits/available` (`OfferInfo`),
     `GET /api/marketplaces` (`MarketplaceInfo`) and `GET /api/kits/{name}/remove-preview`
-    (`runtime.kit_users`: the running and stopped sessions whose kits name it, not those a
-    project kit of that name shadows, with the core's lines `lado kits remove` prints);
+    (`runtime.kit_users`: the running and stopped sessions whose kits name it, with the
+    core's lines `lado kits remove` prints);
     under `Guard.changes`, as they change something or go to the network:
     `POST /api/kits/plan` (`PlanInfo`, `kits.plan_add`), `POST /api/kits/install` (the
     plan's `spec` with its tag, and its commit, or a folder's MCP servers: planned again,
@@ -1500,8 +1501,9 @@ LADO borrows ideas from other orchestrators but must not repeat their mistakes:
 - **Native over injected.** Use each CLI's own way of loading skills, MCP servers and hooks
   instead of pasting their text into the prompt.
 - **Explicit lookup.** No hidden fallbacks to global locations; show where each resolved
-  piece came from. Kits are looked up in the project, then the installed ones (lado.db),
-  then built-in; a kit's packs come only from the addresses in its own `kit.yaml`.
+  piece came from. Kits are looked up among the installed ones (lado.db), then built-in,
+  never in a session's repository; a kit's packs come only from the addresses in its own
+  `kit.yaml`.
 - **Only what is used.** Add a field, option or engine feature when a real kit needs it.
 - **Tested end to end.** Behaviour that crosses processes (tmux, hooks, MCP) gets an
   integration test with the fake agent.

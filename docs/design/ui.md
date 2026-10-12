@@ -1047,8 +1047,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
   says of it (`name_state`): taken by a running session, by a session of another folder,
   or a stopped session of this folder with **Resume it**, which turns the window to Resume.
-  **Kits** (chips, "+ Add kit" from `/api/kits?where=`: the kit of each name the lookup
-  takes; one that does not load is listed off with `lado kits check <name>`),
+  **Kits** (chips, "+ Add kit" from `/api/kits`: the kit of each name the lookup takes,
+  the installed and the built-in kits, the same for every folder; the window still sends
+  its folder as `where`, which the server ignores; one that does not load is listed off
+  with `lado kits check <name>`),
   **Provider** (`/api/providers`: each provider of the registry with
   `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
   a version warning shows under it) and **Permission mode** (the provider's modes; a mode
@@ -1616,8 +1618,7 @@ page (LADO has one source of kits, git).
   then the kits as a grid of cards (Card, below). The **Marketplaces** block is on the
   right on every tab, under the grid on a page narrower than 900 px.
 - **Installed**: the kits of lado.db's `kits` table, then the built-in ones (read only,
-  no buttons, no ⋯); not a project's kits (`<repo>/.lado/kits`: Launch shows them for its
-  folder). A card: the name, its tag or version, `→ vX` and ↑ after a check found vX, the
+  no buttons, no ⋯). A card: the name, its tag or version, `→ vX` and ↑ after a check found vX, the
   description, its source (the marketplace it was added from, `<name> (removed)` when that
   one is gone, counted by the UI from the two lists; git; folder; built-in), its roles,
   skills and flows, its address or folder in the name's title, the core's problem when it

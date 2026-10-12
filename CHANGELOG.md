@@ -17,6 +17,11 @@
   and its report show git's version.
 - API: `FolderInfo.has_commits` is replaced by `problem_kind` and `hint`; `SystemInfo`
   has `git`.
+- Kits come only from the installed and the built-in ones: a repository's `.lado/kits` is
+  no longer read, so a session started with such a kit fails on resume with `kit not
+  found`. To keep using a kit folder, install it once: `lado kits add <folder>` (read in
+  place, so your edits show in the next agent). `lado kits --repo` is gone, and
+  `GET /api/kits` takes no `where`: the list is the same for every folder.
 
 ## 0.35.0 (2026-10-11)
 

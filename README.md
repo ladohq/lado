@@ -84,7 +84,9 @@ lado start <git-url>    # or clone one first, into ~/lado/<repo> (--branch NAME,
 lado ui                 # the web UI in your browser
 ```
 
-`lado start --help` lists the options (`--provider`, `--kit`, `--permission-mode`). `lado ls`
+`lado start <repo> --prompt "Take LAD-19 and design it with me"` (or `--prompt-file FILE`,
+`-` for stdin) gives the supervisor its first task as your message; it answers in the web
+UI's chat. `lado start --help` lists the options (`--provider`, `--kit`, `--permission-mode`). `lado ls`
 shows the sessions and their agents, `lado attach <session>` their tmux windows, `lado stop
 <session>` ends one (`lado start` resumes it).
 

@@ -1077,7 +1077,21 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   answer's `problems` (open runs that cannot go on), its `warnings` (what `lado start`
   prints on stderr: kit supervisors not used, what the supervisor's CLI asks the human
   before its first hook, such as Claude Code's "trust this folder?") and a resume's
-  `changes` show under the session's head until closed. No first message, no tmux attach.
+  `changes` show under the session's head until closed. No tmux attach.
+- **First message** (decided 2026-10-12, LAD-19; mockup `task/lad-19/mockup-first-message.html`
+  v2, variant C): a row **First message to the supervisor (optional)** just above
+  Advanced, in the New and the Resume mode, for a folder and a clone alike, folded each
+  time the window opens (a `<details>` styled as Advanced; the two rows share one line).
+  Opened: a text field (`aria-label` "First message", 4 lines, dragged taller; Enter is a
+  new line, never a submit) and the note "sent to the supervisor as your message once it
+  starts; its answer comes in the chat". Folded with text, the row reads `First message to
+  the supervisor: <the text's first line>`, cut to one line. Over `Limits.max_message`
+  (the composer's `GET /api/limits`, `runtime.MAX_MESSAGE`) the note is `<n> characters,
+  the limit is <limit>` and Start (Clone and start, Resume) stays off, also folded. The
+  trimmed text goes as `prompt` of `POST /api/sessions` (also the start after a clone) or
+  `POST /api/sessions/{name}/resume`; a field of white space sends none. The core queues it
+  as the human's message to the supervisor (`runtime.start_session(prompt=)`), after LADO's
+  `session resumed` on a resume, and the Activity chat shows it as the human's.
 - **Clone from URL** (decided 2026-10-12, LAD-6; mockup `task/lad-6/mockup-clone.html`
   v3): the Where field takes a git URL (`lado.clone.is_url`: `https://`, `http://`,
   `ssh://`, `git://`, `file://`, or `user@host:path`). **Clone into** is the default folder

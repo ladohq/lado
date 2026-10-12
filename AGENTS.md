@@ -313,7 +313,9 @@ fixes and docs only: no new feature, no API or schema change.
     name), `None` either, as `lado start`; `first` (a `FirstInput`, only with
     `resume=False`) copies its records into the new session (`artifacts.copy_record`) and
     queues the supervisor's first message from `lado` with the copies attached, the copies
-    undone with the session. `start_approved_session` is the supervisor's
+    undone with the session; `prompt` (`check_prompt`, refused before anything changes),
+    for a new session and a resume alike, queues the human's first message after LADO's
+    (How agents talk). `start_approved_session` is the supervisor's
     `start_session` tool (Supervisor-started sessions, below). No provider is the default: a new session
     without one takes `suggested_provider(repo, installed)`, a `Suggestion` (provider and
     reason, `LAST_SESSION` or `ONLY_INSTALLED`; `line()` is what `lado start` prints as
@@ -1062,7 +1064,13 @@ fixes and docs only: no new feature, no API or schema change.
   step <state>` for a worker; `agents.task` keeps the full text). Its session-start hook
   makes it idle, which hands the queue over as any other (below): the agent gets one line
   and reads the text with `read_messages`. A spawn or resume that fails drops it with the
-  rest of the queue; the next resume writes LADO's messages anew. Kilo and OpenCode
+  rest of the queue; the next resume writes LADO's messages anew. A supervisor's queue may
+  also hold the human's first message (`start_session(prompt=)`, checked by
+  `runtime.check_prompt`: `lado start --prompt`, the New session window), a message from
+  `human` queued after LADO's own (a resume's `session resumed`, a brief), whose summary is
+  the fixed `runtime.FIRST_MESSAGE` and whose body is the whole text, also for one line, so
+  the text never goes on a command line below; a failed start drops it with the queue.
+  Kilo and OpenCode
   (`Capabilities.notice_on_argv`) lose text typed into their TUI right after the plugin's
   init, and no event or API says when it takes input (OpenCode 1.18.35, checked by hand):
   their queue's lines at launch, never a body, go on `--prompt` (`runtime._launch_command`),
@@ -1271,7 +1279,12 @@ session of another folder has is refused before the clone (`runtime.check_name`)
 progress goes to stderr; Ctrl-C ends git's process group, removes the temporary folder and
 exits 130 (`lado: clone cancelled`), a SIGTERM or SIGHUP the same way with 128 + its
 number; a start refused after the clone says `the clone stays
-in <folder>`. `<folder>` and `--branch` without a git URL exit 2. The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
+in <folder>`. `<folder>` and `--branch` without a git URL exit 2. `--prompt TEXT` or
+`--prompt-file FILE` (`-`: stdin; not both, exit 2) gives the supervisor a first message
+from the human, for a folder, a git URL and a resume alike: read and checked
+(`runtime.check_prompt`: not empty, at most `MAX_MESSAGE` characters; a file it cannot read
+is exit 1) before any clone or start, stdin read once, and `first message: queued for the
+supervisor` after the Started or Resumed line. The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
 `lado kits add <git-url>[@vX.Y.Z]` installs the kit of a repository (a row in lado.db; its

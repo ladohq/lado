@@ -46,7 +46,7 @@
 
 ## 6. Docs and release notes
 
-- [ ] 6.1 `docs/design/ui.md` (Launch and session control: the First message row; "No
+- [x] 6.1 `docs/design/ui.md` (Launch and session control: the First message row; "No
   first message" removed), AGENTS.md (How agents talk: the human's first message in a
   supervisor's first input; Try it locally: `--prompt` / `--prompt-file`; Layout:
   `check_prompt`), README's start (one line), CHANGELOG.md `## 0.37.0 (unreleased)`.

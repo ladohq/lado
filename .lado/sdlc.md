@@ -103,8 +103,10 @@ at the start of every step.
 - A live test added or changed — it only collects without real CLIs — say "written, not
   run" in the build report; never claim it passed.
 - An HTML mockup that inlines `web/src/index.css` — it does not scroll in a window wider
-  than 900px (`html, body { overflow: hidden }`) — end its `<style>` with
-  `html, body { height: auto; overflow: auto; }` and check it scrolls to its end.
+  than 900px (`html, body { overflow: hidden; overscroll-behavior: none }`) — end its
+  `<style>` with `html, body { height: auto !important; overflow: visible !important;
+  overscroll-behavior: auto !important; }` (`overflow: auto` is not enough: the wheel
+  still does not scroll) and check with the wheel that it scrolls to its end.
 
 ## Extra instructions
 
@@ -131,11 +133,13 @@ Analyst:
 - UI work: name the change to `docs/design/ui.md`, and attach an HTML mockup of each new
   or changed screen as a run artifact. A mockup that inlines the UI's CSS
   (`web/src/index.css`) takes its app-shell rules too: on a window wider than 900px
-  `html, body { overflow: hidden }` stops the page from scrolling, as only `.content`
-  scrolls in the app. End the mockup's `<style>` with
-  `html, body { height: auto; overflow: auto; }`, or put the screens inside the
-  `.app`/`.content` frame, and before attaching check that the page scrolls in a wide
-  window to its last screen.
+  `html, body { overflow: hidden; overscroll-behavior: none }` stops the page from
+  scrolling, as only `.content` scrolls in the app. End the mockup's `<style>` with
+  `html, body { height: auto !important; overflow: visible !important;
+  overscroll-behavior: auto !important; }` (with `overflow: auto` the wheel still does
+  not scroll), or put the screens inside the `.app`/`.content` frame, and before
+  attaching check with the wheel that the page scrolls in a wide window to its last
+  screen.
 - Say in the design whether the change bumps the minor (feature, MCP tool or CLI change,
   schema migration) or the patch (fixes and docs only).
 

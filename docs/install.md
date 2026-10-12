@@ -147,7 +147,7 @@ Windows 10 or 11 with WSL2 available, and an account that can run cmd as adminis
 3. Run `lado doctor` (it ends with `All checks passed.`), then `kilo` once to log in and
    pick a model (or your CLI's login, [Agent CLIs](#agent-clis)), then start a session in
    a git repository inside Ubuntu: [Your first session](#your-first-session). Later
-   updates: `lado update`.
+   updates: `lado update` ([Update](#update)).
 
 ### If something goes wrong
 
@@ -192,7 +192,62 @@ lado ui                 # the web UI in your browser
 ```
 
 A new folder needs `git init` and a first commit before `lado start`.
-`lado start --help` lists the options; `lado update` installs a newer LADO later.
+`lado start --help` lists the options; `lado update` installs a newer LADO later
+([Update](#update)).
+
+## Update
+
+`lado update` installs the latest LADO, `lado update X.Y.Z` another version. The web UI
+does the same: click `live` in the top bar, then **Update…** and **Restart and update**.
+
+### What it does
+
+1. It shows its plan (the version you have and the one it installs, the installer's
+   command, the sessions and the UI server it restarts) and asks `Update? [y/N]`. The web
+   UI shows the same plan in its window.
+2. It stops your running sessions and the UI server.
+3. It backs up `lado.db` to `~/.lado/backups/` (one backup, of the version before).
+4. It installs exactly that version with the installer LADO came with:
+   `uv tool install lado==X.Y.Z`, or `pipx install --force lado==X.Y.Z`.
+5. It checks that the installed `lado --version` is that version.
+6. It starts the sessions and the UI server again, on the new version.
+
+`--yes` skips the question. Without a terminal (in a script) it is required: there
+`lado update` refuses to go on without it.
+
+Runs, gates, branches and worktrees stay. Each agent starts a new conversation, and a
+busy agent loses its current turn, so update while your agents are idle.
+
+### When something goes wrong
+
+- The new version reports another version than the one asked for, or the UI server does
+  not come up on it: LADO rolls back. It stops what the new version started, installs
+  the old version again and starts your sessions on it. It restores `lado.db` from the
+  backup only when the new version changed its schema.
+- The installer fails: nothing changed; the sessions start again on the old version.
+- Everything the update said and every command it ran, with their output, is in
+  `~/.lado/update.log`.
+- An update that stops half way leaves sessions stopped: `lado ls` names them, with the
+  `lado start` that resumes each.
+
+### Going back to an older version
+
+`lado update 0.20.0` installs an older version the same way, as far as that version
+accepts your database: an older LADO refuses a newer `lado.db` and says so when it starts.
+
+### The check for a newer version
+
+`lado ls`, `lado doctor` and the web UI look on PyPI at most once a day and say
+`LADO X.Y.Z is available: lado update` (the web UI: `↑ X.Y.Z` next to `live`).
+`LADO_NO_UPDATE_CHECK=1` in your environment switches the check off.
+
+### Installed otherwise
+
+LADO updates itself only when it was installed from PyPI with `uv tool install lado` or
+`pipx install lado`. Installed with pip (e.g. in a virtual environment), from a working
+copy or from a git address (also through uv tool or pipx), `lado update` and the web UI
+show the commands to run by hand instead: stop the sessions and the UI server, install
+the version with that environment's `pip install lado==X.Y.Z`, then start them again.
 
 ## Common problems
 
@@ -233,4 +288,5 @@ not read; `lado doctor`'s `Agent environment` line says where LADO's `PATH` come
 ### Without uv
 
 `pip install lado` (Python 3.10 or newer) installs LADO too, e.g. into a virtual
-environment. `lado update` then only prints the commands to run by hand.
+environment. `lado update` then only prints the commands to run by hand
+([Installed otherwise](#installed-otherwise)).

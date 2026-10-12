@@ -1,3 +1,10 @@
+## Purpose
+
+The lead's own recommendation on each question to the human: LADO asks the session's lead
+for its view whenever a flow gate opens or another agent asks the human, the lead gives it
+with the MCP tool `recommend`, and it is stored with the gate or question and shown as part
+of its card in the UI and in `lado answer`, never as a separate message.
+
 ## ADDED Requirements
 
 ### Requirement: LADO asks the lead for a recommendation on each question to the human

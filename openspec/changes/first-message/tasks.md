@@ -53,7 +53,7 @@
 
 ## 7. Regression
 
-- [ ] 7.1 `make lint`, `make test`, `uv run pytest -m integration -n auto
+- [x] 7.1 `make lint`, `make test`, `uv run pytest -m integration -n auto
   tests/integration/test_session_start.py`, `uv run pytest -m ui tests/ui/test_launch.py`,
   `make web`, `openspec validate first-message --strict`, `openspec validate --specs
   --strict`; CI green.

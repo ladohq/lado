@@ -12,7 +12,7 @@
 
 ## 2. CLI
 
-- [ ] 2.1 `lado start --prompt TEXT | --prompt-file FILE|-`, read and checked before a
+- [x] 2.1 `lado start --prompt TEXT | --prompt-file FILE|-`, read and checked before a
   clone and the start, `first message: queued for the supervisor` (D5). Unit tests
   (`tests/test_cli.py`): "Text on the command line", "Text from stdin" and a file, "Both
   options" (exit 2), "A file that cannot be read" (exit 1), an empty `--prompt`, "A git

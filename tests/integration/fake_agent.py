@@ -387,6 +387,14 @@ def work(text: str) -> bool:
             report(flow_start=call_tool("flow_start", {"flow": command[1], "task": command[2]}))
         elif command[0] == "spawnrun":
             call_tool("spawn_worker", {"run": command[1]})
+        elif command[0] == "give_recommendation":
+            # give_recommendation <gate|question> <id> [choice]: not "recommend", the first
+            # word of LADO's request line, which this loop reads as a command too.
+            item, _, choice = command[2].partition(" ")
+            args = {command[1]: int(item), "text": "my own view", "disagrees": True}
+            if choice:
+                args["choice"] = choice
+            report(recommend=call_tool("recommend", args))
         elif command[0] == "advance":
             outcome, _, note = command[2].partition(" ")
             summary, _, body = note.partition(" | ")

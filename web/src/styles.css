@@ -2767,6 +2767,86 @@ h3 {
   margin-top: 4px;
 }
 
+/* The supervisor's recommendation in a gate's or a question's card (Recommendation.tsx):
+   a block with the supervisor's avatar colour as its band (--rec-band), orange when it
+   disagrees; while asked or not given, one muted line; closed, one quiet line that opens. */
+.rec {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--rec-band, var(--line));
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.rec.differs {
+  border-left-color: var(--human);
+}
+
+.rec.waiting {
+  border-left-color: var(--line);
+}
+
+.rec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.rec-title {
+  font-weight: 600;
+}
+
+.rec.waiting .rec-title {
+  color: var(--muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.rec-differs {
+  padding: 0 8px;
+  border: 1px solid var(--human);
+  border-radius: 999px;
+  background: var(--human-ground);
+  color: var(--human);
+  font-weight: 600;
+}
+
+.rec-head time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rec .chat-body {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.rec-closed {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.rec-closed summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.rec-closed-differs {
+  color: var(--human);
+}
+
+.rec-closed .chat-body {
+  margin: 4px 0 0 24px;
+  color: var(--ink);
+}
+
 /* The human's answer: the text as written, the comment under a choice. */
 .chat-answer,
 .chat-comment {

@@ -38,6 +38,7 @@ function message(id: number, from: string, to: string, summary: string, more: Pa
     reply_state: null,
     attachments: [],
     created_at: "2026-10-03T12:00:00.000Z",
+    recommendation: null,
     ...more,
   };
 }
@@ -812,6 +813,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     created_at: "2026-10-03T12:00:00.250Z",
     answered_at: null,
     problem: null,
+    recommendation: null,
     ...more,
   };
 }
@@ -1051,6 +1053,83 @@ test("in a stopped session a gate's buttons are off and say why", async () => {
   const card = await gateCard();
   expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
   expect(within(card).getByText("The session is stopped: resume it to answer.")).toBeTruthy();
+});
+
+// The lead's recommendation (LAD-27): one entry with the gate or the question.
+
+const given = (choice: string | null, disagrees = false, by = "w1") => ({
+  state: "given" as const,
+  text: "I would **not** ship it.",
+  choice,
+  disagrees,
+  by,
+  at: "2026-10-03T12:01:00.000Z",
+});
+const asked = { state: "asked" as const, text: "", choice: null, disagrees: false, by: "w1", at: null };
+
+const buttons = (card: HTMLElement) =>
+  within(card)
+    .getAllByRole("button")
+    .filter((one) => one.closest(".choices"))
+    .map((one) => `${one.textContent}:${one.className}`);
+
+test("a gate's recommendation is a block in its card; the primary button moves to the recommended option", async () => {
+  serve([], undefined, [], [gate(1, { recommendation: asked })]);
+  open();
+  const card = await gateCard();
+  expect(within(card).getByText("Supervisor is preparing a recommendation…")).toBeTruthy();
+  expect(buttons(card)).toEqual(["Approve:primary", "Reject:quiet"]);
+  expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+  stream().send("change", gateChanged(gate(1, { recommendation: given("reject", true) })), "11");
+  const block = await within(card).findByRole("region", { name: "Supervisor's recommendation" });
+  expect(block.querySelector(".rec-differs")?.textContent).toBe("disagrees with w1");
+  expect(within(block).getByText("not").tagName).toBe("STRONG");
+  expect(buttons(card)).toEqual(["Approve:quiet", "Reject:primary"]);
+  // Between the note and the answer.
+  const order = Array.from(card.querySelectorAll(".gate-note, .rec, form.answer")).map((one) => one.className);
+  expect(order).toEqual(["gate-note", "rec differs", "answer"]);
+});
+
+test("a stopped session's gate keeps its buttons off and shows the recommendation", async () => {
+  serve([], undefined, [], [gate(1, { recommendation: given("reject") })]);
+  open("/sessions/old/activity");
+  const card = await gateCard();
+  expect(within(card).getByRole("region", { name: "Supervisor's recommendation" })).toBeTruthy();
+  const reject = within(card).getByRole("button", { name: "Reject" }) as HTMLButtonElement;
+  expect([reject.disabled, reject.className]).toEqual([true, "primary"]);
+});
+
+test("a closed gate opened shows the recommendation as one quiet line, its text on a click", async () => {
+  serve([], undefined, [], [closed(1, "reject", { recommendation: given("reject", true, "w1") })]);
+  open();
+  const line = await gateCard();
+  fireEvent.click(within(line).getByRole("button", { name: /Gate #1/ }));
+  const quiet = line.querySelector("details.rec-closed") as HTMLDetailsElement;
+  expect(quiet.querySelector("summary")?.textContent).toBe("SSupervisor recommended: Reject · disagreed with w1");
+  expect(line.querySelector(".rec")).toBeNull();
+});
+
+test("a question's recommended choice is the primary button; closed, its quiet line names it and the choice stays marked once", async () => {
+  serve([question(5, { recommendation: given("later") })]);
+  open();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  expect(within(card).getByRole("region", { name: "Supervisor's recommendation" })).toBeTruthy();
+  expect(buttons(card)).toEqual(["yes:quiet", "later:primary"]);
+  const done = { question_state: "answered" as const, answered_by: 6, recommendation: given("later") };
+  stream().send("change", changed(question(5, done)), "11");
+  stream().send("change", changed(message(6, "human", "w1", "Answer to #5: later", { reply_to: 5, choice: "later" })), "12");
+  await waitFor(() => expect(card.querySelector("details.rec-closed")).toBeTruthy());
+  expect(card.querySelector("details.rec-closed summary")?.textContent).toBe("SSupervisor recommended: later");
+  expect(Array.from(card.querySelectorAll(".choices.closed li")).map((one) => one.textContent)).toEqual(["yes", "✓ later"]);
+  expect(card.querySelector(".question-answer")?.textContent).not.toContain("later");
+});
+
+test("a question with no recommendation asked shows no block", async () => {
+  serve([question(5)]);
+  open();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  expect(card.querySelector(".rec")).toBeNull();
+  expect(buttons(card)).toEqual(["yes:primary", "later:quiet"]);
 });
 
 // Links from Needs you and from a notification

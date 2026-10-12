@@ -856,6 +856,35 @@ class RunInfo(BaseModel):
     problem: str | None  # why its flow snapshot cannot be read; None when it can
 
 
+class RecommendationInfo(BaseModel):
+    """The lead's recommendation on a gate or on another agent's question to the human
+    (lado.runtime.recommend): asked for, given, or not given when the lead's turn (or the
+    lead) ended without it."""
+
+    state: Literal["asked", "given", "missing"]
+    text: str  # Markdown; '' until given
+    choice: str | None  # the option it recommends, if any
+    disagrees: bool  # with `by`
+    by: str | None  # who reported the note that led to the gate, or who asks; None for none
+    at: str | None  # UTC, ISO 8601: when it was given
+
+
+def recommendation_info(
+    item: state.Gate | state.Message, by: str | None
+) -> RecommendationInfo | None:
+    """The item's recommendation; None when it was never asked for."""
+    if item.recommendation_state is None:
+        return None
+    return RecommendationInfo(
+        state=item.recommendation_state,
+        text=item.recommendation,
+        choice=item.recommended_choice,
+        disagrees=item.recommendation_disagrees,
+        by=by,
+        at=_utc(item.recommended_at) if item.recommended_at else None,
+    )
+
+
 class GateInfo(BaseModel):
     """A flow run's question to the human: open while `answer` is None."""
 
@@ -880,6 +909,7 @@ class GateInfo(BaseModel):
     created_at: str  # UTC, ISO 8601
     answered_at: str | None
     problem: str | None  # why its run's flow snapshot cannot be read; None when it can
+    recommendation: RecommendationInfo | None  # the lead's; None when never asked
 
 
 class GateAnswer(BaseModel):
@@ -908,6 +938,9 @@ class MessageInfo(BaseModel):
     reply_state: Literal["replied", "missing"] | None  # missing: replied only in its terminal
     attachments: list[AttachmentInfo]
     created_at: str  # UTC, ISO 8601
+    # A question's: the lead's recommendation on it; None when never asked, and for every
+    # message that is no question.
+    recommendation: RecommendationInfo | None
 
 
 class MessagePage(BaseModel):
@@ -990,6 +1023,9 @@ def message_info(message: state.Message) -> MessageInfo:
         if message.attachments
         else [],
         created_at=_utc(message.created_at),
+        recommendation=recommendation_info(message, message.sender)
+        if message.kind == state.QUESTION
+        else None,
     )
 
 
@@ -1258,6 +1294,9 @@ def gate_info(gate: state.Gate) -> GateInfo:
         created_at=_utc(gate.created_at),
         answered_at=_utc(gate.answered_at) if gate.answered_at else None,
         problem=problem,
+        recommendation=recommendation_info(gate, runs.recommendation_by(gate))
+        if gate.recommendation_state
+        else None,
     )
 
 

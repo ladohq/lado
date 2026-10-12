@@ -1051,6 +1051,95 @@ def test_answer_asks_about_the_only_open_gate(repo, fake_tmux, capsys, monkeypat
     assert state.get_run("s", "ship/x").note == "rejected: still too big"
 
 
+VIEW = "Reject: no test of the turn end.\nThe build is red.\nCheck CI first."
+
+
+def _recommended(choice="reject", disagrees=False, text=VIEW, gate=1):
+    runtime.recommend("s", "supervisor", text, gate=gate, choice=choice, disagrees=disagrees)
+
+
+def _answer_out(monkeypatch, capsys, *typed) -> str:
+    _typing(monkeypatch, *typed)
+    assert main(["answer"]) == 0
+    return capsys.readouterr().out
+
+
+def test_answer_shows_the_recommendation_and_marks_the_option(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    _recommended()
+    out = _answer_out(monkeypatch, capsys, "")
+    assert (
+        "Supervisor recommends: reject (v: the full text, 2 more lines)\n"
+        "  Reject: no test of the turn end.\n"
+    ) in out
+    assert "  1) approve\n  2) reject   ← supervisor recommends\n" in out
+    assert "The build is red." not in out
+    assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
+
+
+def test_answer_shows_the_recommendation_with_a_disagreement(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate_with_a_long_note(repo, capsys)  # gate #2, after rev's report
+    _recommended(disagrees=True, text="Reject: no test.", gate=2)
+    out = _answer_out(monkeypatch, capsys, "")
+    assert "Supervisor recommends: reject (disagrees with rev)\n  Reject: no test.\n" in out
+
+
+def test_answer_shows_a_recommendation_without_an_option(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    _recommended(choice=None, text="Either is fine.")
+    out = _answer_out(monkeypatch, capsys, "")
+    assert "Supervisor's recommendation:\n  Either is fine.\n" in out
+    assert "  1) approve\n  2) reject\n" in out
+
+
+def test_answer_says_the_recommendation_is_prepared(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)  # flow-set into the gate: the lead is asked
+    assert state.get_gate(1).recommendation_state == state.REC_ASKED
+    out = _answer_out(monkeypatch, capsys, "")
+    assert "Supervisor is preparing a recommendation… (v shows it once it is given)\n" in out
+    assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
+
+
+def _set_recommendation_state(value):
+    with state.connect() as db:
+        db.execute("UPDATE gates SET recommendation_state = ? WHERE id = 1", (value,))
+
+
+def test_answer_says_when_none_was_given(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    _set_recommendation_state(state.REC_MISSING)
+    out = _answer_out(monkeypatch, capsys, "")
+    assert "The supervisor gave no recommendation.\n" in out
+
+
+def test_answer_without_a_recommendation_shows_nothing_new(repo, fake_tmux, capsys, monkeypatch):
+    _at_gate(repo, capsys)
+    _set_recommendation_state(None)
+    out = _answer_out(monkeypatch, capsys, "")
+    assert "upervisor" not in out
+    assert "  1) approve\n  2) reject\n" in out
+    assert "Answer (number or name, Enter to leave it open): " in out
+
+
+def test_v_shows_the_whole_recommendation_given_meanwhile(repo, fake_tmux, capsys, monkeypatch):
+    """Given while the human reads the gate: "v" and the gate after it show it."""
+    _at_gate(repo, capsys)
+    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
+    asked = iter(["v", ""])
+
+    def typing(prompt=""):
+        print(prompt, end="")
+        _recommended()
+        return next(asked)
+
+    monkeypatch.setattr("builtins.input", typing)
+    assert main(["answer"]) == 0
+    out = capsys.readouterr().out
+    assert f"Supervisor's recommendation:\n\n{VIEW}\n" in out
+    assert out.count("Supervisor is preparing a recommendation…") == 1
+    assert "  2) reject   ← supervisor recommends\n" in out
+
+
 def _at_gate_with_a_long_note(repo, capsys):
     _at_gate(repo, capsys)
     runs.answer("s", "1", "reject", "first")
@@ -1144,6 +1233,7 @@ def _at_gate_with_reads(repo, capsys):
 READS = (
     "Ship it?\n"
     "Note: built it (v: the full note, 2 more lines)\n"
+    "Supervisor is preparing a recommendation… (v shows it once it is given)\n"
     "Artifacts it reads:\n"
     "  plan/x/plan: The plan — {}\n"
     "  plan/x/polish: no record yet\n"
@@ -1206,6 +1296,7 @@ def test_an_artifact_attached_to_the_note_before_the_gate_is_shown_once(
         "Ship it?\n"
         "Note: polished (v: the full note, 2 more lines)\n"
         "Artifacts: plan/x/polish\n"
+        "Supervisor is preparing a recommendation… (v shows it once it is given)\n"
         "Artifacts it reads:\n"
         "  plan/x/plan: The plan — the plan\n"
         "Options:\n"

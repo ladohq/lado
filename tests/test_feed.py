@@ -323,6 +323,15 @@ def test_a_gates_change_comes_with_its_item_in_the_form_of_the_rest_api(streams,
         None,
     )
     assert item["reads"] == ["ship/x/plan"]
+    # The lead's recommendation comes with the gate's item again.
+    runtime.recommend("s", "supervisor", "Replan", gate=1, choice="reject")
+    given = stream.until(
+        lambda e: (
+            is_change("gates", "s")(e)
+            and (e.data["item"]["recommendation"] or {}).get("state") == "given"
+        )
+    )[-1]
+    assert given.data["item"]["recommendation"]["choice"] == "reject"
     runs.answer("s", "1", "reject", "replan")
     closed = stream.until(lambda e: is_change("gates", "s")(e) and e.data["item"]["answer"])[-1]
     # A closed gate is still there: its item is replaced, never null.

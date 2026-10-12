@@ -9,6 +9,13 @@
 - API: `prompt` in `POST /api/sessions` and `POST /api/sessions/{name}/resume`.
 - The chat: a closed question card shows the choice you picked once, marked in its list;
   the reply block under it keeps who answered, when, and your comment.
+- The supervisor's recommendation on a flow gate or on another agent's question is part
+  of its card (the recommended option is the blue button; a disagreement is marked in
+  orange) and of `lado answer` and the popup, instead of a separate chat message. LADO
+  asks the supervisor for it each time; you can answer before it comes.
+- MCP: the supervisor's tool `recommend`; the gate's line to the supervisor is now the
+  request `recommend on gate #<id>: …`. API: `recommendation` in `GateInfo` and a
+  question's `MessageInfo`. Schema 26: restart running sessions after the upgrade.
 
 ## 0.36.0 (2026-10-12)
 

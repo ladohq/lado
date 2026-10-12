@@ -264,7 +264,13 @@ def test_an_agent_whose_cli_exits_is_stopped_with_its_queue_dropped_and_senders_
     assert question.question_state == state.CLOSED
     ended = [e.detail for e in state.list_events("s") if e.kind == state.ENDED]
     assert ended == ["its CLI exited"]
-    assert _from_lado("supervisor") == [
+    # The request for the lead's recommendation on its question goes with the question.
+    request = state.get_message("s", question.recommendation_request)
+    assert (request.summary, request.state) == (
+        f"recommend on question #{question.id} of w1",
+        state.DROPPED,
+    )
+    assert _from_lado("supervisor")[1:] == [
         f"message #{sent.id} to w1 not delivered: w1 stopped (its CLI exited): typed",
         f"message #{pending.id} to w1 not delivered: w1 stopped (its CLI exited): queued",
         'w1 stopped (its CLI exited): end it with finish_worker(name="w1")',

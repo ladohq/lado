@@ -150,6 +150,8 @@ export type RunEventInfo = components["schemas"]["RunEventInfo"];
 export const getRunEvents = (session: string) => get<RunEventInfo[]>(`${sessionPath(session)}/events`);
 
 export type GateInfo = components["schemas"]["GateInfo"];
+// The lead's recommendation on a gate or a question (Recommendation.tsx).
+export type RecommendationInfo = components["schemas"]["RecommendationInfo"];
 
 // The session's flow gates, open and closed, oldest first.
 export const getGates = (session: string) => get<GateInfo[]>(`${sessionPath(session)}/gates`);

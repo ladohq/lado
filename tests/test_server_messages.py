@@ -60,6 +60,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
         "choice": None,
         "reply_state": None,
         "attachments": [],
+        "recommendation": None,
     }
     assert (asked["kind"], asked["from"], asked["choices"], asked["question_state"]) == (
         "question",
@@ -67,6 +68,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
         ["yes", "no"],
         "open",
     )
+    assert asked["recommendation"]["state"] == "asked"
     assert (thanks["from"], thanks["to"], thanks["summary"]) == ("human", "supervisor", "thanks")
 
 
@@ -113,14 +115,41 @@ def test_a_message_to_a_stopped_or_unknown_session_is_refused(client, session):
     assert 'session "s" is stopped' in answer.json()["detail"]
 
 
+def _messages():
+    """The session's messages but LADO's requests for the lead's recommendation, which a
+    worker's question queues too."""
+    return [m for m in state.list_messages("s") if not m.summary.startswith("recommend on ")]
+
+
+def test_a_question_carries_its_recommendation_and_a_message_none(client, session):
+    runtime.ask_human("s", "w1", "Ship?", None, ["yes", "later"])
+    [question] = [m for m in _messages() if m.kind == state.QUESTION]
+    runtime.recommend(
+        "s", "supervisor", "Later: CI is red", question=question.id, choice="later", disagrees=True
+    )
+    items = {m["id"]: m for m in client.get(MESSAGES).json()["items"]}
+    rec = items[question.id]["recommendation"]
+    assert rec["at"].endswith("Z")
+    del rec["at"]
+    assert rec == {
+        "state": "given",
+        "text": "Later: CI is red",
+        "choice": "later",
+        "disagrees": True,
+        "by": "w1",  # who asks
+    }
+    request = next(m for m in items.values() if m["summary"].startswith("recommend on"))
+    assert request["recommendation"] is None
+
+
 def test_the_human_answers_and_dismisses_questions(client, session):
     runtime.ask_human("s", "w1", "Ship?", None, ["yes", "no"])
     runtime.ask_human("s", "w1", "Port?")
-    ship, port = state.list_messages("s")
+    ship, port = _messages()
     answered = client.post(f"/api/sessions/s/questions/{ship.id}/answer", json={"choice": "yes"})
     assert answered.status_code == 200
     assert client.post(f"/api/sessions/s/questions/{port.id}/dismiss").status_code == 200
-    _, _, answer, dismissal = state.list_messages("s")
+    _, _, answer, dismissal = _messages()
     assert (answer.summary, answer.reply_to) == (f"Answer to #{ship.id}: yes", ship.id)
     assert (dismissal.summary, dismissal.reply_to) == (f"Dismissed #{port.id}", port.id)
     again = client.post(f"/api/sessions/s/questions/{ship.id}/answer", json={"text": "no"})
@@ -130,10 +159,10 @@ def test_the_human_answers_and_dismisses_questions(client, session):
 
 def test_a_dismissal_takes_the_humans_comment(client, session):
     runtime.ask_human("s", "w1", "Port?")
-    (port,) = state.list_messages("s")
+    (port,) = _messages()
     path = f"/api/sessions/s/questions/{port.id}/dismiss"
     assert client.post(path, json={"text": "not now"}).status_code == 200
-    dismissal = state.list_messages("s")[-1]
+    dismissal = _messages()[-1]
     assert (dismissal.summary, dismissal.body) == (f"Dismissed #{port.id}", "not now")
 
 
@@ -148,7 +177,7 @@ def test_a_change_needs_the_servers_own_origin(client, session, path):
     assert client.post(path, json=payload).status_code == 403
     client.headers["origin"] = "http://evil.example"
     assert client.post(path, json=payload).status_code == 403
-    assert [m.kind for m in state.list_messages("s")] == ["question"]
+    assert [m.kind for m in _messages()] == ["question"]
 
 
 @pytest.mark.parametrize(

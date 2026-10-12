@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from agent_helpers import claude_prompt, install_kit, spoil_snapshot
 
-from lado import kits, runs, runtime, state, tmux
+from lado import artifacts, kits, runs, runtime, state, tmux
 
 FEATURE = """\
 name: feature
@@ -477,8 +477,8 @@ def test_max_visits_stops_the_run_for_the_human(session):
     )
     assert gate.question == "loop limit reached at review: what next?"
     told = messages("supervisor")[-1]
-    assert told.summary == f"flow feature/login: waiting for the human at review (gate #{gate.id})"
-    assert f"lado answer {session} {gate.id}" in told.body
+    assert told.summary == f"recommend on gate #{gate.id}: feature/login at review"
+    assert "Only the human answers it." in told.body
     error = (
         f'run "feature/login" waits for the human \\(gate #{gate.id}\\): answer with lado answer'
     )
@@ -492,7 +492,7 @@ def test_the_human_moves_a_run_past_a_stop(session):
     assert (run.state, run.status, run.reason) == ("gated", state.WAITING, "Ship it?")
     [gate] = state.open_gates(session)
     assert messages("supervisor")[-1].summary == (
-        f"flow feature/login: waiting for the human at gated (gate #{gate.id})"
+        f"recommend on gate #{gate.id}: feature/login at gated"
     )
     run = runs.force(session, "feature/login", "implement", "rework the form")
     assert (run.state, run.status, run.note) == (
@@ -543,7 +543,7 @@ def test_a_gate_opens_with_the_note_that_led_to_it_and_a_popup(session, fake_tmu
     assert argv[:5] == ["env", "-u", "LADO_AGENT", "-u", "LADO_SESSION"]
     assert env == {"LADO_HOME": str(state.home()), "LADO_TMUX_SOCKET": tmux.socket()}
     assert [m.summary for m in messages("supervisor")][-1] == (
-        f"flow feature/login: waiting for the human at gated (gate #{gate.id})"
+        f"recommend on gate #{gate.id}: feature/login at gated"
     )
     assert runs.describe(run)["gate"] == {
         "id": gate.id,
@@ -630,7 +630,7 @@ def test_a_choice_gate_offers_its_outcomes(session, team):
     assert (run.state, run.note, run.note_body) == ("build", "left: go", "go\nslowly")
     # The supervisor's own step says it all.
     assert [m.summary for m in messages("supervisor")][-2:] == [
-        "flow pick/x: waiting for the human at which (gate #1)",
+        "recommend on gate #1: pick/x at which",
         "flow pick/x: step build",
     ]
 
@@ -1082,20 +1082,21 @@ def test_resume_tells_the_supervisor_what_each_open_run_waits_for(session, repo,
     gate = state.open_gate(session, "feature/login")
     started = restart(session, repo)
     assert started.problems == []
-    resumed, step = messages("supervisor")[-2:]
+    resumed, step, request = messages("supervisor")[-3:]
     assert (resumed.sender, resumed.summary) == ("lado", "session resumed: 3 open runs")
     assert resumed.body == (
         f"- feature/login at gated: waits for the human at gate #{gate.id}: Ship it? Only "
         f"the human answers it, with: lado answer {session} {gate.id}. Nothing to do until "
-        "then.\n"
+        "then. A request for your recommendation follows.\n"
         "- feature/plan at design: your step; it follows as a message from lado.\n"
         "- feature/build at implement: needs a developer. Start one with "
         'spawn_worker(role="developer", run="feature/build"); it works in the run\'s '
         "worktree and gets the step as its task."
     )
     # They wait in its queue, handed over when it is idle, as any message.
-    assert (resumed.state, step.state) == (state.PENDING, state.PENDING)
+    assert (resumed.state, step.state, request.state) == (state.PENDING,) * 3
     assert step.summary == "flow feature/plan: step design"
+    assert request.summary == f"recommend on gate #{gate.id}: feature/login at gated"
     assert "Design it with the human." in step.body
     # None of it is on its command line, which `ps` shows to every user of the machine.
     assert fake_tmux[-1][0] == "new_session"
@@ -1251,7 +1252,10 @@ def test_a_gate_is_answered_after_resume_but_not_while_stopped(session, repo):
         runs.answer(session, str(gate.id), "reject")
     with pytest.raises(runtime.LadoError, match=f'session "{session}" is stopped'):
         runs.force(session, "feature/login", "implement", "x")
-    assert state.open_gate(session, "feature/login") == gate
+    # The stop marks the recommendation the lead did not give; nothing else changed.
+    stopped_gate = state.open_gate(session, "feature/login")
+    assert stopped_gate.recommendation_state == state.REC_MISSING
+    assert dataclasses.replace(stopped_gate, recommendation_state=state.REC_ASKED) == gate
     runtime.start_session(str(repo), session, None)
     run = runs.answer(session, str(gate.id), "reject", "one more test")
     assert (run.state, runs.acting(run)) == ("implement", "developer (not spawned)")
@@ -1490,3 +1494,133 @@ def test_resume_tells_a_read_only_lead_what_waits_without_orders(read_only_lead,
         "; it cannot go on: neither you (read-only) nor lado flow-set can move it; "
         "`lado stop s` halts the session, and the run stays open."
     )
+
+
+# The lead's recommendation on each gate.
+
+SHIP = """\
+name: ship
+description: Built, then shipped by the human.
+start: build
+states:
+  build:
+    agent: developer
+    do: Build it.
+    produces: [design]
+    outcomes: {done: check}
+  check:
+    gate: approval
+    ask: Ship it?
+    reads: [design]
+    outcomes: {approved: end, rejected: build}
+  end:
+    end: true
+"""
+
+
+@pytest.fixture
+def shipping(session, team):
+    """Run ship/x in step build, with its developer, which wrote the design."""
+    write(team / "flows" / "ship.yaml", SHIP)
+    runs.start(session, "ship", "Ship x", name="x")
+    runs.spawn_worker(session, "ship/x")
+    artifacts.write(session, "developer", "design", "the design", summary="v1", title="Design")
+    return "ship/x"
+
+
+def requests(session):
+    return [m for m in messages("supervisor") if m.summary.startswith("recommend on ")]
+
+
+def test_a_gate_asks_the_lead_for_a_recommendation(session, shipping):
+    runs.advance(session, "developer", shipping, "done", "built it", "all green")
+    [gate] = state.open_gates(session)
+    [request] = requests(session)
+    assert (request.sender, request.summary) == (
+        "lado",
+        f"recommend on gate #{gate.id}: ship/x at check",
+    )
+    assert request.body == (
+        "Ship it?\n"
+        "Options: approve, reject\n"
+        "Note of developer at build: built it\n"
+        "all green\n"
+        f"Only the human answers it. Give your own view with recommend(gate={gate.id}, "
+        "text=..., choice=..., disagrees=...): what you would choose and why, the risks, "
+        "what to check; short, no retelling. Write no separate message to the human about it."
+    )
+    # The note's artifacts go with it; the gate reads no other.
+    assert state.message_attachments(request.id) == state.note_attachments(gate.note_id)
+    assert len(state.message_attachments(request.id)) == 1
+    assert not [m for m in messages("supervisor") if "waiting for the human at" in m.summary]
+    stored = state.get_gate(gate.id)
+    assert (stored.recommendation_state, stored.recommendation_request) == (
+        state.REC_ASKED,
+        request.id,
+    )
+
+
+def test_a_gate_entered_by_flow_set_names_what_it_reads(session, shipping):
+    runs.force(session, shipping, "check", "ready")
+    [gate] = state.open_gates(session)
+    [request] = requests(session)
+    assert "Note of human at build: set by the human: ready\n" in request.body
+    assert "Artifacts it reads:\n- ship/x/design: Design — v1\n" in request.body
+
+
+def test_a_loop_limit_asks_too(session):
+    to_loop_limit(session)
+    [gate] = state.open_gates(session)
+    [request] = requests(session)
+    assert request.summary == f"recommend on gate #{gate.id}: feature/login at review"
+    assert "Options: continue, cancel\n" in request.body
+    assert state.get_gate(gate.id).recommendation_state == state.REC_ASKED
+
+
+def test_the_leads_own_advance_gets_the_request_as_a_notice(session):
+    to_merge(session)
+    notices = []
+    runs.advance(session, "supervisor", "feature/login", "hold", "ready", notices=notices)
+    [gate] = state.open_gates(session)
+    [notice] = notices
+    assert notice.startswith(
+        f"flow feature/login: recommend on gate #{gate.id}: feature/login at gated\nShip it?\n"
+    )
+    assert f"recommend(gate={gate.id}," in notice
+    assert requests(session) == []
+    stored = state.get_gate(gate.id)
+    assert (stored.recommendation_state, stored.recommendation_request) == (state.REC_ASKED, None)
+
+
+def test_a_gate_opens_when_the_lead_does_not_run(session, shipping, fake_tmux):
+    state.set_status(session, "supervisor", state.STOPPED)
+    run = runs.advance(session, "developer", shipping, "done", "built it")
+    assert run.status == state.WAITING
+    [gate] = state.open_gates(session)
+    assert gate.recommendation_state is None
+    assert requests(session) == []
+    assert [c for c in fake_tmux if c[0] == "popup"]
+
+
+def test_a_resume_asks_again_for_gates_without_a_given_recommendation(session, repo, team):
+    to_gate(session)  # feature/login at gated: the lead's own move, asked by a message
+    write(team / "flows" / "ship.yaml", SHIP)
+    runs.start(session, "ship", "Ship x", name="x")
+    runs.force(session, "ship/x", "check", "ready")
+    given = state.open_gate(session, "ship/x")
+    runtime.recommend(session, "supervisor", "Ship it", gate=given.id, choice="approve")
+    missed = state.open_gate(session, "feature/login")
+    restart(session, repo)
+    resumed = next(m for m in messages("supervisor") if m.summary.startswith("session resumed"))
+    assert (
+        f"waits for the human at gate #{missed.id}: Ship it? Only the human answers it, with: "
+        f"lado answer {session} {missed.id}. Nothing to do until then. A request for your "
+        "recommendation follows."
+    ) in resumed.body
+    [given_line] = [line for line in resumed.body.splitlines() if f"gate #{given.id}:" in line]
+    assert given_line.endswith("Nothing to do until then.")
+    asked = [m for m in requests(session) if m.id > resumed.id]
+    assert [m.summary for m in asked] == [f"recommend on gate #{missed.id}: feature/login at gated"]
+    assert asked[0].state == state.PENDING
+    assert state.get_gate(missed.id).recommendation_state == state.REC_ASKED
+    assert state.get_gate(given.id).recommendation_state == state.REC_GIVEN

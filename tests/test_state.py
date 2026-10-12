@@ -308,7 +308,7 @@ def test_the_migration_gives_gates_the_note_before_them_as_a_new_database_has_it
 
 def test_the_migration_gives_agents_their_read_only_flag(lado_home):
     _session_with(_agent(status=state.BUSY))
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(25)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert "read_only" not in [row[1] for row in db.execute("PRAGMA table_info(agents)")]
     db.close()
@@ -320,6 +320,87 @@ def test_the_migration_gives_agents_their_read_only_flag(lado_home):
         )
     )
     assert state.get_agent("s", "w2").read_only is True
+
+
+RECOMMENDATION_COLUMNS = {
+    "recommendation_state",
+    "recommendation",
+    "recommended_choice",
+    "recommendation_disagrees",
+    "recommended_at",
+    "recommendation_request",
+}
+
+
+def _columns(db, table: str) -> set[str]:
+    return {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+
+
+def test_schema_26_adds_the_recommendation_columns(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    with state.connect() as db:
+        fresh = {
+            t: db.execute(f"SELECT sql FROM sqlite_master WHERE name = '{t}'").fetchone()[0]
+            for t in ("gates", "messages")
+        }
+        assert RECOMMENDATION_COLUMNS <= _columns(db, "gates")
+        assert RECOMMENDATION_COLUMNS <= _columns(db, "messages")
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert not RECOMMENDATION_COLUMNS & _columns(db, "gates")
+    assert not RECOMMENDATION_COLUMNS & _columns(db, "messages")
+    db.execute(
+        "INSERT INTO gates (session, run, state, kind, question, options)"
+        " VALUES ('s', 'f/x', 'ok', 'approval', 'Ship?', '[]')"
+    )
+    db.execute("INSERT INTO messages (session, sender, recipient) VALUES ('s', 'w1', 'human')")
+    db.commit()
+    db.close()
+    assert state.migrate() == state.SCHEMA_VERSION
+    with state.connect() as db:
+        for table, sql in fresh.items():
+            assert (
+                db.execute(f"SELECT sql FROM sqlite_master WHERE name = '{table}'").fetchone()[0]
+                == sql
+            )
+    [gate] = state.session_gates("s")
+    assert (gate.recommendation_state, gate.recommendation, gate.recommendation_disagrees) == (
+        None,
+        "",
+        False,
+    )
+    [message] = state.list_messages("s")
+    assert (message.recommendation_state, message.recommended_choice) == (None, None)
+
+
+def test_a_gate_and_a_question_read_back_their_recommendation_fields(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    question = state.add_question("s", "w1", "Ship?", "", ["yes", "no"], False)
+    with state.connect() as db:
+        db.execute(
+            "INSERT INTO gates (session, run, state, kind, question, options,"
+            " recommendation_state, recommendation, recommended_choice,"
+            " recommendation_disagrees, recommended_at, recommendation_request)"
+            " VALUES ('s', 'f/x', 'ok', 'approval', 'Ship?', '[]', 'given', 'Reject',"
+            " 'reject', 1, '2026-10-12 10:00:00.000', 9)"
+        )
+        db.execute(
+            "UPDATE messages SET recommendation_state = 'asked', recommendation_request = 4"
+            " WHERE id = ?",
+            (question,),
+        )
+    [gate] = state.session_gates("s")
+    assert (
+        gate.recommendation_state,
+        gate.recommendation,
+        gate.recommended_choice,
+        gate.recommendation_disagrees,
+        gate.recommended_at,
+        gate.recommendation_request,
+    ) == (state.REC_GIVEN, "Reject", "reject", True, "2026-10-12 10:00:00.000", 9)
+    asked = state.get_message("s", question)
+    assert (asked.recommendation_state, asked.recommendation_request) == (state.REC_ASKED, 4)
+    assert asked.recommendation == "" and asked.recommendation_disagrees is False
 
 
 # A flow of LADO 0.26: `needs` names states.
@@ -1509,3 +1590,217 @@ def test_working_agents_counts_the_agents_in_busy_starting_or_background(lado_ho
         )
     assert state.working_agents("s") == 3
     assert state.working_agents("other") == 0
+
+
+# The lead's recommendation (RECOMMENDATION).
+
+
+def _lead_session(lead_status=state.IDLE):
+    """Session s with its lead and a worker w1."""
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(_agent("supervisor", status=lead_status))
+    state.add_agent(_agent("w1", status=state.BUSY))
+
+
+def _gate_on(run_name: str) -> state.Gate:
+    """An open gate of a new run `run_name`."""
+    state.add_run(_run(run_name), [("supervisor", state.FLOW_START, "started")])
+    before = state.get_run("s", run_name)
+    after = dataclasses.replace(before, state="design_ok", status=state.WAITING)
+    gate = _gate(run=run_name)
+    assert state.update_run(before, after, [], opens=gate)
+    return gate
+
+
+def _answer(gate: state.Gate) -> None:
+    run = state.get_run("s", gate.run)
+    after = dataclasses.replace(run, state="design", status=state.ACTIVE)
+    assert state.update_run(run, after, [], closes=("human", "approve", "", gate.id))
+
+
+def _set_message_state(message_id: int, value: str) -> None:
+    with state.connect() as db:
+        db.execute("UPDATE messages SET state = ? WHERE id = ?", (value, message_id))
+
+
+def test_ask_recommendation_queues_the_request_and_marks_asked(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    request = state.ask_recommendation(
+        "s", "gate", gate.id, "recommend on gate", "the body", attachments=[("a1", "r1")]
+    )
+    message = state.get_message("s", request)
+    assert (message.sender, message.recipient, message.state, message.body) == (
+        "lado",
+        "supervisor",
+        state.PENDING,
+        "the body",
+    )
+    assert state.message_attachments(request) == [("a1", "r1")]
+    stored = state.get_gate(gate.id)
+    assert (stored.recommendation_state, stored.recommendation_request) == (
+        state.REC_ASKED,
+        request,
+    )
+    question = state.add_question("s", "w1", "Ship?", "", ["yes", "no"], False)
+    asked = state.ask_recommendation("s", "question", question, "recommend on question", "b")
+    assert state.get_message("s", question).recommendation_request == asked
+
+
+def test_ask_recommendation_needs_the_lead_running(lado_home):
+    _lead_session(lead_status=state.STOPPED)
+    gate = _gate_on("feature/x")
+    with pytest.raises(state.NotRunning):
+        state.ask_recommendation("s", "gate", gate.id, "recommend", "body")
+    assert state.get_gate(gate.id).recommendation_state is None
+    assert [m for m in state.list_messages("s") if m.recipient == "supervisor"] == []
+    # A request before the lead's start is queued all the same.
+    assert state.ask_recommendation("s", "gate", gate.id, "recommend", "body", before_start=True)
+
+
+def test_a_notice_marks_asked_without_a_request(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    assert state.ask_recommendation("s", "gate", gate.id, None, "") is None
+    stored = state.get_gate(gate.id)
+    assert (stored.recommendation_state, stored.recommendation_request) == (state.REC_ASKED, None)
+    assert [m for m in state.list_messages("s") if m.recipient == "supervisor"] == []
+
+
+def test_recommend_stores_and_replaces(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    assert state.recommend("gate", gate.id, "Reject: no test", "reject", True)
+    first = state.get_gate(gate.id)
+    assert (
+        first.recommendation_state,
+        first.recommendation,
+        first.recommended_choice,
+        first.recommendation_disagrees,
+    ) == (state.REC_GIVEN, "Reject: no test", "reject", True)
+    assert first.recommended_at
+    assert state.recommend("gate", gate.id, "Approve", None, False)
+    second = state.get_gate(gate.id)
+    assert (
+        second.recommendation,
+        second.recommended_choice,
+        second.recommendation_disagrees,
+    ) == ("Approve", None, False)
+    question = state.add_question("s", "w1", "Ship?", "", ["yes", "later"], False)
+    assert state.recommend("question", question, "Later", "later", False)
+    stored = state.get_message("s", question)
+    assert (stored.recommendation_state, stored.recommended_choice) == (state.REC_GIVEN, "later")
+
+
+def test_recommend_on_a_closed_gate_or_question_changes_nothing(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    _answer(gate)
+    assert not state.recommend("gate", gate.id, "Approve", "approve", False)
+    assert state.get_gate(gate.id).recommendation_state is None
+    question = state.add_question("s", "w1", "Ship?", "", ["yes"], False)
+    state.reply_to_question("s", question, "yes", "", "yes", state.ANSWERED)
+    assert not state.recommend("question", question, "Yes", "yes", False)
+    assert state.get_message("s", question).recommendation_state is None
+
+
+def test_answering_a_gate_drops_its_pending_request(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    request = state.ask_recommendation("s", "gate", gate.id, "recommend", "body")
+    _answer(gate)
+    assert state.get_message("s", request).state == state.DROPPED
+
+
+def test_an_override_drops_the_pending_request(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    request = state.ask_recommendation("s", "gate", gate.id, "recommend", "body")
+    run = state.get_run("s", "feature/x")
+    after = dataclasses.replace(run, state="design", status=state.ACTIVE)
+    assert state.update_run(run, after, [], closes=("human", "overridden", "x", None))
+    assert state.get_message("s", request).state == state.DROPPED
+
+
+def test_a_handed_over_request_is_not_dropped(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    request = state.ask_recommendation("s", "gate", gate.id, "recommend", "body")
+    _set_message_state(request, state.SENT)
+    _answer(gate)
+    assert state.get_message("s", request).state == state.SENT
+
+
+def test_dismissing_a_question_drops_its_request(lado_home):
+    _lead_session()
+    question = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
+    request = state.ask_recommendation("s", "question", question, "recommend", "body")
+    state.reply_to_question("s", question, "Dismissed", "", None, state.DISMISSED)
+    assert state.get_message("s", request).state == state.DROPPED
+
+
+def test_a_forgotten_agents_question_drops_its_request(lado_home):
+    _lead_session()
+    question = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
+    request = state.ask_recommendation("s", "question", question, "recommend", "body")
+    state.delete_agent("s", "w1")
+    assert state.get_message("s", request).state == state.DROPPED
+    other = state.add_question("s", "supervisor", "Go?", "", None, True)
+    unrelated = state.queue_message("s", "lado", "supervisor", "hello")
+    state.delete_agent("s", "w2")  # no such agent: nothing of the others changes
+    assert state.get_message("s", other).question_state == state.OPEN_QUESTION
+    assert state.get_message("s", unrelated).state == state.PENDING
+
+
+def test_missed_marks_only_requests_the_lead_got(lado_home):
+    _lead_session()
+    got = _gate_on("feature/a")
+    pending = _gate_on("feature/b")
+    noticed = _gate_on("feature/c")
+    given = _gate_on("feature/d")
+    closed = _gate_on("feature/e")
+    read = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
+    _set_message_state(state.ask_recommendation("s", "gate", got.id, "r", "b"), state.DELIVERED)
+    state.ask_recommendation("s", "gate", pending.id, "r", "b")
+    state.ask_recommendation("s", "gate", noticed.id, None, "")
+    state.ask_recommendation("s", "gate", given.id, "r", "b")
+    state.recommend("gate", given.id, "Approve", "approve", False)
+    _set_message_state(state.ask_recommendation("s", "gate", closed.id, "r", "b"), state.READ)
+    _answer(closed)
+    _set_message_state(state.ask_recommendation("s", "question", read, "r", "b"), state.READ)
+    state.recommendations_missed("s")
+    states = {g.run: g.recommendation_state for g in state.session_gates("s")}
+    assert states == {
+        "feature/a": state.REC_MISSING,
+        "feature/b": state.REC_ASKED,
+        "feature/c": state.REC_MISSING,
+        "feature/d": state.REC_GIVEN,
+        "feature/e": state.REC_ASKED,
+    }
+    assert state.get_message("s", read).recommendation_state == state.REC_MISSING
+    # A recommendation given after that replaces "missing".
+    assert state.recommend("gate", got.id, "Approve", None, False)
+    assert state.get_gate(got.id).recommendation_state == state.REC_GIVEN
+
+
+@pytest.mark.parametrize("end", ["lead_ended", "stop"])
+def test_the_leads_end_and_a_stop_mark_asked_missing(lado_home, end):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    state.ask_recommendation("s", "gate", gate.id, "r", "b")
+    question = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
+    state.ask_recommendation("s", "question", question, "r", "b")
+    if end == "lead_ended":
+        state.agent_ended("s", "supervisor", "its CLI exited")
+    else:
+        state.stop_session("s")
+    assert state.get_gate(gate.id).recommendation_state == state.REC_MISSING
+    assert state.get_message("s", question).recommendation_state == state.REC_MISSING
+
+
+def test_a_workers_end_leaves_the_gates_asked(lado_home):
+    _lead_session()
+    gate = _gate_on("feature/x")
+    state.ask_recommendation("s", "gate", gate.id, "r", "b")
+    state.agent_ended("s", "w1", "its CLI exited")
+    assert state.get_gate(gate.id).recommendation_state == state.REC_ASKED

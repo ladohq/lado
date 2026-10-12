@@ -201,6 +201,11 @@ def handle(
         else:
             state.reset_resumes(session, agent)
         me = state.get_agent(session, agent)
+        # The lead's turn got requests for its recommendation and gave none: said so on
+        # their cards. Not when LADO resumes it after a temporary error: its turn goes on.
+        # Before the queue is handed over, so a request it gets now is not counted.
+        if agent == runtime.SUPERVISOR and me and me.resume_at is None:
+            state.recommendations_missed(session)
         ended = _turn_end(session, me, deadline) if me and me.read_only else None
         output = _idle(provider, session, agent, event)
         if output and ended is not None:

@@ -119,6 +119,37 @@ def test_the_agents_question_is_answered_through_the_api(api, session):
     assert chat(api)[1]["question_state"] == "answered"
 
 
+def test_a_workers_question_asks_the_lead_whose_recommendation_reaches_the_card(api, session):
+    runtime.spawn_worker(SESSION, "sleep 0", name="w1")
+    wait_for(lambda: state.get_agent(SESSION, "w1").status == state.IDLE, "w1 idle", SESSION)
+    runtime.send_message(SESSION, "human", "w1", "askhuman Ship it? | yes, later")
+    question = wait_for(
+        lambda: next((m for m in chat(api) if m["kind"] == "question"), None),
+        "the question",
+        SESSION,
+    )
+    line = f"[from lado] recommend on question #{question['id']} of w1"
+    wait_for(lambda: any(line in text for text in inputs()), "the request", SESSION)
+    wait_for(lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION)
+    api.post(
+        f"/api/sessions/{SESSION}/messages",
+        json={"text": f"give_recommendation question {question['id']} later"},
+    )
+    rec = wait_for(
+        lambda: (lambda r: r if r and r["state"] == "given" else None)(
+            next(m for m in chat(api) if m["id"] == question["id"])["recommendation"]
+        ),
+        "the recommendation",
+        SESSION,
+    )
+    assert (rec["choice"], rec["disagrees"], rec["by"], rec["text"]) == (
+        "later",
+        True,
+        "w1",
+        "my own view",
+    )
+
+
 def test_the_humans_image_reaches_the_agent_which_reads_it_as_an_image(api, session):
     """The composer's path: an upload, then a message with its name; the agent's line counts
     it, read_messages names it and read_artifact gives the image itself."""

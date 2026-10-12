@@ -23,6 +23,7 @@ function message(id: number, from: string, to: string, at: Date, more: Partial<M
     reply_state: null,
     attachments: [],
     created_at: at.toISOString(),
+    recommendation: null,
     ...more,
   };
   return { at: at.getTime(), message: item };

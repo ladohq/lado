@@ -1,3 +1,11 @@
+## Purpose
+
+A LADO session from a repository's git URL: the clone of one branch into a chosen folder
+(by default `~/lado/<repo>`) behind `lado start <git-url>` and the New session window's
+Clone from URL, with the remote's branches, the target folder's check, progress and
+cancellation, and LADO's rule that it uses only the access the machine has and never
+touches a folder that exists.
+
 ## ADDED Requirements
 
 ### Requirement: A git URL is told from a folder

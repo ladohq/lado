@@ -66,7 +66,7 @@
   `task/lad-28/mockup-question-card-final.html`; Answer in the question card, "skipped";
   Structure: Needs you; Look), AGENTS.md (Layout: `POST …/answers`; How agents talk: replies
   to one agent handed over together), CHANGELOG.md under `## 0.37.0 (unreleased)`.
-- [ ] 5.2 Regression run: `openspec validate waiting-card --strict`, `make lint`, `make
+- [x] 5.2 Regression run: `openspec validate waiting-card --strict`, `make lint`, `make
   test`, `uv run pytest -m integration -n auto tests/integration/test_human_messages.py
   tests/integration/test_session_start.py`, `make web`, `uv run pytest -m ui
   tests/ui/test_chat.py tests/ui/test_needs_you.py`.

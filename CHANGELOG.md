@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.36.0 (unreleased)
+## 0.36.0 (2026-10-12)
 
 - `lado start <git-url> [<folder>] [--branch NAME]` and the New session window's Clone
   from URL clone a repository (by default into `~/lado/<repo>`; the window lists its

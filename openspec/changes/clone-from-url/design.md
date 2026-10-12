@@ -61,7 +61,8 @@ is shown and editable before anything is made.
   (`rev-parse --show-toplevel` equals its real path); a subfolder of a repository is
   `not_empty`.
 - **D4. No prompts.** Each git process: `start_new_session=True` (no controlling terminal,
-  its own process group), `stdin=DEVNULL`, env `GIT_TERMINAL_PROMPT=0`,
+  its own process group), `stdin=DEVNULL`, env `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=""`
+  (review F15: an empty one stops git before `core.askPass` and `SSH_ASKPASS`),
   `SSH_ASKPASS_REQUIRE=never`, `GCM_INTERACTIVE=never`, `LC_ALL=C` on top of LADO's own
   environment. The user's `core.sshCommand`, ssh config, ssh-agent and credential helpers
   stay in force; LADO sets no `GIT_SSH_COMMAND`. Ctrl-C reaches `lado` (the foreground
@@ -94,7 +95,10 @@ is shown and editable before anything is made.
   as is on stderr, `\r`-terminated when stderr is a terminal, the last line of each phase
   kept) → `runtime.start_session(folder, ...)` with `resume=None`. Without `--branch` the
   clone takes the remote's default (git's own, no listing). `KeyboardInterrupt` during the
-  clone: `lado: clone cancelled`, exit 130.
+  clone: `lado: clone cancelled`, exit 130; a SIGTERM or SIGHUP (a kill, a closed terminal)
+  is raised as an exception during the clone too, so its cleanup runs, exit 128 + n
+  (review F17: git, in its own session, would go on into a temporary folder no one
+  removes).
 - **D9. Server jobs (`src/lado/server/clones.py`).** `Jobs`, one per app: a dict of
   `Job(id: uuid4 hex, url, path, branch, state, progress, error, started, seen)` under a
   lock; each job a daemon thread running `clone.clone` with a `threading.Event`. `GET`

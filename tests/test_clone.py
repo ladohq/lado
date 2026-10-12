@@ -303,6 +303,7 @@ def test_a_token_in_the_url_is_never_shown():
 def test_git_runs_with_no_terminal_and_no_prompt(tmp_path, monkeypatch):
     for key, value in fake_git(tmp_path, "fail").items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GIT_ASKPASS", "/usr/local/bin/some-askpass")  # an IDE's, say
     with pytest.raises(clone.CloneError):
         clone.list_branches("https://github.com/acme/app")
     [call] = fake_git_calls(tmp_path)
@@ -312,6 +313,8 @@ def test_git_runs_with_no_terminal_and_no_prompt(tmp_path, monkeypatch):
     env = call["env"]
     assert (env["GIT_TERMINAL_PROMPT"], env["SSH_ASKPASS_REQUIRE"]) == ("0", "never")
     assert (env["GCM_INTERACTIVE"], env["LC_ALL"]) == ("never", "C")
+    # Empty: git asks no askpass program (GIT_ASKPASS, core.askPass or SSH_ASKPASS).
+    assert env["GIT_ASKPASS"] == ""
     assert "GIT_SSH_COMMAND" not in env
 
 
@@ -534,7 +537,9 @@ def test_a_folder_that_cannot_be_written_is_refused_not_raised(locked, tmp_path)
     assert str(refused.value).startswith(f"cannot make a folder in {read_only}: ")
 
 
-@pytest.mark.parametrize("url", ["https://example.com/", "file:///", "git@host:.git"])
+@pytest.mark.parametrize(
+    "url", ["https://example.com/", "file:///", "git@host:.git", "https://h/x/..", "git@h:x/."]
+)
 def test_a_url_that_names_no_repository_has_no_default_folder(url, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     with pytest.raises(clone.CloneError) as refused:

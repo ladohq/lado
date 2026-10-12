@@ -363,9 +363,10 @@ function LaunchDialog({
       setJob(null);
       setBusy(false);
     };
+    const asked = typedUrl; // its field is off while the clone runs
     let running: CloneJob;
     try {
-      running = await startClone({ url: typedUrl, path: target.path, branch });
+      running = await startClone({ url: asked, path: target.path, branch });
     } catch (error) {
       refuse(error);
       return;
@@ -380,7 +381,17 @@ function LaunchDialog({
         // A job the server no longer knows (it restarted) has ended; any other failure is
         // asked again, as the clone goes on and only Cancel clone ends it.
         if (error instanceof ApiError && error.status === 404) {
-          refuse(error);
+          // The server dropped a job that ended while this window did not ask (clone.KEPT):
+          // if the clone is there, it is offered as a folder; else the job's end is unknown.
+          const now = await getCloneTarget(asked, running.path).catch(() => null);
+          if (now?.state === "same_repo") {
+            setJob(null);
+            toFolder(running.path);
+            setCloneEnd({ note: `the clone ended while this window was away; it is in ${running.path}` });
+            setBusy(false);
+          } else {
+            refuse(error);
+          }
           return;
         }
         continue;

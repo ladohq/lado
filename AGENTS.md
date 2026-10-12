@@ -353,7 +353,7 @@ fixes and docs only: no new feature, no API or schema change.
     group, SIGTERM then SIGKILL after `STOP_WAIT`, and removes the temporary folder;
     `Progress` from git's `\r` lines). Each git process of a listing or a clone runs with
     no terminal and no prompt (`start_new_session`, stdin closed, `NO_PROMPT`:
-    `GIT_TERMINAL_PROMPT=0`, `SSH_ASKPASS_REQUIRE=never`, `GCM_INTERACTIVE=never`,
+    `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS` empty, `SSH_ASKPASS_REQUIRE=never`, `GCM_INTERACTIVE=never`,
     `LC_ALL=C`): a missing credential is a failure, never a wait; LADO uses the access the
     machine has and keeps no password or token. A failure is a `CloneError` (a `LadoError`
     with `kind` and a `runtime.Hint`) by git's words, `KINDS`, the first that matches
@@ -1269,7 +1269,8 @@ empty (a clone of the same repository there is refused with the `lado start <fol
 uses it as it is; LADO never fetches into or switches a folder that exists), and a name a
 session of another folder has is refused before the clone (`runtime.check_name`). git's
 progress goes to stderr; Ctrl-C ends git's process group, removes the temporary folder and
-exits 130 (`lado: clone cancelled`); a start refused after the clone says `the clone stays
+exits 130 (`lado: clone cancelled`), a SIGTERM or SIGHUP the same way with 128 + its
+number; a start refused after the clone says `the clone stays
 in <folder>`. `<folder>` and `--branch` without a git URL exit 2. The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 

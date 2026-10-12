@@ -31,9 +31,11 @@ DEFAULT_PARENT = "~/lado"  # a clone's folder is DEFAULT_PARENT/<repo> unless gi
 
 
 LIST_TIMEOUT = 20  # seconds a listing of the remote's branches may take
-# Each git process of a clone or listing: no prompt, git's words in English (KINDS).
+# Each git process of a clone or listing: no prompt, git's words in English (KINDS). An empty
+# GIT_ASKPASS stops git before core.askPass and SSH_ASKPASS: no askpass program either.
 NO_PROMPT = {
     "GIT_TERMINAL_PROMPT": "0",
+    "GIT_ASKPASS": "",
     "SSH_ASKPASS_REQUIRE": "never",
     "GCM_INTERACTIVE": "never",
     "LC_ALL": "C",
@@ -96,8 +98,9 @@ class Address:
 
     @property
     def repo_name(self) -> str:
+        """The last path segment; none for `.` or `..`, which name no repository."""
         segments = self._segments()
-        return segments[-1] if segments else ""
+        return segments[-1] if segments and segments[-1] not in (".", "..") else ""
 
     @property
     def owner(self) -> str | None:

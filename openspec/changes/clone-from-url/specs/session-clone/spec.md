@@ -86,7 +86,7 @@ LADO SHALL list a remote's branches and its default branch with one `git ls-remo
 ### Requirement: LADO uses only the access the machine has
 
 LADO's git calls of a clone or listing SHALL run with no terminal and no prompt (no
-controlling terminal, stdin closed, `GIT_TERMINAL_PROMPT=0`, `SSH_ASKPASS_REQUIRE=never`,
+controlling terminal, stdin closed, `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS` empty, `SSH_ASKPASS_REQUIRE=never`,
 `GCM_INTERACTIVE=never`, `LC_ALL=C`), in LADO's own process environment, so a missing
 credential is a failure, never a wait. LADO SHALL neither ask for nor keep a password,
 passphrase or token. A failure SHALL be told as `cannot read <url>: <reason> (<git's
@@ -147,7 +147,9 @@ on stderr, then start the session as `lado start <folder>` does. A folder that i
 `new` or `empty` SHALL be refused with its text and nothing cloned; for `same_repo` the
 next line SHALL be `lado: To start a session in it as it is: lado start <folder>`. A name
 held by a session of another folder SHALL be refused before the clone. Ctrl-C during the
-clone SHALL cancel it, print `lado: clone cancelled` and exit 130. A refused start after
+clone SHALL cancel it, print `lado: clone cancelled` and exit 130; a SIGTERM or SIGHUP
+during the clone SHALL cancel it the same way and exit 128 plus its number. A refused
+start after
 the clone SHALL keep the clone and say `lado: the clone stays in <folder>`. `<folder>`
 and `--branch` without a git URL SHALL be refused.
 

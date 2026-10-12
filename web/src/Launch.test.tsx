@@ -1474,3 +1474,27 @@ test("a window whose page goes away during a clone cancels it at once with a bea
   window.dispatchEvent(new Event("pagehide"));
   expect(beacon).toHaveBeenCalledTimes(1);
 });
+
+test("a clone that ended while the window was away is offered as a folder, not refused (F18)", async () => {
+  let cloned = false;
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => {
+    cloned = true; // done and dropped by the server while the window did not ask
+    return json({ detail: "no clone job j1" }, 404);
+  };
+  folders[INTO] = folder(INTO);
+  const dialog = await cloneReady();
+  answers["GET /api/clone-target"] = () =>
+    json(
+      cloned
+        ? target({ state: "same_repo", text: `${INTO} is already a clone of this repository`, branch: "main" })
+        : target(),
+    );
+  fireEvent.click(cloneButton());
+  expect(
+    await screen.findByText(`the clone ended while this window was away; it is in ${INTO}`, {}, { timeout: 3000 }),
+  ).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
+  expect(where().value).toBe(INTO);
+  expect(within(dialog).queryByRole("alert")).toBeNull();
+});

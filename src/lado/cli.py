@@ -1,10 +1,12 @@
 """Command-line entry point for LADO."""
 
 import argparse
+import contextlib
 import datetime
 import os
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import termios
@@ -92,11 +94,18 @@ def _start_clone(args: argparse.Namespace) -> int:
     print(f"Cloning {which} of {runtime.public_remote(url)} into {folder}", file=sys.stderr)
     shown = _CloneProgress(sys.stderr)
     try:
-        clone.clone(url, folder, args.branch, shown)
+        with _ended_by_signals():
+            clone.clone(url, folder, args.branch, shown)
     except KeyboardInterrupt:
         shown.done()  # before the line below, not after it
         print("lado: clone cancelled", file=sys.stderr)
         return 130
+    except _Ended as ended:
+        try:  # after a SIGHUP no terminal may be left to tell
+            print(f"lado: clone cancelled ({signal.Signals(ended.signum).name})", file=sys.stderr)
+        except OSError:
+            pass
+        return 128 + ended.signum
     finally:
         shown.done()
     args.path, args.folder, args.branch = folder, None, None
@@ -105,6 +114,29 @@ def _start_clone(args: argparse.Namespace) -> int:
     except Exception as exc:
         exc.__notes__ = [*getattr(exc, "__notes__", []), f"the clone stays in {folder}"]
         raise
+
+
+class _Ended(BaseException):
+    """A SIGTERM or SIGHUP during a clone, raised so that the clone's cleanup runs: git runs
+    in a session of its own and would go on after lado, into a temporary folder no one
+    removes."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+
+@contextlib.contextmanager
+def _ended_by_signals():
+    def raise_ended(signum, frame):
+        raise _Ended(signum)
+
+    before = {sig: signal.signal(sig, raise_ended) for sig in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        yield
+    finally:
+        for sig, handler in before.items():
+            signal.signal(sig, handler)
 
 
 class _CloneProgress:

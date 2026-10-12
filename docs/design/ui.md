@@ -1108,7 +1108,10 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   and the window asks `GET /api/clones/{id}` every 500 ms: a progress block with git's
   phase, its percent with a bar (`role="progressbar"`), the rest of git's line and the
   time it runs; a poll that fails is asked again (the clone goes on), and one the server
-  answers 404 (it restarted) ends the clone with that text. Meanwhile the fields are off,
+  answers 404 ends the clone: when the folder now holds the clone (it ended while the
+  window did not ask, and the server dropped it after `clone.KEPT`), the window switches
+  to Folder with it ("the clone ended while this window was away; it is in <folder>"),
+  else it shows the server's text (it restarted). Meanwhile the fields are off,
   Resume it too, and ×, Esc and Cancel do not close the window;
   **Cancel clone** sends `DELETE /api/clones/{id}`: git's process group ends, its
   temporary folder goes, the folder is not made, and the window says "the clone was

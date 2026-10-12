@@ -155,11 +155,13 @@ test `tests/test_cli.py`.
   ```python
   first = start.add_mutually_exclusive_group()
   first.add_argument(
-      "--prompt", metavar="TEXT",
+      "--prompt",
+      metavar="TEXT",
       help="a first message to the supervisor, from you; it answers in the UI's chat",
   )
   first.add_argument(
-      "--prompt-file", metavar="FILE",
+      "--prompt-file",
+      metavar="FILE",
       help="the first message from a file; - reads it from stdin",
   )
   ```

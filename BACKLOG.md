@@ -617,6 +617,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## `lado kits check` calls `${KIT_DIR}` in an MCP server's command a hardcoded path
+
+Size: S. Why here: a kit that follows the documented form (README before 0.36, the Kits
+guide) fails its own CI.
+`kits.lint` checks each MCP server's `command` and `env` as `_load_mcp` stored them, with
+`${KIT_DIR}` already replaced by the kit's absolute folder, so `HARDCODED_PATH` matches it:
+`command: ["${KIT_DIR}/bin/db-mcp"]` gives `hardcoded path "/.../my-team/bin/db-mcp"` and
+exit 1. The role's prompt is checked from the raw file and does not have the problem.
+Wanted: lint the MCP servers from the raw frontmatter, as the prompt, so only a path
+written into the kit is reported.
+Found: 2026-10-12, build of fix/lad-16-kits-guide (checking the guide's examples).
+
 ## Kilo and OpenCode: a failed `promptAsync` waits the first retry delay
 
 Size: S. Why here: a message LADO knows at once was not delivered waits 15 s more.

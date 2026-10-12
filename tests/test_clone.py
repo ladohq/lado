@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from agent_helpers import init_repo
+
 from lado import clone, runtime
 
 
@@ -89,3 +91,97 @@ def test_local_repositories_compare_by_real_path(tmp_path):
     assert url.same_repo(clone.Address.parse(f"file://{tmp_path}/link.git"))
     assert url.same_repo(clone.Address.parse(str(tmp_path / "link.git")))
     assert not url.same_repo(clone.Address.parse(f"file://{tmp_path}/other.git"))
+
+
+def _with_origin(path: Path, origin: str | None) -> Path:
+    init_repo(path)
+    if origin:
+        subprocess.run(["git", "-C", str(path), "remote", "add", "origin", origin], check=True)
+    return path
+
+
+def _listing(path: Path) -> list[tuple[str, int]]:
+    return sorted((str(p), p.stat().st_mtime_ns) for p in [path, *path.rglob("*")])
+
+
+def test_a_new_folder(tmp_path):
+    target = clone.check_target("https://github.com/ladohq/lado", str(tmp_path / "lado"))
+    assert (target.state, target.text) == ("new", "a new folder")
+    assert not (tmp_path / "lado").exists()
+
+
+def test_an_empty_folder(tmp_path):
+    (tmp_path / "lado").mkdir()
+    target = clone.check_target("https://github.com/ladohq/lado", str(tmp_path / "lado"))
+    assert (target.state, target.text) == ("empty", "an empty folder")
+
+
+def test_a_clone_of_the_same_repository(tmp_path):
+    folder = _with_origin(tmp_path / "lado", "git@github.com:ladohq/lado.git")
+    before = _listing(folder)
+    target = clone.check_target("https://github.com/ladohq/lado", str(folder))
+    assert target.state == "same_repo"
+    assert target.text == (
+        f"{folder} is already a clone of this repository "
+        "(origin git@github.com:ladohq/lado.git), on branch main"
+    )
+    assert (target.origin, target.branch) == ("git@github.com:ladohq/lado.git", "main")
+    assert _listing(folder) == before
+
+
+def test_another_repository_with_the_same_name(tmp_path):
+    folder = _with_origin(tmp_path / "app", "git@github.com:acme/app.git")
+    before = _listing(folder)
+    target = clone.check_target("git@github.com:ladohq/app.git", str(folder))
+    assert target.state == "other_repo"
+    assert target.suggestion == str(tmp_path / "ladohq-app")
+    assert target.text == (
+        f"{folder} is a clone of another repository (origin git@github.com:acme/app.git): "
+        f"choose another folder, e.g. {tmp_path / 'ladohq-app'}"
+    )
+    assert _listing(folder) == before
+
+
+def test_no_suggestion_when_that_folder_is_taken_or_there_is_no_owner(tmp_path):
+    folder = _with_origin(tmp_path / "app", "https://ghp_secret@github.com/acme/app")
+    (tmp_path / "ladohq-app").mkdir()
+    target = clone.check_target("git@github.com:ladohq/app.git", str(folder))
+    assert (target.state, target.suggestion) == ("other_repo", None)
+    assert target.text.endswith("(origin https://github.com/acme/app): choose another folder")
+    assert "ghp_secret" not in target.text + str(target.origin)
+    target = clone.check_target("https://host/app", str(folder))
+    assert (target.state, target.suggestion) == ("other_repo", None)
+
+
+def test_a_folder_with_other_files(tmp_path):
+    folder = tmp_path / "app"
+    folder.mkdir()
+    (folder / "notes.txt").write_text("mine")
+    before = _listing(folder)
+    target = clone.check_target("https://github.com/acme/app", str(folder))
+    assert target.state == "not_empty"
+    assert target.text == (
+        f"{folder} is not empty and is not a clone of https://github.com/acme/app: "
+        "choose another folder"
+    )
+    assert _listing(folder) == before
+
+
+def test_a_subfolder_of_a_repository_or_one_without_origin_is_not_empty(tmp_path):
+    repo = _with_origin(tmp_path / "app", "https://github.com/acme/app")
+    (repo / "sub").mkdir()
+    (repo / "sub" / "x").write_text("x")
+    assert clone.check_target("https://github.com/acme/app", str(repo / "sub")).state == (
+        "not_empty"
+    )
+    bare = _with_origin(tmp_path / "bare", None)
+    assert clone.check_target("https://github.com/acme/bare", str(bare)).state == "not_empty"
+
+
+def test_a_file(tmp_path):
+    (tmp_path / "app").write_text("x")
+    target = clone.check_target("https://github.com/acme/app", str(tmp_path / "app"))
+    assert (target.state, target.text) == (
+        "not_folder",
+        f"{tmp_path / 'app'} is a file, not a folder",
+    )

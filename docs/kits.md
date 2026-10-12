@@ -102,8 +102,8 @@ newer LADO is refused.
 ```bash
 lado kits                               # every kit, its version and where it comes from
 lado kits outdated                      # installed kits against their repositories' tags
-lado kits update my-team                # to its latest release
-lado kits update my-team v1.2.0         # to another version (--pre: pre-releases too)
+lado kits update my-team                # to its latest release (--pre: pre-releases too)
+lado kits update my-team v1.2.0         # to another version
 lado kits remove my-team                # drops it from LADO; its folder stays
 ```
 
@@ -169,8 +169,8 @@ lado start . --kit sdlc --kit tracker-jira-server --without mcp:playwright
 ### Shared names
 
 Names are shared in a session: a flow of kit-b that calls `reviewer` gets kit-a's
-`reviewer` when kit-b has none. A name that two kits both define (a role, a skill, a flow,
-an MCP server) stops the start, and the error gives each `--without ...@<kit>` that
+`reviewer` when kit-b has none. A name that two kits both define (a role, a skill, a flow)
+stops the start, and the error gives each `--without ...@<kit>` that
 resolves it. A kit's supervisor is no role: `--without agent:<name>` that names one is
 read as `agent:<name>@<its kit>` (so sessions of older LADOs resume as before); when
 several kits' supervisors have that name, give the kit.
@@ -441,7 +441,8 @@ than the one installed. Release a new version instead.
 
 What users see: `lado kits outdated` (and the UI's Updates) lists your new release; `lado
 kits update <kit>` takes it, and running sessions use it for the agents they start after
-that. A pre-release is offered only with `--pre`.
+that. `outdated` names a newer pre-release too; `add` and `update` take one as the latest
+only with `--pre`.
 
 ## 7. Share your kit
 
@@ -502,7 +503,7 @@ not list is left out. Without `index.json` the page shows each kit's name and ad
 - **A missing command**: a kit's `expects.commands` is not on the agents' PATH. Install it
   so a new terminal finds it (the agents start with your login shell's PATH), then start
   again.
-- **A name in two kits**: two kits define the same role, skill, flow or MCP server. The
+- **A name in two kits**: two kits define the same role, skill or flow. The
   error gives each `--without kind:name@kit` that resolves it; pick one.
 - **`kit not found`**: check `lado kits` (and `lado kits --repo <repo>` for a project's
   kits). A kit installed by an older LADO in `LADO_HOME/kits` must be added again: `lado

@@ -476,11 +476,7 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
         text = step_text(run, flow_of(run))
         state.queue_message(sess.name, LADO, SUPERVISOR, summary, text, before_start=True)
     for gate in asks:
-        summary, body = recommendation_request(gate)
-        attachments = state.note_attachments(gate.note_id) if gate.note_id else ()
-        state.ask_recommendation(
-            sess.name, state.GATE, gate.id, summary, body, attachments, before_start=True
-        )
+        _queue_request(gate, before_start=True)
     return problems
 
 
@@ -729,20 +725,27 @@ def _ask_recommendation(run: state.Run, gate: state.Gate, notices: list[str] | N
     """Ask the lead for its recommendation on the gate that opened: in `notices` when its
     own move opened it, else as a message from LADO with the note's artifacts. A lead that
     does not run is not asked: the gate opens all the same."""
-    summary, body = recommendation_request(gate)
     if notices is not None:
+        summary, body = recommendation_request(gate)
         notices.append(f"flow {run.name}: {summary}\n{body}")
         state.ask_recommendation(run.session, state.GATE, gate.id, None, "")
         return
-    attachments = state.note_attachments(gate.note_id) if gate.note_id else ()
     try:
-        request = state.ask_recommendation(
-            run.session, state.GATE, gate.id, summary, body, attachments
-        )
+        request = _queue_request(gate)
     except state.NotRunning:
         return
     if request:
         runtime.deliver_request(run.session, request)
+
+
+def _queue_request(gate: state.Gate, before_start: bool = False) -> int | None:
+    """Queue LADO's request for the lead's recommendation on the gate, with the artifacts
+    of the note that led to it (state.ask_recommendation)."""
+    summary, body = recommendation_request(gate)
+    attachments = state.note_attachments(gate.note_id) if gate.note_id else ()
+    return state.ask_recommendation(
+        gate.session, state.GATE, gate.id, summary, body, attachments, before_start
+    )
 
 
 def recommendation_request(gate: state.Gate) -> tuple[str, str]:

@@ -61,6 +61,7 @@ export function Question({
   const open = question.question_state === "open";
   // What the human wrote goes along with a choice, Send or Dismiss.
   const written = text.trim() !== "";
+  const primary = primaryOf(question.choices ?? [], question.recommendation);
 
   async function act(call: () => Promise<unknown>) {
     setBusy(true);
@@ -97,7 +98,7 @@ export function Question({
                 <button
                   key={choice}
                   type="button"
-                  className={choice === primaryOf(question.choices ?? [], question.recommendation) ? "primary" : "quiet"}
+                  className={choice === primary ? "primary" : "quiet"}
                   disabled={busy}
                   onClick={() =>
                     // What the human wrote in the field goes along as a comment.

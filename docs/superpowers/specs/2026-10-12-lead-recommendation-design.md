@@ -1,8 +1,8 @@
 # The lead's recommendation on each question to the human: design
 
 Task: LAD-27. Change: `openspec/changes/lead-recommendation/`. Mockup: run artifact
-`task/lad-27/mockup-recommendation.html` (v2; screens 1, 2b, 3–7 are the approved look;
-2a and the v1 variant A were rejected).
+`task/lad-27/mockup-recommendation.html` v3, the final look with every decision taken
+(earlier versions' variants A and "no mark for a disagreement" were rejected).
 
 ## Problem
 
@@ -25,7 +25,7 @@ a free message to the human that nothing ties to the gate.
    quiet. No label on the button. Without a recommended option, the first is blue, as
    today.
 3. When the supervisor disagrees with the agent whose report led to the gate (or who
-   asks), the block's head has an orange "disagrees with <agent>" and its band is orange.
+   asks), the block's head has an orange "disagrees with <agent>" and its left band is orange (else the supervisor's avatar colour).
 4. Until the supervisor answers: "Supervisor is preparing a recommendation…"; the human
    may answer at once. When its turn ended without one, or it stopped: "The supervisor
    gave no recommendation". A later recommendation replaces either.
@@ -111,5 +111,5 @@ AGENTS.md (Layout: `state.py` schema 26, `mcp_server.py`'s tools, `runs.py`; How
 talk; Gates: the request replaces "waiting for the human at"; the Codex exception of D5),
 docs/design/ui.md (Flow gates, A question, The open question's card: the block, the
 primary button, the closed line; decided 2026-10-12, LAD-27, mockup
-`task/lad-27/mockup-recommendation.html` v2), CHANGELOG.md `## 0.37.0 (unreleased)`.
+`task/lad-27/mockup-recommendation.html` v3), CHANGELOG.md `## 0.37.0 (unreleased)`.
 Kit sdlc's paragraph "A gate opens…" is shortened in the kit's repository afterwards.

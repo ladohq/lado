@@ -138,6 +138,11 @@ and the change feed SHALL bring each change of it.
 - **THEN** the card shows the block with "disagrees with reviewer" in orange and the text,
   and Reject is the primary button, Approve quiet
 
+#### Scenario: The primary button moves to the recommended option
+- **WHEN** approval gate #9 shows Approve as its primary button while its recommendation
+  is `asked`, and the lead then recommends `reject`, agreeing or disagreeing alike
+- **THEN** Reject becomes the primary button and Approve a quiet one
+
 #### Scenario: Still preparing
 - **WHEN** gate #8's recommendation is `asked`
 - **THEN** the card says "Supervisor is preparing a recommendation…" and its buttons work

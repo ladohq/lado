@@ -59,6 +59,6 @@ steps). Design doc: `docs/superpowers/specs/2026-10-12-lead-recommendation-desig
 - [ ] 7.1 AGENTS.md (Layout: `state.py` schema 26, `mcp_server.py` tool list, `runs.py`;
   How agents talk; Gates: the request instead of "waiting for the human at"), 
   docs/design/ui.md (Flow gates, A question, the open question's card: the block, the
-  primary button; mockup `task/lad-27/mockup-recommendation.html` v2), CHANGELOG.md under
+  primary button; mockup `task/lad-27/mockup-recommendation.html` v3), CHANGELOG.md under
   `## 0.37.0 (unreleased)`.
 - [ ] 7.2 Regression run of the plan; `openspec validate lead-recommendation --strict`.

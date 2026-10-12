@@ -16,7 +16,7 @@ TypeScript (vitest), pytest (unit, integration with the fake agent, UI with Play
 **Spec:** `openspec/changes/lead-recommendation/` (proposal, deltas `lead-recommendation`
 and `chat-question-card`, `design.md` D1–D12). **Design doc:**
 `docs/superpowers/specs/2026-10-12-lead-recommendation-design.md`. **Mockup:** run
-artifact `task/lad-27/mockup-recommendation.html` v2 (screens 1, 2b, 3–7).
+artifact `task/lad-27/mockup-recommendation.html` v3 (every screen).
 
 Each task: tests first, then the code, then the named test run, then a commit (message in
 the repository's style, `(LAD-27)` at the end).
@@ -242,10 +242,11 @@ null): string` (the recommended choice when given and one of `options`, else
   (`chat-question-card`), a stopped session's gate keeps its buttons off with the block
   shown, the compact card in Flows shows the block.
 - [ ] Step 2: `cd web && npx vitest run Recommendation Chat`: fail.
-- [ ] Step 3: code to the mockup v2 (screens 1, 2b, 3–6): classes `.rec`, `.rec.differs`,
+- [ ] Step 3: code to the mockup v3 (screens 1–9): classes `.rec`, `.rec.differs`,
   `.rec.waiting`, `.rec-head`, `.rec-title`, `.rec-differs`, `.rec-closed`; colours only
-  through tokens (`--avatar-6` is not used for the band: the supervisor's avatar colour
-  comes from `avatar("supervisor")`; the band is `--line`, `--human` when it differs).
+  through tokens: the block's left band is the supervisor's avatar colour
+  (`avatar-<n>` of `avatar("supervisor")`, the token `--avatar-<n>`), `--human` when it
+  differs; the closed line's " · disagreed with <agent>" in `--human`.
   No "→ option" chip in the open block's head (the human's decision).
 - [ ] Step 4: `make web`.
 - [ ] Step 5: commit "The gate and question cards show the supervisor's recommendation (LAD-27)".
@@ -283,7 +284,7 @@ it runs message bodies as commands, so a step body can call `recommend`), `tests
   for the human at …`" becomes the request `recommend on gate #<id>: …`.
 - [ ] Step 2: docs/design/ui.md: Flow gates, A question, The open question's card: the
   block, the primary button, preparing / missing, the closed line (decided 2026-10-12,
-  LAD-27, mockup `task/lad-27/mockup-recommendation.html` v2).
+  LAD-27, mockup `task/lad-27/mockup-recommendation.html` v3).
 - [ ] Step 3: CHANGELOG.md under `## 0.37.0 (unreleased)`: "The supervisor's
   recommendation on a gate or an agent's question is part of its card (the recommended
   option is the blue button; a disagreement is marked) and of `lado answer`, instead of a

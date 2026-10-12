@@ -72,7 +72,7 @@ the popup, LADO's lead instructions, docs.
 - **A history of replaced recommendations**: the latest replaces the earlier one in place.
 - **Live refresh of `lado answer`'s prompt**: the recommendation is printed at each show of
   the gate (after `v` and after each answer), not redrawn while it waits for input.
-- **A "recommended" label on the button** (mockup v1, variant A): the human found it odd;
+- **A "recommended" label on the button** (the first mockup's variant A): the human found it odd;
   the blue button alone shows the recommendation, also when the lead disagrees.
 - **The option named in the open card's block head ("→ Reject")**: the blue button says it
   already (the human's decision); the option is named only where no button is, the closed

@@ -115,8 +115,8 @@ of its own.
   `models.gate_info` and `message_info`. `make web-types`.
 - **D8. The cards.** A new `web/src/Recommendation.tsx`: `Recommendation` (the open
   block: `.rec`, the supervisor's `MiniAvatar`, "Supervisor's recommendation", an orange
-  chip "disagrees with <by>" (`.rec-differs`; the block's band `--line`, `--human` when it
-  differs), the time, the text as `Body`; `asked` and `missing` as the muted lines of the mockup) and
+  chip "disagrees with <by>" (`.rec-differs`; the block's left band in the supervisor's
+  avatar colour, `--human` when it differs), the time, the text as `Body`; `asked` and `missing` as the muted lines of the mockup) and
   `RecommendationLine` (closed: a `<details>` "Supervisor recommended: <choice>" or
   "Supervisor's recommendation", " · disagreed with <by>" in orange, the text inside).
   `GateCard` (also `compact`) and `Question` draw it between the text and the form, and
@@ -140,6 +140,11 @@ of its own.
 - **D11. The popup.** No change of its own: it runs `lado answer`, which D9 covers.
 - **D12. Version.** Minor: a new MCP tool and a schema migration; part of 0.37.0, already
   the next minor in CHANGELOG.md. Running sessions must be restarted after the upgrade.
+
+- **D13. The look follows the final mockup** `task/lad-27/mockup-recommendation.html` v3
+  (all its screens): gates of every kind (approval, choice, loop limit), an agent's
+  question with choices and with a free answer only, the before/after of a disagreement,
+  a long text whole, `missing`, a closed question and a closed gate opened, the terminal.
 
 ## Risks
 

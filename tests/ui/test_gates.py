@@ -158,3 +158,55 @@ def test_a_gate_answered_with_lado_answer_folds_on_the_open_page(page: Page, ser
     expect(card).to_contain_text("ship it")
     expect(card.get_by_role("button", name="Approve", exact=True)).to_have_count(0)
     shot(page)
+
+
+VIEW = (
+    "I disagree with the review: the form is split, but **no test** covers the second "
+    "step. Reject and ask for one."
+)
+
+
+def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, shot):
+    """The supervisor's view is part of the gate's card: preparing, then given with the
+    recommended option as the blue button, in light and dark; closed, one quiet line."""
+    session = gated_session(repo)
+    page.set_viewport_size({"width": 1800, "height": 1100})  # the chat at its own width
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = page.get_by_role("article", name="Gate #1", exact=True)
+    expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+    state.ask_recommendation(session, state.GATE, 1, None, "")  # asked again
+    card.locator("form.answer").scroll_into_view_if_needed()
+    block = card.get_by_role("region", name="Supervisor's recommendation")
+    expect(block).to_have_text("SSupervisor is preparing a recommendation…")
+    expect(card.get_by_role("button", name="Approve", exact=True)).to_have_class("primary")
+    expect(card.get_by_role("button", name="Reject", exact=True)).to_be_enabled()
+    shot(page, "preparing")
+    runtime.recommend(session, "supervisor", VIEW, gate=1, choice="reject", disagrees=True)
+    expect(block.locator(".rec-differs")).to_have_text("disagrees with supervisor")
+    expect(block.locator("strong")).to_have_text("no test")
+    expect(card.get_by_role("button", name="Reject", exact=True)).to_have_class("primary")
+    expect(card.get_by_role("button", name="Approve", exact=True)).to_have_class("quiet")
+    # Between the note and the answer.
+    order = card.locator(".gate-note, .gate-reads, .rec, form.answer").evaluate_all(
+        "all => all.map(one => one.className)"
+    )
+    assert order == ["gate-note", "gate-reads", "rec differs", "answer"]
+    card.locator("form.answer").scroll_into_view_if_needed()
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"given-{theme}")
+    page.emulate_media(color_scheme="light")
+    card.get_by_role("button", name="Reject", exact=True).click()
+    line = page.get_by_role("article", name="Gate #1", exact=True)
+    expect(line).to_contain_text("Gate #1 · ship/x · check: reject by human")
+    line.get_by_role("button", name="Gate #1 · ship/x · check: reject by human").click()
+    quiet = line.locator("details.rec-closed")
+    expect(quiet.locator("summary")).to_have_text(
+        "SSupervisor recommended: Reject · disagreed with supervisor"
+    )
+    expect(quiet.locator(".chat-body")).not_to_be_visible()
+    quiet.locator("summary").click()
+    expect(quiet.locator(".chat-body")).to_contain_text("no test covers the second step")
+    expect(line.locator(".rec")).to_have_count(0)
+    shot(page, "closed")

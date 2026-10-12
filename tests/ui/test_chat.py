@@ -71,6 +71,51 @@ def test_the_supervisor_asks_and_the_human_answers_in_a_card(page: Page, server,
     shot(page, "answered")
 
 
+def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
+    page: Page, server, repo, shot
+):
+    session = running_session(repo)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session
+    )
+    runtime.send_message(session, "human", "w1", "askhuman Ship it? | yes, later")
+    question = agent_helpers.wait_for(
+        lambda: next((m for m in state.list_messages(session) if m.kind == state.QUESTION), None),
+        "the question",
+        session,
+    )
+    runtime.recommend(
+        session,
+        "supervisor",
+        "Later: CI is red on the branch.",
+        question=question.id,
+        choice="later",
+        disagrees=True,
+    )
+    page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = page.get_by_role("article", name="Question from w1")
+    block = card.get_by_role("region", name="Supervisor's recommendation")
+    expect(block).to_contain_text("Later: CI is red on the branch.")
+    expect(block.locator(".rec-differs")).to_have_text("disagrees with w1")
+    expect(card.get_by_role("button", name="later")).to_have_class("primary")
+    expect(card.get_by_role("button", name="yes")).to_have_class("quiet")
+    shot(page, "open")
+    card.get_by_role("button", name="later").click()
+    expect(card.locator(".chosen")).to_have_text("✓ later")
+    quiet = card.locator("details.rec-closed")
+    expect(quiet.locator("summary")).to_have_text(
+        "SSupervisor recommended: later · disagreed with w1"
+    )
+    expect(card.locator(".question-answer")).not_to_contain_text("later")
+    expect(card.locator(".rec")).to_have_count(0)
+    quiet.locator("summary").click()
+    expect(quiet.locator(".chat-body")).to_contain_text("CI is red")
+    shot(page, "closed")
+
+
 def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, shot):
     """A group of the supervisor's messages, a closed question and the human's answer, an
     open gate and the composer, in both themes and in a narrow column."""

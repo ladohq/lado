@@ -44,13 +44,13 @@ steps). Design doc: `docs/superpowers/specs/2026-10-12-lead-recommendation-desig
 
 ## 6. End to end
 
-- [ ] 6.1 Integration with the fake agent (`tests/integration/test_flow_runs.py`,
+- [x] 6.1 Integration with the fake agent (`tests/integration/test_flow_runs.py`,
   `test_human_messages.py`): a worker's advance into a gate gives the lead the request;
   the fake lead's `recommend` reaches `GateInfo`; a gate answered while the request is
   pending drops it; a turn end after the request marks `missing`; a worker's question
   gets a request. Check: `uv run pytest -m integration -n auto
   tests/integration/test_flow_runs.py tests/integration/test_human_messages.py`.
-- [ ] 6.2 UI e2e (`tests/ui/test_gates.py`, `test_chat.py`): a gate and a question with a
+- [x] 6.2 UI e2e (`tests/ui/test_gates.py`, `test_chat.py`): a gate and a question with a
   recommendation that disagrees, the primary button, "preparing", a closed card's line;
   screenshots. Check: `uv run pytest -m ui tests/ui/test_gates.py tests/ui/test_chat.py`.
 

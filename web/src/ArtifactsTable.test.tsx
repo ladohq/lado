@@ -44,6 +44,7 @@ function message(id: number, attachments: AttachmentInfo[], more: Partial<Messag
     reply_state: null,
     attachments,
     created_at: "2026-10-07T12:01:00.000Z",
+    recommendation: null,
     ...more,
   };
 }
@@ -83,6 +84,7 @@ function gate(more: Partial<GateInfo> = {}): GateInfo {
     created_at: "2026-10-07T12:02:00.000Z",
     answered_at: null,
     problem: null,
+    recommendation: null,
     ...more,
   };
 }

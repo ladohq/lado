@@ -60,6 +60,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
         "choice": None,
         "reply_state": None,
         "attachments": [],
+        "recommendation": None,
     }
     assert (asked["kind"], asked["from"], asked["choices"], asked["question_state"]) == (
         "question",
@@ -67,6 +68,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
         ["yes", "no"],
         "open",
     )
+    assert asked["recommendation"]["state"] == "asked"
     assert (thanks["from"], thanks["to"], thanks["summary"]) == ("human", "supervisor", "thanks")
 
 
@@ -117,6 +119,27 @@ def _messages():
     """The session's messages but LADO's requests for the lead's recommendation, which a
     worker's question queues too."""
     return [m for m in state.list_messages("s") if not m.summary.startswith("recommend on ")]
+
+
+def test_a_question_carries_its_recommendation_and_a_message_none(client, session):
+    runtime.ask_human("s", "w1", "Ship?", None, ["yes", "later"])
+    [question] = [m for m in _messages() if m.kind == state.QUESTION]
+    runtime.recommend(
+        "s", "supervisor", "Later: CI is red", question=question.id, choice="later", disagrees=True
+    )
+    items = {m["id"]: m for m in client.get(MESSAGES).json()["items"]}
+    rec = items[question.id]["recommendation"]
+    assert rec["at"].endswith("Z")
+    del rec["at"]
+    assert rec == {
+        "state": "given",
+        "text": "Later: CI is red",
+        "choice": "later",
+        "disagrees": True,
+        "by": "w1",  # who asks
+    }
+    request = next(m for m in items.values() if m["summary"].startswith("recommend on"))
+    assert request["recommendation"] is None
 
 
 def test_the_human_answers_and_dismisses_questions(client, session):

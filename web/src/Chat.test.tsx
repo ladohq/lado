@@ -38,6 +38,7 @@ function message(id: number, from: string, to: string, summary: string, more: Pa
     reply_state: null,
     attachments: [],
     created_at: "2026-10-03T12:00:00.000Z",
+    recommendation: null,
     ...more,
   };
 }
@@ -812,6 +813,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     created_at: "2026-10-03T12:00:00.250Z",
     answered_at: null,
     problem: null,
+    recommendation: null,
     ...more,
   };
 }

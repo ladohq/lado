@@ -32,7 +32,7 @@ steps). Design doc: `docs/superpowers/specs/2026-10-12-lead-recommendation-desig
 
 ## 4. API (D7)
 
-- [ ] 4.1 `RecommendationInfo`, `GateInfo.recommendation`, `MessageInfo.recommendation`;
+- [x] 4.1 `RecommendationInfo`, `GateInfo.recommendation`, `MessageInfo.recommendation`;
   `make web-types`, both generated files committed. Check: `uv run pytest
   tests/test_server_gates.py tests/test_server_messages.py -n auto -k recommend`, `make web`.
 

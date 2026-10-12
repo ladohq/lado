@@ -272,6 +272,30 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         me = None  # the shared tools only; each call says why it cannot work
     if me and me.read_only:
         server._lado_read_only = me.role
+    # The lead's own view on each question to the human; a read-only lead's too: it changes
+    # nothing but the card.
+    if me and me.name == runtime.SUPERVISOR:
+
+        @server.tool()
+        def recommend(
+            text: str,
+            gate: int | None = None,
+            question: int | None = None,
+            choice: str | None = None,
+            disagrees: bool = False,
+        ) -> str:
+            """Give your recommendation on an open gate or another agent's open question to
+            the human, when LADO asks for it ("recommend on gate #N" / "question #N"): one
+            of `gate` or `question`. The human sees it on that card.
+
+            `text` (Markdown) is your own short view: what you would choose and why, the
+            risks, what to check; no retelling. `choice` is the option you recommend, if
+            any; set `disagrees` when you disagree with the agent whose report led to the
+            gate, or who asks. A later call replaces it until the human answers.
+            """
+            with _reasons():
+                return runtime.recommend(session, agent, text, gate, question, choice, disagrees)
+
     # COMMAND_TOOLS, the supervisor's.
     if me and me.name == runtime.SUPERVISOR and not me.read_only:
 

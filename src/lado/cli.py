@@ -813,16 +813,6 @@ def _artifact_text(name: str, load: Callable[[], tuple | None]) -> str:
     return f"{line}\n\n{text}\n"
 
 
-def _read_line(gate: state.Gate, name: str) -> str:
-    """The line of an artifact the gate reads, as of its latest record; what the store
-    cannot read is said in it, and the gate is asked all the same."""
-    full = artifacts.full_name(gate.run, name)
-    try:
-        return artifacts.record_line(full, artifacts.latest(gate.session, gate.run, name))
-    except artifacts.STORE_ERRORS as exc:
-        return f"{full}: cannot be read now: {exc}"
-
-
 def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = None) -> None:
     """The gate's question, the note that led to it with its artifacts, and a line per
     artifact the gate reads (none of the note's: `runs.gate_reads`); a gate whose run's
@@ -845,7 +835,7 @@ def _show_gate(gate: state.Gate, reads: list[str] | None, problem: str | None = 
     if reads:
         print("Artifacts it reads:")
         for name in reads:
-            print(f"  {_read_line(gate, name)}")
+            print(f"  {runs.read_line(gate, name)}")
     print("Options:")
     for n, option in enumerate(gate.options, 1):
         print(f"  {n}) {option}")

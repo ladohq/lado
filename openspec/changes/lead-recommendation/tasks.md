@@ -13,13 +13,13 @@ steps). Design doc: `docs/superpowers/specs/2026-10-12-lead-recommendation-desig
 
 ## 2. Core (D2, D3, D6, D10)
 
-- [ ] 2.1 `runs._act_on_arrival`: the request instead of "waiting for the human at …"
+- [x] 2.1 `runs._act_on_arrival`: the request instead of "waiting for the human at …"
   (message or notice), with the note's attachments; `runs.resume` asks again. Check:
   `uv run pytest tests/test_runs.py -n auto -k recommend`.
-- [ ] 2.2 `runtime.ask_human` asks the lead for another agent's question;
+- [x] 2.2 `runtime.ask_human` asks the lead for another agent's question;
   `runtime.recommend` with its checks; `SUPERVISOR_INSTRUCTIONS` and `FLOW_INSTRUCTIONS`.
   Check: `uv run pytest tests/test_runtime.py -n auto -k recommend`.
-- [ ] 2.3 `mcp_server.recommend` for the lead only (read-only too); `hooks.main` calls
+- [x] 2.3 `mcp_server.recommend` for the lead only (read-only too); `hooks.main` calls
   `recommendations_missed` after `check_replies`, not with a resume planned. Check:
   `uv run pytest tests/test_mcp_server.py tests/test_runtime.py -n auto -k recommend`
   (the turn-end hook's tests live in `tests/test_runtime.py`).

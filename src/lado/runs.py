@@ -410,7 +410,7 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
     """Queue LADO's messages for the new supervisor of a resumed session: one about the
     open runs, then the steps of the runs at a supervisor state again. Returns a line for
     each run that needs a role the session has no more or whose flow cannot be read."""
-    lines, problems, steps = [], [], []
+    lines, problems, steps, asks = [], [], [], []
     read_only = env.lead.read_only  # the supervisor is not stored yet
     open_runs = state.list_runs(sess.name, open_only=True)
     for run in open_runs:
@@ -434,6 +434,9 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
                 f"waits for the human at gate #{gate.id}: {gate.question} Only the human "
                 f"answers it, with: lado answer {sess.name} {gate.id}. Nothing to do until then."
             )
+            if gate.recommendation_state != state.REC_GIVEN:
+                what += " A request for your recommendation follows."
+                asks.append(gate)
         elif run.status == state.WAITING:
             what = f"waits for the human: {run.reason}"
         elif _lead_step(current):
@@ -472,6 +475,12 @@ def resume(sess: state.Session, env: kits.Environment) -> list[str]:
         summary = f"flow {run.name}: step {run.state}"
         text = step_text(run, flow_of(run))
         state.queue_message(sess.name, LADO, SUPERVISOR, summary, text, before_start=True)
+    for gate in asks:
+        summary, body = recommendation_request(gate)
+        attachments = state.note_attachments(gate.note_id) if gate.note_id else ()
+        state.ask_recommendation(
+            sess.name, state.GATE, gate.id, summary, body, attachments, before_start=True
+        )
     return problems
 
 
@@ -708,17 +717,64 @@ def _act_on_arrival(
 ) -> None:
     if run.status == state.WAITING:
         gate = state.open_gate(run.session, run.name)
-        _tell_supervisor(
-            run,
-            f"waiting for the human at {gate.state} (gate #{gate.id})",
-            f"{gate.question}\nOnly the human answers it: lado answer {run.session} {gate.id}",
-            notices,
-        )
+        _ask_recommendation(run, gate, notices)
         _popup(run.session, gate)
     elif run.status == state.ENDED:
         _close(run, caller, notices)
     else:
         _deliver_step(run, flow, notices)
+
+
+def _ask_recommendation(run: state.Run, gate: state.Gate, notices: list[str] | None) -> None:
+    """Ask the lead for its recommendation on the gate that opened: in `notices` when its
+    own move opened it, else as a message from LADO with the note's artifacts. A lead that
+    does not run is not asked: the gate opens all the same."""
+    summary, body = recommendation_request(gate)
+    if notices is not None:
+        notices.append(f"flow {run.name}: {summary}\n{body}")
+        state.ask_recommendation(run.session, state.GATE, gate.id, None, "")
+        return
+    attachments = state.note_attachments(gate.note_id) if gate.note_id else ()
+    try:
+        request = state.ask_recommendation(
+            run.session, state.GATE, gate.id, summary, body, attachments
+        )
+    except state.NotRunning:
+        return
+    if request:
+        runtime.deliver_request(run.session, request)
+
+
+def recommendation_request(gate: state.Gate) -> tuple[str, str]:
+    """The summary and body of LADO's request for the lead's recommendation on the gate:
+    its question, options, the note that led to it and the artifacts it reads."""
+    summary = runtime.cut_summary(f"recommend on gate #{gate.id}: {gate.run} at {gate.state}")
+    lines = [gate.question, f"Options: {', '.join(gate.options)}"]
+    if gate.note or gate.note_body:
+        note = state.get_note(gate.session, gate.note_id) if gate.note_id else None
+        of = f" of {note.actor} at {note.state}" if note and note.actor else ""
+        lines.append(f"Note{of}: {gate.note}")
+        if gate.note_body:
+            lines.append(gate.note_body)
+    try:
+        reads = gate_reads(gate)
+    except SnapshotError:
+        reads = []
+    if reads:
+        lines.append("Artifacts it reads:")
+        lines += [f"- {read_line(gate, name)}" for name in reads]
+    lines.append(runtime.RECOMMEND_REQUEST.format(item=f"gate={gate.id}"))
+    return summary, "\n".join(lines)
+
+
+def read_line(gate: state.Gate, name: str) -> str:
+    """The line of an artifact the gate reads, as of its latest record; what the store
+    cannot read is said in it, and the gate is asked all the same."""
+    full = artifacts.full_name(gate.run, name)
+    try:
+        return artifacts.record_line(full, artifacts.latest(gate.session, gate.run, name))
+    except artifacts.STORE_ERRORS as exc:
+        return f"{full}: cannot be read now: {exc}"
 
 
 def _popup(session: str, gate: state.Gate) -> None:

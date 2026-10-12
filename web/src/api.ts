@@ -222,13 +222,6 @@ export type Reply = components["schemas"]["Reply"];
 export const answerQuestions = (session: string, answers: Reply[]) =>
   post<Sent>(`${sessionPath(session)}/answers`, { answers });
 
-export const answerQuestion = (session: string, id: number, answer: { choice?: string; text?: string }) =>
-  post<Sent>(`${sessionPath(session)}/questions/${id}/answer`, answer);
-
-// `text`: the human's comment, sent only when given.
-export const dismissQuestion = (session: string, id: number, text?: string) =>
-  post<Sent>(`${sessionPath(session)}/questions/${id}/dismiss`, text === undefined ? undefined : { text });
-
 // Launch and session control (docs/design/ui.md, Launch and session control).
 
 export type FolderInfo = components["schemas"]["FolderInfo"];

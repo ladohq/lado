@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo } from "./api";
+import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
 import { clock, day, dayName } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
@@ -87,8 +87,22 @@ function page(all: MessageInfo[], query: URLSearchParams): MessagePage {
   return { items, earlier: kind.some((one) => one.id < bound) };
 }
 
-// The API: the sessions, a session's messages (`chat`, by pages; each query in `queries`)
-// and run events (`events`), and the POSTs, which answer `answer`.
+// What waits for the human, as the server lists it from `chat` and `gates` as they are now
+// (state.waiting_items): open gates, then open questions, of the running session "lado".
+function waitingOf(chat: MessageInfo[], gates: GateInfo[]): WaitingItem[] {
+  return [
+    ...gates
+      .filter((one) => one.answer === null)
+      .map((gate) => ({ session: "lado", kind: "gate" as const, key: `gate-${gate.id}`, since: gate.created_at, gate })),
+    ...chat
+      .filter((one) => one.kind === "question" && one.question_state === "open")
+      .map((question) => ({ session: "lado", kind: "question" as const, key: `question-${question.id}`, since: question.created_at, question })),
+  ];
+}
+
+// The API: the sessions, a session's messages (`chat`, by pages; each query in `queries`),
+// run events (`events`), gates, what waits (from `chat` and `gates` as they are when asked)
+// and runs, and the POSTs, which answer `answer`.
 function serve(
   chat: MessageInfo[],
   answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } },
@@ -114,7 +128,8 @@ function serve(
     if (path.startsWith("/api/sessions/") && path.endsWith("/gates")) {
       return new Response(JSON.stringify(gates));
     }
-    if (path.endsWith("/agents")) return new Response("[]");
+    if (path === "/api/waiting") return new Response(JSON.stringify(waitingOf(chat, gates)));
+    if (path.endsWith("/agents") || path.endsWith("/runs")) return new Response("[]");
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetch);
@@ -196,7 +211,7 @@ test("a message that continues its sender's group has no head; its time stays in
   serve([
     message(1, "supervisor", "human", "first", { created_at: "2026-10-03T12:00:00.000Z" }),
     message(2, "supervisor", "human", "second", { created_at: "2026-10-03T12:02:00.000Z" }),
-    question(3, { from: "supervisor", created_at: "2026-10-03T12:03:00.000Z" }),
+    question(3, { from: "supervisor", created_at: "2026-10-03T12:03:00.000Z", question_state: "closed" }),
   ]);
   open();
   const [first, second, asked] = await within(await chat()).findAllByRole("article");
@@ -251,16 +266,42 @@ test("the chat follows the feed: new and changed messages, not those between age
   expect(within(articles[0]).getByText(/replied only in its terminal/)).toBeTruthy();
 });
 
-test("a question is answered with a choice; the card waits for the feed to say so", async () => {
-  const { posted } = serve([question(5)]);
+// The waiting card above the composer (WaitingCard.tsx; its own behaviour in
+// WaitingCard.test.tsx).
+const waitingCard = (session = "lado") => screen.findByRole("region", { name: `What waits for you in ${session}` });
+
+test("an open question is one line in the feed whose arrow leads to its tab; it is answered in the card", async () => {
+  const chatList = [question(5)];
+  const { posted } = serve(chatList);
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
   open();
-  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  const line = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  expect(line.className).toContain("chat-quiet");
+  expect(line.id).toBe("message-5");
+  expect(line.querySelector(".late-text")?.textContent).toBe("w1 asked: Merge w1 now? ↓");
+  expect(within(line).queryByText("Tests pass.")).toBeNull(); // the details are in the card
+  expect(within(await chat()).queryByRole("button", { name: "yes" })).toBeNull();
+  const card = await waitingCard();
   expect(within(card).getByText("Tests pass.")).toBeTruthy();
+  // The card stands between the feed and the composer.
+  const section = screen.getByRole("region", { name: "Chat" });
+  expect([...section.children].map((one) => one.className.split(" ")[0])).toEqual(["chat-feed", "waiting-card", "composer"]);
+  scrolled.mockClear();
+  fireEvent.click(within(line).getByRole("button", { name: "Answer question #5" }));
+  await waitFor(() => expect(card.querySelector('[data-item="5"]')?.className).toContain("marked"));
+  expect(scrolled.mock.contexts).toEqual([card.querySelector('[data-item="5"]')]);
   fireEvent.click(within(card).getByRole("button", { name: "yes" }));
-  await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/lado/questions/5/answer", body: { choice: "yes" } }]));
+  fireEvent.click(within(card).getByRole("button", { name: "Send answer to w1" }));
+  await waitFor(() =>
+    expect(posted).toEqual([{ path: "/api/sessions/lado/answers", body: { answers: [{ question: 5, choice: "yes", skip: false }] } }]),
+  );
   expect(within(card).getByRole("button", { name: "yes" })).toBeTruthy(); // not shown as answered yet
-  stream().send("change", changed(question(5, { question_state: "answered", answered_by: 6 })), "11");
-  stream().send("change", changed(message(6, "human", "w1", "Answer to #5: yes", { reply_to: 5, choice: "yes" })), "12");
+  chatList[0] = question(5, { question_state: "answered", answered_by: 6 });
+  chatList.push(message(6, "human", "w1", "Answer to #5: yes", { reply_to: 5, choice: "yes" }));
+  stream().send("change", changed(chatList[0]), "11");
+  stream().send("change", changed(chatList[1]), "12");
+  await waitFor(() => expect(screen.queryByRole("region", { name: "What waits for you in lado" })).toBeNull());
   const answered = within(await chat()).getByRole("article", { name: "Question from w1" });
   expect(within(answered).queryByRole("button")).toBeNull();
   // The answer is in the card: the choice marked in the list, who answered and when under
@@ -351,69 +392,16 @@ test("a dismissal is in its question's card; a late one also a quiet line, one w
   const log = await chat();
   const [first, second] = await within(log).findAllByRole("article", { name: "Question from w1" });
   for (const card of [first, second]) {
-    expect(card.querySelector(".question-answer.dismissed .answer-head")?.textContent).toContain("You · dismissed");
+    expect(card.querySelector(".question-answer.dismissed .answer-head")?.textContent).toContain("You · skipped");
   }
   expect(first.querySelector(".question-answer")?.id).toBe("message-6");
-  const late = within(log).getByRole("article", { name: "You dismissed question #9" });
-  expect([late.id, late.textContent]).toEqual(["message-11", expect.stringContaining("dismissed question #9 ↑")]);
-  const lines = within(log).getAllByRole("article", { name: /^You dismissed question/ });
+  const late = within(log).getByRole("article", { name: "You skipped question #9" });
+  expect([late.id, late.textContent]).toEqual(["message-11", expect.stringContaining("skipped question #9 ↑")]);
+  const lines = within(log).getAllByRole("article", { name: /^You skipped question/ });
   expect(lines.map((one) => one.id)).toEqual(["message-11", "message-7"]);
   // A one-line own answer whose question is not in the window is an answer.
   const answer = within(log).getByRole("article", { name: "Message from you" });
   expect(within(answer).getByRole("heading").textContent).toBe("no");
-});
-
-test("a question takes an own answer, or is dismissed", async () => {
-  const { posted } = serve([question(5), question(7, { choices: null })]);
-  open();
-  const [first, second] = within(await chat()).getAllByRole("article", { name: "Question from w1" });
-  fireEvent.change(within(first).getByRole("textbox", { name: "Your answer" }), { target: { value: "after the release" } });
-  fireEvent.click(within(first).getByRole("button", { name: "Send" }));
-  fireEvent.click(within(second).getByRole("button", { name: "Dismiss" }));
-  await waitFor(() => expect(posted).toHaveLength(2));
-  expect(posted).toEqual([
-    { path: "/api/sessions/lado/questions/5/answer", body: { text: "after the release" } },
-    { path: "/api/sessions/lado/questions/7/dismiss", body: undefined },
-  ]);
-});
-
-test("Dismiss takes what the human wrote in the field along as a comment, and says so", async () => {
-  const { posted } = serve([question(5)]);
-  open();
-  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
-  const field = within(card).getByRole("textbox", { name: "Your answer" });
-  fireEvent.change(field, { target: { value: "  " } });
-  expect(within(card).getByRole("button", { name: "Dismiss" })).toBeTruthy();
-  fireEvent.change(field, { target: { value: "not now" } });
-  expect(within(card).queryByRole("button", { name: "Dismiss" })).toBeNull();
-  fireEvent.click(within(card).getByRole("button", { name: "Dismiss with comment" }));
-  await waitFor(() =>
-    expect(posted).toEqual([{ path: "/api/sessions/lado/questions/5/dismiss", body: { text: "not now" } }]),
-  );
-});
-
-test("an open question's card: choices, the field, then Send at the left and Dismiss at the right", async () => {
-  serve([question(5)]);
-  open();
-  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
-  const form = card.querySelector("form.answer") as HTMLElement;
-  const field = within(form).getByRole("textbox", { name: "Your answer" }) as HTMLTextAreaElement;
-  expect(field.placeholder).toBe("Your answer or a comment: it goes with a choice, Send or Dismiss");
-  expect([...form.children].map((one) => one.className || one.tagName)).toEqual(["choices", "TEXTAREA", "answer-actions"]);
-  const choices = within(form.querySelector(".choices") as HTMLElement).getAllByRole("button");
-  expect(choices.map((one) => [one.textContent, one.className])).toEqual([
-    ["yes", "primary"],
-    ["later", "quiet"],
-  ]);
-  const actions = within(form.querySelector(".answer-actions") as HTMLElement).getAllByRole("button");
-  expect(actions.map((one) => [one.textContent, one.className])).toEqual([
-    ["Send", "quiet"],
-    ["Dismiss", "quiet subdued"],
-  ]);
-  expect((actions[0] as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(field, { target: { value: "after the release" } });
-  const send = within(form).getByRole("button", { name: "Send" }) as HTMLButtonElement;
-  expect([send.className, send.disabled]).toEqual(["primary", false]);
 });
 
 test("a dismissal's comment shows in the card, in its late line and in its line without the question", async () => {
@@ -431,35 +419,15 @@ test("a dismissal's comment shows in the card, in its late line and in its line 
   const given = first.querySelector(".question-answer.dismissed") as HTMLElement;
   expect(given.textContent).toContain("not now:");
   expect(given.querySelectorAll("br")).toHaveLength(1);
-  const late = within(log).getByRole("article", { name: "You dismissed question #9" });
-  expect(late.querySelector(".late-text")?.textContent).toMatch(/dismissed question #9 ↑ · wrong question$/);
-  const alone = within(log).getByRole("article", { name: "You dismissed question #4" });
+  const late = within(log).getByRole("article", { name: "You skipped question #9" });
+  expect(late.querySelector(".late-text")?.textContent).toMatch(/skipped question #9 ↑ · wrong question$/);
+  const alone = within(log).getByRole("article", { name: "You skipped question #4" });
   expect(alone.textContent).toContain("asked twice");
 });
 
-test("a choice takes what the human wrote in the field along as a comment", async () => {
-  const { posted } = serve([question(5)]);
-  open();
-  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
-  fireEvent.change(within(card).getByRole("textbox", { name: "Your answer" }), { target: { value: "after the tag" } });
-  fireEvent.click(within(card).getByRole("button", { name: "later" }));
-  await waitFor(() =>
-    expect(posted).toEqual([
-      { path: "/api/sessions/lado/questions/5/answer", body: { choice: "later", text: "after the tag" } },
-    ]),
-  );
-});
-
-test("a question with only choices has no field for an own answer", async () => {
-  serve([question(5, { free_answer: false })]);
-  open();
-  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
-  expect(within(card).queryByRole("textbox")).toBeNull();
-  expect(within(card).queryByRole("button", { name: "Send" })).toBeNull();
-});
 
 test.each([
-  [{ question_state: "dismissed" as const, answered_by: 9 }, "You · dismissed"],
+  [{ question_state: "dismissed" as const, answered_by: 9 }, "You · skipped"],
   [{ question_state: "closed" as const }, "Closed: the agent left"],
   [{ question_state: "answered" as const, answered_by: 9 }, "You · answered"],
 ])("a question no longer open says what became of it, also without the reply in the window", async (state, outcome) => {
@@ -469,14 +437,6 @@ test.each([
   expect(card.querySelector(".chat-outcome, .answer-head")?.textContent).toBe(outcome);
   expect(within(card).getByText("Question #5")).toBeTruthy();
   expect(within(card).queryByRole("button")).toBeNull();
-});
-
-test("an answer the server refuses says why on the card", async () => {
-  serve([question(5)], { status: 400, body: { detail: "question #5 is closed" } });
-  open();
-  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
-  fireEvent.click(within(card).getByRole("button", { name: "later" }));
-  expect((await within(card).findByRole("alert")).textContent).toBe("question #5 is closed");
 });
 
 test("the composer sends with Enter, keeps Shift+Enter for a new line and shows nothing ahead of the feed", async () => {
@@ -819,19 +779,27 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
 const closed = (id: number, answer: string, more: Partial<GateInfo> = {}) =>
   gate(id, { answer, answered_by: "human", answered_at: "2026-10-03T12:05:00Z", reads: null, ...more });
 
+// A closed gate's line in the feed.
 const gateCard = async (id = 1) => within(await chat()).findByRole("article", { name: `Gate #${id}` });
+// An open gate: its line in the feed, its panel in the waiting card (the shown tab).
+const gateLine = async (id = 1) => within(await chat()).findByRole("article", { name: `Gate #${id} waits` });
+const gateTab = async () => within(await waitingCard()).findByRole("tabpanel");
 
 function gateChanged(item: GateInfo) {
   return { kind: "gates", session: "lado", key: String(item.id), op: "update", item };
 }
 
-test("an open gate is a card: its question, the note that led to it and the artifacts it reads", async () => {
+test("an open gate is a line in the feed and a tab of the card: its question, the note that led to it and the artifacts it reads", async () => {
   serve([], undefined, [], [gate(1)]);
   open();
-  const card = await gateCard();
-  expect(head(card)).toEqual(["Gate #1", "feature/x · check"]);
-  expect(card.querySelector(".avatar-gate")).toBeTruthy();
-  expect(card.id).toBe("gate-1");
+  const line = await gateLine();
+  expect(line.id).toBe("gate-1");
+  expect(line.querySelector(".avatar-gate")).toBeTruthy();
+  expect(line.querySelector(".late-text")?.textContent).toBe("Gate #1 feature/x · check waits: Ship it? ↓");
+  expect(within(line).queryByRole("button", { name: "Approve" })).toBeNull();
+  const tab = within(await waitingCard()).getByRole("tab", { name: "feature/x 1" });
+  expect(tab.getAttribute("aria-selected")).toBe("true");
+  const card = await gateTab();
   expect(within(card).getByText("Ship it?")).toBeTruthy();
   expect(within(card).getByText("built it").tagName).toBe("STRONG");
   expect(within(card).getByText("tests").tagName).toBe("STRONG"); // the body, open, as Markdown
@@ -845,7 +813,7 @@ test("a gate whose run's flow cannot be read shows the problem instead of the ar
   const problem = 'run "feature/x": its flow snapshot is not JSON: line 1';
   serve([], undefined, [], [gate(1, { reads: null, problem })]);
   open();
-  const card = await gateCard();
+  const card = await gateTab();
   expect(within(card).getByText(`Artifacts it reads cannot be shown: ${problem}`)).toBeTruthy();
   expect(within(card).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
   expect(within(card).getByText("Ship it?")).toBeTruthy();
@@ -858,7 +826,7 @@ test("a long note before the gate is behind Show more", async () => {
   const body = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n\n");
   serve([], undefined, [], [gate(1, { note_body: body })]);
   open();
-  const card = await gateCard();
+  const card = await gateTab();
   expect(within(card).getByText("line 20")).toBeTruthy();
   expect(within(card).queryByText("line 21")).toBeNull();
   fireEvent.click(within(card).getByRole("button", { name: "Show more" }));
@@ -872,16 +840,15 @@ test.each([
 ])("a gate's buttons are its options", async (one, labels) => {
   serve([], undefined, [], [one]);
   open();
-  const card = await gateCard();
-  const buttons = within(card)
-    .getAllByRole("button")
-    .filter((button) => !button.hasAttribute("aria-expanded"));
+  const card = await gateTab();
+  const buttons = within(card.querySelector(".waiting-send") as HTMLElement).getAllByRole("button");
   expect(buttons.map((button) => button.textContent)).toEqual(labels);
   expect(buttons[0].className).toContain("primary");
 });
 
 test("a gate is answered with an option and the comment; the card waits for the feed", async () => {
-  const { posted } = serve([], undefined, [], [gate(1)]);
+  const gates = [gate(1)];
+  const { posted } = serve([], undefined, [], gates);
   let release = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
   const plain = globalThis.fetch;
@@ -890,7 +857,7 @@ test("a gate is answered with an option and the comment; the card waits for the 
     return plain(path, init);
   });
   open();
-  const card = await gateCard();
+  const card = await gateTab();
   fireEvent.change(within(card).getByRole("textbox", { name: "Comment for the next step (optional)" }), {
     target: { value: "add a test\nfor the form" },
   });
@@ -903,16 +870,18 @@ test("a gate is answered with an option and the comment; the card waits for the 
     ]),
   );
   await waitFor(() => expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false));
-  stream().send("change", gateChanged(closed(1, "reject", { comment: "add a test\nfor the form" })), "11");
+  gates[0] = closed(1, "reject", { comment: "add a test\nfor the form" });
+  stream().send("change", gateChanged(gates[0]), "11");
   const line = await gateCard();
   expect(within(line).queryByRole("button", { name: "Approve" })).toBeNull();
   expect(line.textContent).toContain("Gate #1 · feature/x · check: reject by human");
+  expect(screen.queryByRole("region", { name: "What waits for you in lado" })).toBeNull();
 });
 
-test("an answer the server refuses says why on the gate's card", async () => {
+test("an answer the server refuses says why on the gate's tab", async () => {
   serve([], { status: 400, body: { detail: "gate #1 is closed already: approve by human" } }, [], [gate(1)]);
   open();
-  const card = await gateCard();
+  const card = await gateTab();
   fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
   expect((await within(card).findByRole("alert")).textContent).toBe("gate #1 is closed already: approve by human");
   expect(within(card).getByRole("button", { name: "Approve" })).toBeTruthy();
@@ -942,7 +911,7 @@ test.each([
   expect((await gateCard()).textContent).toContain(text);
 });
 
-test("gates are in time order among messages and run events; its waiting is a line of the run, its card under it", async () => {
+test("gates are in time order among messages and run events; its waiting is a line of the run, the gate's line under it", async () => {
   serve(
     [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
     undefined,
@@ -957,11 +926,11 @@ test("gates are in time order among messages and run events; its waiting is a li
   );
   open();
   const log = await chat();
-  await gateCard();
+  await gateLine();
   const order = Array.from(log.querySelectorAll(":scope > article, :scope > .run-group li")).map(
     (one) => one.getAttribute("aria-label") ?? one.querySelector(".run-chip, .run-outcome")?.textContent,
   );
-  expect(order).toEqual(["Message from you", "done", "waits for you", "Gate #1", "ended"]);
+  expect(order).toEqual(["Message from you", "done", "waits for you", "Gate #1 waits", "ended"]);
 });
 
 // The human's answer to a gate is the run's move from "You", the comment under it.
@@ -1011,7 +980,7 @@ test("answering a gate on the open page puts the move at the bottom and scrolls 
   serve([message(1, "supervisor", "human", "later", { created_at: "2026-10-03T12:02:00Z" })], undefined, [], [gate(1)]);
   open();
   const feed = await chat();
-  await gateCard();
+  await gateLine();
   let height = 700;
   Object.defineProperty(feed, "scrollHeight", { configurable: true, get: () => height });
   feed.scrollTop = 700; // the human reads at the bottom
@@ -1027,44 +996,69 @@ test("answering a gate on the open page puts the move at the bottom and scrolls 
   expect(feed.scrollTop).toBe(900);
 });
 
-test("while a gate is open, a hint over the composer leads to its card; the composer does not answer it", async () => {
-  const { posted } = serve([], undefined, [], [closed(1, "approve"), gate(2)]);
+test("while a gate is open, no hint stands over the composer; the line's arrow shows its tab; the composer does not answer it", async () => {
+  const { posted } = serve([question(5, { created_at: "2026-10-03T12:00:00.000Z" })], undefined, [], [closed(1, "approve"), gate(2)]);
   const scrolled = vi.fn();
   Element.prototype.scrollIntoView = scrolled;
   open();
-  await gateCard(2);
-  const hint = screen.getByText(/Gate #2 waits/);
+  const line = await gateLine(2);
+  const card = await waitingCard();
+  expect(screen.queryByText(/answer on its card/)).toBeNull();
+  expect(document.querySelector(".gate-hint")).toBeNull();
+  expect(within(card).getByRole("tab", { name: "w1 1" }).getAttribute("aria-selected")).toBe("true");
   scrolled.mockClear(); // the terminal panel scrolls its tabs too
-  fireEvent.click(within(hint).getByRole("button", { name: "answer on its card" }));
-  expect(scrolled.mock.contexts).toEqual([await gateCard(2)]);
+  fireEvent.click(within(line).getByRole("button", { name: "Answer gate #2" }));
+  await waitFor(() => expect(within(card).getByRole("tab", { name: "feature/x 1" }).getAttribute("aria-selected")).toBe("true"));
+  const panel = card.querySelector('[data-item="2"]') as HTMLElement;
+  expect(panel.className).toContain("marked");
+  expect(scrolled.mock.contexts).toEqual([panel]);
   const field = screen.getByRole("textbox", { name: "Write to the supervisor…" });
   fireEvent.change(field, { target: { value: "approve" } });
   fireEvent.keyDown(field, { key: "Enter" });
   await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/lado/messages", body: { text: "approve" } }]));
-  stream().send("change", gateChanged(closed(2, "approve")), "11");
-  await waitFor(() => expect(screen.queryByText(/waits: answer/)).toBeNull());
+  expect(within(card).getByRole("tab", { name: "feature/x 1" })).toBeTruthy(); // still open
 });
 
-test("in a stopped session a gate's buttons are off and say why", async () => {
+test("in a stopped session the card keeps its gate, its buttons off, and says why", async () => {
   serve([], undefined, [], [gate(1)]);
   open("/sessions/old/activity");
-  const card = await gateCard();
+  const card = within(await waitingCard("old")).getByRole("tabpanel");
   expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
   expect(within(card).getByText("The session is stopped: resume it to answer.")).toBeTruthy();
 });
 
 // Links from Needs you and from a notification
 
-test("an address with a card's anchor scrolls to it once the feed is loaded, after the scroll to the latest", async () => {
+test.each([
+  ["#message-5", "w1 1", "5"],
+  ["#gate-1", "feature/x 1", "1"],
+])("an address with an open item's anchor %s shows its tab and marks it, and scrolls the feed nowhere", async (anchor, tab, item) => {
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this);
+  };
+  serve([question(5, { created_at: "2026-10-03T12:00:00.000Z" })], undefined, [], [gate(1, { created_at: "2026-10-03T12:00:01.000Z" })]);
+  open(`/sessions/lado/activity${anchor}`);
+  const card = await waitingCard();
+  await waitFor(() => expect(within(card).getByRole("tab", { name: tab }).getAttribute("aria-selected")).toBe("true"));
+  const marked = card.querySelector(`[data-item="${item}"]`) as HTMLElement;
+  await waitFor(() => expect(marked.className).toContain("marked"));
+  expect(scrolled.filter((one) => one.closest(".chat-feed"))).toEqual([]);
+});
+
+test("an address with a closed card's anchor scrolls to it once the feed is loaded, after the scroll to the latest", async () => {
   const order: string[] = [];
   Element.prototype.scrollIntoView = function (this: Element) {
     order.push(this.id || this.className);
   };
   serve(
-    [question(5), ...Array.from({ length: 30 }, (_, i) => message(10 + i, "supervisor", "human", `note ${i}`))],
+    [
+      question(5, { question_state: "closed" }),
+      ...Array.from({ length: 30 }, (_, i) => message(10 + i, "supervisor", "human", `note ${i}`)),
+    ],
     undefined,
     [],
-    [gate(1)],
+    [closed(1, "approve")],
   );
   open("/sessions/lado/activity#message-5");
   const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
@@ -1214,7 +1208,7 @@ test("a link to a message or a gate before the window loads up to it in one requ
   };
   const old = new Date(Date.UTC(2026, 9, 2, 10, 3, 30)).toISOString();
   const { queries } = serve([...history(70), question(80, { created_at: "2026-10-02T12:00:00.000Z" })], undefined, [], [
-    gate(1, { created_at: old }),
+    closed(1, "approve", { created_at: old }),
   ]);
   open("/sessions/lado/activity#message-12");
   const log = await chat();
@@ -1228,7 +1222,7 @@ test("a link to a message or a gate before the window loads up to it in one requ
   cleanup();
   scrolled.length = 0;
   const again = serve([...history(70), question(80, { created_at: "2026-10-02T12:00:00.000Z" })], undefined, [], [
-    gate(1, { created_at: old }),
+    closed(1, "approve", { created_at: old }),
   ]);
   open("/sessions/lado/activity#gate-1");
   await gateCard(1);

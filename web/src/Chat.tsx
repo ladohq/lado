@@ -1,10 +1,12 @@
 // The feed in a session's Activity tab (docs/design/ui.md, The human in the session): the
-// messages from and to the human and the agents' questions, the flow runs' gates as cards
-// and their other events as lines, and behind a switch the agents' messages to each other,
-// live from the feed (live.ts); and the composer. Each message, question and open gate is a
-// row (FeedRow), grouped by sender, with a divider between days. What the human sends shows
-// only once the feed brings it: nothing ahead of the server.
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+// messages from and to the human and the agents' questions, the flow runs' gates and their
+// other events as lines, and behind a switch the agents' messages to each other, live from
+// the feed (live.ts); then the waiting card (WaitingCard.tsx), where the open questions and
+// gates are answered, and the composer. Each message and closed question is a row (FeedRow),
+// grouped by sender, with a divider between days; an open question or gate is a quiet line
+// leading to its tab. What the human sends shows only once the feed brings it: nothing
+// ahead of the server.
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
 import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
@@ -12,8 +14,8 @@ import { Attachments, ImagePreviews } from "./Attachments";
 import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
 import { Composer } from "./Composer";
 import { FeedRow, MiniAvatar } from "./FeedRow";
-import { Gate, gateAnchor } from "./GateCard";
-import { ChevronIcon, FlowsIcon } from "./icons";
+import { gateAnchor, GateLine } from "./GateCard";
+import { ChevronIcon, FlowsIcon, GateIcon } from "./icons";
 import {
   messageWindow,
   useLive,
@@ -26,6 +28,7 @@ import {
 } from "./live";
 import { runPath } from "./paths";
 import { messageAnchor, Question, replyOf, type Reply } from "./Question";
+import { agentTab, gateTab, WaitingCard, type Focus } from "./WaitingCard";
 
 // The run events the feed shows as lines, and the word each kind's line says: the one list.
 // A flow event's line shows its move instead (a gate's answer is the human's move, so
@@ -89,14 +92,17 @@ const parties = (message: MessageInfo) => `${message.from}\n${message.to}`;
 // The human's reply to a question (an answer or a dismissal).
 export const isReply = (message: MessageInfo) => message.from === HUMAN && message.reply_to !== null;
 
+// An open question is a quiet line in the feed, no row of its group.
+const isOpen = (message: MessageInfo) => message.kind === "question" && message.question_state === "open";
+
 // The entries as rows. A divider stands between entries of different local days. A run's
 // events follow each other in one group until another row comes between, whatever the time.
 // The human's reply to a question in the window is shown by the question's card: it is no
 // row when it comes right under its question, else a late line where it was given; a reply
 // to a question not in the window is a row of its own. A message continues the group above
 // it (its row has no head) when the row above is a message of the same sender to the same
-// recipient less than GROUP_GAP before, neither of them a reply. So a divider, a run event,
-// a gate or a late line between ends a group.
+// recipient less than GROUP_GAP before, neither of them a reply or an open question. So a
+// divider, a run event, a gate, an open question or a late line between ends a group.
 export function feedRows(list: Entry[]): FeedItem[] {
   const questions = new Set(list.flatMap((one) => ("message" in one ? [one.message.id] : [])));
   const out: FeedItem[] = [];
@@ -118,7 +124,9 @@ export function feedRows(list: Entry[]): FeedItem[] {
           entry.at - previous.at < GROUP_GAP &&
           parties(last.message) === parties(message) &&
           !isReply(last.message) &&
-          !isReply(message);
+          !isReply(message) &&
+          !isOpen(last.message) &&
+          !isOpen(message);
         out.push({ message, continued });
       }
     } else if ("gate" in entry) out.push({ gate: entry.gate });
@@ -193,10 +201,18 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   useEffect(() => live.watch("events", session), [live, session]);
   useEffect(() => live.watch("gates", session), [live, session]);
   useEffect(() => live.watch("artifacts", session), [live, session]); // whether chips changed since
+  useEffect(() => live.watch("waiting"), [live]); // the open questions
+  useEffect(() => live.watch("runs", session), [live, session]); // the runs' colours
 
   const ready = loaded !== null && !("error" in loaded);
   const shown = ready ? entries(loaded) : [];
-  const waiting = ready ? loaded.gates.find((gate) => gate.answer === null) : undefined;
+  // The waiting card's items: the open questions from what waits for the human (Needs you's
+  // list), the open gates from the session's gates, also in a stopped session.
+  const waits = state.waiting && "items" in state.waiting ? state.waiting.items : null;
+  const questions = (waits ?? []).flatMap((item) => (item.session === session && item.question ? [item.question] : []));
+  const gates = ready ? loaded.gates.filter((gate) => gate.answer === null) : [];
+  const runs = state.runs[session];
+  const [focus, setFocus] = useState<Focus>(null);
   const earlier = ready && loaded.window.earlier && !loaded.window.loadingEarlier && loaded.window.problem === null;
   const loadEarlier = () => live.loadEarlier(session, spec);
 
@@ -233,18 +249,26 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
     return () => observer.disconnect();
   }, [earlier, first, live, session, key]); // loadEarlier is the window's
 
-  // A link to a card (#gate-<id>, #message-<id>: Needs you, a gate's answer, the hint over
-  // the composer) scrolls to it; one before the window first loads up to it, in one load.
+  // A link to an open question or gate (#message-<id>, #gate-<id>: Needs you, a
+  // notification, a line's arrow) shows its tab in the waiting card and marks it. A link to
+  // another card scrolls to it; one before the window first loads up to it, in one load.
   const { hash } = useLocation();
   const [goal, setGoal] = useState<string | null>(null);
   const go = (anchor: string) => {
     if (!ready) return;
+    const [, kind, id] = /^(message|gate)-(\d+)$/.exec(anchor) ?? [];
+    const asked = kind === "message" ? questions.find((one) => one.id === Number(id)) : undefined;
+    const waits = kind === "gate" ? gates.find((one) => one.id === Number(id)) : undefined;
+    if (asked || waits) {
+      const key = asked ? agentTab(asked.from) : gateTab(Number(id));
+      setFocus({ key, item: Number(id), at: Date.now() });
+      return;
+    }
     const card = document.getElementById(anchor);
     if (card) {
       card.scrollIntoView?.({ block: "center" });
       return;
     }
-    const [, kind, id] = /^(message|gate)-(\d+)$/.exec(anchor) ?? [];
     const gate = kind === "gate" ? loaded.gates.find((one) => one.id === Number(id)) : undefined;
     const target = kind === "message" ? { id: Number(id) } : gate ? { at: gate.created_at } : null;
     if (target === null) return;
@@ -260,7 +284,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   });
   useEffect(() => {
     if (hash) go(decodeURIComponent(hash.slice(1))); // once per address, when loaded
-  }, [ready, hash]);
+  }, [ready, hash, waits !== null]);
 
   return (
     <section className="chat" aria-label="Chat">
@@ -274,10 +298,17 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         {ready && <Top session={session} window={loaded.window} first={shown[0]} retry={loadEarlier} marker={top} />}
         {ready && shown.length === 0 && <p className="empty">No messages yet. Write to the supervisor below.</p>}
         {ready && (
-          <Rows session={session} entries={shown} messages={loaded.window.items} gates={loaded.gates} stopped={stopped} go={go} />
+          <Rows session={session} entries={shown} messages={loaded.window.items} gates={loaded.gates} go={go} />
         )}
       </div>
-      {waiting && <GateHint gate={waiting} go={go} />}
+      <WaitingCard
+        session={session}
+        questions={questions}
+        gates={gates}
+        runs={runs && "items" in runs ? runs.items : null}
+        stopped={stopped}
+        focus={focus}
+      />
       <Composer session={session} stopped={stopped} />
     </section>
   );
@@ -321,18 +352,6 @@ function Top({
         </p>
       )}
     </div>
-  );
-}
-
-// Over the composer while a gate is open: the composer does not answer it, its card does.
-function GateHint({ gate, go }: { gate: GateInfo; go: (anchor: string) => void }) {
-  return (
-    <p className="gate-hint">
-      Gate #{gate.id} waits:{" "}
-      <button type="button" className="link-button" onClick={() => go(gateAnchor(gate.id))}>
-        answer on its card
-      </button>
-    </p>
   );
 }
 
@@ -414,14 +433,12 @@ function Rows({
   entries,
   messages,
   gates,
-  stopped,
   go,
 }: {
   session: string;
   entries: Entry[];
   messages: MessageInfo[];
   gates: GateInfo[];
-  stopped: boolean;
   go: (anchor: string) => void;
 }) {
   const byId = new Map(messages.map((one) => [one.id, one]));
@@ -434,7 +451,30 @@ function Rows({
       const key = `events-${row.events[0].id}`;
       return <RunEvents key={key} session={session} run={row.run} events={row.events} back={back} gates={gates} />;
     }
-    if ("gate" in row) return <Gate key={`gate-${row.gate.id}`} session={session} gate={row.gate} stopped={stopped} />;
+    if ("gate" in row) {
+      const { gate } = row;
+      if (gate.answer !== null) return <GateLine key={`gate-${gate.id}`} session={session} gate={gate} />;
+      return (
+        <OpenLine
+          key={`gate-${gate.id}`}
+          anchor={gateAnchor(gate.id)}
+          label={`Gate #${gate.id} waits`}
+          mark={
+            <span className="avatar mini avatar-gate" aria-hidden="true">
+              <GateIcon />
+            </span>
+          }
+          text={
+            <>
+              <span className="run-actor">Gate #{gate.id}</span> {gate.run} · {gate.state} waits: {gate.question}
+            </>
+          }
+          arrow={`Answer gate #${gate.id}`}
+          at={gate.created_at}
+          go={go}
+        />
+      );
+    }
     if ("late" in row) {
       const reply = row.late;
       return <LateReply key={reply.id} reply={reply} question={byId.get(reply.reply_to ?? 0)} go={go} />;
@@ -446,6 +486,24 @@ function Rows({
     }
     if (message.kind !== "question") {
       return <Message key={message.id} session={session} message={message} continued={continued} />;
+    }
+    if (isOpen(message)) {
+      return (
+        <OpenLine
+          key={message.id}
+          anchor={messageAnchor(message.id)}
+          label={`Question from ${message.from}`}
+          mark={<MiniAvatar who={message.from} />}
+          text={
+            <>
+              <span className="run-actor">{message.from}</span> asked: {message.summary}
+            </>
+          }
+          arrow={`Answer question #${message.id}`}
+          at={message.created_at}
+          go={go}
+        />
+      );
     }
     const answer = message.answered_by === null ? undefined : byId.get(message.answered_by);
     return (
@@ -464,12 +522,45 @@ function Rows({
   });
 }
 
+// An open question or gate where it was asked: one quiet line, its arrow leading to its
+// tab in the waiting card (go: the item marked there).
+function OpenLine({
+  anchor,
+  label,
+  mark,
+  text,
+  arrow,
+  at,
+  go,
+}: {
+  anchor: string;
+  label: string;
+  mark: ReactNode;
+  text: ReactNode;
+  arrow: string;
+  at: string;
+  go: (anchor: string) => void;
+}) {
+  return (
+    <article className="chat-quiet open-line" id={anchor} aria-label={label}>
+      {mark}
+      <span className="late-text">
+        {text}{" "}
+        <button type="button" className="open-arrow" aria-label={arrow} title={arrow} onClick={() => go(anchor)}>
+          ↓
+        </button>
+      </span>
+      <time dateTime={at}>{clock(at)}</time>
+    </article>
+  );
+}
+
 // The human's reply to a question in the window given after other rows: one quiet line
 // where it was given, leading up to the question's card, with the start of the answer.
 function LateReply({ reply, question, go }: { reply: MessageInfo; question?: MessageInfo; go: (anchor: string) => void }) {
   const asked = reply.reply_to ?? 0;
   const said = replyOf(reply, question);
-  const verb = "dismissed" in said ? "dismissed" : "answered";
+  const verb = "dismissed" in said ? "skipped" : "answered";
   const link = (
     <a
       href={`#${messageAnchor(asked)}`}
@@ -525,9 +616,9 @@ function Answer({
       <article
         className={`chat-quiet${reply.comment ? " commented" : ""}`}
         id={messageAnchor(message.id)}
-        aria-label={`You dismissed question #${asked}`}
+        aria-label={`You skipped question #${asked}`}
       >
-        <span>You dismissed question #{asked}</span> <time dateTime={message.created_at}>{clock(message.created_at)}</time>
+        <span>You skipped question #{asked}</span> <time dateTime={message.created_at}>{clock(message.created_at)}</time>
         {reply.comment && <Body text={reply.comment} breaks />}
       </article>
     );

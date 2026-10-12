@@ -82,12 +82,14 @@ test("the human's messages to two agents are two groups: each says to whom", () 
   expect(shape(list)).toEqual(["1", "2"]);
 });
 
-test("a question continues its agent's group", () => {
+test("a closed question continues its agent's group; an open one, a line, is in none", () => {
   const list = [
     message(1, "w1", "human", at(10, 0)),
-    message(2, "w1", "human", at(10, 1), { kind: "question", question_state: "open" }),
+    message(2, "w1", "human", at(10, 1), { kind: "question", question_state: "answered" }),
+    message(3, "w1", "human", at(10, 2), { kind: "question", question_state: "open" }),
+    message(4, "w1", "human", at(10, 3)),
   ];
-  expect(shape(list)).toEqual(["1", "2+"]);
+  expect(shape(list)).toEqual(["1", "2+", "3", "4"]);
 });
 
 test("a run event or a gate between two messages ends the group; consecutive events of a run are one group", () => {

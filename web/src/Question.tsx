@@ -1,12 +1,10 @@
-// An agent's question to the human (ask_human), in its session's chat and on Needs you: the
-// card in its agent's row (FeedRow), without a head of its own. Open, it is answered with a
-// choice, own words or both, or dismissed; closed, its choices faded, the chosen one marked
-// (and only there), and the human's reply under them (docs/design/ui.md, Answer in the
-// question card). The card changes only when the feed brings the question closed, whoever
-// answered it. Also what the chat says of the human's answer, from the answer's fields.
-import { useState, type FormEvent } from "react";
-
-import { answerQuestion, ApiError, dismissQuestion, HUMAN, type MessageInfo } from "./api";
+// An agent's question to the human (ask_human) once it is closed, in its session's chat: the
+// card in its agent's row (FeedRow), without a head of its own: its choices faded, the
+// chosen one marked (and only there), and the human's reply under them (docs/design/ui.md,
+// Answer in the question card). An open question is answered in the waiting card
+// (WaitingCard.tsx) and is a line in the feed. Also what the chat says of the human's
+// answer, from the answer's fields. A dismissal is "skipped" in the UI's words.
+import { HUMAN, type MessageInfo } from "./api";
 import { Attachments } from "./Attachments";
 import { Body, clock } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
@@ -15,8 +13,8 @@ import { MiniAvatar } from "./FeedRow";
 export const messageAnchor = (id: number) => `message-${id}`;
 
 // The summaries the core gives the human's answer and dismissal of question #id
-// (runtime.answer_question, runtime.dismiss_question): only for an answer whose question is
-// not in the window, and to show an own answer of one line without the prefix.
+// (runtime.answer_questions): only for an answer whose question is not in the window, and
+// to show an own answer of one line without the prefix.
 export const answerPrefix = (id: number) => `Answer to #${id}: `;
 export const dismissedSummary = (id: number) => `Dismissed #${id}`;
 
@@ -52,110 +50,29 @@ export function Question({
   answer?: MessageInfo;
   anchored?: boolean;
 }) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const open = question.question_state === "open";
-  // What the human wrote goes along with a choice, Send or Dismiss.
-  const written = text.trim() !== "";
-
-  async function act(call: () => Promise<unknown>) {
-    setBusy(true);
-    setProblem(null);
-    try {
-      await call();
-    } catch (error) {
-      setProblem(error instanceof ApiError ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (written) void act(() => answerQuestion(session, question.id, { text }));
-  }
-
   return (
-    <div className={`chat-question${open ? " open" : ""}`}>
-      <p className="question-label">
-        Question #{question.id}
-        {open && " · waits for you"}
-      </p>
+    <div className="chat-question">
+      <p className="question-label">Question #{question.id}</p>
       <h4 className="chat-summary">{question.summary}</h4>
       {question.body && <Body text={question.body} />}
       <Attachments session={session} attachments={question.attachments} />
-      {open ? (
-        <form className="answer" onSubmit={submit}>
-          {question.choices && (
-            <div className="choices">
-              {question.choices.map((choice, i) => (
-                <button
-                  key={choice}
-                  type="button"
-                  className={i === 0 ? "primary" : "quiet"}
-                  disabled={busy}
-                  onClick={() =>
-                    // What the human wrote in the field goes along as a comment.
-                    void act(() => answerQuestion(session, question.id, written ? { choice, text } : { choice }))
-                  }
-                >
-                  {choice}
-                </button>
-              ))}
-            </div>
+      {question.choices && (
+        <ul className="choices closed" aria-label="Choices">
+          {question.choices.map((choice) =>
+            choice === answer?.choice ? (
+              <li key={choice} className="chosen">
+                ✓ {choice}
+              </li>
+            ) : (
+              <li key={choice}>{choice}</li>
+            ),
           )}
-          {question.free_answer && (
-            <textarea
-              aria-label="Your answer"
-              placeholder="Your answer or a comment: it goes with a choice, Send or Dismiss"
-              rows={2}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-            />
-          )}
-          <div className="answer-actions">
-            {question.free_answer && (
-              <button type="submit" className={written ? "primary" : "quiet"} disabled={busy || !written}>
-                Send
-              </button>
-            )}
-            <button
-              type="button"
-              className="quiet subdued"
-              disabled={busy}
-              onClick={() => void act(() => dismissQuestion(session, question.id, written ? text : undefined))}
-            >
-              {written ? "Dismiss with comment" : "Dismiss"}
-            </button>
-          </div>
-          {problem && (
-            <p className="field-problem" role="alert">
-              {problem}
-            </p>
-          )}
-        </form>
+        </ul>
+      )}
+      {question.question_state === "closed" ? (
+        <p className="chat-outcome">Closed: the agent left</p>
       ) : (
-        <>
-          {question.choices && (
-            <ul className="choices closed" aria-label="Choices">
-              {question.choices.map((choice) =>
-                choice === answer?.choice ? (
-                  <li key={choice} className="chosen">
-                    ✓ {choice}
-                  </li>
-                ) : (
-                  <li key={choice}>{choice}</li>
-                ),
-              )}
-            </ul>
-          )}
-          {question.question_state === "closed" ? (
-            <p className="chat-outcome">Closed: the agent left</p>
-          ) : (
-            <Given question={question} answer={answer} anchored={anchored} />
-          )}
-        </>
+        <Given question={question} answer={answer} anchored={anchored} />
       )}
     </div>
   );
@@ -163,19 +80,19 @@ export function Question({
 
 // The human's reply in the question's card: who and when, then a choice's comment (the
 // choice itself is marked only in the card's list) or the own words, as the human typed
-// them; a dismissal, its comment if any.
+// them; a skip, its comment if any.
 function Given({ question, answer, anchored }: { question: MessageInfo; answer?: MessageInfo; anchored: boolean }) {
-  const dismissed = question.question_state === "dismissed";
+  const skipped = question.question_state === "dismissed";
   const reply = answer && replyOf(answer, question);
   const shown = reply && ("dismissed" in reply || answer?.choice ? reply.comment : reply.text);
   return (
     <div
-      className={`question-answer${dismissed ? " dismissed" : ""}`}
+      className={`question-answer${skipped ? " dismissed" : ""}`}
       id={answer && anchored ? messageAnchor(answer.id) : undefined}
     >
       <div className="answer-top">
         <MiniAvatar who={HUMAN} />
-        <span className="answer-head">You · {dismissed ? "dismissed" : "answered"}</span>
+        <span className="answer-head">You · {skipped ? "skipped" : "answered"}</span>
         {answer && <time dateTime={answer.created_at}>{clock(answer.created_at)}</time>}
       </div>
       {shown && <Body text={shown} breaks />}

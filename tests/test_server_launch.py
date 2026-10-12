@@ -541,6 +541,38 @@ def test_a_resume_of_a_running_session_is_400(client, repo, fake_tmux):
     assert answer.status_code == 400 and "already running" in answer.json()["detail"]
 
 
+def _humans(session: str) -> list[str]:
+    return [m.body for m in state.list_messages(session) if m.sender == state.HUMAN]
+
+
+def test_a_start_with_a_prompt_queues_the_humans_first_message(client, repo, fake_tmux):
+    answer = launch(client, repo, name="s", provider="kilo", prompt=" Take LAD-19\n")
+    assert answer.status_code == 200, answer.text
+    assert _humans("s") == ["Take LAD-19"]
+
+
+def test_a_resume_with_a_prompt(client, repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    answer = client.post("/api/sessions/s/resume", json={"prompt": "Continue"})
+    assert answer.status_code == 200, answer.text
+    last = state.list_messages("s")[-1]
+    assert (last.sender, last.body) == ("human", "Continue")
+
+
+def test_an_empty_prompt_is_400_with_the_cores_text(client, repo, fake_tmux):
+    answer = launch(client, repo, name="s", provider="kilo", prompt="  ")
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == "the first message is empty"
+    assert state.get_session("s") is None
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    answer = client.post("/api/sessions/s/resume", json={"prompt": ""})
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == "the first message is empty"
+    assert state.get_session("s").stopped_at
+
+
 def test_stop_shows_what_it_does_then_does_it(client, repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     worker = runtime.spawn_worker("s", "task", name="w1")

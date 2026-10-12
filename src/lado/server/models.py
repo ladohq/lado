@@ -599,6 +599,7 @@ class Launch(BaseModel):
     provider: str | None = None
     permission_mode: str | None = None
     without: list[str] | None = None
+    prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
 
 
 class Resume(BaseModel):
@@ -608,6 +609,7 @@ class Resume(BaseModel):
     provider: str | None = None
     permission_mode: str | None = None
     without: list[str] | None = None
+    prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
 
 
 class Taken(BaseModel):

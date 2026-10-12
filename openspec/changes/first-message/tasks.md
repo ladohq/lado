@@ -21,7 +21,7 @@
 
 ## 3. API
 
-- [ ] 3.1 `Launch.prompt`, `Resume.prompt` passed to `start_session` (D6); `make
+- [x] 3.1 `Launch.prompt`, `Resume.prompt` passed to `start_session` (D6); `make
   web-types`, both generated files committed. Unit tests (`tests/test_server_launch.py`):
   start and resume with `prompt`, an empty `prompt` is 400 with the core's text.
 

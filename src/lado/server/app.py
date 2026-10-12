@@ -834,6 +834,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
                 given.kits,
                 given.without,
                 resume=False,
+                prompt=given.prompt,
             )
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
@@ -864,6 +865,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
                 given.kits,
                 given.without,
                 resume=True,
+                prompt=given.prompt,
             )
         except runtime.NoSuchSession as gone:
             raise HTTPException(404, str(gone)) from gone

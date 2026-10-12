@@ -1610,6 +1610,8 @@ export interface components {
             permission_mode?: string | null;
             /** Without */
             without?: string[] | null;
+            /** Prompt */
+            prompt?: string | null;
         };
         /**
          * Limits
@@ -2048,6 +2050,8 @@ export interface components {
             permission_mode?: string | null;
             /** Without */
             without?: string[] | null;
+            /** Prompt */
+            prompt?: string | null;
         };
         /**
          * RunEventInfo

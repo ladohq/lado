@@ -1,6 +1,6 @@
 ## 1. Core
 
-- [ ] 1.1 `state.Reply`, `state.QuestionClosed`, `state.reply_to_questions` (one
+- [x] 1.1 `state.Reply`, `state.QuestionClosed`, `state.reply_to_questions` (one
   transaction; `reply_to_question` removed); `runtime.HumanReply`,
   `runtime.answer_questions` (checks first, one transaction, one `_deliver`);
   `answer_question` / `dismiss_question` as one-reply calls (D1–D4). Unit tests

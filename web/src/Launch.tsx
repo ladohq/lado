@@ -202,8 +202,10 @@ function LaunchDialog({
   const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
   const branchesAsked = useRef(new Map<string, Promise<RemoteInfo>>());
   const alive = useRef(true);
+  const cancelPressed = useRef(false);
 
   useEffect(() => {
+    alive.current = true; // again after StrictMode's trial unmount
     dialog.current?.showModal();
     return () => {
       alive.current = false;
@@ -254,13 +256,15 @@ function LaunchDialog({
   // M5: kits, provider and mode of a new session come from the folder's last session.
   const last = resuming ? null : (recent.find((one) => one.path === folder?.root)?.session ?? null);
   useEffect(() => {
-    if (resuming || folder === null) return;
-    if (!touched.has("kits")) setKits(last?.kits ?? [DEFAULT_KIT]);
-    if (!touched.has("mode")) setPermissionMode(last?.permission_mode ?? DEFAULT_MODE);
-    setFromLast(last !== null);
-    // Again only when the folder's last session is another one.
+    if (resuming || (folder === null && !cloning)) return;
+    // A clone's folder has no last session: LADO's defaults, not a folder's typed before.
+    const from = cloning ? null : last;
+    if (!touched.has("kits")) setKits(from?.kits ?? [DEFAULT_KIT]);
+    if (!touched.has("mode")) setPermissionMode(from?.permission_mode ?? DEFAULT_MODE);
+    setFromLast(from !== null);
+    // Again only when the folder's last session is another one, or the source changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [last?.name, folder?.root]);
+  }, [last?.name, folder?.root, cloning]);
 
   // No provider is the default: the folder's suggestion (a clone's folder's), with its
   // reason, or none.
@@ -340,27 +344,48 @@ function LaunchDialog({
     setBusy(true);
     setRefused(null);
     setCloneEnd(null);
-    let running: CloneJob;
-    try {
-      running = await startClone({ url: typedUrl, path: target.path, branch });
-      setJob(running);
-      while (running.state === "running") {
-        await pause(CLONE_POLL);
-        if (!alive.current) return;
-        running = await getClone(running.id);
-        setJob(running);
-      }
-    } catch (error) {
+    cancelPressed.current = false;
+    const refuse = (error: unknown) => {
       const given = error instanceof ApiError ? error : new ApiError(0, String(error));
       const why = cloneRefused(given.detail);
       setCloneEnd({ refused: why ?? { message: given.message, kind: "refused", hint: null } });
       setJob(null);
       setBusy(false);
+    };
+    let running: CloneJob;
+    try {
+      running = await startClone({ url: typedUrl, path: target.path, branch });
+    } catch (error) {
+      refuse(error);
       return;
+    }
+    setJob(running);
+    while (running.state === "running") {
+      await pause(CLONE_POLL);
+      if (!alive.current) return;
+      try {
+        running = await getClone(running.id);
+      } catch (error) {
+        // A job the server no longer knows (it restarted) has ended; any other failure is
+        // asked again, as the clone goes on and only Cancel clone ends it.
+        if (error instanceof ApiError && error.status === 404) {
+          refuse(error);
+          return;
+        }
+        continue;
+      }
+      setJob(running);
     }
     setJob(null);
     if (running.state !== "done") {
       setCloneEnd(running.error ? { refused: running.error } : { note: "the clone was cancelled" });
+      setBusy(false);
+      return;
+    }
+    if (cancelPressed.current) {
+      // Cancel clone came too late: the clone is there, and it is offered as a folder.
+      toFolder(running.path);
+      setCloneEnd({ note: `the clone ended before Cancel clone; it is in ${running.path}` });
       setBusy(false);
       return;
     }
@@ -488,7 +513,7 @@ function LaunchDialog({
               </div>
               <BranchField
                 remote={remote}
-                failed={typedUrl !== "" && remoteAsked !== null && "error" in remoteAsked}
+                failed={branchesUrl === typedUrl && remoteAsked !== null && "error" in remoteAsked}
                 branch={branch}
                 onBranch={(next) => setPicked({ url: typedUrl, branch: next })}
                 disabled={busy}
@@ -504,7 +529,7 @@ function LaunchDialog({
               onChange={(event) => setName(event.target.value)}
             />
             {!resuming && name === null && named && (
-              <NameHint folder={named} onResume={() => resumeIt(named.default_name ?? "")} />
+              <NameHint folder={named} disabled={busy} onResume={() => resumeIt(named.default_name ?? "")} />
             )}
           </div>
 
@@ -663,7 +688,10 @@ function LaunchDialog({
 
         <div className="launch-buttons">
           {job ? (
-            <button type="button" className="quiet" onClick={() => void cancelClone(job.id).catch(() => {})}>
+            <button type="button" className="quiet" onClick={() => {
+                cancelPressed.current = true;
+                void cancelClone(job.id).catch(() => {});
+              }}>
               Cancel clone
             </button>
           ) : (
@@ -988,14 +1016,19 @@ function BranchCombo({
         }}
         onBlur={() => setTyped(null)}
         onKeyDown={(event) => {
+          // Enter while typing picks the branch typed, or the one highlighted; text that is
+          // no branch never submits the form with another branch than it shows.
+          if (event.key === "Enter" && typed !== null) {
+            event.preventDefault();
+            if (active >= 0 && options[active]) pick(options[active]);
+            else if (remote.branches.includes(typed)) pick(typed);
+            return;
+          }
           if (options.length === 0) return;
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             const step = event.key === "ArrowDown" ? 1 : -1;
             setActive((at) => (at + step + options.length) % options.length);
-          } else if (event.key === "Enter" && active >= 0) {
-            event.preventDefault();
-            pick(options[active]);
           } else if (event.key === "Escape") {
             event.preventDefault();
             setTyped(null);
@@ -1083,9 +1116,11 @@ function FolderHint({ text, command }: { text: string; command: string }) {
 
 function NameHint({
   folder,
+  disabled,
   onResume,
 }: {
   folder: Pick<FolderInfo, "default_name" | "name_state">;
+  disabled: boolean;
   onResume: () => void;
 }) {
   const name = folder.default_name;
@@ -1097,7 +1132,7 @@ function NameHint({
     return (
       <span className="field-note">
         a stopped session {name} exists for this folder{" "}
-        <button type="button" className="link-button" onClick={onResume}>
+        <button type="button" className="link-button" disabled={disabled} onClick={onResume}>
           Resume it
         </button>
       </span>

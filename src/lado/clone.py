@@ -114,8 +114,15 @@ class Address:
 
 
 def default_folder(url: str) -> Path:
-    """The folder a clone of `url` goes to when the human gives none: ~/lado/<repo>."""
-    return Path(os.path.expanduser(DEFAULT_PARENT)) / Address.parse(url).repo_name
+    """The folder a clone of `url` goes to when the human gives none: ~/lado/<repo>; a URL
+    that names no repository has none (it would be ~/lado itself)."""
+    name = Address.parse(url).repo_name
+    if not name:
+        raise CloneError(
+            "no_repo_name",
+            f"{runtime.public_remote(url)} names no repository: give the folder to clone into",
+        )
+    return Path(os.path.expanduser(DEFAULT_PARENT)) / name
 
 
 class CloneError(runtime.LadoError):
@@ -154,7 +161,15 @@ class Target:
 
 def check_target(url: str, path: str) -> Target:
     """Whether a clone of `url` may go to the folder `path` (a full path), and what is
-    there when not. Only `CAN_CLONE` states let a clone start."""
+    there when not. Only `CAN_CLONE` states let a clone start; a folder LADO may not look
+    at is a CloneError `no_access`."""
+    try:
+        return _check_target(url, path)
+    except OSError as exc:
+        raise CloneError("no_access", f"cannot look at {path}: {exc.strerror or exc}") from None
+
+
+def _check_target(url: str, path: str) -> Target:
     folder = Path(path)
     if not folder.exists():
         return Target(path, "new", "a new folder")
@@ -414,8 +429,13 @@ def clone(
     if target.state not in CAN_CLONE:
         raise CloneError(target.state, target.text)
     folder = Path(path)
-    folder.parent.mkdir(parents=True, exist_ok=True)
-    temp = tempfile.mkdtemp(prefix=f".{folder.name}.clone-", dir=folder.parent)
+    try:
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        temp = tempfile.mkdtemp(prefix=f".{folder.name}.clone-", dir=folder.parent)
+    except OSError as exc:
+        raise CloneError(
+            "no_access", f"cannot make a folder in {folder.parent}: {exc.strerror or exc}"
+        ) from None
     try:
         _run_clone(url, temp, branch, on_progress, cancelled)
         try:

@@ -260,3 +260,20 @@ def test_the_clone_target_suggests_the_only_provider_installed(client, tmp_path,
         "/api/clone-target", params={"url": "https://h/a/app", "path": str(tmp_path / "app")}
     )
     assert answer.json()["provider"] == {"name": "codex", "reason": "only_installed"}
+
+
+def test_a_folder_that_cannot_be_read_is_400_not_500(client, tmp_path):
+    closed = tmp_path / "closed"
+    closed.mkdir()
+    closed.chmod(0o000)
+    try:
+        params = {"url": "https://h/a/app", "path": str(closed / "app")}
+        answer = client.get("/api/clone-target", params=params)
+        assert answer.status_code == 400
+        assert answer.json()["detail"]["kind"] == "no_access"
+        answer = client.post(
+            "/api/clones", json={"url": "https://h/a/app", "path": str(closed / "app")}
+        )
+        assert answer.status_code == 400
+    finally:
+        closed.chmod(0o755)

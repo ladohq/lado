@@ -2171,3 +2171,19 @@ def test_clone_progress_keeps_the_last_line_of_each_phase(capsys):
         "Counting objects: 100% (2/2), done.",
         "Receiving objects:  10% (1/10)",
     ]
+
+
+def test_a_clone_failure_prints_its_hint(tmp_path, fake_tmux, capsys, monkeypatch):
+    def refused(*args, **kwargs):
+        raise lado.clone.CloneError(
+            "ssh_denied",
+            "cannot clone git@github.com:a/b.git: github.com refused this machine's ssh key (x)",
+            runtime.Hint("Check that this machine's ssh key is added:", "ssh -T git@github.com"),
+        )
+
+    monkeypatch.setattr(cli.clone, "clone", refused)
+    assert main(["start", "git@github.com:a/b.git", str(tmp_path / "b"), "--no-attach"]) == 1
+    assert capsys.readouterr().err.splitlines()[-2:] == [
+        "lado: cannot clone git@github.com:a/b.git: github.com refused this machine's ssh key (x)",
+        "lado: Check that this machine's ssh key is added: ssh -T git@github.com",
+    ]

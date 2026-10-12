@@ -2,6 +2,7 @@
 // session window, its Resume mode, the session's actions in its head, its list row's menu, Stop
 // and Forget.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -1314,4 +1315,141 @@ test("a name taken after the clone switches the window to Folder with the clone 
   expect((await within(dialog).findByRole("alert")).textContent).toContain('session "marketplace" exists already');
   expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
   expect(where().value).toBe(INTO);
+});
+
+test("a poll that fails is asked again: the clone goes on, Cancel clone stays (F3)", async () => {
+  let polls = 0;
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => {
+    polls += 1;
+    if (polls === 1) return json({ detail: "server busy" }, 503);
+    if (polls === 2) return json(job({ seconds: 1 }));
+    return json(job({ state: "done", seconds: 2 }));
+  };
+  answers["POST /api/sessions"] = () =>
+    json({ session: session("marketplace", { repo: INTO }), resumed: false, changes: [], problems: [], lead: "", warnings: [] });
+  const dialog = await cloneReady();
+  fireEvent.click(cloneButton());
+  await waitFor(() => expect(polls).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+  expect(within(dialog).queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("button", { name: "Cancel clone" })).toBeTruthy();
+  expect(await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 })).toBeTruthy();
+});
+
+test("a clone job the server no longer knows ends the clone with why", async () => {
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => json({ detail: "no clone job j1" }, 404);
+  const dialog = await cloneReady();
+  fireEvent.click(cloneButton());
+  expect((await within(dialog).findByRole("alert", {}, { timeout: 3000 })).textContent).toBe("no clone job j1");
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+});
+
+test("Enter in the long branch field with no branch picked neither clones nor changes the branch (F5)", async () => {
+  const many = ["main", ...Array.from({ length: 40 }, (_, i) => `feature/f${String(i).padStart(2, "0")}`)];
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = remote(many);
+  await cloneSource();
+  await screen.findByText("✓ repository found · 41 branches");
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+  const field = screen.getByRole("combobox", { name: "Branch" }) as HTMLInputElement;
+  fireEvent.change(field, { target: { value: "feat" } });
+  // Not prevented, the browser's implicit submission would clone the default branch.
+  expect(fireEvent.keyDown(field, { key: "Enter" })).toBe(false);
+  expect(field.value).toBe("feat");
+  expect(calls.some((c) => c.path === "/api/clones")).toBe(false);
+  fireEvent.change(field, { target: { value: "feature/f07" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  fireEvent.blur(field);
+  expect(field.value).toBe("feature/f07");
+});
+
+test("the clone's form does not take kits and mode from a folder typed before (F7)", async () => {
+  recent = [
+    {
+      path: "/src/app",
+      session: session("app", { repo: "/src/app", kits: ["team"], provider: "kilo", permission_mode: "plan" }),
+    },
+  ];
+  folders["/src/app"] = folder("/src/app", { provider: { name: "kilo", reason: "last_session" } });
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = remote();
+  const dialog = await openLaunch();
+  fireEvent.click(await screen.findByRole("button", { name: "/src/app" }));
+  const kitsField = screen.getByRole("group", { name: "Kits" });
+  await waitFor(() => expect(within(kitsField).getByText("team")).toBeTruthy());
+  fireEvent.click(within(dialog).getByRole("button", { name: "Clone from URL" }));
+  fireEvent.change(urlInput(), { target: { value: URL_ } });
+  await screen.findByText("✓ repository found · 3 branches");
+  await waitFor(() => expect(within(kitsField).getByText("default")).toBeTruthy());
+  expect(within(kitsField).queryByText("team")).toBeNull();
+  expect(screen.queryByText("from the last session of this folder")).toBeNull();
+  expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("default");
+});
+
+test("Resume it is off while a clone runs (F10)", async () => {
+  answers["GET /api/clone-target"] = () => json(target({ name_state: "stopped_here" }));
+  answers["POST /api/remote-branches"] = remote();
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => json(job());
+  await cloneSource();
+  await screen.findByText("✓ repository found · 3 branches");
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+  fireEvent.click(cloneButton());
+  await screen.findByRole("button", { name: "Cloning…" });
+  expect((screen.getByRole("button", { name: "Resume it" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("Cancel clone pressed as the clone ends starts no session; the clone is offered as a folder (F11)", async () => {
+  let release: () => void = () => {};
+  const pending = new Promise<void>((resolve) => (release = resolve));
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = async () => {
+    await pending;
+    return json(job({ state: "done" }));
+  };
+  answers["DELETE /api/clones/j1"] = () => json(job({ state: "done" }));
+  folders[INTO] = folder(INTO);
+  const dialog = await cloneReady();
+  fireEvent.click(cloneButton());
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel clone" }));
+  await act(async () => release());
+  expect(await screen.findByText(`the clone ended before Cancel clone; it is in ${INTO}`, {}, { timeout: 3000 })).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
+  expect(where().value).toBe(INTO);
+  expect(calls.some((c) => c.method === "POST" && c.path === "/api/sessions")).toBe(false);
+});
+
+test("after a listing failed, a new URL shows fetching branches… while it waits (F12)", async () => {
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = () => json({ detail: { message: "cannot read x: y", kind: "git_failed", hint: null } }, 400);
+  await cloneSource();
+  await screen.findByText("cannot read x: y");
+  expect(branchSelect().options[0].textContent).toBe("—");
+  fireEvent.change(urlInput(), { target: { value: "git@github.com:ladohq/other.git" } });
+  expect(branchSelect().options[0].textContent).toBe("fetching branches…");
+});
+
+test("under StrictMode the clone is still asked for until it ends (F6)", async () => {
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = remote();
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () => json(job({ state: "done" }));
+  answers["POST /api/sessions"] = () =>
+    json({ session: session("marketplace", { repo: INTO }), resumed: false, changes: [], problems: [], lead: "", warnings: [] });
+  render(
+    <StrictMode>
+      <MemoryRouter initialEntries={["/sessions"]}>
+        <App />
+      </MemoryRouter>
+    </StrictMode>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+  const dialog = await screen.findByRole("dialog", { name: "New session" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Clone from URL" }));
+  fireEvent.change(urlInput(), { target: { value: URL_ } });
+  await screen.findByText("✓ repository found · 3 branches");
+  await waitFor(() => expect(cloneButton().disabled).toBe(false));
+  fireEvent.click(cloneButton());
+  expect(await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 })).toBeTruthy();
 });

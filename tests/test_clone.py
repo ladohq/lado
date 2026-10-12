@@ -501,3 +501,43 @@ def test_progress_lines(line, progress):
     else:
         assert (parsed.phase, parsed.percent, parsed.detail) == progress
         assert parsed.line == line
+
+
+@pytest.fixture
+def locked(tmp_path):
+    """A folder no one may read or enter, and one that may be read but not written."""
+    closed, read_only = tmp_path / "closed", tmp_path / "read-only"
+    closed.mkdir()
+    read_only.mkdir()
+    closed.chmod(0o000)
+    read_only.chmod(0o555)
+    yield closed, read_only
+    closed.chmod(0o755)
+    read_only.chmod(0o755)
+
+
+def test_a_folder_that_cannot_be_read_is_refused_not_raised(locked):
+    closed, _ = locked
+    for path in (closed, closed / "app"):
+        with pytest.raises(clone.CloneError) as refused:
+            clone.check_target("https://h/a/app", str(path))
+        assert refused.value.kind == "no_access"
+        assert str(refused.value).startswith(f"cannot look at {path}: ")
+
+
+def test_a_folder_that_cannot_be_written_is_refused_not_raised(locked, tmp_path):
+    _, read_only = locked
+    url = bare_remote(tmp_path)
+    with pytest.raises(clone.CloneError) as refused:
+        clone.clone(url, str(read_only / "app"))
+    assert refused.value.kind == "no_access"
+    assert str(refused.value).startswith(f"cannot make a folder in {read_only}: ")
+
+
+@pytest.mark.parametrize("url", ["https://example.com/", "file:///", "git@host:.git"])
+def test_a_url_that_names_no_repository_has_no_default_folder(url, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with pytest.raises(clone.CloneError) as refused:
+        clone.default_folder(url)
+    assert refused.value.kind == "no_repo_name"
+    assert str(refused.value) == f"{url} names no repository: give the folder to clone into"

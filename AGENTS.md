@@ -359,7 +359,8 @@ fixes and docs only: no new feature, no API or schema change.
     with `kind` and a `runtime.Hint`) by git's words, `KINDS`, the first that matches
     (`failure`: `cannot read|clone <url>: <reason> (<git's line>)`), a URL in any text only
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
-    `git_broken`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
+    `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
+    no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
   - `providers/`: agent CLIs behind one interface (`base.py`: `Provider`, `Capabilities`,
     `Launch`, neutral hook events, `Event.key` for `WAITING` and `RESUMED`; each provider's
     `EVENTS` maps its native events; `claude.py`: Claude Code, its role in `prompt.md` of

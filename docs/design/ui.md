@@ -1089,7 +1089,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   window's life; "fetching branches…" meanwhile, "✓ repository found · N branches" under
   the URL once listed); the remote's default branch is chosen and marked `(default)`
   (with no default said, main, else master, else the first); above 30 branches it is a
-  field that lists the branches holding what is typed. A listing that fails shows under
+  field that lists the branches holding what is typed (Enter takes a branch typed in full
+  or highlighted; other text is never sent). A listing that fails shows under
   the URL with the core's text (`CloneRefused`: `message`, `kind`, `hint`) and, where the
   human can act (an ssh key refused, an unknown host key, a GitHub login, a GitHub
   repository not shown), the hint's sentence and command with Copy, before anything is
@@ -1106,10 +1107,13 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   branch}`; 400 `CloneRefused`, 409 while another job clones into that folder) starts it,
   and the window asks `GET /api/clones/{id}` every 500 ms: a progress block with git's
   phase, its percent with a bar (`role="progressbar"`), the rest of git's line and the
-  time it runs. Meanwhile the fields are off and ×, Esc and Cancel do not close the window;
+  time it runs; a poll that fails is asked again (the clone goes on), and one the server
+  answers 404 (it restarted) ends the clone with that text. Meanwhile the fields are off,
+  Resume it too, and ×, Esc and Cancel do not close the window;
   **Cancel clone** sends `DELETE /api/clones/{id}`: git's process group ends, its
   temporary folder goes, the folder is not made, and the window says "the clone was
-  cancelled". A job no request asked about for `clone.ABANDONED` seconds (10: its tab was
+  cancelled" (a Cancel clone that came after git ended starts no session: the window
+  switches to Folder with the clone). A job no request asked about for `clone.ABANDONED` seconds (10: its tab was
   closed or reloaded) is cancelled the same way, a finished one is kept `clone.KEPT`
   seconds (60), and a server that stops cancels its running clones; jobs live in the
   server's memory only. A failed clone shows its text and hint, and the form stays. A

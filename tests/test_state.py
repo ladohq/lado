@@ -4,6 +4,7 @@ import datetime
 import json
 import re
 import sqlite3
+import time
 from pathlib import Path
 
 import agent_helpers
@@ -1095,6 +1096,22 @@ def test_a_gate_opens_with_the_run_that_waits_at_it(lado_home):
             "feature/x",
         ),
     ]
+
+
+def test_a_gate_and_its_event_share_one_time(lado_home, monkeypatch):
+    """The chat shows an event before a gate only at the same time: a millisecond that
+    turns between the two rows put the gate above the move that opened it."""
+    add_event = state._add_event
+
+    def late(db, session, agent, kind, *args, **kwargs):
+        if kind == state.GATE_OPEN:
+            time.sleep(0.005)  # the millisecond turns between the gate and its event
+        return add_event(db, session, agent, kind, *args, **kwargs)
+
+    monkeypatch.setattr(state, "_add_event", late)
+    _, gate = _waiting(lado_home)
+    [opened] = [e for e in state.list_events("s") if e.kind == state.GATE_OPEN]
+    assert opened.created_at == state.get_gate(gate.id).created_at
 
 
 def test_a_run_has_one_open_gate(lado_home):

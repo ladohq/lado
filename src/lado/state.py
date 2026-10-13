@@ -1465,11 +1465,19 @@ def _add_event(
     kind: str,
     detail: str,
     run: str | None = None,
+    at: str | None = None,
 ) -> None:
-    db.execute(
-        "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
-        (session, agent, kind, detail, run),
-    )
+    if at is None:
+        db.execute(
+            "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
+            (session, agent, kind, detail, run),
+        )
+    else:  # the time of a row written with it (_open_gate)
+        db.execute(
+            "INSERT INTO events (session, agent, kind, detail, run, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (session, agent, kind, detail, run, at),
+        )
 
 
 def end_reasons(session: str) -> dict[str, str]:
@@ -1715,7 +1723,10 @@ def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:
     )
     gate.id = cur.lastrowid or 0
     detail = f"#{gate.id} {gate.kind} at {gate.state}: {gate.question}"
-    _add_event(db, gate.session, LADO, GATE_OPEN, detail, gate.run)
+    # The gate's own time: the chat shows an event before a gate of the same time, and a
+    # millisecond that turned between the two rows put the gate above its run's move.
+    at = db.execute("SELECT created_at FROM gates WHERE id = ?", (gate.id,)).fetchone()[0]
+    _add_event(db, gate.session, LADO, GATE_OPEN, detail, gate.run, at)
 
 
 def _close_gate(

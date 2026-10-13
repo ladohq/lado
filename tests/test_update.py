@@ -53,6 +53,82 @@ def test_the_latest_release_skips_pre_releases_yanked_and_empty_ones():
     assert update.latest(data) == update.Release("0.20.0", "2026-10-04")
 
 
+def test_the_latest_of_all_releases_takes_pre_releases_but_not_yanked_ones():
+    data = index(
+        **{
+            "0.36.0": "2026-10-01",
+            "0.37.0rc1": "2026-10-05",
+            "0.37.0rc2": [{"upload_time_iso_8601": "2026-10-06T01:00:00Z", "yanked": True}],
+        }
+    )
+    assert update.latest(data, pre=True) == update.Release("0.37.0rc1", "2026-10-05")
+
+
+@pytest.mark.parametrize(
+    "current, releases, offered",
+    [
+        ("0.36.0", ["0.36.0", "0.37.0rc1"], "0.36.0"),
+        ("0.36.0", ["0.37.0rc1", "0.37.0"], "0.37.0"),
+        ("0.37.0rc1", ["0.36.0", "0.37.0rc1", "0.37.0rc2"], "0.37.0rc2"),
+        ("0.37.0rc2", ["0.37.0rc2", "0.37.0"], "0.37.0"),
+    ],
+)
+def test_a_release_candidate_is_offered_only_to_a_pre_release(current, releases, offered):
+    data = index(**{version: "2026-10-01" for version in releases})
+    assert update.offered(data, current).version == offered
+
+
+def test_a_pre_release_is_shown_as_one():
+    assert update.shown("0.37.0rc1") == "0.37.0rc1 (pre-release)"
+    assert update.shown("0.36.0") == "0.36.0"
+
+
+def test_the_check_keeps_the_kind_it_looked_for_and_looks_again_for_another(
+    published, lado_home, monkeypatch
+):
+    import lado
+
+    published(**{"0.36.0": "2026-10-01", "0.37.0rc1": "2026-10-05"})
+    monkeypatch.setattr(lado, "__version__", "0.37.0rc1", raising=False)
+    assert update.check().latest == "0.37.0rc1"
+    cache = lado_home / "update-check.json"
+    assert json.loads(cache.read_text())["pre"] is True
+    monkeypatch.setattr(lado, "__version__", "0.36.0", raising=False)
+    checked = update.check()  # a fresh cache of the other kind: looked at again
+    assert checked.latest == "0.36.0" and checked.available is None
+    assert json.loads(cache.read_text())["pre"] is False
+
+
+def test_a_failed_look_keeps_no_release_of_the_other_kind(
+    published, lado_home, tmp_path, monkeypatch
+):
+    import lado
+
+    published(**{"0.36.0": "2026-10-01", "99.0.0rc1": "2026-10-05"})
+    monkeypatch.setattr(lado, "__version__", "0.37.0rc1", raising=False)
+    assert update.check().available == "99.0.0rc1"
+    monkeypatch.setattr(lado, "__version__", "0.36.0", raising=False)
+    monkeypatch.setenv("LADO_UPDATE_INDEX", str(tmp_path / "missing.json"))
+    failed = update.check()
+    assert failed.error and failed.latest is None and failed.available is None
+
+
+def test_a_cache_without_its_kind_is_one_of_final_releases(published, lado_home, monkeypatch):
+    import lado
+
+    published(**{"0.36.0": "2026-10-01", "0.37.0rc1": "2026-10-05"})
+    monkeypatch.setattr(lado, "__version__", "0.36.0", raising=False)
+    update.check()
+    cache = lado_home / "update-check.json"
+    old = json.loads(cache.read_text())
+    del old["pre"]
+    old["latest"] = "0.35.0"
+    cache.write_text(json.dumps(old))
+    assert update.check().latest == "0.35.0"  # read as `pre: false`: no new look
+    monkeypatch.setattr(lado, "__version__", "0.37.0rc1", raising=False)
+    assert update.check().latest == "0.37.0rc1"
+
+
 def test_a_named_release_is_found_also_a_pre_release_and_not_an_unknown_one():
     data = index(**{"0.19.0": "2026-10-01", "0.21.0rc1": "2026-10-05"})
     assert update.release(data, "0.19.0") == update.Release("0.19.0", "2026-10-01")
@@ -263,6 +339,31 @@ def test_update_at_the_latest_version_says_so_and_stops_nothing(
     assert main(["update"]) == 0
     assert capsys.readouterr().out == f"LADO {__version__} is the latest version.\n"
     assert not state.get_session("s").stopped_at
+
+
+def test_update_of_a_final_release_is_not_offered_a_release_candidate(
+    installed, published, capsys, monkeypatch
+):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", "0.36.0", raising=False)
+    published(**{"0.36.0": "2026-10-01", "0.37.0rc1": "2026-10-05"})
+    assert main(["update"]) == 0
+    assert capsys.readouterr().out == "LADO 0.36.0 is the latest version.\n"
+
+
+def test_update_of_a_release_candidate_is_offered_the_next_one(
+    installed, published, capsys, monkeypatch
+):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", "0.37.0rc1", raising=False)
+    published(**{"0.36.0": "2026-10-01", "0.37.0rc1": "2026-10-05", "0.37.0rc2": "2026-10-06"})
+    answering(monkeypatch, "n")
+    assert main(["update"]) == 1
+    assert capsys.readouterr().out.startswith(
+        "LADO 0.37.0rc1 -> 0.37.0rc2 (PyPI, released 2026-10-06)\n"
+    )
 
 
 def test_update_shows_the_plan_and_asks(installed, repo, fake_tmux, capsys, monkeypatch):

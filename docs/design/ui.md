@@ -1174,7 +1174,9 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   answer's `problems` (open runs that cannot go on), its `warnings` (what `lado start`
   prints on stderr: kit supervisors not used, what the supervisor's CLI asks the human
   before its first hook, such as Claude Code's "trust this folder?") and a resume's
-  `changes` show under the session's head until closed. No tmux attach.
+  `changes` show above the session's tabs until closed (`.started-notice`: 12 px under
+  the top bar, 10 px above the tabs, which move down while it is open; LAD-42,
+  2026-10-14). No tmux attach.
 - **First message** (decided 2026-10-12, LAD-19; mockup `task/lad-19/mockup-first-message.html`
   v2, variant C): a row **First message to the supervisor (optional)** just above
   Advanced, in the New and the Resume mode, for a folder and a clone alike, folded each
@@ -2033,8 +2035,11 @@ question's options are neutral until picked, Other… and Skip in `--muted`.
 has one look, the terminal column's type, from one set of rules in `styles.css` (each place
 keeps its own markup: links in a `nav`, or the terminals' `tablist` with ×). `.tab-bar` is
 the band that holds and scrolls the tabs: `--raised`, from edge to edge of its column (the
-session's through `--main-pad`, the same variable as `.session-main`'s padding), a 5 px
-ground above the tabs. `.tab-item` is the framed tab: IBM Plex Mono 13 px, `--muted`
+session's through `--main-pad`, the same variable as `.session-main`'s side padding), a 5 px
+ground above the tabs. The session's band starts right under the top bar (or, in a narrow
+window, right under the session list stacked over the session), level with the terminal
+panel's band, and so do their selected tabs: `.session-main` has no top padding (LAD-42,
+2026-10-14; only the start notice, Launch and session control, stands above the band). `.tab-item` is the framed tab: IBM Plex Mono 13 px, `--muted`
 (`--ink` on hover), an icon (14 px) or the status dot on its left, a transparent 1 px frame
 on three sides rounded 6 px at the top. The selected one, by `aria-current="page"` or
 `data-active` (one selector), is `--panel` with a `--line` frame, `--ink` 600, its icon

@@ -235,6 +235,40 @@ def test_the_tests_name_the_installer_and_the_prefix(tmp_path, monkeypatch):
     assert found.command("0.22.0") == ["/bin/sh", "fake-installer", "0.22.0"]
 
 
+@pytest.mark.parametrize(
+    "lado",
+    [
+        '{ name = "lado" }',
+        '{ name = "lado", git = "https://github.com/ladohq/lado" }',
+        '{ name = "lado", editable = "/src/lado" }',
+    ],
+)
+def test_a_uv_tool_install_is_removed_by_uv_whatever_its_source(tmp_path, lado):
+    receipt = f"[tool]\nrequirements = [{lado}]\nentrypoints = []\n"
+    assert update.remover(uv_tool(tmp_path, receipt)) == ["uv", "tool", "uninstall", "lado"]
+
+
+@pytest.mark.parametrize("suffix, name", [("", "lado"), ("@1", "lado@1")])
+def test_a_pipx_install_is_removed_by_pipx_with_its_suffix(tmp_path, suffix, name):
+    prefix = tmp_path / "pipx" / "venvs" / name
+    prefix.mkdir(parents=True)
+    metadata = {
+        "main_package": {"package": "lado", "package_or_url": "/src/lado", "suffix": suffix}
+    }
+    (prefix / "pipx_metadata.json").write_text(json.dumps(metadata))
+    assert update.remover(prefix) == ["pipx", "uninstall", name]
+
+
+def test_another_install_has_no_remover(tmp_path):
+    assert update.remover(tmp_path) is None
+
+
+def test_the_tests_name_the_remover(tmp_path, monkeypatch):
+    monkeypatch.setenv("LADO_UPDATE_PREFIX", str(tmp_path))
+    monkeypatch.setenv("LADO_UNINSTALL_REMOVER", "/bin/sh fake-remover")
+    assert update.remover() == ["/bin/sh", "fake-remover"]
+
+
 @pytest.fixture
 def installed(tmp_path, monkeypatch, published):
     """This LADO as a uv tool in a prefix of the test's; PyPI's index has 99.0.0, this

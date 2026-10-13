@@ -267,6 +267,24 @@ def installer(where: Path | None = None) -> Installer | None:
     return None
 
 
+def remover(where: Path | None = None) -> list[str] | None:
+    """The argv that removes the LADO in `where` (default: this one's prefix), whatever
+    source it was installed from: `uv tool uninstall lado` for a uv tool (`uv-receipt.toml`
+    there), `pipx uninstall lado<suffix>` for pipx (`pipx_metadata.json`); None for anything
+    else (pip in an environment, a working copy). LADO_UNINSTALL_REMOVER (tests) is the
+    argv instead."""
+    where = where or prefix()
+    test = os.environ.get("LADO_UNINSTALL_REMOVER")
+    if test:
+        return shlex.split(test)
+    if (where / "uv-receipt.toml").is_file():
+        return ["uv", "tool", "uninstall", "lado"]
+    if (where / "pipx_metadata.json").is_file():
+        main = json.loads((where / "pipx_metadata.json").read_text()).get("main_package") or {}
+        return ["pipx", "uninstall", f"lado{main.get('suffix') or ''}"]
+    return None
+
+
 _FROM_INDEX = {"name", "extras", "specifier", "marker"}  # a uv receipt's requirement keys
 _PIPX_SPEC = re.compile(r"lado\s*(\[[^\]]*\])?\s*([<>=!~][^/]*)?", re.IGNORECASE)
 

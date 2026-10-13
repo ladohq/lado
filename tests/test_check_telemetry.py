@@ -9,11 +9,9 @@ import threading
 from pathlib import Path
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "scripts" / "check_telemetry.py"
-RELEASE = ROOT / ".github" / "workflows" / "release.yml"
 
 
 def _load(name: str, path: Path):
@@ -135,13 +133,3 @@ def test_main_checks_the_package_constants(monkeypatch, capsys):
     assert check_telemetry.main() == 1
     assert seen == [(telemetry.ENDPOINT, telemetry.PROJECT_TOKEN)]
     assert capsys.readouterr().out == "no\n"
-
-
-def test_the_release_checks_the_token_before_it_builds_and_publishes():
-    steps = yaml.safe_load(RELEASE.read_text())["jobs"]["pypi"]["steps"]
-    runs = [step.get("run", "").strip() for step in steps]
-    names = [step.get("name", "") for step in steps]
-    check = runs.index("uv run python scripts/check_telemetry.py")
-    assert names.index("Check tag matches package version") < check
-    assert check < runs.index("make dist")
-    assert check < runs.index("uv publish")

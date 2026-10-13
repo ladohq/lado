@@ -56,7 +56,8 @@ There is no fixed soak time: the final follows the human's "ok".
 
 1. `uv version X.Y.Z`, the date in place of `(unreleased)` in CHANGELOG.md's heading,
    commit `Release X.Y.Z` on main, push. CI is green on that commit.
-2. Push the tag `vX.Y.Z`. The Release workflow checks it (section 6), then builds with
+2. Push the tag `vX.Y.Z`. The Release workflow checks it and LADO's telemetry token
+   (section 6), then builds with
    `make dist` and publishes to PyPI.
 
 The Windows probe and the live tests are not run again: the code is the last RC's, which
@@ -80,3 +81,15 @@ fails, and nothing is published, when:
 There is no way round it: a refused final is fixed by a new RC of what main has now
 (section 2), then the final again. Delete the refused tag first (`git push --delete origin
 vX.Y.Z`, `git tag -d vX.Y.Z`); PyPI got nothing.
+
+Then, for every tag, an RC too, it runs `scripts/check_telemetry.py`: it asks the host of
+LADO's telemetry endpoint whether it accepts LADO's project token (PostHog's `/batch/`
+silently drops the events of another region's token). Nothing is published when:
+
+- the host refuses the token: `telemetry: <host> refuses the project token: it is not a
+  token of a project in this region`. `telemetry.PROJECT_TOKEN` is a token of a project in
+  another region than `telemetry.ENDPOINT`: fix the pair on main, then tag again as above;
+- the check cannot be made: `telemetry: cannot check the project token: <reason>` (no
+  answer within 10 seconds, another HTTP status, an empty token). For a network or PostHog
+  outage, rerun the job once PostHog answers; the tag stays. Run it locally the same way:
+  `uv run python scripts/check_telemetry.py`.

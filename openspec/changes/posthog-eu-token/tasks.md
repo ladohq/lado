@@ -32,7 +32,7 @@
 - [x] 3.1 `.github/workflows/release.yml`: a step `Check the telemetry token belongs to
   the endpoint's region`, `run: uv run python scripts/check_telemetry.py`, after `Check
   tag matches package version` and before `make dist` and `uv publish` (AC-4).
-- [x] 3.2 `tests/test_check_telemetry.py`: reads `release.yml` with PyYAML and checks that
+- [x] 3.2 `tests/test_release_workflow.py` (beside the release check's own test): reads `release.yml` with PyYAML and checks that
   the step runs the script and comes after the tag check and before `make dist` and `uv
   publish` (AC-4). Check: `make test`.
 - [x] 3.3 AGENTS.md: Release says the Release workflow first runs

@@ -3,28 +3,31 @@
 // muted; on a gate and in a run's notes, which are of that run, the short name. A chip opens
 // the record that was attached in the panel over the page (?view=<record>); when the
 // artifact changed since, "changed since · open latest" beside it opens its latest record.
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 
 import { contentPath, type AttachmentInfo } from "./api";
 import { changed, kindOf, size } from "./artifacts";
 import { FullName, KindIcon } from "./ArtifactView";
 import { useLive } from "./live";
-import { sessionPath, VIEW_PARAM } from "./paths";
+import { NEEDS_YOU_PATH, sessionPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
 
 // Opens a record of the session in the panel, as a step of the browser's history (Back
-// closes it): over the session's page where it is, else (Needs you) over its Activity tab.
+// closes it): over the session's page where it is, over Needs you there (with the session
+// in the address), else over the session's Activity tab.
 export function useView(session: string): (record: string) => void {
   const [, setParams] = useSearchParams();
   const here = useParams().name === session;
+  const needsYou = useLocation().pathname === NEEDS_YOU_PATH;
   const navigate = useNavigate();
   return (record) => {
-    if (!here) {
+    if (!here && !needsYou) {
       navigate(`${sessionPath(session, "activity")}?${VIEW_PARAM}=${encodeURIComponent(record)}`);
       return;
     }
     setParams((now) => {
       const next = new URLSearchParams(now);
       next.set(VIEW_PARAM, record);
+      if (needsYou) next.set(VIEW_SESSION_PARAM, session);
       return next;
     });
   };

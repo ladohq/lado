@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AgentInfo, GateInfo, MessageInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
 import { clock } from "./ChatText";
-import { AGENT_REST, FakeEventSource, FakeNotification, FakeSocket, setVisible, stream } from "./fakes";
+import { AGENT_REST, artifact, attachment, FakeEventSource, FakeNotification, FakeSocket, setVisible, stream } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -138,6 +138,8 @@ beforeEach(() => {
       if (path.endsWith("/agents")) return new Response(JSON.stringify(agents));
       if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       if (path.includes("/messages?")) return new Response(JSON.stringify({ items: [], earlier: false }));
+      if (path.endsWith("/content")) return new Response("# Design");
+      if (path.includes("/records/")) return new Response(JSON.stringify({ artifact: artifact(), record: artifact().latest }));
       return new Response("[]");
     }),
   );
@@ -238,6 +240,24 @@ test("a gate and a question are answered in place, each to its session; an answe
   waiting = [];
   stream().send("change", { kind: "messages", session: "lado", key: "5", op: "update", item: null }, "12");
   expect(await screen.findByText("Nothing waits for you")).toBeTruthy();
+});
+
+test("a chip opens the artifact panel over Needs you, which stays with its pick; × closes it", async () => {
+  waiting = [waits.question("lado", question(5, { attachments: [attachment()] })), waits.question("api", question(7))];
+  open();
+  const lado = await card("lado");
+  fireEvent.click(within(lado).getByRole("button", { name: "later" }));
+  fireEvent.click(within(lado).getByRole("button", { name: "Open artifact feature/x/design" }));
+  await waitFor(() => expect(address()).toBe("/needs-you?view=r1&session=lado"));
+  const panel = await screen.findByRole("dialog", { name: "Artifact feature/x/design" });
+  expect(await within(panel).findByRole("link", { name: "Open in Artifacts tab" })).toBeTruthy();
+  // Needs you is still there under it, the pick as it was.
+  expect(within(await card("lado")).getByRole("button", { name: "later" }).getAttribute("aria-pressed")).toBe("true");
+  expect(await card("api")).toBeTruthy();
+  fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(address()).toBe("/needs-you"));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(within(await card("lado")).getByRole("button", { name: "later" }).getAttribute("aria-pressed")).toBe("true");
 });
 
 test("Open terminal goes to the agent's terminal in its session, and the address keeps no ?terminal=", async () => {

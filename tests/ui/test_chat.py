@@ -13,7 +13,7 @@ from test_gates import gated_session
 from test_images import png
 from test_main_screen import log_in, running_session
 
-from lado import runtime, state
+from lado import artifacts, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -151,8 +151,8 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     page: Page, server, repo, shot
 ):
     """The supervisor's question, the gate of run ship/x and w1's question: three tabs in the
-    order they were asked; the gate's Approve moves the run; the card over the window and Esc
-    (docs/design/ui.md, The waiting card)."""
+    order they were asked; the gate's Approve moves the run; the card over the chat's area
+    and Esc (docs/design/ui.md, The waiting card)."""
     session = gated_session(repo)
     runtime.ask_human(session, "supervisor", "Which branch?", "No epic: main.", ["main", "epic"])
     runtime.spawn_worker(session, "sleep 0", name="w1")
@@ -181,16 +181,28 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     expect(tabs.nth(0)).to_have_attribute("aria-selected", "true")
     expand = card.get_by_role("button", name="Expand the card")
     expand.click()
-    dialog = page.get_by_role("dialog", name=f"What waits for you in {session}")
-    expect(dialog).to_be_visible()
-    box = dialog.bounding_box()
-    assert box["x"] <= 32 and box["width"] >= 1400 - 64, box
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    # Over the chat's area only: the feed and the composer hidden, no scrim, no dialog; the
+    # session's tabs seen and usable.
+    chat = page.get_by_role("region", name="Chat", exact=True).bounding_box()
+    box = card.bounding_box()
+    assert box["x"] >= chat["x"] - 1 and box["y"] >= chat["y"] - 1, (box, chat)
+    assert box["x"] + box["width"] <= chat["x"] + chat["width"] + 1, (box, chat)
+    assert box["y"] + box["height"] <= chat["y"] + chat["height"] + 1, (box, chat)
+    assert box["width"] >= chat["width"] - 1 and box["height"] >= chat["height"] - 1, (box, chat)
+    assert box["x"] > 32, box  # not the window's
+    expect(page.get_by_role("log", name="Chat with the session")).to_be_hidden()
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_hidden()
+    expect(page.locator(".waiting-overlay, .panel-scrim")).to_have_count(0)
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    sections = page.get_by_role("navigation", name="Session sections")
+    expect(sections.get_by_role("link", name="Agents")).to_be_visible()
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"{theme}-expanded")
     page.emulate_media(color_scheme="light")
     page.keyboard.press("Escape")
-    expect(dialog).to_have_count(0)
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
     expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
     card.get_by_role("tabpanel").get_by_role("button", name="Approve", exact=True).click()
     expect(tabs).to_have_count(2)
@@ -198,6 +210,60 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
         lambda: state.get_run(session, "ship/x").state != "check", "the run moved on", session
     )
     shot(page, "approved")
+
+
+def on_top(page: Page, panel) -> bool:
+    """Whether what the window shows at the middle of the panel is the panel's."""
+    box = panel.bounding_box()
+    return page.evaluate(
+        "([x, y]) => !!document.elementFromPoint(x, y)?.closest('.artifact-panel')",
+        [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2],
+    )
+
+
+def asked_with_a_plan(session: str) -> None:
+    artifacts.write(session, "supervisor", "plan", "# The plan\n\nJ1 to J9.", title="The plan")
+    runtime.ask_human(
+        session,
+        "supervisor",
+        "Shall I do it myself?",
+        "See the plan.",
+        ["myself", "wait"],
+        attached=["plan"],
+    )
+
+
+def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_topmost(
+    page: Page, server, repo, shot
+):
+    """LAD-48: a chip in the expanded card opens the panel over it; the first Esc closes the
+    panel, the second folds the card (docs/design/ui.md, The waiting card)."""
+    session = running_session(repo)
+    asked_with_a_plan(session)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    card.get_by_role("button", name="myself").click()
+    chip = card.get_by_role("button", name="Open artifact plan")
+    chip.click()
+    panel = page.get_by_role("dialog", name="Artifact plan")
+    expect(panel).to_contain_text("J1 to J9.")
+    assert on_top(page, panel)
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-panel")
+    page.emulate_media(color_scheme="light")
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    expect(chip).to_be_focused()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
+    page.keyboard.press("Escape")
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+    expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
+    expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
 
 
 def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(

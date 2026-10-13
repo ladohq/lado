@@ -1,6 +1,6 @@
 // The waiting card (docs/design/ui.md, The waiting card): a tab per agent with open
 // questions and per open gate, the picks of an agent's tab sent together, the gate's panel,
-// the card expanded over the window. Its place in the chat and on Needs you: Chat.test.tsx,
+// the card expanded within its page. Its place in the chat and on Needs you: Chat.test.tsx,
 // NeedsYou.test.tsx.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
@@ -64,7 +64,14 @@ function run(name: string): RunInfo {
   return { name } as RunInfo;
 }
 
-type Props = { questions: MessageInfo[]; gates?: GateInfo[]; runs?: RunInfo[] | null; stopped?: boolean; focus?: Focus };
+type Props = {
+  questions: MessageInfo[];
+  gates?: GateInfo[];
+  runs?: RunInfo[] | null;
+  stopped?: boolean;
+  focus?: Focus;
+  at?: string; // the address, the session's Activity tab by default
+};
 
 let posted: { path: string; body: unknown }[] = [];
 let answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } };
@@ -95,7 +102,7 @@ function Card(props: Props) {
   const [live] = useState(() => new Live());
   return (
     <LiveContext.Provider value={live}>
-      <MemoryRouter initialEntries={["/sessions/s/activity"]}>
+      <MemoryRouter initialEntries={[props.at ?? "/sessions/s/activity"]}>
         <WaitingCard
           session="s"
           questions={props.questions}
@@ -111,6 +118,7 @@ function Card(props: Props) {
 
 const show = (props: Props) => render(<Card {...props} />);
 const card = () => screen.getByRole("region", { name: "What waits for you in s" });
+const isExpanded = () => card().classList.contains("expanded");
 const tab = (name: string) => within(card()).getByRole("tab", { name });
 const selected = () => within(card()).getAllByRole("tab").filter((one) => one.getAttribute("aria-selected") === "true");
 const send = () => within(card()).getByRole("button", { name: /^Send / }) as HTMLButtonElement;
@@ -361,12 +369,10 @@ test("a gate's comment and an own answer stay through a switch of tabs and throu
   fireEvent.click(tab("task/lad-27 1"));
   expect(comment().value).toBe("check the migration");
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
-  const dialog = await screen.findByRole("dialog");
-  expect((within(dialog).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement).value).toBe(
-    "check the migration",
-  );
-  fireEvent.click(within(dialog).getByRole("button", { name: "Collapse the card" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  expect(comment().value).toBe("check the migration");
+  fireEvent.click(within(card()).getByRole("button", { name: "Collapse the card" }));
+  await waitFor(() => expect(isExpanded()).toBe(false));
   expect(comment().value).toBe("check the migration");
   fireEvent.click(tab("w1 1"));
   expect(own().value).toBe("after the tag");
@@ -399,34 +405,47 @@ test("focus shows the item's tab and marks the item for a moment", async () => {
   }
 });
 
-test("expanded over the window and back: the expand icon, then Esc or the fold icon; the focus returns", async () => {
-  show({ questions: [question(5, "w1")] });
+test("expanded in its place and back: the expand icon, then Esc or the fold icon; the focus returns", async () => {
+  const { container } = show({ questions: [question(5, "w1")] });
   const expand = within(card()).getByRole("button", { name: "Expand the card" });
+  expect(expand.getAttribute("aria-expanded")).toBe("false");
   // Esc while it is not expanded does nothing to it.
   fireEvent.keyDown(document, { key: "Escape" });
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(isExpanded()).toBe(false);
   fireEvent.click(expand);
-  const dialog = await screen.findByRole("dialog", { name: "What waits for you in s" });
-  expect(dialog.getAttribute("aria-modal")).toBe("true");
-  expect(dialog.parentElement?.className).toBe("waiting-overlay");
-  expect(dialog.parentElement?.parentElement).toBe(document.body);
-  expect(document.activeElement).toBe(within(dialog).getByRole("tab", { name: "w1 1" }));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  // In its page, where it was: no portal, no overlay, no modal dialog.
+  expect(container.contains(card())).toBe(true);
+  expect(document.querySelector(".waiting-overlay")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(card().getAttribute("aria-modal")).toBeNull();
+  const collapse = within(card()).getByRole("button", { name: "Collapse the card" });
+  expect(collapse.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(within(card()).getByRole("tab", { name: "w1 1" }));
   fireEvent.keyDown(document, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(isExpanded()).toBe(false));
   expect(document.activeElement).toBe(within(card()).getByRole("button", { name: "Expand the card" }));
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
-  fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Collapse the card" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  fireEvent.click(within(card()).getByRole("button", { name: "Collapse the card" }));
+  await waitFor(() => expect(isExpanded()).toBe(false));
   expect(document.activeElement).toBe(within(card()).getByRole("button", { name: "Expand the card" }));
+});
+
+test("while an artifact panel is open (?view= in the address), Esc leaves the expanded card to the panel", async () => {
+  show({ questions: [question(5, "w1")], at: "/sessions/s/activity?view=r1" });
+  fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(isExpanded()).toBe(true);
 });
 
 test("the expanded card folds itself when nothing waits any more", async () => {
   const view = show({ questions: [question(5, "w1")] });
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
-  await screen.findByRole("dialog");
+  await waitFor(() => expect(isExpanded()).toBe(true));
   view.rerender(<Card questions={[]} />);
-  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByRole("region", { name: "What waits for you in s" })).toBeNull();
   view.rerender(<Card questions={[question(6, "w1")]} />);
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(card()).toBeTruthy();
+  expect(isExpanded()).toBe(false);
 });

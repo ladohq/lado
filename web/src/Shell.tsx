@@ -30,16 +30,15 @@ import {
 import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
+import { NEEDS_YOU_PATH } from "./paths";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
 import { StatisticsBanner } from "./Telemetry";
 import { BUNDLE_VERSION } from "./version";
 
-const NEEDS_YOU = "/needs-you"; // its link counts what waits
-
 const SECTIONS: { to: string; name: string; icon: ReactNode }[] = [
   { to: "/", name: "Home", icon: <HomeIcon /> },
-  { to: NEEDS_YOU, name: "Needs you", icon: <NeedsYouIcon /> },
+  { to: NEEDS_YOU_PATH, name: "Needs you", icon: <NeedsYouIcon /> },
   { to: "/sessions", name: "Sessions", icon: <SessionsIcon /> },
   { to: "/projects", name: "Projects", icon: <ProjectsIcon /> },
   { to: "/kits", name: "Kits", icon: <KitsIcon /> },
@@ -122,7 +121,7 @@ export function Shell() {
           {SECTIONS.map((section) => (
             <Fragment key={section.to}>
               <li>
-                {section.to === NEEDS_YOU ? (
+                {section.to === NEEDS_YOU_PATH ? (
                   <NeedsYouLink {...section} collapsed={collapsed} />
                 ) : (
                   <RailLink {...section} collapsed={collapsed} />

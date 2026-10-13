@@ -49,6 +49,13 @@ export const viewPath = (session: string, record: string) =>
 // opens the one an attachment keeps, a row of the Artifacts tab the latest): ?view=<record id>.
 export const VIEW_PARAM = "view";
 
+// On Needs you, which shows every session, the panel's session goes with its record:
+// /needs-you?view=<record>&session=<name>.
+export const VIEW_SESSION_PARAM = "session";
+
+// The Needs you page (NeedsYou.tsx), whose rail link counts what waits.
+export const NEEDS_YOU_PATH = "/needs-you";
+
 // A card in the session's chat: the chat scrolls to the element of that id.
 export const chatPath = (session: string, anchor?: string) =>
   `${sessionPath(session, "activity")}${anchor ? `#${anchor}` : ""}`;

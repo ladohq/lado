@@ -4,7 +4,7 @@
 // buttons in one row, its top bar: the actions with their labels, icons under 560 px.
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { ArtifactPanel } from "./ArtifactPanel";
@@ -47,12 +47,18 @@ function windowWidth(width: number) {
   });
 }
 
-function Open() {
+function Where() {
+  const { pathname, search } = useLocation();
+  return <output aria-label="Address">{pathname + search}</output>;
+}
+
+function Open({ at = "/sessions/lado/activity?view=r1" }: { at?: string }) {
   const [live] = useState(() => new Live());
   return (
     <LiveContext.Provider value={live}>
-      <MemoryRouter initialEntries={["/sessions/lado/activity?view=r1"]}>
+      <MemoryRouter initialEntries={[at]}>
         <ArtifactPanel session="lado" record={DESIGN.latest.id} />
+        <Where />
       </MemoryRouter>
     </LiveContext.Provider>
   );
@@ -62,6 +68,12 @@ const panel = () => screen.getByRole("dialog", { name: /^Artifact/ });
 const edge = () => screen.getByRole("separator", { name: "Artifact panel width" });
 const shown = () => panel().style.width;
 const stored = () => JSON.parse(localStorage.getItem("lado.artifactPanel") ?? "null");
+
+test("its close takes the record and its session (Needs you's ?session=) out of the address", async () => {
+  render(<Open at="/needs-you?view=r1&session=lado&x=1" />);
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(screen.getByRole("status", { name: "Address" }).textContent).toBe("/needs-you?x=1");
+});
 
 test("the panel's left edge is the shared splitter with a grip, 620 px wide at first, within 400 px and the room", () => {
   render(<Open />);

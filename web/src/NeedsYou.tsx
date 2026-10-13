@@ -2,15 +2,17 @@
 // stopped, by session, oldest first, live from the feed (live.ts, the list `waiting`): per
 // session its waiting card (WaitingCard.tsx), the same as in its chat and answered in place,
 // then each agent in `waiting` with why it waits and its terminal. Each session links to its
-// chat.
+// chat. A chip opens the artifact panel over the page (?view=<record>&session=<name>), so
+// the cards and their picks stay; an expanded card fills the page, the rest hidden (CSS).
 import { useEffect } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 
 import type { AgentInfo, WaitingItem } from "./api";
+import { ArtifactPanel } from "./ArtifactPanel";
 import { FeedRow } from "./FeedRow";
 import { useLive, useLiveStore } from "./live";
 import { NotificationsOffer } from "./Notifications";
-import { chatPath, terminalPath } from "./paths";
+import { chatPath, terminalPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
 import { useTitle } from "./Shell";
 import { agentWaits } from "./waiting";
 import { WaitingCard } from "./WaitingCard";
@@ -30,6 +32,9 @@ export function NeedsYou() {
   const live = useLiveStore();
   const loaded = useLive().waiting;
   useEffect(() => live.watch("waiting"), [live]);
+  const [params] = useSearchParams();
+  const view = params.get(VIEW_PARAM);
+  const viewed = params.get(VIEW_SESSION_PARAM);
 
   return (
     <div className="needs-you">
@@ -44,6 +49,7 @@ export function NeedsYou() {
       {loaded &&
         "items" in loaded &&
         bySession(loaded.items).map(([session, items]) => <SessionWaits key={session} session={session} items={items} />)}
+      {view && viewed && <ArtifactPanel session={viewed} record={view} />}
     </div>
   );
 }

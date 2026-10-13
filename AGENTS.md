@@ -945,6 +945,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `scripts/check_telemetry.py`: the Release workflow's check that the region of
   `telemetry.ENDPOINT` accepts `telemetry.PROJECT_TOKEN` (one `POST /flags/?v=2` of its
   host, no event; docs/release.md); standard library and `lado.telemetry` only.
+  `scripts/release_notes.py`: a release tag's notes from CHANGELOG.md for its GitHub
+  release, checked before PyPI too (docs/release.md); standard library only.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

@@ -28,9 +28,45 @@ jobs:
       # PostHog's /batch/ drops the events of another region's token without an error.
       - name: Check the telemetry token belongs to the endpoint's region
         run: uv run python scripts/check_telemetry.py
+      # The GitHub release's notes come from CHANGELOG.md: a tag without them publishes
+      # nothing anywhere.
+      - name: Check the tag has release notes in CHANGELOG.md
+        run: python3 scripts/release_notes.py "$GITHUB_REF_NAME" > /dev/null
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: lts/*
       # Builds the web UI and checks that the sdist and the wheel ship it.
       - run: make dist
+      # The GitHub release attaches these very files, built once.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
       - run: uv publish
+
+  # Only after PyPI accepted the release: a GitHub release never names a version pip
+  # cannot install.
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # gh release create
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      # A release candidate is a pre-release, never the latest; a final is the latest.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 scripts/release_notes.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
+            --title "LADO ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md" \
+            "$(python3 scripts/release_notes.py --flag "$GITHUB_REF_NAME")"

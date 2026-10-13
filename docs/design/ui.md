@@ -611,7 +611,12 @@ Sessions for now. The UI's texts are in English.
   first, by session, each session's name a link to its chat and beside it "In the chat"
   (also to its chat); then the session's open questions and gates as the chat's waiting
   card (The waiting card, LAD-28; before, a card per item with its own link), answered in
-  place; then the agents in `waiting` with their role, since when, and why (`status_reason`, or
+  place; expanded, a card fills the page's content area under its session's name line,
+  the other sessions and the agents' rows hidden until it folds (LAD-48). A chip in a
+  card opens the artifact panel over Needs you (`?view=<record>&session=<name>`,
+  `paths.VIEW_SESSION_PARAM`; Artifacts, The panel), so the cards, their picks and an
+  expanded card stay as they were (LAD-48; before, it went to the session's Activity tab
+  and the picks not sent were lost); then the agents in `waiting` with their role, since when, and why (`status_reason`, or
   "waits for you in its terminal" when LADO knows no reason), with **Open terminal**
   (`/sessions/<name>/activity?terminal=<agent>`: the panel opens that agent's tab and
   drops the parameter from the address, replaced, so Back and a reload do not open it
@@ -903,11 +908,20 @@ Built in the chat task (2026-10-03):
   radius `0 10px 10px 10px`; the shown tab lies on it, tinted with 10 % of its colour, its
   text `--ink` 600; the others `--raised` and `--muted`. **Height**: at most half the
   chat's; the list scrolls inside, the tabs and the Send row stay in view. An icon button
-  at the right of the tabs (`ExpandIcon`, no text; "Expand the card", the UI's Tooltip)
-  shows it over the whole window (`role="dialog"`, "What waits for you in <session>", 16 px
-  from the window's edges over `--scrim`); its other icon ("Collapse the card") or Esc
-  brings it back, the focus returning to the expand button, and it comes back by itself
-  when nothing waits. **Lines lead to tabs**: an open question's or gate's line in the feed
+  at the right of the tabs (`ExpandIcon`, no text; "Expand the card", the UI's Tooltip;
+  `aria-expanded`) shows it in its place over its page's area, never over the whole
+  window, nothing dimmed, no modal (decided 2026-10-13, LAD-48, mockup
+  `task/lad-48/mockup-expanded-card.html`, option A; before, a dialog over the window and
+  a scrim, under which an artifact panel opened from it stayed hidden): in the chat over
+  the chat's whole area, the feed and the composer hidden, the session's head, tabs and
+  team row seen and usable; on Needs you over the page's content area (Needs you, above).
+  Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
+  and its scrim, fixed over the page, are over the card too. On a window of 900 px or
+  less, which scrolls, it is the window's height under the top bar and expanding scrolls
+  it there. Its other icon ("Collapse the card") or Esc brings it back, the focus
+  returning to the expand button, and it comes back by itself when nothing waits. While
+  an artifact panel is open (`?view=`), Esc closes the panel only; the next Esc folds the
+  card. **Lines lead to tabs**: an open question's or gate's line in the feed
   has an arrow ("Answer question #N", "Answer gate #N") that shows its tab and marks the
   item for 1.5 s; a link to an open item (`#message-<id>`, `#gate-<id>`: Needs you's
   targets, a notification) does the same once what waits is loaded, and scrolls the feed
@@ -1760,8 +1774,10 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   (`unknown`), never "unchanged". The Activity tab (chat and gates), Flows and the panel
   watch the session's artifacts for it, so a new record changes a chip without a reload.
 - **The panel** (`ArtifactPanel.tsx`): a chip or a row of the tab opens the viewer on the right over the page
-  (`?view=<record>`, `paths.VIEW_PARAM`, on any of the session's tabs; from Needs you,
-  over the session's Activity tab), over a scrim; the page stays where it was. Esc, × or a
+  (`?view=<record>`, `paths.VIEW_PARAM`, on any of the session's tabs; on Needs you over
+  Needs you, with its session, `?view=<record>&session=<name>`, `paths.VIEW_SESSION_PARAM`,
+  LAD-48; elsewhere over the session's Activity tab), over a scrim; its close takes both
+  parameters out; the page stays where it was. Esc, × or a
   click on the scrim closes it and the focus goes back to the chip (a row's link); Back
   closes it too (the view is a step of the history). Its top bar holds every button in one
   row, never wrapped (decided 2026-10-13, LAD-43, mockup artifact

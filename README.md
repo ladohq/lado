@@ -123,6 +123,9 @@ itself: `lado update` and the web UI show the commands to run by hand.
 More (going back to an older version, an update that stops half way, the log):
 [docs/install.md](docs/install.md#update).
 
+To remove LADO, `lado uninstall` stops everything, cleans up after it and removes the
+program: [docs/install.md](docs/install.md#uninstall).
+
 ## Kits
 
 **A kit is a team you can install.** Roles, skills, tools and the way of working that

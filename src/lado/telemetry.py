@@ -812,6 +812,27 @@ def send() -> int:
     return 0
 
 
+def sender_ended(wait: float) -> bool:
+    """Whether no `lado telemetry send` runs, waiting up to `wait` seconds for one that
+    does (its send.lock): `lado uninstall` deletes LADO_HOME only after it, since the sender
+    writes into it. Makes nothing."""
+    import fcntl
+
+    path = folder() / "send.lock"
+    if not path.exists():
+        return True
+    deadline = time.monotonic() + wait
+    with open(path, "a") as lock:
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return True
+            except OSError:
+                if time.monotonic() >= deadline:
+                    return False
+                time.sleep(0.05)
+
+
 def _subtract_dropped(count: int) -> None:
     """The drops a report carried went out: those added since stay."""
     left = max(0, dropped() - count)

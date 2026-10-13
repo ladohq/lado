@@ -829,9 +829,14 @@ Attached = list[tuple[str, str]] | tuple[()]
 
 
 def home() -> Path:
-    path = Path(os.environ.get("LADO_HOME") or Path.home() / ".lado")
+    path = home_path()
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def home_path() -> Path:
+    """LADO_HOME, not made when it is not there (`lado uninstall`)."""
+    return Path(os.environ.get("LADO_HOME") or Path.home() / ".lado")
 
 
 class SchemaError(RuntimeError):

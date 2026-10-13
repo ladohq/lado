@@ -2,6 +2,12 @@
 
 ## 0.37.0 (unreleased)
 
+- `lado uninstall [--dry-run] [--keep-data] [--yes]` removes LADO: it stops the UI server
+  and every session, removes the worktrees and branches `lado finish` would remove (merged
+  and clean) and lists the others with their git commands, deletes `~/.lado`, then the
+  program installed with uv tool or pipx. With another `LADO_HOME` it deletes only that
+  folder and keeps the program. `--keep-data` keeps the data and the repositories, so a
+  LADO installed again resumes the sessions. See docs/install.md, Uninstall.
 - `lado start --prompt TEXT` / `--prompt-file FILE` (`-` reads stdin) and the New session
   window's First message row give the supervisor a first message from you, also on a
   resume, where it comes after LADO's `session resumed`. The supervisor answers in the

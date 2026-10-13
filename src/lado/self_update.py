@@ -60,9 +60,9 @@ class UpdateRefused(runtime.LadoError):
     """An update holds the lock already."""
 
 
-def _take_lock(wait: float = 0, shared: bool = False) -> IO | None:
-    """The update's lock, exclusive for an update; `shared` for a look at it, so two looks
-    at once do not see each other as an update."""
+def take_lock(wait: float = 0, shared: bool = False) -> IO | None:
+    """The update's lock, exclusive for an update (and for `lado uninstall`); `shared` for
+    a look at it, so two looks at once do not see each other as an update."""
     lock = open(lock_path(), "a+")
     deadline = time.monotonic() + wait
     while True:
@@ -81,7 +81,7 @@ def running_pid() -> int | None:
     when none runs."""
     if not lock_path().exists():
         return None
-    lock = _take_lock(shared=True)
+    lock = take_lock(shared=True)
     if lock is not None:
         lock.close()
         return None
@@ -264,7 +264,7 @@ def not_started(id: str, to: str, why: str) -> None:
     """The result of the UI's update `id` that ended before it started (PyPI unreachable, a
     refusal): `failed` with no log, so the page that waits for its id learns why. Written
     under the lock, and never over that update's own result or a running update's."""
-    lock = _take_lock(LOCK_WAIT)
+    lock = take_lock(LOCK_WAIT)
     if lock is None:
         return
     with lock:
@@ -321,7 +321,7 @@ class _Told:
 def run(found: Plan, say: Say = print, id: str | None = None) -> int:
     """The update `found` plans, with the installer it found: 0 when everything is on the
     new version again. UpdateRefused, with nothing written, when another update runs."""
-    lock = _take_lock(LOCK_WAIT)
+    lock = take_lock(LOCK_WAIT)
     if lock is None:
         refused = refusal(found.installer)
         raise UpdateRefused(refused.why if refused else "an update is running")
@@ -579,17 +579,19 @@ def restore(source: Path, target: Path) -> None:
 
 
 def _install(installer: update.Installer, version: str, say: Say, verb: str = "Upgrading") -> int:
-    command = installer.command(version)
-    say(f"{verb}: {shlex.join(command)}", flush=True)
-    return _command(command, say)
+    argv = installer.command(version)
+    say(f"{verb}: {shlex.join(argv)}", flush=True)
+    return command(argv, say)
 
 
 def _run(binary: Path, say: Say, *args: str) -> int:
     """`binary` with `args`: its exit code; its output said line by line."""
-    return _command([str(binary), *args], say)
+    return command([str(binary), *args], say)
 
 
-def _command(argv: list[str], say: Say) -> int:
+def command(argv: list[str], say: Say) -> int:
+    """Run `argv`: its exit code (127 when it cannot start); its output said line by line.
+    Imports nothing: `lado update` and `lado uninstall` run it on a package being replaced."""
     try:
         process = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace"

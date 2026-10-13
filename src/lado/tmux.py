@@ -201,6 +201,17 @@ def kill_session(session: str) -> None:
     run("kill-session", "-t", f"={session}")
 
 
+def kill_server() -> None:
+    """End LADO's tmux server (`lado uninstall`); one that ended already is fine."""
+    try:
+        _run_once(["kill-server"], None)
+    except TmuxMissing:
+        raise
+    except TmuxError as error:
+        if "no server running" not in str(error) and "error connecting" not in str(error):
+            raise
+
+
 def kill_window(session: str, window: str) -> None:
     """Close the window and the program in it, in every session it is linked into (a UI
     viewer's too). A window that is already gone is fine."""

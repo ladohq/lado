@@ -601,6 +601,25 @@ def _update(args: argparse.Namespace) -> int:
     return self_update.run(plan, say, args.id)
 
 
+def cmd_uninstall(args: argparse.Namespace) -> int:
+    # Everything the uninstall needs is imported before the program's remover runs.
+    from lado import uninstall
+
+    _human_only("uninstall")
+    found = uninstall.plan(keep_data=args.keep_data)
+    uninstall.print_plan(found)
+    if args.dry_run:
+        return 0
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("lado: not uninstalled: confirm with --yes", file=sys.stderr)
+            return 1
+        if (_input("Uninstall? [y/N] ") or "").lower() not in ("y", "yes"):
+            print("Not uninstalled.")
+            return 1
+    return uninstall.run(found)
+
+
 def _nothing_to_do(args: argparse.Namespace, said: str) -> int:
     """No update to run: said on the terminal, or for the UI's update (`--id`) the reason
     its result gives."""
@@ -1428,6 +1447,22 @@ def main(argv: list[str] | None = None) -> int:
     update_cmd.add_argument("--id", help=argparse.SUPPRESS)
     update_cmd.set_defaults(func=cmd_update)
 
+    uninstall_cmd = commands.add_parser(
+        "uninstall",
+        help="remove LADO: stop its sessions and UI server, clean their repositories, "
+        "delete LADO_HOME and the program",
+    )
+    uninstall_cmd.add_argument(
+        "--dry-run", action="store_true", help="print what it would do, change nothing"
+    )
+    uninstall_cmd.add_argument(
+        "--keep-data",
+        action="store_true",
+        help="stop everything and remove the program, but keep LADO_HOME and the repositories",
+    )
+    uninstall_cmd.add_argument("--yes", action="store_true", help="uninstall without asking")
+    uninstall_cmd.set_defaults(func=cmd_uninstall)
+
     telemetry_cmd = commands.add_parser(
         "telemetry",
         help="anonymous usage statistics and LADO's errors for its maintainers: status, on, "
@@ -1469,13 +1504,18 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     # No statistics sender from the sender itself, nor from `lado update`, which starts
-    # nothing of its own after the installer (self_update).
-    kicks = args.command != "update" and not (args.command == "telemetry" and args.sub == "send")
+    # nothing of its own after the installer (self_update), nor from `lado uninstall`,
+    # which deletes LADO_HOME and the program: a kick or a journal line would make
+    # LADO_HOME again (lado.uninstall).
+    removes = args.command == "uninstall"
+    kicks = args.command != "update" and not removes
+    kicks = kicks and not (args.command == "telemetry" and args.sub == "send")
     try:
         # `lado stop` is what the refusal asks for: it migrates once no session runs.
         # `lado doctor` checks the environment as it is, a migration due included.
         # `lado telemetry` keeps its files outside lado.db and reads it only.
-        if args.command not in ("stop", "doctor", "telemetry"):
+        # `lado uninstall` shows an older lado.db as it is and stops (so migrates) itself.
+        if args.command not in ("stop", "doctor", "telemetry", "uninstall"):
             runtime.migrate_if_safe()
         return args.func(args)
     except (
@@ -1495,7 +1535,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except Exception as exc:
         # Unexpected: journaled (lado.telemetry), then the traceback as before.
-        telemetry.record(f"cli:{_where(args)}", exc)
+        if not removes:
+            telemetry.record(f"cli:{_where(args)}", exc)
         raise
     finally:
         if kicks:  # a human's command: the statistics sender, when something is due

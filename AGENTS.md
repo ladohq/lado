@@ -273,9 +273,13 @@ fixes and docs only: no new feature, no API or schema change.
     latest update, `LADO_HOME/update-result.json` (`Result`, `write_result`,
     `read_result`): the one exchange between LADO versions, format 1 in the module's
     docstring, which only grows (a reader passes over unknown keys and names a higher
-    format as a newer LADO's). Tests: `LADO_UPDATE_INDEX` (a local file instead of PyPI),
-    `LADO_UPDATE_INSTALLER` (an installer's argv, given the version as its last argument)
-    and `LADO_UPDATE_PREFIX` (the install's prefix instead of `sys.prefix`).
+    format as a newer LADO's). `remover` is the argv that removes this install, whatever
+    its source (`uv tool uninstall lado` by `uv-receipt.toml`, `pipx uninstall
+    lado<suffix>` by `pipx_metadata.json`, else None), for `lado uninstall`. Tests:
+    `LADO_UPDATE_INDEX` (a local file instead of PyPI), `LADO_UPDATE_INSTALLER` (an
+    installer's argv, given the version as its last argument), `LADO_UNINSTALL_REMOVER`
+    (the remover's argv) and `LADO_UPDATE_PREFIX` (the install's prefix instead of
+    `sys.prefix`).
   - `telemetry.py`: LADO's own errors and, with the human's yes, usage statistics
     (openspec change usage-telemetry, docs/telemetry.md); standard library and
     `lado.state` only at its top (every hook imports it). `record(where, exc, ...)` is the
@@ -301,9 +305,12 @@ fixes and docs only: no new feature, no API or schema change.
     network, never raises) starts a detached `lado telemetry send` when sending is on,
     something is due (no report in `REPORT_EVERY`, or a queued error) and no try in
     `RETRY_AFTER`: `cli.main` after every command but `hook`, `mcp`, `loop`, `telemetry
-    send` and `update` (which starts nothing after its installer), `doctor` included;
+    send`, `update` (which starts nothing after its installer) and `uninstall` (which
+    also records no error: either would make the deleted LADO_HOME again), `doctor`
+    included;
     the session loop every `KICK_EVERY`; the UI server's housekeeping. A hook only
-    queues. `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
+    queues. `sender_ended` waits for that lock (`lado uninstall`, before it deletes
+    LADO_HOME). `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
     the network: `_build` (`_expire` drops errors older than `OUTBOX_MAX_AGE`; `report`
     counted from lado.db by `state.usage_counts` from the last report, at most
     `REPORT_MAX_WINDOW` back, never stored; `_groups`, PostHog's `$exception` per
@@ -324,8 +331,9 @@ fixes and docs only: no new feature, no API or schema change.
     `plan` is what an update would do (the sessions `runtime.session_status` says run, also
     with the loop down, those whose tmux is gone, the UI server; `print_plan`,
     `print_by_hand`, the API's `UpdatePlan`). `run` holds an exclusive flock on
-    `LADO_HOME/update.lock` (its pid in it) for the whole update, so a second one, from the
-    CLI or the UI, is refused at once; only then it truncates `LADO_HOME/update.log` (mode
+    `LADO_HOME/update.lock` (its pid in it; `take_lock`, which `lado uninstall` takes too)
+    for the whole update, so a second one, from the CLI or the UI, is refused at once; only
+    then it truncates `LADO_HOME/update.log` (mode
     600), where each line it says and the output of each command it runs go too, the UI's
     login token cut out (`lado ui` prints its link), and writes the result `running` (mode
     600 too). A look at the lock (`running_pid`, `refusal`) takes it shared, so two looks
@@ -354,6 +362,26 @@ fixes and docs only: no new feature, no API or schema change.
     in update.log (`--id`, hidden from the help); one that ends before it starts writes a
     `failed` result of its id with no log (`not_started`), unless another update holds the
     lock, so the page waiting for that id learns why.
+  - `uninstall.py`: `lado uninstall` (`cli.cmd_uninstall` only refuses inside an agent,
+    asks and prints; `main` runs it without `migrate_if_safe`). A `LADO_HOME` that is not
+    there is never made (`state.home_path`; `state.home` makes it): only the program is
+    left to remove. `plan` reads only: it
+    refuses while an update runs and on a newer `lado.db`, reads the sessions of an older
+    one read-only (`name`, `repo`, `stopped_at` when there), judges each worktree under
+    `.lado/worktrees/<session>/` and branch `lado/<session>/*` of their repositories by
+    finish's rule (`runtime.work_of`, `runtime.keeps_work`), and guards `LADO_HOME`
+    (deleted only when it is `~/.lado` by real path or holds `lado.db`, never `/`, the home
+    folder or above it; such a folder is never walked). `run` holds the update's lock
+    (`self_update.take_lock`), stops the UI server, `runtime.stop_all` (which migrates an
+    older `lado.db`), waits for each loop (one that does not end stops it before any
+    repository or file), closes the viewers and kills LADO's tmux server when no session is
+    left on its socket (`tmux.kill_server`); then judges the work again, removes what
+    goes (`runtime.remove_work`), drops `.lado/worktrees`, the exclude line
+    (`runtime.include_worktrees`) and an empty `.lado/` once no worktree is left, deletes
+    `LADO_HOME`, and, for the default home only, runs `update.remover` last through
+    `self_update.command`; after it nothing is imported (a test forbids it). Output on
+    stdout only, no log; exit 0 when each step of the plan was done. `--keep-data` stops
+    and removes the program only.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: a `FolderProblem`, a `LadoError` with a `kind`, `missing`,
@@ -1514,6 +1542,19 @@ and is checked as before.
 store's `remove_session` first, which also removes content files no record refers to that
 are more than an hour old; the output counts the artifacts); it refuses a running one, and
 one with open runs unless `--force`; worktrees and branches stay on disk and are listed.
+
+`lado uninstall [--dry-run] [--keep-data] [--yes]` removes LADO (`uninstall.py`): it prints
+its plan and asks `Uninstall? [y/N]` (`--yes` is required without a terminal; `--dry-run`
+only prints), then stops the UI server and every session of this `LADO_HOME` with their
+loops and viewers, ends LADO's tmux server when no other session is on its socket, removes
+in each session's repository the worktrees and branches `lado finish` would remove without
+asking and lists the others with their `git worktree remove --force` and `git branch -D`,
+deletes `LADO_HOME`, and, only for the default `~/.lado`, removes the program last (`uv
+tool uninstall lado`, `pipx uninstall lado<suffix>`). With another `LADO_HOME` the program
+stays and its command is printed. Refused inside an agent, while `lado update` runs and on
+a newer `lado.db`. `--keep-data` keeps `LADO_HOME` and the repositories, so a LADO installed
+again resumes the sessions. The agent CLIs' own records of the folders stay
+(docs/install.md, Uninstall).
 
 Supervisor-started sessions: the supervisor proposes a new, independent session for a
 problem it found or a new ticket by `ask_human` with the brief attached and the choice

@@ -281,12 +281,13 @@ def _megabytes(size: int) -> str:
 def check_lado() -> Check:
     """This LADO's version and whether a newer one is out (update.check: once a day)."""
     checked = update.check()
+    version = update.shown(lado.__version__)
     if checked is None:
-        return Check("LADO", OK, f"{lado.__version__} (no update check: LADO_NO_UPDATE_CHECK=1)")
+        return Check("LADO", OK, f"{version} (no update check: LADO_NO_UPDATE_CHECK=1)")
     hints = [h for h in (update.available_line(checked), checked.error) if h]
     if hints:
-        return Check("LADO", WARN, lado.__version__, "; ".join(hints))
-    return Check("LADO", OK, f"{lado.__version__}, the latest version")
+        return Check("LADO", WARN, version, "; ".join(hints))
+    return Check("LADO", OK, f"{version}, the latest version")
 
 
 @dataclass(frozen=True)
@@ -406,7 +407,7 @@ def report(system: System, open_to_network: bool, up_seconds: float) -> str:
     installer = system.installer or "no uv tool or pipx install"
     lines = [
         "### LADO system info",
-        f"- LADO {system.version} ({installer}), Python {system.python}",
+        f"- LADO {update.shown(system.version)} ({installer}), Python {system.python}",
         f"- OS: {system.os} ({system.machine})",
         f"- Update: {_update_line(system.check)}",
         f"- Server: {'open to the network' if open_to_network else 'loopback only'}, "

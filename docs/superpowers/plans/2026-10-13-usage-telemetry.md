@@ -29,13 +29,13 @@ the repository's style, `(LAD-32)` at the end).
   it). `lado.__version__` is read inside functions.
 - Files (D2): `LADO_HOME/errors.jsonl` (+ `.1`), `LADO_HOME/telemetry/{consent.json,id,
   sent.json,dropped,send.lock,outbox/}`; journal, consent and id are mode 600.
-- Constants: `JOURNAL_MAX = 1 << 20`, `OUTBOX_MAX = 200`, `SEND_TIMEOUT = 2.0` (as `update.CHECK_TIMEOUT`), `SEND_DEADLINE = 30`,
+- Constants: `JOURNAL_MAX = 1 << 20`, `OUTBOX_MAX = 200`, `OUTBOX_MAX_AGE = 30 * 86400`, `DROPPED_MAX = 1_000_000`, `REPORT_MAX_WINDOW = 30 * 86400`, `SEND_TIMEOUT = 2.0` (as `update.CHECK_TIMEOUT`), `SEND_DEADLINE = 30`,
   `RETRY_AFTER = 15 * 60`, `REPORT_EVERY = 24 * 3600`, `KICK_EVERY = 10 * 60`,
   `FIELDS_VERSION = 1`, `ENDPOINT = "https://eu.i.posthog.com/batch/"`,
-  `PROJECT_KEY = ""` (the human sets it before the release), `TEST_KEY = "phc_test"`.
+  `PROJECT_TOKEN = ""` (the human sets it before the release), `TEST_TOKEN = "phc_test"`.
 - Environment: off when `DO_NOT_TRACK` is set to anything but `""` or `"0"`, or
   `LADO_TELEMETRY == "0"`; `LADO_TELEMETRY_URL` replaces `ENDPOINT` and, with an empty
-  `PROJECT_KEY`, uses `TEST_KEY`. `tests/conftest.py` sets `LADO_TELEMETRY=0`.
+  `PROJECT_TOKEN`, uses `TEST_TOKEN`. `tests/conftest.py` sets `LADO_TELEMETRY=0`.
 - `where` values: `cli:<command>` (argparse's command, with the subcommand for
   `kits`/`marketplaces`/`artifacts`/`telemetry`, e.g. `cli:kits add`),
   `hook:<neutral event name, else native>`, `mcp:<tool>`, `loop`, `server:<route path
@@ -145,7 +145,8 @@ def dropped() -> int
   - `test_bounded_append_rotates` (a 1.1 MiB file and an old `.1` → the old `.1` gone,
     the big file is `.1`, the new file holds only the line);
   - `test_outbox_bound_counts_drops` (`OUTBOX_MAX` monkeypatched to 2, three records →
-    2 files, `dropped() == 1`);
+    2 files, `dropped() == 1`; and with `DROPPED_MAX` monkeypatched to 2, the `dropped` file
+    never passes 2 bytes);
   - `test_scrub_leaves_no_path_name_or_token`:
 
     ```python
@@ -227,7 +228,11 @@ def dropped() -> int
   - `test_loop_journals_a_repeated_error_once`;
   - `test_server_500_is_journaled` (test client with `raise_server_exceptions=False`, a
     route monkeypatched to raise; `where == "server:/api/sessions"`);
-  - `test_server_log_rotates_at_start`.
+  - `test_server_log_rotates_at_start`;
+  - `test_server_log_copy_truncated_while_running` (a log over the bound opened with
+    `O_APPEND` by the test as the server's stdout is; after the check, `.1` has the old
+    content, the log is empty, and a write through the open descriptor lands at offset 0's
+    new end).
 - [ ] **Step 2:** run them: FAIL.
 - [ ] **Step 3: Implement.** `_where(args)` is `args.command` plus the subcommand's
   `dest` value when the command has subcommands. Never the arguments.
@@ -294,7 +299,7 @@ def last_sent() -> tuple[str | None, str | None]           # (time of the last g
     `$process_person_profile is False`, `$geoip_disable is True`; no `value` beyond
     `"<type> in <where>"`);
   - `test_send_posts_and_empties` (`telemetry_endpoint`; the body's `api_key ==
-    TEST_KEY`; the outbox is empty; `sent.json` has the time);
+    TEST_TOKEN`; the outbox is empty; `sent.json` has the time);
   - `test_send_failure_keeps_everything` (endpoint answers 500; then a second `send`
     within `RETRY_AFTER` posts nothing; `last_sent()[1]` names the failure);
   - `test_send_removes_only_what_it_sent` (an error recorded during the post stays);
@@ -307,6 +312,10 @@ def last_sent() -> tuple[str | None, str | None]           # (time of the last g
     an `ssl.SSLError` raised by a monkeypatched opener): `send()` returns 0 within
     `SEND_DEADLINE` + 1 s, prints nothing to stdout or stderr (`capsys`), keeps the
     outbox, writes `sent.json`'s `error`, releases the lock;
+  - `test_old_outbox_files_are_dropped_and_counted` (a file 31 days old is removed
+    before the batch and `dropped()` grows by one);
+  - `test_report_window_at_most_30_days` (`sent.json`'s last report 45 days ago → `since`
+    is 30 days back);
   - `test_long_outage_stays_bounded` (`OUTBOX_MAX` 3, ten records and five failed tries
     → 3 files, `dropped() == 7`, `batch()` holds one `lado_daily` whose `since` is the
     last good report);

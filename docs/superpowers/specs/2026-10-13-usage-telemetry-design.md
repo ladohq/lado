@@ -55,7 +55,7 @@ statistics: on (chosen 2026-10-13)
 last sent: 2026-10-13 09:12 · waiting: 0 reports, 1 error
 $ DO_NOT_TRACK=1 lado telemetry status
 statistics: off: DO_NOT_TRACK=1 is set (your choice: on)
-$ lado telemetry show          # the exact JSON of the next send, the key left out
+$ lado telemetry show          # the exact JSON of the next send, the token left out
 $ lado telemetry on|off        # refused inside an agent
 ```
 
@@ -73,6 +73,17 @@ ended after 30 s whatever happens (DNS included), at most every 15 minutes. What
 stays bounded (200 errors, then only counted; one report whose window grows). `lado
 telemetry status` and the Settings line say `last try failed: <reason>`; once the
 endpoint answers again, one report and the grouped errors go out.
+
+**What LADO keeps on disk.** Statistics are not collected: the daily report is counted
+from `lado.db` when it is sent and never stored, so nothing grows with use. What waits
+to be sent: at most 200 errors (a few hundred bytes each), none older than 30 days, and a
+report window of at most 30 days. Logs: `errors.jsonl`, `hooks.log`, `loop.log`,
+`server.log` at most 1 MiB each plus one `.1` (`server.log` also while a server runs for
+weeks). At worst about 9 MiB.
+
+**The PostHog parameter.** LADO needs the **Project token** (`phc_…`, Project settings →
+General), not the Project ID. It goes into `telemetry.PROJECT_TOKEN`; it is public by
+design.
 
 ## What is sent, and where
 

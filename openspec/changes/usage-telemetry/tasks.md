@@ -12,7 +12,7 @@ steps). Design doc: `docs/superpowers/specs/2026-10-13-usage-telemetry-design.md
 
 - [ ] 2.1 `cli.main`, `hooks.main` and `_log`, `mcp_server._reasons(tool)`,
   `loop.RepeatedErrors` and `loop.log`, the server's exception handler, `server.log`
-  rotated at start. Check: `uv run pytest tests/test_cli.py tests/test_runtime.py
+  rotated at start and copy-truncated while the server runs. Check: `uv run pytest tests/test_cli.py tests/test_runtime.py
   tests/test_mcp_server.py tests/test_loop.py tests/test_server_system.py
   tests/test_telemetry.py -n auto`.
 - [ ] 2.2 Integration: a failing hook of the fake agent journals and queues. Check:
@@ -21,7 +21,7 @@ steps). Design doc: `docs/superpowers/specs/2026-10-13-usage-telemetry-design.md
 ## 3. Report, sender and CLI (D7–D11)
 
 - [ ] 3.1 `report`, `batch`, `send`, `kick`, `_post` (PostHog batch, no profiles, no
-  GeoIP; 2 s per network operation, ended after 30 s, silent on any failure, bounded
+  GeoIP; the outbox's 30-day age and the report's 30-day window; 2 s per network operation, ended after 30 s, silent on any failure, bounded
   while unreachable); `state.spawned_provider`, `state.usage_counts`; the `telemetry_endpoint`
   fixture. Check: `uv run pytest tests/test_telemetry.py tests/test_state.py -n auto`.
 - [ ] 3.2 `lado telemetry status|on|off|show|send`, the question of `lado start` and

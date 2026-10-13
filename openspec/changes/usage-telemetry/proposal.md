@@ -42,6 +42,12 @@ no one but the user sees it, and `lado forget` deletes it with the session.
 - **An unreachable endpoint changes nothing for the user**: only a detached sender
   talks to it, with a short timeout and a hard end, silently; what waits is bounded;
   the failure shows only in `lado telemetry status` and Settings.
+- **What LADO keeps on disk is bounded**: statistics are not collected as events; the
+  daily report is counted from `lado.db` when it is sent and never stored. What waits to
+  be sent: at most 200 errors, none older than 30 days, and one report whose window is at
+  most 30 days. Logs: `errors.jsonl`, `hooks.log`, `loop.log` and `server.log` at most
+  1 MiB each plus one `.1` (`server.log` also while the server runs). At worst about
+  9 MiB in all, whatever happens.
 - **The consent covers a list of fields** (`docs/telemetry.md`). When a later LADO sends a
   new kind of data, it asks again and names what is new.
 - `lado telemetry status` and the System panel's new row `Statistics` say whether it
@@ -75,8 +81,12 @@ hidden `send`), the consent question of `lado start` and `lado ui`, the API (`GE
   says what is collected.
 - **The browser's own JavaScript errors** in the UI: only the Python side is LADO's
   runtime. Possible later.
-- **The PostHog project key itself**: the human creates the PostHog project and puts its
-  key into `telemetry.PROJECT_KEY` before the release. Without a key LADO asks nothing and
+- **The PostHog project token itself**: the human has the PostHog project; its **Project
+  token** (`phc_…`, Project settings → General; PostHog's capture API calls it `api_key`)
+  goes into `telemetry.PROJECT_TOKEN` before the release, by the human or, when they give
+  it at the gate, by the developer. The Project ID is not needed: capture knows the
+  project by its token. The token is public by design (write-only, in every PostHog
+  client's code). Without a token LADO asks nothing and
   sends nothing, and says so.
 - **Errors from before the human said yes**: nothing is queued while the choice is open
   or off. The local journal keeps them.
@@ -117,6 +127,10 @@ hidden `send`), the consent question of `lado start` and `lado ui`, the API (`GE
   about it; each try ends within 30 seconds (2 seconds per network operation), tries
   come at most every 15 minutes, and the queue stays within 200 errors and one report;
   `lado telemetry status` and Settings name the last failure.
+- AC-6b: However long LADO runs, offline or not, its telemetry and log files stay within
+  their bounds: the queue at most 200 errors, none older than 30 days (older ones counted
+  as dropped), a report window of at most 30 days, each log at most 1 MiB plus one
+  rotated file, `server.log` also during a long server run.
 - AC-7: No event carries a path, a repository, session or agent name, a message, a
   prompt, a command's argument or an exception's text; an error's stack names only frames
   of LADO's own package.

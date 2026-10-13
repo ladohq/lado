@@ -11,7 +11,7 @@ preview of exactly what goes, and a switch in Settings and `lado telemetry`.
 LADO SHALL send statistics or errors only while all of these hold: the human chose `on`
 for the current list of fields, neither `DO_NOT_TRACK` (set, not empty and not `0`) nor
 `LADO_TELEMETRY=0` is in the process's environment, and this LADO has an endpoint (a
-project key, or `LADO_TELEMETRY_URL`). Otherwise nothing SHALL be queued or sent, and
+PostHog project token, or `LADO_TELEMETRY_URL`). Otherwise nothing SHALL be queued or sent, and
 `lado telemetry status`, `GET /api/telemetry` and the System panel SHALL say why: not
 chosen, off, off by the named variable, or no statistics endpoint. The choice SHALL be
 kept in `LADO_HOME` and be the same for the CLI, the UI and every LADO process of that
@@ -28,7 +28,7 @@ home.
   variable prints `statistics: off: DO_NOT_TRACK=1 is set (your choice: on)`
 
 #### Scenario: No endpoint
-- **WHEN** this LADO's project key is empty and `LADO_TELEMETRY_URL` is unset
+- **WHEN** this LADO's project token is empty and `LADO_TELEMETRY_URL` is unset
 - **THEN** no question is asked, nothing is sent, and `status` says this LADO has no
   statistics endpoint
 
@@ -99,7 +99,7 @@ the package, function, line; other frames as `<external>`), where it happened wi
 ids, the provider, a fingerprint, its count and its first and last time. No event SHALL
 carry a path, a repository, session or agent name, a message, a prompt, a command's
 argument, an environment value or an exception's text. `lado telemetry show` and
-`GET /api/telemetry/preview` SHALL give exactly the JSON the next send would post, the key
+`GET /api/telemetry/preview` SHALL give exactly the JSON the next send would post, the token
 left out. `docs/telemetry.md` SHALL list the same fields as the code, checked by a test.
 
 #### Scenario: An error with a path in its message
@@ -150,8 +150,9 @@ SHALL give up after `SEND_TIMEOUT` (2 seconds, as the update check's
 `SEND_DEADLINE` (30 seconds) whatever the network does, DNS included; a failed try SHALL
 be followed by the next one no sooner than 15 minutes later, with no retries inside a
 try. What waits SHALL stay bounded while the endpoint stays unreachable: at most 200
-queued errors (further ones only counted), and one pending daily report whose window
-grows from the last report that went through. The failure SHALL be kept only for
+queued errors, none older than 30 days (further and older ones only counted), and one
+pending daily report whose window grows from the last report that went through, never
+back more than 30 days. The failure SHALL be kept only for
 `lado telemetry status` (`last try failed: <reason>`) and the Settings section's line.
 
 #### Scenario: Offline laptop
@@ -173,6 +174,21 @@ grows from the last report that went through. The failure SHALL be kept only for
 - **WHEN** a send succeeds after two days offline
 - **THEN** one daily report covering the two days and the queued errors grouped by
   fingerprint are posted, and the queue is empty
+
+### Requirement: Statistics are counted when sent, never collected
+
+LADO SHALL NOT keep usage events of its own for statistics: the daily report SHALL be
+counted from `lado.db` when it is built and not stored after it is sent. What waits to
+be sent SHALL be at most 200 queued errors and the drop count; an error queued more than
+30 days ago SHALL be removed and counted as dropped; a report's window SHALL start no
+earlier than 30 days before it is built.
+
+#### Scenario: A month without network
+- **WHEN** LADO is used daily for 45 days with the endpoint unreachable and records 500
+  errors
+- **THEN** `LADO_HOME/telemetry` holds at most 200 queued errors, none older than 30 days,
+  and no report file; the first send after that posts one report counting the last 30
+  days and the queued errors, and `errors_dropped` counts the rest
 
 ### Requirement: Tests never send
 

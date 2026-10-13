@@ -91,10 +91,14 @@ this as they are.
     `errors.jsonl.1` (an older `.1` is replaced) before the append. The same helper,
     `telemetry.bounded_append(path, text)`, writes `hooks.log` and `loop.log`.
     `server/run.py` renames `server.log` to `server.log.1` at the server's start when it
-    passes the bound.
+    passes the bound. While it runs, the server's kick thread (D7) checks it every
+    `KICK_EVERY` and, over the bound, copies it to `server.log.1` and truncates it in
+    place (copy-truncate: the server's stdout was opened with `O_APPEND`, so its next
+    write lands at the new end; a line written during the copy may be lost, a fair price
+    for a log).
 - **D4. When sending is on.** `telemetry.state()` returns a `State`: `choice` (`on`,
   `off`, None), `fields_ok` (the stored `fields` ≥ `FIELDS_VERSION`), `off_by` (the
-  variable that switches it off) and `endpoint` (whether there is a key or
+  variable that switches it off) and `endpoint` (whether there is a project token or
   `LADO_TELEMETRY_URL`). Sending is on only when all of these hold:
   - `choice == "on"` and `fields_ok`;
   - no `off_by`: `DO_NOT_TRACK` set and not `0` or empty, or `LADO_TELEMETRY=0`;
@@ -119,7 +123,9 @@ this as they are.
   - The daily report has only the fields `FIELDS` lists (D8).
   - A unit test feeds an exception whose message and locals hold a path, a session name
     and a token, and checks that none of them is in the JSON.
-- **D6. The outbox and its bounds.** One file per error. A writer that finds
+- **D6. The outbox and its bounds.** One file per error; an event is a few hundred bytes
+  to 2 KB, so the outbox stays under about 0.5 MB. Before each send the sender removes
+  files older than `OUTBOX_MAX_AGE` (30 days) and adds their number to `dropped`. A writer that finds
   `OUTBOX_MAX` (200) files or more writes none and appends one byte to
   `telemetry/dropped`. The sender sends the file's length as `errors_dropped` in the next
   report, then truncates it. The sender groups the outbox by `fingerprint`: one
@@ -166,6 +172,10 @@ this as they are.
   - `runs` (`flow_start`), `gates` (`gate_open`), `turn_errors` (`turn_error`),
     `lado_errors` (lines of `errors.jsonl` in the window), `errors_dropped`.
 
+  The window starts no earlier than `REPORT_MAX_WINDOW` (30 days) before now. The report
+  is built at send time and never stored: a report that failed to go is simply counted
+  again, over a longer window, at the next try. Nothing else of LADO's usage is kept for
+  statistics.
   A `lado.db` with another schema, or none, gives the report without the counts and
   `db: "unreadable"`. Sessions forgotten within the window are missing from the counts;
   `docs/telemetry.md` says so.
@@ -179,7 +189,7 @@ this as they are.
   - The UI's banner shows while `GET /api/telemetry` says `ask: true`, which is the same
     condition without the ttys.
 - **D10. PostHog, one function.**
-  - `telemetry._post(batch)` posts `{"api_key": PROJECT_KEY, "batch": [...]}` to
+  - `telemetry._post(batch)` posts `{"api_key": PROJECT_TOKEN, "batch": [...]}` to
     `ENDPOINT` (`https://eu.i.posthog.com/batch/`; `LADO_TELEMETRY_URL` replaces it for
     tests and turns on a test key).
   - Each event has `event` (`lado_daily` or `$exception`), `distinct_id` (the install ID),
@@ -190,7 +200,10 @@ this as they are.
     (`platform: "custom"`, `lang: "python"`, `filename`, `function`, `lineno`,
     `in_app: true`), plus `$exception_fingerprint`, `where`, `provider`, `count`,
     `first_at`, `last_at`.
-  - `PROJECT_KEY = ""` until the human sets it. Empty means no endpoint (D4): nothing is
+  - The token is PostHog's **Project token** (`phc_…`, Project settings → General), the
+    capture API's `api_key`; the Project ID is not needed. It is public by design
+    (write-only).
+  - `PROJECT_TOKEN = ""` until the human sets it. Empty means no endpoint (D4): nothing is
     asked or sent, and `status` says `this LADO has no statistics endpoint`.
   - The project's "Discard client IP data" setting is the human's (docs/telemetry.md
     says it is on).
@@ -201,7 +214,7 @@ this as they are.
   - `on` and `off` store the choice with the current `FIELDS_VERSION`. Both are refused
     inside an agent (`LADO_AGENT`), as `lado answer` is. `off` also empties the outbox.
   - `show` prints the next report and the grouped errors as the JSON `_post` would send,
-    with the key left out.
+    with the token left out.
   - `send` is hidden from the help.
   - None of them migrates `lado.db` (they are added beside `doctor` in `cli.main`'s
     no-migrate list).
@@ -235,6 +248,17 @@ this as they are.
 - **D14. Tests never send.** `tests/conftest.py` sets `LADO_TELEMETRY=0` as it sets
   `LADO_NO_UPDATE_CHECK=1`. A fixture `telemetry_endpoint` removes it and runs a local
   HTTP server that keeps every request, set as `LADO_TELEMETRY_URL`.
+
+- **D15. Disk use is bounded, worst case about 9 MiB.**
+  - `errors.jsonl`, `hooks.log`, `loop.log` and `server.log` take 1 MiB each plus a
+    `.1` file: 8 MiB.
+  - The outbox takes about 0.5 MB.
+  - `dropped` gets one byte per dropped error, and the next successful send empties it.
+    While no send succeeds, a writer stops adding bytes once the file reaches `DROPPED_MAX`
+    (1 MB). The count then stays at that value, which is still sent as it is.
+  - `consent.json`, `id` and `sent.json` take a few bytes each.
+  - `update.log` stays as it is: each update truncates it.
+  - This change does not touch `lado.db`.
 
 ## Risks / Trade-offs
 

@@ -54,12 +54,19 @@ the loop's `loop.log` line, the server's 500).
 `errors.jsonl`, `hooks.log` and `loop.log` SHALL each be renamed to `<name>.1`
 (replacing an older one) before a write that finds them over 1 MiB, so each keeps at most
 its bound plus one rotated file. `server.log` SHALL be renamed to `server.log.1` when the
-UI server starts and finds it over the same bound.
+UI server starts and finds it over the same bound, and, while the server runs, SHALL be
+copied to `server.log.1` and emptied in place when it passes the bound (checked at least
+every 10 minutes; the server keeps appending to the same file).
 
 #### Scenario: The journal passes its bound
 - **WHEN** an error is written while `errors.jsonl` is 1.1 MiB and `errors.jsonl.1` exists
 - **THEN** the old `errors.jsonl.1` is gone, the 1.1 MiB file is `errors.jsonl.1`, and
   `errors.jsonl` holds only the new line
+
+#### Scenario: A server that runs for weeks
+- **WHEN** a UI server's output makes `server.log` pass 1 MiB while it runs
+- **THEN** within 10 minutes its content is `server.log.1`, `server.log` is empty again,
+  and the server's next lines go to `server.log`
 
 #### Scenario: The server starts with a large log
 - **WHEN** `lado ui` starts a server while `server.log` is 2 MiB

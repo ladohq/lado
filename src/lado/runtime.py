@@ -1187,10 +1187,15 @@ def work_state(session: str, name: str) -> WorkState:
 
 
 def _work_state(repo: str, worker: state.Agent) -> WorkState:
-    branch = worker.branch
-    missing = gone(repo, worker.cwd, branch)
+    return work_of(repo, worker.cwd, worker.branch)
+
+
+def work_of(repo: str, worktree: str, branch: str) -> WorkState:
+    """Where the work of a worktree and its branch stands against the repo's current
+    branch, for finish and uninstall alike (keeps_work)."""
+    missing = gone(repo, worktree, branch)
     behind, ahead, last = "0", "0", None
-    commit = tip(repo, worker.cwd, branch, missing)
+    commit = tip(repo, worktree, branch, missing)
     if commit:
         counts = git(repo, "rev-list", "--left-right", "--count", f"HEAD...{commit}")
         behind, ahead = counts.split()
@@ -1199,7 +1204,7 @@ def _work_state(repo: str, worker: state.Agent) -> WorkState:
         log = git(repo, "log", "-1", "--format=%H%x00%ct%x00%s", commit)
         sha, at, subject = log.split("\0", 2)
         last = Commit(sha, subject, datetime.fromtimestamp(int(at), timezone.utc))
-    changes = [] if WORKTREE in missing else git(worker.cwd, "status", "--porcelain").splitlines()
+    changes = [] if WORKTREE in missing else git(worktree, "status", "--porcelain").splitlines()
     return WorkState(
         branch,
         git(repo, "rev-parse", "--abbrev-ref", "HEAD"),
@@ -1211,8 +1216,23 @@ def _work_state(repo: str, worker: state.Agent) -> WorkState:
     )
 
 
+def keeps_work(work: WorkState) -> str | None:
+    """Why the work cannot go without losing a line of it (not merged into the repo's
+    current branch, or uncommitted changes), or None: the one rule of `lado finish` and
+    `lado uninstall`."""
+    if work.ahead and BRANCH in work.gone:
+        return f"{work.ahead} commit{'s' if work.ahead > 1 else ''} not in {work.base}"
+    if work.ahead:
+        return f"not merged into {work.base}"
+    if work.changes:
+        return "uncommitted changes"
+    return None
+
+
 def _refusal(worker: state.Agent, work: WorkState, repo: str) -> str | None:
-    """Why the worker cannot finish without discarding its work, or None."""
+    """Why the worker cannot finish without discarding its work (keeps_work), or None."""
+    if keeps_work(work) is None:
+        return None
     if work.ahead and BRANCH in work.gone:
         commits = f"{work.ahead} commit{'s' if work.ahead > 1 else ''}"
         return (
@@ -1225,13 +1245,11 @@ def _refusal(worker: state.Agent, work: WorkState, repo: str) -> str | None:
             f"branch {work.branch} is not merged into {work.base} (the current branch of "
             f"{repo}); merge it first, or finish with discard to throw its work away"
         )
-    if work.changes:
-        changes = "\n".join(work.changes)
-        return (
-            f'worker "{worker.name}" has uncommitted changes in {worker.cwd}:\n{changes}\n'
-            "have it commit them and merge again, or finish with discard to throw them away"
-        )
-    return None
+    changes = "\n".join(work.changes)
+    return (
+        f'worker "{worker.name}" has uncommitted changes in {worker.cwd}:\n{changes}\n'
+        "have it commit them and merge again, or finish with discard to throw them away"
+    )
 
 
 def send_message(
@@ -2608,3 +2626,16 @@ def exclude_worktrees(repo: str) -> None:
     lines = [line for line in lines if line not in ("/.lado/", WORKTREES_EXCLUDE)]
     exclude.parent.mkdir(parents=True, exist_ok=True)
     exclude.write_text("\n".join([*lines, WORKTREES_EXCLUDE]) + "\n")
+
+
+def include_worktrees(repo: str) -> None:
+    """Undo exclude_worktrees: drop its line from the repository's common info/exclude; the
+    file and every other line stay."""
+    exclude = Path(repo, git(repo, "rev-parse", "--git-common-dir"), "info", "exclude")
+    if not exclude.exists():
+        return
+    lines = exclude.read_text().splitlines()
+    if WORKTREES_EXCLUDE not in lines:
+        return
+    kept = [line for line in lines if line != WORKTREES_EXCLUDE]
+    exclude.write_text("".join(f"{line}\n" for line in kept))

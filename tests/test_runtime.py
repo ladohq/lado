@@ -2907,6 +2907,38 @@ def test_git_exclude_keeps_the_projects_lado_files_visible(repo, fake_tmux):
     assert exclude.read_text() == "# mine\n/.lado/worktrees/\n"
 
 
+def test_include_worktrees_drops_only_lados_line(repo):
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.write_text("# mine\n/.lado/worktrees/\n*.log\n")
+    runtime.include_worktrees(str(repo))
+    assert exclude.read_text() == "# mine\n*.log\n"
+    runtime.include_worktrees(str(repo))  # nothing to drop: no change
+    assert exclude.read_text() == "# mine\n*.log\n"
+
+
+def test_include_worktrees_undoes_exclude_worktrees(repo):
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.write_text("# mine\n")
+    runtime.exclude_worktrees(str(repo))
+    runtime.include_worktrees(str(repo))
+    assert exclude.read_text() == "# mine\n"
+
+
+def test_include_worktrees_from_a_linked_worktree_changes_the_common_file(repo, tmp_path):
+    linked = tmp_path / "linked"
+    runtime.git(str(repo), "worktree", "add", "-q", "-b", "side", str(linked))
+    runtime.exclude_worktrees(str(repo))
+    runtime.include_worktrees(str(linked))
+    assert "/.lado/worktrees/" not in (repo / ".git" / "info" / "exclude").read_text()
+
+
+def test_include_worktrees_without_the_file_is_no_error(repo):
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.unlink(missing_ok=True)
+    runtime.include_worktrees(str(repo))
+    assert not exclude.exists()
+
+
 def test_start_and_spawn_record_spawned_events(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, "kilo")
     runtime.spawn_worker("s", "task", provider="claude")
@@ -2958,6 +2990,42 @@ def test_work_state_reads_the_time_of_a_commit_made_in_utc(repo, fake_tmux, monk
     at = runtime.work_state("s", "w1").last_commit.at
     assert at == datetime.datetime(2026, 10, 4, 11, 0, tzinfo=datetime.timezone.utc)
     assert runtime.finish_preview("s", "w1").refused.startswith("branch lado/s/w1")
+
+
+def test_work_of_and_keeps_work_judge_work_by_finishs_rule(repo):
+    """The one rule of finish and uninstall: merged into the current branch and nothing
+    uncommitted, else why it stays."""
+    worktree = str(repo / ".lado" / "worktrees" / "s" / "w")
+    runtime.git(str(repo), "worktree", "add", "-q", "-b", "lado/s/w", worktree)
+    work = runtime.work_of(str(repo), worktree, "lado/s/w")
+    assert (work.ahead, work.gone, runtime.keeps_work(work)) == (0, [], None)
+    _commit(worktree)
+    work = runtime.work_of(str(repo), worktree, "lado/s/w")
+    assert runtime.keeps_work(work) == "not merged into main"
+    runtime.git(str(repo), "merge", "-q", "--ff-only", "lado/s/w")
+    Path(worktree, "draft.txt").write_text("x")
+    work = runtime.work_of(str(repo), worktree, "lado/s/w")
+    assert runtime.keeps_work(work) == "uncommitted changes"
+    Path(worktree, "draft.txt").unlink()
+    assert runtime.keeps_work(runtime.work_of(str(repo), worktree, "lado/s/w")) is None
+
+
+def test_keeps_work_of_a_gone_branch_counts_the_worktrees_commits(repo):
+    worktree = str(repo / ".lado" / "worktrees" / "s" / "w")
+    runtime.git(str(repo), "worktree", "add", "-q", "-b", "lado/s/w", worktree)
+    _commit(worktree, "one.txt")
+    _commit(worktree, "two.txt")
+    runtime.git(worktree, "checkout", "-q", "--detach")
+    runtime.git(str(repo), "branch", "-D", "lado/s/w")
+    work = runtime.work_of(str(repo), worktree, "lado/s/w")
+    assert work.gone == ["branch"]
+    assert runtime.keeps_work(work) == "2 commits not in main"
+
+
+def test_keeps_work_with_branch_and_worktree_gone_keeps_nothing(repo):
+    worktree = str(repo / ".lado" / "worktrees" / "s" / "w")
+    work = runtime.work_of(str(repo), worktree, "lado/s/w")
+    assert (work.gone, runtime.keeps_work(work)) == (["worktree", "branch"], None)
 
 
 def test_work_state_refuses_an_agent_without_a_branch(repo, fake_tmux):

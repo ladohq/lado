@@ -58,11 +58,10 @@ reporting, the organisation's 2FA) are applied already.
 - The private addresses in the git history: rewriting a public repository's history
   breaks every clone and fork, and the addresses are of a private network.
 - `npm/` (the placeholder package): no dependencies, nothing to update.
-- Merging before 0.37.0 is final: `main` is frozen at `0.37.0rc1`, and any merge but an
-  RC fix makes the final impossible (`scripts/release_check.py`, docs/release.md, The
-  freeze). The human chose to build and review now and merge right after the final, not
-  to cut an `rc2`; the publish path is protected meanwhile by the ruleset on `v*` tags and
-  the `pypi` environment's reviewer.
+- The release: `main` is frozen at `0.37.0rc1` (docs/release.md, The freeze). At the
+  design's approval the human chose to merge this with the fixes that make `0.37.0rc2`
+  (rc1 had problems), so the change ships in the next release candidate and the final is
+  its code (`scripts/release_check.py`); no version or CHANGELOG change here.
 
 ## Acceptance criteria
 

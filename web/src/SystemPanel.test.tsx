@@ -74,8 +74,10 @@ const PLAN: UpdatePlan = {
 function info(more: Partial<UpdateInfo> = {}): UpdateInfo {
   return {
     current: BUNDLE_VERSION,
+    prerelease: false,
     latest: BUNDLE_VERSION,
     available: null,
+    available_prerelease: false,
     released: null,
     checked_at: NOW.toISOString(),
     error: null,

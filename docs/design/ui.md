@@ -632,9 +632,9 @@ Sessions for now. The UI's texts are in English.
   the tab's title while above zero: `(<n>) <page> · LADO`. A gate has no page of its
   own: it is a tab of its session's waiting card.
 - **Settings**: one page, its sections one under the other: Appearance (theme: system,
-  light, dark), Notifications (the switch Browser notifications, below) and Providers and
+  light, dark), Notifications (the switch Browser notifications, below), Providers and
   environment (what `lado doctor` checks; a task of its
-  own). New sections go below.
+  own) and Usage statistics (below). New sections go below.
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
   section has an item in ROADMAP.md or in Tasks below: Projects is ROADMAP's "Later (after
@@ -1363,6 +1363,37 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   back or rollback failed with the reason, the database line and the log's tail. Each
   result shows until dismissed (the browser keeps its id, `localStorage`), and none older
   than a day.
+- **Statistics**, a row after git: `sending · last today 09:12` (`yesterday 09:12`, `12
+  Oct`, `not sent yet`), `off`, `not chosen`, `off: DO_NOT_TRACK=1`, `off: no endpoint`
+  (`SystemInfo.telemetry`, `statisticsLine`); it links to Settings and closes the panel.
+  The copied report has `- Statistics: on|off|not chosen|off by <VAR>`.
+
+### Usage statistics (decided 2026-10-13, LAD-32)
+
+Whether LADO sends anonymous usage statistics and its errors to its maintainers
+(`Telemetry.tsx`; the mockup `task/lad-32/mockup-consent.html`, screens 1A, 2, 3 and 4
+approved, 1B rejected; what is sent: docs/telemetry.md). The choice is the server's
+(`LADO_HOME`), the same as `lado telemetry on|off`: `GET /api/telemetry` (`TelemetryInfo`),
+`POST /api/telemetry {choice}` (under `Guard.changes`; 409 while the server's environment
+switches it off), `GET /api/telemetry/preview` (`TelemetryPreview`, what `lado telemetry
+show` prints). It is read once per page and after the page's own choice, never from the
+change feed: a choice made in the CLI shows after a reload.
+
+- **The banner** (1A), under the top bar on every page, after the update's, once the event
+  stream is open, while `ask` (not chosen, also a yes to an older list of fields, whose new
+  ones it names; nothing switches it off; an endpoint): "Help improve LADO?", what is sent
+  and never sent, "Nothing is sent until you choose…", **What is sent** (a disclosure that
+  loads the preview once), **Send statistics**, **Don't send** and What LADO collects ↗.
+  A choice hides it.
+- **Settings → Usage statistics** (2), the last section: Send / Don't send under the legend
+  "Send anonymous statistics and errors to LADO's maintainers", and one state: chosen (on
+  or off) with the paragraph on what is anonymous and the variables that switch it off, and
+  for on `Last sent today at 09:12` (or `Not sent yet`) · What LADO collects ↗, `Last try
+  failed: <reason>` when the last try failed, and What the next report sends; not chosen:
+  the heading's `— not chosen yet` and "Not chosen yet: nothing is sent."; off by the
+  environment: the heading's `— switched off by the environment`, the switch disabled on
+  Don't send, "Off: `DO_NOT_TRACK=1` is set in the LADO server's environment."; no
+  endpoint: disabled, "This LADO has no statistics endpoint: nothing is sent."
 
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 

@@ -6,6 +6,7 @@ import { PLANS } from "./paths";
 import { Placeholder } from "./Placeholder";
 import { chooseTheme, storedTheme, type Theme } from "./prefs";
 import { useTitle } from "./Shell";
+import { StatisticsSetting } from "./Telemetry";
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: "system", label: "System" },
@@ -22,6 +23,7 @@ export function Settings() {
       <Placeholder title="Providers and environment" plan={PLANS.providers}>
         The agent CLIs LADO can run, their versions and logins, and what <code>lado doctor</code> checks.
       </Placeholder>
+      <StatisticsSetting />
     </div>
   );
 }

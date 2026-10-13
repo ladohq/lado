@@ -20,6 +20,7 @@ from lado import (
     runtime,
     self_update,
     state,
+    telemetry,
     update,
 )
 
@@ -561,9 +562,53 @@ class SystemInfo(BaseModel):
     kits: list[KitFactInfo]
     sessions: SessionCounts
     last: UpdateResultInfo | None
+    telemetry: "TelemetryInfo"  # the panel's row Statistics
     report: str  # Markdown for an issue: no address, path, session name or token
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class TelemetryInfo(BaseModel):
+    """Whether LADO sends usage statistics and its errors (lado.telemetry.State), whether
+    the UI asks (its banner), and how the last try went."""
+
+    choice: Literal["on", "off"] | None  # as it counts: None while not made, also a yes
+    # to an older list of fields (new_fields)
+    on: bool  # it sends
+    ask: bool  # the banner shows
+    off_by: str | None  # the variable that switches it off, NAME=value
+    endpoint: bool  # this LADO has a statistics endpoint
+    last_sent: str | None  # UTC, YYYY-MM-DDTHH:MM:SSZ
+    last_error: str | None  # why the last try failed
+    waiting: int  # queued errors
+    new_fields: list[str]  # the fields a stored yes does not cover
+
+
+class TelemetryChoice(BaseModel):
+    choice: Literal["on", "off"]
+
+
+class TelemetryPreview(BaseModel):
+    """What the next send posts (lado.telemetry.preview): the daily report, also when it
+    is not due yet, and the queued errors, one event per kind."""
+
+    report: dict
+    errors: list[dict]
+
+
+def telemetry_info(found: telemetry.State) -> TelemetryInfo:
+    sent, error = telemetry.last_sent()
+    return TelemetryInfo(
+        choice=found.chosen,
+        on=found.on,
+        ask=found.ask,
+        off_by=found.off_by,
+        endpoint=found.endpoint,
+        last_sent=sent,
+        last_error=error,
+        waiting=len(telemetry.queued()),
+        new_fields=found.new_fields,
+    )
 
 
 class RepoInfo(BaseModel):

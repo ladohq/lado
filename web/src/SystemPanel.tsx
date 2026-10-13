@@ -20,6 +20,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { Link } from "react-router";
 
 import {
   ApiError,
@@ -38,6 +39,7 @@ import {
 } from "./api";
 import { clock, day, duration } from "./ChatText";
 import { CopyButton, useCopy } from "./Copy";
+import { statisticsLine } from "./Telemetry";
 import { ClipboardIcon, FolderIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
@@ -354,6 +356,12 @@ function SystemPanel({
             </dd>
             <dt>git</dt>
             <dd>{facts.git}</dd>
+            <dt>Statistics</dt>
+            <dd>
+              <Link to="/settings" onClick={onClose}>
+                {statisticsLine(facts.telemetry)}
+              </Link>
+            </dd>
             {facts.gui_session && (
               <>
                 <dt>Graphical session</dt>

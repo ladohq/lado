@@ -36,7 +36,9 @@ def _versions(
         "tmux": tmux_version,
         "opencode": opencode_version,
     }
-    monkeypatch.setattr(doctor, "_tool_version", lambda path, flag: versions.get(path, "v1"))
+    monkeypatch.setattr(
+        doctor, "_tool_version", lambda path, flag, timeout=None: versions.get(path, "v1")
+    )
 
 
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
@@ -541,3 +543,34 @@ def test_system_info_and_report_give_only_the_kind_of_place(mac):
     mac("no-gui", None)
     report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
     assert "- Graphical session: process no-gui, no tmux server\n" in report
+
+
+@pytest.mark.parametrize(
+    ("consent", "env", "line"),
+    [
+        ("on", {}, "- Statistics: on"),
+        ("off", {}, "- Statistics: off"),
+        (None, {}, "- Statistics: not chosen"),
+        ("on", {"DO_NOT_TRACK": "1"}, "- Statistics: off by DO_NOT_TRACK=1"),
+    ],
+)
+def test_report_has_statistics_line(telemetry_on, monkeypatch, consent, env, line):
+    from lado import telemetry
+
+    if consent:
+        telemetry.choose(consent)
+    else:
+        (state.home() / "telemetry" / "consent.json").unlink()
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    report = doctor.report(doctor.system_info(which=lambda cmd: None), False, 0)
+    assert line in report.splitlines()
+
+
+def test_report_statistics_without_an_endpoint(monkeypatch):
+    from lado import telemetry
+
+    monkeypatch.delenv("LADO_TELEMETRY")
+    monkeypatch.setattr(telemetry, "PROJECT_TOKEN", "")
+    report = doctor.report(doctor.system_info(which=lambda cmd: None), False, 0)
+    assert "- Statistics: off: no endpoint" in report.splitlines()

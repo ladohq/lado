@@ -36,6 +36,7 @@ from lado import (
     runtime,
     self_update,
     state,
+    telemetry,
     terminal,
     update,
 )
@@ -95,6 +96,9 @@ from lado.server.models import (
     StopPreview,
     SystemInfo,
     Taken,
+    TelemetryChoice,
+    TelemetryInfo,
+    TelemetryPreview,
     TmuxInfo,
     UpdateAsk,
     UpdateInfo,
@@ -326,6 +330,15 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         and changed nothing. The same 503 as the check's."""
         return JSONResponse({"detail": str(error)}, status_code=503)
 
+    @app.exception_handler(Exception)
+    def unexpected(request: Request, error: Exception) -> PlainTextResponse:
+        """An unexpected exception of a request: journaled by its route's template, never
+        its path with ids (lado.telemetry); the 500 Starlette would answer, and its
+        traceback still goes to server.log."""
+        route = getattr(request.scope.get("route"), "path", None) or "unrouted"
+        telemetry.record(f"server:{route}", error)
+        return PlainTextResponse("Internal Server Error", status_code=500)
+
     @app.get("/api/health")
     def health() -> Health:
         return Health(ok=True, version=lado.__version__, started_at=started_at)
@@ -390,8 +403,31 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             kits=[KitFactInfo(name=k.name, version=k.version, origin=k.origin) for k in facts.kits],
             sessions=SessionCounts(**facts.sessions),
             last=models.update_result_info(facts.last),
+            telemetry=models.telemetry_info(facts.statistics or telemetry.state()),
             report=doctor.report(facts, open_to_network, up),
         )
+
+    @app.get("/api/telemetry", dependencies=[Depends(guard)])
+    def telemetry_state() -> TelemetryInfo:
+        """Whether LADO sends usage statistics, whether the UI asks (its banner), and how
+        the last try went (lado.telemetry). Read once per page: not in the change feed."""
+        return models.telemetry_info(telemetry.state())
+
+    @app.post("/api/telemetry", dependencies=[Depends(guard.changes)])
+    def telemetry_choose(given: TelemetryChoice) -> TelemetryInfo:
+        """The human's choice, the same as `lado telemetry on|off`; `off` drops what waits.
+        409 while a variable of the server's environment switches it off."""
+        found = telemetry.state()
+        if found.off_by:
+            raise HTTPException(409, f"{found.off_by} is set in the LADO server's environment")
+        telemetry.choose(given.choice)
+        return models.telemetry_info(telemetry.state())
+
+    @app.get("/api/telemetry/preview", dependencies=[Depends(guard)])
+    def telemetry_preview() -> TelemetryPreview:
+        """What the next send posts, as `lado telemetry show` prints it. A plain `def`: it
+        runs each agent CLI's --version in a worker thread."""
+        return TelemetryPreview(**telemetry.preview())
 
     @app.get("/api/sessions", dependencies=[Depends(guard)])
     def sessions(has_db: bool = Depends(database)) -> list[SessionInfo]:

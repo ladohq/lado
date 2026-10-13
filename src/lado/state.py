@@ -529,7 +529,19 @@ UNRECEIVED = f"(state IN (?, ?, ?) OR (state = ? AND {TO_READ})) AND recipient !
 UNRECEIVED_ARGS = (PENDING, SENT, FAILED, DELIVERED, HUMAN)
 
 # Event kinds.
-SPAWNED = "spawned"  # detail: "role <role>, provider <provider>"
+SPAWNED = "spawned"  # detail: spawned_detail, "role <role>, provider <provider>"
+
+
+def spawned_detail(role: str, provider: str) -> str:
+    return f"role {role}, provider {provider}"
+
+
+def spawned_provider(detail: str) -> str | None:
+    """The provider a SPAWNED event's detail names (spawned_detail), or None."""
+    _, found, provider = detail.rpartition(", provider ")
+    return provider if found and provider else None
+
+
 STATUS = "status"  # detail: the new status
 FINISHED = "finished"  # a worker was ended; detail: "merged" or "discarded"
 MCP_READY = "mcp_ready"  # the agent's CLI listed LADO's MCP tools; detail: the launch (instance)
@@ -1408,6 +1420,37 @@ def add_event(
 ) -> None:
     with connect() as db:
         _add_event(db, session, agent, kind, detail, run)
+
+
+def usage_counts(since: str) -> dict:
+    """What happened from `since` (UTC, `YYYY-MM-DD HH:MM:SS`) on, for the daily report
+    (lado.telemetry): sessions started or resumed, agents spawned per provider, flow runs
+    started, gates opened, turns ended on an error. Reads only; a forgotten session's rows
+    are gone."""
+    with connect() as db:
+
+        def count(kind: str) -> int:
+            query = "SELECT count(*) FROM events WHERE kind = ? AND created_at >= ?"
+            return db.execute(query, (kind, since)).fetchone()[0]
+
+        started = db.execute(
+            "SELECT count(*) FROM sessions WHERE created_at >= ?", (since,)
+        ).fetchone()[0]
+        agents: dict[str, int] = {}
+        spawned = db.execute(
+            "SELECT detail FROM events WHERE kind = ? AND created_at >= ?", (SPAWNED, since)
+        )
+        for (detail,) in spawned:
+            provider = spawned_provider(detail)
+            if provider:
+                agents[provider] = agents.get(provider, 0) + 1
+        return {
+            "sessions": started + count(SESSION_RESUME),
+            "agents": agents,
+            "runs": count(FLOW_START),
+            "gates": count(GATE_OPEN),
+            "turn_errors": count(TURN_ERROR),
+        }
 
 
 def _add_event(

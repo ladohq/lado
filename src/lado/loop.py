@@ -160,6 +160,7 @@ def run(session: str, interval: float | None = None) -> int:
         log(session, f"loop started, pid {os.getpid()}, a pass every {interval:g} s")
         errors = RepeatedErrors(lambda text: log(session, text), session=session)
         missing: set[str] = set()  # the agents whose window the pass before did not find
+        kicked: float | None = None  # when the loop last kicked the statistics sender
         while True:
             try:
                 reason = why_stop(session)
@@ -182,6 +183,9 @@ def run(session: str, interval: float | None = None) -> int:
                 errors.flush()
                 log(session, f"loop ended: {reason}")
                 return 0
+            if kicked is None or time.monotonic() - kicked >= telemetry.KICK_EVERY:
+                telemetry.kick()  # cheap, never raises: the statistics sender when due
+                kicked = time.monotonic()
             time.sleep(interval)
 
 

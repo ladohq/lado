@@ -250,3 +250,16 @@ def test_server_log_copy_truncated_while_running(lado_home):
     os.write(fd, b"next\n")
     os.close(fd)
     assert log.read_bytes() == b"next\n"
+
+
+def test_the_server_s_housekeeping_bounds_its_log_and_kicks(lado_home, monkeypatch):
+    import threading
+
+    kicked = []
+    monkeypatch.setattr(telemetry, "kick", lambda: kicked.append(1))
+    server_run.log_path().write_text("x" * (telemetry.JOURNAL_MAX + 1))
+    stop = threading.Event()
+    stop.set()  # one round, then it ends
+    server_run.housekeeping(stop)
+    assert kicked == [1]
+    assert server_run.log_path().stat().st_size == 0

@@ -63,6 +63,7 @@ and the build report quotes that failure.
   markers, and `make web` pass (AC-8).
 - [x] 6.2 The local loops of 4.1-4.4 and 2.1's integration tests: 20 runs each,
   counted in the build report (AC-6).
-- [ ] 6.3 On the pull request's last commit: 5 full CI runs green in a row, with no
+- [x] 6.3 On the pull request's last commit: 5 full CI runs green in a row, with no
   failed job, and `smoke macos-latest codex` green 20 times. The run and attempt ids are
-  in the build report (AC-7).
+  in the build report (AC-7). Run 38470487587 on 143477b, attempts 1-20; the commit
+  that checks this box changes only this file.

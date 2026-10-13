@@ -58,7 +58,8 @@ export function GateCard({
 // and a button per option, the recommended one primary. `compact`: without the note and the
 // artifacts. `inTab`: the question, note, reads and comment as the tab's list
 // (`.waiting-list`, it scrolls), the buttons in its Send row (`.waiting-send`, always shown);
-// `marked`, the gate a link asked for.
+// `marked`, the gate a link asked for. `comment` and `onComment`: the comment kept by who
+// shows the panel (the waiting card, across its tabs and its expanded view), else here.
 export function GatePanel({
   session,
   gate,
@@ -66,6 +67,8 @@ export function GatePanel({
   compact = false,
   inTab = false,
   marked = false,
+  comment: kept,
+  onComment,
 }: {
   session: string;
   gate: GateInfo;
@@ -73,8 +76,12 @@ export function GatePanel({
   compact?: boolean;
   inTab?: boolean;
   marked?: boolean;
+  comment?: string;
+  onComment?: (comment: string) => void;
 }) {
-  const [comment, setComment] = useState("");
+  const [own, setOwn] = useState("");
+  const comment = kept ?? own;
+  const setComment = onComment ?? setOwn;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const primary = primaryOf(gate.options, gate.recommendation);

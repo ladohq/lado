@@ -348,6 +348,35 @@ test("a gate's tab is its panel: question, note, comment, its buttons in the Sen
   await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/s/gates/1/answer", body: { option: "approve", comment: "fine" } }]));
 });
 
+test("a gate's comment and an own answer stay through a switch of tabs and through expanding and folding the card", async () => {
+  show({ questions: [question(5, "w1")], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")] });
+  const comment = () => within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement;
+  const own = () => within(card()).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement;
+  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
+  fireEvent.change(own(), { target: { value: "after the tag" } });
+  fireEvent.click(tab("task/lad-27 1"));
+  fireEvent.change(comment(), { target: { value: "check the migration" } });
+  fireEvent.click(tab("w1 1"));
+  expect(own().value).toBe("after the tag");
+  fireEvent.click(tab("task/lad-27 1"));
+  expect(comment().value).toBe("check the migration");
+  fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
+  const dialog = await screen.findByRole("dialog");
+  expect((within(dialog).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement).value).toBe(
+    "check the migration",
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Collapse the card" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(comment().value).toBe("check the migration");
+  fireEvent.click(tab("w1 1"));
+  expect(own().value).toBe("after the tag");
+  fireEvent.click(tab("task/lad-27 1"));
+  fireEvent.click(within(card()).getByRole("button", { name: "Approve" }));
+  await waitFor(() =>
+    expect(posted).toEqual([{ path: "/api/sessions/s/gates/1/answer", body: { option: "approve", comment: "check the migration" } }]),
+  );
+});
+
 test("in a stopped session the gate's buttons are off and say why", () => {
   show({ questions: [], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")], stopped: true });
   const panel = within(card()).getByRole("tabpanel");

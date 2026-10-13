@@ -95,6 +95,7 @@ export function WaitingCard({
   const tabs = waitingTabs(questions, gates);
   const [chosen, setChosen] = useState<string | null>(null);
   const [picks, setPicks] = useState<Picks>({});
+  const [comments, setComments] = useState<Record<number, string>>({}); // a gate's, by its id
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -119,6 +120,15 @@ export function WaitingCard({
       return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
     });
   }, [openKey]);
+  // Comments of gates no longer open go.
+  const gatesKey = gates.map((one) => one.id).sort((a, b) => a - b).join(",");
+  useEffect(() => {
+    const ids = new Set(gates.map((one) => one.id));
+    setComments((now) => {
+      const kept = Object.entries(now).filter(([id]) => ids.has(Number(id)));
+      return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
+    });
+  }, [gatesKey]);
   // Nothing waits: no card, so not expanded either.
   useEffect(() => {
     if (tabs.length === 0 && expanded) setExpanded(false);
@@ -260,6 +270,8 @@ export function WaitingCard({
             stopped={stopped}
             inTab
             marked={marked === shown.gate.id}
+            comment={comments[shown.gate.id] ?? ""}
+            onComment={(text) => setComments((now) => ({ ...now, [shown.gate.id]: text }))}
           />
         ) : (
           <AgentPanel

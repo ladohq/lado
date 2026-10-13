@@ -152,8 +152,10 @@ def dropped() -> int
     ```python
     def test_scrub_leaves_no_path_name_or_token(tmp_path):
         secret, path, name = "sk-live-123", "/Users/ann/work/app", "my-session"
+
         def fail(token=secret, where=path):
             raise OSError(f"cannot open {path} for {name}")
+
         try:
             fail()
         except OSError as exc:

@@ -132,19 +132,19 @@ See `openspec/changes/usage-telemetry/design.md` D1–D14. In short:
 | Requirement | Layer | Where |
 |---|---|---|
 | journal line per process, refusals excluded, bounds | unit | `tests/test_telemetry.py`, `test_cli.py`, `test_runtime.py` (the hook's tests), `test_mcp_server.py`, `test_loop.py`, `test_server_system.py` |
-| a failing hook's line and queued event across processes | integration | `tests/integration/test_telemetry.py` |
+| a failing hook's line and queued event across processes | integration | `tests/integration/test_telemetry_processes.py` |
 | consent, environment, endpoint, fields version | unit | `tests/test_telemetry.py` |
 | the CLI question and `lado telemetry` | unit | `tests/test_cli_telemetry.py` |
 | scrubbing (path, name, token never in an event) | unit | `tests/test_telemetry.py` |
 | sender: lock, batch, grouping, failure keeps, retry gap, report window | unit, local HTTP server | `tests/test_telemetry.py` |
-| unreachable endpoint: refused port, 403, a server that never answers, a hanging DNS (monkeypatched `getaddrinfo`), a TLS error; CLI command unaffected and silent | unit; integration for `lado start` with an unreachable `LADO_TELEMETRY_URL` | `tests/test_telemetry.py`, `tests/integration/test_telemetry.py` |
-| the loop's kick reaches a local endpoint | integration | `tests/integration/test_telemetry.py` |
+| unreachable endpoint: refused port, 403, a server that never answers, a hanging DNS (monkeypatched `getaddrinfo`), a TLS error; CLI command unaffected and silent | unit; integration for `lado start` with an unreachable `LADO_TELEMETRY_URL` | `tests/test_telemetry.py`, `tests/integration/test_telemetry_processes.py` |
+| the loop's kick reaches a local endpoint | integration | `tests/integration/test_telemetry_processes.py` |
 | API and SystemInfo/report line | unit (test client) | `tests/test_server_system.py`, `tests/test_doctor.py` |
 | banner, Settings section, panel row | vitest | `web/src/Telemetry.test.tsx`, `SystemPanel.test.tsx` |
-| banner → Send → Settings, screenshots | UI e2e | `tests/ui/test_telemetry.py` |
+| banner → Send → Settings, screenshots | UI e2e | `tests/ui/test_statistics.py` |
 | docs list = `FIELDS` | unit | `tests/test_telemetry.py` |
 
 Regression run before review: `make lint`, `make test`, `uv run pytest -m integration -n
-auto tests/integration/test_telemetry.py` plus the integration files of hooks and the loop
-touched, `uv run pytest -m ui tests/ui/test_telemetry.py tests/ui/test_system_panel.py`,
+auto tests/integration/test_telemetry_processes.py` plus the integration files of hooks and the loop
+touched, `uv run pytest -m ui tests/ui/test_statistics.py tests/ui/test_system_panel.py`,
 `make web`, `openspec validate --specs --strict`. CI then runs the full `make check`.

@@ -19,4 +19,5 @@ update`.
 ## What to expect
 
 The maintainers aim to answer a report within 7 days. There is no fixed deadline for a
-fix: we will tell you what we found and keep you informed until it is released.
+fix: the maintainers tell you what they found and keep you informed until the fix is
+released.

@@ -268,6 +268,45 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     shot(page)
 
 
+def test_the_resume_notice_stands_above_the_tabs(page: Page, server, repo, shot):
+    session = stopped_session(repo)
+    log_in(page, server, f"/sessions/{session}")
+    page.get_by_role("button", name="Resume…").click()
+    dialog = page.get_by_role("dialog", name="Resume session")
+    expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
+    dialog.get_by_label("Provider").select_option("fake-paste")
+    dialog.get_by_role("button", name="Resume session").click()
+    expect(dialog).to_have_count(0)
+    idle(session)
+    notice = page.locator(".started-notice")
+    expect(notice.get_by_role("status")).to_contain_text("Resumed with new settings:")
+    expect(notice).to_contain_text("fake-paste")
+
+    def gaps() -> dict:
+        return page.evaluate(
+            """() => {
+              const box = (selector) => document.querySelector(selector)?.getBoundingClientRect();
+              const bar = box(".topbar").bottom;
+              const notice = box(".started-notice");
+              return {
+                above: notice ? notice.top - bar : null,
+                below: notice ? box(".session-tabs").top - notice.bottom : null,
+                tabs: box(".session-tabs").top - bar,
+              };
+            }"""
+        )
+
+    # 12 px under the top bar, 10 px above the tabs.
+    found = gaps()
+    assert (found["above"], found["below"]) == (12, 10), found
+    shot(page, "notice")
+
+    notice.get_by_role("button", name="Close").click()
+    expect(notice).to_have_count(0)
+    assert gaps()["tabs"] == 0
+    shot(page, "closed")
+
+
 def test_forget_a_stopped_session(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")

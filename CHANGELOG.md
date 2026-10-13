@@ -6,6 +6,11 @@
   of the whole window, so an artifact opened from it shows over it; Esc closes that
   artifact first, then folds the card. On Needs you an artifact opens over the page,
   keeping the answers you picked.
+- Each release now also appears on GitHub (github.com/ladohq/lado/releases) with this
+  changelog's section as its notes and the wheel and sdist attached; a release candidate is
+  a GitHub pre-release.
+- UI: the empty strip above a session's tabs is gone: the tabs start right under the top
+  bar, level with the terminals' tabs; a start or resume notice still stands above them.
 - `lado server stop`, `lado update` and `lado uninstall` wait until the old UI server's
   process has ended; a server that has stopped no longer makes `~/.lado` again after
   `lado uninstall`.

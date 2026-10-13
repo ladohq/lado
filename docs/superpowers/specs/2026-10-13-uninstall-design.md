@@ -97,7 +97,7 @@ records stay. Only what is used: no UI button, no `--discard`.
   pipx metadata with a suffix, none; a failing remover; no import after the remover;
   `--keep-data`; exit codes. `tests/test_cli.py`: the confirmation, `--yes`, no terminal,
   `uninstall` runs without `migrate_if_safe`, an older `lado.db` migrated by the stop.
-- Integration (`tests/integration/test_uninstall.py`, fake agent): a running session with
+- Integration (`tests/integration/test_uninstall_process.py`, fake agent): a running session with
   a merged and an unmerged worker and a UI server; `lado uninstall --yes` with the test's
   `LADO_HOME` (not the default: the program is kept, so the test never removes LADO):
   no agent, loop, viewer or UI server process left, the test's tmux server gone, the

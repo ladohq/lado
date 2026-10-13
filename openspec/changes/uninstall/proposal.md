@@ -75,7 +75,7 @@ was installed) but offers no command that undoes it; only LADO can do it complet
 ## Impact
 
 - New: `src/lado/uninstall.py`, `tests/test_uninstall.py`,
-  `tests/integration/test_uninstall.py`.
+  `tests/integration/test_uninstall_process.py`.
 - Changed: `src/lado/cli.py` (the command; no migration before it), `src/lado/update.py`
   (the program's remover), `src/lado/runtime.py` (the merged-and-clean check shared with
   finish, the exclude line's removal), docs.

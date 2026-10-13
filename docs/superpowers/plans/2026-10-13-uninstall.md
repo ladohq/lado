@@ -114,7 +114,7 @@ in the repository's style, `(LAD-35)` at the end).
 
 ## Task 7: end to end with the fake agent
 
-**Files:** `tests/integration/test_uninstall.py`.
+**Files:** `tests/integration/test_uninstall_process.py`.
 
 1. `test_uninstall_leaves_nothing`: a session with the fake agent, a worker whose branch
    is merged into the repo's current branch, a worker with an unmerged commit, the UI
@@ -126,7 +126,7 @@ in the repository's style, `(LAD-35)` at the end).
 2. `test_uninstall_keep_data_resumes`: `lado uninstall --keep-data --yes`, then `lado
    start <repo> --name <session>` resumes with the run's history and the worktrees in
    place.
-3. `uv run pytest -m integration -n auto tests/integration/test_uninstall.py`; commit.
+3. `uv run pytest -m integration -n auto tests/integration/test_uninstall_process.py`; commit.
 
 ## Task 8: docs
 
@@ -151,5 +151,5 @@ in the repository's style, `(LAD-35)` at the end).
 ## Regression run
 
 `make lint`; `make test` (`-n auto`, report the numbers); `uv run pytest -m integration
--n auto tests/integration/test_uninstall.py`; `openspec validate --specs --strict`. CI
+-n auto tests/integration/test_uninstall_process.py`; `openspec validate --specs --strict`. CI
 runs the rest (`make check`, smoke). No live test: nothing in a provider changes.

@@ -608,15 +608,16 @@ Sessions for now. The UI's texts are in English.
 - **Needs you** (`/needs-you`, the task Needs you and notifications, 2026-10-03): what
   waits for the human in every session not stopped (`sessions.stopped_at IS NULL`, so
   `tmux_gone` and `loop_down` count; the server and the UI apply the one rule), oldest
-  first, by session, each session's name a link to its chat: open gates as the chat's
-  `GateCard`, open questions as its question card (`Question.tsx`), both answered in
-  place; agents in `waiting` with their role, since when, and why (`status_reason`, or
+  first, by session, each session's name a link to its chat and beside it "In the chat"
+  (also to its chat); then the session's open questions and gates as the chat's waiting
+  card (The waiting card, LAD-28; before, a card per item with its own link), answered in
+  place; then the agents in `waiting` with their role, since when, and why (`status_reason`, or
   "waits for you in its terminal" when LADO knows no reason), with **Open terminal**
   (`/sessions/<name>/activity?terminal=<agent>`: the panel opens that agent's tab and
   drops the parameter from the address, replaced, so Back and a reload do not open it
-  again; an agent the session does not have is named in a line). Each item links to its
-  card in the chat (`#gate-<id>`, `#message-<id>`; the chat scrolls there once loaded,
-  after its scroll to the latest). Nothing waiting: "Nothing waits for you". The list is
+  again; an agent the session does not have is named in a line). A notification links to
+  its item in the chat (`#gate-<id>`, `#message-<id>`, `waiting.ts`): the chat shows its
+  tab of the waiting card. Nothing waiting: "Nothing waits for you". The list is
   `GET /api/waiting` (`WaitingItem`: session, kind, key, since and the gate, question or
   agent in the form of their own endpoints), built from `state.waiting_items`, which is
   also what `SessionInfo.waiting` counts: the count and the list cannot differ. The live
@@ -629,7 +630,7 @@ Sessions for now. The UI's texts are in English.
   not-stopped sessions' `waiting`, from the live session list, as a badge on the rail's
   Needs you (also collapsed; its accessible name `Needs you, <n> waiting`), and first in
   the tab's title while above zero: `(<n>) <page> · LADO`. A gate has no page of its
-  own: it is a card in its session's chat.
+  own: it is a tab of its session's waiting card.
 - **Settings**: one page, its sections one under the other: Appearance (theme: system,
   light, dark), Notifications (the switch Browser notifications, below) and Providers and
   environment (what `lado doctor` checks; a task of its
@@ -682,9 +683,11 @@ reaches the feed. LADO takes the model and builds it on what it has:
   takes the human's answer
   (`POST …/gates/{id}/answer {option, comment}`, guarded like the composer, through
   `runs.answer_text`, the one text `lado answer` prints too; what the core refuses is 400
-  with its reason). An **open gate** is a row of the feed where it opened (the flag
-  avatar, "Gate #id", muted "run · state", the time; Look of the feed below) with its card,
-  which has no head of its own: the question, the note before the gate (its summary in bold, its body
+  with its reason). An **open gate** is a quiet line of the feed where it opened (the flag
+  avatar, "Gate #id run · state waits: <question> ↓", the time) and a tab of the waiting
+  card above the composer (The waiting card, below; since LAD-28, 2026-10-13: before, a row
+  of the feed with its card). The tab shows its panel (`GatePanel`, also the compact card of
+  a run's page in Flows), which has no head of its own: the question, the note before the gate (its summary in bold, its body
   open, more than 20 lines behind Show more) with its chips, then under a muted "It reads"
   a line per artifact the gate reads (a chip that opens its latest record, and its "title —
   summary"; "<name>: no record yet"; the name alone while the session's artifacts are not
@@ -693,9 +696,9 @@ reaches the feed. LADO takes the model and builds it on what it has:
   since" (docs/design/artifacts.md, Flows), the supervisor's recommendation (below), an
   optional comment for the next step, and a button per option (Approve / Reject, a choice
   gate's own options, Continue / Cancel run at a loop limit; the recommended one primary,
-  else the first). The buttons are off while the answer
-  is sent and in a stopped session (it says to resume it); a refusal shows on the card.
-  The card changes only when the feed brings the closed gate, wherever it was answered
+  else the first; on the tab, in its Send row). The buttons are off while the answer is
+  sent and in a stopped session (it says to resume it); a refusal shows on the panel. The
+  tab goes only when the feed brings the closed gate, wherever it was answered
   (the popup, `lado answer`, another tab). A **closed gate** is a quiet line at the text's
   column, as the run events: "Gate #id · run · state: <answer> by <who>" (one title,
   `gateTitle`, also on a run's page in Flows; also `overridden` by `lado flow-set`,
@@ -706,10 +709,9 @@ reaches the feed. LADO takes the model and builds it on what it has:
   the answer's comment under it (Flow events in Look of the feed; since
   feature/chat-message-text, 2026-10-07: no row of its own besides). On the open page it
   shows at the bottom as soon as the feed brings the event, and the feed scrolls to it as
-  to a new message. While a gate is open, a
-  hint over the composer (an orange band, "Gate #id waits: answer on its card") scrolls to
-  its card: the
-  composer does not answer gates.
+  to a new message. The composer does not answer gates; no hint over it names them (the
+  hint "Gate #id waits: answer on its card" went with LAD-28: the waiting card stands
+  there).
 - **A forgotten reply is caught, not hoped for**: when the supervisor ends a turn that a
   human message started and wrote nothing to `human`, the feed says "replied only in its
   terminal" (the terminal is beside the feed).
@@ -741,7 +743,11 @@ Built in the chat task (2026-10-03):
   body) or the dismissal (`Dismissed #<id>`, the human's comment as its body when they
   wrote one; feature/question-answer, 2026-10-10) is a message from `human` to the agent with
   `reply_to` and `choice`, queued in the transaction that sets the question's outcome and
-  `answered_by`; a question not `open` refuses both. When the agent is forgotten
+  `answered_by`; a question not `open` refuses both. The replies to several open questions
+  of one agent are taken together (`runtime.answer_questions`, LAD-28): each checked first,
+  all queued and closed in one transaction, the agent's queue taken once, so an idle agent
+  gets them in one hand-over and starts one turn; one wrong reply refuses the whole call
+  with nothing changed. When the agent is forgotten
   (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn; `lado stop`), its
   open questions are `closed` in the same transaction.
 - **Where the human asked**: LADO's instructions to the supervisor say to answer
@@ -757,16 +763,18 @@ Built in the chat task (2026-10-03):
   the `messages` triggers.
 - **API**: `GET /api/sessions/{name}/messages?with=human` (`MessageInfo`, oldest first);
   `POST /api/sessions/{name}/messages` `{to?, text}` (default to the supervisor);
-  `POST /api/sessions/{name}/questions/{id}/answer` `{choice?, text?}` and `…/dismiss`
-  (an optional body `{text?}`, the comment).
+  `POST /api/sessions/{name}/answers` `{answers: [{question, choice?, text?, skip}]}`, the
+  replies of a tab of the waiting card, all to one agent (`skip`: a dismissal, `text` its
+  comment; LAD-28, replacing `…/questions/{id}/answer` and `…/dismiss`).
   The POSTs need the server's own Origin (`Guard.changes`), answer 503 under another
   schema, 404 for an unknown session and 400 with the core's reason for what it refuses
   (a stopped session, an agent that is not running, a question not open). They return
   `{result}`; the UI shows a message only when the feed brings it.
 - **UI**: Activity is the chat: the messages from and to the human (their text as Message
   text in Look of the feed says, Markdown with any HTML left out), "not delivered" on a
-  failed one, "<agent> replied only in its terminal" on a `missing` one, and each question
-  as a card in its agent's row; the composer under it. Its look is Look of the feed, below.
+  failed one, "<agent> replied only in its terminal" on a `missing` one, each open question
+  as a line and each closed one as a card in its agent's row; under the feed the waiting
+  card, then the composer. Its look is Look of the feed, below.
 
 **Look of the feed** (decided with the human 2026-10-07, task feature/chat-look, mockup
 `/Users/kao/Projects/lado/.lado/mockups/chat-look/index.html`, variant B "feed"):
@@ -780,13 +788,13 @@ Built in the chat task (2026-10-03):
   keeps no run: BACKLOG). No frame on a message; a row's ground is `--raised` on hover;
   the human's rows lie on `--action-ground`, the whole width, not moved to the right. The
   row's kind (agent, human, gate) is its own prop, so an agent named `gate` is an agent.
-  The cards in rows (a question's, a gate's, a waiting agent's on Needs you) have no head
-  of their own.
+  The cards in rows (a closed question's, a waiting agent's on Needs you) have no head of
+  their own.
 - **Groups**: an entry continues the group above it (no head, no letter; its time in the
   avatar column, seen on hover and focus, always in a column of 520 px or less) when the
   row above is a message or question of the same sender to the same recipient, less than
-  5 minutes before it; a day divider, a run's events, a gate or a late reply's line between
-  ends a group. The human's reply to a question in the window is no row (Answer in the
+  5 minutes before it; a day divider, a run's events, a gate, an open question's line or a
+  late reply's line between ends a group. The human's reply to a question in the window is no row (Answer in the
   question card, below), so it ends no group; a reply to a question not in the window
   stands alone, never continuing a group nor continued: an answer's head says which
   question it answers, a dismissal is a line. One pure function, `feedRows` in `Chat.tsx`,
@@ -841,8 +849,10 @@ Built in the chat task (2026-10-03):
   - Size: a message's summary and text are 15/22 px and at most 720 px wide, only in the
     chat's messages (`.chat-message`); the shared `.chat-body` of a gate's card, Flows and
     an agent's task keeps its size; code 13 px mono.
-- **A question**: open, an orange card (a 4 px band on its left) "Question #N · waits for
-  you"; closed, a neutral card "Question #N",
+- **A question**: open, a quiet line where it was asked, "<agent> asked: <summary> ↓"
+  (a mini avatar, the text cut at the line's end, the arrow beside it, the time; it ends a
+  group), answered in the waiting card (LAD-28; before, an orange card in its row);
+  closed, a neutral card "Question #N",
   its choices faded, the chosen one marked "✓" in `--done` (the only place the choice
   shows), the supervisor's recommendation's quiet line, if one was given (The
   supervisor's recommendation, below), and the human's reply in the card (Answer in the
@@ -854,6 +864,54 @@ Built in the chat task (2026-10-03):
   question (`dismissed` and `answered_by` this message; with no question in the window, by
   the summary `Dismissed #N` of `runtime.dismiss_question` and no `choice`), its body is
   its comment.
+- **The waiting card** (decided 2026-10-13, LAD-28, mockup
+  `task/lad-28/mockup-question-card-final.html`; it replaces the open question's card of
+  feature/question-answer, whose field beside the composer's read as a second place to
+  write, and the hint over the composer). `WaitingCard.tsx`, between the feed and the
+  composer while anything waits in the session, and nowhere else in the chat does the human
+  answer it. Its open questions come from what waits for the human (the list `waiting`,
+  `state.waiting_items`, Needs you's), its gates from the session's gates (also in a
+  stopped session); no second list. **Tabs**: one per agent with open questions (all of
+  them, by id) and one per open gate, in the order their first item was asked (then by its
+  id); a tab shows the agent's avatar letter in its colour (`avatar`), or a gate's the
+  Flows icon in its run's colour (`runColours`, grey until the runs load), the name (the
+  run's for a gate) and the number of its items in a muted badge; its 3 px top in that
+  colour, dashed for a gate. Many tabs stay on one line, as the terminals' (Terminals,
+  Tabs): a name is cut with an ellipsis down to about 72 px (a shorter one whole), then the
+  row scrolls sideways (the wheel too), with no bar, which would lie between the shown tab
+  and the panel; the shown tab scrolls into view, and the expand button at the right never
+  moves (review of LAD-28, F2). The shown tab is the human's: it stays while items come or go
+  on other tabs, and when it empties the first one shows. **An agent's tab**: its
+  questions, numbered when more than one, each with its text in bold, its details
+  (Markdown, muted) and chips, its choices as 32 px buttons (one picked, `--action` on
+  `--action-ground`; a second click unpicks), **Other…** (only for a question with a free
+  answer: a field "Your own answer") and **Skip** (a field "Why you skip it (optional)");
+  the three exclude each other, and a pick is kept per question across tab switches. The
+  Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
+  once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
+  answered" beside it until then; it posts the tab in one request (`POST …/answers`), and
+  the agent gets the replies in one hand-over. A refusal shows in the Send row with the
+  core's reason and the picks stay (as a gate's comment does: the card keeps the picks and
+  the comments across its tabs and its expanded view); the tab goes only when `waiting` brings its questions
+  closed. Each question shows the supervisor's recommendation (below) under its details,
+  and its recommended choice is picked ahead (decided 2026-10-13, LAD-28, mockup
+  `task/lad-28/mockup-recommendation-in-tab.html`, option B): the counter counts it and Send
+  sends it as any pick; the human's own pick, also an unpick, wins, and a recommendation
+  given later picks its choice then only in a question the human has not touched. A comment with a choice is not offered (the API keeps `text` with `choice`).
+  **A gate's tab**: the gate's panel (Flow gates, above), its buttons in the Send row,
+  which answer at once. **Look**: the panel on `--human-ground` in a 1 px `--human` frame,
+  radius `0 10px 10px 10px`; the shown tab lies on it, tinted with 10 % of its colour, its
+  text `--ink` 600; the others `--raised` and `--muted`. **Height**: at most half the
+  chat's; the list scrolls inside, the tabs and the Send row stay in view. An icon button
+  at the right of the tabs (`ExpandIcon`, no text; "Expand the card", the UI's Tooltip)
+  shows it over the whole window (`role="dialog"`, "What waits for you in <session>", 16 px
+  from the window's edges over `--scrim`); its other icon ("Collapse the card") or Esc
+  brings it back, the focus returning to the expand button, and it comes back by itself
+  when nothing waits. **Lines lead to tabs**: an open question's or gate's line in the feed
+  has an arrow ("Answer question #N", "Answer gate #N") that shows its tab and marks the
+  item for 1.5 s; a link to an open item (`#message-<id>`, `#gate-<id>`: Needs you's
+  targets, a notification) does the same once what waits is loaded, and scrolls the feed
+  nowhere.
 - **The supervisor's recommendation** (decided 2026-10-12, LAD-27, mockup
   `task/lad-27/mockup-recommendation.html` v3; `Recommendation.tsx`): LADO asks the
   supervisor for its view on each gate and each other agent's question (AGENTS.md, How
@@ -866,44 +924,36 @@ Built in the chat task (2026-10-03):
   supervisor disagrees with the agent whose report led to the gate or who asks, the time
   on the right, then the whole text as Markdown (no length limit or Show more: the
   supervisor is told to keep it short). Its left band is the supervisor's avatar colour,
-  orange when it disagrees. The recommended option's button is the card's only primary
-  one, the others quiet, with no other label, whether the supervisor agrees or not; the
-  option is not named in the block's head (the blue button says it). Without a
-  recommended option the first button stays primary. While it is asked, one muted
+  orange when it disagrees. On a gate the recommended option's button is the panel's only
+  primary one, the others quiet, with no other label, whether the supervisor agrees or not;
+  the option is not named in the block's head (the blue button says it). Without a
+  recommended option the first button stays primary. On a question, whose choices in its
+  tab are picks and whose primary button is Send, the recommended choice is picked ahead
+  (The waiting card, above). While it is asked, one muted
   italic line "Supervisor is preparing a recommendation…"; when the supervisor's turn
   ended without it, "The supervisor gave no recommendation"; never asked, nothing. The
   human answers in every state; a recommendation given later replaces the line and moves
-  the primary button. Closed (a gate opened by a click, a closed question under its
+  the primary button (or picks its choice). Closed (a gate opened by a click, a closed question under its
   choices), one quiet line with the small avatar, "Supervisor recommended: <option>" (the
   button's label) or "Supervisor's recommendation" without one, " · disagreed with
   <agent>" in orange, the text on a click (`details`); the human's choice stays marked only
   in the list.
-- **The open question's card** (decided 2026-10-10, feature/question-answer, mockup
-  `feature/question-answer/mockup-question-buttons-v3.html`, B v3), top to bottom: the
-  supervisor's recommendation, if any; the choices in a row (the recommended one
-  `.primary`, else the first, the others `.quiet`; a choice takes the field's text along
-  as its comment); the field, full width, "Your answer or a comment: it goes
-  with a choice, Send or Dismiss" (none for a question without a free answer); one row
-  with **Send** at the left (disabled and quiet while the field is blank, primary once it
-  has text) and **Dismiss** at the right, a muted button (`.quiet.subdued`) that reads
-  "Dismiss with comment" while the field has text and then sends it: nothing the human
-  typed is lost.
 - **Answer in the question card** (decided 2026-10-07, feature/chat-message-text, mockup
   `question-answer.html`): with its question in the window, the reply is drawn in the
   question's card under the choices, on the human's ground: a small "Y", "You ·
-  answered" (or "You · dismissed", quieter), its time, and the comment that came with a
+  answered" (or "You · skipped", quieter: the UI's word for a dismissal since LAD-28), its time, and the comment that came with a
   choice (else the own words; a dismissal's comment) as Markdown with `breaks`. The choice
   itself is not repeated there: it is marked "✓" only in the list above (decided
   2026-10-12, LAD-25, mockup `mockup-closed-question.html`, option A; before, the block
   repeated it in bold "✓", which read as if the human had typed it). Without
-  the reply in the window, the block says only "You · answered" or "You · dismissed".
+  the reply in the window, the block says only "You · answered" or "You · skipped".
   When the reply is the row right under its question, it is no row; when other rows came
   between, one quiet line stands where it was given (it ends a group): "Y", "You answered
   question #N ↑" (a link up to the card, `#message-N`) and the answer's start on one line
-  cut with an ellipsis, or "You dismissed question #N ↑" (with ` · ` and its comment's
+  cut with an ellipsis, or "You skipped question #N ↑" (with ` · ` and its comment's
   start, cut the same way, when it has one). A reply whose question is not in
   the window (pages not loaded) is the human's row "answer to #N" as before, a dismissal
-  the line "You dismissed question #N", its comment under it. The reply's anchor `#message-<id>` is its late
+  the line "You skipped question #N", its comment under it. The reply's anchor `#message-<id>` is its late
   line when there is one, else its block in the card.
 - **Flow events** (decided 2026-10-07, feature/chat-message-text, mockup
   `flow-events-a.html`): a run's events in a row, with no other row between (whatever the
@@ -913,7 +963,7 @@ Built in the chat task (2026-10-03):
   `human`, a grey "L" for `lado`), its name muted ("You" for the human), then by kind: a
   `flow` move as chips, the state it left (mono, muted) → the state it entered (mono) and
   the outcome, green (`--done`) forward and orange (`--human`) back; `flow_start`
-  "started", `gate_open` "waits for you" (orange; the gate's card is the row under it),
+  "started", `gate_open` "waits for you" (orange; the gate's line is under it),
   `flow_end` "ended" (green), `flow_cancel` "cancelled", `flow_set` "set by you", each with
   the core's `detail` as it is, cut by CSS on one line (the UI parses no detail); a
   `flow` event whose detail is no move shows its detail. The time on the right, always
@@ -927,8 +977,8 @@ Built in the chat task (2026-10-03):
   limit's `continue` enters the gate's state), closed nearest to the event (`gateOf`; the
   answer and the move are one transaction). Without that gate loaded, the move alone. The
   closed gate's line stays where it opened.
-- **Quiet lines** (run events, a closed gate, a late reply, a dismissal) start at the
-  text's column.
+- **Quiet lines** (run events, an open question or gate, a closed gate, a late reply, a
+  dismissal) start at the text's column.
 - **The composer** (shared with an agent's page in Agents): one frame, the field without a
   resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
   scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
@@ -1047,9 +1097,9 @@ Built in the layout task (2026-10-03, schema 14):
   session <name> · <day>". The scroll rule: to the bottom when the chat opens or changes
   its window, and when an entry comes at the bottom while the human is there (within
   40 px); entries put in front keep what the human sees in place (the height added is
-  added to the scroll; the feed has `overflow-anchor: none`). A link to a card
-  (`#message-<id>`, `#gate-<id>`: Needs you, a late reply's line, the hint over the
-  composer) scrolls to it; a card before the window is loaded up to in one request (a
+  added to the scroll; the feed has `overflow-anchor: none`). A link to an open question or
+  gate shows its tab of the waiting card (The waiting card); a link to another card
+  (`#message-<id>`, `#gate-<id>`: a notification, a late reply's line) scrolls to it; a card before the window is loaded up to in one request (a
   message by its id, a gate by its time), then scrolled to; one that is still not there
   (a message the chat does not show) scrolls nowhere.
 
@@ -1907,13 +1957,14 @@ and stays 16 px from the card's ends, off its rounded corners; for a narrow trig
 card starts left of it so the arrow still reaches its centre. The card is 11 px from its
 trigger, so the arrow never touches it.
 
-**The cards' buttons** (feature/question-answer, 2026-10-10, mockup B v3): in the form of
-a question's and a gate's card (`form.answer`, only those two) every `.primary` and
-`.quiet` is 32 px high, 14 px, radius 8, by one rule (`.answer .primary, .answer .quiet`),
-and the field takes radius 8 with them; the global `.primary` (32 px, radius 6) and
-`.quiet` (28 px, 13 px) stay as they are elsewhere (one UI-wide scale: BACKLOG.md). The
-main action is `.primary`, the others `.quiet`; Dismiss is `.quiet.subdued`: muted text on
-no ground, a frame of `--muted` at 45 %.
+**The cards' buttons** (feature/question-answer, 2026-10-10, mockup B v3; the waiting
+card, LAD-28): in the form of a gate's panel (`form.answer`) and in the waiting card (its
+options `.waiting-option` and its Send row `.waiting-send`) every button is 32 px high,
+14 px, radius 8, by one rule each (`.answer .primary, .answer .quiet`; `.waiting-send
+.primary, .waiting-send .quiet`), and the fields take radius 8 with them; the global
+`.primary` (32 px, radius 6) and `.quiet` (28 px, 13 px) stay as they are elsewhere (one
+UI-wide scale: BACKLOG.md). The main action is `.primary`, the others `.quiet`; a
+question's options are neutral until picked, Other… and Skip in `--muted`.
 
 **Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
 "h23"`), whatever the browser's locale.

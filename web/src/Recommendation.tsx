@@ -1,8 +1,9 @@
 // The lead's recommendation on a gate or on another agent's question to the human
 // (docs/design/ui.md, Flow gates and A question; lado.runtime.recommend): part of the card,
-// never an entry of its own. Open, a block between the question's text and the answer, and
-// the recommended option is the card's one primary button (primaryOf); closed, one quiet
-// line whose text opens on a click. The human answers in every state: nothing waits for it.
+// never an entry of its own. Open, a block between the question's text and the answer; the
+// recommended option is a gate's one primary button (primaryOf), and a question's choice
+// picked ahead in its tab (WaitingCard.tsx); closed, one quiet line whose text opens on a
+// click. The human answers in every state: nothing waits for it.
 import type { CSSProperties } from "react";
 
 import type { RecommendationInfo } from "./api";

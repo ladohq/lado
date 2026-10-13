@@ -347,7 +347,8 @@ const REVIEW = artifact(
   { id: "v1", hash: "hv", author: "reviewer", state: "review", summary: "looks fine" },
 );
 
-const gateCard = async () => (await screen.findByText("Approve the design?")).closest(".chat-gate") as HTMLElement;
+// An open gate's tab in the waiting card.
+const gateCard = async () => (await screen.findByText("Approve the design?")).closest('[role="tabpanel"]') as HTMLElement;
 
 test("a gate shows its note with its chips, then the artifacts it reads by their latest records", async () => {
   serve({

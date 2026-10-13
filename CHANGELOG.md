@@ -16,6 +16,17 @@
 - MCP: the supervisor's tool `recommend`; the gate's line to the supervisor is now the
   request `recommend on gate #<id>: …`. API: `recommendation` in `GateInfo` and a
   question's `MessageInfo`. Schema 26: restart running sessions after the upgrade.
+- The chat and Needs you: one card above the composer holds what waits for you in a
+  session, a tab per agent with open questions and per open gate, each in that agent's or
+  run's colour. An agent's tab takes a choice, your own answer (Other…) or Skip for each of
+  its questions and sends them together: the agent gets all the answers at once and
+  starts one turn. A gate's tab answers the gate as its card did. The card expands over
+  the window (Esc folds it). In the feed an open question or gate is one line whose arrow
+  leads to its tab; the hint over the composer is gone; a dismissed question reads
+  "skipped". Each question shows the supervisor's recommendation, and its recommended
+  choice comes picked: Send sends it unless you pick otherwise.
+- API: `POST /api/sessions/{name}/answers` takes the answers to one agent's questions
+  together; `POST …/questions/{id}/answer` and `…/dismiss` are gone.
 - Release candidates: a minor release is first published to PyPI as a pre-release
   `X.Y.0rcN` for testing (docs/release.md). A final release of LADO is never offered one;
   a LADO on a release candidate is offered the next one and the release, and says it is a

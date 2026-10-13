@@ -44,13 +44,11 @@ from lado.server.auth import Guard
 from lado.server.models import (
     AgentDetails,
     AgentInfo,
-    Answer,
     ArtifactInfo,
     CloneJob,
     CloneRefused,
     CloneStart,
     CloneTarget,
-    Dismissal,
     Finish,
     FinishPreviewInfo,
     FolderInfo,
@@ -84,6 +82,7 @@ from lado.server.models import (
     Refused,
     RemoteAsk,
     RemoteInfo,
+    Replies,
     Resume,
     RunEventInfo,
     RunInfo,
@@ -928,28 +927,13 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             result=core(runtime.write_as_human, name, message.text, message.to, message.artifacts)
         )
 
-    @app.post(
-        "/api/sessions/{name}/questions/{question}/answer", dependencies=[Depends(guard.changes)]
-    )
-    def answer(name: str, question: int, given: Answer, has_db: bool = Depends(database)) -> Sent:
-        """The human's answer to an agent's open question: a choice, own words, or both."""
+    @app.post("/api/sessions/{name}/answers", dependencies=[Depends(guard.changes)])
+    def answers(name: str, given: Replies, has_db: bool = Depends(database)) -> Sent:
+        """The human's replies to open questions of one agent (a tab of the waiting card),
+        all or none, handed over to the agent together."""
         known(name, has_db)
-        return Sent(result=core(runtime.answer_question, name, question, given.choice, given.text))
-
-    @app.post(
-        "/api/sessions/{name}/questions/{question}/dismiss", dependencies=[Depends(guard.changes)]
-    )
-    def dismiss(
-        name: str,
-        question: int,
-        given: Dismissal | None = None,
-        has_db: bool = Depends(database),
-    ) -> Sent:
-        """The human dismisses an agent's open question, with an optional comment; the agent
-        hears of it."""
-        known(name, has_db)
-        text = given.text if given else None
-        return Sent(result=core(runtime.dismiss_question, name, question, text))
+        replies = [runtime.HumanReply(r.question, r.choice, r.text, r.skip) for r in given.answers]
+        return Sent(result=core(runtime.answer_questions, name, replies))
 
     @app.websocket("/api/sessions/{name}/agents/{agent}/terminal")
     async def terminal_socket(ws: WebSocket, name: str, agent: str, mode: str = terminal.VIEW):

@@ -169,10 +169,13 @@ function open(path = "/needs-you") {
 const address = () => screen.getByRole("status", { name: "Address" }).textContent;
 const group = (name: string) => screen.findByRole("region", { name: `Session ${name}` });
 
-test("what waits shows by session: a gate's card, a question's card and a waiting agent, each linking to the chat", async () => {
+const card = (session: string) => screen.findByRole("region", { name: `What waits for you in ${session}` });
+
+test("what waits shows by session: its name, In the chat, its waiting card, then its waiting agents", async () => {
   waiting = [
     waits.gate("lado", gate(1)),
     waits.question("api", question(5)),
+    waits.question("lado", question(6, { from: "supervisor", created_at: "2026-10-03T12:00:01.000Z" })),
     waits.agent("lado", agent("w2", "did not take 1 message: answer the dialog in its window")),
     waits.agent("lado", agent("w3")),
   ];
@@ -180,57 +183,58 @@ test("what waits shows by session: a gate's card, a question's card and a waitin
   const lado = await group("lado");
   const api = await group("api");
   expect(within(lado).getByRole("link", { name: "lado" }).getAttribute("href")).toBe("/sessions/lado/activity");
-  // Each one in the feed's row: who, the muted part, the time.
+  expect(within(lado).getByRole("link", { name: "lado's chat" }).textContent).toBe("In the chat");
+  expect(within(api).getByRole("link", { name: "api's chat" }).getAttribute("href")).toBe("/sessions/api/activity");
+  // One card per session, each with its own tabs: lado's gate first (asked first), then
+  // its supervisor's question; api's question.
+  const ladoCard = await card("lado");
+  expect(lado.contains(ladoCard)).toBe(true);
+  const tabs = within(ladoCard).getAllByRole("tab");
+  expect(tabs).toEqual([
+    within(ladoCard).getByRole("tab", { name: "feature/x 1" }),
+    within(ladoCard).getByRole("tab", { name: "supervisor 1" }),
+  ]);
+  expect(within(within(ladoCard).getByRole("tabpanel")).getByText("Approve the design?")).toBeTruthy();
+  const apiCard = await card("api");
+  expect(within(apiCard).getAllByRole("tab").map((one) => one.getAttribute("aria-selected"))).toEqual(["true"]);
+  expect(within(apiCard).getByText("Merge w1 now?")).toBeTruthy();
+  // Agents waiting in their terminal stay rows, after the card.
   const head = (row: HTMLElement) =>
     ["feed-who", "feed-aside"].map((one) => row.querySelector(`.feed-head .${one}`)?.textContent);
-  const card = within(lado).getByRole("article", { name: "Gate #1" });
-  expect(card.className).toContain("feed-row");
-  expect(card.querySelector(".avatar-gate")).toBeTruthy();
-  expect(head(card)).toEqual(["Gate #1", "feature/x · design_ok · waiting since"]);
-  expect(card.querySelector(".feed-head time")?.textContent).toBe(clock(SINCE));
-  expect(within(card).getByText("Approve the design?")).toBeTruthy();
-  expect(within(lado).getByRole("link", { name: "Gate #1 in the chat" }).getAttribute("href")).toBe(
-    "/sessions/lado/activity#gate-1",
-  );
-  const asked = within(api).getByRole("article", { name: "Question from w1" });
-  expect(head(asked)).toEqual(["w1", "waiting since"]);
-  expect(asked.querySelector(".avatar")?.textContent).toBe("W");
-  expect(within(asked).getByText("Question #5 · waits for you")).toBeTruthy();
-  expect(within(api).getByRole("link", { name: "Question #5 in the chat" }).getAttribute("href")).toBe(
-    "/sessions/api/activity#message-5",
-  );
   const w2 = within(lado).getByRole("article", { name: "w2 waits" });
+  expect(ladoCard.compareDocumentPosition(w2) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(head(w2)).toEqual(["w2", "developer · waiting since"]);
   expect(w2.querySelector(".feed-head time")?.textContent).toBe(clock(SINCE));
-  // No card draws a head of its own.
-  expect(document.querySelector(".chat-meta")).toBeNull();
   expect(within(w2).getByText("did not take 1 message: answer the dialog in its window")).toBeTruthy();
   const w3 = within(lado).getByRole("article", { name: "w3 waits" });
   expect(within(w3).getByText("waits for you in its terminal")).toBeTruthy();
-  // An agent's link to the chat is under its card, as a gate's and a question's.
   expect(within(w2).queryByRole("link")).toBeNull();
-  const chats = within(lado).getAllByRole("link", { name: "lado's chat" });
-  expect(chats.map((one) => one.getAttribute("href"))).toEqual(["/sessions/lado/activity", "/sessions/lado/activity"]);
 });
 
-test("a gate and a question are answered in place; an answered one goes when the feed says so", async () => {
-  waiting = [waits.gate("lado", gate(1)), waits.question("lado", question(5))];
+test("a gate and a question are answered in place, each to its session; an answered one goes when the feed says so", async () => {
+  waiting = [waits.gate("lado", gate(1)), waits.question("lado", question(5)), waits.question("api", question(7))];
   open();
-  const lado = await group("lado");
+  const lado = await card("lado");
   fireEvent.change(within(lado).getByRole("textbox", { name: "Comment for the next step (optional)" }), {
     target: { value: "fine" },
   });
   fireEvent.click(within(lado).getByRole("button", { name: "Approve" }));
+  fireEvent.click(within(lado).getByRole("tab", { name: "w1 1" }));
   fireEvent.click(within(lado).getByRole("button", { name: "yes" }));
+  fireEvent.click(within(lado).getByRole("button", { name: "Send answer to w1" }));
+  const api = await card("api");
+  fireEvent.click(within(api).getByRole("button", { name: "later" }));
+  fireEvent.click(within(api).getByRole("button", { name: "Send answer to w1" }));
   await waitFor(() =>
     expect(posted).toEqual([
       { path: "/api/sessions/lado/gates/1/answer", body: { option: "approve", comment: "fine" } },
-      { path: "/api/sessions/lado/questions/5/answer", body: { choice: "yes" } },
+      { path: "/api/sessions/lado/answers", body: { answers: [{ question: 5, choice: "yes", skip: false }] } },
+      { path: "/api/sessions/api/answers", body: { answers: [{ question: 7, choice: "later", skip: false }] } },
     ]),
   );
   waiting = [waits.question("lado", question(5))];
   stream().send("change", { kind: "gates", session: "lado", key: "1", op: "update", item: gate(1, { answer: "approved" }) }, "11");
-  await waitFor(() => expect(screen.queryByRole("article", { name: "Gate #1" })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("tab", { name: "feature/x 1" })).toBeNull());
   waiting = [];
   stream().send("change", { kind: "messages", session: "lado", key: "5", op: "update", item: null }, "12");
   expect(await screen.findByText("Nothing waits for you")).toBeTruthy();

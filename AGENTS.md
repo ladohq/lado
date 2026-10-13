@@ -214,8 +214,9 @@ workflow checks the tag against the package version, then `scripts/release_check
 (a checkout with every tag, `fetch-depth: 0`): an `X.Y.0` without an RC tag, or a final
 that differs from its last RC (the highest N) in more than CHANGELOG.md, pyproject.toml's
 `version` line and the `lado` package's in uv.lock (a dependency's is refused), is refused
-with nothing published (a new RC is the way on); then it builds with `make dist` and
-publishes to PyPI.
+with nothing published (a new RC is the way on); then that the telemetry endpoint's region
+accepts LADO's project token (`scripts/check_telemetry.py`; locally `uv run python
+scripts/check_telemetry.py`); then it builds with `make dist` and publishes to PyPI.
 CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; an RC adds no
 heading, and the final's commit puts the date in its place.
 
@@ -951,6 +952,9 @@ fixes and docs only: no new feature, no API or schema change.
   the CLIs' pins (Commands); standard library only.
   `scripts/release_check.py`: the Release workflow's check that a final release is the code
   of its last release candidate (Commands, Release; docs/release.md); standard library only.
+  `scripts/check_telemetry.py`: the Release workflow's check that the region of
+  `telemetry.ENDPOINT` accepts `telemetry.PROJECT_TOKEN` (one `POST /flags/?v=2` of its
+  host, no event; Release; docs/release.md); standard library and `lado.telemetry` only.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

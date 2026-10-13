@@ -25,6 +25,9 @@ jobs:
       # A minor release needs a release candidate, and a final is its last one's code.
       - name: Check a final release is its last release candidate
         run: python3 scripts/release_check.py "$GITHUB_REF_NAME"
+      # PostHog's /batch/ drops the events of another region's token without an error.
+      - name: Check the telemetry token belongs to the endpoint's region
+        run: uv run python scripts/check_telemetry.py
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*

@@ -48,11 +48,13 @@ SEND_TIMEOUT = 2.0  # seconds per network operation, as update.CHECK_TIMEOUT
 SEND_DEADLINE = 30  # seconds the sender's process lives at most, DNS included
 PROVIDERS_WAIT = 5.0  # of SEND_DEADLINE, the seconds the agent CLIs' --version get in all
 
-# PostHog Cloud EU's batch API and LADO's project token (PostHog's "Project token",
-# write-only and public by design). LADO_TELEMETRY_URL replaces the endpoint, for tests,
-# with TEST_TOKEN.
+# PostHog Cloud EU's batch API and the token of LADO's project there, 304141 (PostHog's
+# "Project token", write-only and public by design). The token must be of a project in
+# the endpoint's region: `/batch/` takes another region's token and drops its events.
+# scripts/check_telemetry.py checks the pair at each release. LADO_TELEMETRY_URL replaces
+# the endpoint, for tests, with TEST_TOKEN.
 ENDPOINT = "https://eu.i.posthog.com/batch/"
-PROJECT_TOKEN = "phc_tid47HKogUn4hGGQRKGdMD4WWoTRrxDVpDKWxdznowDv"
+PROJECT_TOKEN = "phc_rFSHMWjPbkNL8t5n2pAMCmvMXKHgxct6VPMkfYxbNhUa"
 TEST_TOKEN = "phc_test"
 
 DAILY = "lado_daily"

@@ -47,6 +47,7 @@ def test_a_final_release_is_not_offered_a_newer_release_candidate(
     expect(panel.locator(".system-check")).to_contain_text("Up to date")
     expect(panel.get_by_role("region", name="Update")).to_have_count(0)
     expect(panel.locator(".pill")).to_have_count(0)
+    expect(panel.get_by_text("Running")).to_be_visible()
     shot(page)
 
 

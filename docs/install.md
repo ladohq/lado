@@ -19,6 +19,8 @@ missing. The short version of this guide is in [README.md](../README.md#install)
 - [Windows](#windows)
 - [Agent CLIs](#agent-clis)
 - [Your first session](#your-first-session)
+- [Update](#update)
+- [Uninstall](#uninstall)
 - [Common problems](#common-problems)
 
 ## macOS
@@ -246,6 +248,97 @@ LADO updates itself only when it was installed from PyPI with `uv tool install l
 copy or from a git address (also through uv tool or pipx), `lado update` and the web UI
 show the commands to run by hand instead: stop the sessions and the UI server, install
 the version with that environment's `pip install lado==X.Y.Z`, then start them again.
+
+## Uninstall
+
+```bash
+lado uninstall --dry-run    # what it would do; changes nothing
+lado uninstall              # shows the same plan and asks Uninstall? [y/N]
+```
+
+`--yes` skips the question; without a terminal (in a script) it is required.
+
+### What it does
+
+1. It stops the UI server and every session of this `LADO_HOME` (as `lado stop --all`),
+   waits for their session loops and closes the web UI's terminals. LADO's tmux server
+   ends with its last session; when sessions of another `LADO_HOME` run on the same tmux
+   socket, it stays and the output names them.
+2. In each repository a session ran in, it removes the worktrees under
+   `.lado/worktrees/<session>/` and the branches `lado/<session>/*` that `lado finish`
+   would remove without asking: merged into the repository's current branch, nothing
+   uncommitted. It keeps every other one and prints the commands that remove it:
+
+   ```bash
+   git -C <repo> worktree remove --force <worktree>
+   git -C <repo> branch -D <branch>
+   ```
+
+   Once no worktree is left, `.lado/worktrees` and its line `/.lado/worktrees/` in
+   `.git/info/exclude` go too. Your project's own files in `.lado/` (e.g. `sdlc.md`) stay.
+   A repository that is gone is named and passed over.
+3. It deletes `~/.lado`: the history, artifacts, installed kits and their git cache,
+   backups and logs.
+4. Last, it removes the program with the tool that installed it: `uv tool uninstall lado`
+   or `pipx uninstall lado`. Installed with pip or run from a working copy, the program
+   stays and the output says where it runs from.
+
+`--keep-data` stops everything and removes the program, but keeps `~/.lado` and the
+repositories as they are: install LADO again and `lado start <repo> --name <session>`
+resumes a session with its runs and history.
+
+With another `LADO_HOME` (`LADO_HOME=/tmp/try lado uninstall`), it stops that folder's
+sessions, cleans their repositories and deletes that folder; `~/.lado` and the program
+stay, since `~/.lado` may still use it, and the output prints the command that removes
+the program. It never deletes `/`, your home folder or a folder above it, nor a folder
+without `lado.db` that is not `~/.lado`.
+
+It refuses, changing nothing: inside an agent, while `lado update` runs, and when
+`lado.db` was made by a newer LADO (uninstall with that LADO, or by hand below). An older
+`lado.db` is upgraded as `lado stop --all` upgrades it.
+
+### What stays
+
+- Worktrees and branches with work that is not merged, listed with their commands.
+- Repositories `lado start <git-url>` cloned into `~/lado/`: they are yours.
+- tmux, uv, git and the agent CLIs.
+- The agent CLIs' own records of the folders they ran in. LADO never writes to them, and
+  removes nothing there:
+  - Claude Code: the folder's entry in `~/.claude.json` (`projects`, with the trust you
+    gave it; so a LADO installed again is not asked again) and its conversations in
+    `~/.claude/projects/`.
+  - Codex: nothing of LADO's agents; their Codex home was LADO's own, under `~/.lado`.
+  - OpenCode and Kilo: their sessions in their data folders, `~/.local/share/opencode/`
+    and `~/.local/share/kilo/`.
+
+### By hand
+
+For a LADO before 0.37 (no `lado uninstall`) or one installed with pip:
+
+```bash
+lado stop --all
+lado server stop
+sqlite3 ~/.lado/lado.db 'SELECT DISTINCT repo FROM sessions'   # the repositories
+```
+
+In each repository: `git worktree list` and `git branch --list 'lado/*'`; remove each
+worktree under `.lado/worktrees/` and its branch whose work you do not need
+(`git worktree remove <path>`, `git branch -D <branch>`), then the line
+`/.lado/worktrees/` from `.git/info/exclude`. Then:
+
+```bash
+rm -rf ~/.lado
+uv tool uninstall lado      # or: pipx uninstall lado, or pip uninstall lado
+```
+
+### Testing an upgrade as a new user meets it
+
+```bash
+lado uninstall --yes            # the machine as a new user's, but the agent CLIs' records
+uv tool install lado==0.36.0    # the release users have
+lado start ~/work/app           # use it as a user would
+lado update                     # the upgrade under test
+```
 
 ## Common problems
 

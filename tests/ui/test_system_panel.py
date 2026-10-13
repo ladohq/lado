@@ -8,7 +8,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in
 
-from lado import __version__, state
+from lado import __version__, state, update
 
 pytestmark = pytest.mark.ui
 
@@ -31,6 +31,56 @@ def test_live_opens_the_system_panel_and_copies_the_system_info(page: Page, serv
     assert re.search(r"^- Browser: Chrome \d+ on \w+$", copied, re.MULTILINE)
     for secret in (str(state.home()), server["token"], server["url"].split("//")[1]):
         assert secret not in copied
+    shot(page)
+
+
+def test_a_final_release_is_not_offered_a_newer_release_candidate(
+    page: Page, published, server, shot
+):
+    assert not update.prerelease(__version__)  # the working copy is a final release
+    published(**{"99.0.0rc1": "2026-10-04"})  # before the server's first look
+    log_in(page, server)
+    live = page.get_by_role("button", name="System")
+    expect(live).to_have_text("live")
+    live.click()
+    panel = page.get_by_role("dialog", name="System")
+    expect(panel.locator(".system-check")).to_contain_text("Up to date")
+    expect(panel.get_by_role("region", name="Update")).to_have_count(0)
+    expect(panel.locator(".pill")).to_have_count(0)
+    expect(panel.get_by_text("Running")).to_be_visible()
+    shot(page)
+
+
+def test_a_release_candidate_and_a_newer_one_on_offer_are_marked(page: Page, server, shot):
+    # The server runs the working copy's version, a final release: its answers are changed
+    # to a release candidate's, as the server gives them there (test_server_system.py).
+    def system_of_release_candidate(route):
+        route.fulfill(json={**route.fetch().json(), "version": "99.0.0rc1"})
+
+    def as_release_candidate(route):
+        info = route.fetch().json()
+        info.update(
+            current="99.0.0rc1",
+            prerelease=True,
+            latest="99.0.0rc2",
+            available="99.0.0rc2",
+            available_prerelease=True,
+            released="2026-10-14",
+        )
+        route.fulfill(json=info)
+
+    page.route(f"{server['url']}/api/update", as_release_candidate)
+    page.route(f"{server['url']}/api/system", system_of_release_candidate)
+    log_in(page, server)
+    live = page.get_by_role("button", name="System: LADO 99.0.0rc2 is available")
+    live.click()
+    panel = page.get_by_role("dialog", name="System")
+    expect(panel.locator(".system-head")).to_contain_text("LADO 99.0.0rc1")
+    expect(panel.locator(".system-head .pill")).to_have_text("pre-release")
+    update_block = panel.get_by_role("region", name="Update")
+    expect(update_block).to_contain_text("99.0.0rc2 is out")
+    expect(update_block.locator(".pill")).to_have_text("pre-release")
+    expect(panel.get_by_text("Running")).to_be_visible()
     shot(page)
 
 

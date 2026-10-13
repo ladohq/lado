@@ -15,6 +15,7 @@ from lado import (
     providers,
     runtime,
     state,
+    update,
 )
 from lado.gui_session import Place
 from lado.providers import claude, codex, kilo, opencode
@@ -35,7 +36,9 @@ def _versions(
         "tmux": tmux_version,
         "opencode": opencode_version,
     }
-    monkeypatch.setattr(doctor, "_tool_version", lambda path, flag: versions.get(path, "v1"))
+    monkeypatch.setattr(
+        doctor, "_tool_version", lambda path, flag, timeout=None: versions.get(path, "v1")
+    )
 
 
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
@@ -185,6 +188,36 @@ def test_lado_check_of_the_latest_version_and_with_the_check_off(published, monk
     assert doctor.check_lado() == doctor.Check(
         "LADO", doctor.OK, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)"
     )
+
+
+def test_lado_check_says_this_lado_is_a_pre_release(published, monkeypatch):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", "0.37.0rc2", raising=False)
+    published(**{"0.37.0rc2": "2026-10-04"})
+    assert doctor.check_lado() == doctor.Check(
+        "LADO", doctor.OK, "0.37.0rc2 (pre-release), the latest version"
+    )
+    published(**{"0.37.0rc2": "2026-10-04", "0.37.0": "2026-10-06"})
+    update.cache_path().unlink()  # the next look reads the new index
+    assert doctor.check_lado() == doctor.Check(
+        "LADO", doctor.WARN, "0.37.0rc2 (pre-release)", "LADO 0.37.0 is available: lado update"
+    )
+    monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
+    assert doctor.check_lado() == doctor.Check(
+        "LADO", doctor.OK, "0.37.0rc2 (pre-release) (no update check: LADO_NO_UPDATE_CHECK=1)"
+    )
+
+
+def test_the_report_says_this_lado_is_a_pre_release(monkeypatch):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", "0.37.0rc1", raising=False)
+    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
+    assert "- LADO 0.37.0rc1 (pre-release) (" in report
+    monkeypatch.setattr(lado, "__version__", "0.36.0", raising=False)
+    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
+    assert "- LADO 0.36.0 (" in report
 
 
 def test_agent_environment_inherited():
@@ -510,3 +543,34 @@ def test_system_info_and_report_give_only_the_kind_of_place(mac):
     mac("no-gui", None)
     report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
     assert "- Graphical session: process no-gui, no tmux server\n" in report
+
+
+@pytest.mark.parametrize(
+    ("consent", "env", "line"),
+    [
+        ("on", {}, "- Statistics: on"),
+        ("off", {}, "- Statistics: off"),
+        (None, {}, "- Statistics: not chosen"),
+        ("on", {"DO_NOT_TRACK": "1"}, "- Statistics: off by DO_NOT_TRACK=1"),
+    ],
+)
+def test_report_has_statistics_line(telemetry_on, monkeypatch, consent, env, line):
+    from lado import telemetry
+
+    if consent:
+        telemetry.choose(consent)
+    else:
+        (state.home() / "telemetry" / "consent.json").unlink()
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    report = doctor.report(doctor.system_info(which=lambda cmd: None), False, 0)
+    assert line in report.splitlines()
+
+
+def test_report_statistics_without_an_endpoint(monkeypatch):
+    from lado import telemetry
+
+    monkeypatch.delenv("LADO_TELEMETRY")
+    monkeypatch.setattr(telemetry, "PROJECT_TOKEN", "")
+    report = doctor.report(doctor.system_info(which=lambda cmd: None), False, 0)
+    assert "- Statistics: off: no endpoint" in report.splitlines()

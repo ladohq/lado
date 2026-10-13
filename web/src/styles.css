@@ -480,6 +480,12 @@ h3 {
   white-space: nowrap;
 }
 
+/* A pre-release's mark beside the version (docs/design/ui.md, System panel). */
+.system-head .pill {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
 .system-links a {
   color: var(--muted);
   text-decoration: none;
@@ -651,6 +657,32 @@ h3 {
 
 .update-banner > button {
   margin-top: 8px;
+}
+
+/* Usage statistics: the banner that asks once, and Settings' section (Telemetry.tsx). */
+.stats-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.stats-doc {
+  margin-left: 8px;
+  font-size: 13px;
+}
+
+.stats-what summary {
+  margin-top: 8px;
+  color: var(--action);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.stats-tag {
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .update-good {
@@ -5102,6 +5134,7 @@ h3 {
   color: var(--action);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .pill.waits {

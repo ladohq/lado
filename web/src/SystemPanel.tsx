@@ -20,6 +20,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { Link } from "react-router";
 
 import {
   ApiError,
@@ -38,6 +39,7 @@ import {
 } from "./api";
 import { clock, day, duration } from "./ChatText";
 import { CopyButton, useCopy } from "./Copy";
+import { statisticsLine } from "./Telemetry";
 import { ClipboardIcon, FolderIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
@@ -292,7 +294,17 @@ function SystemPanel({
       }}
     >
       <header className="system-head">
-        <strong>LADO {version}</strong>
+        <span>
+          <strong>LADO {version}</strong>
+          {info?.prerelease && (
+            <span
+              className="pill dim"
+              title="This LADO is a release candidate: lado update offers newer release candidates and the release"
+            >
+              pre-release
+            </span>
+          )}
+        </span>
         <span className="system-links">
           <span role="status" className="row-note">
             {note}
@@ -344,6 +356,12 @@ function SystemPanel({
             </dd>
             <dt>git</dt>
             <dd>{facts.git}</dd>
+            <dt>Statistics</dt>
+            <dd>
+              <Link to="/settings" onClick={onClose}>
+                {statisticsLine(facts.telemetry)}
+              </Link>
+            </dd>
             {facts.gui_session && (
               <>
                 <dt>Graphical session</dt>
@@ -435,6 +453,12 @@ function UpdateBlock({ info, onAsk }: { info: UpdateInfo; onAsk: () => void }) {
       <div className="system-update-row">
         <span>
           <strong>{version}</strong> is out<span className="muted">{released}</span>
+          {info.available_prerelease && (
+            <>
+              {" · "}
+              <span className="pill dim">pre-release</span>
+            </>
+          )}
           <br />
           <a href={notes} target="_blank" rel="noreferrer">
             What's new

@@ -13,7 +13,7 @@ import sys
 import time
 import traceback
 
-from lado import fingerprint, providers, runtime, state
+from lado import fingerprint, providers, runtime, state, telemetry
 from lado.runtime import format_message
 
 # How long a session-start hook holds the agent's first turn for LADO's MCP server.
@@ -63,8 +63,7 @@ def _wait_for_mcp(session: str, agent: state.Agent) -> None:
 
 
 def _log(text: str) -> None:
-    with open(state.home() / "hooks.log", "a") as log:
-        log.write(f"{text}\n")
+    telemetry.bounded_append(state.home() / "hooks.log", f"{text}\n")
 
 
 def _baseline_path(me: state.Agent):
@@ -265,13 +264,16 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
     delivered, and wait to be typed in by the sweep's rule (runtime._plan)."""
     began = time.monotonic()  # first: the CLI's limit for the hook runs from its start
     started = time.time()
+    provider_name, where = None, event  # for the journal: the neutral event once known
     try:
         payload = sys.stdin.read()
         current = state.get_agent(session, agent)
         if current is None or current.instance != instance:
             return 0  # an earlier launch of this agent, e.g. exiting after `lado stop`
+        provider_name = current.provider
         provider = providers.get(current.provider)
         neutral = provider.parse_event(event, payload)
+        where = neutral.kind if neutral else event
         by = deadline(provider, event, began)
         output = handle(provider, neutral, session, agent, by) if neutral else None
         if output:
@@ -281,8 +283,9 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
     except state.SchemaError as exc:
         # E.g. LADO upgraded in place under the running session: the database stays as it is.
         _log(f"{event} {session}/{agent}: {exc}")
-    except Exception:
+    except Exception as exc:
         _log(f"{event} {session}/{agent}\n{traceback.format_exc()}")
+        telemetry.record(f"hook:{where}", exc, provider_name, session, agent)
         # What it took for its output was never printed.
         with contextlib.suppress(Exception):  # logged above; the sweep's rule still holds
             state.output_not_taken(session, agent, since=started)

@@ -76,7 +76,10 @@ either. Tests never use the default
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
 login shell (tests of the shell set their own `SHELL`). It also sets
 `LADO_NO_UPDATE_CHECK=1`, so no test looks on PyPI; the tests of the update check switch it
-on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`).
+on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`). Likewise
+`LADO_TELEMETRY=0` (and no `DO_NOT_TRACK` or `LADO_TELEMETRY_URL`), so no test sends
+statistics: `telemetry_on` switches sending on towards a closed local port and stores the
+yes, `telemetry_endpoint` adds a local endpoint that keeps each request.
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's
@@ -195,15 +198,26 @@ from DNS.
 `windows-11-arm` runs only with `-f wsl=false -f smoke=false`: setup-wsl's Ubuntu image is
 amd64 only.
 
-Release: `uv version <X.Y.Z>`, commit on main and push it; CI is green on that commit, the
-smoke on Linux and macOS with it. Run the Windows probe on it (`gh workflow run
-windows-shell.yml --ref main -f runner=windows-latest`, the smoke included) and wait for it
-to be green (`gh run watch <id> --exit-status`). Run `make test-live` locally for every
-provider, Claude Code with the human's yes, reruns by lado-checks' flaky rule; then push tag
-`vX.Y.Z`. The Release workflow checks the
-tag against the package version, builds with `make dist` and publishes to PyPI.
-CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; the release
-commit puts the date in its place.
+Release ([docs/release.md](docs/release.md): the steps and the human's checklist): every
+minor release `X.Y.0`, and a patch at the human's choice, is first a release candidate:
+`uv version X.Y.ZrcN`, commit `Release candidate X.Y.ZrcN` on main and push it; CI is green
+on that commit, the smoke on Linux and macOS with it. Run the Windows probe on it (`gh
+workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke included)
+and wait for it to be green (`gh run watch <id> --exit-status`). Run `make test-live`
+locally for every provider, Claude Code with the human's yes, reruns by lado-checks' flaky
+rule; then push tag `vX.Y.ZrcN` (PEP 440, no dash): PyPI gets a pre-release, which only
+`lado update X.Y.ZrcN` (or a LADO on an RC) installs. main is frozen until the final: only
+fixes for the RC are merged, each released as the next RC; nothing enforces the freeze.
+On the human's "ok": `uv version X.Y.Z`, CHANGELOG.md's heading dated, commit `Release
+X.Y.Z`, CI green, tag `vX.Y.Z`; the probe and the live tests are not run again. The Release
+workflow checks the tag against the package version, then `scripts/release_check.py`
+(a checkout with every tag, `fetch-depth: 0`): an `X.Y.0` without an RC tag, or a final
+that differs from its last RC (the highest N) in more than CHANGELOG.md, pyproject.toml's
+`version` line and the `lado` package's in uv.lock (a dependency's is refused), is refused
+with nothing published (a new RC is the way on); then it builds with `make dist` and
+publishes to PyPI.
+CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; an RC adds no
+heading, and the final's commit puts the date in its place.
 
 Versions (0.x): bump the minor (0.7.0) for new features, an MCP tool or CLI change that older
 agents cannot use, or a database schema migration; running sessions must be restarted after
@@ -235,13 +249,20 @@ fixes and docs only: no new feature, no API or schema change.
     an issue from `doctor.report`: no address, path, repository, session name, token or
     message, only whether the server is open to the network and whether LADO_HOME is set.
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
-    (`fetch_index`; `latest` skips pre-releases and yanked ones, `release` finds a named
-    one), the one PEP 440 comparison (`newer`, `same`; not `gitcache.latest`, which sorts
-    kit tags), the daily check (`check`: `LADO_HOME/update-check.json`, a look at most once
-    per `CHECK_EVERY` and `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`,
-    `lado doctor` and the UI's `GET /api/update` alike; `LADO_NO_UPDATE_CHECK=1`: no look and
-    no line), the installer (`installer`: by this LADO's `sys.prefix`, a uv tool with
-    `uv-receipt.toml` or pipx with `pipx_metadata.json` of lado from an index, else None,
+    (`fetch_index`; `latest` skips pre-releases and yanked ones, with `pre` it takes the
+    newest of all; `release` finds a named one), what an update of this LADO is offered
+    (`offered`, the one rule for the check, `lado update` and the UI's plan: the newest
+    final release, for a LADO that is itself a pre-release, a release candidate, the newest
+    of all; docs/release.md), the one PEP 440 comparison (`newer`, `same`, `prerelease`;
+    not `gitcache.latest`, which sorts kit tags), a version as printed (`shown`: `X.Y.ZrcN
+    (pre-release)`, `lado doctor` and its report), the daily check (`check`:
+    `LADO_HOME/update-check.json`, a look at most once per `CHECK_EVERY` and
+    `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`, `lado doctor` and the
+    UI's `GET /api/update` alike; the file keeps the kind it looked for, `pre`, and one of
+    the other kind, or without the key for a pre-release, is stale;
+    `LADO_NO_UPDATE_CHECK=1`: no look and no line), the installer (`installer`: by this
+    LADO's `sys.prefix`, a uv tool with `uv-receipt.toml` or pipx with
+    `pipx_metadata.json` of lado from an index, else None,
     also for an editable, folder, git or URL install of lado; its `command` installs
     exactly the version, `uv tool install lado==X` with the receipt's `--python` and
     `--with` again, never `uv tool upgrade`; it refreshes lado's index entry (uv
@@ -259,6 +280,48 @@ fixes and docs only: no new feature, no API or schema change.
     installer's argv, given the version as its last argument), `LADO_UNINSTALL_REMOVER`
     (the remover's argv) and `LADO_UPDATE_PREFIX` (the install's prefix instead of
     `sys.prefix`).
+  - `telemetry.py`: LADO's own errors and, with the human's yes, usage statistics
+    (openspec change usage-telemetry, docs/telemetry.md); standard library and
+    `lado.state` only at its top (every hook imports it). `record(where, exc, ...)` is the
+    one capture of an unexpected exception (never raises; `state.SchemaError` is none): a
+    JSON line in `LADO_HOME/errors.jsonl` (mode 600; time, version, where, type, message,
+    traceback, session, agent), and, only while sending is on, a scrubbed event in
+    `LADO_HOME/telemetry/outbox/` (`scrub`: types, LADO's own frames as
+    `lado/<file>:<function>:<line>`, others `<external>`, `where`, provider, `fingerprint`;
+    never a text, path or name), at most `OUTBOX_MAX` (200), further ones counted in
+    `dropped` (at most `DROPPED_MAX`). `where`: `cli:<command>[ <sub>]` (`cli._where`),
+    `hook:<neutral event, else native>`, `mcp:<tool>` (`mcp_server._Server.call_tool` on
+    the SDK's `UnexpectedToolError`), `loop` (`loop.RepeatedErrors`, once per new error;
+    the feed's `server:feed`), `server:<route template>` (`app.py`'s handler of
+    `Exception`, the 500 as before). `bounded_append` writes `errors.jsonl`, `hooks.log`
+    and `loop.log` (renamed to `<name>.1` over `JOURNAL_MAX`, 1 MiB); `rotate` bounds
+    `server.log` at a background server's start and `trim` (copy, then truncate in place:
+    the server's output has `O_APPEND`) while it runs (`server/run.housekeeping`, at its
+    start and every `KICK_EVERY`). `state()` is a `State`: the stored choice
+    (`telemetry/consent.json`, `choose`, `FIELDS_VERSION`), `off_by` (`DO_NOT_TRACK` set
+    but `0` or empty, `LADO_TELEMETRY=0`), `endpoint` (`PROJECT_TOKEN`, or
+    `LADO_TELEMETRY_URL` with `TEST_TOKEN`); `on`, `ask`, `chosen`, `new_fields` (of
+    `FIELDS`, which docs/telemetry.md lists, a test keeps both the same). `kick` (cheap, no
+    network, never raises) starts a detached `lado telemetry send` when sending is on,
+    something is due (no report in `REPORT_EVERY`, or a queued error) and no try in
+    `RETRY_AFTER`: `cli.main` after every command but `hook`, `mcp`, `loop`, `telemetry
+    send` and `update` (which starts nothing after its installer), `doctor` included;
+    the session loop every `KICK_EVERY`; the UI server's housekeeping. A hook only
+    queues. `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
+    the network: `_build` (`_expire` drops errors older than `OUTBOX_MAX_AGE`; `report`
+    counted from lado.db by `state.usage_counts` from the last report, at most
+    `REPORT_MAX_WINDOW` back, never stored; `_groups`, PostHog's `$exception` per
+    fingerprint), `_post` within `SEND_TIMEOUT` per operation, the whole try within
+    `SEND_DEADLINE` (`_deadline`, SIGALRM: DNS too; `_Deadline` is a `BaseException`, so
+    no `except Exception` of the build swallows it; the agent CLIs' `--version`, in
+    daemon threads, get `PROVIDERS_WAIT` of it and are killed by their own timeout then,
+    `doctor.provider_status(..., timeout)`, as nothing kills them after the sender ends),
+    silent; a try with nothing to post leaves
+    `sent.json` as it was; a failure keeps everything and
+    its reason in `telemetry/sent.json` (`last_sent`, `status_lines`), a 2xx removes only
+    the files it sent; the sender's own bug is `_journal_only`. `preview` is what `lado
+    telemetry show` and `GET /api/telemetry/preview` show. `ask_if_needed` is the question
+    of `lado start` and `lado ui` (both ttys, not in an agent).
   - `self_update.py`: `lado update` for the CLI and the UI alike (`cli.cmd_update` only
     asks and prints). `refusal` is the one answer to "can this LADO update itself now"
     (inside an agent, an update running, no installer), the CLI's and the API's `can_update`.
@@ -855,9 +918,14 @@ fixes and docs only: no new feature, no API or schema change.
     `POST /api/marketplaces/update` (`update_each`); a core refusal is 400 `Refused`
     (`kits_core`). Without lado.db the lists make none and clone nothing (the official
     marketplace as the table would make it, `marketplaces.UNMADE_OFFICIAL`);
+    usage statistics (docs/design/ui.md, Usage statistics): `GET /api/telemetry`
+    (`TelemetryInfo`, `models.telemetry_info`, also `SystemInfo.telemetry`), `POST
+    /api/telemetry` (under `Guard.changes`; 409 while the server's environment switches it
+    off) and `GET /api/telemetry/preview` (`TelemetryPreview`, `telemetry.preview`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
     `Listening`: the local link, the remote one and the warning for the address taken),
-    the background start and stop. `static/`:
+    the background start and stop, server.log's bound (`rotate` at a background start,
+    `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`, how long it ran from `runtime.session_time`: spans from its
     `created_at` or a `session_resume` to the next `session_gone` or `session_stop` (an end
@@ -876,6 +944,8 @@ fixes and docs only: no new feature, no API or schema change.
   `scripts/check_groups.py`: `make check`'s test groups, one after another (Commands).
   `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke, and
   the CLIs' pins (Commands); standard library only.
+  `scripts/release_check.py`: the Release workflow's check that a final release is the code
+  of its last release candidate (Commands, Release; docs/release.md); standard library only.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
@@ -1266,9 +1336,11 @@ fixes and docs only: no new feature, no API or schema change.
   session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
   migrates); an error in a pass is
-  written there too with its traceback, and the loop goes on. While the same error
+  written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`),
+  and the loop goes on. While the same error
   repeats, it writes one short line at most every `loop.REPEAT_NOTE` seconds (60) and the
-  count when another error comes or passes work again. `lado ls` marks a running session
+  count when another error comes or passes work again. After a pass it kicks the
+  statistics sender at most every `telemetry.KICK_EVERY` (`telemetry.kick`). `lado ls` marks a running session
   whose loop does not run (its lock is free) and says to run `lado attach <session>`:
   `lado attach`, and `lado start` on a running session (which still refuses), start the
   loop again when its lock is free. `lado forget` removes the lock file.
@@ -1501,6 +1573,15 @@ a text one and write one's bytes, also for a stopped session (docs/design/artifa
 human's side). `lado doctor` shows the store's size and warns about content no record
 refers to that is older than an hour (the next `lado forget` removes it).
 
+`lado telemetry [status]` says whether LADO sends anonymous usage statistics and its errors
+to its maintainers, why not, and when it last sent (`telemetry.status_lines`); `lado
+telemetry on|off` keeps the human's choice (refused inside an agent; `off` drops what is
+queued), `lado telemetry show` prints the next daily report and the queued errors as the
+sender posts them (no token); `lado telemetry send` (hidden) is the detached sender. None of
+them migrates lado.db. `lado start` and `lado ui` ask once on a terminal before their work
+(`telemetry.ask_if_needed`; Enter is off, EOF or Ctrl-C keeps no choice). What is sent and
+where: docs/telemetry.md; how: `telemetry.py` (Layout).
+
 Gates: a run that enters a gate state, or would enter a state more often than its
 `max_visits`, waits for the human with an open gate (`lado ls`: `gate #<id> waiting:
 <question>`). An approval gate has exactly the outcomes `approved` and `rejected` and is
@@ -1617,11 +1698,12 @@ Six layers; each change gets tests at the lowest layer that can catch its bugs:
    before teardown. A passing test keeps nothing; the folder is never cleaned by the tests.
    A timed-out wait names what it waited for and the agents' statuses and last messages.
 
-Before a release, on main at the release commit: CI is green (main got its `make check` at
-each merge; the smoke on Linux and macOS is in CI), and so is the Windows probe (`gh
-workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke in WSL with
-it); locally `make test-live` passes for every provider, Claude Code with the human's yes
-(Release, above).
+Before a release, on main at the release candidate's commit: CI is green (main got its
+`make check` at each merge; the smoke on Linux and macOS is in CI), and so is the Windows
+probe (`gh workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke
+in WSL with it); locally `make test-live` passes for every provider, Claude Code with the
+human's yes. The final's commit, the last RC's code, needs only CI green (Release, above;
+a patch without an RC: all of these on its release commit).
 
 ## Design principles
 

@@ -145,6 +145,81 @@
         }
       }
     },
+    "/api/telemetry": {
+      "get": {
+        "summary": "Telemetry State",
+        "description": "Whether LADO sends usage statistics, whether the UI asks (its banner), and how\nthe last try went (lado.telemetry). Read once per page: not in the change feed.",
+        "operationId": "telemetry_state_api_telemetry_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryInfo"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Telemetry Choose",
+        "description": "The human's choice, the same as `lado telemetry on|off`; `off` drops what waits.\n409 while a variable of the server's environment switches it off.",
+        "operationId": "telemetry_choose_api_telemetry_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/telemetry/preview": {
+      "get": {
+        "summary": "Telemetry Preview",
+        "description": "What the next send posts, as `lado telemetry show` prints it. A plain `def`: it\nruns each agent CLI's --version in a worker thread.",
+        "operationId": "telemetry_preview_api_telemetry_preview_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryPreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions": {
       "get": {
         "summary": "Sessions",
@@ -6231,6 +6306,9 @@
               }
             ]
           },
+          "telemetry": {
+            "$ref": "#/components/schemas/TelemetryInfo"
+          },
           "report": {
             "type": "string",
             "title": "Report"
@@ -6255,6 +6333,7 @@
           "kits",
           "sessions",
           "last",
+          "telemetry",
           "report"
         ],
         "title": "SystemInfo",
@@ -6282,6 +6361,136 @@
         ],
         "title": "Taken",
         "description": "The detail of a 409 to a new session: the session that has the name."
+      },
+      "TelemetryChoice": {
+        "properties": {
+          "choice": {
+            "type": "string",
+            "enum": [
+              "on",
+              "off"
+            ],
+            "title": "Choice"
+          }
+        },
+        "type": "object",
+        "required": [
+          "choice"
+        ],
+        "title": "TelemetryChoice"
+      },
+      "TelemetryInfo": {
+        "properties": {
+          "choice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "on",
+                  "off"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "on": {
+            "type": "boolean",
+            "title": "On"
+          },
+          "ask": {
+            "type": "boolean",
+            "title": "Ask"
+          },
+          "off_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Off By"
+          },
+          "endpoint": {
+            "type": "boolean",
+            "title": "Endpoint"
+          },
+          "last_sent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sent"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting"
+          },
+          "new_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "New Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "choice",
+          "on",
+          "ask",
+          "off_by",
+          "endpoint",
+          "last_sent",
+          "last_error",
+          "waiting",
+          "new_fields"
+        ],
+        "title": "TelemetryInfo",
+        "description": "Whether LADO sends usage statistics and its errors (lado.telemetry.State), whether\nthe UI asks (its banner), and how the last try went."
+      },
+      "TelemetryPreview": {
+        "properties": {
+          "report": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Report"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report",
+          "errors"
+        ],
+        "title": "TelemetryPreview",
+        "description": "What the next send posts (lado.telemetry.preview): the daily report, also when it\nis not due yet, and the queued errors, one event per kind."
       },
       "TmuxInfo": {
         "properties": {
@@ -6344,6 +6553,10 @@
             "type": "string",
             "title": "Current"
           },
+          "prerelease": {
+            "type": "boolean",
+            "title": "Prerelease"
+          },
           "latest": {
             "anyOf": [
               {
@@ -6365,6 +6578,10 @@
               }
             ],
             "title": "Available"
+          },
+          "available_prerelease": {
+            "type": "boolean",
+            "title": "Available Prerelease"
           },
           "released": {
             "anyOf": [
@@ -6439,8 +6656,10 @@
         "type": "object",
         "required": [
           "current",
+          "prerelease",
           "latest",
           "available",
+          "available_prerelease",
           "released",
           "checked_at",
           "error",

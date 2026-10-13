@@ -32,6 +32,7 @@ import { isLive, Live, LiveContext, useLive } from "./live";
 import { Notifier } from "./Notifications";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
+import { StatisticsBanner } from "./Telemetry";
 import { BUNDLE_VERSION } from "./version";
 
 const NEEDS_YOU = "/needs-you"; // its link counts what waits
@@ -147,6 +148,7 @@ export function Shell() {
         </header>
         <VersionBanner />
         <UpdateStatus />
+        <StatisticsBanner />
         <main className="content">
           {denied !== null ? (
             <p className="problem" role="alert">

@@ -2530,7 +2530,7 @@ def _write_lead_skills(agent: state.Agent, lead_skills: list[kits.LeadSkill]) ->
 
 def _add_agent(agent: state.Agent) -> None:
     state.add_agent(agent)
-    detail = f"role {agent.role}, provider {agent.provider}"
+    detail = state.spawned_detail(agent.role, agent.provider)
     state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 

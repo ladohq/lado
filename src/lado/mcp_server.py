@@ -10,10 +10,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 
 from mcp.server.mcpserver import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.utilities.types import Image
 
-from lado import artifacts, kits, runs, runtime, state, tmux
+from lado import artifacts, kits, runs, runtime, state, telemetry, tmux
 
 
 @contextmanager
@@ -76,6 +76,11 @@ class _Server(MCPServer):
             # the running session) is told to the agent as it is, whichever tool it was.
             if isinstance(error.__cause__, state.SchemaError):
                 raise ToolError(str(error.__cause__)) from error.__cause__
+            # The SDK's wrapper of an exception none of LADO's refusals (_reasons): an
+            # unexpected error, journaled; the agent gets the SDK's error as before.
+            if isinstance(error, UnexpectedToolError) and error.__cause__ is not None:
+                session, agent = self._lado_agent
+                telemetry.record(f"mcp:{name}", error.__cause__, session=session, agent=agent)
             raise
 
 

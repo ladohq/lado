@@ -617,6 +617,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## Flaky vitest: an image's artifact tab keeps another test's page title
+
+Size: S. Why here: it turned a pull request's CI red once, in a file the pull request did not touch.
+
+`web/src/ArtifactTab.test.tsx > an image shows as an image` failed in CI's job `ui`
+(`make dist` → `make web`, run 38360879188, job 115174522861): `document.title` was
+`feature/x/tool.py`, another test's record, not `feature/x/shot.png`. Locally it passed 4 of
+4, and the full `make web` 663 of 663. Likely the title of an earlier test's tab is set
+after that test's cleanup, or the test reads the title before its own effect runs.
+Wanted: each test starts with its own title (reset in `afterEach`) and waits for its tab's
+title.
+Found: 2026-10-13, feature/lad-31-release-candidates (review of PR #13).
+
 ## `lado kits check` calls `${KIT_DIR}` in an MCP server's command a hardcoded path
 
 Size: S. Why here: a kit that follows the documented form (README before 0.36, the Kits
@@ -1710,6 +1723,19 @@ CI on 8d48089 (release of 0.32.0) failed the `ui` job on
 Wanted: the gates test waits for the scroll to end.
 Found: 2026-10-09, release of 0.32.0. (The terminal panel test that failed with it, five
 times, was fixed in fix/terminal-ui-flake: its lines now come from the worker's task.)
+Again in run 38360259308 (PR #12, feature/lad-32-usage-telemetry, 2026-10-13).
+
+## Flaky in CI: the gates UI test of a recommendation that disagrees
+
+Size: S. Why here: a red CI run for no code reason; maybe the same cause as the gates
+test's scroll above.
+CI run 38360259308 (PR #12, job `ui`):
+`tests/ui/test_gates.py::test_a_gate_with_a_recommendation_that_disagrees` failed with
+"Locator expected to have text 'Supervisor is preparing a recommendation…'"; it passed
+locally alone with `-n0`.
+Wanted: find what the card shows at that moment (the recommendation already given, or the
+card not rendered yet) and wait for the state the test means.
+Found: 2026-10-13, review of feature/lad-32-usage-telemetry (found on the way).
 
 ## Flaky in CI: `test_stopping_a_session_tells_no_one_and_counts_what_it_dropped` on 3.10
 
@@ -1722,6 +1748,7 @@ for that, not the supervisor's hook.
 Found: 2026-10-10, CI after the push of main.
 Again on 23f0792 (run 38124031817, 2026-10-11): failed twice in a row on 3.10, the same
 timeout, passed on the second rerun; 6 of 6 passed locally on 3.10 (`-n0`). Worth fixing.
+Again in run 38360259308 (PR #12, feature/lad-32-usage-telemetry, 2026-10-13).
 
 ## Codex agents call `read_mcp_resource` instead of LADO's tools
 
@@ -1942,6 +1969,7 @@ CI smoke macos-latest codex, run 38158241466: `the supervisor's turn reached no 
 Wanted: find why Codex's first turn sent no request in time (a slow start), then a fix or a
 longer wait with the reason.
 Found: 2026-10-11, CI of release 0.35.0.
+Again in run 38360259308 (PR #12, feature/lad-32-usage-telemetry, 2026-10-13).
 
 # P3: maybe never
 

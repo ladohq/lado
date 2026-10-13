@@ -142,6 +142,29 @@ def test_a_failed_check_now_says_why(client, published, tmp_path, monkeypatch):
     assert checked["error"].startswith("cannot look up LADO's latest version:")
 
 
+@pytest.mark.parametrize(
+    "current, releases, available, prerelease, available_prerelease",
+    [
+        ("0.36.0", ["0.36.0", "0.37.0rc1"], None, False, False),
+        ("0.37.0rc1", ["0.37.0rc1", "0.37.0rc2"], "0.37.0rc2", True, True),
+        ("0.37.0rc2", ["0.37.0rc2", "0.37.0"], "0.37.0", True, False),
+    ],
+)
+def test_update_says_which_versions_are_pre_releases(
+    client, published, monkeypatch, current, releases, available, prerelease, available_prerelease
+):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", current, raising=False)
+    published(**{version: "2026-10-01" for version in releases})
+    info = ok(client.get("/api/update"))
+    assert (info["available"], info["prerelease"], info["available_prerelease"]) == (
+        available,
+        prerelease,
+        available_prerelease,
+    )
+
+
 def test_update_says_whether_this_lado_can_update_itself(client, installed, monkeypatch):
     info = ok(client.get("/api/update"))
     assert (info["can_update"], info["why_not"], info["running"]) == (True, None, False)
@@ -308,3 +331,90 @@ def test_the_system_says_where_on_a_mac_and_nothing_elsewhere(client, monkeypatc
     monkeypatch.setattr(gui_session.sys, "platform", "linux")
     info = ok(client.get("/api/system"))
     assert info["gui_session"] is None and "Graphical session" not in info["report"]
+
+
+# Usage statistics (lado.telemetry).
+
+
+def _raise(exc):
+    try:
+        raise exc
+    except type(exc) as caught:
+        return caught
+
+
+def test_get_telemetry_states(client, telemetry_on, monkeypatch):
+    from lado import telemetry
+
+    (state.home() / "telemetry" / "consent.json").unlink()
+    said = ok(client.get("/api/telemetry"))
+    assert said == {
+        "choice": None,
+        "on": False,
+        "ask": True,
+        "off_by": None,
+        "endpoint": True,
+        "last_sent": None,
+        "last_error": None,
+        "waiting": 0,
+        "new_fields": [],
+    }
+    telemetry.choose("on")
+    telemetry.record("loop", _raise(KeyError("x")))
+    said = ok(client.get("/api/telemetry"))
+    assert (said["choice"], said["on"], said["ask"], said["waiting"]) == ("on", True, False, 1)
+    monkeypatch.setenv("DO_NOT_TRACK", "1")
+    said = ok(client.get("/api/telemetry"))
+    assert (said["choice"], said["on"], said["off_by"]) == ("on", False, "DO_NOT_TRACK=1")
+
+
+def test_post_telemetry_on_off(client, telemetry_on):
+    from lado import telemetry
+
+    (state.home() / "telemetry" / "consent.json").unlink()
+    assert ok(client.post("/api/telemetry", json={"choice": "on"}))["on"] is True
+    telemetry.record("loop", _raise(KeyError("x")))
+    said = ok(client.post("/api/telemetry", json={"choice": "off"}))
+    assert (said["choice"], said["on"], said["waiting"]) == ("off", False, 0)
+    assert telemetry.queued() == []
+    assert client.post("/api/telemetry", json={"choice": "maybe"}).status_code == 422
+
+
+def test_post_refused_when_env_off(client, telemetry_on, monkeypatch):
+    from lado import telemetry
+
+    telemetry.choose("off")
+    monkeypatch.setenv("LADO_TELEMETRY", "0")
+    answer = client.post("/api/telemetry", json={"choice": "on"})
+    assert answer.status_code == 409
+    assert "LADO_TELEMETRY=0" in answer.json()["detail"]
+    assert telemetry.state().choice == "off"
+
+
+def test_the_choice_needs_the_token_and_the_servers_own_origin(client, telemetry_on):
+    from lado import telemetry
+
+    telemetry.choose("off")
+    foreign = {"origin": "http://evil.example"}
+    assert client.post("/api/telemetry", json={"choice": "on"}, headers=foreign).status_code == 403
+    client.cookies.clear()
+    assert client.post("/api/telemetry", json={"choice": "on"}).status_code == 401
+    assert client.get("/api/telemetry").status_code == 401
+    assert telemetry.state().choice == "off"
+
+
+def test_telemetry_preview_is_the_next_send(client, telemetry_on, monkeypatch):
+    from lado import telemetry
+
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    monkeypatch.setattr(telemetry, "now", lambda: telemetry.parse_time("2026-10-13T09:00:00Z"))
+    telemetry.record("loop", _raise(KeyError("x")))
+    said = ok(client.get("/api/telemetry/preview"))
+    assert said == telemetry.preview()
+    assert said["report"]["event"] == "lado_daily" and len(said["errors"]) == 1
+
+
+def test_system_info_has_telemetry(client, telemetry_on):
+    said = ok(client.get("/api/system"))
+    assert said["telemetry"]["choice"] == "on"
+    assert "- Statistics: on" in said["report"].splitlines()

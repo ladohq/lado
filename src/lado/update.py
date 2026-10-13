@@ -127,10 +127,21 @@ def _releases(data: dict) -> list[Release]:
     return found
 
 
-def latest(data: dict) -> Release | None:
-    """The newest release that is no pre-release."""
-    stable = [r for r in _releases(data) if not prerelease(r.version)]
-    return max(stable, key=lambda r: _key(r.version), default=None)
+def latest(data: dict, pre: bool = False) -> Release | None:
+    """The newest release that is no pre-release, or with `pre` the newest of all."""
+    found = [r for r in _releases(data) if pre or not prerelease(r.version)]
+    return max(found, key=lambda r: _key(r.version), default=None)
+
+
+def offered(data: dict, current: str) -> Release | None:
+    """The release an update of `current` goes to: the newest final release, or for a
+    pre-release (a release candidate a tester runs) the newest of all."""
+    return latest(data, pre=prerelease(current))
+
+
+def shown(version: str) -> str:
+    """A version as LADO prints it: a pre-release says it is one."""
+    return f"{version} (pre-release)" if prerelease(version) else version
 
 
 def release(data: dict, version: str) -> Release | None:
@@ -167,6 +178,9 @@ def check(now: datetime.datetime | None = None, force: bool = False) -> Check | 
         return None
     now = now or datetime.datetime.now(datetime.timezone.utc)
     cached = _cached()
+    pre = prerelease(lado.__version__)
+    if cached and cached.get("pre", False) != pre:
+        cached = None  # a look for another kind of install: none of it holds here
     if cached and not force and _age(cached, now) < CHECK_EVERY:
         return Check(
             lado.__version__,
@@ -178,12 +192,12 @@ def check(now: datetime.datetime | None = None, force: bool = False) -> Check | 
     newest, error = cached.get("latest") if cached else None, None
     released = cached.get("released") if cached else None
     try:
-        found = latest(fetch_index(CHECK_TIMEOUT))
+        found = offered(fetch_index(CHECK_TIMEOUT), lado.__version__)
         newest, released = (found.version, found.date) if found else (None, None)
     except (OSError, ValueError) as exc:
         error = f"cannot look up LADO's latest version: {exc}"
     checked = Check(lado.__version__, newest, now.isoformat(timespec="seconds"), error, released)
-    _write_cache(checked)
+    _write_cache(checked, pre)
     return checked
 
 
@@ -202,8 +216,9 @@ def _age(cached: dict, now: datetime.datetime) -> float:
         return float("inf")
 
 
-def _write_cache(checked: Check) -> None:
+def _write_cache(checked: Check, pre: bool) -> None:
     fields = {
+        "pre": pre,  # the kind looked for: a look for another kind's install is stale
         "checked_at": checked.checked_at,
         "latest": checked.latest,
         "released": checked.released,

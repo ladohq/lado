@@ -406,3 +406,25 @@ def test_start_runs_the_loop_without_the_calling_agents_identity(monkeypatch):
     env = calls[0]["env"]
     assert not {"LADO_SESSION", "LADO_AGENT", "LADO_INSTANCE"} & set(env)
     assert env["LADO_HOME"] == os.environ["LADO_HOME"]
+
+
+@pytest.mark.parametrize(("every", "kicks"), [(0, 4), (3600, 1)])
+def test_the_loop_kicks_the_statistics_sender_every_interval(
+    repo, fake_tmux, monkeypatch, every, kicks
+):
+    from lado import telemetry
+
+    _session(repo)
+    passes, kicked = [], []
+
+    def sweep(session):
+        passes.append(session)
+        if len(passes) == 4:
+            runtime.stop_session(session)
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    monkeypatch.setattr(telemetry, "kick", lambda: kicked.append(1))
+    monkeypatch.setattr(telemetry, "KICK_EVERY", every)
+    assert loop.run("s", interval=0) == 0
+    # Four passes swept; the fifth ends the loop and kicks no more.
+    assert len(kicked) == kicks

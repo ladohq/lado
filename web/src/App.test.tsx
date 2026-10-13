@@ -546,12 +546,12 @@ test("a stream refused for the token shows how to get in and does not try again"
 
 // Settings and the theme
 
-test("Settings is one flat page: Appearance, Notifications, then Providers and environment", () => {
+test("Settings is one flat page: Appearance, Notifications, Providers and environment, then Usage statistics", () => {
   open("/settings");
   const sections = screen
     .getAllByRole("heading", { level: 2 })
     .map((h) => h.textContent);
-  expect(sections).toEqual(["Appearance", "Notifications", "Providers and environment"]);
+  expect(sections).toEqual(["Appearance", "Notifications", "Providers and environment", "Usage statistics"]);
   const providers = screen.getByRole("region", { name: "Providers and environment" });
   expect(within(providers).getByRole("link", { name: /plan/i }).getAttribute("href")).toMatch(
     /docs\/design\/ui\.md#providers-and-environment/,

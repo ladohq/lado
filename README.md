@@ -203,6 +203,14 @@ warns, and Claude Code's agents need a token in your login shell instead:
 `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. `lado doctor` shows where LADO and its
 tmux server run (Graphical session).
 
+## Usage statistics
+
+LADO asks you once, in the UI and in `lado start` / `lado ui`, whether it may send its
+maintainers anonymous usage statistics and its own errors; nothing is sent before you say
+yes, and never a path, a name, a message or a key. `lado telemetry show` prints exactly what
+would go, `lado telemetry off` or `DO_NOT_TRACK=1` switches it off. What is sent and where:
+[docs/telemetry.md](docs/telemetry.md).
+
 ## License
 
 MIT (placeholder; to be confirmed before the first release).

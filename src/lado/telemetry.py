@@ -340,22 +340,29 @@ def record(
     if isinstance(exc, db.SchemaError):
         return
     with contextlib.suppress(Exception):
-        import lado
-
-        version = lado.__version__
-        line = {
-            "at": format_time(now()),
-            "lado": version,
-            "where": where,
-            "type": _type_name(type(exc)),
-            "message": str(exc),
-            "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-            "session": session,
-            "agent": agent,
-        }
-        bounded_append(journal_path(), json.dumps(line) + "\n", mode=0o600)
+        line = _journal(where, exc, session, agent)
         if state().on:
-            _queue({**scrub(where, exc, provider), "at": line["at"], "lado": version})
+            _queue({**scrub(where, exc, provider), "at": line["at"], "lado": line["lado"]})
+
+
+def _journal(
+    where: str, exc: BaseException, session: str | None = None, agent: str | None = None
+) -> dict:
+    """Append the exception's line to errors.jsonl; the line."""
+    import lado
+
+    line = {
+        "at": format_time(now()),
+        "lado": lado.__version__,
+        "where": where,
+        "type": _type_name(type(exc)),
+        "message": str(exc),
+        "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        "session": session,
+        "agent": agent,
+    }
+    bounded_append(journal_path(), json.dumps(line) + "\n", mode=0o600)
+    return line
 
 
 def _queue(event: dict) -> None:
@@ -370,9 +377,7 @@ def _queue(event: dict) -> None:
 
 def _count_dropped(count: int) -> None:
     path = folder() / "dropped"
-    with contextlib.suppress(FileNotFoundError):
-        count = min(count, DROPPED_MAX - path.stat().st_size)
-    count = min(count, DROPPED_MAX)
+    count = min(count, DROPPED_MAX - dropped())  # the count stops at DROPPED_MAX
     if count <= 0:
         return
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -412,19 +417,7 @@ def _journal_only(where: str, exc: BaseException) -> None:
     """A journal line and nothing queued: the sender's own failure, so a broken sender
     cannot feed itself."""
     with contextlib.suppress(Exception):
-        import lado
-
-        line = {
-            "at": format_time(now()),
-            "lado": lado.__version__,
-            "where": where,
-            "type": _type_name(type(exc)),
-            "message": str(exc),
-            "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-            "session": None,
-            "agent": None,
-        }
-        bounded_append(journal_path(), json.dumps(line) + "\n", mode=0o600)
+        _journal(where, exc)
 
 
 # What was sent and tried: sent.json.
@@ -819,7 +812,7 @@ def kick() -> None:
         sent = _read_json(_sent_path())
         if _tried_lately(sent, current):
             return
-        if not _report_due(sent, current) and not _queued_files():
+        if not _report_due(sent, current) and not any(_outbox().glob("*.json")):
             return
         import subprocess
 

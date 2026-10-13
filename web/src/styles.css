@@ -653,6 +653,32 @@ h3 {
   margin-top: 8px;
 }
 
+/* Usage statistics: the banner that asks once, and Settings' section (Telemetry.tsx). */
+.stats-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.stats-doc {
+  margin-left: 8px;
+  font-size: 13px;
+}
+
+.stats-what summary {
+  margin-top: 8px;
+  color: var(--action);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.stats-tag {
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .update-good {
   background: var(--done-ground);
 }

@@ -42,6 +42,17 @@ const SYSTEM: SystemInfo = {
   kits: [{ name: "default", version: "1.0.0", origin: "built-in" }],
   sessions: { running: 1, stopped: 0, gone: 0 },
   last: null,
+  telemetry: {
+    choice: null,
+    on: false,
+    ask: false,
+    off_by: null,
+    endpoint: true,
+    last_sent: null,
+    last_error: null,
+    waiting: 0,
+    new_fields: [],
+  },
   report: "### LADO system info\n- LADO x\n",
 };
 
@@ -197,6 +208,7 @@ test("live is a button that opens the system panel", async () => {
     ["Home", "~/.lado"],
     ["tmux", "3.5a · socket lado"],
     ["git", "2.47.1"],
+    ["Statistics", "not chosen"],
   ]);
   expect(within(shown).getByRole("button", { name: "Copy path" })).toBeTruthy();
   const providers = within(shown).getByRole("region", { name: "Providers" });
@@ -208,6 +220,16 @@ test("live is a button that opens the system panel", async () => {
   expect(shown.querySelector(".system-check")!.textContent).toMatch(/^Up to date · checked \d\d:\d\d↻$/);
   fireEvent.keyDown(shown, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "System" })).toBeNull();
+});
+
+test("the Statistics row leads to Settings and closes the panel", async () => {
+  system = { ...SYSTEM, telemetry: { ...SYSTEM.telemetry, choice: "on", on: true } };
+  open();
+  const shown = await panel();
+  const row = await within(shown).findByRole("link", { name: "sending · not sent yet" });
+  fireEvent.click(row);
+  expect(screen.queryByRole("dialog", { name: "System" })).toBeNull();
+  expect(await screen.findByRole("heading", { name: /^Usage statistics/ })).toBeTruthy();
 });
 
 test("on a Mac the panel says where the server and LADO's tmux server run", async () => {

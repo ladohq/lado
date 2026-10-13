@@ -73,6 +73,18 @@ export const getUpdatePlan = () => get<UpdatePlan>("/api/update/plan");
 // Start `lado update`: it stops this server within seconds.
 export const startUpdate = (to: string) => post<UpdateStarted>("/api/update", { to });
 
+export type TelemetryInfo = components["schemas"]["TelemetryInfo"];
+export type TelemetryPreview = components["schemas"]["TelemetryPreview"];
+
+// Whether LADO sends usage statistics, and whether to ask the human (the banner).
+export const getTelemetry = () => get<TelemetryInfo>("/api/telemetry");
+
+// The human's choice, as `lado telemetry on|off` (409 while the environment switches it off).
+export const chooseTelemetry = (choice: "on" | "off") => post<TelemetryInfo>("/api/telemetry", { choice });
+
+// What the next send posts, as `lado telemetry show` prints it.
+export const getTelemetryPreview = () => get<TelemetryPreview>("/api/telemetry/preview");
+
 export type SystemInfo = components["schemas"]["SystemInfo"];
 
 // The system panel's facts and the report to copy.

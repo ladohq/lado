@@ -29,6 +29,12 @@ os.environ["LADO_AGENT_ENV"] = "inherit"
 # local index (LADO_UPDATE_INDEX).
 os.environ["LADO_NO_UPDATE_CHECK"] = "1"
 
+# No test sends usage statistics or errors (lado.telemetry); the tests of sending switch it
+# on with telemetry_on, and send only to a local endpoint (telemetry_endpoint).
+os.environ["LADO_TELEMETRY"] = "0"
+os.environ.pop("DO_NOT_TRACK", None)
+os.environ.pop("LADO_TELEMETRY_URL", None)
+
 # On a Mac, the test run is taken for one in the graphical session, wherever it runs (over
 # ssh too): no test starts LADO's tmux server through launchd unless it says so
 # (lado.gui_session; its own tests and the integration test of launchd set their place).
@@ -70,6 +76,64 @@ def published(tmp_path, monkeypatch):
     monkeypatch.delenv("LADO_NO_UPDATE_CHECK", raising=False)
     monkeypatch.setenv("LADO_UPDATE_INDEX", str(path))
     return lambda **releases: write_index(path, **releases)
+
+
+@pytest.fixture
+def telemetry_on(monkeypatch, lado_home):
+    """Sending switched on: the human said yes, nothing in the environment switches it off,
+    and the endpoint is a local port nothing listens on (telemetry_endpoint gives one that
+    answers)."""
+    from lado import telemetry
+
+    monkeypatch.delenv("LADO_TELEMETRY", raising=False)
+    monkeypatch.delenv("DO_NOT_TRACK", raising=False)
+    monkeypatch.setenv("LADO_TELEMETRY_URL", f"http://127.0.0.1:{_closed_port()}/batch/")
+    telemetry.choose("on")
+
+
+def _closed_port() -> int:
+    """A local port nothing listens on (as long as nothing takes it in between)."""
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+@pytest.fixture
+def telemetry_endpoint(telemetry_on, monkeypatch):
+    """A local statistics endpoint: `requests` keeps each request's JSON body, `status` is
+    what it answers (200)."""
+    import http.server
+    import threading
+
+    class Endpoint:
+        requests: list = []
+        status = 200
+
+    endpoint = Endpoint()
+    endpoint.requests = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            endpoint.requests.append(json.loads(body))
+            self.send_response(endpoint.status)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    endpoint.url = f"http://127.0.0.1:{server.server_address[1]}/batch/"
+    monkeypatch.setenv("LADO_TELEMETRY_URL", endpoint.url)
+    yield endpoint
+    server.shutdown()
+    server.server_close()
 
 
 @pytest.fixture

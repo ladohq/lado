@@ -7106,10 +7106,26 @@ del.kit-mcp-name {
   font-size: 13px;
 }
 
-.panel-top a.quiet {
+/* The bar's actions in one row: Open in Artifacts tab, then the viewer's; never wrapped. */
+.panel-actions,
+.panel-actions .artifact-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: 0;
+}
+
+.panel-actions a.quiet {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   text-decoration: none;
+}
+
+.panel-actions .icon {
+  width: 15px;
+  height: 15px;
 }
 
 .panel-close {

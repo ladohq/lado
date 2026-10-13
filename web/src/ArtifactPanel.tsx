@@ -5,16 +5,19 @@
 // Expand it to all that room; both are remembered (prefs.ts, lado.artifactPanel). A window
 // with less room than 400 px shows it on the whole screen, with no edge or Expand. Its
 // address is the page's with ?view=<record>. Esc, its close button or a click beside it
-// close it, and the focus goes back where it was (the chip, the row's link). "Open in
-// Artifacts tab" leads to the artifact's page with that record.
+// close it, and the focus goes back where it was (the chip, the row's link). Its top bar
+// holds every button in one row: "Open in Artifacts tab" (the artifact's page with that
+// record) and the viewer's ArtifactActions, then Expand and Close; while the record loads
+// or fails, Expand and Close only. Below COMPACT_BELOW px (the panel's width, or the
+// window's when it takes the whole screen) the actions are icons with tooltips.
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { ApiError, getRecord, type RecordView } from "./api";
 import { changed } from "./artifacts";
-import { ArtifactView } from "./ArtifactView";
+import { Action, ArtifactActions, ArtifactView } from "./ArtifactView";
 import { useView } from "./Attachments";
-import { CloseIcon, ExpandIcon } from "./icons";
+import { ArtifactsIcon, CloseIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
 import { artifactPath, VIEW_PARAM } from "./paths";
 import { ARTIFACT_PANEL_WIDTH, type ArtifactPanelPrefs, storeArtifactPanel, storedArtifactPanel } from "./prefs";
@@ -22,6 +25,8 @@ import { fitWidth, Splitter } from "./Splitter";
 
 // The strip of the page the panel always leaves on its left: a click there closes it.
 const ROOM_GAP = 64;
+// Under this width the bar's actions lose their labels.
+const COMPACT_BELOW = 560;
 
 // The room the window leaves the panel, read again when the window is resized.
 function useRoom(): number {
@@ -51,6 +56,7 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
   };
   const narrow = room < ARTIFACT_PANEL_WIDTH.min;
   const width = prefs.expanded ? room : fitWidth(prefs.width, ARTIFACT_PANEL_WIDTH, room);
+  const compact = (narrow ? room + ROOM_GAP : width) < COMPACT_BELOW;
 
   useEffect(() => {
     let current = true;
@@ -110,10 +116,13 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
           />
         )}
         <div className="panel-top">
-          {artifact && (
-            <Link className="quiet" to={artifactPath(session, artifact.id, record)}>
-              Open in Artifacts tab
-            </Link>
+          {shown && artifact && (
+            <span className="panel-actions">
+              <Action label="Open in Artifacts tab" icon={<ArtifactsIcon />} compact={compact}>
+                {(look) => <Link {...look} to={artifactPath(session, artifact.id, record)} />}
+              </Action>
+              <ArtifactActions session={session} artifact={artifact} record={shown.record} compact={compact} />
+            </span>
           )}
           {!narrow && (
             <button
@@ -142,6 +151,7 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
               session={session}
               artifact={artifact}
               record={shown.record}
+              actions={false}
               latest={stale ? () => view(artifact.latest.id) : undefined}
             />
           )}

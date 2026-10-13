@@ -1266,7 +1266,7 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   failed, Stop's popover; `useBelow` in `Menu.tsx`) is fixed 6px under the button, so a
   scrolling box around it does not cut it: from the button's left edge, Stop's from its
   right edge, and moved along, measured with its own width, so it stays 8px inside both of
-  the window's edges (a Copy link at the window's right edge, e.g. an artifact's panel).
+  the window's edges (a Copy link near the window's right edge, e.g. a session's head).
 - **Forget** asks in a modal window: the history is deleted for good, the worktrees and
   branches left on disk (`forget-preview`), and with open runs a box to tick
   ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,
@@ -1708,8 +1708,9 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   panel's "Open in Artifacts tab"); its Open latest shows the latest record in the panel
   over it. An unknown id says "No artifact <id> in this session".
 - **The viewer** (`ArtifactView.tsx`, one component for the page and the panel): its head
-  is the type's icon and the full name, Download (the content with `?download=1`), Copy
-  link (the page's address, with `?record=` when it is not the latest), Open in new tab
+  is the type's icon and the full name, its actions (`ArtifactActions`: in the name line on
+  the artifact's page, in the panel's top bar in the panel, The panel below), Download (the
+  content with `?download=1`), Copy link (the page's address, with `?record=` when it is not the latest), Open in new tab
   (`target="_blank"`, `rel="noopener noreferrer"`) for every kind but other: for Markdown,
   text and an image the artifact's tab of the record shown (`paths.viewPath`, below), never
   the latest, so the link never changes; for HTML the content address, under the server's
@@ -1762,8 +1763,16 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   (`?view=<record>`, `paths.VIEW_PARAM`, on any of the session's tabs; from Needs you,
   over the session's Activity tab), over a scrim; the page stays where it was. Esc, × or a
   click on the scrim closes it and the focus goes back to the chip (a row's link); Back
-  closes it too (the view is a step of the history). "Open in Artifacts tab" leads to the
-  artifact's page with that record. Open latest in it shows the latest record in the same
+  closes it too (the view is a step of the history). Its top bar holds every button in one
+  row, never wrapped (decided 2026-10-13, LAD-43, mockup artifact
+  `task/lad-43/mockup-panel-buttons.html`, option 1): on the left "Open in Artifacts tab"
+  (the Artifacts tab's icon; the artifact's page with that record) and the viewer's
+  actions, Open in new tab, Download and Copy link; on the right Expand and ×; the
+  viewer's name line under it holds no button. A panel narrower than 560 px (its width, or
+  the window's when it takes the whole screen) shows the actions as 28 px icon buttons, the
+  label as their name and the UI's tooltip; wider, as icon and label with no tooltip (Copy
+  link is an icon button either way). While the record loads or fails, the bar holds Expand
+  and × only. Open latest in it shows the latest record in the same
   panel. Its width is the human's (decided 2026-10-11, feature/artifact-panel-width,
   mockup artifact `feature/artifact-panel-width/mockup-panel.html`, version 4): its left
   edge is the shared `Splitter` (drag, ←/→, a double-click for 620 px; a drag captures the

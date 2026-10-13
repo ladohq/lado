@@ -80,6 +80,20 @@ test("a type the browser cannot show has no Open in new tab: Download does that"
   expect(screen.queryByRole("link", { name: "Open in new tab" })).toBeNull();
 });
 
+test("without its actions the head has no button: the panel shows them in its bar", async () => {
+  serve("# Design");
+  render(
+    <MemoryRouter>
+      <ArtifactView session="lado" artifact={artifact()} record={artifact().latest} actions={false} />
+    </MemoryRouter>,
+  );
+  const head = screen.getByRole("banner");
+  expect(head.textContent).toContain("feature/x/design");
+  expect(within(head).queryAllByRole("link")).toHaveLength(0);
+  expect(within(head).queryAllByRole("button")).toHaveLength(0);
+  await screen.findByRole("heading", { name: "Design" });
+});
+
 test("Copy link copies without the Clipboard API, and shows the link only when no copy works", async () => {
   serve("# Design");
   const legacy = stubLegacyCopy();

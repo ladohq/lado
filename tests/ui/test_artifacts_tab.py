@@ -279,6 +279,37 @@ def test_a_700_px_window_shows_the_panels_edge(page: Page, server, repo, tmp_pat
     shot(page, "narrow")
 
 
+@pytest.mark.parametrize(
+    "width, controls", [(1280, ["Expand", "Close"]), (390, ["Close"])], ids=["wide", "phone"]
+)
+def test_the_panels_buttons_share_one_row_in_its_top_bar(
+    page: Page, server, repo, tmp_path, shot, width, controls
+):
+    session = designed_session(repo, tmp_path)
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    page.get_by_role("button", name="Open artifact ship/x/design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    actions = ["Open in Artifacts tab", "Open in new tab", "Download", "Copy link"]
+    bar = panel.locator(".panel-top")
+    buttons = bar.locator("a, button")
+    expect(buttons).to_have_count(len(actions) + len(controls))
+    names = [one.get_attribute("aria-label") or one.inner_text().strip() for one in buttons.all()]
+    assert names == actions + controls
+    centres = []
+    for one in buttons.all():
+        box = one.bounding_box()
+        assert box is not None and box["x"] >= 0 and box["x"] + box["width"] <= width, box
+        centres.append(box["y"] + box["height"] / 2)
+    assert max(centres) - min(centres) <= 2, centres
+    expect(panel.locator(".artifact-head").get_by_role("link")).to_have_count(0)
+    expect(panel.locator(".artifact-head").get_by_role("button")).to_have_count(0)
+    page.mouse.move(0, 0)
+    shot(page, f"bar-{width}")
+
+
 def test_on_a_phone_the_panel_takes_the_screen(page: Page, server, repo, tmp_path, shot):
     session = designed_session(repo, tmp_path)
     page.set_viewport_size({"width": 390, "height": 844})
@@ -413,7 +444,7 @@ def test_copy_link_copies_without_the_clipboard_api(page: Page, server, repo, tm
 def test_the_link_to_copy_by_hand_stays_inside_the_window(
     page: Page, server, repo, tmp_path, shot, width
 ):
-    # Copy link sits at the panel's right edge; when no copy works (no Clipboard API and a
+    # Copy link sits in the panel's top bar; when no copy works (no Clipboard API and a
     # refused legacy copy) its field opens below it, kept 8px inside the window.
     session = designed_session(repo, tmp_path)
     page.set_viewport_size({"width": width, "height": 844})

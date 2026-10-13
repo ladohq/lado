@@ -1,13 +1,15 @@
 // An artifact's record as the human sees it (docs/design/ui.md, Artifacts): one component
 // for the artifact's page in the Artifacts tab and for the panel a chip opens. Its head
-// names the artifact, who wrote the record when and what changed, with Download and Copy
-// link, and Open in new tab for what the browser can show (the bare page of ArtifactTab, or
-// HTML's content address); its body, ArtifactBody, by media type (artifacts.kindOf): Markdown as the chat shows it (no raw
+// names the artifact, who wrote the record when and what changed; its actions,
+// ArtifactActions, are Download, Copy link and Open in new tab for what the browser can show
+// (the bare page of ArtifactTab, or HTML's content address), in the name line on the page,
+// in its top bar in the panel (ArtifactPanel, `actions={false}` here); its body,
+// ArtifactBody, by media type (artifacts.kindOf): Markdown as the chat shows it (no raw
 // HTML), text and code with line numbers, an image (a click shows it at full size), HTML in
 // a frame sandboxed without the UI's origin, anything else as facts and a download. Text is
 // read up to TEXT_LIMIT bytes and no more. The content comes from the server under its
 // sandbox headers (server/app.py, _content_headers).
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 
 import { ApiError, contentPath, getContent, type ArtifactInfo, type RecordInfo } from "./api";
 import { kindOf, scopePart, size, type Kind } from "./artifacts";
@@ -27,6 +29,7 @@ import {
   ShieldIcon,
 } from "./icons";
 import { artifactPath, viewPath } from "./paths";
+import { Tooltip } from "./Tooltip";
 
 // The bytes of a text the viewer reads at most; the rest is a download.
 export const TEXT_LIMIT = 1024 * 1024;
@@ -60,24 +63,69 @@ export function FullName({ scope, name }: { scope: string; name: string }) {
   );
 }
 
+type ActionLink = (look: { className: string; "aria-label"?: string; children: ReactNode }) => ComponentProps<typeof Tooltip>["children"];
+
+// One action of the head, a link that takes how it is shown: its icon and label, or,
+// compact, its icon alone with the label as its name and the UI's tooltip.
+export function Action({ label, icon, compact, children: link }: { label: string; icon: ReactNode; compact: boolean; children: ActionLink }) {
+  if (!compact) return link({ className: "quiet", children: <>{icon}{label}</> });
+  return <Tooltip tip={label}>{link({ className: "icon-button", "aria-label": label, children: icon })}</Tooltip>;
+}
+
+// Open in new tab (not for `other`), Download and Copy link of the record shown; Copy link
+// is an icon button with its tooltip either way.
+export function ArtifactActions({
+  session,
+  artifact,
+  record,
+  compact = false,
+}: {
+  session: string;
+  artifact: ArtifactInfo;
+  record: RecordInfo;
+  compact?: boolean;
+}) {
+  const kind = kindOf(record.media_type);
+  const download = contentPath(session, record.id, true);
+  const link = `${window.location.origin}${artifactPath(session, artifact.id, record.id === artifact.latest.id ? undefined : record.id)}`;
+  // The record shown alone: HTML at its content address, under the server's sandbox; the
+  // other kinds the browser shows in the bare page; `other` only downloads, as Download does.
+  const tab = kind === "html" ? contentPath(session, record.id) : viewPath(session, record.id);
+  return (
+    <span className="artifact-actions">
+      {kind !== "other" && (
+        <Action label="Open in new tab" icon={<OpenTabIcon />} compact={compact}>
+          {(look) => <a {...look} href={tab} target="_blank" rel="noopener noreferrer" />}
+        </Action>
+      )}
+      <Action label="Download" icon={<DownloadIcon />} compact={compact}>
+        {(look) => <a {...look} href={download} download />}
+      </Action>
+      <CopyButton
+        label="Copy link"
+        copied="Link copied"
+        text={link}
+        field={{ title: `Link to ${artifact.full_name}`, label: "Link" }}
+        icon={<LinkIcon />}
+      />
+    </span>
+  );
+}
+
 export function ArtifactView({
   session,
   artifact,
   record,
   latest,
+  actions = true,
 }: {
   session: string;
   artifact: ArtifactInfo;
   record: RecordInfo; // the one shown: its latest, or one an attachment keeps
   latest?: () => void; // the artifact changed since this record: opens its latest
+  actions?: boolean; // ArtifactActions in the name line; the panel shows them in its bar
 }) {
-  const kind = kindOf(record.media_type);
-  const download = contentPath(session, record.id, true);
-  const link = `${window.location.origin}${artifactPath(session, artifact.id, record.id === artifact.latest.id ? undefined : record.id)}`;
   const where = record.run ? `${record.state ?? ""}` : "session";
-  // The record shown alone: HTML at its content address, under the server's sandbox; the
-  // other kinds the browser shows in the bare page; `other` only downloads, as Download does.
-  const tab = kind === "html" ? contentPath(session, record.id) : viewPath(session, record.id);
   return (
     <div className="artifact-view">
       <header className="artifact-head">
@@ -86,25 +134,7 @@ export function ArtifactView({
             <KindIcon mediaType={record.media_type} />
             <FullName scope={artifact.scope} name={artifact.name} />
           </span>
-          <span className="artifact-actions">
-            {kind !== "other" && (
-              <a className="quiet" href={tab} target="_blank" rel="noopener noreferrer">
-                <OpenTabIcon />
-                Open in new tab
-              </a>
-            )}
-            <a className="quiet" href={download} download>
-              <DownloadIcon />
-              Download
-            </a>
-            <CopyButton
-              label="Copy link"
-              copied="Link copied"
-              text={link}
-              field={{ title: `Link to ${artifact.full_name}`, label: "Link" }}
-              icon={<LinkIcon />}
-            />
-          </span>
+          {actions && <ArtifactActions session={session} artifact={artifact} record={record} />}
         </div>
         {artifact.title && <h2 className="artifact-title">{artifact.title}</h2>}
         <p className="artifact-meta">

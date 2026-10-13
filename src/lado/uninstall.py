@@ -246,8 +246,25 @@ def _work(repo: str, session: str) -> list[Work]:
     """The session's worktrees under .lado/worktrees/<session>/ and its branches
     lado/<session>/*, each judged by finish's rule."""
     prefix = f"lado/{session}/"
-    found = {branch: path for path, branch in runtime.session_worktrees(repo, session).items()}
     folder = Path(repo, ".lado", "worktrees", session)
+    inside = str(folder) + "/"
+    found: dict[str, str] = {}  # branch -> worktree
+    path = None
+    # Every worktree under the session's folder, by its folder's branch: one whose branch
+    # was deleted (a detached HEAD, which runtime.session_worktrees leaves out) then has
+    # that branch gone, and work_of reads its HEAD. Another branch of LADO's session it has
+    # checked out goes by that name; a branch not of LADO's is never one to delete.
+    for line in runtime.git(repo, "worktree", "list", "--porcelain").splitlines():
+        if line.startswith("worktree "):
+            path = line.removeprefix("worktree ")
+            if path.startswith(inside):
+                found[f"{prefix}{Path(path).name}"] = path
+        elif line.startswith("branch ") and path and path.startswith(inside):
+            branch = line.removeprefix("branch refs/heads/")
+            own = f"{prefix}{Path(path).name}"
+            if branch != own and branch.startswith(prefix):
+                del found[own]
+                found[branch] = path
     refs = runtime.git(repo, "for-each-ref", "--format=%(refname:short)", f"refs/heads/{prefix}")
     for name in refs.split():
         found.setdefault(name, str(folder / name.removeprefix(prefix)))

@@ -289,6 +289,38 @@ def test_another_homes_worktrees_keep_lados_folder_and_line(
     assert "/.lado/worktrees/" in (repo / ".git" / "info" / "exclude").read_text()
 
 
+def test_a_detached_worktree_is_judged_by_its_head(repo, fake_tmux, no_program, tmux_server):
+    """Its branch deleted: the worktree's HEAD holds the work (runtime.tip), so it is kept
+    and listed when not merged, and removed when merged."""
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    ahead = runtime.spawn_worker("s", "task", name="ahead")
+    merged = runtime.spawn_worker("s", "task", name="merged")
+    commit(ahead.cwd, "ahead.txt")
+    for worker in (ahead, merged):
+        runtime.git(worker.cwd, "checkout", "-q", "--detach")
+        runtime.git(str(repo), "branch", "-D", worker.branch)
+    lines, say = said()
+    found = uninstall.plan()
+    uninstall.print_plan(found, say)
+    assert "    keep   worktree .lado/worktrees/s/ahead: 1 commit not in main" in lines
+    assert "    remove worktree .lado/worktrees/s/merged (merged)" in lines
+    code, done = run(found)
+    assert code == 0
+    assert Path(ahead.cwd).exists() and not Path(merged.cwd).exists()
+    assert f"    git -C '{repo}' worktree remove --force '{ahead.cwd}'" in done
+
+
+def test_a_branch_not_of_lados_is_never_deleted(repo, fake_tmux, no_program, tmux_server):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    worker = runtime.spawn_worker("s", "task", name="w")
+    runtime.git(worker.cwd, "checkout", "-q", "-b", "feature")
+    runtime.git(str(repo), "branch", "-D", worker.branch)
+    code, lines = run(uninstall.plan())
+    assert code == 0
+    assert not Path(worker.cwd).exists()  # merged: its worktree goes
+    assert "feature" in branches(repo)
+
+
 def test_a_branch_without_worktree_and_dirty_work_are_judged_alike(
     repo, fake_tmux, no_program, tmux_server
 ):

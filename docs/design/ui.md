@@ -1111,7 +1111,10 @@ Built in the layout task (2026-10-03, schema 14):
   session <name> · <day>". The scroll rule: to the bottom when the chat opens or changes
   its window, and when an entry comes at the bottom while the human is there (within
   40 px); entries put in front keep what the human sees in place (the height added is
-  added to the scroll; the feed has `overflow-anchor: none`). A link to an open question or
+  added to the scroll; the feed has `overflow-anchor: none`). While the feed is hidden (an
+  expanded waiting card), the rule waits and applies when it shows again (a
+  `ResizeObserver`), so what came meanwhile is at the bottom for a human who was there,
+  and one reading above stays there (LAD-48). A link to an open question or
   gate shows its tab of the waiting card (The waiting card); a link to another card
   (`#message-<id>`, `#gate-<id>`: a notification, a late reply's line) scrolls to it; a card before the window is loaded up to in one request (a
   message by its id, a gate by its time), then scrolled to; one that is still not there

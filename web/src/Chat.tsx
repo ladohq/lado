@@ -218,18 +218,33 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
 
   // The scroll rule: to the bottom when the chat opens or changes its window, and when an
   // entry comes at the bottom while the human is there; entries put in front keep what the
-  // human sees where it was.
+  // human sees where it was. A hidden feed (an expanded waiting card hides it) has no height
+  // to read or scroll: the rule waits, and applies when the feed shows again.
   const first = entryKey(shown[0]);
   const last = entryKey(shown[shown.length - 1]);
-  useLayoutEffect(() => {
+  const follow = () => {
     const element = feed.current;
-    if (!element || !ready) return;
+    if (!element || !ready || element.clientHeight === 0) return;
     const was = scroll.current;
     if (was.window !== key) element.scrollTop = element.scrollHeight;
     else if (first !== was.first && was.height > 0) element.scrollTop = was.top + element.scrollHeight - was.height;
     else if (last !== was.last && was.bottom) element.scrollTop = element.scrollHeight;
     scroll.current = { window: key, first, last, height: element.scrollHeight, top: element.scrollTop, bottom: atBottom(element) };
-  });
+  };
+  useLayoutEffect(follow);
+  const following = useRef(follow);
+  following.current = follow;
+  useEffect(() => {
+    const element = feed.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let hidden = element.clientHeight === 0;
+    const observer = new ResizeObserver(() => {
+      if (hidden && element.clientHeight > 0) following.current();
+      hidden = element.clientHeight === 0;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const scrolled = () => {
     const element = feed.current;
     if (!element) return;

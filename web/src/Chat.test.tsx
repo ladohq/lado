@@ -171,9 +171,22 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
 
+// jsdom lays nothing out: every clientHeight is 0, which the scroll rule takes for a hidden
+// feed (an expanded waiting card). The feed gets 1 px, so it is shown; the tests give its
+// scrollHeight themselves.
+beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.classList.contains("chat-feed") ? 1 : 0;
+    },
+  });
+});
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
 });
 
 test("the chat shows who wrote each message, its summary and its body as Markdown without HTML", async () => {

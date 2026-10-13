@@ -553,6 +553,66 @@ def test_a_long_chat_opens_with_its_latest_page_and_loads_earlier_ones_at_the_to
     shot(page, "start")
 
 
+AT_BOTTOM = "feed => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40"
+
+
+def note(session: str, text: str) -> None:
+    state.queue_message(session, "supervisor", "human", text, mark=state.DELIVERED)
+
+
+def chat_read_at(page: Page, server, repo, where: str):
+    """A long chat with an open question, the human's scroll put at `where` (a JS
+    expression of `feed`); its feed (by its class: a role leaves a hidden one out), the
+    card, the session and the feed's scrollTop."""
+    session, _ = long_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.locator(".chat-feed")
+    card = waiting_card(page, session)
+    expect(chat.get_by_text("note 120", exact=True)).to_be_visible()
+    expect(card).to_be_visible()
+    top = chat.evaluate(f"feed => {{ feed.scrollTop = {where}; return feed.scrollTop; }}")
+    page.wait_for_timeout(300)  # the scroll event ran
+    return chat, card, session, top
+
+
+def test_at_the_bottom_messages_that_come_while_the_card_is_expanded_show_after_its_fold(
+    page: Page, server, repo, shot
+):
+    """LAD-48, F5: the scroll rule holds while the expanded card hides the feed."""
+    chat, card, session, _ = chat_read_at(page, server, repo, "feed.scrollHeight")
+    assert chat.evaluate(AT_BOTTOM)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(chat).to_be_hidden()
+    for n in range(1, 6):
+        note(session, f"late {n}")
+    expect(chat.get_by_text("late 5", exact=True)).to_have_count(1)
+    card.get_by_role("button", name="Collapse the card").click()
+    expect(chat).to_be_visible()
+    # Once shown, by the next frame (a ResizeObserver's callback, before the paint).
+    page.wait_for_function(f"({AT_BOTTOM})(document.querySelector('.chat-feed'))", timeout=2000)
+    expect(chat.get_by_text("late 5", exact=True)).to_be_in_viewport()
+    shot(page)
+
+
+def test_reading_above_the_human_stays_there_through_the_expanded_card_and_the_next_message(
+    page: Page, server, repo, shot
+):
+    """LAD-48, F5: a hidden feed is not taken for one at the bottom."""
+    chat, card, session, read = chat_read_at(page, server, repo, "feed.scrollHeight / 2")
+    card.get_by_role("button", name="Expand the card").click()
+    expect(chat).to_be_hidden()
+    note(session, "later 1")
+    expect(chat.get_by_text("later 1", exact=True)).to_have_count(1)
+    card.get_by_role("button", name="Collapse the card").click()
+    expect(chat).to_be_visible()
+    note(session, "later 2")
+    expect(chat.get_by_text("later 2", exact=True)).to_have_count(1)
+    page.wait_for_timeout(300)
+    assert abs(chat.evaluate("feed => feed.scrollTop") - read) <= 2
+    shot(page)
+
+
 def test_a_link_to_an_old_open_question_shows_its_tab_the_chat_had_not_loaded(
     page: Page, server, repo, shot
 ):

@@ -84,3 +84,7 @@
   one line that scrolls sideways (`styles.css`, `WaitingCard.tsx`), the shown tab into view,
   UI e2e `tests/ui/test_chat.py::test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways`,
   `docs/design/ui.md`. Check: `make web`, `-m ui`.
+- [x] 6.3 Review round 2: F4, the shown tab scrolls only the tabs' row sideways, never the
+  feed or the page (`WaitingCard.tsx`); UI e2e
+  `tests/ui/test_needs_you.py::test_cards_taller_than_the_window_leave_the_page_at_its_top`,
+  vitest `Chat.test.tsx` (no `scrollIntoView` of the tab). Check: `make web`, `-m ui`.

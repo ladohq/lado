@@ -146,9 +146,15 @@ export function WaitingCard({
     if (marked === null) return;
     card.current?.querySelector(`[data-item="${marked}"]`)?.scrollIntoView?.({ block: "nearest" });
   }, [marked, shown?.key]);
-  // The shown tab scrolls into the tabs' view (the row scrolls sideways when they do not fit).
+  // The shown tab scrolls into the tabs' view (the row scrolls sideways when they do not
+  // fit): the row only, never scrollIntoView, which would scroll the feed or the page too.
   useLayoutEffect(() => {
-    tabList.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    const row = tabList.current;
+    const on = row?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!row || !on) return;
+    if (on.offsetLeft < row.scrollLeft) row.scrollLeft = on.offsetLeft;
+    else if (on.offsetLeft + on.offsetWidth > row.scrollLeft + row.clientWidth)
+      row.scrollLeft = on.offsetLeft + on.offsetWidth - row.clientWidth;
   }, [shown?.key, expanded]);
   // Expanded: Esc folds it. Opened, the focus goes to the shown tab; folded, to the expand button.
   useEffect(() => {

@@ -3874,12 +3874,13 @@ def test_a_question_closed_between_the_check_and_the_write_changes_nothing(
         return store(*args, **kwargs)
 
     monkeypatch.setattr(state, "reply_to_questions", answered_first)
+    before = state.list_messages("s")
     with pytest.raises(runtime.LadoError, match=f"^question #{second} is answered$"):
         runtime.answer_questions(
             "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="x")]
         )
     assert _question_states() == [state.OPEN_QUESTION, state.ANSWERED]
-    assert len(state.list_messages("s")) == 2
+    assert [m.id for m in state.list_messages("s")] == [m.id for m in before]
     assert _pastes(fake_tmux) == []
 
 

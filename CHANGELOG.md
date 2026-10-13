@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.1 (unreleased)
+
+- UI: the expanded waiting card covers the session's chat (on Needs you, the page) instead
+  of the whole window, so an artifact opened from it shows over it; Esc closes that
+  artifact first, then folds the card. On Needs you an artifact opens over the page,
+  keeping the answers you picked.
+
 ## 0.37.0 (2026-10-13)
 
 - `lado uninstall [--dry-run] [--keep-data] [--yes]` removes LADO: it stops the UI server

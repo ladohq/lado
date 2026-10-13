@@ -3319,23 +3319,58 @@ h3 {
   margin: 0;
 }
 
-/* Expanded: over the whole window, the rest dimmed; its list fills the height. */
-.waiting-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  padding: 16px;
-  background: var(--scrim);
-}
-
+/* Expanded: in its place, over its page's area, nothing dimmed; its host hides the rest
+   (the chat its feed and composer, Needs you the other sessions and the agents' rows), so
+   a panel over the page (the artifact panel, z 30-31) is over it too. Its list fills the
+   height. */
 .waiting-card.expanded {
+  flex: 1;
   max-width: none;
   max-height: none;
-  height: 100%;
   margin: 0;
   padding: 12px;
   border-radius: 12px;
   background: var(--ground);
+}
+
+.chat:has(> .waiting-card.expanded) > .chat-feed,
+.chat:has(> .waiting-card.expanded) > .composer {
+  display: none;
+}
+
+.chat > .waiting-card.expanded {
+  margin-inline: 0;
+}
+
+.content:has(> .needs-you .waiting-card.expanded) {
+  display: flex;
+  flex-direction: column;
+}
+
+.needs-you:has(.waiting-card.expanded) {
+  flex: 1;
+  min-height: 0;
+}
+
+.needs-you:has(.waiting-card.expanded) .waits-session:not(:has(.waiting-card.expanded)),
+.needs-you:has(.waiting-card.expanded) .waits-item {
+  display: none;
+}
+
+.waits-session:has(.waiting-card.expanded) {
+  flex: 1;
+  min-height: 0;
+}
+
+/* A narrow window scrolls, so the chat has no height of its own: the card is the window's
+   less the top bar's 52 px (taller with a session's head of two lines; accepted, as for
+   .session-main), and expanding scrolls it under that bar. */
+@media (max-width: 900px) {
+  .waiting-card.expanded {
+    min-height: calc(100vh - 52px);
+    min-height: calc(100dvh - 52px);
+    scroll-margin-top: 52px;
+  }
 }
 
 .waiting-card.expanded .waiting-panel {

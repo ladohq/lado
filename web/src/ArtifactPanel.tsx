@@ -1,14 +1,15 @@
 // The panel a chip or a row of the Artifacts tab opens (docs/design/ui.md, Artifacts): the
 // record an attachment keeps, or an artifact's latest, on the right over the session's
-// page; the page stays where it was. Its width is the human's: they drag its left edge (the
-// shared Splitter, with a grip) between 400 px and the window's width less ROOM_GAP, or
-// Expand it to all that room; both are remembered (prefs.ts, lado.artifactPanel). A window
-// with less room than 400 px shows it on the whole screen, with no edge or Expand. Its
-// address is the page's with ?view=<record>. Esc, its close button or a click beside it
-// close it, and the focus goes back where it was (the chip, the row's link). Its top bar
-// holds every button in one row: "Open in Artifacts tab" (the artifact's page with that
-// record) and the viewer's ArtifactActions, then Expand and Close; while the record loads
-// or fails, Expand and Close only. Below COMPACT_BELOW px (the panel's width, or the
+// page or Needs you; the page stays where it was. Its width is the human's: they drag its
+// left edge (the shared Splitter, with a grip) between 400 px and the window's width less
+// ROOM_GAP, or Expand it to all that room; both are remembered (prefs.ts,
+// lado.artifactPanel). A window with less room than 400 px shows it on the whole screen,
+// with no edge or Expand. Its address is the page's with ?view=<record> (on Needs you also
+// &session=<name>). Esc, its close button or a click beside it close it, and the focus goes
+// back where it was (the chip, the row's link). Its top bar holds every button in one row:
+// "Open in Artifacts tab" (the artifact's page with that record) and the viewer's
+// ArtifactActions, then Expand and Close; while the record loads or fails, Expand and
+// Close only. Below COMPACT_BELOW px (the panel's width, or the
 // window's when it takes the whole screen) the actions are icons with tooltips.
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -19,7 +20,7 @@ import { Action, ArtifactActions, ArtifactView } from "./ArtifactView";
 import { useView } from "./Attachments";
 import { ArtifactsIcon, CloseIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
-import { artifactPath, VIEW_PARAM } from "./paths";
+import { artifactPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
 import { ARTIFACT_PANEL_WIDTH, type ArtifactPanelPrefs, storeArtifactPanel, storedArtifactPanel } from "./prefs";
 import { fitWidth, Splitter } from "./Splitter";
 
@@ -76,6 +77,7 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
     setParams((now) => {
       const next = new URLSearchParams(now);
       next.delete(VIEW_PARAM);
+      next.delete(VIEW_SESSION_PARAM);
       return next;
     });
     const back = opener.current;

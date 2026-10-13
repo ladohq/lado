@@ -13,7 +13,7 @@ from test_gates import gated_session
 from test_images import png
 from test_main_screen import log_in, running_session
 
-from lado import runtime, state
+from lado import artifacts, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -151,8 +151,8 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     page: Page, server, repo, shot
 ):
     """The supervisor's question, the gate of run ship/x and w1's question: three tabs in the
-    order they were asked; the gate's Approve moves the run; the card over the window and Esc
-    (docs/design/ui.md, The waiting card)."""
+    order they were asked; the gate's Approve moves the run; the card over the chat's area
+    and Esc (docs/design/ui.md, The waiting card)."""
     session = gated_session(repo)
     runtime.ask_human(session, "supervisor", "Which branch?", "No epic: main.", ["main", "epic"])
     runtime.spawn_worker(session, "sleep 0", name="w1")
@@ -181,16 +181,28 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     expect(tabs.nth(0)).to_have_attribute("aria-selected", "true")
     expand = card.get_by_role("button", name="Expand the card")
     expand.click()
-    dialog = page.get_by_role("dialog", name=f"What waits for you in {session}")
-    expect(dialog).to_be_visible()
-    box = dialog.bounding_box()
-    assert box["x"] <= 32 and box["width"] >= 1400 - 64, box
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    # Over the chat's area only: the feed and the composer hidden, no scrim, no dialog; the
+    # session's tabs seen and usable.
+    chat = page.get_by_role("region", name="Chat", exact=True).bounding_box()
+    box = card.bounding_box()
+    assert box["x"] >= chat["x"] - 1 and box["y"] >= chat["y"] - 1, (box, chat)
+    assert box["x"] + box["width"] <= chat["x"] + chat["width"] + 1, (box, chat)
+    assert box["y"] + box["height"] <= chat["y"] + chat["height"] + 1, (box, chat)
+    assert box["width"] >= chat["width"] - 1 and box["height"] >= chat["height"] - 1, (box, chat)
+    assert box["x"] > 32, box  # not the window's
+    expect(page.get_by_role("log", name="Chat with the session")).to_be_hidden()
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_hidden()
+    expect(page.locator(".waiting-overlay, .panel-scrim")).to_have_count(0)
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    sections = page.get_by_role("navigation", name="Session sections")
+    expect(sections.get_by_role("link", name="Agents")).to_be_visible()
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"{theme}-expanded")
     page.emulate_media(color_scheme="light")
     page.keyboard.press("Escape")
-    expect(dialog).to_have_count(0)
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
     expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
     card.get_by_role("tabpanel").get_by_role("button", name="Approve", exact=True).click()
     expect(tabs).to_have_count(2)
@@ -198,6 +210,60 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
         lambda: state.get_run(session, "ship/x").state != "check", "the run moved on", session
     )
     shot(page, "approved")
+
+
+def on_top(page: Page, panel) -> bool:
+    """Whether what the window shows at the middle of the panel is the panel's."""
+    box = panel.bounding_box()
+    return page.evaluate(
+        "([x, y]) => !!document.elementFromPoint(x, y)?.closest('.artifact-panel')",
+        [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2],
+    )
+
+
+def asked_with_a_plan(session: str) -> None:
+    artifacts.write(session, "supervisor", "plan", "# The plan\n\nJ1 to J9.", title="The plan")
+    runtime.ask_human(
+        session,
+        "supervisor",
+        "Shall I do it myself?",
+        "See the plan.",
+        ["myself", "wait"],
+        attached=["plan"],
+    )
+
+
+def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_topmost(
+    page: Page, server, repo, shot
+):
+    """LAD-48: a chip in the expanded card opens the panel over it; the first Esc closes the
+    panel, the second folds the card (docs/design/ui.md, The waiting card)."""
+    session = running_session(repo)
+    asked_with_a_plan(session)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    card.get_by_role("button", name="myself").click()
+    chip = card.get_by_role("button", name="Open artifact plan")
+    chip.click()
+    panel = page.get_by_role("dialog", name="Artifact plan")
+    expect(panel).to_contain_text("J1 to J9.")
+    assert on_top(page, panel)
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-panel")
+    page.emulate_media(color_scheme="light")
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    expect(chip).to_be_focused()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
+    page.keyboard.press("Escape")
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+    expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
+    expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
 
 
 def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
@@ -485,6 +551,66 @@ def test_a_long_chat_opens_with_its_latest_page_and_loads_earlier_ones_at_the_to
     chat.evaluate("feed => { feed.scrollTop = 0; }")
     expect(chat.get_by_text(f"Start of session {session}")).to_be_in_viewport()
     shot(page, "start")
+
+
+AT_BOTTOM = "feed => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40"
+
+
+def note(session: str, text: str) -> None:
+    state.queue_message(session, "supervisor", "human", text, mark=state.DELIVERED)
+
+
+def chat_read_at(page: Page, server, repo, where: str):
+    """A long chat with an open question, the human's scroll put at `where` (a JS
+    expression of `feed`); its feed (by its class: a role leaves a hidden one out), the
+    card, the session and the feed's scrollTop."""
+    session, _ = long_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.locator(".chat-feed")
+    card = waiting_card(page, session)
+    expect(chat.get_by_text("note 120", exact=True)).to_be_visible()
+    expect(card).to_be_visible()
+    top = chat.evaluate(f"feed => {{ feed.scrollTop = {where}; return feed.scrollTop; }}")
+    page.wait_for_timeout(300)  # the scroll event ran
+    return chat, card, session, top
+
+
+def test_at_the_bottom_messages_that_come_while_the_card_is_expanded_show_after_its_fold(
+    page: Page, server, repo, shot
+):
+    """LAD-48, F5: the scroll rule holds while the expanded card hides the feed."""
+    chat, card, session, _ = chat_read_at(page, server, repo, "feed.scrollHeight")
+    assert chat.evaluate(AT_BOTTOM)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(chat).to_be_hidden()
+    for n in range(1, 6):
+        note(session, f"late {n}")
+    expect(chat.get_by_text("late 5", exact=True)).to_have_count(1)
+    card.get_by_role("button", name="Collapse the card").click()
+    expect(chat).to_be_visible()
+    # Once shown, by the next frame (a ResizeObserver's callback, before the paint).
+    page.wait_for_function(f"({AT_BOTTOM})(document.querySelector('.chat-feed'))", timeout=2000)
+    expect(chat.get_by_text("late 5", exact=True)).to_be_in_viewport()
+    shot(page)
+
+
+def test_reading_above_the_human_stays_there_through_the_expanded_card_and_the_next_message(
+    page: Page, server, repo, shot
+):
+    """LAD-48, F5: a hidden feed is not taken for one at the bottom."""
+    chat, card, session, read = chat_read_at(page, server, repo, "feed.scrollHeight / 2")
+    card.get_by_role("button", name="Expand the card").click()
+    expect(chat).to_be_hidden()
+    note(session, "later 1")
+    expect(chat.get_by_text("later 1", exact=True)).to_have_count(1)
+    card.get_by_role("button", name="Collapse the card").click()
+    expect(chat).to_be_visible()
+    note(session, "later 2")
+    expect(chat.get_by_text("later 2", exact=True)).to_have_count(1)
+    page.wait_for_timeout(300)
+    assert abs(chat.evaluate("feed => feed.scrollTop") - read) <= 2
+    shot(page)
 
 
 def test_a_link_to_an_old_open_question_shows_its_tab_the_chat_had_not_loaded(

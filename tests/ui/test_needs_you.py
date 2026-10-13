@@ -9,6 +9,7 @@ import sys
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_chat import asked_with_a_plan, on_top
 from test_gates import gated_session
 from test_main_screen import log_in, running_session
 
@@ -116,6 +117,57 @@ def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, serv
     tab = page.get_by_role("tab", name=re.compile(r"^supervisor,"))
     expect(tab).to_have_attribute("aria-selected", "true")
     shot(page, "terminal")
+
+
+def test_an_expanded_card_fills_the_page_and_a_chip_opens_the_panel_over_needs_you(
+    page: Page, server, repo, shot
+):
+    """LAD-48: expanded, a session's card fills the page's content area, the other sessions
+    hidden; its chip opens the artifact panel over Needs you, and Back closes it with the
+    card as it was (docs/design/ui.md, Needs you)."""
+    session, other = running_session(repo), running_session(repo)
+    asked_with_a_plan(session)
+    runtime.ask_human(other, "supervisor", "Tag it?", None, ["yes", "no"])
+    log_in(page, server)
+    page.goto(f"{server['url']}/needs-you")
+    card = page.get_by_role("region", name=f"What waits for you in {session}")
+    others = page.get_by_role("region", name=f"Session {other}")
+    expect(others).to_be_visible()
+    card.get_by_role("button", name="myself").click()
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(others).to_be_hidden()
+    name_line = page.get_by_role("heading", name=f"{session} {session}'s chat")
+    expect(name_line).to_be_visible()
+    assert name_line.bounding_box()["y"] < card.bounding_box()["y"]
+    content = page.locator(".content").bounding_box()
+    box = card.bounding_box()
+    assert box["y"] + box["height"] >= content["y"] + content["height"] - 40, (box, content)
+    shot(page, "expanded")
+
+    card.get_by_role("button", name="Open artifact plan").click()
+    expect(page).to_have_url(re.compile(rf"/needs-you\?view=[^&]+&session={session}$"))
+    panel = page.get_by_role("dialog", name="Artifact plan")
+    expect(panel).to_contain_text("J1 to J9.")
+    assert on_top(page, panel)
+    shot(page, "panel")
+    page.go_back()
+    expect(panel).to_have_count(0)
+    expect(page).to_have_url(re.compile(r"/needs-you$"))
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
+
+    # A narrow window (loaded so, its rail folded): the expanded card is the window's height
+    # under the top bar, scrolled there.
+    page.set_viewport_size({"width": 390, "height": 760})
+    page.reload()
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(card).to_be_in_viewport()
+    assert card.bounding_box()["height"] >= 760 - 52 - 1, card.bounding_box()
+    top = page.locator(".topbar").bounding_box()
+    assert abs(card.bounding_box()["y"] - (top["y"] + top["height"])) <= 2, card.bounding_box()
+    shot(page, "narrow")
 
 
 # The page's Notification, recorded; and the tab hidden while window.hidden is true.

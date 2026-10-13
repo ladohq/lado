@@ -6,9 +6,12 @@
 // in one request, so the agent gets them in one hand-over; a gate's tab is
 // the gate's panel, whose buttons answer at once. Nothing shows ahead of the server: a tab
 // goes when the live lists bring its items closed. The card is at most half the chat's
-// height; expanded, it covers the window until Esc, its fold button, or nothing waits.
+// height; expanded, it stays where it is and fills its page's area (the chat's, Needs you's
+// content; its host hides the rest, styles.css) until Esc, its fold button, or nothing
+// waits. It is no modal: an artifact panel a chip opens shows over it, and Esc closes that
+// panel first (the card's Esc waits while the address has ?view=).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router";
 
 import { answerQuestions, ApiError, type GateInfo, type MessageInfo, type Reply, type RunInfo } from "./api";
 import { Attachments } from "./Attachments";
@@ -17,6 +20,7 @@ import { avatar } from "./FeedRow";
 import { GatePanel } from "./GateCard";
 import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon } from "./icons";
+import { VIEW_PARAM } from "./paths";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
 
@@ -65,6 +69,7 @@ function pickOf(picks: Picks, question: MessageInfo): Pick | undefined {
 }
 
 const MARKED_FOR = 1500; // ms an item asked for stays marked
+const NARROW = "(max-width: 900px)"; // the window that scrolls (styles.css)
 
 const answered = (pick: Pick | undefined) =>
   pick !== undefined && ("choice" in pick || "skip" in pick || pick.own.trim() !== "");
@@ -99,6 +104,7 @@ export function WaitingCard({
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const viewing = useSearchParams()[0].has(VIEW_PARAM); // an artifact panel is open over the page
   const [marked, setMarked] = useState<number | null>(null);
   const card = useRef<HTMLElement>(null);
   const tabList = useRef<HTMLDivElement>(null);
@@ -156,9 +162,17 @@ export function WaitingCard({
     else if (on.offsetLeft + on.offsetWidth > row.scrollLeft + row.clientWidth)
       row.scrollLeft = on.offsetLeft + on.offsetWidth - row.clientWidth;
   }, [shown?.key, expanded]);
-  // Expanded: Esc folds it. Opened, the focus goes to the shown tab; folded, to the expand button.
+  // Expanded: Esc folds it, unless an artifact panel is open, whose own Esc closes it first.
+  // Opened, the focus goes to the shown tab; folded, to the expand button.
   useEffect(() => {
     if (!expanded) return;
+    card.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    // A narrow window scrolls (styles.css): the card goes under the top bar. A wide one
+    // scrolls nothing, nor a frame that hides its overflow.
+    if (window.matchMedia?.(NARROW).matches) card.current?.scrollIntoView?.({ block: "start" });
+  }, [expanded]);
+  useEffect(() => {
+    if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -166,9 +180,8 @@ export function WaitingCard({
       setExpanded(false);
     };
     document.addEventListener("keydown", escape);
-    card.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     return () => document.removeEventListener("keydown", escape);
-  }, [expanded]);
+  }, [expanded, viewing]);
   useLayoutEffect(() => {
     if (!expanded && folded.current) {
       folded.current = false;
@@ -212,13 +225,11 @@ export function WaitingCard({
       : `var(--avatar-${avatar(tab.agent).colour})`;
   const panelId = `waiting-${session}-panel`;
 
-  const body = (
+  return (
     <section
       ref={card}
       className={`waiting-card${expanded ? " expanded" : ""}`}
       aria-label={`What waits for you in ${session}`}
-      role={expanded ? "dialog" : undefined}
-      aria-modal={expanded ? true : undefined}
     >
       <div className="waiting-head">
         <div
@@ -265,10 +276,11 @@ export function WaitingCard({
         </div>
         <Tooltip tip={expanded ? "Collapse the card (Esc)" : "Expand the card"}>
           <button
-            ref={expanded ? undefined : expander}
+            ref={expander}
             type="button"
             className="waiting-expand"
             aria-label={expanded ? "Collapse the card" : "Expand the card"}
+            aria-expanded={expanded}
             onClick={() => (expanded ? fold() : setExpanded(true))}
           >
             <ExpandIcon expanded={expanded} />
@@ -308,8 +320,6 @@ export function WaitingCard({
       </div>
     </section>
   );
-  if (!expanded) return body;
-  return createPortal(<div className="waiting-overlay">{body}</div>, document.body);
 }
 
 // An agent's tab: its questions, numbered when more than one, each with the supervisor's

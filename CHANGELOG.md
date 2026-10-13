@@ -49,6 +49,9 @@
   a LADO on a release candidate is offered the next one and the release, and says it is a
   pre-release (`lado doctor`, the System panel's `pre-release` pill). API:
   `prerelease` and `available_prerelease` in `UpdateInfo`.
+- The artifact panel shows all its buttons in one row at its top: Open in Artifacts tab,
+  Open in new tab, Download and Copy link, then Expand and ×; a panel narrower than
+  560 px shows the actions as icons with a tooltip.
 
 ## 0.36.0 (2026-10-12)
 

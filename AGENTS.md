@@ -204,7 +204,9 @@ windows-shell.yml --ref main -f runner=windows-latest`, the smoke included) and 
 to be green (`gh run watch <id> --exit-status`). Run `make test-live` locally for every
 provider, Claude Code with the human's yes, reruns by lado-checks' flaky rule; then push tag
 `vX.Y.Z`. The Release workflow checks the
-tag against the package version, builds with `make dist` and publishes to PyPI.
+tag against the package version, then that the telemetry endpoint's region accepts LADO's
+project token (`scripts/check_telemetry.py`; locally `uv run python
+scripts/check_telemetry.py`), builds with `make dist` and publishes to PyPI.
 CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; the release
 commit puts the date in its place.
 
@@ -903,6 +905,9 @@ fixes and docs only: no new feature, no API or schema change.
   `scripts/check_groups.py`: `make check`'s test groups, one after another (Commands).
   `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke, and
   the CLIs' pins (Commands); standard library only.
+  `scripts/check_telemetry.py`: the Release workflow's check that the region of
+  `telemetry.ENDPOINT` accepts `telemetry.PROJECT_TOKEN` (one `POST /flags/?v=2` of its
+  host, no event; Release); standard library and `lado.telemetry` only.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

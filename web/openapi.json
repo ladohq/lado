@@ -6553,6 +6553,10 @@
             "type": "string",
             "title": "Current"
           },
+          "prerelease": {
+            "type": "boolean",
+            "title": "Prerelease"
+          },
           "latest": {
             "anyOf": [
               {
@@ -6574,6 +6578,10 @@
               }
             ],
             "title": "Available"
+          },
+          "available_prerelease": {
+            "type": "boolean",
+            "title": "Available Prerelease"
           },
           "released": {
             "anyOf": [
@@ -6648,8 +6656,10 @@
         "type": "object",
         "required": [
           "current",
+          "prerelease",
           "latest",
           "available",
+          "available_prerelease",
           "released",
           "checked_at",
           "error",

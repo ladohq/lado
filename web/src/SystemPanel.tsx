@@ -294,7 +294,17 @@ function SystemPanel({
       }}
     >
       <header className="system-head">
-        <strong>LADO {version}</strong>
+        <span>
+          <strong>LADO {version}</strong>
+          {info?.prerelease && (
+            <span
+              className="pill dim"
+              title="This LADO is a release candidate: lado update offers newer release candidates and the release"
+            >
+              pre-release
+            </span>
+          )}
+        </span>
         <span className="system-links">
           <span role="status" className="row-note">
             {note}
@@ -443,6 +453,12 @@ function UpdateBlock({ info, onAsk }: { info: UpdateInfo; onAsk: () => void }) {
       <div className="system-update-row">
         <span>
           <strong>{version}</strong> is out<span className="muted">{released}</span>
+          {info.available_prerelease && (
+            <>
+              {" · "}
+              <span className="pill dim">pre-release</span>
+            </>
+          )}
           <br />
           <a href={notes} target="_blank" rel="noreferrer">
             What's new

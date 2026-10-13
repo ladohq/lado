@@ -1337,6 +1337,12 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   GitHub release of its tag) and **Update…**. Without an installer (P3) the block says
   why (`why_not`) and shows the commands by hand with Copy, and no button; with
   `can_update` false for another reason (an update runs) it says that reason.
+- **A pre-release** (LAD-31, mockup `task/lad-31/mockup-prerelease.html`): a LADO on a
+  release candidate has a grey `pre-release` pill beside `LADO X.Y.ZrcN` in the header
+  (`UpdateInfo.prerelease`; its tooltip says that newer release candidates and the release
+  are offered), and the Update block a pill after the date when the offered version is a
+  release candidate too (`available_prerelease`). A final release is never offered one, so
+  it shows no pill anywhere; the top bar's `↑ X` mark is the same for both.
 - **Update…** (U1) opens a modal with the plan from `GET /api/update/plan`, the same data
   `lado update` prints: from → to, each session to restart with its agents' statuses and
   open runs, this UI server, "Busy agents lose their current turn…", on a Mac outside the

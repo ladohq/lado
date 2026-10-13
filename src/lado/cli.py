@@ -578,7 +578,7 @@ def _update(args: argparse.Namespace) -> int:
         if to is None:
             raise runtime.LadoError(f"PyPI has no LADO {args.version}; nothing was stopped")
     else:
-        to = update.latest(index)
+        to = update.offered(index, current)
         if to is None or not update.newer(to.version, current):
             return _nothing_to_do(args, f"LADO {current} is the latest version.")
     if update.same(to.version, current):

@@ -2430,10 +2430,14 @@ export interface components {
         UpdateInfo: {
             /** Current */
             current: string;
+            /** Prerelease */
+            prerelease: boolean;
             /** Latest */
             latest: string | null;
             /** Available */
             available: string | null;
+            /** Available Prerelease */
+            available_prerelease: boolean;
             /** Released */
             released: string | null;
             /** Checked At */

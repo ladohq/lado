@@ -38,6 +38,11 @@
   one `.1` file each.
 - API: `GET`/`POST /api/telemetry`, `GET /api/telemetry/preview`, `SystemInfo.telemetry`;
   the System panel's row Statistics and the report's `- Statistics:` line.
+- Release candidates: a minor release is first published to PyPI as a pre-release
+  `X.Y.0rcN` for testing (docs/release.md). A final release of LADO is never offered one;
+  a LADO on a release candidate is offered the next one and the release, and says it is a
+  pre-release (`lado doctor`, the System panel's `pre-release` pill). API:
+  `prerelease` and `available_prerelease` in `UpdateInfo`.
 
 ## 0.36.0 (2026-10-12)
 

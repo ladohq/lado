@@ -176,9 +176,9 @@ def agents_note() -> str | None:
 
 
 def latest_plan() -> Plan | None:
-    """The plan for PyPI's latest release, None when it is no newer than this LADO.
-    OSError or ValueError when the index cannot be read."""
-    to = update.latest(update.fetch_index())
+    """The plan for the release PyPI offers this LADO (`update.offered`), None when it is
+    no newer. OSError or ValueError when the index cannot be read."""
+    to = update.offered(update.fetch_index(), lado.__version__)
     if to is None or not update.newer(to.version, lado.__version__):
         return None
     return plan(to)

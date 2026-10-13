@@ -289,8 +289,10 @@ def update_state(checked: update.Check | None) -> UpdateInfo:
         by_hand = self_update.plan(release).by_hand()
     return UpdateInfo(
         current=lado.__version__,
+        prerelease=update.prerelease(lado.__version__),
         latest=checked.latest if checked else None,
         available=available,
+        available_prerelease=available is not None and update.prerelease(available),
         released=checked.released if checked else None,
         checked_at=checked.checked_at if checked else None,
         error=checked.error if checked else None,

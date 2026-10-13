@@ -2395,3 +2395,63 @@ def test_start_help_names_the_prompt_options(capsys):
     assert "--prompt TEXT" in out
     assert "--prompt-file FILE" in out
     assert "- reads it from stdin" in out
+
+
+def test_uninstall_help_names_its_options(capsys):
+    with pytest.raises(SystemExit):
+        main(["uninstall", "--help"])
+    out = capsys.readouterr().out
+    for option in ("--dry-run", "--keep-data", "--yes"):
+        assert option in out
+
+
+def test_uninstall_inside_an_agent_is_refused(lado_home, capsys, monkeypatch):
+    monkeypatch.setenv("LADO_AGENT", "dev")
+    state.home()
+    before = sorted(p.name for p in lado_home.iterdir())
+    assert main(["uninstall", "--yes"]) == 1
+    assert capsys.readouterr().err == (
+        'lado: lado uninstall is for the human; agent "dev" cannot use it\n'
+    )
+    assert sorted(p.name for p in lado_home.iterdir()) == before
+
+
+def test_uninstall_asks_and_needs_yes_without_a_terminal(lado_home, capsys, monkeypatch):
+    from lado import uninstall
+
+    ran = []
+    monkeypatch.setattr(uninstall, "run", lambda found, say=print: ran.append(found) or 0)
+    tty(monkeypatch, None)
+    assert main(["uninstall"]) == 1
+    captured = capsys.readouterr()
+    assert "will be uninstalled" in captured.out
+    assert captured.err == "lado: not uninstalled: confirm with --yes\n"
+    for answer in ("n", ""):
+        tty(monkeypatch, answer)
+        assert main(["uninstall"]) == 1
+        assert capsys.readouterr().out.endswith("Uninstall? [y/N] Not uninstalled.\n")
+    assert ran == []
+    tty(monkeypatch, "y")
+    assert main(["uninstall"]) == 0
+    assert main(["uninstall", "--yes"]) == 0
+    assert main(["uninstall", "--yes", "--keep-data"]) == 0
+    assert [found.keep_data for found in ran] == [False, False, True]
+
+
+def test_uninstall_does_not_migrate_before_its_plan(repo, fake_tmux, capsys, monkeypatch):
+    assert main(["start", str(repo), "--provider", "claude", "--name", "old", "--no-attach"]) == 0
+    agent_helpers.previous_schema()
+    capsys.readouterr()
+    assert main(["uninstall", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert f"lado.db (schema {state.SCHEMA_VERSION - 1}) is upgraded first" in out
+    assert state.schema_version() == state.SCHEMA_VERSION - 1
+
+
+def test_uninstall_of_a_newer_database_is_an_error(lado_home, capsys):
+    state.home()
+    with sqlite3.connect(lado_home / "lado.db") as db:
+        db.execute(f"PRAGMA user_version = {state.SCHEMA_VERSION + 1}")
+    assert main(["uninstall", "--yes"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("lado: ") and "made by a newer LADO" in err

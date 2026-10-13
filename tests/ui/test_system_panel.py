@@ -8,7 +8,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in
 
-from lado import __version__, state
+from lado import __version__, state, update
 
 pytestmark = pytest.mark.ui
 
@@ -31,6 +31,22 @@ def test_live_opens_the_system_panel_and_copies_the_system_info(page: Page, serv
     assert re.search(r"^- Browser: Chrome \d+ on \w+$", copied, re.MULTILINE)
     for secret in (str(state.home()), server["token"], server["url"].split("//")[1]):
         assert secret not in copied
+    shot(page)
+
+
+def test_a_final_release_is_not_offered_a_newer_release_candidate(
+    page: Page, published, server, shot
+):
+    assert not update.prerelease(__version__)  # the working copy is a final release
+    published(**{"99.0.0rc1": "2026-10-04"})  # before the server's first look
+    log_in(page, server)
+    live = page.get_by_role("button", name="System")
+    expect(live).to_have_text("live")
+    live.click()
+    panel = page.get_by_role("dialog", name="System")
+    expect(panel.locator(".system-check")).to_contain_text("Up to date")
+    expect(panel.get_by_role("region", name="Update")).to_have_count(0)
+    expect(panel.locator(".pill")).to_have_count(0)
     shot(page)
 
 

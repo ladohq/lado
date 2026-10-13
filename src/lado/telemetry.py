@@ -535,7 +535,8 @@ def _lado_errors(since: str) -> int:
     for path in (journal_path().with_name("errors.jsonl.1"), journal_path()):
         with contextlib.suppress(OSError), open(path) as lines:
             for line in lines:
-                with contextlib.suppress(ValueError, AttributeError):
+                # A line of another shape (no object, a time that is no text) is no error.
+                with contextlib.suppress(ValueError, AttributeError, TypeError):
                     count += json.loads(line).get("at", "") >= since
     return count
 

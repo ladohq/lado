@@ -334,6 +334,15 @@ def test_report_window_at_most_30_days(telemetry_on, monkeypatch):
     assert telemetry.report(NOW)["properties"]["since"] == "2026-09-13T09:00:00Z"
 
 
+def test_a_journal_line_of_another_shape_is_not_counted(telemetry_on, monkeypatch):
+    """A line whose time is no text (an older or a broken writer) does not break the
+    report (F8)."""
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    telemetry.journal_path().write_text('{"at": 5}\n[1, 2]\nnot json\n')
+    telemetry.record("loop", _raise(KeyError("x")))
+    assert telemetry.report()["properties"]["lado_errors"] == 1
+
+
 def test_report_counts_lado_errors_and_drops(telemetry_on, monkeypatch):
     monkeypatch.setattr(telemetry, "_providers", dict)
     monkeypatch.setattr(telemetry, "OUTBOX_MAX", 1)
@@ -636,11 +645,14 @@ def test_a_hanging_cli_s_version_is_ended_with_its_share(tmp_path, monkeypatch):
 def test_slow_agent_clis_take_only_their_share(monkeypatch):
     """A CLI whose --version hangs leaves its version unknown after PROVIDERS_WAIT, and the
     report goes on (F1)."""
+    import shutil
     import time
 
     from lado import doctor, providers
 
     monkeypatch.setattr(telemetry, "PROVIDERS_WAIT", 0.3)
+    # Every CLI installed, whatever this machine has (F7).
+    monkeypatch.setattr(shutil, "which", lambda command: f"/usr/local/bin/{command}")
 
     def status(provider, which, timeout):
         if provider.name == "codex":

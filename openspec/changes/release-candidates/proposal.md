@@ -33,8 +33,8 @@ by hand is already the one every user is offered.
   API: `UpdateInfo.prerelease` and `UpdateInfo.available_prerelease`.
 - **The final is the last RC's code**: the Release workflow refuses a final tag `vX.Y.0`
   without an RC tag `vX.Y.0rcN`, and any final tag whose commit differs from its latest RC
-  tag's commit in more than CHANGELOG.md and the `version = "…"` lines of `pyproject.toml`
-  and `uv.lock` (`scripts/release_check.py`). A fix during the RC is a new RC.
+  tag's commit in more than CHANGELOG.md, the `version = "…"` line of `pyproject.toml` and
+  that of the `lado` package in `uv.lock` (`scripts/release_check.py`). A fix during the RC is a new RC.
 - **main is frozen while an RC is tested**: only fixes for that RC are merged until the
   final is tagged; a convention the human keeps at merge approval, with the workflow's
   check as the safety net.

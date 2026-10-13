@@ -10,10 +10,29 @@ import pytest
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "scripts" / "release_check.py"
 
-PYPROJECT = '[project]\nname = "x"\nversion = "{version}"\ndependencies = []\n'
-LOCK = (
-    'version = 1\n\n[[package]]\nname = "x"\nversion = "{version}"\nsource = {{ editable = "." }}\n'
-)
+PYPROJECT = '[project]\nname = "lado"\nversion = "{version}"\ndependencies = []\n'
+LOCK = """version = 1
+
+[[package]]
+name = "anyio"
+version = "{anyio}"
+source = {{ registry = "https://pypi.org/simple" }}
+
+[[package]]
+name = "lado"
+version = "{version}"
+source = {{ editable = "." }}
+
+[[package]]
+name = "uvicorn"
+version = "{uvicorn}"
+source = {{ registry = "https://pypi.org/simple" }}
+"""
+
+
+def lock(version: str, anyio: str = "4.0.0", uvicorn: str = "0.30.0") -> str:
+    """uv.lock of lado `version` between two dependencies, one before and one after it."""
+    return LOCK.format(version=version, anyio=anyio, uvicorn=uvicorn)
 
 
 def git(repo: Path, *args: str) -> None:
@@ -21,7 +40,7 @@ def git(repo: Path, *args: str) -> None:
 
 
 class Repo:
-    """A repository of a package `x` whose releases the test commits and tags."""
+    """A repository of the package `lado` whose releases the test commits and tags."""
 
     def __init__(self, path: Path):
         self.path = path
@@ -42,7 +61,7 @@ class Repo:
     def release(self, version: str) -> None:
         """Set the version in pyproject.toml and uv.lock, commit and tag it."""
         self.write("pyproject.toml", PYPROJECT.format(version=version))
-        self.write("uv.lock", LOCK.format(version=version))
+        self.write("uv.lock", lock(version))
         git(self.path, "add", "-A")
         git(self.path, "commit", "-q", "-m", f"Release {version}")
         git(self.path, "tag", f"v{version}")
@@ -97,7 +116,7 @@ def test_a_final_with_code_its_release_candidate_did_not_have_fails(repo):
 def test_a_final_that_changes_another_line_of_pyproject_fails(repo):
     repo.release("0.37.0rc1")
     repo.write("pyproject.toml", PYPROJECT.format(version="0.37.0").replace("[]", '["y"]'))
-    repo.write("uv.lock", LOCK.format(version="0.37.0"))
+    repo.write("uv.lock", lock("0.37.0"))
     git(repo.path, "commit", "-q", "-am", "Release 0.37.0")
     git(repo.path, "tag", "v0.37.0")
     done = repo.check("v0.37.0")
@@ -105,6 +124,25 @@ def test_a_final_that_changes_another_line_of_pyproject_fails(repo):
     assert done.stderr.splitlines() == [
         "v0.37.0 changes a line of pyproject.toml that is not its version: -dependencies = []",
         'v0.37.0 changes a line of pyproject.toml that is not its version: +dependencies = ["y"]',
+    ]
+
+
+@pytest.mark.parametrize(
+    "bumped, old",
+    [({"anyio": "4.1.0"}, "4.0.0"), ({"uvicorn": "0.31.0"}, "0.30.0")],
+)
+def test_a_final_that_changes_a_dependencys_version_in_the_lock_fails(repo, bumped, old):
+    repo.release("0.37.0rc1")
+    repo.write("pyproject.toml", PYPROJECT.format(version="0.37.0"))
+    repo.write("uv.lock", lock("0.37.0", **bumped))
+    git(repo.path, "commit", "-q", "-am", "Release 0.37.0")
+    git(repo.path, "tag", "v0.37.0")
+    done = repo.check("v0.37.0")
+    assert done.returncode == 1
+    (new,) = bumped.values()
+    assert done.stderr.splitlines() == [
+        f'v0.37.0 changes a line of uv.lock that is not its version: -version = "{old}"',
+        f'v0.37.0 changes a line of uv.lock that is not its version: +version = "{new}"',
     ]
 
 

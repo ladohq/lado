@@ -6,12 +6,15 @@ Run by the Release workflow before it builds, in a checkout with every tag and t
 (docs/release.md). A tag `vX.Y.Z` is a final release; any other tag (a release candidate
 `vX.Y.ZrcN`, a tag that is no version) passes untouched. A final's last release candidate
 is its tag `vX.Y.ZrcN` with the highest N. Without one, a minor release (Z = 0) fails and
-a patch passes. With one, the final may differ from it only in CHANGELOG.md and in the
-`version = "..."` lines of pyproject.toml and uv.lock: each other file, and each other
+a patch passes. With one, the final may differ from it only in CHANGELOG.md, the
+`version = "..."` line of pyproject.toml and that of the `lado` package in uv.lock (a
+dependency's version there is no release's change): each other file, and each other
 changed line of those two, is one line on stderr, and the exit is 1.
 
 Standard library only.
 """
+
+from __future__ import annotations  # the runner's python3 may be older than LADO's
 
 import re
 import subprocess
@@ -19,8 +22,12 @@ import sys
 
 FINAL = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
 FREE = {"CHANGELOG.md"}  # free text: the final's commit dates it
-VERSIONED = ("pyproject.toml", "uv.lock")  # only their version lines may change
+LOCK = "uv.lock"
+VERSIONED = ("pyproject.toml", LOCK)  # only their version lines may change
 VERSION_LINE = re.compile(r'[+-]version = "[^"]*"')
+PACKAGE = "lado"  # in uv.lock only its own block's version line, never a dependency's
+LOCK_NAME = re.compile(r'name = "([^"]*)"')
+HUNK = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 def git(*args: str) -> str:
@@ -37,17 +44,41 @@ def last_candidate(final: str) -> str | None:
     return max(found, key=lambda match: int(match[1]))[0]
 
 
-def changed_lines(candidate: str, final: str) -> list[tuple[str, str]]:
-    """Each changed line of VERSIONED between the two tags, with its file."""
-    lines, path = [], ""
+def packages(tag: str, path: str) -> list[str | None]:
+    """For each line of uv.lock at `tag`, the name of the `[[package]]` block it is in, or
+    None before the first block."""
+    names, name = [], None
+    for line in git("show", f"{tag}:{path}").splitlines():
+        if line == "[[package]]":
+            name = ""  # its `name = ` line comes first in the block
+        elif name == "" and (found := LOCK_NAME.fullmatch(line)):
+            name = found[1]
+        names.append(name)
+    return names
+
+
+def changed_lines(candidate: str, final: str) -> list[tuple[str, str, str | None]]:
+    """Each changed line of VERSIONED between the two tags, with its file and, in uv.lock,
+    the package whose block it is in (on the side the line is on)."""
+    lines, path, numbers = [], "", {}
+    blocks: dict[str, list[str | None]] = {}
     diff = git("diff", "-U0", candidate, final, "--", *VERSIONED)
     for line in diff.splitlines():
         if line.startswith(("+++ ", "--- ")):
             name = line[4:]
             if name != "/dev/null":
                 path = name[2:]  # a/… or b/…
+        elif hunk := HUNK.match(line):
+            numbers = {"-": int(hunk[1]), "+": int(hunk[2])}  # the next line's number
         elif line.startswith(("+", "-")):
-            lines.append((path, line))
+            side = line[0]
+            package = None
+            if path == LOCK:
+                tag = candidate if side == "-" else final
+                names = blocks.setdefault(tag, packages(tag, path))
+                package = names[numbers[side] - 1]
+            numbers[side] += 1
+            lines.append((path, line, package))
     return lines
 
 
@@ -68,8 +99,8 @@ def problems(tag: str) -> tuple[list[str], str]:
     ]
     wrong += [
         f"{tag} changes a line of {path} that is not its version: {line}"
-        for path, line in changed_lines(candidate, tag)
-        if not VERSION_LINE.fullmatch(line)
+        for path, line, package in changed_lines(candidate, tag)
+        if not (VERSION_LINE.fullmatch(line) and (path != LOCK or package == PACKAGE))
     ]
     return wrong, f"{tag} is the code of {candidate}"
 

@@ -65,7 +65,9 @@ desktop app) read the same `UpdateInfo`.
   `git tag --list 'vX.Y.Zrc*'` and takes the highest N numerically (rc10 after rc2); none
   and Z == 0 fails; one is compared by `git diff --name-only <rc> <tag>` and `git diff -U0
   <rc> <tag> -- pyproject.toml uv.lock` (each `+`/`-` line, headers aside, must match
-  `^[+-]version = "[^"]*"$`). It prints one line per problem and exits 1. The workflow
+  `^[+-]version = "[^"]*"$`; in uv.lock only the line in the `[[package]]` block named
+  `lado`, found by the hunk's line numbers in each side's file, so a dependency bumped
+  between the RC and the final is refused: the human's addition after design_ok). It prints one line per problem and exits 1. The workflow
   checks out with `fetch-depth: 0` (tags and history) and runs it after the version check,
   before `make dist`. Tested by `tests/test_release_check.py` on a temporary git repo.
 - **D6. Only X.Y.0 needs an RC.** Patches may have one (then the diff rule holds); a patch

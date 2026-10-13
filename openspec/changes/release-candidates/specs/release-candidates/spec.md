@@ -76,18 +76,25 @@ history before it builds, and SHALL publish nothing when it fails. For a final t
 `vX.Y.Z` the check SHALL fail when Z is 0 and no tag `vX.Y.ZrcN` exists (`vX.Y.0 needs a
 release candidate: tag vX.Y.0rc1 first`), and, when such tags exist, SHALL compare the
 final tag's commit with the commit of the RC tag of the highest N and fail when a file
-other than `CHANGELOG.md`, `pyproject.toml` and `uv.lock` differs, or a changed line of
-`pyproject.toml` or `uv.lock` is not a `version = "…"` line, naming each such file or line.
-A pre-release tag and a patch tag without RC tags SHALL pass.
+other than `CHANGELOG.md`, `pyproject.toml` and `uv.lock` differs, a changed line of
+`pyproject.toml` is not a `version = "…"` line, or a changed line of `uv.lock` is not the
+`version = "…"` line of the `lado` package's own block (a dependency's version is refused),
+naming each such file or line. A pre-release tag and a patch tag without RC tags SHALL pass.
 
 #### Scenario: A final release after its release candidate
 - **WHEN** `v0.37.0` points to a commit that differs from `v0.37.0rc2`'s only in
-  CHANGELOG.md and the version lines of pyproject.toml and uv.lock
+  CHANGELOG.md, pyproject.toml's version line and the `lado` package's version line in
+  uv.lock
 - **THEN** the check passes and the workflow publishes 0.37.0
 
 #### Scenario: A final release with code the release candidate did not have
 - **WHEN** `v0.37.0`'s commit also changes `src/lado/runtime.py` against `v0.37.0rc2`
 - **THEN** the check fails naming `src/lado/runtime.py`, and nothing is published
+
+#### Scenario: A final release that bumps a dependency in uv.lock
+- **WHEN** `v0.37.0`'s commit also changes the `version` line of another package than
+  `lado` in uv.lock against `v0.37.0rc2`
+- **THEN** the check fails naming that line, and nothing is published
 
 #### Scenario: A minor release without a release candidate
 - **WHEN** `v0.38.0` is pushed and no tag `v0.38.0rcN` exists

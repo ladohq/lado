@@ -71,8 +71,10 @@ fails, and nothing is published, when:
   vX.Y.0rc1 first`;
 - it differs from its last RC (the highest N) in a file other than CHANGELOG.md,
   pyproject.toml and uv.lock: `vX.Y.Z differs from vX.Y.ZrcN in <path>`, one line per file;
-- it changes a line of pyproject.toml or uv.lock that is not a `version = "..."` line:
-  `vX.Y.Z changes a line of <path> that is not its version: <line>`.
+- it changes a line of pyproject.toml that is not its `version = "..."` line, or a line of
+  uv.lock that is not the `version = "..."` line of the `lado` package's own block (a
+  dependency upgraded after the RC is code the RC did not test): `vX.Y.Z changes a line
+  of <path> that is not its version: <line>`.
 
 There is no way round it: a refused final is fixed by a new RC of what main has now
 (section 2), then the final again. Delete the refused tag first (`git push --delete origin

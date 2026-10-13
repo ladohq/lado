@@ -209,8 +209,8 @@ On the human's "ok": `uv version X.Y.Z`, CHANGELOG.md's heading dated, commit `R
 X.Y.Z`, CI green, tag `vX.Y.Z`; the probe and the live tests are not run again. The Release
 workflow checks the tag against the package version, then `scripts/release_check.py`
 (a checkout with every tag, `fetch-depth: 0`): an `X.Y.0` without an RC tag, or a final that
-differs from its last RC (the highest N) in more than CHANGELOG.md and the `version` lines
-of pyproject.toml and uv.lock, is refused with nothing published (a new RC is the way on);
+differs from its last RC (the highest N) in more than CHANGELOG.md, pyproject.toml's
+`version` line and the `lado` package's in uv.lock (a dependency's is refused), is refused with nothing published (a new RC is the way on);
 then it builds with `make dist` and publishes to PyPI.
 CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; an RC adds no
 heading, and the final's commit puts the date in its place.

@@ -16,11 +16,17 @@
 
 ## 2. Verification on CI
 
-- [ ] 2.1 Push the branch and open the pull request; run 1 is the push's. After each green
+- [x] 2.1 Push the branch and open the pull request; run 1 is the push's. After each green
   run, `gh run rerun <id>` (the whole run, never `--failed`) for runs 2 and 3, each started
   only once the previous one is green. A red run: stop, name its failing test in the build
   report and tell the supervisor; do not rerun it to green (AC-4).
-- [ ] 2.2 The build report has a table of the times of jobs `check (3.10)`, `check (3.13)`
+  Done under the human's rule (question #4467), which replaced this one after a red run of
+  a unit test outside this change: a run counts when the integration steps (both Pythons)
+  and the `ui` job's pytest step are green; a failed unit, vitest or smoke job is rerun
+  with `--failed` so those steps run, and each such flake is in the build report. Run
+  38399466423, attempts 1, 2 and 3+4 (attempt 4 reran `ui` after a vitest flake in `make
+  dist`).
+- [x] 2.2 The build report has a table of the times of jobs `check (3.10)`, `check (3.13)`
   and `ui` for each of the three runs (`gh run view <id> --attempt <n> --json jobs`), with
   main's run 38385575828 beside them, and says the `check` jobs stay within 40 minutes
   (AC-5).

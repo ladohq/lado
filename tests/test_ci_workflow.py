@@ -3,7 +3,6 @@ the smoke tests on Linux and macOS for every provider, on each pull request and 
 main."""
 
 import importlib.util
-import re
 from pathlib import Path
 
 import pytest
@@ -106,14 +105,3 @@ def test_a_cells_out_is_uploaded_always(steps):
 def test_no_secret(text):
     """No model, no account: the smoke points each CLI at a local endpoint."""
     assert "secrets" not in text
-
-
-def test_the_smoke_jobs_actions_pinned_to_a_commit_with_its_version(text, smoke):
-    lines = yaml.safe_dump(smoke)
-    uses = [u for u in re.findall(r"uses:\s*(\S+)(.*)", text) if u[0] in lines]
-    assert uses
-    for action, rest in uses:
-        if action.startswith("actions/checkout@"):
-            continue
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", action), action
-        assert re.fullmatch(r"\s*# v\d+(\.\d+)*", rest), (action, rest)

@@ -15,7 +15,7 @@ run `feature/macos-gui-session`. Итоговые решения — в его �
 `Run in another terminal: security unlock-keychain`. `claude`, запущенный в Terminal.app
 (локально или через Screen Sharing), работает.
 
-### Причина (проверено на хосте 10.73.10.235, macOS, tmux 3.7c, Claude Code 2.1.296)
+### Причина (проверено на хосте <host>, macOS, tmux 3.7c, Claude Code 2.1.296)
 
 - Claude Code на macOS хранит OAuth-токен в login keychain (`Claude Code-credentials`).
 - macOS выдаёт доступ к login keychain только процессам графической security session
@@ -32,7 +32,7 @@ run `feature/macos-gui-session`. Итоговые решения — в его �
 - Тот же эффект от `lado stop --all` + `lado start` по ssh вручную или первого `lado start`
   по ssh после перезагрузки. Апдейт делает это неявно, поэтому ловушка в первую очередь его.
 - Факты с хоста: у нового tmux-сервера (`tmux -L lado`) и `lado server` в окружении
-  `SSH_CONNECTION=10.73.112.3 …`; у работающего `claude` в Terminal.app
+  `SSH_CONNECTION=<host> …`; у работающего `claude` в Terminal.app
   `SECURITYSESSIONID=186bb`, `TERM_PROGRAM=Apple_Terminal`.
 
 ## Эксперименты (все из ssh-сессии на хосте)
@@ -178,7 +178,7 @@ launchd их нет, а в tmux они бывают унаследованы.
   `LADO_MACOS_PLACE=remote`, свой сокет: `lado start` с fake-агентом поднимает сервер
   через launchd; `server_place` сервера — GUI; после остановки последней сессии сервер
   выходит; label задания в `launchctl list` не остаётся.
-- Вручную на хосте 10.73.10.235 по ssh: `lado update` (или `lado stop --all` +
+- Вручную на хосте <host> по ssh: `lado update` (или `lado stop --all` +
   `lado start`) → агент Claude Code отвечает, не `Not logged in`; `lado doctor`
   показывает место; с `LADO_MACOS_PLACE=no-gui` — предупреждение.
 

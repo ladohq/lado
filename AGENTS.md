@@ -169,6 +169,12 @@ a failing cell's evidence goes to `<out>/evidence` (the artifact
 written for CI: its providers are exactly `lado.providers`' and each pin's version parts are
 its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
 (`tests/test_ci_workflow.py`). No secret anywhere.
+Every `uses:` of every workflow, GitHub's own actions too, is a full commit SHA followed by
+`# vX.Y.Z`, the release it is (`tests/test_workflow_security.py`); Dependabot
+(`.github/dependabot.yml`) updates those pins, the uv and the web UI's npm dependencies
+weekly, minor and patch in one pull request per ecosystem, a release once it is 7 days old.
+`claude.yml` (the `@claude` reviewer) starts its job only for an author who is the
+repository's `OWNER`, `MEMBER` or `COLLABORATOR`. Vulnerability reports: SECURITY.md.
 Live tests are not in CI: they run locally, at release only, every provider (Claude Code with
 the human's yes).
 

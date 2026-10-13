@@ -4,7 +4,6 @@ hand, with the smoke tests of every provider in WSL."""
 import importlib.util
 import json
 import os
-import re
 import subprocess
 from pathlib import Path
 
@@ -262,16 +261,6 @@ def test_reads_contents_only(workflow):
     assert workflow["permissions"] == {"contents": "read"}
     for job in workflow["jobs"].values():
         assert "permissions" not in job
-
-
-def test_actions_pinned_to_a_commit_with_its_version(text):
-    uses = re.findall(r"uses:\s*(\S+)(.*)", text)
-    assert uses
-    for action, rest in uses:
-        if action.startswith("actions/checkout@"):
-            continue
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", action), action
-        assert re.fullmatch(r"\s*# v\d+(\.\d+)*", rest), (action, rest)
 
 
 def test_no_shell(text, steps):

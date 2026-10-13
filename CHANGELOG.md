@@ -16,6 +16,17 @@
 - MCP: the supervisor's tool `recommend`; the gate's line to the supervisor is now the
   request `recommend on gate #<id>: …`. API: `recommendation` in `GateInfo` and a
   question's `MessageInfo`. Schema 26: restart running sessions after the upgrade.
+- LADO asks you once, in the UI's banner and in `lado start` / `lado ui` on a terminal,
+  whether it may send anonymous usage statistics and its own errors to its maintainers;
+  nothing is sent before a yes. Settings → Usage statistics, `lado telemetry
+  status|on|off|show`, `DO_NOT_TRACK=1` or `LADO_TELEMETRY=0` (docs/telemetry.md). An
+  unreachable endpoint changes nothing you see.
+- Every unexpected error of LADO (a command, a hook, an MCP tool, the session loop, the
+  UI server) goes to `LADO_HOME/errors.jsonl` with its version and traceback, whatever you
+  choose. `errors.jsonl`, `hooks.log`, `loop.log` and `server.log` stay under 1 MiB plus
+  one `.1` file each.
+- API: `GET`/`POST /api/telemetry`, `GET /api/telemetry/preview`, `SystemInfo.telemetry`;
+  the System panel's row Statistics and the report's `- Statistics:` line.
 
 ## 0.36.0 (2026-10-12)
 

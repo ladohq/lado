@@ -644,3 +644,16 @@ def test_kick_waits_after_a_try(telemetry_on, spawned):
     )
     telemetry.kick()
     assert spawned == []
+
+
+# docs/telemetry.md, the human's list of what is sent.
+
+
+def test_docs_list_every_field():
+    import re
+    from pathlib import Path
+
+    docs = Path(__file__).parent.parent / "docs" / "telemetry.md"
+    rows = re.findall(r"^\| `([a-z_]+)` \| (\d+) \|", docs.read_text(), re.MULTILINE)
+    assert {name: int(since) for name, since in rows} == telemetry.FIELDS
+    assert len(rows) == len(telemetry.FIELDS)  # each once

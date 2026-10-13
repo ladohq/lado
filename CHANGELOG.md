@@ -9,6 +9,8 @@
 - Each release now also appears on GitHub (github.com/ladohq/lado/releases) with this
   changelog's section as its notes and the wheel and sdist attached; a release candidate is
   a GitHub pre-release.
+- UI: the empty strip above a session's tabs is gone: the tabs start right under the top
+  bar, level with the terminals' tabs; a start or resume notice still stands above them.
 
 ## 0.37.0 (2026-10-13)
 

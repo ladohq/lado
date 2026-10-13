@@ -47,6 +47,23 @@ PLAIN = """(tab) => {
 }"""
 
 
+# Where the session's band and the terminals' stand under the top bar (LAD-42): the top
+# bar's bottom, the session column's top, the session list's bottom (over the session in a
+# narrow window), each band's top and each selected tab's top.
+TOPS = """() => {
+  const top = (selector) => document.querySelector(selector)?.getBoundingClientRect().top ?? null;
+  return {
+    bar: document.querySelector(".topbar").getBoundingClientRect().bottom,
+    column: top(".session-main"),
+    list: document.querySelector(".session-list, .sessions-strip").getBoundingClientRect().bottom,
+    session: top(".session-tabs"),
+    terminals: top(".terminals-bar"),
+    sessionTab: top(".session-tabs .tab-item[aria-current=page]"),
+    terminalTab: top(".term-tab[data-active]"),
+  };
+}"""
+
+
 def looks(page: Page) -> dict:
     return {
         "session": page.locator(".session-tabs .tab-item[aria-current=page]").evaluate(LOOK),
@@ -90,9 +107,29 @@ def test_the_session_terminal_and_kits_tabs_look_the_same(page: Page, server, re
             "(band) => [getComputedStyle(band).boxShadow, band.scrollHeight === band.clientHeight]"
         )
         assert "inset" in bands[0] and bands[1], theme
+        # No strip above the session's band: it starts right under the top bar, level with
+        # the terminals' band, and so do the two selected tabs.
+        tops = page.evaluate(TOPS)
+        assert tops["session"] == tops["bar"] == tops["terminals"], (theme, tops)
+        assert tops["sessionTab"] == tops["terminalTab"], (theme, tops)
         seen[theme] = found["session"]["look"]
         shot(page, f"session-{theme}")
     assert seen["light"]["ground"] != seen["dark"]["ground"]
+
+    # A narrow window stacks the session list over the session: the session's band starts
+    # right under it, at its column's top, open or collapsed to its strip.
+    page.emulate_media(color_scheme="light")
+    page.set_viewport_size({"width": 800, "height": 700})
+    expect(sections.get_by_role("link", name="Agents · 2")).to_be_visible()
+    tops = page.evaluate(TOPS)
+    assert tops["session"] == tops["column"] == tops["list"], tops
+    shot(page, "session-narrow")
+    page.get_by_role("button", name="Collapse sessions").click()
+    expect(page.locator(".sessions-strip")).to_be_visible()
+    tops = page.evaluate(TOPS)
+    assert tops["session"] == tops["column"] == tops["list"], tops
+    shot(page, "session-narrow-collapsed")
+    page.set_viewport_size({"width": 1280, "height": 720})
 
     page.goto(f"{server['url']}/kits/installed")
     kits = page.get_by_role("navigation", name="Kits")
@@ -103,3 +140,23 @@ def test_the_session_terminal_and_kits_tabs_look_the_same(page: Page, server, re
         assert tab["look"] == seen[theme], theme
         assert tab["onLine"] and tab["covers"] and not tab["scrolls"], theme
         shot(page, f"kits-{theme}")
+
+
+def test_a_terminal_not_in_the_session_is_said_above_the_tabs(page: Page, server, repo, shot):
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}?terminal=w9")
+    alert = page.locator(".session-main > .problem")
+    expect(alert).to_have_text("w9 is not in this session")
+    # As the start notice: 12 px under the top bar, 10 px above the session's tabs.
+    gaps = alert.evaluate(
+        """(alert) => {
+          const box = alert.getBoundingClientRect();
+          return [
+            box.top - document.querySelector(".topbar").getBoundingClientRect().bottom,
+            document.querySelector(".session-tabs").getBoundingClientRect().top - box.bottom,
+          ];
+        }"""
+    )
+    assert gaps == [12, 10], gaps
+    shot(page)

@@ -1604,8 +1604,8 @@ h3 {
   background: var(--raised);
 }
 
-/* A session's page: the session (its head, tabs and the tab's content, which fills the
-   rest) beside the terminal panel on the right. */
+/* A session's page: the session (its tabs and the tab's content, which fills the rest)
+   beside the terminal panel on the right. */
 .session-page {
   display: flex;
   height: 100%;
@@ -1621,7 +1621,16 @@ h3 {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 16px var(--main-pad);
+  /* No top padding: the session's tab band starts right under the top bar, level with the
+     terminals' band (LAD-42). Only the start notice and the alert of a terminal not in the
+     session stand above it, each with its own margin. */
+  padding: 0 var(--main-pad) 16px;
+}
+
+/* The alert of a terminal not in the session (Terminals.tsx), as the start notice: 12 px
+   under the top bar, 10 px above the tabs. */
+.session-main > .problem {
+  margin: 12px 0 10px;
 }
 
 .session {
@@ -4663,13 +4672,14 @@ h3 {
   margin: 0 0 12px;
 }
 
-/* What a start or resume said, under the session's head until closed. */
+/* What a start or resume said, above the session's tabs until closed: 12 px under the top
+   bar, as the column has no top padding. */
 .started-notice {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px 16px;
-  margin-bottom: 10px;
+  margin: 12px 0 10px;
   padding: 10px 14px;
   background: var(--panel);
   border: 1px solid var(--line);

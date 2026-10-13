@@ -168,7 +168,7 @@ def test_lado_check_says_a_newer_version_is_available(published):
     published(**{"99.0.0": "2026-10-04"})
     check = doctor.check_lado()
     assert check.level == doctor.WARN
-    assert check.detail == __version__
+    assert check.detail == update.shown(__version__)
     assert check.hint == "LADO 99.0.0 is available: lado update"
 
 
@@ -181,12 +181,11 @@ def test_lado_check_says_why_the_update_check_failed(published, tmp_path, monkey
 
 def test_lado_check_of_the_latest_version_and_with_the_check_off(published, monkeypatch):
     published(**{__version__: "2026-10-04"})
-    assert doctor.check_lado() == doctor.Check(
-        "LADO", doctor.OK, f"{__version__}, the latest version"
-    )
+    shown = update.shown(__version__)  # a release candidate says so
+    assert doctor.check_lado() == doctor.Check("LADO", doctor.OK, f"{shown}, the latest version")
     monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
     assert doctor.check_lado() == doctor.Check(
-        "LADO", doctor.OK, f"{__version__} (no update check: LADO_NO_UPDATE_CHECK=1)"
+        "LADO", doctor.OK, f"{shown} (no update check: LADO_NO_UPDATE_CHECK=1)"
     )
 
 

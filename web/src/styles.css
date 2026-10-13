@@ -480,6 +480,12 @@ h3 {
   white-space: nowrap;
 }
 
+/* A pre-release's mark beside the version (docs/design/ui.md, System panel). */
+.system-head .pill {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
 .system-links a {
   color: var(--muted);
   text-decoration: none;
@@ -4799,6 +4805,7 @@ h3 {
   color: var(--action);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .pill.waits {

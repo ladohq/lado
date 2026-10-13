@@ -48,7 +48,8 @@ PLAIN = """(tab) => {
 
 
 # Where the session's band and the terminals' stand under the top bar (LAD-42): the top
-# bar's bottom, each band's top and each selected tab's top.
+# bar's bottom, the session column's top, the session list's bottom (over the session in a
+# narrow window), each band's top and each selected tab's top.
 TOPS = """() => {
   const top = (selector) => document.querySelector(selector)?.getBoundingClientRect().top ?? null;
   return {

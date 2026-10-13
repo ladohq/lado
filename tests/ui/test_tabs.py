@@ -140,3 +140,23 @@ def test_the_session_terminal_and_kits_tabs_look_the_same(page: Page, server, re
         assert tab["look"] == seen[theme], theme
         assert tab["onLine"] and tab["covers"] and not tab["scrolls"], theme
         shot(page, f"kits-{theme}")
+
+
+def test_a_terminal_not_in_the_session_is_said_above_the_tabs(page: Page, server, repo, shot):
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}?terminal=w9")
+    alert = page.locator(".session-main > .problem")
+    expect(alert).to_have_text("w9 is not in this session")
+    # As the start notice: 12 px under the top bar, 10 px above the session's tabs.
+    gaps = alert.evaluate(
+        """(alert) => {
+          const box = alert.getBoundingClientRect();
+          return [
+            box.top - document.querySelector(".topbar").getBoundingClientRect().bottom,
+            document.querySelector(".session-tabs").getBoundingClientRect().top - box.bottom,
+          ];
+        }"""
+    )
+    assert gaps == [12, 10], gaps
+    shot(page)

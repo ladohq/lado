@@ -2039,7 +2039,9 @@ session's through `--main-pad`, the same variable as `.session-main`'s side padd
 ground above the tabs. The session's band starts right under the top bar (or, in a narrow
 window, right under the session list stacked over the session), level with the terminal
 panel's band, and so do their selected tabs: `.session-main` has no top padding (LAD-42,
-2026-10-14; only the start notice, Launch and session control, stands above the band). `.tab-item` is the framed tab: IBM Plex Mono 13 px, `--muted`
+2026-10-14). Only two things stand above the band, each 12 px under the top bar and 10 px
+above the tabs: the start notice (Launch and session control) and the alert of a
+`?terminal=` agent not in the session (`<agent> is not in this session`). `.tab-item` is the framed tab: IBM Plex Mono 13 px, `--muted`
 (`--ink` on hover), an icon (14 px) or the status dot on its left, a transparent 1 px frame
 on three sides rounded 6 px at the top. The selected one, by `aria-current="page"` or
 `data-active` (one selector), is `--panel` with a `--line` frame, `--ink` 600, its icon

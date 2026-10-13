@@ -318,9 +318,10 @@ fixes and docs only: no new feature, no API or schema change.
     network, never raises) starts a detached `lado telemetry send` when sending is on,
     something is due (no report in `REPORT_EVERY`, or a queued error) and no try in
     `RETRY_AFTER`: `cli.main` after every command but `hook`, `mcp`, `loop`, `telemetry
-    send`, `update` (which starts nothing after its installer) and `uninstall` (which
-    also records no error: either would make the deleted LADO_HOME again), `doctor`
-    included;
+    send`, `update` (which starts nothing after its installer), `server` while it serves
+    (it kicks in its housekeeping; one at its exit could make LADO_HOME again after an
+    uninstall stopped it; `server stop` kicks) and `uninstall` (which also records no
+    error: either would make the deleted LADO_HOME again), `doctor` included;
     the session loop every `KICK_EVERY`; the UI server's housekeeping. A hook only
     queues. `sender_ended` waits for that lock (`lado uninstall`, before it deletes
     LADO_HOME). `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
@@ -942,7 +943,8 @@ fixes and docs only: no new feature, no API or schema change.
     off) and `GET /api/telemetry/preview` (`TelemetryPreview`, `telemetry.preview`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
     `Listening`: the local link, the remote one and the warning for the address taken),
-    the background start and stop, server.log's bound (`rotate` at a background start,
+    the background start and stop (`stop` returns once the server's process has ended, not
+    only its lock: `_gone` reaps a child of its own), server.log's bound (`rotate` at a background start,
     `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`, how long it ran from `runtime.session_time`: spans from its

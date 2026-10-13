@@ -6,6 +6,12 @@
   of the whole window, so an artifact opened from it shows over it; Esc closes that
   artifact first, then folds the card. On Needs you an artifact opens over the page,
   keeping the answers you picked.
+- `lado server stop`, `lado update` and `lado uninstall` wait until the old UI server's
+  process has ended; a server that has stopped no longer makes `~/.lado` again after
+  `lado uninstall`.
+- Messages queued during an agent's turn reach it in its turn-end hook's output whenever
+  its CLI takes that output; a race sometimes pasted them into its window.
+- A gate in a session's chat always shows after the run's move that opened it.
 
 ## 0.37.0 (2026-10-13)
 

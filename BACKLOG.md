@@ -143,19 +143,6 @@ compare with the full READY_TIMEOUT, or measure the wait the code does, not wall
 Found: 2026-10-04, feature/flows-list (implement, make check); review of
 feature/kit-manifest-v2.
 
-### Flaky: UI e2e test of a question card under load
-
-Size: S.
-
-`tests/ui/test_chat.py::test_the_supervisor_asks_and_the_human_answers_in_a_card` failed in
-`make check` with `Locator expected to be visible ... get_by_role("article", name="Question
-from supervisor").get_by_role("button", name="later")` (timeout 5000ms) at a load average of
-about 160; `tests/ui/test_chat.py` passed alone right after with no change.
-Wanted: the wait for the fake agent's question allows for a loaded machine (the shared
-timeout of the UI tests, or a wait on the message in lado.db first), so it fails only when
-the question never comes.
-Found: 2026-10-05, merge step of feature/session-list-groups.
-
 ### UI e2e test of the status marks reads the Team buttons before they render
 
 Size: S.
@@ -229,19 +216,6 @@ whose pytest is gone.
 A Codex live run stopped from outside leaks its LiteLLM bridge as well (`uvx … litellm`, its
 own process group on 127.0.0.1; `local_models.Bridge`, feature/stable-local-live): only the
 fixture's teardown ends it.
-
-## Flaky terminal socket test: input checked before it is written
-
-Size: S. Why here: it has already turned CI red before a release.
-
-`tests/test_terminal_socket.py::test_control_takes_input_and_resize` failed once in CI
-(Python 3.13, run 37426821369): `written` was `[b'ls\r']` without the `é`. The test takes
-the `done` output frame as proof that all input was handled, but output and input are
-separate tasks in the socket, so `done` can arrive before the last input is written.
-Passed on rerun and locally. Wanted: wait for the written input itself (poll `written`
-with a timeout), not for an unrelated output frame.
-Found: 2026-10-06, CI before the 0.23.0 release.
-Again: 2026-10-11, CI on 259e1e5 (run 38143437060, Python 3.13), passed on rerun.
 
 ## Flaky: integration test of a swallowed message typed again after a hook
 
@@ -508,16 +482,6 @@ loaded machine whose hook takes longer than the first 15 s delay.
 Found: 2026-10-07, read-only analysis of the integration tests (integ-analysis); outputs
 kept in .lado/briefs/integ-analysis/FLAKE-*.out (local, uncommitted).
 
-## Flaky: integration test of a finished worker waits for a hook that never comes
-
-Size: S. Why here: it turned CI red on a release commit.
-`tests/integration/test_agent_liveness.py::test_finishing_a_worker_tells_no_one_it_stopped`
-failed once in CI on Python 3.10 (`Failed: timed out after 30s waiting for w1's hook`; the
-events show w1 `finished merged` before it); 104 passed locally on 3.10.
-Wanted: the test waits for what the finish guarantees, not for a hook of a worker that is
-being killed.
-Found: 2026-10-08, CI of the release commit c165eee (0.28.0).
-
 ## Other users of the machine can read LADO_HOME
 
 Size: M. Why here: every message, task, note and artifact of every session is readable by
@@ -617,19 +581,6 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
-## Flaky vitest: an image's artifact tab keeps another test's page title
-
-Size: S. Why here: it turned a pull request's CI red once, in a file the pull request did not touch.
-
-`web/src/ArtifactTab.test.tsx > an image shows as an image` failed in CI's job `ui`
-(`make dist` → `make web`, run 38360879188, job 115174522861): `document.title` was
-`feature/x/tool.py`, another test's record, not `feature/x/shot.png`. Locally it passed 4 of
-4, and the full `make web` 663 of 663. Likely the title of an earlier test's tab is set
-after that test's cleanup, or the test reads the title before its own effect runs.
-Wanted: each test starts with its own title (reset in `afterEach`) and waits for its tab's
-title.
-Found: 2026-10-13, feature/lad-31-release-candidates (review of PR #13).
-
 ## `lado kits check` calls `${KIT_DIR}` in an MCP server's command a hardcoded path
 
 Size: S. Why here: a kit that follows the documented form (README before 0.36, the Kits
@@ -673,21 +624,6 @@ Wanted: `first_hook_blocker` names each wait, with what to do in the agent's win
 does for the trust dialog, with unit tests on configs without the keys.
 Found: 2026-10-10, design review of feature/live-cloud-matrix (architect, Found on the way);
 the three screens confirmed by the smoke test on 2026-10-11.
-
-## Flaky in WSL: a message of the turn-end output delivered `typed`
-
-Size: S. Why here: one red `make test-integration` in the Windows probe with no change near it.
-`tests/integration/test_agents.py::test_messages_in_the_turn_end_output_are_delivered_once_confirmed[fake-stop]`
-failed once in WSL2 on GitHub's windows-latest (Windows probe run 38088374082, part `tests`,
-ca887cc, which changes nothing in src/): `assert channels("supervisor") == [state.TYPED] +
-[state.HOOK_OUTPUT] * 3` got `typed` at index 1, so a batch the turn-end hook carried was
-typed in again by the sweep's rule. It passed in the run before (38084298408) and after
-(38088913146) on the same runner type.
-Wanted: find which timing makes the sweep type the batch (its retry delay under a slow
-runner, the hook not seen in time) and make the test hold.
-Found: 2026-10-11, feature/live-cloud-matrix (developer).
-Seen again 2026-10-11 at release 0.35.0: Windows probe run 38158261717 (`[fake]`), and in CI
-the same class ("Flaky in CI: a slow turn's hook-output message was typed", below).
 
 ## A fake model server for the smoke tests
 
@@ -1714,46 +1650,6 @@ Wanted: a worker's writes to refs other than its own branch refused or at least 
 check of main's tip before a run's merge, or a hook on ref updates).
 Found: 2026-10-09, review of feature/codex-provider (the reviewer's open question).
 
-## Flaky in CI: the gates UI test's scroll
-
-Size: S. Why here: a red CI run on the release commit for no code reason.
-CI on 8d48089 (release of 0.32.0) failed the `ui` job on
-`test_gates::test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment`
-("Locator expected to be in viewport"); passed on the rerun.
-Wanted: the gates test waits for the scroll to end.
-Found: 2026-10-09, release of 0.32.0. (The terminal panel test that failed with it, five
-times, was fixed in fix/terminal-ui-flake: its lines now come from the worker's task.)
-Again in run 38360259308 (PR #12, feature/lad-32-usage-telemetry, 2026-10-13).
-Again locally (2026-10-13, fix/lad-48-waiting-card-expands-in-page, `-n 2` with three other
-UI files), another cause: a strict-mode violation, the last run group's `listitem` filtered
-by `has_text="You"` also matched the gate line "Lado waits for you #1 approval"; passed 2
-of 2 alone with `-n0`. Wanted too: a filter that cannot match "waits for you".
-
-## Flaky in CI: the gates UI test of a recommendation that disagrees
-
-Size: S. Why here: a red CI run for no code reason; maybe the same cause as the gates
-test's scroll above.
-CI run 38360259308 (PR #12, job `ui`):
-`tests/ui/test_gates.py::test_a_gate_with_a_recommendation_that_disagrees` failed with
-"Locator expected to have text 'Supervisor is preparing a recommendation…'"; it passed
-locally alone with `-n0`.
-Wanted: find what the card shows at that moment (the recommendation already given, or the
-card not rendered yet) and wait for the state the test means.
-Found: 2026-10-13, review of feature/lad-32-usage-telemetry (found on the way).
-
-## Flaky in CI: `test_stopping_a_session_tells_no_one_and_counts_what_it_dropped` on 3.10
-
-Size: S. Why here: a red CI run on main for no code reason.
-CI on 99b22f3 (run 38046763270, job check (3.10)): `tests/integration/test_agent_liveness.py`
-`Failed: timed out after 30s waiting for supervisor's hook; agents: none; messages: lado → w1
-[read] 'your task', supervisor → w1 [dropped] 'queued'`; passed on the rerun.
-Wanted: find what the test waits for after the stop (the agents are gone already) and wait
-for that, not the supervisor's hook.
-Found: 2026-10-10, CI after the push of main.
-Again on 23f0792 (run 38124031817, 2026-10-11): failed twice in a row on 3.10, the same
-timeout, passed on the second rerun; 6 of 6 passed locally on 3.10 (`-n0`). Worth fixing.
-Again in run 38360259308 (PR #12, feature/lad-32-usage-telemetry, 2026-10-13).
-
 ## Codex agents call `read_mcp_resource` instead of LADO's tools
 
 Size: S. Why here: a live-test flake with a cause in what Codex offers the model.
@@ -1956,24 +1852,26 @@ Wanted: find out from the evidence what w1's turn did that long (a slow model tu
 turn's end Codex ran no hook for), then a fix or a longer wait with the reason written down.
 Found: 2026-10-11, live tests of release 0.35.0.
 
-## Flaky in CI: a slow turn's hook-output message was typed
+## The chat does not stay at the bottom when its last entry grows in place
 
-Size: S. Why here: a red CI at the 0.35.0 release, green on rerun.
-CI check (3.13), run 38158241466: `tests/integration/test_agents.py::test_a_slow_turn_that_goes_on_from_the_turn_end_output_gets_it_once`:
-`AssertionError: assert ['typed', 'typed'] == ['typed', 'hook_output']` (test_agents.py:230).
-The batch went `typed`, likely its wait ran out on a loaded runner.
-Wanted: a test that does not depend on the runner's speed for the channel.
-Found: 2026-10-11, CI of release 0.35.0.
+Size: S. Why here: no CI failure shows it, but a reader at the bottom loses the end of a
+growing entry.
+The chat's scroll rule (`web/src/Chat.tsx`) follows the feed to its end only when a new last
+entry comes (a new key). When the last entry grows where it is (a run group that gets its
+next move, a gate's line that gets its answer and comment), the feed does not scroll, and
+the new lines sit below the fold.
+Wanted: a reader at the bottom stays at the bottom when the last entry grows too.
+Found: 2026-10-14, feature/lad-44-flake-races (design).
 
-## Flaky in CI: the Codex smoke on macOS reached no model API
+## Codex clones its plugins repository at every start
 
-Size: S. Why here: a red smoke cell at the 0.35.0 release, green on rerun.
-CI smoke macos-latest codex, run 38158241466: `the supervisor's turn reached no model API`
-(tests/smoke/test_smoke.py:86).
-Wanted: find why Codex's first turn sent no request in time (a slow start), then a fix or a
-longer wait with the reason.
-Found: 2026-10-11, CI of release 0.35.0.
-Again in run 38360259308 (PR #12, feature/lad-32-usage-telemetry, 2026-10-13).
+Size: S. Why here: it slows each Codex agent's start and fills a failed smoke's evidence.
+Codex CLI clones its plugins repository into `<CODEX_HOME>/.tmp/plugins-clone-*` at every
+start; LADO gives each agent its own `CODEX_HOME`, so each start clones again, about 300 MB
+in each failed smoke's evidence folder. It did not cause the smoke failures of 0.37.0.
+Wanted: switch it off in the agent's config.toml, once a config key for it is checked by
+hand on the tested Codex version.
+Found: 2026-10-14, feature/lad-44-flake-races (design, from the smoke's evidence).
 
 # P3: maybe never
 

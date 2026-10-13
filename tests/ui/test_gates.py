@@ -179,13 +179,14 @@ VIEW = (
 
 
 def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, shot):
-    """The supervisor's view is part of the gate's card: preparing, then given with the
-    recommended option as the blue button, in light and dark; closed, one quiet line."""
+    """The supervisor's view is part of the gate's tab in the waiting card: preparing, then
+    given with the recommended option as the blue button, in light and dark; closed, one
+    quiet line in the feed."""
     session = gated_session(repo)
     page.set_viewport_size({"width": 1800, "height": 1100})  # the chat at its own width
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("article", name="Gate #1", exact=True)
+    card = waiting_card(page, session).get_by_role("tabpanel")
     expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
     state.ask_recommendation(session, state.GATE, 1, None, "")  # asked again
     card.locator("form.answer").scroll_into_view_if_needed()

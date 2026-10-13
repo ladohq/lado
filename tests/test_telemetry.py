@@ -243,3 +243,404 @@ def test_outbox_files_are_the_owner_s_only(telemetry_on):
     [path] = (state.home() / "telemetry" / "outbox").iterdir()
     assert path.suffix == ".json"
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+# The daily report.
+
+
+def _db_with_usage():
+    """Usage in lado.db: some of it a day and a half ago, the rest an hour ago."""
+    old, new = "2026-10-11 12:00:00.000", "2026-10-13 08:00:00.000"
+    with state.connect() as db:
+        for name, at in (("a", old), ("b", new), ("c", new)):
+            db.execute(
+                "INSERT INTO sessions (name, repo, created_at) VALUES (?, '/r', ?)", (name, at)
+            )
+        rows = [
+            ("b", state.SPAWNED, state.spawned_detail("worker", "claude"), new),
+            ("b", state.SPAWNED, state.spawned_detail("supervisor", "claude"), new),
+            ("c", state.SPAWNED, state.spawned_detail("worker", "codex"), new),
+            ("a", state.SPAWNED, state.spawned_detail("worker", "codex"), old),
+            ("a", state.SESSION_RESUME, "", new),
+            ("b", state.FLOW_START, "", new),
+            ("b", state.GATE_OPEN, "", new),
+            ("b", state.GATE_OPEN, "", old),
+            ("c", state.TURN_ERROR, "overloaded", new),
+        ]
+        for session, kind, detail, at in rows:
+            db.execute(
+                "INSERT INTO events (session, agent, kind, detail, created_at) "
+                "VALUES (?, 'x', ?, ?, ?)",
+                (session, kind, detail, at),
+            )
+
+
+NOW = telemetry.parse_time("2026-10-13T09:00:00Z")
+
+
+def _sent(**fields):
+    folder = state.home() / "telemetry"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "sent.json").write_text(json.dumps(fields))
+
+
+def test_spawned_provider_reads_what_is_written():
+    assert state.spawned_provider(state.spawned_detail("a role, provider x", "codex")) == "codex"
+    assert state.spawned_provider("something else") is None
+
+
+def test_report_counts_window(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", lambda: {"claude": "2.1.296"})
+    _db_with_usage()
+    _sent(report_at="2026-10-12T09:00:00Z")
+    event = telemetry.report(NOW)
+    assert event["event"] == telemetry.DAILY
+    props = event["properties"]
+    assert props["since"] == "2026-10-12T09:00:00Z"
+    assert props["sessions"] == 3  # b and c started, a resumed
+    assert props["agents"] == {"claude": 2, "codex": 1}
+    assert (props["runs"], props["gates"], props["turn_errors"]) == (1, 1, 1)
+    assert props["providers"] == {"claude": "2.1.296"}
+    assert props["$process_person_profile"] is False and props["$geoip_disable"] is True
+    assert event["distinct_id"] == props["install"]
+    assert set(props) - {"$process_person_profile", "$geoip_disable"} <= set(telemetry.FIELDS)
+    assert "db" not in props
+
+
+def test_report_first_one_counts_a_day(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    assert telemetry.report(NOW)["properties"]["since"] == "2026-10-12T09:00:00Z"
+
+
+def test_report_without_db(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    props = telemetry.report(NOW)["properties"]
+    assert props["db"] == "unreadable"
+    assert "sessions" not in props and "agents" not in props
+    assert props["lado_errors"] == 0
+
+
+def test_report_not_due_within_24h(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    _sent(report_at="2026-10-12T10:00:00Z")
+    assert telemetry.report(NOW) is None
+    _sent(report_at="2026-10-12T09:00:00Z")
+    assert telemetry.report(NOW) is not None
+
+
+def test_report_window_at_most_30_days(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    _sent(report_at="2026-08-29T09:00:00Z")
+    assert telemetry.report(NOW)["properties"]["since"] == "2026-09-13T09:00:00Z"
+
+
+def test_report_counts_lado_errors_and_drops(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    monkeypatch.setattr(telemetry, "OUTBOX_MAX", 1)
+    telemetry.record("loop", _raise(KeyError("x")))
+    telemetry.record("loop", _raise(KeyError("x")))
+    props = telemetry.report()["properties"]
+    assert props["lado_errors"] == 2
+    assert props["errors_dropped"] == 1
+
+
+def test_report_names_only_built_in_and_official_kits(telemetry_on, monkeypatch, tmp_path):
+    from lado import kits
+
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    for name, marketplace in (("sdlc", "official"), ("mine", None), ("theirs", "acme")):
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "kit.yaml").write_text(f"name: {name}\nversion: 1.0.0\n")
+        state.add_kit(state.InstalledKit(name, None, None, None, str(folder), marketplace))
+    props = telemetry.report()["properties"]
+    builtin = sorted(found.name for found in kits.builtin_kits())
+    assert props["kits"] == {"named": sorted([*builtin, "sdlc"]), "other": 2}
+
+
+# The batch.
+
+
+def test_batch_groups_by_fingerprint(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    for _ in range(3):
+        telemetry.record("loop", _raise(KeyError("x")))
+    telemetry.record("loop", _raise(ValueError("y")))
+    events = telemetry.batch()
+    assert [e["event"] for e in events] == [
+        telemetry.DAILY,
+        telemetry.EXCEPTION,
+        telemetry.EXCEPTION,
+    ]
+    counts = sorted(e["properties"]["count"] for e in events[1:])
+    assert counts == [1, 3]
+
+
+def test_exception_event_shape(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    _sent(report_at=telemetry.format_time(telemetry.now()))  # no report due
+    try:
+        state.home().joinpath("no-such-dir", "x").read_text()
+    except OSError as exc:
+        telemetry.record("cli:ls", exc)
+    [event] = telemetry.batch()
+    assert event["event"] == "$exception"
+    props = event["properties"]
+    [entry] = props["$exception_list"]
+    assert entry["type"] == "FileNotFoundError"
+    assert entry["value"] == "FileNotFoundError in cli:ls"
+    assert entry["stacktrace"]["type"] == "raw"
+    for frame in entry["stacktrace"]["frames"]:
+        assert frame["platform"] == "custom" and frame["lang"] == "python"
+        assert frame["in_app"] is True
+        assert frame["filename"].startswith("lado/")
+    assert props["$exception_fingerprint"] == props["fingerprint"]
+    assert props["$process_person_profile"] is False and props["$geoip_disable"] is True
+    assert props["count"] == 1 and props["first_at"] == props["last_at"]
+    assert "no-such-dir" not in json.dumps(event)
+
+
+def test_old_outbox_files_are_dropped_and_counted(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    telemetry.record("loop", _raise(KeyError("x")))
+    [path] = (state.home() / "telemetry" / "outbox").iterdir()
+    old = time_ns_days_ago(31)
+    path.rename(path.with_name(f"{old}-1-abcd.json"))
+    telemetry.record("loop", _raise(ValueError("y")))
+    events = telemetry.batch()
+    assert [e["properties"].get("type") for e in events[1:]] == ["ValueError"]
+    assert telemetry.dropped() == 1
+    assert len(telemetry.queued()) == 1
+
+
+def time_ns_days_ago(days):
+    import time
+
+    return time.time_ns() - days * 86400 * 10**9
+
+
+# Sending.
+
+
+def test_send_posts_and_empties(telemetry_endpoint, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    telemetry.record("loop", _raise(KeyError("x")))
+    assert telemetry.send() == 0
+    [body] = telemetry_endpoint.requests
+    assert body["api_key"] == telemetry.TEST_TOKEN
+    assert [e["event"] for e in body["batch"]] == [telemetry.DAILY, telemetry.EXCEPTION]
+    assert telemetry.queued() == []
+    sent = json.loads((state.home() / "telemetry" / "sent.json").read_text())
+    assert sent["sent_at"] and sent["report_at"] and sent["error"] is None
+    assert telemetry.last_sent() == (sent["sent_at"], None)
+
+
+def test_show_is_what_send_posts(telemetry_endpoint, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    telemetry.record("loop", _raise(KeyError("x")))
+    monkeypatch.setattr(telemetry, "now", lambda: NOW)  # the same report's times
+    shown = telemetry.preview()
+    telemetry.send()
+    [body] = telemetry_endpoint.requests
+    posted = body["batch"]
+    assert [shown["report"], *shown["errors"]] == posted
+
+
+def test_send_failure_keeps_everything(telemetry_endpoint, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    telemetry_endpoint.status = 500
+    telemetry.record("loop", _raise(KeyError("x")))
+    assert telemetry.send() == 0
+    assert len(telemetry_endpoint.requests) == 1
+    assert len(telemetry.queued()) == 1
+    assert "500" in telemetry.last_sent()[1]
+    telemetry_endpoint.status = 200
+    assert telemetry.send() == 0  # within RETRY_AFTER: no try
+    assert len(telemetry_endpoint.requests) == 1
+    monkeypatch.setattr(telemetry, "RETRY_AFTER", 0)
+    assert telemetry.send() == 0
+    assert len(telemetry_endpoint.requests) == 2
+    assert telemetry.queued() == []
+    assert telemetry.last_sent()[1] is None
+
+
+def test_send_removes_only_what_it_sent(telemetry_endpoint, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    telemetry.record("loop", _raise(KeyError("x")))
+    post = telemetry._post
+
+    def post_and_record(events, environ=None):
+        post(events, environ)
+        telemetry.record("loop", _raise(ValueError("during the post")))
+
+    monkeypatch.setattr(telemetry, "_post", post_and_record)
+    telemetry.send()
+    [left] = telemetry.queued()
+    assert left["type"] == "ValueError"
+
+
+def test_send_subtracts_only_the_drops_it_reported(telemetry_endpoint, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    monkeypatch.setattr(telemetry, "OUTBOX_MAX", 0)
+    telemetry.record("loop", _raise(KeyError("x")))
+    post = telemetry._post
+
+    def post_and_drop(events, environ=None):
+        post(events, environ)
+        telemetry.record("loop", _raise(KeyError("x")))
+
+    monkeypatch.setattr(telemetry, "_post", post_and_drop)
+    telemetry.send()
+    assert telemetry_endpoint.requests[0]["batch"][0]["properties"]["errors_dropped"] == 1
+    assert telemetry.dropped() == 1
+
+
+def test_second_sender_exits(telemetry_endpoint, monkeypatch):
+    import fcntl
+
+    telemetry.record("loop", _raise(KeyError("x")))
+    lock = open(state.home() / "telemetry" / "send.lock", "a")
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        assert telemetry.send() == 0
+    finally:
+        lock.close()
+    assert telemetry_endpoint.requests == []
+    assert len(telemetry.queued()) == 1
+
+
+@pytest.mark.parametrize("how", ["off", "env"])
+def test_send_off_or_env_off_posts_nothing(telemetry_endpoint, monkeypatch, how):
+    telemetry.record("loop", _raise(KeyError("x")))
+    if how == "off":
+        telemetry.choose("off")
+    else:
+        monkeypatch.setenv("DO_NOT_TRACK", "1")
+    assert telemetry.send() == 0
+    assert telemetry_endpoint.requests == []
+
+
+def _hanging_server():
+    import socket
+    import threading
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+    accepted = []
+    threading.Thread(target=lambda: accepted.append(server.accept()), daemon=True).start()
+    return server
+
+
+@pytest.mark.parametrize("failure", ["refused", "403", "hangs", "dns", "tls"])
+def test_unreachable_endpoint_is_silent(telemetry_endpoint, monkeypatch, capsys, failure):
+    import socket
+    import ssl
+    import time
+
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    monkeypatch.setattr(telemetry, "SEND_TIMEOUT", 0.3)
+    monkeypatch.setattr(telemetry, "SEND_DEADLINE", 1)
+    telemetry.record("loop", _raise(KeyError("x")))
+    if failure == "refused":
+        monkeypatch.setenv("LADO_TELEMETRY_URL", "http://127.0.0.1:1/batch/")
+    elif failure == "403":
+        telemetry_endpoint.status = 403
+    elif failure == "hangs":
+        server = _hanging_server()
+        port = server.getsockname()[1]
+        monkeypatch.setenv("LADO_TELEMETRY_URL", f"http://127.0.0.1:{port}/batch/")
+    elif failure == "dns":
+        monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: time.sleep(5))
+    else:
+
+        def refuse(*args, **kwargs):
+            raise ssl.SSLError("certificate verify failed")
+
+        monkeypatch.setattr(telemetry, "_open", refuse)
+    began = time.monotonic()
+    assert telemetry.send() == 0
+    assert time.monotonic() - began < telemetry.SEND_DEADLINE + 1
+    assert capsys.readouterr() == ("", "")
+    assert len(telemetry.queued()) == 1
+    assert telemetry.last_sent()[1]
+    import fcntl
+
+    with open(state.home() / "telemetry" / "send.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # released
+
+
+def test_long_outage_stays_bounded(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    monkeypatch.setattr(telemetry, "OUTBOX_MAX", 3)
+    monkeypatch.setattr(telemetry, "RETRY_AFTER", 0)
+    _sent(report_at="2026-10-01T00:00:00Z")
+    for _ in range(10):
+        telemetry.record("loop", _raise(KeyError("x")))
+    for _ in range(5):
+        telemetry.send()  # the endpoint's port is closed
+    assert len(telemetry.queued()) == 3
+    assert telemetry.dropped() == 7
+    reports = [e for e in telemetry.batch() if e["event"] == telemetry.DAILY]
+    assert [r["properties"]["since"] for r in reports] == ["2026-10-01T00:00:00Z"]
+    assert sorted(p.name for p in (state.home() / "telemetry").iterdir()) == [
+        "consent.json",
+        "dropped",
+        "id",
+        "outbox",
+        "send.lock",
+        "sent.json",
+    ]
+
+
+def test_sender_crash_is_journaled_not_queued(telemetry_endpoint, monkeypatch):
+    def broken(now=None):
+        raise ZeroDivisionError
+
+    monkeypatch.setattr(telemetry, "_build", broken)
+    assert telemetry.send() == 0
+    [line] = _journal()
+    assert line["where"] == "telemetry:send" and line["type"] == "ZeroDivisionError"
+    assert telemetry.queued() == []
+    assert telemetry_endpoint.requests == []
+
+
+# Kicking the sender.
+
+
+@pytest.fixture
+def spawned(monkeypatch):
+    import subprocess
+
+    calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: calls.append((argv, kw)))
+    return calls
+
+
+def test_kick_starts_nothing_when_nothing_due(telemetry_on, spawned):
+    _sent(report_at=telemetry.format_time(telemetry.now()))
+    telemetry.kick()
+    assert spawned == []
+
+
+def test_kick_starts_nothing_when_off(spawned, monkeypatch):
+    telemetry.kick()  # LADO_TELEMETRY=0
+    assert spawned == []
+
+
+def test_kick_spawns_detached_when_due(telemetry_on, spawned):
+    telemetry.kick()
+    [(argv, kw)] = spawned
+    assert argv[-2:] == ["telemetry", "send"]
+    assert kw["start_new_session"] is True
+    assert kw["stdout"] == kw["stderr"] == kw["stdin"] == -3  # subprocess.DEVNULL
+
+
+def test_kick_waits_after_a_try(telemetry_on, spawned):
+    telemetry.record("loop", _raise(KeyError("x")))
+    _sent(
+        report_at=telemetry.format_time(telemetry.now()),
+        tried_at=telemetry.format_time(telemetry.now()),
+    )
+    telemetry.kick()
+    assert spawned == []

@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import datetime
+import json
 import os
 import select
 import shutil
@@ -44,6 +45,7 @@ POLL = 1.0  # seconds between two checks that a gate the human is asked about is
 
 def cmd_start(args: argparse.Namespace) -> int:
     if not hasattr(args, "prompt_text"):  # once: a clone calls this again after it
+        telemetry.ask_if_needed()
         args.prompt_text = _read_prompt(args)
     if clone.is_url(args.path):
         return _start_clone(args)
@@ -1024,11 +1026,39 @@ def cmd_server(args: argparse.Namespace) -> int:
     return server_run.serve(args.host, args.port, args.new_token)
 
 
+def cmd_telemetry(args: argparse.Namespace) -> int:
+    """`lado telemetry [status|on|off|show]`, and the detached sender, `send`."""
+    if args.sub == "send":
+        return telemetry.send()
+    if args.sub in ("on", "off"):
+        if os.environ.get("LADO_AGENT"):
+            raise runtime.LadoError(telemetry.IN_AGENT)
+        telemetry.choose(args.sub)
+        print(telemetry.ON if args.sub == "on" else telemetry.OFF)
+        now = telemetry.state()
+        if args.sub == "on" and not now.on:  # off by the environment, or no endpoint
+            print(telemetry.status_lines(now)[0])
+        return 0
+    if args.sub == "show":
+        shown = telemetry.preview()
+        print("the next daily report:")
+        print(json.dumps(shown["report"], indent=2))
+        print("errors waiting to be sent:" + ("" if shown["errors"] else " none"))
+        for event in shown["errors"]:
+            print(json.dumps(event, indent=2))
+        return 0
+    for line in telemetry.status_lines():
+        print(line)
+    return 0
+
+
 def cmd_ui(args: argparse.Namespace) -> int:
     import webbrowser
 
     from lado.server import app, auth
     from lado.server import run as server_run
+
+    telemetry.ask_if_needed()
 
     info = server_run.running()
     if info and args.host is not None and server_run.address(args.host) != info["host"]:
@@ -1389,6 +1419,20 @@ def main(argv: list[str] | None = None) -> int:
     update_cmd.add_argument("--id", help=argparse.SUPPRESS)
     update_cmd.set_defaults(func=cmd_update)
 
+    telemetry_cmd = commands.add_parser(
+        "telemetry",
+        help="anonymous usage statistics and LADO's errors for its maintainers: status, on, "
+        "off, show",
+    )
+    telemetry_cmd.set_defaults(func=cmd_telemetry)
+    telemetry_sub = telemetry_cmd.add_subparsers(dest="sub", metavar="<command>")
+    telemetry_sub.add_parser("status", help="whether LADO sends them, and why not (default)")
+    telemetry_sub.add_parser("on", help="send them")
+    telemetry_sub.add_parser("off", help="send nothing, and drop what waits")
+    telemetry_sub.add_parser("show", help="print exactly what the next send would post")
+    # Internal: the detached sender (telemetry.kick).
+    telemetry_sub.add_parser("send")
+
     # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")
     hook = commands.add_parser("hook")
@@ -1420,9 +1464,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 0
+    sender = args.command == "telemetry" and args.sub == "send"
     try:
         # `lado stop` is what the refusal asks for: it migrates once no session runs.
-        if args.command != "stop":
+        # `lado telemetry` keeps its files outside lado.db and reads it only.
+        if args.command not in ("stop", "telemetry"):
             runtime.migrate_if_safe()
         return args.func(args)
     except (
@@ -1444,6 +1490,9 @@ def main(argv: list[str] | None = None) -> int:
         # Unexpected: journaled (lado.telemetry), then the traceback as before.
         telemetry.record(f"cli:{_where(args)}", exc)
         raise
+    finally:
+        if not sender:  # a human's command: the statistics sender, when something is due
+            telemetry.kick()
 
 
 def _where(args: argparse.Namespace) -> str:

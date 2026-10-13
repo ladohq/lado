@@ -1,6 +1,7 @@
 """scripts/release_check.py: a final release is the code of its last release candidate
 (the Release workflow, docs/release.md)."""
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -124,6 +125,26 @@ def test_a_final_that_changes_another_line_of_pyproject_fails(repo):
     assert done.stderr.splitlines() == [
         "v0.37.0 changes a line of pyproject.toml that is not its version: -dependencies = []",
         'v0.37.0 changes a line of pyproject.toml that is not its version: +dependencies = ["y"]',
+    ]
+
+
+def test_the_lock_is_read_once_per_side(repo, monkeypatch):
+    repo.release("0.37.0rc1")
+    repo.write("pyproject.toml", PYPROJECT.format(version="0.37.0"))
+    repo.write("uv.lock", lock("0.37.0", anyio="4.1.0", uvicorn="0.31.0"))
+    git(repo.path, "commit", "-q", "-am", "Release 0.37.0")
+    git(repo.path, "tag", "v0.37.0")
+    spec = importlib.util.spec_from_file_location("release_check", SCRIPT)
+    release_check = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(release_check)
+    calls = []
+    git_of_script = release_check.git
+    monkeypatch.setattr(release_check, "git", lambda *a: calls.append(a) or git_of_script(*a))
+    monkeypatch.chdir(repo.path)
+    assert len(release_check.changed_lines("v0.37.0rc1", "v0.37.0")) == 8  # 2 + 3 per side
+    assert sorted(a[1] for a in calls if a[0] == "show") == [
+        "v0.37.0:uv.lock",
+        "v0.37.0rc1:uv.lock",
     ]
 
 

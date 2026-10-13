@@ -75,8 +75,9 @@ def changed_lines(candidate: str, final: str) -> list[tuple[str, str, str | None
             package = None
             if path == LOCK:
                 tag = candidate if side == "-" else final
-                names = blocks.setdefault(tag, packages(tag, path))
-                package = names[numbers[side] - 1]
+                if tag not in blocks:  # one `git show` per side
+                    blocks[tag] = packages(tag, path)
+                package = blocks[tag][numbers[side] - 1]
             numbers[side] += 1
             lines.append((path, line, package))
     return lines

@@ -1,7 +1,7 @@
 // One record alone in a tab of its own (docs/design/ui.md, The artifact's tab): only its
 // body as the viewer shows it, no LADO around it; the artifact's full name as the title; a
 // refusal said in the page; HTML sent to its content address under the server's sandbox.
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -15,6 +15,7 @@ vi.mock("./api", async (original) => ({ ...(await original<typeof api>()), onDen
 
 afterEach(() => {
   cleanup();
+  document.title = ""; // a tab's title is set in an effect: no test reads another's
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -59,7 +60,7 @@ test("Markdown shows rendered, alone, with the artifact's full name as the title
   expect(screen.getByText("Loading…")).toBeTruthy();
   await screen.findByRole("heading", { name: "Plan" });
   expect(document.querySelector(".artifact-tab .artifact-markdown table")).not.toBeNull();
-  expect(document.title).toBe("feature/x/design");
+  await waitFor(() => expect(document.title).toBe("feature/x/design"));
   bare();
   expect(fetch.mock.calls.map(([path]) => path)).toEqual([RECORD, `${RECORD}/content`]);
 });
@@ -78,7 +79,7 @@ test("an image shows as an image", async () => {
   open();
   const image = await screen.findByRole("img", { name: "The screen" });
   expect(image.getAttribute("src")).toBe(`${RECORD}/content`);
-  expect(document.title).toBe("feature/x/shot.png");
+  await waitFor(() => expect(document.title).toBe("feature/x/shot.png"));
   bare();
 });
 

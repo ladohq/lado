@@ -501,7 +501,10 @@ def _providers() -> dict[str, str]:
 
     def look(provider) -> None:
         with contextlib.suppress(Exception):
-            found[provider.name] = doctor.provider_status(provider, shutil.which).version
+            # Killed by its own timeout: a daemon thread ends with the sender and kills
+            # nothing then.
+            status = doctor.provider_status(provider, shutil.which, PROVIDERS_WAIT)
+            found[provider.name] = status.version
 
     threads = [threading.Thread(target=look, args=(p,), daemon=True) for p in installed]
     for thread in threads:

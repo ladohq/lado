@@ -39,10 +39,13 @@ class Check:
     hint: str = ""
 
 
-def _tool_version(path: str, flag: str) -> str:
+VERSION_TIMEOUT = 10.0  # seconds a `<tool> --version` may take; then it is killed
+
+
+def _tool_version(path: str, flag: str, timeout: float = VERSION_TIMEOUT) -> str:
     try:
         result = subprocess.run(
-            [path, flag], capture_output=True, text=True, timeout=10, check=False
+            [path, flag], capture_output=True, text=True, timeout=timeout, check=False
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"found at {path}, but `{flag}` failed: {exc}"
@@ -51,12 +54,17 @@ def _tool_version(path: str, flag: str) -> str:
 
 
 def check_tool(
-    name: str, command: str, flag: str, hint: str, which: Callable[[str], str | None]
+    name: str,
+    command: str,
+    flag: str,
+    hint: str,
+    which: Callable[[str], str | None],
+    timeout: float = VERSION_TIMEOUT,
 ) -> Check:
     path = which(command)
     if path is None:
         return Check(name, FAIL, f"`{command}` not found on PATH", hint)
-    return Check(name, OK, _tool_version(path, flag))
+    return Check(name, OK, _tool_version(path, flag, timeout))
 
 
 @dataclass
@@ -71,9 +79,13 @@ class ProviderStatus:
 
 
 def provider_status(
-    provider: providers.Provider, which: Callable[[str], str | None]
+    provider: providers.Provider,
+    which: Callable[[str], str | None],
+    timeout: float = VERSION_TIMEOUT,
 ) -> ProviderStatus:
-    tool = check_tool(provider.title, provider.command, "--version", "", which)
+    """`timeout`: the seconds its `--version` may take, killed after them (the statistics
+    sender gives less: its threads end with it, and nothing would kill it then)."""
+    tool = check_tool(provider.title, provider.command, "--version", "", which, timeout)
     tested = provider.tested_version
     if tool.level == FAIL:
         return ProviderStatus(False, "", tool.detail, tested, "")

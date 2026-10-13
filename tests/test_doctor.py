@@ -35,7 +35,9 @@ def _versions(
         "tmux": tmux_version,
         "opencode": opencode_version,
     }
-    monkeypatch.setattr(doctor, "_tool_version", lambda path, flag: versions.get(path, "v1"))
+    monkeypatch.setattr(
+        doctor, "_tool_version", lambda path, flag, timeout=None: versions.get(path, "v1")
+    )
 
 
 def test_all_checks_pass_when_tools_are_on_path(monkeypatch):

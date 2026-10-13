@@ -594,6 +594,45 @@ def test_the_deadline_is_not_swallowed_while_the_report_is_counted(
     assert capsys.readouterr() == ("", "")
 
 
+def test_a_hanging_cli_s_version_is_ended_with_its_share(tmp_path, monkeypatch):
+    """The sender's daemon threads end with it, so the --version a thread runs must end
+    within PROVIDERS_WAIT by its own timeout: else every try leaves one behind (F5)."""
+    import os
+    import time
+
+    from lado import providers
+
+    folder = tmp_path / "clis"
+    folder.mkdir()
+    pid_file = tmp_path / "pid"
+    command = providers.get("claude").command
+    (folder / command).write_text(f"#!/bin/sh\necho $$ > {pid_file}\nexec sleep 30\n")
+    (folder / command).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}/usr/bin:/bin")
+    monkeypatch.setattr(telemetry, "PROVIDERS_WAIT", 2.0)  # the shell starts under load too
+    assert telemetry._providers() == {"claude": ""}
+    deadline = time.monotonic() + 6  # its timeout kills it at PROVIDERS_WAIT, not at 10 s
+    while not pid_file.exists() or not pid_file.read_text().strip():
+        assert time.monotonic() < deadline, "the CLI never started"
+        time.sleep(0.05)
+    pid = int(pid_file.read_text())
+
+    def alive():
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    while alive() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    try:
+        assert not alive(), "the CLI's --version outlived its share"
+    finally:
+        if alive():
+            os.kill(pid, 9)
+
+
 def test_slow_agent_clis_take_only_their_share(monkeypatch):
     """A CLI whose --version hangs leaves its version unknown after PROVIDERS_WAIT, and the
     report goes on (F1)."""
@@ -603,7 +642,7 @@ def test_slow_agent_clis_take_only_their_share(monkeypatch):
 
     monkeypatch.setattr(telemetry, "PROVIDERS_WAIT", 0.3)
 
-    def status(provider, which):
+    def status(provider, which, timeout):
         if provider.name == "codex":
             time.sleep(5)
         return doctor.ProviderStatus(True, "1.2.3", "", "", "")

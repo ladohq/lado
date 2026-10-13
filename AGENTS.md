@@ -292,7 +292,9 @@ fixes and docs only: no new feature, no API or schema change.
     fingerprint), `_post` within `SEND_TIMEOUT` per operation, the whole try within
     `SEND_DEADLINE` (`_deadline`, SIGALRM: DNS too; `_Deadline` is a `BaseException`, so
     no `except Exception` of the build swallows it; the agent CLIs' `--version`, in
-    daemon threads, get `PROVIDERS_WAIT` of it), silent; a try with nothing to post leaves
+    daemon threads, get `PROVIDERS_WAIT` of it and are killed by their own timeout then,
+    `doctor.provider_status(..., timeout)`, as nothing kills them after the sender ends),
+    silent; a try with nothing to post leaves
     `sent.json` as it was; a failure keeps everything and
     its reason in `telemetry/sent.json` (`last_sent`, `status_lines`), a 2xx removes only
     the files it sent; the sender's own bug is `_journal_only`. `preview` is what `lado

@@ -1724,6 +1724,10 @@ Wanted: the gates test waits for the scroll to end.
 Found: 2026-10-09, release of 0.32.0. (The terminal panel test that failed with it, five
 times, was fixed in fix/terminal-ui-flake: its lines now come from the worker's task.)
 Again in run 38360259308 (PR #12, feature/lad-32-usage-telemetry, 2026-10-13).
+Again locally (2026-10-13, fix/lad-48-waiting-card-expands-in-page, `-n 2` with three other
+UI files), another cause: a strict-mode violation, the last run group's `listitem` filtered
+by `has_text="You"` also matched the gate line "Lado waits for you #1 approval"; passed 2
+of 2 alone with `-n0`. Wanted too: a filter that cannot match "waits for you".
 
 ## Flaky in CI: the gates UI test of a recommendation that disagrees
 

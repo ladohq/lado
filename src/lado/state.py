@@ -11,7 +11,7 @@ import re
 import sqlite3
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
@@ -2063,37 +2063,71 @@ def add_question(
         return cur.lastrowid or 0
 
 
-def reply_to_question(
-    session: str, question: int, summary: str, body: str, choice: str | None, outcome: str
-) -> int | None:
-    """Queue the human's answer or dismissal of an open question to the agent that asked,
-    and set the question's outcome (ANSWERED or DISMISSED), in one transaction. Returns the
-    reply's id; None, with nothing changed, when the question is not open; NotRunning, with
-    nothing changed, when the agent that asked does not run."""
+@dataclass(frozen=True)
+class Reply:
+    """The human's reply to one open question as it is queued (lado.runtime builds it): its
+    message's summary and body, the choice, and the question's outcome, ANSWERED or
+    DISMISSED."""
+
+    question: int
+    summary: str
+    body: str
+    choice: str | None
+    outcome: str
+
+
+class QuestionClosed(Exception):
+    """A question to reply to is not open: answered, dismissed, closed, or no question of
+    the session ("gone")."""
+
+    def __init__(self, question: int, question_state: str):
+        super().__init__(f"question #{question} is {question_state}")
+        self.question = question
+        self.question_state = question_state
+
+
+def reply_to_questions(session: str, replies: Sequence[Reply]) -> list[int]:
+    """Queue the human's replies to open questions, each to the agent that asked it, and set
+    each question's outcome, in one transaction. Returns the replies' ids, in order; with
+    nothing changed, QuestionClosed when a question is not open and NotRunning when an
+    agent that asked does not run."""
+    ids = []
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        row = db.execute(
-            "SELECT sender, question_state FROM messages WHERE session = ? AND id = ? AND kind = ?",
-            (session, question, QUESTION),
-        ).fetchone()
-        if row is not None:
-            # First, as the asker's question is closed when it is finished.
-            _check_running(db, session, row["sender"])
-        if row is None or row["question_state"] != OPEN_QUESTION:
-            db.execute("ROLLBACK")
-            return None
-        reply = db.execute(
-            "INSERT INTO messages (session, sender, recipient, summary, body, reply_to, choice,"
-            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
-            (session, HUMAN, row["sender"], summary, body, question, choice),
-        ).lastrowid
-        _drop_requests(db, "messages", "id = ?", (question,))
-        db.execute(
-            "UPDATE messages SET question_state = ?, answered_by = ? WHERE id = ?",
-            (outcome, reply, question),
-        )
+        # A raise leaves the transaction open: closing the connection rolls it back.
+        for reply in replies:
+            row = db.execute(
+                "SELECT sender, question_state FROM messages"
+                " WHERE session = ? AND id = ? AND kind = ?",
+                (session, reply.question, QUESTION),
+            ).fetchone()
+            if row is not None:
+                # First, as the asker's question is closed when it is finished.
+                _check_running(db, session, row["sender"])
+            if row is None or row["question_state"] != OPEN_QUESTION:
+                raise QuestionClosed(reply.question, row["question_state"] if row else "gone")
+            message = db.execute(
+                "INSERT INTO messages (session, sender, recipient, summary, body, reply_to,"
+                " choice, created_at) VALUES (?, ?, ?, ?, ?, ?, ?,"
+                " strftime('%Y-%m-%d %H:%M:%f', 'now'))",
+                (
+                    session,
+                    HUMAN,
+                    row["sender"],
+                    reply.summary,
+                    reply.body,
+                    reply.question,
+                    reply.choice,
+                ),
+            ).lastrowid
+            _drop_requests(db, "messages", "id = ?", (reply.question,))
+            db.execute(
+                "UPDATE messages SET question_state = ?, answered_by = ? WHERE id = ?",
+                (reply.outcome, message, reply.question),
+            )
+            ids.append(message)
         db.execute("COMMIT")
-    return reply
+    return ids
 
 
 def check_replies(session: str, agent: str) -> None:

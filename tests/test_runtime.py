@@ -3226,7 +3226,7 @@ def test_finish_worker_drops_its_undelivered_messages(repo, fake_tmux, monkeypat
     [
         ("queue_message", lambda question: runtime.send_message("s", "supervisor", "w1", "late")),
         ("queue_with_copy", lambda question: runtime.write_as_human("s", "late", to="w1")),
-        ("reply_to_question", lambda question: runtime.answer_question("s", question.id, "yes")),
+        ("reply_to_questions", lambda question: runtime.answer_question("s", question.id, "yes")),
     ],
     ids=["send_message", "write_as_human", "answer_question"],
 )
@@ -3799,6 +3799,154 @@ def test_an_answer_to_no_question_is_refused(repo, fake_tmux):
     for missing in (answer_id, 999):
         with pytest.raises(runtime.LadoError, match=f"no question #{missing} in session s"):
             runtime.answer_question("s", missing, "yes")
+
+
+def _two_asked(repo, status=state.IDLE):
+    """w1 asked two questions, "Short or long?" (choices short, long) and "Which branch?"
+    (a free answer), and has `status`; returns their ids."""
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    runtime.ask_human("s", "w1", "Short or long?", None, ["short", "long"], False)
+    runtime.ask_human("s", "w1", "Which branch?")
+    state.set_status("s", "w1", status)
+    return [m.id for m in state.list_messages("s") if m.kind == state.QUESTION]
+
+
+def _pastes(fake_tmux, agent="w1"):
+    return [call[3] for call in fake_tmux if call[:3] == ("send_text", "s", agent)]
+
+
+def test_two_answers_reach_an_idle_agent_in_one_paste(repo, fake_tmux):
+    first, second = _two_asked(repo)
+    result = runtime.answer_questions(
+        "s",
+        [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="main, then rebase")],
+    )
+    assert result == "sent"
+    [paste] = _pastes(fake_tmux)
+    assert f"[from human] Answer to #{first}: short" in paste
+    assert f"[from human] Answer to #{second}: main, then rebase" in paste
+    assert _question_states() == [state.ANSWERED, state.ANSWERED]
+
+
+def test_a_skip_is_a_dismissal_with_its_comment(repo, fake_tmux):
+    first, second = _two_asked(repo)
+    runtime.answer_questions(
+        "s",
+        [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text=" later ", skip=True)],
+    )
+    *_, answer, dismissal = state.list_messages("s")
+    assert (answer.summary, answer.reply_to) == (f"Answer to #{first}: short", first)
+    assert (dismissal.summary, dismissal.body, dismissal.reply_to, dismissal.choice) == (
+        f"Dismissed #{second}",
+        "later",
+        second,
+        None,
+    )
+    assert _question_states() == [state.ANSWERED, state.DISMISSED]
+    [paste] = _pastes(fake_tmux)
+    assert f"[from human] Answer to #{first}: short" in paste
+    assert f"[from human] Dismissed #{second} (#{dismissal.id}, " in paste
+
+
+def test_a_batch_with_a_question_closed_meanwhile_changes_nothing(repo, fake_tmux):
+    first, second = _two_asked(repo)
+    runtime.answer_question("s", second, None, "main")
+    before = state.list_messages("s")
+    with pytest.raises(runtime.LadoError, match=f"^question #{second} is answered$"):
+        runtime.answer_questions(
+            "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="x")]
+        )
+    assert state.list_messages("s") == before
+    assert _question_states() == [state.OPEN_QUESTION, state.ANSWERED]
+
+
+def test_a_question_closed_between_the_check_and_the_write_changes_nothing(
+    repo, fake_tmux, monkeypatch
+):
+    first, second = _two_asked(repo)
+    store = state.reply_to_questions
+
+    def answered_first(*args, **kwargs):
+        # the other tab answers #second after this call checked it open
+        with state.connect() as db:
+            db.execute("UPDATE messages SET question_state = 'answered' WHERE id = ?", (second,))
+        return store(*args, **kwargs)
+
+    monkeypatch.setattr(state, "reply_to_questions", answered_first)
+    before = state.list_messages("s")
+    with pytest.raises(runtime.LadoError, match=f"^question #{second} is answered$"):
+        runtime.answer_questions(
+            "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="x")]
+        )
+    assert _question_states() == [state.OPEN_QUESTION, state.ANSWERED]
+    assert [m.id for m in state.list_messages("s")] == [m.id for m in before]
+    assert _pastes(fake_tmux) == []
+
+
+@pytest.mark.parametrize(
+    ("replies", "reason"),
+    [
+        (lambda q: [], "no answers"),
+        (
+            lambda q: [runtime.HumanReply(q[0], "short"), runtime.HumanReply(q[0], "long")],
+            "question #{0} is answered twice",
+        ),
+        (
+            lambda q: [runtime.HumanReply(q[0], "short"), runtime.HumanReply(q[2], "yes")],
+            "answers go to one agent at a time: #{0} is w1's, #{2} is supervisor's",
+        ),
+        (
+            lambda q: [runtime.HumanReply(q[0], "short", skip=True)],
+            "question #{0}: skip takes no choice",
+        ),
+        (
+            lambda q: [runtime.HumanReply(q[1], text="x"), runtime.HumanReply(q[0], "maybe")],
+            'question #{0} has no choice "maybe"; its choices: short, long',
+        ),
+        (
+            lambda q: [runtime.HumanReply(q[0], text="medium")],
+            "question #{0} takes one of its choices, not an own answer",
+        ),
+        (
+            lambda q: [runtime.HumanReply(q[1], text=" ")],
+            "choose one of the choices or write an answer",
+        ),
+        (lambda q: [runtime.HumanReply(999, "x")], "no question #999 in session s"),
+    ],
+    ids=[
+        "empty",
+        "twice",
+        "two agents",
+        "skip with a choice",
+        "no such choice",
+        "own words",
+        "blank",
+        "no question",
+    ],
+)
+def test_a_batch_the_core_refuses_changes_nothing(repo, fake_tmux, replies, reason):
+    asked = _two_asked(repo)
+    runtime.ask_human("s", "supervisor", "Ship?", None, ["yes", "no"])
+    asked.append(state.list_messages("s")[-1].id)
+    before = state.list_messages("s")
+    with pytest.raises(runtime.LadoError, match="^" + re.escape(reason.format(*asked)) + "$"):
+        runtime.answer_questions("s", replies(asked))
+    assert state.list_messages("s") == before
+
+
+def test_a_busy_agent_gets_the_batch_at_its_turns_end_in_one_hand_over(repo, fake_tmux):
+    first, second = _two_asked(repo, status=state.BUSY)
+    result = runtime.answer_questions(
+        "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="main")]
+    )
+    assert result.startswith("queued; w1 is busy")
+    assert _pastes(fake_tmux) == []
+    reason = _hook("Stop", "w1")["reason"]
+    assert reason.splitlines() == [
+        f"[from human] Answer to #{first}: short",
+        f"[from human] Answer to #{second}: main",
+    ]
 
 
 def _question_states():

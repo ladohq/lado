@@ -1,0 +1,90 @@
+## 1. Core
+
+- [x] 1.1 `state.Reply`, `state.QuestionClosed`, `state.reply_to_questions` (one
+  transaction; `reply_to_question` removed); `runtime.HumanReply`,
+  `runtime.answer_questions` (checks first, one transaction, one `_deliver`);
+  `answer_question` / `dismiss_question` as one-reply calls (D1–D4). Unit tests
+  (`tests/test_runtime.py`): "Two answers reach an idle agent in one hand-over" (one
+  `send_text` with both lines), "A skipped question is a dismissal", "One question closed
+  meanwhile" (nothing changed), "Questions of two agents", the other refusals (empty, twice,
+  skip with a choice, a choice the question lacks), a busy agent gets the batch at its
+  turn's end in one hand-over; `tests/test_state.py`: all or nothing, `NotRunning`. Check:
+  `make test` (the existing question tests pass unchanged).
+
+## 2. API
+
+- [x] 2.1 `POST /api/sessions/{name}/answers` (`models.Replies`, `models.Reply`); the two
+  question endpoints, `Answer` and `Dismissal` removed; `api.ts` `answerQuestions`; `make
+  web-types`, both generated files committed (D5). Tests (`tests/test_server_messages.py`):
+  "The UI sends a tab", "An empty list", the old endpoints gone, the guard's cases on the new
+  path. Integration (`tests/integration/test_human_messages.py`, `-m integration`): the
+  existing answer test on the new path; two questions of the fake agent answered in one
+  request reach it and are both answered. Check: `uv run pytest -m integration -n auto
+  tests/integration/test_human_messages.py`, `make web`.
+
+## 3. UI
+
+- [x] 3.1 `GateCard.tsx`: `GatePanel` shared, `Note` and `Reads` in it (D8; not exported: no other file uses them). vitest
+  (`GateCard.test.tsx`, `Flows.test.tsx`): the compact card answers; a gate's `problem`
+  line; stopped. Check: `make web`. (No `GateCard.test.tsx`: the panel's problem line,
+  buttons and stopped line are tested on the gate's tab, `WaitingCard.test.tsx` and
+  `Chat.test.tsx`; the compact card in `Flows.test.tsx`, unchanged.)
+- [x] 3.2 `WaitingCard.tsx` with `waitingTabs`, tabs, colours, picks, Send, the gate's
+  panel, the look (D6, D7, D9; mockup `task/lad-28/mockup-question-card-final.html`);
+  `Question.tsx` closed card only, "skipped" (D12, D13); `api.ts` without
+  `answerQuestion` / `dismissQuestion`; icons `ExpandIcon`, `CollapseIcon`. vitest
+  (`WaitingCard.test.tsx`): "Three things wait", "Nothing waits", "Colours of an agent and a
+  run", "A new question meanwhile", "Two questions, one answered", "All answered", "A
+  question that takes no own answer", a refusal keeps the picks, typing keeps focus, `focus`
+  selects and marks. Check: `make web`. (No new icons: `icons.tsx`'s `ExpandIcon` already
+  draws both, `expanded` or not, as the terminal and the artifact panel use it.)
+- [x] 3.3 `Chat.tsx`: the card between the feed and the composer from `waiting` and the
+  session's gates, `runs` watched; open items as lines with their arrow; links to open items
+  select their tab; `GateHint` removed; "skipped" in the late line and the quiet line;
+  expanded over the window with Esc (D10, D11). vitest (`Chat.test.tsx`,
+  `WaitingCard.test.tsx`): "An open question in the feed", "After the answer", a gate's
+  line, no hint, "Expanded and back", Esc not expanded does nothing, the dialog folds when
+  empty, "A stopped session". Check: `make web`.
+- [x] 3.4 `NeedsYou.tsx`: a card per session, "In the chat", waiting agents as rows;
+  `GateRow` removed (D14). vitest (`NeedsYou.test.tsx`): "Two sessions", answering posts to
+  that session. Check: `make web`.
+
+## 4. End to end
+
+- [x] 4.1 UI e2e (`tests/ui/test_chat.py`, `tests/ui/test_needs_you.py`, `-m ui`): two
+  questions of the supervisor answered in one tab reach the agent; three tabs (a worker's
+  question, a gate) switch and the gate's Approve moves the run; the expanded card and Esc;
+  Needs you answers in place; the cards' buttons one height in light and dark. Screenshots
+  of the card with three tabs, the expanded card (light, dark), the feed after the answers,
+  Needs you, attached as run artifacts. Check: `uv run pytest -m ui tests/ui/test_chat.py
+  tests/ui/test_needs_you.py`.
+
+## 5. Docs and release notes
+
+- [x] 5.1 `docs/design/ui.md` (Flow gates; A question; the open question's card replaced by
+  The waiting card, decided 2026-10-13, LAD-28, mockup
+  `task/lad-28/mockup-question-card-final.html`; Answer in the question card, "skipped";
+  Structure: Needs you; Look), AGENTS.md (Layout: `POST …/answers`; How agents talk: replies
+  to one agent handed over together), CHANGELOG.md under `## 0.37.0 (unreleased)`.
+- [x] 5.2 Regression run: `openspec validate waiting-card --strict`, `make lint`, `make
+  test`, `uv run pytest -m integration -n auto tests/integration/test_human_messages.py
+  tests/integration/test_session_start.py`, `make web`, `uv run pytest -m ui
+  tests/ui/test_chat.py tests/ui/test_needs_you.py`.
+
+## 6. After LAD-27 (lead-recommendation) merged into main
+
+- [x] 6.1 Merge `origin/main`; the recommendation in a question's tab as the human chose
+  (D17, option B): the block per question, the recommended choice picked ahead; delta to
+  `lead-recommendation`; LAD-27's tests of the open question card moved to the tab
+  (`Chat.test.tsx`, `tests/ui/test_chat.py`), the design and the changelog. vitest
+  (`WaitingCard.test.tsx`): picked ahead, unpicked, sent as is, given later, a choice the
+  question lacks. Check: `make web`, the regression run of 5.2.
+- [x] 6.2 Review round 1: F1, a gate's comment kept by the card per gate (`WaitingCard.tsx`)
+  across tab switches and the expanded view, vitest `WaitingCard.test.tsx`; F2, the tabs on
+  one line that scrolls sideways (`styles.css`, `WaitingCard.tsx`), the shown tab into view,
+  UI e2e `tests/ui/test_chat.py::test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways`,
+  `docs/design/ui.md`. Check: `make web`, `-m ui`.
+- [x] 6.3 Review round 2: F4, the shown tab scrolls only the tabs' row sideways, never the
+  feed or the page (`WaitingCard.tsx`); UI e2e
+  `tests/ui/test_needs_you.py::test_cards_taller_than_the_window_leave_the_page_at_its_top`,
+  vitest `Chat.test.tsx` (no `scrollIntoView` of the tab). Check: `make web`, `-m ui`.

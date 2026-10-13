@@ -2547,11 +2547,11 @@
         }
       }
     },
-    "/api/sessions/{name}/questions/{question}/answer": {
+    "/api/sessions/{name}/answers": {
       "post": {
-        "summary": "Answer",
-        "description": "The human's answer to an agent's open question: a choice, own words, or both.",
-        "operationId": "answer_api_sessions__name__questions__question__answer_post",
+        "summary": "Answers",
+        "description": "The human's replies to open questions of one agent (a tab of the waiting card),\nall or none, handed over to the agent together.",
+        "operationId": "answers_api_sessions__name__answers_post",
         "parameters": [
           {
             "name": "name",
@@ -2560,15 +2560,6 @@
             "schema": {
               "type": "string",
               "title": "Name"
-            }
-          },
-          {
-            "name": "question",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Question"
             }
           }
         ],
@@ -2577,73 +2568,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Answer"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Sent"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/sessions/{name}/questions/{question}/dismiss": {
-      "post": {
-        "summary": "Dismiss",
-        "description": "The human dismisses an agent's open question, with an optional comment; the agent\nhears of it.",
-        "operationId": "dismiss_api_sessions__name__questions__question__dismiss_post",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Name"
-            }
-          },
-          {
-            "name": "question",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Question"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/Dismissal"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Given"
+                "$ref": "#/components/schemas/Replies"
               }
             }
           }
@@ -2823,34 +2748,6 @@
           "since"
         ],
         "title": "AgentInfo"
-      },
-      "Answer": {
-        "properties": {
-          "choice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Choice"
-          },
-          "text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Text"
-          }
-        },
-        "type": "object",
-        "title": "Answer"
       },
       "ArtifactInfo": {
         "properties": {
@@ -3242,23 +3139,6 @@
           "at"
         ],
         "title": "CommitInfo"
-      },
-      "Dismissal": {
-        "properties": {
-          "text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Text"
-          }
-        },
-        "type": "object",
-        "title": "Dismissal"
       },
       "Finish": {
         "properties": {
@@ -5647,6 +5527,64 @@
         ],
         "title": "RemoteInfo",
         "description": "A remote's branches (lado.clone.list_branches)."
+      },
+      "Replies": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/Reply"
+            },
+            "type": "array",
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "Replies",
+        "description": "The replies of a tab of the waiting card: open questions of one agent."
+      },
+      "Reply": {
+        "properties": {
+          "question": {
+            "type": "integer",
+            "title": "Question"
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "skip": {
+            "type": "boolean",
+            "title": "Skip",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "Reply",
+        "description": "The human's reply to one open question: one of its choices, own words, or with\n`skip` a dismissal, `text` then its comment."
       },
       "RepoInfo": {
         "properties": {

@@ -791,8 +791,10 @@ fixes and docs only: no new feature, no API or schema change.
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes; the agents, messages, run events
-    (`/api/sessions/{name}/events`), gates (with the human's answer), runs and notes
-    endpoints are in `app.py`, and the artifacts' (docs/design/artifacts.md, The human's
+    (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
+    to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
+    none, through `runtime.answer_questions`), runs and notes endpoints are in `app.py`,
+    and the artifacts' (docs/design/artifacts.md, The human's
     side): `GET …/artifacts`, `…/artifacts/{id}`, `…/records/{record}` and
     `…/records/{record}/content[?download=1]`, a session's only (404 else), the human's
     upload `POST …/artifacts?file_name=` (the raw bytes, under `Guard.changes`; it reads no
@@ -1108,7 +1110,12 @@ fixes and docs only: no new feature, no API or schema change.
   in the same transaction (answers and dismissals get none), and
   only while the supervisor runs: a stopped one would never get it, so there is none. An answer
   (`Answer to #<id>: ...`) or dismissal (`Dismissed #<id>`, with the human's comment as its
-  body when they wrote one) comes to the agent the same way.
+  body when they wrote one) comes to the agent the same way. The answers to several open
+  questions of one agent come together (`runtime.answer_questions`: each checked first, all
+  queued and their questions closed in one transaction, `state.reply_to_questions`, then
+  the agent's queue taken once), so an idle agent gets them in one hand-over and starts one
+  turn; one the core refuses refuses them all, with nothing changed (`answer_question` and
+  `dismiss_question` are one-reply calls of it).
   No agent may be named `human` or `lado` (`state.RESERVED`). Messages to `human` are never
   dropped (stop, finish), and a forgotten agent's open questions are `closed`. LADO's
   instructions tell the supervisor to answer where the human asked: a `[from human]`

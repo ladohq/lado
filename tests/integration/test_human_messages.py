@@ -111,12 +111,38 @@ def test_the_agents_question_is_answered_through_the_api(api, session):
     )
     wait_for(lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION)
     answered = api.post(
-        f"/api/sessions/{SESSION}/questions/{question['id']}/answer", json={"choice": "yes"}
+        f"/api/sessions/{SESSION}/answers",
+        json={"answers": [{"question": question["id"], "choice": "yes"}]},
     )
     assert answered.status_code == 200
     line = f"[from human] Answer to #{question['id']}: yes"
     wait_for(lambda: line in inputs(), "the answer", SESSION)
     assert chat(api)[1]["question_state"] == "answered"
+
+
+def test_two_answers_reach_the_agent_in_one_input(api, session):
+    """A tab of the waiting card: the agent's two open questions answered in one request
+    reach it in one hand-over, so they start one turn."""
+    idle = lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE  # noqa: E731
+    for asked, ask in enumerate(["askhuman Ship it? | yes, no", "askhuman Which port?"], 1):
+        api.post(f"/api/sessions/{SESSION}/messages", json={"text": ask})
+        wait_for(lambda n=asked: len(chat(api)) == 2 * n and idle(), "the question", SESSION)
+    ship, port = [m for m in chat(api) if m["kind"] == "question"]
+    answered = api.post(
+        f"/api/sessions/{SESSION}/answers",
+        json={
+            "answers": [
+                {"question": ship["id"], "choice": "yes"},
+                {"question": port["id"], "text": "8123"},
+            ]
+        },
+    )
+    assert answered.status_code == 200
+    both = f"[from human] Answer to #{ship['id']}: yes\n[from human] Answer to #{port['id']}: 8123"
+    wait_for(lambda: both in inputs(), "both answers in one input", SESSION)
+    assert not any(f"Answer to #{port['id']}" in i for i in inputs() if i != both)
+    states = {m["id"]: m["question_state"] for m in chat(api)}
+    assert (states[ship["id"]], states[port["id"]]) == ("answered", "answered")
 
 
 def test_a_workers_question_asks_the_lead_whose_recommendation_reaches_the_card(api, session):

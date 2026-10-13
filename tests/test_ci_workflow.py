@@ -1,5 +1,6 @@
-""".github/workflows/ci.yml's job `smoke`: the smoke tests on Linux and macOS for every
-provider, on each pull request and push to main."""
+""".github/workflows/ci.yml: the pytest commands of jobs `check` and `ui`, and job `smoke`:
+the smoke tests on Linux and macOS for every provider, on each pull request and push to
+main."""
 
 import importlib.util
 from pathlib import Path
@@ -49,6 +50,20 @@ def step_named(steps, name: str) -> dict:
 def step_using(steps, action: str) -> dict:
     (step,) = [s for s in steps if s.get("uses", "").startswith(action + "@")]
     return step
+
+
+def pytest_runs(job: dict) -> list[str]:
+    return [s["run"] for s in job["steps"] if s.get("run", "").startswith("uv run pytest")]
+
+
+def test_integration_tests_in_one_process_and_ui_tests_on_two_workers(workflow):
+    """-n auto on GitHub's 4-vCPU runners starves LADO's short test timers (LAD-41)."""
+    jobs = workflow["jobs"]
+    assert pytest_runs(jobs["check"]) == [
+        "uv run pytest -n auto",
+        "uv run pytest -m integration -n0",
+    ]
+    assert pytest_runs(jobs["ui"]) == ["uv run pytest -m ui -n 2"]
 
 
 def test_ci_runs_on_pull_requests_and_pushes_to_main(workflow):

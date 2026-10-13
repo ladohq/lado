@@ -1015,7 +1015,8 @@ test("while a gate is open, no hint stands over the composer; the line's arrow s
   await waitFor(() => expect(within(card).getByRole("tab", { name: "feature/x 1" }).getAttribute("aria-selected")).toBe("true"));
   const panel = card.querySelector('[data-item="2"]') as HTMLElement;
   expect(panel.className).toContain("marked");
-  expect(scrolled.mock.contexts).toEqual([panel]);
+  // The gate's item into the list's view, its tab into the tabs' view; the feed stays.
+  expect(scrolled.mock.contexts).toEqual([panel, within(card).getByRole("tab", { name: "feature/x 1" })]);
   const field = screen.getByRole("textbox", { name: "Write to the supervisor…" });
   fireEvent.change(field, { target: { value: "approve" } });
   fireEvent.keyDown(field, { key: "Enter" });

@@ -876,7 +876,11 @@ Built in the chat task (2026-10-03):
   id); a tab shows the agent's avatar letter in its colour (`avatar`), or a gate's the
   Flows icon in its run's colour (`runColours`, grey until the runs load), the name (the
   run's for a gate) and the number of its items in a muted badge; its 3 px top in that
-  colour, dashed for a gate. The shown tab is the human's: it stays while items come or go
+  colour, dashed for a gate. Many tabs stay on one line, as the terminals' (Terminals,
+  Tabs): a name is cut with an ellipsis down to about 72 px (a shorter one whole), then the
+  row scrolls sideways (the wheel too), with no bar, which would lie between the shown tab
+  and the panel; the shown tab scrolls into view, and the expand button at the right never
+  moves (review of LAD-28, F2). The shown tab is the human's: it stays while items come or go
   on other tabs, and when it empties the first one shows. **An agent's tab**: its
   questions, numbered when more than one, each with its text in bold, its details
   (Markdown, muted) and chips, its choices as 32 px buttons (one picked, `--action` on
@@ -887,7 +891,8 @@ Built in the chat task (2026-10-03):
   once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
   answered" beside it until then; it posts the tab in one request (`POST …/answers`), and
   the agent gets the replies in one hand-over. A refusal shows in the Send row with the
-  core's reason and the picks stay; the tab goes only when `waiting` brings its questions
+  core's reason and the picks stay (as a gate's comment does: the card keeps the picks and
+  the comments across its tabs and its expanded view); the tab goes only when `waiting` brings its questions
   closed. Each question shows the supervisor's recommendation (below) under its details,
   and its recommended choice is picked ahead (decided 2026-10-13, LAD-28, mockup
   `task/lad-28/mockup-recommendation-in-tab.html`, option B): the counter counts it and Send

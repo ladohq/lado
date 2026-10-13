@@ -79,3 +79,8 @@
   (`Chat.test.tsx`, `tests/ui/test_chat.py`), the design and the changelog. vitest
   (`WaitingCard.test.tsx`): picked ahead, unpicked, sent as is, given later, a choice the
   question lacks. Check: `make web`, the regression run of 5.2.
+- [x] 6.2 Review round 1: F1, a gate's comment kept by the card per gate (`WaitingCard.tsx`)
+  across tab switches and the expanded view, vitest `WaitingCard.test.tsx`; F2, the tabs on
+  one line that scrolls sideways (`styles.css`, `WaitingCard.tsx`), the shown tab into view,
+  UI e2e `tests/ui/test_chat.py::test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways`,
+  `docs/design/ui.md`. Check: `make web`, `-m ui`.

@@ -200,6 +200,48 @@ def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     shot(page, "approved")
 
 
+def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
+    page: Page, server, repo, shot
+):
+    """In a narrow chat the tabs keep one line: names cut, then the row scrolls sideways;
+    the shown tab lies on the panel, scrolls into view when chosen, and the expand button
+    stays at the right (docs/design/ui.md, The waiting card)."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Which branch?", None, ["main", "epic"])
+    for name in ("developer-with-a-long-name", "reviewer-of-the-design", "analyst"):
+        runtime.spawn_worker(session, "sleep 0", name=name)
+        runtime.ask_human(session, name, f"A question of {name}?", None, ["yes", "no"], False)
+    page.set_viewport_size({"width": 1000, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    tabs = card.get_by_role("tab")
+    expect(tabs).to_have_count(5)
+    row = card.get_by_role("tablist")
+    expand = card.get_by_role("button", name="Expand the card")
+    panel = card.get_by_role("tabpanel")
+
+    def check(shown):
+        tops = [tab.bounding_box()["y"] for tab in tabs.all()]
+        assert max(tops) - min(tops) <= 1.5, tops  # one line (the shown tab 1 px lower)
+        on, under = shown.bounding_box(), panel.bounding_box()
+        assert abs(on["y"] + on["height"] - under["y"]) <= 1.5, (on, under)  # on the panel
+        seen = row.bounding_box()
+        assert seen["x"] - 1 <= on["x"] and on["x"] + on["width"] <= seen["x"] + seen["width"] + 1
+        assert seen["x"] + seen["width"] <= expand.bounding_box()["x"]
+
+    check(tabs.nth(0))
+    assert row.evaluate("e => e.scrollWidth > e.clientWidth")  # it scrolls sideways
+    right = expand.bounding_box()["x"]
+    shot(page, "first")
+    tabs.nth(4).click()
+    expect(tabs.nth(4)).to_have_attribute("aria-selected", "true")
+    check(tabs.nth(4))
+    assert expand.bounding_box()["x"] == right
+    page.emulate_media(color_scheme="dark")
+    shot(page, "last-dark")
+
+
 def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, shot):
     """A group of the supervisor's messages, a closed question and the human's answer, an
     open gate's line, the waiting card and the composer, in both themes and in a narrow

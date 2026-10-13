@@ -3024,20 +3024,41 @@ h3 {
   gap: 8px;
 }
 
+/* The tabs keep one line, as the terminals' do (Terminals, Tabs): names are cut with an
+   ellipsis down to about 72 px (a shorter name whole: --chars, its length), then the row
+   scrolls sideways (the wheel too), with no bar, which would lie between the shown tab and
+   the panel. The row reaches 1 px over the panel's top line, which shows under the other
+   tabs and which the shown tab covers. */
 .waiting-tabs {
   position: relative;
   z-index: 1;
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   gap: 4px;
-  padding-left: 10px;
+  min-width: 0;
+  margin-bottom: -1px;
+  padding: 0 0 1px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.waiting-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .waiting-tab {
+  /* It shrinks down to its name's least width plus its frame, padding, mark, count and gaps. */
+  --name: min(72px, calc(var(--chars) * 1ch));
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 7px;
+  min-width: calc(var(--name) + 80px);
   height: 36px;
+  white-space: nowrap;
   padding: 0 12px;
   border: 1px solid var(--line);
   border-top: 3px solid var(--who);
@@ -3065,6 +3086,7 @@ h3 {
 
 .waiting-tab-avatar {
   display: grid;
+  flex: none;
   place-items: center;
   width: 20px;
   height: 20px;
@@ -3077,6 +3099,7 @@ h3 {
 
 .waiting-tab-flow {
   display: grid;
+  flex: none;
   place-items: center;
   color: var(--who);
 }
@@ -3086,8 +3109,15 @@ h3 {
   height: 16px;
 }
 
+.waiting-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .waiting-tab-count {
   display: grid;
+  flex: none;
   place-items: center;
   min-width: 18px;
   height: 18px;

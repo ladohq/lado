@@ -101,6 +101,7 @@ export function WaitingCard({
   const [expanded, setExpanded] = useState(false);
   const [marked, setMarked] = useState<number | null>(null);
   const card = useRef<HTMLElement>(null);
+  const tabList = useRef<HTMLDivElement>(null);
   const expander = useRef<HTMLButtonElement>(null);
   const folded = useRef(false); // focus goes back to the expand button after a fold
   const shown = tabs.find((tab) => tab.key === chosen) ?? tabs[0];
@@ -145,6 +146,10 @@ export function WaitingCard({
     if (marked === null) return;
     card.current?.querySelector(`[data-item="${marked}"]`)?.scrollIntoView?.({ block: "nearest" });
   }, [marked, shown?.key]);
+  // The shown tab scrolls into the tabs' view (the row scrolls sideways when they do not fit).
+  useLayoutEffect(() => {
+    tabList.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [shown?.key, expanded]);
   // Expanded: Esc folds it. Opened, the focus goes to the shown tab; folded, to the expand button.
   useEffect(() => {
     if (!expanded) return;
@@ -210,7 +215,16 @@ export function WaitingCard({
       aria-modal={expanded ? true : undefined}
     >
       <div className="waiting-head">
-        <div className="waiting-tabs" role="tablist" aria-label="What waits for you">
+        <div
+          ref={tabList}
+          className="waiting-tabs"
+          role="tablist"
+          aria-label="What waits for you"
+          onWheel={(event) => {
+            // The wheel scrolls the tabs sideways.
+            if (event.deltaX === 0) event.currentTarget.scrollLeft += event.deltaY;
+          }}
+        >
           {tabs.map((tab) => {
             const on = tab.key === shown.key;
             const name = "gate" in tab ? tab.gate.run : tab.agent;
@@ -225,7 +239,7 @@ export function WaitingCard({
                 tabIndex={on ? 0 : -1}
                 className={`waiting-tab${on ? " on" : ""}`}
                 data-kind={"gate" in tab ? "gate" : "agent"}
-                style={{ "--who": colour(tab) } as CSSProperties}
+                style={{ "--who": colour(tab), "--chars": name.length } as CSSProperties}
                 onClick={() => setChosen(tab.key)}
               >
                 {"gate" in tab ? (

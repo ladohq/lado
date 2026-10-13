@@ -64,7 +64,8 @@ the human before any hook, like Claude Code's "trust this folder?": a typed "yes
 any other input exits at once with no hook. With FAKE_AGENT_HANGUP_HOOK=1 in its environment, when
 its tmux window is killed (SIGHUP) it runs its session-end hook before it exits, as Claude
 Code does, and writes {"hung_up": <what the hook printed>} to "seen" once the hook is done;
-else it exits at once.
+else it exits at once. A killed terminal can also end its read (EOF, or EIO) before the
+signal is handled: whichever comes first ends the session, once (end_session).
 A typed "switch" is no input but a command of the CLI itself, like Claude Code's /resume: the
 agent leaves its conversation, picks another while it pauses (as `pause`), and goes on in
 the same process; no prompt-submit and no turn-end hook run for it. A typed "dialog" opens a
@@ -259,7 +260,10 @@ def read_input() -> str | None:
     """
     text = ""
     while True:
-        line = sys.stdin.readline()
+        try:
+            line = sys.stdin.readline()
+        except OSError:  # EIO: its terminal is gone, the end of input
+            line = ""
         if not line:
             return text or None
         text += _read_paste(line)
@@ -419,10 +423,30 @@ def lado_bodies(text: str) -> str:
     return "\n".join(m["body"] for m in read if m["from"] == "lado" and m["body"])
 
 
-def hung_up(*_) -> None:
-    """Its tmux window was killed: like Claude Code, it ends its session with the hook."""
+ending = False  # end_session has begun
+
+
+def end_session() -> None:
+    """End the session once, whatever came first: SIGHUP, the end of input, or an error
+    reading the terminal (a killed pty can end the read before the signal is handled)."""
+    global ending
+    if ending:
+        return
+    ending = True
     if os.environ.get("FAKE_AGENT_HANGUP_HOOK") == "1":
         report(hung_up=hook("session_end"))
+    else:
+        hook("session_end")
+
+
+def hung_up(*_) -> None:
+    """Its tmux window was killed: like Claude Code, it ends its session with the hook
+    (FAKE_AGENT_HANGUP_HOOK), else it exits at once. When the end of its input came first,
+    that session end is under way: this handler leaves it to finish."""
+    if ending:
+        return
+    if os.environ.get("FAKE_AGENT_HANGUP_HOOK") == "1":
+        end_session()
     os._exit(0)
 
 
@@ -491,7 +515,7 @@ def main() -> None:
             output, lose_output = "", False
         text = output if output and config["continue_on_turn_end"] else None
         continued = text is not None
-    hook("session_end")
+    end_session()
 
 
 if __name__ == "__main__":

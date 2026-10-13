@@ -63,6 +63,14 @@ def about_an_end() -> list[str]:
     return [s for s in lines if " stopped (" in s or "not delivered" in s]
 
 
+def ended_after(kind: str) -> list[str]:
+    """The agents with an `ended` event after the latest event of `kind`: LADO ending them
+    itself is no end by itself, whichever way their late session-end hook came."""
+    events = state.list_events(SESSION)
+    since = max(e.id for e in events if e.kind == kind)
+    return [e.agent for e in events if e.id > since and e.kind == state.ENDED]
+
+
 def message_to(agent: str) -> state.Message:
     """The first message to the agent after its task."""
     return [m for m in state.list_messages(SESSION) if m.recipient == agent][1]
@@ -214,6 +222,7 @@ def test_finishing_a_worker_tells_no_one_it_stopped(session):
     runtime.finish_worker(SESSION, "w1")
     wait_for(lambda: hung_up("w1"), "w1's hook")
     assert about_an_end() == []
+    assert ended_after(state.FINISHED) == []
 
 
 def test_stopping_a_session_tells_no_one_and_counts_what_it_dropped(session):
@@ -224,5 +233,6 @@ def test_stopping_a_session_tells_no_one_and_counts_what_it_dropped(session):
     for agent in ("supervisor", "w1"):
         wait_for(lambda agent=agent: hung_up(agent), f"{agent}'s hook")
     assert about_an_end() == []
+    assert ended_after(state.SESSION_STOP) == []
     dropped = [m for m in state.list_messages(SESSION) if m.state == state.DROPPED]
     assert stopped.dropped == len(dropped) == 1

@@ -216,3 +216,24 @@ def test_main_kicks_after_a_human_s_command(monkeypatch):
     assert kicked == [1]
     cli.main(["telemetry", "send"])
     assert kicked == [1]
+
+
+def test_doctor_kicks_too_and_migrates_nothing(monkeypatch, capsys):
+    from lado import doctor
+
+    kicked, migrated = [], []
+    monkeypatch.setattr(telemetry, "kick", lambda: kicked.append(1))
+    monkeypatch.setattr(runtime, "migrate_if_safe", lambda: migrated.append(1))
+    monkeypatch.setattr(doctor, "main", lambda: 0)
+    assert cli.main(["doctor"]) == 0
+    assert (kicked, migrated) == ([1], [])
+
+
+def test_update_starts_nothing_after_the_installer(monkeypatch):
+    """After the installer the old process starts nothing of its own (self_update.py):
+    no statistics sender either (F3)."""
+    kicked = []
+    monkeypatch.setattr(telemetry, "kick", lambda: kicked.append(1))
+    monkeypatch.setattr(cli, "cmd_update", lambda args: 0)
+    assert cli.main(["update", "--yes"]) == 0
+    assert kicked == []

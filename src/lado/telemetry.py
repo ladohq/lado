@@ -46,6 +46,7 @@ RETRY_AFTER = 15 * 60  # seconds between two tries of the sender
 KICK_EVERY = 10 * 60  # seconds between two kicks of the session loop and the UI server
 SEND_TIMEOUT = 2.0  # seconds per network operation, as update.CHECK_TIMEOUT
 SEND_DEADLINE = 30  # seconds the sender's process lives at most, DNS included
+PROVIDERS_WAIT = 5.0  # of SEND_DEADLINE, the seconds the agent CLIs' --version get in all
 
 # PostHog Cloud EU's batch API and LADO's project token (PostHog's "Project token",
 # write-only and public by design). LADO_TELEMETRY_URL replaces the endpoint, for tests,
@@ -485,17 +486,30 @@ def _installer() -> str:
 
 
 def _providers() -> dict[str, str]:
-    """The installed agent CLIs with their versions ("" when unknown)."""
+    """The installed agent CLIs with their versions ("" when unknown). Each CLI's
+    `--version` runs in a thread of its own, and all of them get PROVIDERS_WAIT seconds of
+    SEND_DEADLINE: a CLI still running then is reported with no version. Daemon threads,
+    so the sender's end does not wait for them."""
     import shutil
+    import threading
 
     from lado import doctor, providers
 
-    found = {}
-    for name in providers.names():
-        status = doctor.provider_status(providers.get(name), shutil.which)
-        if status.installed:
-            found[name] = status.version
-    return found
+    registry = [providers.get(name) for name in providers.names()]
+    installed = [p for p in registry if shutil.which(p.command)]
+    found = {p.name: "" for p in installed}
+
+    def look(provider) -> None:
+        with contextlib.suppress(Exception):
+            found[provider.name] = doctor.provider_status(provider, shutil.which).version
+
+    threads = [threading.Thread(target=look, args=(p,), daemon=True) for p in installed]
+    for thread in threads:
+        thread.start()
+    until = time.monotonic() + PROVIDERS_WAIT
+    for thread in threads:
+        thread.join(max(0.0, until - time.monotonic()))
+    return dict(found)
 
 
 def _kits(usable: bool) -> dict:
@@ -678,8 +692,9 @@ def preview(current: datetime.datetime | None = None) -> dict:
 # network.
 
 
-class _Deadline(Exception):
-    pass
+class _Deadline(BaseException):
+    """SEND_DEADLINE passed. No `except Exception` of the build may swallow it: the try
+    must end where it is, never reach the network after its deadline."""
 
 
 @contextlib.contextmanager
@@ -778,6 +793,8 @@ def send() -> int:
             with contextlib.suppress(Exception):
                 _update_sent(error=f"the sender failed: {_type_name(type(exc))}")
             return 0
+        if not built.events:
+            return 0  # nothing went: the last send and the last failure stay as they were
         with contextlib.suppress(Exception):
             for path in built.files:
                 with contextlib.suppress(OSError):

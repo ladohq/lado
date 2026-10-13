@@ -1026,6 +1026,13 @@ def cmd_server(args: argparse.Namespace) -> int:
     return server_run.serve(args.host, args.port, args.new_token)
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from lado import doctor
+
+    _sources_warning()
+    return doctor.main()
+
+
 def cmd_telemetry(args: argparse.Namespace) -> int:
     """`lado telemetry [status|on|off|show]`, and the detached sender, `send`."""
     if args.sub == "send":
@@ -1165,7 +1172,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action=_Version)
     commands = parser.add_subparsers(dest="command", metavar="<command>")
 
-    commands.add_parser("doctor", help="check that tmux and the agent CLIs are installed")
+    commands.add_parser(
+        "doctor", help="check that tmux and the agent CLIs are installed"
+    ).set_defaults(func=cmd_doctor)
 
     start = commands.add_parser(
         "start",
@@ -1445,11 +1454,6 @@ def main(argv: list[str] | None = None) -> int:
     loop_cmd.add_argument("session")
 
     args = parser.parse_args(argv)
-    if args.command == "doctor":
-        from lado import doctor
-
-        _sources_warning()
-        return doctor.main()
     if args.command == "mcp":
         from lado import mcp_server
 
@@ -1464,11 +1468,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 0
-    sender = args.command == "telemetry" and args.sub == "send"
+    # No statistics sender from the sender itself, nor from `lado update`, which starts
+    # nothing of its own after the installer (self_update).
+    kicks = args.command != "update" and not (args.command == "telemetry" and args.sub == "send")
     try:
         # `lado stop` is what the refusal asks for: it migrates once no session runs.
+        # `lado doctor` checks the environment as it is, a migration due included.
         # `lado telemetry` keeps its files outside lado.db and reads it only.
-        if args.command not in ("stop", "telemetry"):
+        if args.command not in ("stop", "doctor", "telemetry"):
             runtime.migrate_if_safe()
         return args.func(args)
     except (
@@ -1491,7 +1498,7 @@ def main(argv: list[str] | None = None) -> int:
         telemetry.record(f"cli:{_where(args)}", exc)
         raise
     finally:
-        if not sender:  # a human's command: the statistics sender, when something is due
+        if kicks:  # a human's command: the statistics sender, when something is due
             telemetry.kick()
 
 

@@ -570,6 +570,66 @@ def test_unreachable_endpoint_is_silent(telemetry_endpoint, monkeypatch, capsys,
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # released
 
 
+def test_the_deadline_is_not_swallowed_while_the_report_is_counted(
+    telemetry_on, monkeypatch, capsys
+):
+    """The deadline's signal may come in any step of the build, also where the report
+    passes over a failing count (F1): the try still ends there, and never reaches the
+    network without its deadline."""
+    import socket
+    import time
+
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    monkeypatch.setattr(telemetry, "SEND_DEADLINE", 1)
+    with state.connect():
+        pass
+    monkeypatch.setattr(state, "usage_counts", lambda since: time.sleep(2))
+    looked_up = []
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: looked_up.append(1) or time.sleep(4))
+    began = time.monotonic()
+    assert telemetry.send() == 0
+    assert time.monotonic() - began < 1.5
+    assert looked_up == []
+    assert "no answer within 1 s" in telemetry.last_sent()[1]
+    assert capsys.readouterr() == ("", "")
+
+
+def test_slow_agent_clis_take_only_their_share(monkeypatch):
+    """A CLI whose --version hangs leaves its version unknown after PROVIDERS_WAIT, and the
+    report goes on (F1)."""
+    import time
+
+    from lado import doctor, providers
+
+    monkeypatch.setattr(telemetry, "PROVIDERS_WAIT", 0.3)
+
+    def status(provider, which):
+        if provider.name == "codex":
+            time.sleep(5)
+        return doctor.ProviderStatus(True, "1.2.3", "", "", "")
+
+    monkeypatch.setattr(doctor, "provider_status", status)
+    began = time.monotonic()
+    found = telemetry._providers()
+    assert time.monotonic() - began < 1
+    assert found["codex"] == "" and found["claude"] == "1.2.3"
+    assert set(found) == set(providers.names())
+
+
+def test_an_empty_send_keeps_the_last_send_and_its_failure(telemetry_endpoint, monkeypatch):
+    """Nothing to post (F4): sent.json keeps when the last send went and why the last try
+    failed."""
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    _sent(
+        report_at=telemetry.format_time(telemetry.now()),
+        sent_at="2026-10-01T00:00:00Z",
+        error="HTTP 403",
+    )
+    assert telemetry.send() == 0
+    assert telemetry_endpoint.requests == []
+    assert telemetry.last_sent() == ("2026-10-01T00:00:00Z", "HTTP 403")
+
+
 def test_long_outage_stays_bounded(telemetry_on, monkeypatch):
     monkeypatch.setattr(telemetry, "_providers", dict)
     monkeypatch.setattr(telemetry, "OUTBOX_MAX", 3)

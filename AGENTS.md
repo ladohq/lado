@@ -283,13 +283,17 @@ fixes and docs only: no new feature, no API or schema change.
     network, never raises) starts a detached `lado telemetry send` when sending is on,
     something is due (no report in `REPORT_EVERY`, or a queued error) and no try in
     `RETRY_AFTER`: `cli.main` after every command but `hook`, `mcp`, `loop`, `telemetry
-    send`; the session loop every `KICK_EVERY`; the UI server's housekeeping. A hook only
+    send` and `update` (which starts nothing after its installer), `doctor` included;
+    the session loop every `KICK_EVERY`; the UI server's housekeeping. A hook only
     queues. `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
     the network: `_build` (`_expire` drops errors older than `OUTBOX_MAX_AGE`; `report`
     counted from lado.db by `state.usage_counts` from the last report, at most
     `REPORT_MAX_WINDOW` back, never stored; `_groups`, PostHog's `$exception` per
     fingerprint), `_post` within `SEND_TIMEOUT` per operation, the whole try within
-    `SEND_DEADLINE` (`_deadline`, SIGALRM: DNS too), silent; a failure keeps everything and
+    `SEND_DEADLINE` (`_deadline`, SIGALRM: DNS too; `_Deadline` is a `BaseException`, so
+    no `except Exception` of the build swallows it; the agent CLIs' `--version`, in
+    daemon threads, get `PROVIDERS_WAIT` of it), silent; a try with nothing to post leaves
+    `sent.json` as it was; a failure keeps everything and
     its reason in `telemetry/sent.json` (`last_sent`, `status_lines`), a 2xx removes only
     the files it sent; the sender's own bug is `_journal_only`. `preview` is what `lado
     telemetry show` and `GET /api/telemetry/preview` show. `ask_if_needed` is the question

@@ -44,6 +44,19 @@ def test_cli_subcommand_names_where(monkeypatch, lado_home):
     assert line["where"] == "cli:kits remove"
 
 
+def test_unexpected_doctor_error_is_journaled_and_reraised(monkeypatch, lado_home):
+    from lado import doctor
+
+    def fail():
+        raise TypeError("x")
+
+    monkeypatch.setattr(doctor, "main", fail)
+    with pytest.raises(TypeError):
+        cli.main(["doctor"])
+    [line] = _journal(lado_home)
+    assert line["where"] == "cli:doctor"
+
+
 def test_cli_refusal_is_not_journaled(monkeypatch, lado_home):
     def refuse(args):
         raise runtime.LadoError("no")

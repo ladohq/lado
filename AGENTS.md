@@ -195,15 +195,25 @@ from DNS.
 `windows-11-arm` runs only with `-f wsl=false -f smoke=false`: setup-wsl's Ubuntu image is
 amd64 only.
 
-Release: `uv version <X.Y.Z>`, commit on main and push it; CI is green on that commit, the
-smoke on Linux and macOS with it. Run the Windows probe on it (`gh workflow run
-windows-shell.yml --ref main -f runner=windows-latest`, the smoke included) and wait for it
-to be green (`gh run watch <id> --exit-status`). Run `make test-live` locally for every
-provider, Claude Code with the human's yes, reruns by lado-checks' flaky rule; then push tag
-`vX.Y.Z`. The Release workflow checks the
-tag against the package version, builds with `make dist` and publishes to PyPI.
-CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; the release
-commit puts the date in its place.
+Release ([docs/release.md](docs/release.md): the steps and the human's checklist): every
+minor release `X.Y.0`, and a patch at the human's choice, is first a release candidate:
+`uv version X.Y.ZrcN`, commit `Release candidate X.Y.ZrcN` on main and push it; CI is green
+on that commit, the smoke on Linux and macOS with it. Run the Windows probe on it (`gh
+workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke included)
+and wait for it to be green (`gh run watch <id> --exit-status`). Run `make test-live`
+locally for every provider, Claude Code with the human's yes, reruns by lado-checks' flaky
+rule; then push tag `vX.Y.ZrcN` (PEP 440, no dash): PyPI gets a pre-release, which only
+`lado update X.Y.ZrcN` (or a LADO on an RC) installs. main is frozen until the final: only
+fixes for the RC are merged, each released as the next RC; nothing enforces the freeze.
+On the human's "ok": `uv version X.Y.Z`, CHANGELOG.md's heading dated, commit `Release
+X.Y.Z`, CI green, tag `vX.Y.Z`; the probe and the live tests are not run again. The Release
+workflow checks the tag against the package version, then `scripts/release_check.py`
+(a checkout with every tag, `fetch-depth: 0`): an `X.Y.0` without an RC tag, or a final that
+differs from its last RC (the highest N) in more than CHANGELOG.md and the `version` lines
+of pyproject.toml and uv.lock, is refused with nothing published (a new RC is the way on);
+then it builds with `make dist` and publishes to PyPI.
+CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; an RC adds no
+heading, and the final's commit puts the date in its place.
 
 Versions (0.x): bump the minor (0.7.0) for new features, an MCP tool or CLI change that older
 agents cannot use, or a database schema migration; running sessions must be restarted after
@@ -235,12 +245,18 @@ fixes and docs only: no new feature, no API or schema change.
     an issue from `doctor.report`: no address, path, repository, session name, token or
     message, only whether the server is open to the network and whether LADO_HOME is set.
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
-    (`fetch_index`; `latest` skips pre-releases and yanked ones, `release` finds a named
-    one), the one PEP 440 comparison (`newer`, `same`; not `gitcache.latest`, which sorts
-    kit tags), the daily check (`check`: `LADO_HOME/update-check.json`, a look at most once
-    per `CHECK_EVERY` and `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`,
-    `lado doctor` and the UI's `GET /api/update` alike; `LADO_NO_UPDATE_CHECK=1`: no look and
-    no line), the installer (`installer`: by this LADO's `sys.prefix`, a uv tool with
+    (`fetch_index`; `latest` skips pre-releases and yanked ones, with `pre` it takes the
+    newest of all; `release` finds a named one), what an update of this LADO is offered
+    (`offered`, the one rule for the check, `lado update` and the UI's plan: the newest
+    final release, for a LADO that is itself a pre-release, a release candidate, the newest
+    of all; docs/release.md), the one PEP 440 comparison (`newer`, `same`, `prerelease`;
+    not `gitcache.latest`, which sorts kit tags), a version as printed (`shown`: `X.Y.ZrcN
+    (pre-release)`, `lado doctor` and its report), the daily check (`check`:
+    `LADO_HOME/update-check.json`, a look at most once per `CHECK_EVERY` and
+    `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`, `lado doctor` and the
+    UI's `GET /api/update` alike; the file keeps the kind it looked for, `pre`, and one of
+    the other kind, or without the key for a pre-release, is stale; `LADO_NO_UPDATE_CHECK=1`:
+    no look and no line), the installer (`installer`: by this LADO's `sys.prefix`, a uv tool with
     `uv-receipt.toml` or pipx with `pipx_metadata.json` of lado from an index, else None,
     also for an editable, folder, git or URL install of lado; its `command` installs
     exactly the version, `uv tool install lado==X` with the receipt's `--python` and
@@ -851,6 +867,8 @@ fixes and docs only: no new feature, no API or schema change.
   `scripts/check_groups.py`: `make check`'s test groups, one after another (Commands).
   `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke, and
   the CLIs' pins (Commands); standard library only.
+  `scripts/release_check.py`: the Release workflow's check that a final release is the code
+  of its last release candidate (Commands, Release; docs/release.md); standard library only.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
@@ -1574,11 +1592,12 @@ Six layers; each change gets tests at the lowest layer that can catch its bugs:
    before teardown. A passing test keeps nothing; the folder is never cleaned by the tests.
    A timed-out wait names what it waited for and the agents' statuses and last messages.
 
-Before a release, on main at the release commit: CI is green (main got its `make check` at
-each merge; the smoke on Linux and macOS is in CI), and so is the Windows probe (`gh
-workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke in WSL with
-it); locally `make test-live` passes for every provider, Claude Code with the human's yes
-(Release, above).
+Before a release, on main at the release candidate's commit: CI is green (main got its
+`make check` at each merge; the smoke on Linux and macOS is in CI), and so is the Windows
+probe (`gh workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke
+in WSL with it); locally `make test-live` passes for every provider, Claude Code with the
+human's yes. The final's commit, the last RC's code, needs only CI green (Release, above;
+a patch without an RC: all of these on its release commit).
 
 ## Design principles
 

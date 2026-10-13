@@ -16,6 +16,11 @@
 - MCP: the supervisor's tool `recommend`; the gate's line to the supervisor is now the
   request `recommend on gate #<id>: …`. API: `recommendation` in `GateInfo` and a
   question's `MessageInfo`. Schema 26: restart running sessions after the upgrade.
+- Release candidates: a minor release is first published to PyPI as a pre-release
+  `X.Y.0rcN` for testing (docs/release.md). A final release of LADO is never offered one;
+  a LADO on a release candidate is offered the next one and the release, and says it is a
+  pre-release (`lado doctor`, the System panel's `pre-release` pill). API:
+  `prerelease` and `available_prerelease` in `UpdateInfo`.
 
 ## 0.36.0 (2026-10-12)
 

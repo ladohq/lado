@@ -1454,9 +1454,16 @@ h3 {
   gap: 4px;
 }
 
-.waits-chat {
-  align-self: flex-end;
+/* The session's name, then "In the chat"; under them its waiting card. */
+.waits-session h2 {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.waits-session h2 .waits-chat {
   font-size: 13px;
+  font-weight: 400;
 }
 
 /* A waiting agent's card in its row: why it waits and its terminal. */
@@ -2684,8 +2691,8 @@ h3 {
   padding: 32px 0;
 }
 
-/* A question's card in its agent's row: neutral once closed; open, orange with a band on
-   its left, as an open gate's. */
+/* A closed question's card in its agent's row, neutral; an open gate's card on a run's page,
+   orange with a band on its left. */
 .chat-question,
 .chat-gate.open {
   margin-top: 6px;
@@ -2695,7 +2702,6 @@ h3 {
   background: var(--panel);
 }
 
-.chat-question.open,
 .chat-gate.open {
   border-color: var(--human);
   border-left-width: 4px;
@@ -2706,13 +2712,6 @@ h3 {
   margin: 0 0 4px;
   color: var(--muted);
   font-size: 12px;
-}
-
-.chat-question.open .question-label {
-  color: var(--human);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 /* A closed question's choices, faded; the one the human chose, marked. */
@@ -2984,20 +2983,335 @@ h3 {
   color: var(--ink);
 }
 
-/* Over the composer while a gate is open: an orange band. */
-.gate-hint {
-  margin: 0;
-  padding: 6px 12px;
-  border-radius: 8px;
+/* An open question or gate in the feed (Chat.tsx, OpenLine): a quiet line, its arrow leading
+   to its tab in the waiting card. */
+.open-arrow {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--action);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.open-arrow:hover {
+  background: var(--action-ground);
+}
+
+/* The waiting card (WaitingCard.tsx; docs/design/ui.md, The waiting card): above the
+   composer, at most half the chat's height; its tabs on top, each with its agent's or run's
+   colour (--who) on its top edge, dashed for a gate; the panel on the "waits for you"
+   ground, its list scrolling, its Send row always shown. */
+.waiting-card {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 50%;
+  max-width: 860px;
+}
+
+.chat > .waiting-card {
+  --chat-side: max(0px, (100% - 860px) / 2);
+  margin-inline: var(--chat-side);
+}
+
+.waiting-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* The tabs keep one line, as the terminals' do (Terminals, Tabs): names are cut with an
+   ellipsis down to about 72 px (a shorter name whole: --chars, its length), then the row
+   scrolls sideways (the wheel too), with no bar, which would lie between the shown tab and
+   the panel. The row reaches 1 px over the panel's top line, which shows under the other
+   tabs and which the shown tab covers. */
+.waiting-tabs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 0;
+  margin-bottom: -1px;
+  padding: 0 0 1px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.waiting-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.waiting-tab {
+  /* It shrinks down to its name's least width plus its frame, padding, mark, count and gaps. */
+  --name: min(72px, calc(var(--chars) * 1ch));
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 7px;
+  min-width: calc(var(--name) + 80px);
+  height: 36px;
+  white-space: nowrap;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--who);
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.waiting-tab[data-kind="gate"] {
+  border-top-style: dashed;
+}
+
+.waiting-tab.on {
+  position: relative;
+  top: 1px;
+  border-right-color: var(--human);
+  border-left-color: var(--human);
   background: var(--human-ground);
-  color: var(--human);
+  box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--who) 10%, transparent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.waiting-tab-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--who);
+  color: var(--on-avatar);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.waiting-tab-flow {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--who);
+}
+
+.waiting-tab-flow .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.waiting-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.waiting-tab-count {
+  display: grid;
+  flex: none;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.waiting-expand {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.waiting-expand:hover {
+  color: var(--ink);
+}
+
+.waiting-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--human);
+  border-radius: 0 10px 10px 10px;
+  background: var(--human-ground);
+}
+
+.waiting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 6px 0 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.waiting-gate {
+  gap: 8px;
+}
+
+.waiting-gate .answer {
+  margin-top: 0;
+}
+
+.waiting-question {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 8px;
+  transition: box-shadow 0.3s;
+}
+
+.waiting-question.marked,
+.waiting-gate.marked {
+  box-shadow: 0 0 0 3px var(--action-ground);
+}
+
+.waiting-question-text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.waiting-question-n {
+  margin-right: 6px;
+  color: var(--muted);
+}
+
+.waiting-question .chat-body {
+  margin: 0;
+  color: var(--muted);
+}
+
+.waiting-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.waiting-option {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.waiting-option.on {
+  border-color: var(--action);
+  background: var(--action-ground);
+  color: var(--action);
+  font-weight: 600;
+}
+
+.waiting-option.other {
+  color: var(--muted);
+}
+
+.waiting-option.other.on {
+  color: var(--action);
+}
+
+.waiting-field {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.waiting-field:focus {
+  border-color: var(--action);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--action-ground);
+}
+
+.waiting-send {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
   font-size: 13px;
 }
 
-.gate-hint .link-button {
+.waiting-send .primary,
+.waiting-send .quiet {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.waiting-send .chat-note,
+.waiting-count {
   margin: 0;
-  color: var(--human);
-  text-decoration: underline;
+  color: var(--muted);
+}
+
+.waiting-send .field-problem {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* Expanded: over the whole window, the rest dimmed; its list fills the height. */
+.waiting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  padding: 16px;
+  background: var(--scrim);
+}
+
+.waiting-card.expanded {
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--ground);
+}
+
+.waiting-card.expanded .waiting-panel {
+  flex: 1;
+}
+
+.waiting-card.expanded .waiting-list {
+  flex: 1;
 }
 
 .chat-summary {
@@ -3259,17 +3573,6 @@ h3 {
   padding: 0 14px;
   border-radius: 8px;
   font-size: 14px;
-}
-
-/* Dismiss: a button, but muted, at the row's right. */
-.quiet.subdued {
-  border-color: color-mix(in srgb, var(--muted) 45%, transparent);
-  background: transparent;
-  color: var(--muted);
-}
-
-.answer-actions .subdued {
-  margin-left: auto;
 }
 
 .answer textarea {

@@ -1130,7 +1130,7 @@ def test_what_waits_for_the_human_is_one_list_of_sessions_not_stopped(lado_home)
     assert state.waiting_for_human("s") == (1, 1, 1)
     assert state.waiting_for_human("old") == (0, 0, 0)
 
-    state.reply_to_question("s", question, "yes", "", "yes", state.ANSWERED)
+    state.reply_to_questions("s", [_yes(question)])
     state.set_status("s", "w1", "busy")
     assert [w.gate for w in state.waiting_items("s")] == [state.get_gate(gate.id)]
 
@@ -1461,9 +1461,48 @@ def test_an_answer_goes_only_to_a_running_agent(lado_home):
     question = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
     state.set_status("s", "w1", state.STOPPED)
     with pytest.raises(state.NotRunning):
-        state.reply_to_question("s", question, "yes", "", "yes", state.ANSWERED)
+        state.reply_to_questions("s", [_yes(question)])
     assert state.get_message("s", question).question_state == state.OPEN_QUESTION
     assert [m.id for m in state.list_messages("s")] == [question]
+
+
+def _yes(question):
+    return state.Reply(question, f"Answer to #{question}: yes", "", "yes", state.ANSWERED)
+
+
+def test_the_replies_to_questions_are_written_together(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    first = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
+    second = state.add_question("s", "w1", "Port?", "", None, True)
+    dismissal = state.Reply(second, f"Dismissed #{second}", "later", None, state.DISMISSED)
+    ids = state.reply_to_questions("s", [_yes(first), dismissal])
+    replies = state.list_messages("s")[2:]
+    assert [m.id for m in replies] == ids
+    assert [(m.sender, m.recipient, m.summary, m.body, m.reply_to, m.choice) for m in replies] == [
+        ("human", "w1", f"Answer to #{first}: yes", "", first, "yes"),
+        ("human", "w1", f"Dismissed #{second}", "later", second, None),
+    ]
+    asked = [state.get_message("s", q) for q in (first, second)]
+    assert [(m.question_state, m.answered_by) for m in asked] == [
+        (state.ANSWERED, ids[0]),
+        (state.DISMISSED, ids[1]),
+    ]
+
+
+@pytest.mark.parametrize("closed", ["answered", None], ids=["answered", "no question"])
+def test_replies_with_one_question_not_open_write_nothing(lado_home, closed):
+    _session_with(_agent(status=state.IDLE))
+    first = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
+    second = state.add_question("s", "w1", "Port?", "", None, True)
+    if closed:
+        with state.connect() as db:
+            db.execute("UPDATE messages SET question_state = ? WHERE id = ?", (closed, second))
+    missing = second if closed else 999
+    with pytest.raises(state.QuestionClosed) as refused:
+        state.reply_to_questions("s", [_yes(first), _yes(missing)])
+    assert (refused.value.question, refused.value.question_state) == (missing, closed or "gone")
+    assert [m.id for m in state.list_messages("s")] == [first, second]
+    assert state.get_message("s", first).question_state == state.OPEN_QUESTION
 
 
 def _typed(*summaries, status=state.IDLE, channel=state.TYPED):
@@ -1699,7 +1738,7 @@ def test_recommend_on_a_closed_gate_or_question_changes_nothing(lado_home):
     assert not state.recommend("gate", gate.id, "Approve", "approve", False)
     assert state.get_gate(gate.id).recommendation_state is None
     question = state.add_question("s", "w1", "Ship?", "", ["yes"], False)
-    state.reply_to_question("s", question, "yes", "", "yes", state.ANSWERED)
+    state.reply_to_questions("s", [_yes(question)])
     assert not state.recommend("question", question, "Yes", "yes", False)
     assert state.get_message("s", question).recommendation_state is None
 
@@ -1735,8 +1774,21 @@ def test_dismissing_a_question_drops_its_request(lado_home):
     _lead_session()
     question = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
     request = state.ask_recommendation("s", "question", question, "recommend", "body")
-    state.reply_to_question("s", question, "Dismissed", "", None, state.DISMISSED)
+    dismissal = state.Reply(question, f"Dismissed #{question}", "", None, state.DISMISSED)
+    state.reply_to_questions("s", [dismissal])
     assert state.get_message("s", request).state == state.DROPPED
+
+
+def test_answering_two_questions_drops_both_requests(lado_home):
+    _lead_session()
+    first = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
+    second = state.add_question("s", "w1", "Port?", "", None, True)
+    requests = [
+        state.ask_recommendation("s", "question", q, "recommend", "body") for q in (first, second)
+    ]
+    own = state.Reply(second, f"Answer to #{second}: 8123", "", None, state.ANSWERED)
+    state.reply_to_questions("s", [_yes(first), own])
+    assert [state.get_message("s", r).state for r in requests] == [state.DROPPED] * 2
 
 
 def test_a_forgotten_agents_question_drops_its_request(lado_home):

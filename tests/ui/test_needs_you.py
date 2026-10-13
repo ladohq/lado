@@ -10,7 +10,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_gates import gated_session
-from test_main_screen import log_in
+from test_main_screen import log_in, running_session
 
 from lado import runtime, state
 
@@ -35,20 +35,45 @@ def test_the_human_answers_what_waits_in_place_and_it_goes(page: Page, server, r
     log_in(page, server)
     page.goto(f"{server['url']}/needs-you")
     group = page.get_by_role("region", name=f"Session {session}")
-    expect(group.get_by_role("article", name="Gate #1")).to_be_visible()
-    expect(group.get_by_role("article", name="Question from supervisor")).to_be_visible()
+    card = group.get_by_role("region", name=f"What waits for you in {session}")
+    expect(card.get_by_role("tab", name="ship/x 1")).to_have_attribute("aria-selected", "true")
+    expect(card.get_by_role("tab", name="supervisor 1")).to_be_visible()
+    expect(group.get_by_role("link", name=f"{session}'s chat")).to_have_text("In the chat")
     expect(rail_link(page, 2)).to_be_visible()
     expect(page).to_have_title("(2) Needs you · LADO")
     shot(page, "waiting")
 
-    group.get_by_role("button", name="Approve", exact=True).click()
-    expect(group.get_by_role("article", name="Gate #1")).to_have_count(0)
+    card.get_by_role("button", name="Approve", exact=True).click()
+    expect(card.get_by_role("tab", name="ship/x 1")).to_have_count(0)
     expect(rail_link(page, 1)).to_be_visible()
-    group.get_by_role("button", name="yes", exact=True).click()
+    card.get_by_role("button", name="yes", exact=True).click()
+    card.get_by_role("button", name="Send answer to supervisor").click()
     expect(page.get_by_text("Nothing waits for you")).to_be_visible()
     expect(rail_link(page)).to_be_visible()
     expect(page).to_have_title("Needs you · LADO")
     shot(page, "nothing")
+
+
+def test_cards_taller_than_the_window_leave_the_page_at_its_top(page: Page, server, repo, shot):
+    """Each card shows its first tab without scrolling the page: the tabs' row scrolls only
+    sideways (review of LAD-28, F4)."""
+    body = "\n\n".join(f"Point {n}: what the agent found and why it matters." for n in range(8))
+    sessions = []
+    for _ in range(3):
+        session = running_session(repo)
+        for n in range(3):
+            runtime.ask_human(session, "supervisor", f"Question {n}?", body, ["yes", "no"])
+        sessions.append(session)
+    log_in(page, server)
+    page.goto(f"{server['url']}/needs-you")
+    for session in sessions:
+        card = page.get_by_role("region", name=f"What waits for you in {session}")
+        expect(card.get_by_role("tab", name="supervisor 3")).to_be_visible()
+    content = page.locator(".content")
+    assert content.evaluate("e => e.scrollHeight > e.clientHeight")  # taller than the window
+    page.wait_for_timeout(300)  # the cards' effects ran
+    assert content.evaluate("e => e.scrollTop") == 0
+    shot(page, "top")
 
 
 def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, server, repo, shot):
@@ -72,7 +97,8 @@ def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, serv
     group = page.get_by_role("region", name=f"Session {session}")
     agent = group.get_by_role("article", name="supervisor waits")
     expect(agent).to_contain_text("waits for you in its terminal")
-    expect(group.get_by_role("article", name="Gate #1")).to_be_visible()
+    gate = group.get_by_role("tab", name="ship/x 1")
+    expect(gate).to_be_visible()
     page.get_by_role("button", name="Collapse menu").click()
     expect(rail_link(page, 2)).to_be_visible()
     shot(page, "collapsed rail")
@@ -83,7 +109,7 @@ def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, serv
         check=False,
     )
     assert answer.returncode == 0, answer.stderr
-    expect(group.get_by_role("article", name="Gate #1")).to_have_count(0)
+    expect(gate).to_have_count(0)
     expect(rail_link(page, 1)).to_be_visible()
     agent.get_by_role("button", name="Open supervisor's terminal").click()
     expect(page).to_have_url(re.compile(rf"/sessions/{session}/activity$"))
@@ -153,5 +179,7 @@ def test_a_new_question_notifies_a_hidden_tab_and_its_click_leads_to_it(
     }
     page.evaluate("window.notified[0].onclick()")
     expect(page).to_have_url(re.compile(rf"/sessions/{session}/activity#message-{question.id}$"))
-    expect(page.get_by_role("article", name="Question from supervisor")).to_be_in_viewport()
+    card = page.get_by_role("region", name=f"What waits for you in {session}")
+    expect(card.get_by_role("tab", name="supervisor 1")).to_have_attribute("aria-selected", "true")
+    expect(card.locator(f'[data-item="{question.id}"]')).to_be_in_viewport()
     shot(page, "clicked")

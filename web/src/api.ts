@@ -217,12 +217,12 @@ export async function uploadFile(session: string, file: File, name: string): Pro
   return (await answer.json()) as ArtifactInfo;
 }
 
-export const answerQuestion = (session: string, id: number, answer: { choice?: string; text?: string }) =>
-  post<Sent>(`${sessionPath(session)}/questions/${id}/answer`, answer);
+export type Reply = components["schemas"]["Reply"];
 
-// `text`: the human's comment, sent only when given.
-export const dismissQuestion = (session: string, id: number, text?: string) =>
-  post<Sent>(`${sessionPath(session)}/questions/${id}/dismiss`, text === undefined ? undefined : { text });
+// The human's replies to open questions of one agent (a tab of the waiting card): all or
+// none, handed over to the agent together.
+export const answerQuestions = (session: string, answers: Reply[]) =>
+  post<Sent>(`${sessionPath(session)}/answers`, { answers });
 
 // Launch and session control (docs/design/ui.md, Launch and session control).
 

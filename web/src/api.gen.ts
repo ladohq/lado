@@ -1050,7 +1050,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sessions/{name}/questions/{question}/answer": {
+    "/api/sessions/{name}/answers": {
         parameters: {
             query?: never;
             header?: never;
@@ -1060,31 +1060,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Answer
-         * @description The human's answer to an agent's open question: a choice, own words, or both.
+         * Answers
+         * @description The human's replies to open questions of one agent (a tab of the waiting card),
+         *     all or none, handed over to the agent together.
          */
-        post: operations["answer_api_sessions__name__questions__question__answer_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sessions/{name}/questions/{question}/dismiss": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Dismiss
-         * @description The human dismisses an agent's open question, with an optional comment; the agent
-         *     hears of it.
-         */
-        post: operations["dismiss_api_sessions__name__questions__question__dismiss_post"];
+        post: operations["answers_api_sessions__name__answers_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1130,13 +1110,6 @@ export interface components {
             spawned_at: string;
             /** Since */
             since: string;
-        };
-        /** Answer */
-        Answer: {
-            /** Choice */
-            choice?: string | null;
-            /** Text */
-            text?: string | null;
         };
         /**
          * ArtifactInfo
@@ -1271,11 +1244,6 @@ export interface components {
             subject: string;
             /** At */
             at: string;
-        };
-        /** Dismissal */
-        Dismissal: {
-            /** Text */
-            text?: string | null;
         };
         /** Finish */
         Finish: {
@@ -2049,6 +2017,32 @@ export interface components {
             branches: string[];
             /** Default */
             default: string | null;
+        };
+        /**
+         * Replies
+         * @description The replies of a tab of the waiting card: open questions of one agent.
+         */
+        Replies: {
+            /** Answers */
+            answers: components["schemas"]["Reply"][];
+        };
+        /**
+         * Reply
+         * @description The human's reply to one open question: one of its choices, own words, or with
+         *     `skip` a dismissal, `text` then its comment.
+         */
+        Reply: {
+            /** Question */
+            question: number;
+            /** Choice */
+            choice?: string | null;
+            /** Text */
+            text?: string | null;
+            /**
+             * Skip
+             * @default false
+             */
+            skip: boolean;
         };
         /**
          * RepoInfo
@@ -4358,55 +4352,18 @@ export interface operations {
             };
         };
     };
-    answer_api_sessions__name__questions__question__answer_post: {
+    answers_api_sessions__name__answers_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 name: string;
-                question: number;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Answer"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Sent"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    dismiss_api_sessions__name__questions__question__dismiss_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-                question: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["Dismissal"] | null;
+                "application/json": components["schemas"]["Replies"];
             };
         };
         responses: {

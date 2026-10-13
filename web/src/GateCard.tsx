@@ -1,9 +1,10 @@
-// A flow gate in the session's feed (docs/design/ui.md, The human in the session): open, a
-// card in the gate's row (FeedRow) the human answers with one of its options and a comment
-// for the next step; closed, a quiet line with its answer that opens read only. The card has
-// no head of its own: the row, Needs you's row or a run's page names the gate (gateTitle).
-// The answer goes through the server to runs.answer, as `lado answer` and the popup do; the
-// card changes only when the feed brings the closed gate, whoever answered it.
+// A flow gate (docs/design/ui.md, The human in the session): open, its panel (GatePanel),
+// answered with one of its options and a comment for the next step, in its tab of the
+// waiting card or as a card on a run's page; closed, a quiet line in the feed with its
+// answer that opens read only. The panel has no head of its own: the tab or the run's page
+// names the gate (gateTitle). The answer goes through the server to runs.answer, as
+// `lado answer` and the popup do; the panel changes only when the feed brings the closed
+// gate, whoever answered it.
 import { useState } from "react";
 
 import { answerGate, ApiError, type GateInfo } from "./api";
@@ -11,7 +12,6 @@ import { size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
 import { clock, Preview } from "./ChatText";
-import { FeedRow } from "./FeedRow";
 import { useLive } from "./live";
 import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
 
@@ -28,31 +28,12 @@ const label = (gate: GateInfo) => (option: string) => LABELS[gate.kind]?.[option
 // How a gate is named wherever one title stands for it (a closed gate's line, a run's page).
 export const gateTitle = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
 
-// A gate in the chat: open, its row with the card; closed, its line.
-export function Gate({ session, gate, stopped }: { session: string; gate: GateInfo; stopped: boolean }) {
-  return gate.answer === null ? (
-    <GateRow session={session} gate={gate} stopped={stopped} aside={`${gate.run} · ${gate.state}`} />
-  ) : (
-    <GateLine session={session} gate={gate} />
-  );
-}
-
-// An open gate's row: the flag, "Gate #id", `aside`, when it opened, and its card.
-export function GateRow({ session, gate, stopped, aside }: { session: string; gate: GateInfo; stopped: boolean; aside: string }) {
-  return (
-    <FeedRow kind="gate" who={`Gate #${gate.id}`} aside={aside} at={gate.created_at} label={`Gate #${gate.id}`} id={gateAnchor(gate.id)}>
-      <GateCard session={session} gate={gate} stopped={stopped} />
-    </FeedRow>
-  );
-}
-
-// The DOM id of a gate's place in the feed, for the hint over the composer and the answer.
+// The DOM id of a gate's place in the feed: a link to it (Needs you, a notification) shows
+// its tab while it is open, and scrolls to its line once closed.
 export const gateAnchor = (id: number) => `gate-${id}`;
 
-// The card of an open gate, no head: the question, the note that led to it in full with its
-// chips, the artifacts it reads, then the supervisor's recommendation, whose option is the
-// primary button (Recommendation.tsx). `compact` (a run's page in Flows, where the notes are
-// in the run's history): without the note and the artifacts.
+// The card of an open gate, no head, on a run's page in Flows (compact: the notes are in the
+// run's history): its panel.
 export function GateCard({
   session,
   gate,
@@ -64,7 +45,43 @@ export function GateCard({
   stopped: boolean;
   compact?: boolean;
 }) {
-  const [comment, setComment] = useState("");
+  return (
+    <div className="chat-gate open">
+      <GatePanel session={session} gate={gate} stopped={stopped} compact={compact} />
+    </div>
+  );
+}
+
+// What answers an open gate, wherever it is answered (a gate's card, its tab of the waiting
+// card): the question, the note that led to it in full with its chips, the artifacts it
+// reads, the supervisor's recommendation (Recommendation.tsx), the comment for the next step
+// and a button per option, the recommended one primary. `compact`: without the note and the
+// artifacts. `inTab`: the question, note, reads and comment as the tab's list
+// (`.waiting-list`, it scrolls), the buttons in its Send row (`.waiting-send`, always shown);
+// `marked`, the gate a link asked for. `comment` and `onComment`: the comment kept by who
+// shows the panel (the waiting card, across its tabs and its expanded view), else here.
+export function GatePanel({
+  session,
+  gate,
+  stopped,
+  compact = false,
+  inTab = false,
+  marked = false,
+  comment: kept,
+  onComment,
+}: {
+  session: string;
+  gate: GateInfo;
+  stopped: boolean;
+  compact?: boolean;
+  inTab?: boolean;
+  marked?: boolean;
+  comment?: string;
+  onComment?: (comment: string) => void;
+}) {
+  const [own, setOwn] = useState("");
+  const comment = kept ?? own;
+  const setComment = onComment ?? setOwn;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const primary = primaryOf(gate.options, gate.recommendation);
@@ -81,42 +98,71 @@ export function GateCard({
     }
   }
 
-  return (
-    <div className="chat-gate open">
+  const about = (
+    <>
       <p className="gate-question">{gate.question}</p>
       {!compact && <Note session={session} gate={gate} />}
       {!compact && gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
       {!compact && <Reads session={session} names={gate.reads ?? []} />}
       <Recommendation rec={gate.recommendation} />
-      <form className="answer" onSubmit={(event) => event.preventDefault()}>
-        <textarea
-          aria-label="Comment for the next step (optional)"
-          placeholder="Comment for the next step (optional)"
-          rows={2}
-          value={comment}
-          onChange={(event) => setComment(event.target.value)}
-        />
-        <div className="choices">
-          {gate.options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={option === primary ? "primary" : "quiet"}
-              disabled={busy || stopped}
-              onClick={() => void answer(option)}
-            >
-              {label(gate)(option)}
-            </button>
-          ))}
+    </>
+  );
+  const field = (
+    <textarea
+      aria-label="Comment for the next step (optional)"
+      placeholder="Comment for the next step (optional)"
+      rows={2}
+      value={comment}
+      disabled={inTab && stopped}
+      onChange={(event) => setComment(event.target.value)}
+    />
+  );
+  const buttons = gate.options.map((option) => (
+    <button
+      key={option}
+      type="button"
+      className={option === primary ? "primary" : "quiet"}
+      disabled={busy || stopped}
+      onClick={() => void answer(option)}
+    >
+      {label(gate)(option)}
+    </button>
+  ));
+  const said = (
+    <>
+      {stopped && <p className="chat-note">The session is stopped: resume it to answer.</p>}
+      {problem && (
+        <p className="field-problem" role="alert">
+          {problem}
+        </p>
+      )}
+    </>
+  );
+  if (inTab) {
+    return (
+      <>
+        <div className={`waiting-list waiting-gate${marked ? " marked" : ""}`} data-item={gate.id}>
+          {about}
+          <form className="answer" onSubmit={(event) => event.preventDefault()}>
+            {field}
+          </form>
         </div>
-        {stopped && <p className="chat-note">The session is stopped: resume it to answer.</p>}
-        {problem && (
-          <p className="field-problem" role="alert">
-            {problem}
-          </p>
-        )}
+        <div className="waiting-send">
+          {buttons}
+          {said}
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      {about}
+      <form className="answer" onSubmit={(event) => event.preventDefault()}>
+        {field}
+        <div className="choices">{buttons}</div>
+        {said}
       </form>
-    </div>
+    </>
   );
 }
 
@@ -181,7 +227,7 @@ function Reads({ session, names }: { session: string; names: string[] }) {
 
 // A closed gate: who answered what, the comment; the question, the note and the
 // supervisor's recommendation's line on a click.
-function GateLine({ session, gate }: { session: string; gate: GateInfo }) {
+export function GateLine({ session, gate }: { session: string; gate: GateInfo }) {
   const [shown, setShown] = useState(false);
   const when = gate.answered_at ?? gate.created_at;
   return (

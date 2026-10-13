@@ -142,37 +142,69 @@ def test_a_question_carries_its_recommendation_and_a_message_none(client, sessio
     assert request["recommendation"] is None
 
 
-def test_the_human_answers_and_dismisses_questions(client, session):
+ANSWERS = "/api/sessions/s/answers"
+
+
+def test_the_human_answers_a_tab_in_one_request(client, session):
     runtime.ask_human("s", "w1", "Ship?", None, ["yes", "no"])
     runtime.ask_human("s", "w1", "Port?")
     ship, port = _messages()
-    answered = client.post(f"/api/sessions/s/questions/{ship.id}/answer", json={"choice": "yes"})
+    answered = client.post(
+        ANSWERS,
+        json={
+            "answers": [
+                {"question": ship.id, "choice": "yes"},
+                {"question": port.id, "skip": True, "text": "not now"},
+            ]
+        },
+    )
     assert answered.status_code == 200
-    assert client.post(f"/api/sessions/s/questions/{port.id}/dismiss").status_code == 200
+    assert answered.json()["result"].startswith("queued")  # w1 is starting
     _, _, answer, dismissal = _messages()
     assert (answer.summary, answer.reply_to) == (f"Answer to #{ship.id}: yes", ship.id)
-    assert (dismissal.summary, dismissal.reply_to) == (f"Dismissed #{port.id}", port.id)
-    again = client.post(f"/api/sessions/s/questions/{ship.id}/answer", json={"text": "no"})
+    assert (dismissal.summary, dismissal.body, dismissal.reply_to) == (
+        f"Dismissed #{port.id}",
+        "not now",
+        port.id,
+    )
+    assert [state.get_message("s", q.id).question_state for q in (ship, port)] == [
+        state.ANSWERED,
+        state.DISMISSED,
+    ]
+    again = client.post(ANSWERS, json={"answers": [{"question": ship.id, "text": "no"}]})
     assert again.status_code == 400
     assert again.json()["detail"] == f"question #{ship.id} is answered"
 
 
-def test_a_dismissal_takes_the_humans_comment(client, session):
-    runtime.ask_human("s", "w1", "Port?")
-    (port,) = _messages()
-    path = f"/api/sessions/s/questions/{port.id}/dismiss"
-    assert client.post(path, json={"text": "not now"}).status_code == 200
-    dismissal = _messages()[-1]
-    assert (dismissal.summary, dismissal.body) == (f"Dismissed #{port.id}", "not now")
-
-
-@pytest.mark.parametrize(
-    "path",
-    [MESSAGES, "/api/sessions/s/questions/1/answer", "/api/sessions/s/questions/1/dismiss"],
-)
-def test_a_change_needs_the_servers_own_origin(client, session, path):
+def test_an_empty_tab_is_refused(client, session):
     runtime.ask_human("s", "w1", "Ship?")
-    payload = {"text": "hi"}
+    answer = client.post(ANSWERS, json={"answers": []})
+    assert (answer.status_code, answer.json()["detail"]) == (400, "no answers")
+    assert [m.kind for m in _messages()] == ["question"]
+
+
+def test_answers_to_an_unknown_session_are_404(client, session):
+    assert client.post("/api/sessions/x/answers", json={"answers": []}).status_code == 404
+
+
+@pytest.mark.parametrize("act", ["answer", "dismiss"])
+def test_the_old_question_endpoints_are_gone(client, session, act):
+    runtime.ask_human("s", "w1", "Ship?", None, ["yes"])
+    (ship,) = _messages()
+    gone = client.post(f"/api/sessions/s/questions/{ship.id}/{act}", json={"choice": "yes"})
+    assert gone.status_code in (404, 405)
+    assert state.get_message("s", ship.id).question_state == state.OPEN_QUESTION
+
+
+CHANGES = [
+    (MESSAGES, {"text": "hi"}),
+    (ANSWERS, {"answers": [{"question": 1, "text": "hi"}]}),
+]
+
+
+@pytest.mark.parametrize(("path", "payload"), CHANGES, ids=["messages", "answers"])
+def test_a_change_needs_the_servers_own_origin(client, session, path, payload):
+    runtime.ask_human("s", "w1", "Ship?")
     del client.headers["origin"]
     assert client.post(path, json=payload).status_code == 403
     client.headers["origin"] = "http://evil.example"
@@ -180,14 +212,11 @@ def test_a_change_needs_the_servers_own_origin(client, session, path):
     assert [m.kind for m in _messages()] == ["question"]
 
 
-@pytest.mark.parametrize(
-    "path",
-    [MESSAGES, "/api/sessions/s/questions/1/answer", "/api/sessions/s/questions/1/dismiss"],
-)
-def test_a_change_under_another_schema_is_503_and_migrates_nothing(client, session, path):
+@pytest.mark.parametrize(("path", "payload"), CHANGES, ids=["messages", "answers"])
+def test_a_change_under_another_schema_is_503_and_migrates_nothing(client, session, path, payload):
     runtime.ask_human("s", "w1", "Ship?")
     previous_schema()
-    answer = client.post(path, json={"text": "hi"})
+    answer = client.post(path, json=payload)
     assert answer.status_code == 503
     assert state.schema_version() == state.SCHEMA_VERSION - 1
 

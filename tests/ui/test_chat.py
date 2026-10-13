@@ -47,27 +47,52 @@ def test_the_human_writes_and_the_supervisor_gets_it_and_replies(page: Page, ser
     shot(page)
 
 
-def test_the_supervisor_asks_and_the_human_answers_in_a_card(page: Page, server, repo, shot):
+def waiting_card(page: Page, session: str):
+    return page.get_by_role("region", name=f"What waits for you in {session}")
+
+
+def test_the_supervisor_asks_twice_and_the_human_answers_both_in_one_tab(
+    page: Page, server, repo, shot
+):
     session = running_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    page.get_by_role("textbox", name="Write to the supervisor…").fill(
-        "askhuman Ship it? | yes, later"
+    field = page.get_by_role("textbox", name="Write to the supervisor…")
+    card = waiting_card(page, session)
+    for asked, ask in enumerate(["askhuman Ship it? | yes, later", "askhuman Which port?"], 1):
+        field.fill(ask)
+        field.press("Enter")
+        expect(card.get_by_role("tab", name=f"supervisor {asked}")).to_be_visible()
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
     )
-    page.get_by_role("button", name="Send").click()
-    card = page.get_by_role("article", name="Question from supervisor")
-    expect(card.get_by_role("button", name="later")).to_be_visible()
+    chat = page.get_by_role("log", name="Chat with the session")
+    lines = chat.get_by_role("article", name="Question from supervisor")
+    expect(lines).to_have_count(2)
+    expect(lines.first).to_contain_text("supervisor asked: Ship it?")
+    ship, port = card.get_by_role("listitem").all()
+    send = card.get_by_role("button", name="Send 2 answers to supervisor")
+    expect(send).to_be_disabled()
+    ship.get_by_role("button", name="yes", exact=True).click()
+    expect(card).to_contain_text("1 of 2 answered")
+    port.get_by_role("button", name="Other…").click()
+    port.get_by_role("textbox", name="Your own answer").fill("8123")
+    expect(send).to_be_enabled()
     shot(page, "open")
-    card.get_by_role("button", name="yes").click()
-    # The answer is in the card: the choice marked in the list only, who answered under it;
-    # no row of its own.
-    expect(card.locator(".chosen")).to_have_text("✓ yes")
-    expect(card.locator(".question-answer .answer-head")).to_have_text("You · answered")
-    expect(card.locator(".question-answer")).not_to_contain_text("yes")
-    expect(page.get_by_role("article", name="Message from you")).to_have_count(1)  # the ask
-    question = next(m for m in state.list_messages(session) if m.kind == state.QUESTION)
-    line = f"[from human] Answer to #{question.id}: yes"
-    agent_helpers.wait_for(lambda: line in inputs(session), "the answer", session)
+    send.click()
+    expect(card).to_have_count(0)
+    # Both reached the supervisor in one hand-over: one input.
+    asked = [m.id for m in state.list_messages(session) if m.kind == state.QUESTION]
+    both = f"[from human] Answer to #{asked[0]}: yes\n[from human] Answer to #{asked[1]}: 8123"
+    agent_helpers.wait_for(lambda: both in inputs(session), "both answers in one input", session)
+    # Each answer is in its question's card: the choice marked in the list only, who
+    # answered under it; no row of its own.
+    cards = chat.get_by_role("article", name="Question from supervisor")
+    expect(cards.nth(0).locator(".chosen")).to_have_text("✓ yes")
+    expect(cards.nth(0).locator(".question-answer .answer-head")).to_have_text("You · answered")
+    expect(cards.nth(0).locator(".question-answer")).not_to_contain_text("yes")
+    expect(cards.nth(1).locator(".question-answer")).to_contain_text("8123")
+    expect(page.get_by_role("article", name="Message from you")).to_have_count(2)  # the asks
     shot(page, "answered")
 
 
@@ -96,29 +121,131 @@ def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
     page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("article", name="Question from w1")
-    block = card.get_by_role("region", name="Supervisor's recommendation")
+    card = waiting_card(page, session)
+    item = card.get_by_role("listitem", name=f"Question #{question.id}")
+    block = item.get_by_role("region", name="Supervisor's recommendation")
     expect(block).to_contain_text("Later: CI is red on the branch.")
     expect(block.locator(".rec-differs")).to_have_text("disagrees with w1")
-    expect(card.get_by_role("button", name="later")).to_have_class("primary")
-    expect(card.get_by_role("button", name="yes")).to_have_class("quiet")
+    # The recommended choice is picked ahead: Send sends it as it is.
+    expect(item.get_by_role("button", name="later")).to_have_attribute("aria-pressed", "true")
+    expect(item.get_by_role("button", name="yes")).to_have_attribute("aria-pressed", "false")
     shot(page, "open")
-    card.get_by_role("button", name="later").click()
-    expect(card.locator(".chosen")).to_have_text("✓ later")
-    quiet = card.locator("details.rec-closed")
+    card.get_by_role("button", name="Send answer to w1").click()
+    expect(card).to_have_count(0)
+    closed = page.get_by_role("log", name="Chat with the session").get_by_role(
+        "article", name="Question from w1"
+    )
+    expect(closed.locator(".chosen")).to_have_text("✓ later")
+    quiet = closed.locator("details.rec-closed")
     expect(quiet.locator("summary")).to_have_text(
         "SSupervisor recommended: later · disagreed with w1"
     )
-    expect(card.locator(".question-answer")).not_to_contain_text("later")
-    expect(card.locator(".rec")).to_have_count(0)
+    expect(closed.locator(".question-answer")).not_to_contain_text("later")
+    expect(closed.locator(".rec")).to_have_count(0)
     quiet.locator("summary").click()
     expect(quiet.locator(".chat-body")).to_contain_text("CI is red")
     shot(page, "closed")
 
 
+def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
+    page: Page, server, repo, shot
+):
+    """The supervisor's question, the gate of run ship/x and w1's question: three tabs in the
+    order they were asked; the gate's Approve moves the run; the card over the window and Esc
+    (docs/design/ui.md, The waiting card)."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Which branch?", "No epic: main.", ["main", "epic"])
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    runtime.ask_human(session, "w1", "Run the paid test?", None, ["yes", "no"], False)
+    page.set_viewport_size({"width": 1400, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    tabs = card.get_by_role("tab")
+    expect(tabs).to_have_count(3)
+    expect(tabs.nth(0)).to_have_accessible_name("ship/x 1")
+    expect(tabs.nth(1)).to_have_accessible_name("supervisor 1")
+    expect(tabs.nth(2)).to_have_accessible_name("w1 1")
+    expect(tabs.nth(0)).to_have_attribute("aria-selected", "true")
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-three-tabs")
+    page.emulate_media(color_scheme="light")
+    tabs.nth(2).click()
+    expect(card.get_by_role("tabpanel")).to_contain_text("Run the paid test?")
+    expect(card.get_by_role("button", name="Other…")).to_have_count(0)  # choices only
+    # The gate's line leads back to its tab.
+    page.get_by_role("article", name="Gate #1 waits").get_by_role(
+        "button", name="Answer gate #1"
+    ).click()
+    expect(tabs.nth(0)).to_have_attribute("aria-selected", "true")
+    expand = card.get_by_role("button", name="Expand the card")
+    expand.click()
+    dialog = page.get_by_role("dialog", name=f"What waits for you in {session}")
+    expect(dialog).to_be_visible()
+    box = dialog.bounding_box()
+    assert box["x"] <= 32 and box["width"] >= 1400 - 64, box
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-expanded")
+    page.emulate_media(color_scheme="light")
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    expect(card.get_by_role("button", name="Expand the card")).to_be_focused()
+    card.get_by_role("tabpanel").get_by_role("button", name="Approve", exact=True).click()
+    expect(tabs).to_have_count(2)
+    agent_helpers.wait_for(
+        lambda: state.get_run(session, "ship/x").state != "check", "the run moved on", session
+    )
+    shot(page, "approved")
+
+
+def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
+    page: Page, server, repo, shot
+):
+    """In a narrow chat the tabs keep one line: names cut, then the row scrolls sideways;
+    the shown tab lies on the panel, scrolls into view when chosen, and the expand button
+    stays at the right (docs/design/ui.md, The waiting card)."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Which branch?", None, ["main", "epic"])
+    for name in ("developer-with-a-long-name", "reviewer-of-the-design", "analyst"):
+        runtime.spawn_worker(session, "sleep 0", name=name)
+        runtime.ask_human(session, name, f"A question of {name}?", None, ["yes", "no"], False)
+    page.set_viewport_size({"width": 1000, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    tabs = card.get_by_role("tab")
+    expect(tabs).to_have_count(5)
+    row = card.get_by_role("tablist")
+    expand = card.get_by_role("button", name="Expand the card")
+    panel = card.get_by_role("tabpanel")
+
+    def check(shown):
+        tops = [tab.bounding_box()["y"] for tab in tabs.all()]
+        assert max(tops) - min(tops) <= 1.5, tops  # one line (the shown tab 1 px lower)
+        on, under = shown.bounding_box(), panel.bounding_box()
+        assert abs(on["y"] + on["height"] - under["y"]) <= 1.5, (on, under)  # on the panel
+        seen = row.bounding_box()
+        assert seen["x"] - 1 <= on["x"] and on["x"] + on["width"] <= seen["x"] + seen["width"] + 1
+        assert seen["x"] + seen["width"] <= expand.bounding_box()["x"]
+
+    check(tabs.nth(0))
+    assert row.evaluate("e => e.scrollWidth > e.clientWidth")  # it scrolls sideways
+    right = expand.bounding_box()["x"]
+    shot(page, "first")
+    tabs.nth(4).click()
+    expect(tabs.nth(4)).to_have_attribute("aria-selected", "true")
+    check(tabs.nth(4))
+    assert expand.bounding_box()["x"] == right
+    page.emulate_media(color_scheme="dark")
+    shot(page, "last-dark")
+
+
 def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, shot):
     """A group of the supervisor's messages, a closed question and the human's answer, an
-    open gate and the composer, in both themes and in a narrow column."""
+    open gate's line, the waiting card and the composer, in both themes and in a narrow
+    column."""
     session = gated_session(repo)
     say = functools.partial(state.queue_message, session, mark=state.DELIVERED)
     say("human", "supervisor", "Make the chat more presentable, please")
@@ -139,8 +266,9 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     given = asked.locator(".question-answer")
     expect(given).to_contain_text("Show me all three")
     expect(given.locator("br")).to_have_count(1)  # the human's line break, as typed
-    gate = chat.get_by_role("article", name="Gate #1", exact=True)
+    gate = chat.get_by_role("article", name="Gate #1 waits")
     expect(gate.locator(".avatar-gate")).to_be_visible()
+    expect(waiting_card(page, session).get_by_role("tab", name="ship/x 1")).to_be_visible()
     field = page.get_by_role("textbox", name="Write to the supervisor…")
     expect(page.locator(".composer-box").get_by_role("button", name="Send")).to_be_disabled()
     one_line = field.bounding_box()["height"]
@@ -163,41 +291,34 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
     shot(page, "narrow")
 
 
-def test_the_question_and_gate_cards_buttons_are_one_height_in_light_and_dark(
-    page: Page, server, repo, shot
-):
-    """An open question's choices, Send and Dismiss, and an open gate's Approve and Reject:
-    one height (docs/design/ui.md, Questions); Dismiss says it takes the typed text along."""
+def test_the_cards_buttons_are_one_height_in_light_and_dark(page: Page, server, repo, shot):
+    """A question's choices, Other…, Skip and Send, and a gate's Approve and Reject on its
+    tab: one height (docs/design/ui.md, The waiting card)."""
     session = gated_session(repo)
     runtime.ask_human(session, "supervisor", "Ship today?", None, ["yes, today", "after the tag"])
     page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    chat = page.get_by_role("log", name="Chat with the session")
-    card = chat.get_by_role("article", name="Question from supervisor")
-    gate = chat.get_by_role("article", name="Gate #1", exact=True)
-    expect(card.get_by_role("button", name="Dismiss", exact=True)).to_be_visible()
-    expect(gate.get_by_role("button")).not_to_have_count(0)
-    field = card.get_by_role("textbox", name="Your answer")
+    card = waiting_card(page, session)
 
     def heights() -> list:
-        buttons = (
-            card.locator("form.answer button").all() + gate.locator("form.answer button").all()
-        )
+        buttons = card.locator(".waiting-option, .waiting-send button").all()
+        assert buttons
         return [round(button.bounding_box()["height"]) for button in buttons]
 
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
-        field.fill("")
+        card.get_by_role("tab", name="ship/x 1").click()
+        expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
         assert set(heights()) == {32}, heights()
-        card.scroll_into_view_if_needed()
-        shot(page, f"{theme}-blank")
-        field.fill("on the dark theme the text blends in")
-        expect(card.get_by_role("button", name="Dismiss with comment")).to_be_visible()
-        expect(card.get_by_role("button", name="Send")).to_be_enabled()
+        shot(page, f"{theme}-gate")
+        card.get_by_role("tab", name="supervisor 1").click()
+        card.get_by_role("button", name="Other…").click()
+        card.get_by_role("textbox", name="Your own answer").fill("on the dark theme it blends in")
+        expect(card.get_by_role("button", name="Send answer to supervisor")).to_be_enabled()
         assert set(heights()) == {32}, heights()
-        card.scroll_into_view_if_needed()
-        shot(page, f"{theme}-typed")
+        shot(page, f"{theme}-question")
+        card.get_by_role("button", name="Other…").click()  # unpicked again
     page.emulate_media(color_scheme="light")
 
 
@@ -366,16 +487,18 @@ def test_a_long_chat_opens_with_its_latest_page_and_loads_earlier_ones_at_the_to
     shot(page, "start")
 
 
-def test_needs_you_leads_to_an_old_question_the_chat_had_not_loaded(page: Page, server, repo, shot):
+def test_a_link_to_an_old_open_question_shows_its_tab_the_chat_had_not_loaded(
+    page: Page, server, repo, shot
+):
     session, question = long_session(repo)
     log_in(page, server)
-    page.goto(f"{server['url']}/needs-you")
-    page.get_by_role("link", name=f"Question #{question} in the chat").click()
+    page.goto(f"{server['url']}/sessions/{session}/activity#message-{question}")
+    card = waiting_card(page, session)
+    expect(card.get_by_role("tab", name="supervisor 1")).to_have_attribute("aria-selected", "true")
+    expect(card.locator(f'[data-item="{question}"]')).to_have_class(re.compile(r"\bmarked\b"))
+    expect(card).to_contain_text("Old question?")
     chat = page.get_by_role("log", name="Chat with the session")
-    card = chat.get_by_role("article", name="Question from supervisor")
-    expect(card).to_be_visible()
-    assert visible_in(chat, card)
-    assert chat.get_by_role("article").count() > 50
+    assert chat.get_by_role("article").count() <= 50  # no page loaded for it
     shot(page)
 
 

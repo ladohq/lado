@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import time
 import unicodedata
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1340,41 +1340,88 @@ def _human_text(text: str, prefix: str = "") -> tuple[str, str]:
     return summary, body
 
 
+@dataclass(frozen=True)
+class HumanReply:
+    """The human's reply to one open question: one of its `choice`s (with `text` as a
+    comment), their own `text`, or with `skip` a dismissal (`text` its comment)."""
+
+    question: int
+    choice: str | None = None
+    text: str | None = None
+    skip: bool = False
+
+
 def answer_question(
     session: str, question_id: int, choice: str | None = None, text: str | None = None
 ) -> str:
     """The human answers an open question with one of its choices, their own `text`, or a
-    choice with `text` as a comment. The answer goes to the agent that asked, as a message
-    from human, and the question is answered, in one transaction."""
-    question = _open_question(session, question_id)
-    text = (text or "").strip()
-    prefix = f"Answer to #{question_id}: "
-    if choice is not None:
-        if choice not in (question.choices or []):
+    choice with `text` as a comment (answer_questions with one reply)."""
+    return answer_questions(session, [HumanReply(question_id, choice, text)])
+
+
+def dismiss_question(session: str, question_id: int, text: str | None = None) -> str:
+    """The human dismisses an open question, with `text` as the body when they wrote one
+    (answer_questions with one reply)."""
+    return answer_questions(session, [HumanReply(question_id, text=text, skip=True)])
+
+
+def answer_questions(session: str, replies: Sequence[HumanReply]) -> str:
+    """The human's replies to open questions of one agent (a tab of the UI's waiting card).
+    Each is checked first, all are queued and their questions closed in one transaction,
+    then the agent's queue is taken once: an idle agent gets them in one hand-over, so
+    they start one turn. Refused whole, with nothing changed, when any one is wrong."""
+    if not replies:
+        raise LadoError("no answers")
+    seen: set[int] = set()
+    questions = []
+    for reply in replies:
+        if reply.question in seen:
+            raise LadoError(f"question #{reply.question} is answered twice")
+        seen.add(reply.question)
+        questions.append(_open_question(session, reply.question))
+    asker = questions[0]
+    for question in questions[1:]:
+        if question.sender != asker.sender:
+            raise LadoError(
+                f"answers go to one agent at a time: #{asker.id} is {asker.sender}'s,"
+                f" #{question.id} is {question.sender}'s"
+            )
+    written = [_reply_of(q, r) for q, r in zip(questions, replies, strict=True)]
+    try:
+        with _to_running(session):
+            ids = state.reply_to_questions(session, written)
+    except state.QuestionClosed as closed:
+        raise LadoError(str(closed)) from None
+    return _deliver(session, asker.sender, ids[-1])
+
+
+def _reply_of(question: state.Message, reply: HumanReply) -> state.Reply:
+    """The message of the human's reply to `question`, or LadoError for one it does not
+    take."""
+    text = (reply.text or "").strip()
+    if reply.skip:
+        if reply.choice is not None:
+            raise LadoError(f"question #{question.id}: skip takes no choice")
+        if len(text) > MAX_MESSAGE:
+            raise LadoError(f"the message is {len(text)} characters, the limit is {MAX_MESSAGE}")
+        return state.Reply(question.id, f"Dismissed #{question.id}", text, None, state.DISMISSED)
+    prefix = f"Answer to #{question.id}: "
+    if reply.choice is not None:
+        if reply.choice not in (question.choices or []):
             listed = ", ".join(question.choices or []) or "none"
             raise LadoError(
-                f'question #{question_id} has no choice "{choice}"; its choices: {listed}'
+                f'question #{question.id} has no choice "{reply.choice}"; its choices: {listed}'
             )
-        summary, body = prefix + choice, text
+        summary, body = prefix + reply.choice, text
         if len(body) > MAX_MESSAGE:
             raise LadoError(f"the message is {len(body)} characters, the limit is {MAX_MESSAGE}")
     elif not text:
         raise LadoError("choose one of the choices or write an answer")
     elif not question.free_answer:
-        raise LadoError(f"question #{question_id} takes one of its choices, not an own answer")
+        raise LadoError(f"question #{question.id} takes one of its choices, not an own answer")
     else:
         summary, body = _human_text(text, prefix)
-    return _reply(session, question, summary, body, choice, state.ANSWERED)
-
-
-def dismiss_question(session: str, question_id: int, text: str | None = None) -> str:
-    """The human dismisses an open question; the agent that asked hears of it, with the
-    human's `text` as the body when they wrote one."""
-    question = _open_question(session, question_id)
-    body = (text or "").strip()
-    if len(body) > MAX_MESSAGE:
-        raise LadoError(f"the message is {len(body)} characters, the limit is {MAX_MESSAGE}")
-    return _reply(session, question, f"Dismissed #{question_id}", body, None, state.DISMISSED)
+    return state.Reply(question.id, summary, body, reply.choice, state.ANSWERED)
 
 
 def _open_question(session: str, question_id: int) -> state.Message:
@@ -1385,17 +1432,6 @@ def _open_question(session: str, question_id: int) -> state.Message:
     if question.question_state != state.OPEN_QUESTION:
         raise LadoError(f"question #{question_id} is {question.question_state}")
     return question
-
-
-def _reply(
-    session: str, question: state.Message, summary: str, body: str, choice: str | None, outcome: str
-) -> str:
-    with _to_running(session):
-        reply = state.reply_to_question(session, question.id, summary, body, choice, outcome)
-    if not reply:
-        now = state.get_message(session, question.id)
-        raise LadoError(f"question #{question.id} is {now.question_state}")
-    return _deliver(session, question.sender, reply)
 
 
 MAX_CHOICES = 6

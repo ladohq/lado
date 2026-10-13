@@ -142,6 +142,18 @@ def test_a_dry_runs_plan_changes_nothing(workers, repo, lado_home, ui_server, ca
     assert ui_server == [] and not state.get_session("s").stopped_at
 
 
+def test_a_dry_run_makes_no_lado_home(tmp_path, monkeypatch, no_program, capsys):
+    from lado.cli import main
+
+    missing = tmp_path / "never-made"
+    monkeypatch.setenv("LADO_HOME", str(missing))
+    assert main(["uninstall", "--dry-run"]) == 0
+    assert not missing.exists()
+    assert f"Delete: nothing, {missing} is not there" in capsys.readouterr().out
+    assert main(["uninstall", "--yes"]) == 0  # only the program is left: kept here
+    assert not missing.exists()
+
+
 def test_a_newer_database_is_refused_before_the_plan(lado_home, no_program):
     lado_home.mkdir(exist_ok=True)
     with sqlite3.connect(lado_home / "lado.db") as db:
@@ -219,6 +231,7 @@ def test_a_guarded_lado_home_is_planned_as_kept(user_home, monkeypatch, tmp_path
         "above": user_home.parent,
         "empty": tmp_path / "other",
     }[where]
+    folder.mkdir(exist_ok=True)
     monkeypatch.setenv("LADO_HOME", str(folder))
     monkeypatch.setattr(state, "home", lambda: folder)  # never made or written
     found = uninstall.plan()

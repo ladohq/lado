@@ -100,6 +100,7 @@ class Plan:
     version: str
     socket: str
     home: Path
+    home_exists: bool
     default_home: bool
     schema: int | None  # lado.db's; None without one
     server: dict | None
@@ -135,12 +136,14 @@ class Plan:
 
 
 def plan(keep_data: bool = False) -> Plan:
-    """The plan; refused (LadoError) while an update runs or on a newer lado.db."""
-    pid = self_update.running_pid()
+    """The plan; refused (LadoError) while an update runs or on a newer lado.db. A
+    LADO_HOME that is not there is not made: nothing of it runs or is deleted."""
+    home = state.home_path()
+    exists = home.is_dir()
+    pid = self_update.running_pid() if exists else None
     if pid is not None:
         raise runtime.LadoError(f"an update is running, pid {pid}; nothing was changed")
-    home = state.home()
-    schema = state.schema_version()
+    schema = state.schema_version() if exists else None
     if schema is not None and schema > state.SCHEMA_VERSION:
         raise runtime.LadoError(
             f"{home / 'lado.db'} has schema version {schema}, made by a newer LADO (this one "
@@ -149,14 +152,15 @@ def plan(keep_data: bool = False) -> Plan:
         )
     sessions = _sessions(schema, agents=True)
     default = _default_home(home)
-    kept = _home_kept(home, default)
+    kept = _home_kept(home, default) if exists else None
     return Plan(
         version=lado.__version__,
         socket=tmux.socket(),
         home=home,
+        home_exists=exists,
         default_home=default,
         schema=schema,
-        server=server_run.running() if server_run.lock_path().exists() else None,
+        server=server_run.running() if exists and server_run.lock_path().exists() else None,
         sessions=sessions,
         repos=[] if keep_data else _repos(sessions),
         home_kept=kept,
@@ -323,7 +327,9 @@ def print_plan(found: Plan, say: Say = print) -> None:
                     say(f"    remove {work.text(relative=True)} (merged)")
             if not repo.work:
                 say("    no worktree or branch of LADO's")
-        if found.home_kept:
+        if not found.home_exists:
+            say(f"Delete: nothing, {found.home} is not there")
+        elif found.home_kept:
             say(f"Keep {found.home}: {found.home_kept}")
         else:
             say("Delete:")
@@ -342,7 +348,10 @@ def print_plan(found: Plan, say: Say = print) -> None:
 
 def run(found: Plan, say: Say = print) -> int:
     """The uninstall `found` plans: 0 when each step of it was done. UninstallRefused, with
-    nothing changed, while an update runs."""
+    nothing changed, while an update runs. Without LADO_HOME only the program is left to
+    remove: nothing of that home runs, and its folder is not made for the lock."""
+    if not found.home_exists:
+        return _Uninstall(found, say).run()
     lock = self_update.take_lock(self_update.LOCK_WAIT)
     if lock is None:
         pid = self_update.running_pid()
@@ -362,6 +371,8 @@ class _Uninstall:
         self.say(f"lado: {text}", file=sys.stderr)
 
     def run(self) -> int:
+        if not self.plan.home_exists:
+            return self._program()
         try:
             self._stop()
         except (runtime.LadoError, tmux.TmuxError, OSError, state.SchemaError) as error:
@@ -371,6 +382,9 @@ class _Uninstall:
             for repo in _repos(self._sessions()):
                 self._clean(repo)
             self._delete_home()
+        return self._program()
+
+    def _program(self) -> int:
         kept = self.plan.program_kept()
         if kept:
             self.say(f"Kept the program: {kept}")

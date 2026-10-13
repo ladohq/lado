@@ -363,7 +363,9 @@ fixes and docs only: no new feature, no API or schema change.
     `failed` result of its id with no log (`not_started`), unless another update holds the
     lock, so the page waiting for that id learns why.
   - `uninstall.py`: `lado uninstall` (`cli.cmd_uninstall` only refuses inside an agent,
-    asks and prints; `main` runs it without `migrate_if_safe`). `plan` reads only: it
+    asks and prints; `main` runs it without `migrate_if_safe`). A `LADO_HOME` that is not
+    there is never made (`state.home_path`; `state.home` makes it): only the program is
+    left to remove. `plan` reads only: it
     refuses while an update runs and on a newer `lado.db`, reads the sessions of an older
     one read-only (`name`, `repo`, `stopped_at` when there), judges each worktree under
     `.lado/worktrees/<session>/` and branch `lado/<session>/*` of their repositories by

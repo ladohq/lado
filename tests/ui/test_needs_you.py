@@ -157,14 +157,14 @@ def test_an_expanded_card_fills_the_page_and_a_chip_opens_the_panel_over_needs_y
     expect(card).to_have_class(re.compile(r"\bexpanded\b"))
     expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
 
-    # A narrow window: the expanded card is the window's height under the top bar.
+    # A narrow window (loaded so, its rail folded): the expanded card is the window's height
+    # under the top bar, scrolled there.
     page.set_viewport_size({"width": 390, "height": 760})
-    page.wait_for_timeout(100)
-    box = card.bounding_box()
-    assert box["height"] >= 760 - 52 - 1, box
-    card.get_by_role("button", name="Collapse the card").click()
+    page.reload()
     card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
     expect(card).to_be_in_viewport()
+    assert card.bounding_box()["height"] >= 760 - 52 - 1, card.bounding_box()
     top = page.locator(".topbar").bounding_box()
     assert abs(card.bounding_box()["y"] - (top["y"] + top["height"])) <= 2, card.bounding_box()
     shot(page, "narrow")

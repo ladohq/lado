@@ -19,6 +19,7 @@ from lado import (
     providers,
     runtime,
     state,
+    telemetry,
     terminal,
     tmux,
     update,
@@ -38,10 +39,13 @@ class Check:
     hint: str = ""
 
 
-def _tool_version(path: str, flag: str) -> str:
+VERSION_TIMEOUT = 10.0  # seconds a `<tool> --version` may take; then it is killed
+
+
+def _tool_version(path: str, flag: str, timeout: float = VERSION_TIMEOUT) -> str:
     try:
         result = subprocess.run(
-            [path, flag], capture_output=True, text=True, timeout=10, check=False
+            [path, flag], capture_output=True, text=True, timeout=timeout, check=False
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"found at {path}, but `{flag}` failed: {exc}"
@@ -50,12 +54,17 @@ def _tool_version(path: str, flag: str) -> str:
 
 
 def check_tool(
-    name: str, command: str, flag: str, hint: str, which: Callable[[str], str | None]
+    name: str,
+    command: str,
+    flag: str,
+    hint: str,
+    which: Callable[[str], str | None],
+    timeout: float = VERSION_TIMEOUT,
 ) -> Check:
     path = which(command)
     if path is None:
         return Check(name, FAIL, f"`{command}` not found on PATH", hint)
-    return Check(name, OK, _tool_version(path, flag))
+    return Check(name, OK, _tool_version(path, flag, timeout))
 
 
 @dataclass
@@ -70,9 +79,13 @@ class ProviderStatus:
 
 
 def provider_status(
-    provider: providers.Provider, which: Callable[[str], str | None]
+    provider: providers.Provider,
+    which: Callable[[str], str | None],
+    timeout: float = VERSION_TIMEOUT,
 ) -> ProviderStatus:
-    tool = check_tool(provider.title, provider.command, "--version", "", which)
+    """`timeout`: the seconds its `--version` may take, killed after them (the statistics
+    sender gives less: its threads end with it, and nothing would kill it then)."""
+    tool = check_tool(provider.title, provider.command, "--version", "", which, timeout)
     tested = provider.tested_version
     if tool.level == FAIL:
         return ProviderStatus(False, "", tool.detail, tested, "")
@@ -319,6 +332,16 @@ class System:
     sessions: dict[str, int]  # running, stopped, gone
     check: update.Check | None
     last: update.Result | None
+    statistics: telemetry.State | None = None  # whether LADO sends usage statistics
+
+
+def statistics_line(found: telemetry.State) -> str:
+    """The report's word on usage statistics: on, off, not chosen, or why off."""
+    if found.off_by:
+        return f"off by {found.off_by}"
+    if not found.endpoint:
+        return "off: no endpoint"
+    return found.chosen or "not chosen"
 
 
 def _os_name() -> str:
@@ -396,6 +419,7 @@ def system_info(which: Callable[[str], str | None] = shutil.which) -> System:
         sessions=_session_counts(),
         check=update.check(),
         last=update.read_result(),
+        statistics=telemetry.state(),
     )
 
 
@@ -409,6 +433,7 @@ def report(system: System, open_to_network: bool, up_seconds: float) -> str:
         f"- LADO {system.version} ({installer}), Python {system.python}",
         f"- OS: {system.os} ({system.machine})",
         f"- Update: {_update_line(system.check)}",
+        *([f"- Statistics: {statistics_line(system.statistics)}"] if system.statistics else []),
         f"- Server: {'open to the network' if open_to_network else 'loopback only'}, "
         f"up {_duration(up_seconds)}, schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",

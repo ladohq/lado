@@ -19,13 +19,14 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from dataclasses import dataclass
 from typing import IO
 
 import lado
-from lado import providers, state, terminal
+from lado import providers, state, telemetry, terminal
 from lado.runtime import LadoError
 
 DEFAULT_PORT = 8000
@@ -47,6 +48,22 @@ def info_path():
 
 def log_path():
     return state.home() / "server.log"
+
+
+def bound_log() -> None:
+    """Keep server.log within its bound while a server writes it: its output was opened
+    with O_APPEND, so after a copy and truncation its next line lands at the new end."""
+    telemetry.trim(log_path())
+
+
+def housekeeping(stop: threading.Event) -> None:
+    """A running server's chores, at its start and every telemetry.KICK_EVERY until `stop`:
+    server.log's bound, and the statistics sender when something is due."""
+    while True:
+        bound_log()
+        telemetry.kick()
+        if stop.wait(telemetry.KICK_EVERY):
+            return
 
 
 def take_lock(wait: float = 0) -> IO | None:
@@ -233,11 +250,14 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
         # uvicorn shuts down on SIGTERM or SIGINT, then raises the signal again: end with 0
         # through the `finally` below instead of being killed by it.
         signal.signal(signal.SIGTERM, _exit)
+        stop = threading.Event()
+        threading.Thread(target=housekeeping, args=(stop,), daemon=True).start()
         try:
             server.run(sockets=[sock])
         except KeyboardInterrupt:
             pass
         finally:
+            stop.set()
             info_path().unlink(missing_ok=True)
     return 0
 
@@ -259,6 +279,7 @@ def start_background(host: str | None, port: int | None) -> Started:
     its output going to server.log (the owner's only, like the token)."""
     args = ["server"] + ([] if host is None else ["--host", host])
     args += [] if port is None else ["--port", str(port)]
+    telemetry.rotate(log_path())  # bounded: the server bounds it while it runs (bound_log)
     fd = os.open(log_path(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     os.fchmod(fd, 0o600)  # also a log an older LADO made
     with os.fdopen(fd, "a") as log:

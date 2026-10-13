@@ -28,6 +28,15 @@ def test_the_cli_imports_what_only_some_commands_need_in_those_commands():
     assert lazy.isdisjoint(loaded)
 
 
+def test_the_error_journal_imports_nothing_heavy():
+    """Every hook and LADO process imports lado.telemetry; only its sender goes to the
+    network, and only the report reads the providers, kits and installer."""
+    loaded = _modules_after("import lado.telemetry")
+    heavy = {"urllib.request", "http.client", "ssl", "lado.doctor", "lado.update", "lado.kits"}
+    assert heavy.isdisjoint(loaded)
+    assert "importlib.metadata" not in loaded
+
+
 def test_a_lado_command_that_does_not_show_the_version_does_not_read_it(tmp_path, monkeypatch):
     """`lado hook`, `lado mcp` and `lado loop` build the whole parser, `--version` too."""
     monkeypatch.setenv("LADO_HOME", str(tmp_path))

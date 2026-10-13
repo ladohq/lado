@@ -1,17 +1,17 @@
 ## 1. CI
 
-- [ ] 1.1 `tests/test_ci_workflow.py`: a test that collects, in order, the `run` lines of
+- [x] 1.1 `tests/test_ci_workflow.py`: a test that collects, in order, the `run` lines of
   jobs `check` and `ui` that start with `uv run pytest` and asserts they are
   `["uv run pytest -n auto", "uv run pytest -m integration -n0"]` and
   `["uv run pytest -m ui -n 2"]`; it fails on main's workflow before 1.2 (AC-2).
-- [ ] 1.2 `.github/workflows/ci.yml`: job `check`'s integration step `uv run pytest -m
+- [x] 1.2 `.github/workflows/ci.yml`: job `check`'s integration step `uv run pytest -m
   integration -n0`, job `ui`'s step `uv run pytest -m ui -n 2`; nothing else changes. A
   comment above each step says why (4-vCPU runners, LADO's short test timers). 1.1's test
   passes (AC-1, AC-2).
-- [ ] 1.3 AGENTS.md, Commands, the paragraph "CI runs …": the unit tests in parallel, the
+- [x] 1.3 AGENTS.md, Commands, the paragraph "CI runs …": the unit tests in parallel, the
   integration tests in one process (`-n0`) and the UI tests on two workers (`-n 2`), and
   why (AC-3).
-- [ ] 1.4 `make lint` and `uv run pytest -n auto tests/test_ci_workflow.py` pass, each
+- [x] 1.4 `make lint` and `uv run pytest -n auto tests/test_ci_workflow.py` pass, each
   exit status read, not piped (AC-6).
 
 ## 2. Verification on CI

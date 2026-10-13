@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.37.0 (unreleased)
+## 0.37.0 (2026-10-13)
 
 - `lado uninstall [--dry-run] [--keep-data] [--yes]` removes LADO: it stops the UI server
   and every session, removes the worktrees and branches `lado finish` would remove (merged

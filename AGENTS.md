@@ -151,12 +151,18 @@ delivered instead of the human's message and the turn error, in code, never a sk
 failed smoke keeps its evidence as a failed live test does. `make test-smoke
 [PROVIDER=...]`; not in `make check`, which has no CLI.
 
-CI runs `ruff format --check`, `ruff check`, the unit and integration tests (in parallel) on
-Python 3.10 and 3.13, the Node tests, in one job on Python 3.13 `make dist` (the web UI
-built and in both the sdist and the wheel) and the UI e2e tests, and in its job `smoke` the
-smoke tests on Linux and macOS, one cell per (system, provider), none stopping the others.
-A cell is `scripts/smoke_ci.py run <provider> <out>`: it installs the CLI with `npm install
--g --prefix ~/.local` at its pin, runs `uv run pytest -m smoke -n0 -v -k <provider>` into
+CI runs `ruff format --check`, `ruff check`, the unit tests (in parallel, `-n auto`) and the
+integration tests (in one process, `-n0`) on Python 3.10 and 3.13, the Node tests, in one
+job on Python 3.13 `make dist` (the web UI built and in both the sdist and the wheel) and
+the UI e2e tests (on two workers, `-n 2`), and in its job `smoke` the smoke tests on Linux
+and macOS, one cell per (system, provider), none stopping the others. The worker counts are
+for GitHub's 4-vCPU runners, where `-n auto` is four workers: four integration tests at
+once (each its own tmux, agents and session loop), or four UI tests (each with a Chromium
+and a `lado server`), starve each other past LADO's short test timers; the unit tests run
+mostly in process and keep `-n auto` (`tests/test_ci_workflow.py` pins the three
+commands). A cell is
+`scripts/smoke_ci.py run <provider> <out>`: it installs the CLI with `npm install -g
+--prefix ~/.local` at its pin, runs `uv run pytest -m smoke -n0 -v -k <provider>` into
 `<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
 a failing cell's evidence goes to `<out>/evidence` (the artifact
 `smoke-<os>-<provider>`). `smoke_ci.py`'s `PINS` is the one place a CLI's version is

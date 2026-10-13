@@ -85,8 +85,10 @@ const PLAN: UpdatePlan = {
 function info(more: Partial<UpdateInfo> = {}): UpdateInfo {
   return {
     current: BUNDLE_VERSION,
+    prerelease: false,
     latest: BUNDLE_VERSION,
     available: null,
+    available_prerelease: false,
     released: null,
     checked_at: NOW.toISOString(),
     error: null,
@@ -295,6 +297,47 @@ test("a newer LADO marks live and gives the panel its Update block; no line unde
     "https://github.com/ladohq/lado/releases/tag/v99.0.0",
   );
   expect(within(block).getByRole("button", { name: "Update…" })).toBeTruthy();
+});
+
+test("a pre-release says so in the head, and a newer one on its offer", async () => {
+  update = info({
+    current: "0.37.0rc1",
+    prerelease: true,
+    latest: "0.37.0rc2",
+    available: "0.37.0rc2",
+    available_prerelease: true,
+    released: "2026-10-14",
+  });
+  serve();
+  open();
+  const box = await panel();
+  const head = box.querySelector(".system-head")!;
+  await waitFor(() => expect(head.querySelector(".pill")?.textContent).toBe("pre-release"));
+  const block = within(box).getByRole("region", { name: "Update" });
+  expect(block.textContent).toContain("0.37.0rc2 is out");
+  expect(block.querySelector(".pill")?.textContent).toBe("pre-release");
+});
+
+test("the release offered to a pre-release has no mark, and a final release none at all", async () => {
+  update = info({
+    current: "0.37.0rc2",
+    prerelease: true,
+    latest: "0.37.0",
+    available: "0.37.0",
+    released: "2026-10-14",
+  });
+  serve();
+  open();
+  let box = await panel();
+  await waitFor(() => expect(box.querySelector(".system-head .pill")).not.toBeNull());
+  expect(within(box).getByRole("region", { name: "Update" }).querySelector(".pill")).toBeNull();
+  cleanup();
+  update = info({ latest: "99.0.0", available: "99.0.0", released: "2026-10-12" });
+  serve();
+  open();
+  box = await panel();
+  await within(box).findByRole("region", { name: "Update" });
+  expect(box.querySelector(".pill")).toBeNull();
 });
 
 test("without an installer the panel shows the commands by hand and no Update button", async () => {

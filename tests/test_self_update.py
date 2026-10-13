@@ -384,3 +384,21 @@ def test_an_update_of_the_ui_refused_by_a_running_one_writes_no_result(install, 
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         assert main(["update", "--yes", NEW, "--id", "u-9"]) == 1
     assert (result().outcome, result().id) == ("running", None)  # the running one's
+
+
+@pytest.mark.parametrize(
+    "current, releases, to",
+    [
+        ("0.36.0", ["0.36.0", "0.37.0rc1"], None),
+        ("0.37.0rc1", ["0.36.0", "0.37.0rc1", "0.37.0rc2"], "0.37.0rc2"),
+    ],
+)
+def test_the_latest_plan_offers_a_release_candidate_only_to_a_pre_release(
+    install, published, monkeypatch, current, releases, to
+):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", current, raising=False)
+    published(**{version: "2026-10-01" for version in releases})
+    found = self_update.latest_plan()
+    assert (found.to.version if found else None) == to

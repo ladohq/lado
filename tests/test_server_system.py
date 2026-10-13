@@ -142,6 +142,29 @@ def test_a_failed_check_now_says_why(client, published, tmp_path, monkeypatch):
     assert checked["error"].startswith("cannot look up LADO's latest version:")
 
 
+@pytest.mark.parametrize(
+    "current, releases, available, prerelease, available_prerelease",
+    [
+        ("0.36.0", ["0.36.0", "0.37.0rc1"], None, False, False),
+        ("0.37.0rc1", ["0.37.0rc1", "0.37.0rc2"], "0.37.0rc2", True, True),
+        ("0.37.0rc2", ["0.37.0rc2", "0.37.0"], "0.37.0", True, False),
+    ],
+)
+def test_update_says_which_versions_are_pre_releases(
+    client, published, monkeypatch, current, releases, available, prerelease, available_prerelease
+):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", current, raising=False)
+    published(**{version: "2026-10-01" for version in releases})
+    info = ok(client.get("/api/update"))
+    assert (info["available"], info["prerelease"], info["available_prerelease"]) == (
+        available,
+        prerelease,
+        available_prerelease,
+    )
+
+
 def test_update_says_whether_this_lado_can_update_itself(client, installed, monkeypatch):
     info = ok(client.get("/api/update"))
     assert (info["can_update"], info["why_not"], info["running"]) == (True, None, False)

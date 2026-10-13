@@ -617,6 +617,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## Flaky vitest: an image's artifact tab keeps another test's page title
+
+Size: S. Why here: it turned a pull request's CI red once, in a file the pull request did not touch.
+
+`web/src/ArtifactTab.test.tsx > an image shows as an image` failed in CI's job `ui`
+(`make dist` → `make web`, run 38360879188, job 115174522861): `document.title` was
+`feature/x/tool.py`, another test's record, not `feature/x/shot.png`. Locally it passed 4 of
+4, and the full `make web` 663 of 663. Likely the title of an earlier test's tab is set
+after that test's cleanup, or the test reads the title before its own effect runs.
+Wanted: each test starts with its own title (reset in `afterEach`) and waits for its tab's
+title.
+Found: 2026-10-13, feature/lad-31-release-candidates (review of PR #13).
+
 ## `lado kits check` calls `${KIT_DIR}` in an MCP server's command a hardcoded path
 
 Size: S. Why here: a kit that follows the documented form (README before 0.36, the Kits

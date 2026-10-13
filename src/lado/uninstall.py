@@ -144,7 +144,7 @@ def plan(keep_data: bool = False) -> Plan:
             f"knows up to {state.SCHEMA_VERSION}): uninstall with that LADO's lado uninstall, "
             f"or by hand ({DOCS}); nothing was changed"
         )
-    sessions = _sessions(schema)
+    sessions = _sessions(schema, agents=True)
     default = _default_home(home)
     kept = _home_kept(home, default)
     return Plan(
@@ -193,9 +193,10 @@ def _size(home: Path) -> int:
     return total
 
 
-def _sessions(schema: int | None) -> list[Session]:
+def _sessions(schema: int | None, agents: bool = False) -> list[Session]:
     """The sessions of lado.db, read only with the columns every schema with sessions has,
-    so an older lado.db is shown without migrating it."""
+    so an older lado.db is shown without migrating it; with `agents` (the plan's) their
+    agents when lado.db is this LADO's schema."""
     if schema is None:
         return []
     path = state.home() / "lado.db"
@@ -205,12 +206,10 @@ def _sessions(schema: int | None) -> list[Session]:
         if not columns:
             return []
         stopped = "stopped_at" if "stopped_at" in columns else "NULL"
-        rows = conn.execute(
-            f"SELECT name, repo, {stopped} FROM sessions ORDER BY created_at, rowid"
-        ).fetchall()
+        rows = conn.execute(f"SELECT name, repo, {stopped} FROM sessions ORDER BY rowid").fetchall()
     finally:
         conn.close()
-    current = schema == state.SCHEMA_VERSION
+    current = agents and schema == state.SCHEMA_VERSION
     return [
         Session(
             name,
@@ -232,32 +231,20 @@ def _repos(sessions: list[Session]) -> list[Repo]:
             repo.problem = "no longer there"
             continue
         try:
-            listed = runtime.git(repo.path, "worktree", "list", "--porcelain")
             for name in repo.sessions:
-                repo.work += _work(repo.path, name, listed)
+                repo.work += _work(repo.path, name)
         except runtime.LadoError as error:
             repo.problem = f"git cannot read it: {error}"
             repo.work = []
     return list(repos.values())
 
 
-def _work(repo: str, session: str, listed: str) -> list[Work]:
+def _work(repo: str, session: str) -> list[Work]:
     """The session's worktrees under .lado/worktrees/<session>/ and its branches
     lado/<session>/*, each judged by finish's rule."""
-    folder = Path(repo, ".lado", "worktrees", session)
-    inside = os.path.realpath(folder) + os.sep
     prefix = f"lado/{session}/"
-    found: dict[str, str] = {}  # branch -> worktree
-    path, branch = None, None
-    for line in [*listed.splitlines(), ""]:
-        if line.startswith("worktree "):
-            path, branch = line.removeprefix("worktree "), None
-        elif line.startswith("branch "):
-            branch = line.removeprefix("branch refs/heads/")
-        elif not line and path:
-            if os.path.realpath(path).startswith(inside):
-                found[branch or f"{prefix}{Path(path).name}"] = path
-            path = None
+    found = {branch: path for path, branch in runtime.session_worktrees(repo, session).items()}
+    folder = Path(repo, ".lado", "worktrees", session)
     refs = runtime.git(repo, "for-each-ref", "--format=%(refname:short)", f"refs/heads/{prefix}")
     for name in refs.split():
         found.setdefault(name, str(folder / name.removeprefix(prefix)))

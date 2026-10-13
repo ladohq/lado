@@ -51,6 +51,39 @@ def test_a_final_release_is_not_offered_a_newer_release_candidate(
     shot(page)
 
 
+def test_a_release_candidate_and_a_newer_one_on_offer_are_marked(page: Page, server, shot):
+    # The server runs the working copy's version, a final release: its answers are changed
+    # to a release candidate's, as the server gives them there (test_server_system.py).
+    def system_of_release_candidate(route):
+        route.fulfill(json={**route.fetch().json(), "version": "99.0.0rc1"})
+
+    def as_release_candidate(route):
+        info = route.fetch().json()
+        info.update(
+            current="99.0.0rc1",
+            prerelease=True,
+            latest="99.0.0rc2",
+            available="99.0.0rc2",
+            available_prerelease=True,
+            released="2026-10-14",
+        )
+        route.fulfill(json=info)
+
+    page.route(f"{server['url']}/api/update", as_release_candidate)
+    page.route(f"{server['url']}/api/system", system_of_release_candidate)
+    log_in(page, server)
+    live = page.get_by_role("button", name="System: LADO 99.0.0rc2 is available")
+    live.click()
+    panel = page.get_by_role("dialog", name="System")
+    expect(panel.locator(".system-head")).to_contain_text("LADO 99.0.0rc1")
+    expect(panel.locator(".system-head .pill")).to_have_text("pre-release")
+    update_block = panel.get_by_role("region", name="Update")
+    expect(update_block).to_contain_text("99.0.0rc2 is out")
+    expect(update_block.locator(".pill")).to_have_text("pre-release")
+    expect(panel.get_by_text("Running")).to_be_visible()
+    shot(page)
+
+
 def test_a_newer_lado_marks_live_and_the_panel_offers_the_update(
     page: Page, published, server, shot
 ):

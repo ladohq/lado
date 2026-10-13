@@ -114,9 +114,7 @@ def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
     # question's; recommending earlier, the request would set it back to asked and the
     # supervisor's turn on it mark it missing. So first that turn must have ended.
     agent_helpers.wait_for(
-        lambda: (
-            state.get_message(session, question.id).recommendation_state == state.REC_MISSING
-        ),
+        lambda: state.get_message(session, question.id).recommendation_state == state.REC_MISSING,
         "the question's request handled",
         session,
     )

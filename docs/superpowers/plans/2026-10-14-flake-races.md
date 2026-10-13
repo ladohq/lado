@@ -201,13 +201,25 @@ def test_take_pending_becomes_idle_and_takes_in_one_commit(agent_busy_with_one_p
 
 def test_take_pending_becomes_idle_with_nothing_to_take(agent_busy_with_nothing_pending):
     session, name = agent_busy_with_nothing_pending
-    assert state.take_pending(session, name, state.SENT, state.BUSY, True, state.HOOK_OUTPUT, become=state.IDLE) == []
+    assert (
+        state.take_pending(
+            session, name, state.SENT, state.BUSY, True, state.HOOK_OUTPUT, become=state.IDLE
+        )
+        == []
+    )
     assert state.get_agent(session, name).status == state.IDLE
 
 
-def test_take_pending_keeps_the_status_when_a_batch_is_unconfirmed(agent_busy_with_a_sent_batch_and_one_pending):
+def test_take_pending_keeps_the_status_when_a_batch_is_unconfirmed(
+    agent_busy_with_a_sent_batch_and_one_pending,
+):
     session, name = agent_busy_with_a_sent_batch_and_one_pending
-    assert state.take_pending(session, name, state.SENT, state.BUSY, True, state.HOOK_OUTPUT, become=state.IDLE) == []
+    assert (
+        state.take_pending(
+            session, name, state.SENT, state.BUSY, True, state.HOOK_OUTPUT, become=state.IDLE
+        )
+        == []
+    )
     assert state.get_agent(session, name).status == state.IDLE  # committed, not rolled back
 ```
 
@@ -277,9 +289,11 @@ def test_take_pending_keeps_the_status_when_a_batch_is_unconfirmed(agent_busy_wi
 ```python
 def test_a_gate_and_its_event_share_one_time(gated_run, monkeypatch):
     original = state._add_event
+
     def late(*args, **kwargs):
         time.sleep(0.005)  # the millisecond turns between the gate and its event
         return original(*args, **kwargs)
+
     monkeypatch.setattr(state, "_add_event", late)
     gate = gated_run()  # enters an approval gate
     opened = [e for e in state.list_events(gate.session) if e.kind == state.GATE_OPEN][-1]

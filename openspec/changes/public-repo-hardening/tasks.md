@@ -32,7 +32,7 @@
 
 ## 3. Regression
 
-- [ ] 3.1 `openspec validate public-repo-hardening --strict`, `make lint`, `make test`;
+- [x] 3.1 `openspec validate public-repo-hardening --strict`, `make lint`, `make test`;
   CI green on the pull request.
 
 ## 4. After the merge (the human, by hand)

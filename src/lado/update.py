@@ -179,8 +179,9 @@ def check(now: datetime.datetime | None = None, force: bool = False) -> Check | 
     now = now or datetime.datetime.now(datetime.timezone.utc)
     cached = _cached()
     pre = prerelease(lado.__version__)
-    fresh = cached and _age(cached, now) < CHECK_EVERY and cached.get("pre", False) == pre
-    if fresh and not force:
+    if cached and cached.get("pre", False) != pre:
+        cached = None  # a look for another kind of install: none of it holds here
+    if cached and not force and _age(cached, now) < CHECK_EVERY:
         return Check(
             lado.__version__,
             cached.get("latest"),
@@ -188,9 +189,8 @@ def check(now: datetime.datetime | None = None, force: bool = False) -> Check | 
             cached.get("error"),
             cached.get("released"),
         )
-    kept = cached if cached and cached.get("pre", False) == pre else None  # a failure keeps it
-    newest, error = kept.get("latest") if kept else None, None
-    released = kept.get("released") if kept else None
+    newest, error = cached.get("latest") if cached else None, None
+    released = cached.get("released") if cached else None
     try:
         found = offered(fetch_index(CHECK_TIMEOUT), lado.__version__)
         newest, released = (found.version, found.date) if found else (None, None)

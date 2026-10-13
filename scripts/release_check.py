@@ -42,7 +42,7 @@ def changed_lines(candidate: str, final: str) -> list[tuple[str, str]]:
     lines, path = [], ""
     diff = git("diff", "-U0", candidate, final, "--", *VERSIONED)
     for line in diff.splitlines():
-        if line.startswith("+++ ") or line.startswith("--- "):
+        if line.startswith(("+++ ", "--- ")):
             name = line[4:]
             if name != "/dev/null":
                 path = name[2:]  # a/… or b/…

@@ -6,6 +6,9 @@
   of the whole window, so an artifact opened from it shows over it; Esc closes that
   artifact first, then folds the card. On Needs you an artifact opens over the page,
   keeping the answers you picked.
+- Each release now also appears on GitHub (github.com/ladohq/lado/releases) with this
+  changelog's section as its notes and the wheel and sdist attached; a release candidate is
+  a GitHub pre-release.
 
 ## 0.37.0 (2026-10-13)
 

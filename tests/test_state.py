@@ -710,6 +710,50 @@ def test_only_an_agent_that_takes_input_has_its_queue_taken(lado_home, status, t
     assert bool(moved) is taken
 
 
+def _turn_end_take():
+    """A turn-end hook's hand-over: idle, and the queue by the hook's output."""
+    return state.take_pending(
+        "s", "w1", state.SENT, state.BUSY, True, state.HOOK_OUTPUT, become=state.IDLE
+    )
+
+
+def test_take_pending_becomes_idle_and_takes_in_one_commit(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    state.queue_message("s", "supervisor", "w1", "hi", "")
+    commits = []
+    opened = state._open
+
+    def counted():
+        db = opened()
+        db.set_trace_callback(lambda sql: sql == "COMMIT" and commits.append(sql))
+        return db
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(state, "_open", counted)
+        taken = _turn_end_take()
+    assert [m.channel for m in taken] == [state.HOOK_OUTPUT]
+    assert commits == ["COMMIT"]
+    assert state.get_agent("s", "w1").status == state.BUSY
+    assert _status_events() == ["idle", "busy"]
+
+
+def test_take_pending_becomes_idle_with_nothing_to_take(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    assert _turn_end_take() == []
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert _status_events() == ["idle"]
+
+
+def test_take_pending_keeps_the_status_when_a_batch_is_unconfirmed(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    state.queue_message("s", "supervisor", "w1", "first", "")
+    state.take_pending("s", "w1", state.SENT, state.BUSY, True, state.HOOK_OUTPUT)
+    later = state.queue_message("s", "supervisor", "w1", "second", "")
+    assert _turn_end_take() == []
+    assert state.get_agent("s", "w1").status == state.IDLE  # committed, not rolled back
+    assert state.get_message("s", later).state == state.PENDING
+
+
 # Where `idle` may be named in LADO's code (file, the function or module-level name around
 # it): its definitions, the one setter, the API's list of statuses and the text of a failed
 # turn. Anywhere else, asking for idle would leave `background` out: ask accepts_input or

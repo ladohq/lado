@@ -2374,19 +2374,24 @@ def take_pending(
     status: str | None = None,
     idle_only: bool = False,
     channel: str | None = None,
+    become: str | None = None,
 ) -> list[Message]:
     """Move all pending messages for `recipient` to `mark`, by `channel`, and return them,
     oldest first; when there are any and `status` is given, set the recipient's status too.
     `idle_only`: take none unless the recipient takes input (ACCEPTS_INPUT: idle or
     background) and no message handed over to it is unconfirmed. Every hand-over to an
     agent takes them so (lado.runtime.hand_over): an agent never has more than one batch of
-    sent messages at a time.
+    sent messages at a time. `become`: set this status first, in the same transaction, and
+    keep it whether or not anything is taken (a hook's switch to idle or background:
+    lado.hooks._idle).
 
     Runs in one write transaction, so two concurrent callers never get the same message,
     and no one sees the messages moved without the status that goes with them.
     """
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        if become:
+            _set_status(db, session, recipient, become)
         if (
             idle_only
             and not db.execute(
@@ -2396,7 +2401,7 @@ def take_pending(
                 (session, recipient, SENT),
             ).fetchone()
         ):
-            db.execute("ROLLBACK")
+            db.execute("COMMIT" if become else "ROLLBACK")
             return []
         rows = db.execute(
             f"SELECT {MESSAGE_COLUMNS} FROM messages"

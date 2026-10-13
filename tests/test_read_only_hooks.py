@@ -105,15 +105,15 @@ def test_a_temporary_file_gone_by_the_turn_s_end_is_no_change(quiet):
 
 def test_the_turn_s_end_is_written_before_the_agent_is_idle(quiet, monkeypatch):
     seen = []
-    set_status = state.set_status
+    take_pending = state.take_pending
 
-    def recording(session, agent, status, *args, **kwargs):
-        if agent == "r1" and status == state.IDLE:
+    def recording(session, agent, *args, become=None, **kwargs):
+        if agent == "r1" and become == state.IDLE:  # idle with the queue (hooks._idle)
             seen.append(_baseline("r1")["state"])
-        return set_status(session, agent, status, *args, **kwargs)
+        return take_pending(session, agent, *args, become=become, **kwargs)
 
     _hook("UserPromptSubmit", "r1", {"prompt": "go"})
-    monkeypatch.setattr(state, "set_status", recording)
+    monkeypatch.setattr(state, "take_pending", recording)
     _hook("Stop", "r1")
     assert seen == ["closed"]
 

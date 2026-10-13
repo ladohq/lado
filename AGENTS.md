@@ -1277,10 +1277,11 @@ fixes and docs only: no new feature, no API or schema change.
   conversation start, a turn's end), and by `runtime.sweep` when the agent is idle, so the
   session loop types in within one pass what every hook missed. At a turn's end the order
   is: confirm the `hook_output` batch the turn went on from, check the replies to the
-  human, set idle, hand over, sweep; so a chain of turns that go on from the hook's output
-  gets each new batch at once. A sender queues first and takes the queue of an idle agent
-  second, a hook sets idle first and takes the queue second: exactly one of them hands a
-  message over, and the sender's reply says `sent` also when a hook or the loop handed its
+  human, set idle and hand over, sweep; so a chain of turns that go on from the hook's
+  output gets each new batch at once. A sender queues first and takes the queue of an idle
+  agent second, a hook sets idle and takes the queue in one transaction
+  (`state.take_pending`'s `become`), so the session loop never sees the agent idle with
+  the queue the hook takes: exactly one of them hands a message over, and the sender's reply says `sent` also when a hook or the loop handed its
   message over in between (and refuses, as for an agent not running, when the agent was
   finished or stopped in between). A queue is taken only so, also an agent's first input.
   What was handed

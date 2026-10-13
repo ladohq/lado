@@ -67,9 +67,10 @@ desktop app) read the same `UpdateInfo`.
   <rc> <tag> -- pyproject.toml uv.lock` (each `+`/`-` line, headers aside, must match
   `^[+-]version = "[^"]*"$`; in uv.lock only the line in the `[[package]]` block named
   `lado`, found by the hunk's line numbers in each side's file, so a dependency bumped
-  between the RC and the final is refused: the human's addition after design_ok). It prints one line per problem and exits 1. The workflow
-  checks out with `fetch-depth: 0` (tags and history) and runs it after the version check,
-  before `make dist`. Tested by `tests/test_release_check.py` on a temporary git repo.
+  between the RC and the final is refused: the human's addition after design_ok). It
+  prints one line per problem and exits 1. The workflow checks out with `fetch-depth: 0`
+  (tags and history) and runs it after the version check, before `make dist`. Tested by
+  `tests/test_release_check.py` on a temporary git repo.
 - **D6. Only X.Y.0 needs an RC.** Patches may have one (then the diff rule holds); a patch
   without one passes, as the human chose "at the human's choice" for patches.
 - **D7. No override.** A final the check refuses is fixed by a new RC; no workflow input

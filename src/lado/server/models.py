@@ -416,10 +416,12 @@ class UpdateInfo(BaseModel):
 
     current: str
     prerelease: bool  # `current` is a pre-release (a release candidate)
-    latest: str | None  # the latest release; None before a look found one or with the check off
+    # The latest release this LADO is offered (update.offered: a final release's newest final,
+    # a pre-release's newest of all); None before a look found one or with the check off.
+    latest: str | None
     available: str | None  # the latest release when it is newer than this LADO
     available_prerelease: bool  # `available` is a pre-release (offered only to a pre-release)
-    released: str | None  # the latest release's day, YYYY-MM-DD
+    released: str | None  # `latest`'s day, YYYY-MM-DD
     checked_at: str | None  # when the check last looked; None with the check off
     error: str | None  # why the latest look failed
     running: bool  # an update holds its lock

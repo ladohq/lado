@@ -208,10 +208,11 @@ fixes for the RC are merged, each released as the next RC; nothing enforces the 
 On the human's "ok": `uv version X.Y.Z`, CHANGELOG.md's heading dated, commit `Release
 X.Y.Z`, CI green, tag `vX.Y.Z`; the probe and the live tests are not run again. The Release
 workflow checks the tag against the package version, then `scripts/release_check.py`
-(a checkout with every tag, `fetch-depth: 0`): an `X.Y.0` without an RC tag, or a final that
-differs from its last RC (the highest N) in more than CHANGELOG.md, pyproject.toml's
-`version` line and the `lado` package's in uv.lock (a dependency's is refused), is refused with nothing published (a new RC is the way on);
-then it builds with `make dist` and publishes to PyPI.
+(a checkout with every tag, `fetch-depth: 0`): an `X.Y.0` without an RC tag, or a final
+that differs from its last RC (the highest N) in more than CHANGELOG.md, pyproject.toml's
+`version` line and the `lado` package's in uv.lock (a dependency's is refused), is refused
+with nothing published (a new RC is the way on); then it builds with `make dist` and
+publishes to PyPI.
 CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; an RC adds no
 heading, and the final's commit puts the date in its place.
 
@@ -255,9 +256,10 @@ fixes and docs only: no new feature, no API or schema change.
     `LADO_HOME/update-check.json`, a look at most once per `CHECK_EVERY` and
     `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`, `lado doctor` and the
     UI's `GET /api/update` alike; the file keeps the kind it looked for, `pre`, and one of
-    the other kind, or without the key for a pre-release, is stale; `LADO_NO_UPDATE_CHECK=1`:
-    no look and no line), the installer (`installer`: by this LADO's `sys.prefix`, a uv tool with
-    `uv-receipt.toml` or pipx with `pipx_metadata.json` of lado from an index, else None,
+    the other kind, or without the key for a pre-release, is stale;
+    `LADO_NO_UPDATE_CHECK=1`: no look and no line), the installer (`installer`: by this
+    LADO's `sys.prefix`, a uv tool with `uv-receipt.toml` or pipx with
+    `pipx_metadata.json` of lado from an index, else None,
     also for an editable, folder, git or URL install of lado; its `command` installs
     exactly the version, `uv tool install lado==X` with the receipt's `--python` and
     `--with` again, never `uv tool upgrade`; it refreshes lado's index entry (uv

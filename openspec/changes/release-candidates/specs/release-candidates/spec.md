@@ -77,9 +77,10 @@ history before it builds, and SHALL publish nothing when it fails. For a final t
 release candidate: tag vX.Y.0rc1 first`), and, when such tags exist, SHALL compare the
 final tag's commit with the commit of the RC tag of the highest N and fail when a file
 other than `CHANGELOG.md`, `pyproject.toml` and `uv.lock` differs, a changed line of
-`pyproject.toml` is not a `version = "…"` line, or a changed line of `uv.lock` is not the
-`version = "…"` line of the `lado` package's own block (a dependency's version is refused),
-naming each such file or line. A pre-release tag and a patch tag without RC tags SHALL pass.
+`pyproject.toml` is not a `version = "…"` line, or a changed line of `uv.lock` is not
+the `version = "…"` line of the `lado` package's own block (a dependency's version is
+refused), naming each such file or line. A pre-release tag and a patch tag without RC
+tags SHALL pass.
 
 #### Scenario: A final release after its release candidate
 - **WHEN** `v0.37.0` points to a commit that differs from `v0.37.0rc2`'s only in

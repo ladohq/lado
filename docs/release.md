@@ -38,8 +38,9 @@ in section 6 catches a mistake before it is published.
 The human, on the RC:
 
 - A clean install in a home of its own: `LADO_HOME=$(mktemp -d) LADO_TMUX_SOCKET=lado-rc
-  uvx --from lado==X.Y.ZrcN lado doctor`, then with the same variables `lado start` of a
-  scratch repository and `lado stop`.
+  uvx --from lado==X.Y.ZrcN lado doctor`, then with the same variables `uvx --from
+  lado==X.Y.ZrcN lado start <scratch repository>` and `uvx --from lado==X.Y.ZrcN lado stop
+  <its session>` (a bare `lado` is the human's installed final, not the RC).
 - The upgrade of the human's own LADO from the last final with a session running:
   `lado update X.Y.ZrcN`. The migration when the schema moved, the sessions resumed, the
   UI server back; `update.log` read.

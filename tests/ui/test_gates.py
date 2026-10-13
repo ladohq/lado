@@ -188,6 +188,20 @@ def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, s
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session).get_by_role("tabpanel")
     expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+    # The re-ask below is a notice from outside any turn: the end of a supervisor's turn
+    # still to come would mark it missing. So first the turn on the gate's own request,
+    # the last message queued to it, must have ended.
+    agent_helpers.wait_for(
+        lambda: state.get_gate(1).recommendation_state == state.REC_MISSING,
+        "gate #1's request handled",
+        session,
+    )
+    queued = [
+        m.summary
+        for m in state.list_messages(session)
+        if m.recipient == "supervisor" and m.state in (state.PENDING, state.SENT)
+    ]
+    assert queued == []
     state.ask_recommendation(session, state.GATE, 1, None, "")  # asked again
     card.locator("form.answer").scroll_into_view_if_needed()
     block = card.get_by_role("region", name="Supervisor's recommendation")

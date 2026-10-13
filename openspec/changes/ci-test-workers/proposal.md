@@ -9,8 +9,8 @@ each failing test passes alone:
   (`[fake]`, `[fake-stop]`): the batch ends `typed` instead of `hook_output`;
 - `tests/integration/test_agent_liveness.py::test_stopping_a_session_tells_no_one_and_counts_what_it_dropped`:
   its 30 s wait times out;
-- `tests/integration/test_terminal_socket.py::test_control_takes_input_and_resize`: input
-  is lost;
+- `tests/test_terminal_socket.py::test_control_takes_input_and_resize` (a unit test with a
+  real tmux and pty): input is lost;
 - `tests/ui/test_gates.py::test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment`:
   the element is not in the viewport;
 - `web/src/Launch.test.tsx:216` (vitest, inside `make dist`).
@@ -20,7 +20,9 @@ Cause: CI runs every pytest layer with `-n auto`, which on GitHub's public
 agents, hooks, `lado mcp` and session loop with LADO's timers cut short
 (`LADO_LOOP_INTERVAL=0.25`, `LADO_RETRY_DELAYS=2,0.5,0.5`, 30 s waits): four of them at
 once on four cores starve each other's processes past those timers. A UI test adds a
-Chromium and a `lado server` to that. The unit tests run in process and do not race.
+Chromium and a `lado server` to that. The unit tests run mostly in process and stay
+`-n auto`: their one timing flake above (`tests/test_terminal_socket.py`) is left to the
+later task that stabilises the flaky tests (Out of scope).
 
 The flakes block 0.37.0rc2: main is frozen for 0.37.0, and the final must be the code of
 its last RC (docs/release.md), so the fix lands on main before rc2.
@@ -93,7 +95,8 @@ AGENTS.md line about CI.
   runs do; `-n 1` would still start a worker process for nothing.
 - `-n 2` for the UI tests, as the task says: a Chromium and a server per worker on four
   cores leave room for both; serial UI would add several minutes for little.
-- The unit tests keep `-n auto`: in-process, no timers that race.
+- The unit tests keep `-n auto`: mostly in process; serial they would take many minutes
+  more, and their one timing flake (`tests/test_terminal_socket.py`) is the later task's.
 - The pinning test reads the workflow's YAML as `tests/test_ci_workflow.py` already does
   for the job `smoke`, and compares the `run` lines of jobs `check` and `ui` that start
   with `uv run pytest` as a list, so an added or reordered pytest step fails it too.

@@ -158,8 +158,9 @@ the UI e2e tests (on two workers, `-n 2`), and in its job `smoke` the smoke test
 and macOS, one cell per (system, provider), none stopping the others. The worker counts are
 for GitHub's 4-vCPU runners, where `-n auto` is four workers: four integration tests at
 once (each its own tmux, agents and session loop), or four UI tests (each with a Chromium
-and a `lado server`), starve each other past LADO's short test timers; the unit tests run in
-process and do not race (`tests/test_ci_workflow.py` pins the three commands). A cell is
+and a `lado server`), starve each other past LADO's short test timers; the unit tests run
+mostly in process and keep `-n auto` (`tests/test_ci_workflow.py` pins the three
+commands). A cell is
 `scripts/smoke_ci.py run <provider> <out>`: it installs the CLI with `npm install -g
 --prefix ~/.local` at its pin, runs `uv run pytest -m smoke -n0 -v -k <provider>` into
 `<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;

@@ -29,7 +29,7 @@ the repository's style, `(LAD-32)` at the end).
   it). `lado.__version__` is read inside functions.
 - Files (D2): `LADO_HOME/errors.jsonl` (+ `.1`), `LADO_HOME/telemetry/{consent.json,id,
   sent.json,dropped,send.lock,outbox/}`; journal, consent and id are mode 600.
-- Constants: `JOURNAL_MAX = 1 << 20`, `OUTBOX_MAX = 200`, `SEND_TIMEOUT = 10`,
+- Constants: `JOURNAL_MAX = 1 << 20`, `OUTBOX_MAX = 200`, `SEND_TIMEOUT = 2.0` (as `update.CHECK_TIMEOUT`), `SEND_DEADLINE = 30`,
   `RETRY_AFTER = 15 * 60`, `REPORT_EVERY = 24 * 3600`, `KICK_EVERY = 10 * 60`,
   `FIELDS_VERSION = 1`, `ENDPOINT = "https://eu.i.posthog.com/batch/"`,
   `PROJECT_KEY = ""` (the human sets it before the release), `TEST_KEY = "phc_test"`.
@@ -78,7 +78,11 @@ the repository's style, `(LAD-32)` at the end).
 4. An exception whose text, locals or a non-LADO frame's file name hold a home path, a
    session name or a token leaves no trace of them in an event: Task 1's scrub test with
    all three.
-5. Two `lado telemetry send` at once, and a send that dies half way (killed after the
+5. An endpoint that is unreachable or hangs (refused port, 403, a server that accepts and
+   never answers, a DNS lookup that hangs, a TLS error): nothing but `status` and
+   Settings shows it, the sender ends within `SEND_DEADLINE`, and the queue stays bounded:
+   Task 3's unreachable-endpoint tests and Task 4's integration test.
+6. Two `lado telemetry send` at once, and a send that dies half way (killed after the
    post, before the removal): one sends, the other exits 0; the half-done one at worst
    sends an error group twice, never loses it: Task 3's lock and removal-order tests.
 
@@ -297,6 +301,17 @@ def last_sent() -> tuple[str | None, str | None]           # (time of the last g
   - `test_second_sender_exits` (hold the flock in the test; `send()` returns 0 and posts
     nothing);
   - `test_send_off_or_env_off_posts_nothing`;
+  - `test_unreachable_endpoint_is_silent` (parametrize: a closed port; the endpoint
+    answering 403; a socket server that accepts and never answers; `socket.getaddrinfo`
+    monkeypatched to sleep past the deadline, with `SEND_DEADLINE` monkeypatched to 1;
+    an `ssl.SSLError` raised by a monkeypatched opener): `send()` returns 0 within
+    `SEND_DEADLINE` + 1 s, prints nothing to stdout or stderr (`capsys`), keeps the
+    outbox, writes `sent.json`'s `error`, releases the lock;
+  - `test_long_outage_stays_bounded` (`OUTBOX_MAX` 3, ten records and five failed tries
+    → 3 files, `dropped() == 7`, `batch()` holds one `lado_daily` whose `since` is the
+    last good report);
+  - `test_sender_crash_is_journaled_not_queued` (a bug inside `batch`: one
+    `errors.jsonl` line, no outbox file);
   - `test_kick_starts_nothing_when_nothing_due` (monkeypatch the spawn);
   - `test_kick_spawns_detached_when_due` (asserts the argv ends `telemetry send` and
     `start_new_session=True`).
@@ -347,6 +362,10 @@ def last_sent() -> tuple[str | None, str | None]           # (time of the last g
     `telemetry.record("loop", ...)` from the test process, and run `lado telemetry send`
     as a subprocess. Assert the endpoint got one batch with a `$exception` and a
     `lado_daily`, and that the outbox is empty.
+  - integration `test_start_with_unreachable_endpoint`: with `telemetry_on` and
+    `LADO_TELEMETRY_URL` at a closed local port, `lado start` of a repo exits 0 and its
+    stdout and stderr hold no word of the endpoint; `lado telemetry send` run after it
+    exits 0 and `lado telemetry status` shows `last try failed:`.
 - [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `uv run pytest tests/test_loop.py
   -n auto` and `uv run pytest -m integration -n auto tests/integration/test_telemetry.py`:
   PASS.

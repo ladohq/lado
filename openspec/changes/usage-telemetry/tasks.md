@@ -21,7 +21,8 @@ steps). Design doc: `docs/superpowers/specs/2026-10-13-usage-telemetry-design.md
 ## 3. Report, sender and CLI (D7–D11)
 
 - [ ] 3.1 `report`, `batch`, `send`, `kick`, `_post` (PostHog batch, no profiles, no
-  GeoIP); `state.spawned_provider`, `state.usage_counts`; the `telemetry_endpoint`
+  GeoIP; 2 s per network operation, ended after 30 s, silent on any failure, bounded
+  while unreachable); `state.spawned_provider`, `state.usage_counts`; the `telemetry_endpoint`
   fixture. Check: `uv run pytest tests/test_telemetry.py tests/test_state.py -n auto`.
 - [ ] 3.2 `lado telemetry status|on|off|show|send`, the question of `lado start` and
   `lado ui`, the kick after a human's command. Check: `uv run pytest
@@ -30,7 +31,7 @@ steps). Design doc: `docs/superpowers/specs/2026-10-13-usage-telemetry-design.md
 ## 4. Kicks (D7)
 
 - [ ] 4.1 The session loop and the UI server kick every `KICK_EVERY`; integration send to
-  a local endpoint. Check: `uv run pytest tests/test_loop.py -n auto`, `uv run pytest -m
+  a local endpoint, and `lado start` with an unreachable one. Check: `uv run pytest tests/test_loop.py -n auto`, `uv run pytest -m
   integration -n auto tests/integration/test_telemetry.py`.
 
 ## 5. API (D13)

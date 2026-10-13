@@ -138,9 +138,21 @@ this as they are.
     A hook never kicks: it only queues, so its time limit is never at risk.
   - `lado telemetry send` takes an exclusive `flock` on `telemetry/send.lock` without
     waiting (a second one exits 0). It writes the attempt's time first, builds the batch
-    (the report when due, the outbox's groups) and posts it within `SEND_TIMEOUT` (10 s).
+    (the report when due, the outbox's groups) and posts it with `SEND_TIMEOUT` (2 s, as `update.CHECK_TIMEOUT`) per socket operation and no retry inside the try; the process sets `signal.alarm(SEND_DEADLINE)` (30 s) first, as `urllib`'s timeout does not cover DNS resolution, so a hanging name lookup ends it too and frees the lock.
     On 2xx it removes what it sent and writes `sent.json`; on any failure it keeps them
     and writes the reason to `sent.json` (shown by `status`).
+- **D7a. An unreachable endpoint is invisible to the user.** No process but the
+  detached sender opens a connection; `kick` only checks files and starts a process
+  (a failed start is swallowed: the next kick tries again). The sender catches every
+  `OSError`, `urllib.error.URLError`, `http.client.HTTPException`, `ssl.SSLError`,
+  timeout and non-2xx answer (and any other exception: recorded in the local journal
+  only, never queued, so a broken sender cannot feed itself), prints nothing (its
+  output is `/dev/null`) and writes the reason to `sent.json`. The bounds hold however
+  long it lasts: the outbox's `OUTBOX_MAX` with the drop count (D6), one report whose
+  window starts at the last report that went through (D8), one try per `RETRY_AFTER`
+  (15 min), each within `SEND_DEADLINE`. The same holds for any endpoint, PostHog or the
+  human's own (`ENDPOINT`, `LADO_TELEMETRY_URL`). Proxies: `urllib` follows the
+  standard `https_proxy` / `no_proxy` variables; nothing more.
 - **D8. The daily report is derived from `lado.db` when it is built.** The window runs
   from `sent.json`'s last report, or 24 h back for the first one, to now. Fields:
   - `install`, `lado`, `python`, `os` (`platform.system().lower()`), `arch`;
@@ -230,6 +242,7 @@ this as they are.
   interactive user once, which was the human's choice over opt-out.
 - A user's own fork or editable install sends as `installer: dev`, by its owner's choice
   (#4214); PostHog filters it out.
+- A user whose network blocks PostHog never learns of it unless they look at `lado telemetry status` or Settings: the price of never disturbing them; the maintainer sees fewer reports from such places.
 - PostHog is a third-party processor. `docs/telemetry.md` names it, its region, and what
   it receives. A later move to another endpoint changes `_post` only, plus
   `FIELDS_VERSION` if the fields change.

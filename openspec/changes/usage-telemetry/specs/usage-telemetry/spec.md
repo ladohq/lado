@@ -126,7 +126,8 @@ count is sent with the next report.
 #### Scenario: Offline
 - **WHEN** a send fails because the network is down
 - **THEN** the report and the errors stay queued, `lado telemetry status` names the
-  failure, and the next try comes no sooner than 15 minutes later
+  failure, and the next try comes no sooner than 15 minutes later (the requirement on an
+  unreachable endpoint says the rest)
 
 #### Scenario: The same error a hundred times
 - **WHEN** the same hook error is queued 100 times in a day
@@ -135,6 +136,43 @@ count is sent with the next report.
 #### Scenario: Two senders at once
 - **WHEN** the loop and a CLI command start a sender at the same moment
 - **THEN** one of them sends and the other exits without sending
+
+### Requirement: An unreachable endpoint changes nothing for the user
+
+When the statistics endpoint cannot be reached or refuses (no network, DNS failure, a
+proxy, a TLS error, a firewall or a block by region, a timeout, any non-2xx answer), and
+whether it is PostHog or another endpoint set by `LADO_TELEMETRY_URL` or a later
+`ENDPOINT`, nothing a user sees or runs SHALL change: no CLI command, hook, `lado mcp`
+tool, session loop pass or UI request SHALL wait for the network, print or show an error
+about it, or end differently. Only the detached sender talks to the endpoint, each try
+SHALL give up after `SEND_TIMEOUT` (2 seconds, as the update check's
+`update.CHECK_TIMEOUT`) per network operation and its whole process SHALL end within
+`SEND_DEADLINE` (30 seconds) whatever the network does, DNS included; a failed try SHALL
+be followed by the next one no sooner than 15 minutes later, with no retries inside a
+try. What waits SHALL stay bounded while the endpoint stays unreachable: at most 200
+queued errors (further ones only counted), and one pending daily report whose window
+grows from the last report that went through. The failure SHALL be kept only for
+`lado telemetry status` (`last try failed: <reason>`) and the Settings section's line.
+
+#### Scenario: Offline laptop
+- **WHEN** the network is down and the human runs `lado start ~/work/app` with sending on
+- **THEN** the session starts as fast as without statistics, nothing about the network
+  is printed, and `lado telemetry status` says `last try failed: <reason>`
+
+#### Scenario: Blocked by region or firewall
+- **WHEN** every connection to the endpoint is refused or answered 403 for a month
+- **THEN** LADO works as usual, the queue holds at most 200 errors and one report, and a
+  try comes at most every 15 minutes, each over within 30 seconds
+
+#### Scenario: DNS that hangs
+- **WHEN** resolving the endpoint's name never answers
+- **THEN** the sender's process ends after 30 seconds, releases its lock, and no other
+  LADO process waited for it
+
+#### Scenario: The endpoint comes back
+- **WHEN** a send succeeds after two days offline
+- **THEN** one daily report covering the two days and the queued errors grouped by
+  fingerprint are posted, and the queue is empty
 
 ### Requirement: Tests never send
 

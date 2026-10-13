@@ -65,6 +65,15 @@ When a later LADO adds a kind of data, the question comes again and names it.
 exception of any LADO process, with its version and traceback. It and `hooks.log`,
 `loop.log` and `server.log` stay under 1 MiB plus one rotated `.1` file.
 
+**When PostHog cannot be reached** (no network, DNS, proxy, TLS, a firewall or a block
+by region, a timeout, an error answer), and the same for any other endpoint: the user
+notices nothing. No command, hook, tool, loop pass or UI request waits for the network
+or prints an error about it; only the detached sender tries, 2 s per network operation,
+ended after 30 s whatever happens (DNS included), at most every 15 minutes. What waits
+stays bounded (200 errors, then only counted; one report whose window grows). `lado
+telemetry status` and the Settings line say `last try failed: <reason>`; once the
+endpoint answers again, one report and the grouped errors go out.
+
 ## What is sent, and where
 
 PostHog Cloud EU (`https://eu.i.posthog.com/batch/`), with no person profiles and no
@@ -104,7 +113,7 @@ See `openspec/changes/usage-telemetry/design.md` D1–D14. In short:
   called by the CLI after a human's command, by the loop every 10 minutes, and by the
   server at its start and every 10 minutes. A hook never sends.
 - The sender runs under a flock. It builds the daily report from `lado.db` at send time,
-  groups the outbox by fingerprint, and posts one batch with a 10 s timeout. On failure
+  groups the outbox by fingerprint, and posts one batch (2 s per network operation, the process ended after 30 s). On failure
   it keeps everything and tries again after 15 minutes.
 
 ## Tests
@@ -117,6 +126,7 @@ See `openspec/changes/usage-telemetry/design.md` D1–D14. In short:
 | the CLI question and `lado telemetry` | unit | `tests/test_cli_telemetry.py` |
 | scrubbing (path, name, token never in an event) | unit | `tests/test_telemetry.py` |
 | sender: lock, batch, grouping, failure keeps, retry gap, report window | unit, local HTTP server | `tests/test_telemetry.py` |
+| unreachable endpoint: refused port, 403, a server that never answers, a hanging DNS (monkeypatched `getaddrinfo`), a TLS error; CLI command unaffected and silent | unit; integration for `lado start` with an unreachable `LADO_TELEMETRY_URL` | `tests/test_telemetry.py`, `tests/integration/test_telemetry.py` |
 | the loop's kick reaches a local endpoint | integration | `tests/integration/test_telemetry.py` |
 | API and SystemInfo/report line | unit (test client) | `tests/test_server_system.py`, `tests/test_doctor.py` |
 | banner, Settings section, panel row | vitest | `web/src/Telemetry.test.tsx`, `SystemPanel.test.tsx` |

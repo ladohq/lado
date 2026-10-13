@@ -39,6 +39,9 @@ no one but the user sees it, and `lado forget` deletes it with the session.
   - Never a path, repository, session or agent name, message, prompt, argument, key, or an
     exception's text.
   - `lado telemetry show` and the UI print exactly what the next send would carry.
+- **An unreachable endpoint changes nothing for the user**: only a detached sender
+  talks to it, with a short timeout and a hard end, silently; what waits is bounded;
+  the failure shows only in `lado telemetry status` and Settings.
 - **The consent covers a list of fields** (`docs/telemetry.md`). When a later LADO sends a
   new kind of data, it asks again and names what is new.
 - `lado telemetry status` and the System panel's new row `Statistics` say whether it
@@ -108,6 +111,12 @@ hidden `send`), the consent question of `lado start` and `lado ui`, the API (`GE
   never delays a command, a hook or a loop pass; a failed send keeps them for the next try;
   with the choice off, the queue is emptied and nothing is sent; with `DO_NOT_TRACK=1` or
   `LADO_TELEMETRY=0` nothing is queued or sent whatever the choice.
+- AC-6a: With the endpoint unreachable or refusing (network down, DNS, proxy, TLS, a
+  block by region, a timeout, a non-2xx answer), every CLI command, hook, MCP tool, loop
+  pass and UI request behaves and takes as long as without statistics and shows nothing
+  about it; each try ends within 30 seconds (2 seconds per network operation), tries
+  come at most every 15 minutes, and the queue stays within 200 errors and one report;
+  `lado telemetry status` and Settings name the last failure.
 - AC-7: No event carries a path, a repository, session or agent name, a message, a
   prompt, a command's argument or an exception's text; an error's stack names only frames
   of LADO's own package.

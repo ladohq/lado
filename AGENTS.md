@@ -210,32 +210,10 @@ from DNS.
 `windows-11-arm` runs only with `-f wsl=false -f smoke=false`: setup-wsl's Ubuntu image is
 amd64 only.
 
-Release ([docs/release.md](docs/release.md): the steps and the human's checklist): every
-minor release `X.Y.0`, and a patch at the human's choice, is first a release candidate:
-`uv version X.Y.ZrcN`, commit `Release candidate X.Y.ZrcN` on main and push it; CI is green
-on that commit, the smoke on Linux and macOS with it. Run the Windows probe on it (`gh
-workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke included)
-and wait for it to be green (`gh run watch <id> --exit-status`). Run `make test-live`
-locally for every provider, Claude Code with the human's yes, reruns by lado-checks' flaky
-rule; then push tag `vX.Y.ZrcN` (PEP 440, no dash): PyPI gets a pre-release, which only
-`lado update X.Y.ZrcN` (or a LADO on an RC) installs. main is frozen until the final: only
-fixes for the RC are merged, each released as the next RC; nothing enforces the freeze.
-On the human's "ok": `uv version X.Y.Z`, CHANGELOG.md's heading dated, commit `Release
-X.Y.Z`, CI green, tag `vX.Y.Z`; the probe and the live tests are not run again. The Release
-workflow checks the tag against the package version, then `scripts/release_check.py`
-(a checkout with every tag, `fetch-depth: 0`): an `X.Y.0` without an RC tag, or a final
-that differs from its last RC (the highest N) in more than CHANGELOG.md, pyproject.toml's
-`version` line and the `lado` package's in uv.lock (a dependency's is refused), is refused
-with nothing published (a new RC is the way on); then that the telemetry endpoint's region
-accepts LADO's project token (`scripts/check_telemetry.py`; locally `uv run python
-scripts/check_telemetry.py`); then it builds with `make dist` and publishes to PyPI.
-CHANGELOG.md: each change users see adds a line under `## X.Y.Z (unreleased)`; an RC adds no
-heading, and the final's commit puts the date in its place.
-
-Versions (0.x): bump the minor (0.7.0) for new features, an MCP tool or CLI change that older
-agents cannot use, or a database schema migration; running sessions must be restarted after
-such an upgrade (`lado update` does both: see `update.py` below). Bump the patch (0.7.1) for
-fixes and docs only: no new feature, no API or schema change.
+Release and versions: every minor release is first a release candidate, and main is frozen
+until the final (only fixes for the RC). Each change users see adds a line to CHANGELOG.md
+under `## X.Y.Z (unreleased)`. Bump the minor for a feature, an MCP tool or CLI change or a
+schema migration, the patch for fixes and docs only. The rest: [docs/release.md](docs/release.md).
 
 ## Layout
 
@@ -963,10 +941,10 @@ fixes and docs only: no new feature, no API or schema change.
   `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke, and
   the CLIs' pins (Commands); standard library only.
   `scripts/release_check.py`: the Release workflow's check that a final release is the code
-  of its last release candidate (Commands, Release; docs/release.md); standard library only.
+  of its last release candidate (docs/release.md); standard library only.
   `scripts/check_telemetry.py`: the Release workflow's check that the region of
   `telemetry.ENDPOINT` accepts `telemetry.PROJECT_TOKEN` (one `POST /flags/?v=2` of its
-  host, no event; Release; docs/release.md); standard library and `lado.telemetry` only.
+  host, no event; docs/release.md); standard library and `lado.telemetry` only.
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
@@ -1719,12 +1697,8 @@ Six layers; each change gets tests at the lowest layer that can catch its bugs:
    before teardown. A passing test keeps nothing; the folder is never cleaned by the tests.
    A timed-out wait names what it waited for and the agents' statuses and last messages.
 
-Before a release, on main at the release candidate's commit: CI is green (main got its
-`make check` at each merge; the smoke on Linux and macOS is in CI), and so is the Windows
-probe (`gh workflow run windows-shell.yml --ref main -f runner=windows-latest`, the smoke
-in WSL with it); locally `make test-live` passes for every provider, Claude Code with the
-human's yes. The final's commit, the last RC's code, needs only CI green (Release, above;
-a patch without an RC: all of these on its release commit).
+What must be green before a release (CI, the Windows probe, `make test-live`):
+[docs/release.md](docs/release.md).
 
 ## Design principles
 

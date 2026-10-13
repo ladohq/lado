@@ -1,11 +1,29 @@
 # Releasing LADO
 
+This file is the one description of how LADO is versioned and released: the version
+rules, CHANGELOG.md, the steps, the human's checklist and what the Release workflow
+checks. AGENTS.md only points here.
+
 A minor release is first published as a release candidate (RC): a PyPI pre-release
 `X.Y.0rcN` that the human installs on their own LADO and works with before anyone else
 gets it. Users are never offered an RC: `pip install lado`, `uv tool install lado`,
 `lado update`, the daily check and the System panel take final releases only. A LADO that
 runs an RC is offered newer RCs and the final, and says it is a pre-release (`lado doctor`,
 the System panel's `pre-release` pill).
+
+## Versions
+
+LADO is 0.x. Bump the minor (0.7.0) for a new feature, an MCP tool or CLI change that
+older agents cannot use, or a database schema migration; running sessions must be
+restarted after such an upgrade (`lado update` stops and resumes them). Bump the patch
+(0.7.1) for fixes and docs only: no new feature, no API or schema change.
+
+## CHANGELOG.md
+
+Each change users see adds a line under `## X.Y.Z (unreleased)` in the pull request that
+makes it (add that heading on top when it is missing; X.Y.Z is the next version by the
+rules above). An RC adds no heading: its changes are the `(unreleased)` section. The
+final's commit puts the date in place of `(unreleased)`.
 
 ## 1. When an RC is needed
 
@@ -20,7 +38,9 @@ the System panel's `pre-release` pill).
 2. CI is green on that commit, the smoke on Linux and macOS with it.
 3. The Windows probe on it is green: `gh workflow run windows-shell.yml --ref main -f
    runner=windows-latest` (the smoke included), then `gh run watch <id> --exit-status`.
-4. `make test-live` locally for every provider, Claude Code with the human's yes.
+4. `make test-live` locally for every provider, Claude Code with the human's yes; a
+   failed test is rerun by the flaky rule of the checks (a pass on rerun is a flake, noted,
+   no code changed for it).
 5. Push the tag `vX.Y.ZrcN`. Its spelling is PEP 440's, no dash (`v0.37.0rc1`, never
    `v0.37.0-rc1`): the workflow compares the tag with `uv version --short`. The Release
    workflow publishes `X.Y.ZrcN` to PyPI as a pre-release.
@@ -61,12 +81,14 @@ There is no fixed soak time: the final follows the human's "ok".
    `make dist` and publishes to PyPI.
 
 The Windows probe and the live tests are not run again: the code is the last RC's, which
-they ran on.
+they ran on. A patch released without an RC gets all of section 2's checks (CI, the
+Windows probe, `make test-live`) on its release commit before its tag.
 
 ## 6. What the workflow refuses
 
-Before it builds, the Release workflow runs `scripts/release_check.py <tag>` on a checkout
-with every tag and the history. A tag that is no final `vX.Y.Z` (an RC) passes. A final
+First the Release workflow checks that the tag is `v` and the package's version
+(`uv version --short`). Then, before it builds, it runs `scripts/release_check.py <tag>`
+on a checkout with every tag and the history (`fetch-depth: 0`). A tag that is no final `vX.Y.Z` (an RC) passes. A final
 fails, and nothing is published, when:
 
 - it is `vX.Y.0` and no `vX.Y.0rcN` tag exists: `vX.Y.0 needs a release candidate: tag

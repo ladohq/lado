@@ -225,13 +225,12 @@ def clear() -> None:
         (folder() / "dropped").unlink()
 
 
-def bounded_append(path: Path, text: str, limit: int = JOURNAL_MAX, mode: int = 0o644) -> None:
-    """Append `text` to `path` in one write, first renaming a file over `limit` bytes to
-    `<name>.1` (replacing an older one). Never raises: a log must not break its writer."""
+def bounded_append(path: Path, text: str, limit: int | None = None, mode: int = 0o644) -> None:
+    """Append `text` to `path` in one write, first renaming a file over `limit` bytes
+    (JOURNAL_MAX) to `<name>.1` (replacing an older one). Never raises: a log must not break
+    its writer."""
     try:
-        with contextlib.suppress(FileNotFoundError):
-            if path.stat().st_size > limit:
-                os.replace(path, path.with_name(path.name + ".1"))
+        rotate(path, limit)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, mode)
         try:
             os.write(fd, text.encode())
@@ -241,12 +240,21 @@ def bounded_append(path: Path, text: str, limit: int = JOURNAL_MAX, mode: int = 
         pass
 
 
-def trim(path: Path, limit: int = JOURNAL_MAX) -> None:
+def rotate(path: Path, limit: int | None = None) -> None:
+    """Rename `path` to `<name>.1` (replacing an older one) when it is over `limit` bytes
+    (JOURNAL_MAX). Never raises."""
+    with contextlib.suppress(OSError):
+        if path.stat().st_size > (JOURNAL_MAX if limit is None else limit):
+            os.replace(path, path.with_name(path.name + ".1"))
+
+
+def trim(path: Path, limit: int | None = None) -> None:
     """Bound a log another process keeps open with O_APPEND (the UI server's output): over
-    `limit`, copy it to `<name>.1` and empty it in place, so that process's next write
-    lands at its new end. A line written during the copy may be lost. Never raises."""
+    `limit` (JOURNAL_MAX), copy it to `<name>.1` and empty it in place, so that process's
+    next write lands at its new end. A line written during the copy may be lost. Never
+    raises."""
     try:
-        if path.stat().st_size <= limit:
+        if path.stat().st_size <= (JOURNAL_MAX if limit is None else limit):
             return
         rotated = path.with_name(path.name + ".1")
         temporary = rotated.with_name(rotated.name + ".tmp")

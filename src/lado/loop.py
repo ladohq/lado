@@ -23,7 +23,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import IO
 
-from lado import providers, state, tmux
+from lado import providers, state, telemetry, tmux
 
 
 def interval_from(value: str | None) -> float:
@@ -158,7 +158,7 @@ def run(session: str, interval: float | None = None) -> int:
         return 0  # the session has its loop
     with lock:
         log(session, f"loop started, pid {os.getpid()}, a pass every {interval:g} s")
-        errors = RepeatedErrors(lambda text: log(session, text))
+        errors = RepeatedErrors(lambda text: log(session, text), session=session)
         missing: set[str] = set()  # the agents whose window the pass before did not find
         while True:
             try:
@@ -191,20 +191,24 @@ class RepeatedErrors:
     and as a count when passes work again or another error comes. The session loop's and
     the UI server's change feed (lado.server.feed)."""
 
-    def __init__(self, write: Callable[[str], None]):
+    def __init__(
+        self, write: Callable[[str], None], where: str = "loop", session: str | None = None
+    ):
         self.write = write
+        self.where, self.session = where, session  # for the journal (lado.telemetry)
         self.last: str | None = None  # the error of the latest failing pass, while it repeats
         self.unlogged = 0  # repeats of it since its latest line
         self.noted_at = 0.0
 
     def failed(self) -> None:
-        """Log the error being handled."""
+        """Log the error being handled, and journal it once while it repeats."""
         error = "".join(traceback.format_exception_only(*sys.exc_info()[:2])).strip()
         now = time.monotonic()
         if error != self.last:
             self.flush()
             self.last, self.noted_at = error, now
             self.write(f"error in a pass, the loop goes on:\n{traceback.format_exc()}")
+            telemetry.record(self.where, sys.exc_info()[1], session=self.session)
             return
         self.unlogged += 1
         if now - self.noted_at >= REPEAT_NOTE:
@@ -227,6 +231,7 @@ class RepeatedErrors:
 
 def log(session: str, text: str) -> None:
     """A line in LADO_HOME/loop.log; also what undoing a failed start or spawn could not do
-    (lado.runtime). Never raises."""
-    with contextlib.suppress(OSError), open(state.home() / "loop.log", "a") as file:
-        file.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {session}: {text.rstrip()}\n")
+    (lado.runtime). Never raises; bounded (lado.telemetry.bounded_append)."""
+    with contextlib.suppress(OSError):
+        line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {session}: {text.rstrip()}\n"
+        telemetry.bounded_append(state.home() / "loop.log", line)

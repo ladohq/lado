@@ -36,6 +36,7 @@ from lado import (
     runtime,
     self_update,
     state,
+    telemetry,
     terminal,
     update,
 )
@@ -324,6 +325,15 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         """lado.db changed its schema after `database` checked it: state.connect refused it
         and changed nothing. The same 503 as the check's."""
         return JSONResponse({"detail": str(error)}, status_code=503)
+
+    @app.exception_handler(Exception)
+    def unexpected(request: Request, error: Exception) -> PlainTextResponse:
+        """An unexpected exception of a request: journaled by its route's template, never
+        its path with ids (lado.telemetry); the 500 Starlette would answer, and its
+        traceback still goes to server.log."""
+        route = getattr(request.scope.get("route"), "path", None) or "unrouted"
+        telemetry.record(f"server:{route}", error)
+        return PlainTextResponse("Internal Server Error", status_code=500)
 
     @app.get("/api/health")
     def health() -> Health:

@@ -311,7 +311,8 @@ class Hub:
         self._position = 0
         self._derived: dict[Change, object] | None = None
         self._derived_at = 0.0
-        self._errors = loop.RepeatedErrors(log.warning)  # one traceback, then counts
+        # One traceback, then counts; journaled once while it repeats.
+        self._errors = loop.RepeatedErrors(log.warning, where="server:feed")
         self._failures = 0  # failing reads in a row
         self._closed = False  # the server shuts down
 

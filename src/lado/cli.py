@@ -28,6 +28,7 @@ from lado import (
     runs,
     runtime,
     state,
+    telemetry,
     tmux,
 )
 
@@ -1197,7 +1198,7 @@ def main(argv: list[str] | None = None) -> int:
         "kits", help="list, show and check kits; add, update and remove installed ones"
     )
     kits_cmd.set_defaults(func=cmd_kits)
-    kits_sub = kits_cmd.add_subparsers(metavar="<command>")
+    kits_sub = kits_cmd.add_subparsers(dest="sub", metavar="<command>")
     show = kits_sub.add_parser("show", help="what kits combine into: agents, skills, MCP")
     show.add_argument("names", nargs="+", metavar="name")
     _without_arg(show, [])
@@ -1246,7 +1247,7 @@ def main(argv: list[str] | None = None) -> int:
         "marketplaces", help="list, add, remove, enable, disable and update kit marketplaces"
     )
     markets.set_defaults(func=cmd_marketplaces)
-    markets_sub = markets.add_subparsers(metavar="<command>")
+    markets_sub = markets.add_subparsers(dest="sub", metavar="<command>")
     markets_sub.add_parser("list", help="the marketplaces").set_defaults(func=cmd_marketplaces)
     market_add = markets_sub.add_parser("add", help="add a marketplace: a git repository")
     market_add.add_argument("name")
@@ -1304,7 +1305,7 @@ def main(argv: list[str] | None = None) -> int:
         "artifacts", help="list a session's artifacts, show or get one (also when stopped)"
     )
     artifacts_cmd.set_defaults(func=lambda _: artifacts_cmd.print_help() or 0)
-    artifacts_sub = artifacts_cmd.add_subparsers(metavar="<command>")
+    artifacts_sub = artifacts_cmd.add_subparsers(dest="sub", metavar="<command>")
     artifacts_list = artifacts_sub.add_parser("list", help="the session's artifacts")
     artifacts_list.add_argument("session")
     artifacts_list.add_argument("--run", help="only this run's artifacts")
@@ -1439,6 +1440,17 @@ def main(argv: list[str] | None = None) -> int:
         for line in [*lines, *getattr(exc, "__notes__", [])]:
             print(f"lado: {line}", file=sys.stderr)
         return 1
+    except Exception as exc:
+        # Unexpected: journaled (lado.telemetry), then the traceback as before.
+        telemetry.record(f"cli:{_where(args)}", exc)
+        raise
+
+
+def _where(args: argparse.Namespace) -> str:
+    """The command a journal line names: the command, and its subcommand; never an
+    argument."""
+    sub = getattr(args, "sub", None)
+    return f"{args.command} {sub}" if sub else args.command
 
 
 if __name__ == "__main__":

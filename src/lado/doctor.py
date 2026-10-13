@@ -19,6 +19,7 @@ from lado import (
     providers,
     runtime,
     state,
+    telemetry,
     terminal,
     tmux,
     update,
@@ -319,6 +320,16 @@ class System:
     sessions: dict[str, int]  # running, stopped, gone
     check: update.Check | None
     last: update.Result | None
+    statistics: telemetry.State | None = None  # whether LADO sends usage statistics
+
+
+def statistics_line(found: telemetry.State) -> str:
+    """The report's word on usage statistics: on, off, not chosen, or why off."""
+    if found.off_by:
+        return f"off by {found.off_by}"
+    if not found.endpoint:
+        return "off: no endpoint"
+    return found.chosen or "not chosen"
 
 
 def _os_name() -> str:
@@ -396,6 +407,7 @@ def system_info(which: Callable[[str], str | None] = shutil.which) -> System:
         sessions=_session_counts(),
         check=update.check(),
         last=update.read_result(),
+        statistics=telemetry.state(),
     )
 
 
@@ -409,6 +421,7 @@ def report(system: System, open_to_network: bool, up_seconds: float) -> str:
         f"- LADO {system.version} ({installer}), Python {system.python}",
         f"- OS: {system.os} ({system.machine})",
         f"- Update: {_update_line(system.check)}",
+        *([f"- Statistics: {statistics_line(system.statistics)}"] if system.statistics else []),
         f"- Server: {'open to the network' if open_to_network else 'loopback only'}, "
         f"up {_duration(up_seconds)}, schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",

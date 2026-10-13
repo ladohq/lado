@@ -111,6 +111,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Telemetry State
+         * @description Whether LADO sends usage statistics, whether the UI asks (its banner), and how
+         *     the last try went (lado.telemetry). Read once per page: not in the change feed.
+         */
+        get: operations["telemetry_state_api_telemetry_get"];
+        put?: never;
+        /**
+         * Telemetry Choose
+         * @description The human's choice, the same as `lado telemetry on|off`; `off` drops what waits.
+         *     409 while a variable of the server's environment switches it off.
+         */
+        post: operations["telemetry_choose_api_telemetry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Telemetry Preview
+         * @description What the next send posts, as `lado telemetry show` prints it. A plain `def`: it
+         *     runs each agent CLI's --version in a worker thread.
+         */
+        get: operations["telemetry_preview_api_telemetry_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -2294,6 +2341,7 @@ export interface components {
             kits: components["schemas"]["KitFactInfo"][];
             sessions: components["schemas"]["SessionCounts"];
             last: components["schemas"]["UpdateResultInfo"] | null;
+            telemetry: components["schemas"]["TelemetryInfo"];
             /** Report */
             report: string;
         };
@@ -2307,6 +2355,54 @@ export interface components {
             status: components["schemas"]["SessionStatus"];
             /** Repo */
             repo: string;
+        };
+        /** TelemetryChoice */
+        TelemetryChoice: {
+            /**
+             * Choice
+             * @enum {string}
+             */
+            choice: "on" | "off";
+        };
+        /**
+         * TelemetryInfo
+         * @description Whether LADO sends usage statistics and its errors (lado.telemetry.State), whether
+         *     the UI asks (its banner), and how the last try went.
+         */
+        TelemetryInfo: {
+            /** Choice */
+            choice: ("on" | "off") | null;
+            /** On */
+            on: boolean;
+            /** Ask */
+            ask: boolean;
+            /** Off By */
+            off_by: string | null;
+            /** Endpoint */
+            endpoint: boolean;
+            /** Last Sent */
+            last_sent: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Waiting */
+            waiting: number;
+            /** New Fields */
+            new_fields: string[];
+        };
+        /**
+         * TelemetryPreview
+         * @description What the next send posts (lado.telemetry.preview): the daily report, also when it
+         *     is not due yet, and the queued errors, one event per kind.
+         */
+        TelemetryPreview: {
+            /** Report */
+            report: {
+                [key: string]: unknown;
+            };
+            /** Errors */
+            errors: {
+                [key: string]: unknown;
+            }[];
         };
         /** TmuxInfo */
         TmuxInfo: {
@@ -2670,6 +2766,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
+    telemetry_state_api_telemetry_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryInfo"];
+                };
+            };
+        };
+    };
+    telemetry_choose_api_telemetry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelemetryChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    telemetry_preview_api_telemetry_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryPreview"];
                 };
             };
         };

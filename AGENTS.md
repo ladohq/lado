@@ -591,7 +591,9 @@ fixes and docs only: no new feature, no API or schema change.
     also `agent: supervisor` in a kit with no supervisor of its own. A waiting run has one open gate
     record (`state.Gate`); `runs.answer` is the only way to answer it, called from
     `lado answer` and the UI server's API, never from an MCP tool; the answering surface
-    (popup, CLI, UI) stays outside that core.
+    (popup, CLI, UI) stays outside that core. A gate that opens asks the lead for its
+    recommendation (`runs._ask_recommendation`, `runs.recommendation_request`; How agents
+    talk), and `runs.resume` asks again for each open gate without a given one.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
     `list_agents`, `flow_advance`, `flow_status`, `write_artifact`, `read_artifact`,
     `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to
@@ -599,8 +601,9 @@ fixes and docs only: no new feature, no API or schema change.
     its facts, when `artifacts.read` gives it as `Shown`; the supervisor also gets
     `spawn_worker`, `finish_worker`, `flow_start`, `flow_cancel` and `start_session`,
     `COMMAND_TOOLS`, unless it is read-only: then they are not listed, and a call of one
-    is refused as `role <r> is read-only: <tool> is not available`). No tool answers a
-    gate or a question.
+    is refused as `role <r> is read-only: <tool> is not available`; and `recommend`, the
+    lead's own, read-only or not: `runtime.recommend`). No tool answers a gate or a
+    question.
   - `artifacts.py`: artifacts, named documents of a session (contract:
     [docs/design/artifacts.md](docs/design/artifacts.md)); the only module the rest of LADO
     calls for them (MCP tools, CLI, runs, runtime, doctor, the UI server): names (`NAME`,
@@ -714,6 +717,16 @@ fixes and docs only: no new feature, no API or schema change.
     (`AGENTS_READ_ONLY`; written at each launch, resume included; Read-only roles, below),
     and the events `repo_changed` (detail: the changes, one per line) and
     `repo_check_failed` (detail: why) are its turns' repository checks.
+    From schema 26 a gate and a question (`RECOMMENDATION`, six columns on `gates` and
+    `messages`) keep the lead's recommendation: `recommendation_state` (NULL never asked,
+    `asked`, `given`, `missing`; `REC_*`), its text, `recommended_choice`,
+    `recommendation_disagrees`, `recommended_at` and `recommendation_request`, the id of
+    the request from `lado` (NULL for a notice). `ask_recommendation` queues the request
+    and marks `asked` in one transaction, `recommend` is one conditional update on an open
+    item, every transaction that closes a gate or a question drops its request still
+    `pending` (`_drop_requests`), `recommendations_missed` is the lead's turn-end check, and
+    the lead's end and a stop mark every `asked` one `missing` (`_missed`). The existing
+    triggers journal them: the feed sends the gate or message again.
   - `fingerprint.py`: a read-only agent's git fingerprint (Read-only roles, below): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's
@@ -1063,6 +1076,33 @@ fixes and docs only: no new feature, no API or schema change.
   agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
   after it got them (by `sent_at`, when each was handed over, not by id), else `missing`,
   which the chat shows as "replied only in its terminal".
+- The lead recommends on each question to the human, a core mechanism of every kit and
+  provider: when a flow gate opens (approval, choice, loop limit) or an agent other than
+  the lead asks the human (`ask_human`), LADO asks the lead with one message from `lado`,
+  `recommend on gate #<id>: <run> at <state>` or `recommend on question #<id> of <agent>`
+  (`runs.recommendation_request`, `runtime.ask_recommendation`; its body the question,
+  the options or choices, the note or the details, the artifacts the gate reads and
+  `runtime.RECOMMEND_REQUEST`; the note's or the question's attachments attached), queued
+  and marked `asked` in one transaction (`state.ask_recommendation`) and handed over as
+  any message; when the lead's own `flow_advance` (or `flow_start`) opened the gate, the
+  request is a notice in the tool's result. A lead that does not run is not asked: the gate
+  or question opens all the same. The lead answers with its MCP tool `recommend(text, gate
+  | question, choice, disagrees)` (`runtime.recommend`: one of `gate` or `question`, a
+  text of at most `MAX_MESSAGE`, a gate's option as `lado answer` takes it, one of a
+  question's choices, never its own question; a later call replaces it until the human
+  answers), stored on the gate's or the question's row (schema 26) and shown in its card
+  and in `lado answer`; the human answers whenever they want. A request still `pending`
+  goes with its gate or question in the transaction that closes it (answer, dismissal,
+  override, cancel, the asker's end). At the lead's turn's end (`hooks.handle`'s
+  `TURN_END`, after `turn_failed` and before the queue is handed over, so a request in
+  this hook's output is not counted) each open `asked` one whose request the lead got (a
+  notice, or a message `delivered` or `read`) becomes `missing`, unless a resume is
+  planned (`agents.resume_at`); the lead's end and a stop mark every `asked` one
+  `missing`. Codex CLI runs no hook for a turn that ends on an API error: there it stays
+  `asked` until the lead's next turn's end. LADO's lead instructions say to answer only
+  with `recommend`, never with a separate message to the human, with a short view of its
+  own and `disagrees` when it disagrees. Kit sdlc's supervisor paragraph "A gate opens…"
+  still asks for a message to the human until the kit's own change.
 - No prompt and no message text on an agent's command line, which `ps` shows to every user
   of the machine: the role and LADO's instructions go in a file (Claude Code
   `--append-system-prompt-file`, Kilo and OpenCode `instructions`), and an agent's first
@@ -1430,8 +1470,9 @@ Gates: a run that enters a gate state, or would enter a state more often than it
 <question>`). An approval gate has exactly the outcomes `approved` and `rejected` and is
 answered `approve` / `reject`; a choice gate with one of its outcome names; a loop limit with
 `continue` (enter the state anyway, the visit counts) or `cancel` (cancel the run). The
-supervisor gets one line, `flow <run>: waiting for the human at <state> (gate #<id>)`. The
-answer and its comment become the next step's note, after which the note that led to the gate
+supervisor gets LADO's request for its recommendation, `recommend on gate #<id>: <run> at
+<state>` (How agents talk; in its own `flow_advance`'s `notices` when its move opened the
+gate). The answer and its comment become the next step's note, after which the note that led to the gate
 follows in the body; when a worker gets the next step, the supervisor gets one line
 `flow <run>: human answered <option> at <state>`.
 
@@ -1451,15 +1492,21 @@ step's note. A human's comment at a gate reaches the next step only (its note).
 option it asks: with no arguments about the open gates of all sessions (a list to pick from
 when there are several), and after each answer it goes on with the open gates of that session
 until none is left or the human presses Enter on an empty line. It shows the question, the
-one-line summary of the note that led to the gate with its artifacts, then under
+one-line summary of the note that led to the gate with its artifacts, the supervisor's
+recommendation (`Supervisor recommends: <option>`, or `Supervisor's recommendation:`
+without one, ` (disagrees with <agent>)`, its first line; `Supervisor is preparing a
+recommendation…` while asked, `The supervisor gave no recommendation.` when missing;
+`cli._recommendation_lines`), then under
 `Artifacts it reads:` a line per artifact of the gate state's `reads` but those the note
 carries (`runs.gate_reads`: `<run>/<name>: <title> — <summary>` of its latest record, or
-`no record yet`), and the numbered options; when the note has a body or an artifact, or the
-gate reads one, `v` shows the whole text in `less -R` (printed when there is no `less`): the
-note, each of its artifacts as attached, then each artifact the gate reads as of its latest
-record (a text one's content, else its type and size); then it asks again. The records are
-read at each show, also after `v`: a write while the gate is open shows, and the human
-approves the latest. A loop limit reads none. A gate whose run's flow cannot be read is
+`no record yet`), and the numbered options, the recommended one marked `← supervisor
+recommends`; when the note has a body or an artifact, the gate reads one, or a
+recommendation is asked or given, `v` shows the whole text in `less -R` (printed when there
+is no `less`): the note, the recommendation in full, each of its artifacts as attached,
+then each artifact the gate reads as of its latest
+record (a text one's content, else its type and size); then it asks again. The records and
+the gate are read at each show, also after `v`: a write while the gate is open shows, and
+the human approves the latest. A loop limit reads none. A gate whose run's flow cannot be read is
 shown with its problem and left open (the supervisor's `flow_cancel` moves it), and
 `lado answer` goes on with the other gates. When a gate opens, LADO opens a tmux popup (`display-popup -E`, titled
 `LADO: waiting for you (session <name>)`, a rounded soft orange border around the

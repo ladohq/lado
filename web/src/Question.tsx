@@ -1,13 +1,15 @@
 // An agent's question to the human (ask_human) once it is closed, in its session's chat: the
 // card in its agent's row (FeedRow), without a head of its own: its choices faded, the
-// chosen one marked (and only there), and the human's reply under them (docs/design/ui.md,
-// Answer in the question card). An open question is answered in the waiting card
-// (WaitingCard.tsx) and is a line in the feed. Also what the chat says of the human's
-// answer, from the answer's fields. A dismissal is "skipped" in the UI's words.
+// chosen one marked (and only there), the supervisor's recommendation as one quiet line
+// (Recommendation.tsx), and the human's reply under them (docs/design/ui.md, Answer in the
+// question card). An open question is answered in the waiting card (WaitingCard.tsx) and is
+// a line in the feed. Also what the chat says of the human's answer, from the answer's
+// fields. A dismissal is "skipped" in the UI's words.
 import { HUMAN, type MessageInfo } from "./api";
 import { Attachments } from "./Attachments";
 import { Body, clock } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
+import { RecommendationLine } from "./Recommendation";
 
 // The DOM id of a message's place in the chat: a link to it scrolls there.
 export const messageAnchor = (id: number) => `message-${id}`;
@@ -69,6 +71,7 @@ export function Question({
           )}
         </ul>
       )}
+      <RecommendationLine rec={question.recommendation} />
       {question.question_state === "closed" ? (
         <p className="chat-outcome">Closed: the agent left</p>
       ) : (

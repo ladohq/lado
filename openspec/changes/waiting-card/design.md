@@ -156,6 +156,17 @@ no MCP change, no schema change, the two endpoints nothing calls any more are re
   `NeedsYou.test.tsx`): tabs, order, colours, picks, Send, refusals, gate tab, stopped,
   expand, focus, feed lines; UI e2e (`tests/ui/test_chat.py`, `tests/ui/test_needs_you.py`,
   `-m ui`): the card in a browser, its expanded view, Needs you, screenshots.
+- **D17. The recommendation in a question's tab** (decided 2026-10-13 by the human after
+  LAD-27 merged into main, mockup `task/lad-28/mockup-recommendation-in-tab.html`, option
+  B). LAD-27 made the recommended choice the open question card's one primary button; in a
+  tab the choices are picks and Send is the primary button, so the rule cannot carry over.
+  Each question shows the recommendation block (`Recommendation.tsx`) under its details,
+  and its recommended choice, when it is one of its choices, is picked ahead
+  (`WaitingCard.pickOf`): it counts and is sent as any pick. A pick of the human's, also an
+  unpick (kept as `null`), wins; a recommendation given later picks its choice only in a
+  question not touched. Gates keep LAD-27's primary button. Rejected: A, the recommended
+  choice outlined but not picked (one more click per question), and C, the block alone (the
+  choice named only in the text). The delta to `lead-recommendation` says it.
 
 ## Risks / Trade-offs
 

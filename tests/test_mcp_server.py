@@ -30,6 +30,7 @@ def test_only_supervisor_can_spawn_workers(repo, fake_tmux):
         "list_artifacts",
         "read_artifact",
         "read_messages",
+        "recommend",
         "send_message",
         "spawn_worker",
         "start_session",
@@ -66,6 +67,7 @@ def test_a_read_only_supervisor_has_no_command_tools_and_is_refused_them(repo, f
     tools = _tools("s", "supervisor")
     assert not set(mcp_server.COMMAND_TOOLS) & set(tools)
     assert "flow_advance" in tools and "send_message" in tools
+    assert "recommend" in tools  # it changes nothing but the card
     for tool in mcp_server.COMMAND_TOOLS:
         with pytest.raises(ToolError) as refused:
             _call("s", "supervisor", tool, {})
@@ -303,6 +305,7 @@ ACCEPTED = {
     "flow_cancel": "run, reason",
     "finish_worker": "name, discard",
     "start_session": "name, question",
+    "recommend": "text, gate, question, choice, disagrees",
 }
 
 
@@ -462,6 +465,24 @@ def test_no_agent_can_answer_a_gate(repo, fake_tmux):
         with pytest.raises(ToolError, match=r"waits for the human \(gate #1\): answer with lado"):
             _call("s", agent, "flow_advance", {"run": "ship/x", "outcome": "approved"})
     assert state.open_gate("s", "ship/x").id == 1
+    # The lead is asked for its view instead, and gives it with recommend.
+    [request] = [m for m in state.list_messages("s") if m.summary.startswith("recommend on")]
+    assert request.summary == "recommend on gate #1: ship/x at check"
+    given = _call(
+        "s",
+        "supervisor",
+        "recommend",
+        {"gate": 1, "text": "Reject: no test", "choice": "Reject", "disagrees": True},
+    )
+    assert given == "recommendation on gate #1 stored; the human sees it on the gate's card"
+    gate = state.open_gate("s", "ship/x")
+    assert (gate.recommendation_state, gate.recommended_choice, gate.recommendation_disagrees) == (
+        state.REC_GIVEN,
+        "reject",
+        True,
+    )
+    with pytest.raises(ToolError, match="give gate or question"):
+        _call("s", "supervisor", "recommend", {"text": "x"})
 
 
 def test_spawn_worker_needs_a_task_without_a_run(repo, fake_tmux):
@@ -500,7 +521,9 @@ def test_an_agent_writes_to_and_asks_the_human(repo, fake_tmux):
         "ask_human",
         {"question": "Merge?", "choices": ["yes", "no"], "free_answer": False},
     )
-    message, question = state.list_messages("s")
+    # The lead is asked for its recommendation on w1's question too.
+    message, question, request = state.list_messages("s")
+    assert request.summary == f"recommend on question #{question.id} of w1"
     assert asked.startswith(f"question #{question.id} asked")
     assert (message.recipient, message.kind) == ("human", state.MESSAGE)
     assert (question.sender, question.choices, question.free_answer) == ("w1", ["yes", "no"], False)

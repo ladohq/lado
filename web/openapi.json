@@ -3529,6 +3529,16 @@
               }
             ],
             "title": "Problem"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3548,7 +3558,8 @@
           "answered_by",
           "created_at",
           "answered_at",
-          "problem"
+          "problem",
+          "recommendation"
         ],
         "title": "GateInfo",
         "description": "A flow run's question to the human: open while `answer` is None."
@@ -4556,6 +4567,16 @@
           "created_at": {
             "type": "string",
             "title": "Created At"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4575,7 +4596,8 @@
           "choice",
           "reply_state",
           "attachments",
-          "created_at"
+          "created_at",
+          "recommendation"
         ],
         "title": "MessageInfo",
         "description": "A message, a question to the human (kind \"question\") or an answer to one."
@@ -5204,6 +5226,71 @@
           "session"
         ],
         "title": "RecentFolder"
+      },
+      "RecommendationInfo": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "asked",
+              "given",
+              "missing"
+            ],
+            "title": "State"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "disagrees": {
+            "type": "boolean",
+            "title": "Disagrees"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "text",
+          "choice",
+          "disagrees",
+          "by",
+          "at"
+        ],
+        "title": "RecommendationInfo",
+        "description": "The lead's recommendation on a gate or on another agent's question to the human\n(lado.runtime.recommend): asked for, given, or not given when the lead's turn (or the\nlead) ended without it."
       },
       "RecordInfo": {
         "properties": {

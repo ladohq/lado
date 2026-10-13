@@ -91,7 +91,43 @@ def test_an_open_gate_comes_with_its_note_and_the_artifacts_it_reads(client, ses
         "answered_by": None,
         "answered_at": None,
         "problem": None,
+        # The lead is asked for its view when the gate opens.
+        "recommendation": {
+            "state": "asked",
+            "text": "",
+            "choice": None,
+            "disagrees": False,
+            "by": "supervisor",
+            "at": None,
+        },
     }
+
+
+def test_a_gate_carries_its_recommendation(client, session):
+    gate = at_gate()
+    runtime.recommend(
+        "s", "supervisor", "Reject: **no** test", gate=gate.id, choice="reject", disagrees=True
+    )
+    [listed] = client.get(GATES).json()
+    rec = listed["recommendation"]
+    assert rec["at"].endswith("Z")
+    del rec["at"]
+    # `by`: who reported the note that led to the gate, whom the lead disagrees with.
+    assert rec == {
+        "state": "given",
+        "text": "Reject: **no** test",
+        "choice": "reject",
+        "disagrees": True,
+        "by": "supervisor",
+    }
+
+
+def test_a_gate_never_asked_has_no_recommendation(client, session):
+    gate = at_gate()
+    with state.connect() as db:
+        db.execute("UPDATE gates SET recommendation_state = NULL WHERE id = ?", (gate.id,))
+    [listed] = client.get(GATES).json()
+    assert listed["recommendation"] is None
 
 
 def test_a_gate_whose_runs_flow_cannot_be_read_comes_without_its_reads(client, session):

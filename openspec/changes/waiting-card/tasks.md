@@ -70,3 +70,12 @@
   test`, `uv run pytest -m integration -n auto tests/integration/test_human_messages.py
   tests/integration/test_session_start.py`, `make web`, `uv run pytest -m ui
   tests/ui/test_chat.py tests/ui/test_needs_you.py`.
+
+## 6. After LAD-27 (lead-recommendation) merged into main
+
+- [x] 6.1 Merge `origin/main`; the recommendation in a question's tab as the human chose
+  (D17, option B): the block per question, the recommended choice picked ahead; delta to
+  `lead-recommendation`; LAD-27's tests of the open question card moved to the tab
+  (`Chat.test.tsx`, `tests/ui/test_chat.py`), the design and the changelog. vitest
+  (`WaitingCard.test.tsx`): picked ahead, unpicked, sent as is, given later, a choice the
+  question lacks. Check: `make web`, the regression run of 5.2.

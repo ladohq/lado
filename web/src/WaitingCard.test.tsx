@@ -7,7 +7,7 @@ import { useState } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { GateInfo, MessageInfo, RunInfo } from "./api";
+import type { GateInfo, MessageInfo, RecommendationInfo, RunInfo } from "./api";
 import { avatar } from "./FeedRow";
 import { FakeEventSource } from "./fakes";
 import { Live, LiveContext } from "./live";
@@ -32,6 +32,7 @@ function question(id: number, from: string, more: Partial<MessageInfo> = {}): Me
     reply_state: null,
     attachments: [],
     created_at: `2026-10-03T12:00:${String(id).padStart(2, "0")}.000Z`,
+    recommendation: null,
     ...more,
   };
 }
@@ -54,6 +55,7 @@ function gate(id: number, run: string, created_at: string, more: Partial<GateInf
     created_at,
     answered_at: null,
     problem: null,
+    recommendation: null,
     ...more,
   };
 }
@@ -240,6 +242,58 @@ test("typing keeps the focus and every character", () => {
   fireEvent.change(field, { target: { value: "ma" } });
   expect(document.activeElement).toBe(field);
   expect((within(card()).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement).value).toBe("ma");
+});
+
+function given(choice: string | null, text = "Long: the short one loses data"): RecommendationInfo {
+  return { state: "given", text, choice, disagrees: false, by: "w1", at: "2026-10-03T12:01:00.000Z" };
+}
+
+test("the supervisor's recommendation shows on its question, its choice picked ahead; the human can unpick or change it", async () => {
+  show({
+    questions: [
+      question(5, "w1", { recommendation: given("long") }),
+      question(6, "w1", { recommendation: given(null, "Port 8123: 8080 is taken") }),
+      question(7, "w1", { recommendation: { ...given(null), state: "asked", text: "" } }),
+    ],
+  });
+  const [one, two, three] = within(card()).getAllByRole("listitem");
+  expect(within(one).getByRole("region", { name: "Supervisor's recommendation" }).textContent).toContain("the short one loses data");
+  expect(within(two).getByRole("region", { name: "Supervisor's recommendation" }).textContent).toContain("8080 is taken");
+  expect(within(three).getByRole("region", { name: "Supervisor's recommendation" }).textContent).toContain("preparing");
+  expect(within(one).getByRole("button", { name: "long" }).getAttribute("aria-pressed")).toBe("true");
+  expect(within(two).getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") === "true")).toEqual([]);
+  expect(within(card()).getByText("1 of 3 answered")).toBeTruthy();
+  fireEvent.click(within(one).getByRole("button", { name: "long" })); // unpicked: stays unpicked
+  expect(within(one).getByRole("button", { name: "long" }).getAttribute("aria-pressed")).toBe("false");
+  expect(within(card()).getByText("0 of 3 answered")).toBeTruthy();
+  fireEvent.click(within(one).getByRole("button", { name: "short" }));
+  fireEvent.click(within(two).getByRole("button", { name: "Skip" }));
+  fireEvent.click(within(three).getByRole("button", { name: "Skip" }));
+  fireEvent.click(send());
+  await waitFor(() =>
+    expect(posted[0]?.body).toEqual({
+      answers: [
+        { question: 5, choice: "short", skip: false },
+        { question: 6, skip: true },
+        { question: 7, skip: true },
+      ],
+    }),
+  );
+});
+
+test("the recommended choice is sent as it is when the human leaves it; a recommendation that comes later picks it then", async () => {
+  const { rerender } = show({ questions: [question(5, "w1", { recommendation: { ...given(null), state: "asked", text: "" } })] });
+  expect(send().disabled).toBe(true);
+  rerender(<Card questions={[question(5, "w1", { recommendation: given("short") })]} />);
+  expect(within(card()).getByRole("button", { name: "short" }).getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(send());
+  await waitFor(() => expect(posted[0]?.body).toEqual({ answers: [{ question: 5, choice: "short", skip: false }] }));
+});
+
+test("a recommended choice the question does not have picks nothing", () => {
+  show({ questions: [question(5, "w1", { recommendation: given("maybe") })] });
+  expect(within(card()).getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") === "true")).toEqual([]);
+  expect(send().disabled).toBe(true);
 });
 
 test("a question that takes no own answer has its choices and Skip, no Other…", () => {

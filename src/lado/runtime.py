@@ -98,6 +98,9 @@ from your current HEAD. Give it the goal, the relevant files and how to check th
 - ask_human: ask the human a question, with choices and, by default, a free answer. It \
 does not wait: the answer or the dismissal comes as a message from human.
 - read_messages: read the full text of the messages you got.
+- recommend(text, gate | question, choice, disagrees): your recommendation on a gate or on \
+another agent's question to the human, when LADO asks for it ("recommend on gate #N" or \
+"recommend on question #N"). The human sees it on that card and answers it themselves.
 - list_agents: see the agents, their role, status, branch and worktree. A status \
 `background`: the agent's turn ended while work it started (e.g. subagents) still runs; a \
 message reaches it at once; it is not done yet.
@@ -115,9 +118,14 @@ Workers report back with messages that arrive in your input as "[from <name>] ..
 A bare artifact name is in the session's scope. A flow run's artifacts are named by their \
 full name, "<run>/<name>": in a step of your own in a run, write and attach the run's \
 artifacts by its full name, e.g. "feature/x/design", since you may lead several runs.
-Do not relay worker or reviewer reports to the human. Talk to the human only when a \
-decision is needed (the question and your recommendation) or at a milestone (one or two \
-lines). The details stay in `lado log {session}`.
+Do not relay worker or reviewer reports to the human. When a flow gate opens or another \
+agent asks the human, LADO asks you for your recommendation: answer only with recommend, \
+never a separate message to the human about it. Give a short view of your own (what you \
+would choose and why, the risks, where you disagree with the step's report or the asking \
+agent, what to check), not a retelling of the note; set disagrees when you disagree. Talk \
+to the human otherwise only for a decision of your own (ask_human, with your \
+recommendation in it) or at a milestone (one or two lines). The details stay in `lado log \
+{session}`.
 """
 
 # Whose messages a worker follows, appended to both kinds of worker instructions.
@@ -156,8 +164,9 @@ notes are written in it, because the human reads them at gates.
 also gives one run's task, worktree and branch.
 - flow_cancel(run, reason): stop a run; its worktree and branch are kept.
 When a run waits for the human (a gate or a loop limit), only the human can answer it, \
-with `lado answer` (LADO asks them in a popup); no tool of yours does. The run's next step \
-arrives once they answer.
+with `lado answer` (LADO asks them in a popup); no tool of yours does. LADO asks you for \
+your recommendation on it; give it with recommend. The run's next step arrives once they \
+answer.
 """
 
 RUN_WORKER_INSTRUCTIONS = (
@@ -1466,10 +1475,125 @@ def ask_human(
     asked = state.add_question(
         session, sender, question, details, choices or None, free_answer, attachments
     )
+    if sender != SUPERVISOR:
+        ask_recommendation(session, state.get_message(session, asked))
     return (
         f"question #{asked} asked; the human's answer or dismissal comes as a message from "
         f"{state.HUMAN}"
     )
+
+
+# The end of each request for the lead's recommendation (`recommend`); `item` is the tool's
+# argument, e.g. "gate=7".
+RECOMMEND_REQUEST = (
+    "Only the human answers it. Give your own view with recommend({item}, text=..., "
+    "choice=..., disagrees=...): what you would choose and why, the risks, what to check; "
+    "short, no retelling. Write no separate message to the human about it."
+)
+
+
+def cut_summary(summary: str) -> str:
+    """A summary of LADO's own cut to state.SUMMARY_LIMIT."""
+    limit = state.SUMMARY_LIMIT
+    return summary if len(summary) <= limit else summary[: limit - 1] + "…"
+
+
+def ask_recommendation(session: str, question: state.Message) -> None:
+    """Ask the lead for its recommendation on another agent's open question to the human,
+    with the question's attachments. A lead that does not run is not asked: the question
+    is asked all the same."""
+    summary = cut_summary(f"recommend on question #{question.id} of {question.sender}")
+    lines = [question.summary]
+    if question.body:
+        lines.append(question.body)
+    if question.choices:
+        lines.append(
+            f"Choices: {', '.join(question.choices)}"
+            + (" (or an answer in the human's own words)" if question.free_answer else "")
+        )
+    else:
+        lines.append("No choices: the human answers in their own words.")
+    lines.append(RECOMMEND_REQUEST.format(item=f"question={question.id}"))
+    attachments = state.message_attachments(question.id)
+    try:
+        request = state.ask_recommendation(
+            session, state.QUESTION, question.id, summary, "\n".join(lines), attachments
+        )
+    except state.NotRunning:
+        return
+    if request:
+        deliver_request(session, request)
+
+
+def deliver_request(session: str, request: int) -> None:
+    """Deliver LADO's request for a recommendation now if the lead is idle. A lead that
+    stopped since it was queued has it dropped: no one waits for it."""
+    with contextlib.suppress(LadoError):
+        _deliver(session, SUPERVISOR, request)
+
+
+def recommend(
+    session: str,
+    agent: str,
+    text: str,
+    gate: int | None = None,
+    question: int | None = None,
+    choice: str | None = None,
+    disagrees: bool = False,
+) -> str:
+    """Store the lead's recommendation on an open gate or another agent's open question of
+    its session, replacing an earlier one: its text, the option it recommends, if any, and
+    whether it disagrees with the agent whose report led there or who asks."""
+    from lado import runs
+
+    if agent != SUPERVISOR:
+        raise LadoError("only the supervisor recommends")
+    if gate is not None and question is not None:
+        raise LadoError("give gate or question, not both")
+    if gate is None and question is None:
+        raise LadoError("give gate or question")
+    text = (text or "").strip()
+    if not text:
+        raise LadoError("the recommendation is empty")
+    if len(text) > MAX_MESSAGE:
+        raise LadoError(f"the recommendation is {len(text)} characters, the limit is {MAX_MESSAGE}")
+    choice = choice.strip() if choice and choice.strip() else None
+    if gate is not None:
+        found = state.get_gate(gate)
+        if found is None or found.session != session:
+            raise LadoError(f"no gate #{gate}")
+        if found.answer is not None:
+            raise _gate_closed(found)
+        if choice is not None:
+            choice = runs.canonical_option(found, choice)
+        if not state.recommend(state.GATE, gate, text, choice, disagrees):
+            raise _gate_closed(state.get_gate(gate))
+        return f"recommendation on gate #{gate} stored; the human sees it on the gate's card"
+    asked = state.get_message(session, question)
+    if asked is None or asked.kind != state.QUESTION:
+        raise LadoError(f"no question #{question} in session {session}")
+    if asked.sender == SUPERVISOR:
+        raise LadoError(f"question #{question} is your own")
+    if asked.question_state != state.OPEN_QUESTION:
+        raise LadoError(f"question #{question} is {asked.question_state}")
+    if choice is not None:
+        if not asked.choices:
+            raise LadoError(f"question #{question} has no choices")
+        if choice not in asked.choices:
+            raise LadoError(
+                f'question #{question} has no choice "{choice}"; its choices: '
+                + ", ".join(asked.choices)
+            )
+    if not state.recommend(state.QUESTION, question, text, choice, disagrees):
+        now = state.get_message(session, question)
+        raise LadoError(f"question #{question} is {now.question_state}")
+    return (
+        f"recommendation on question #{question} stored; the human sees it on the question's card"
+    )
+
+
+def _gate_closed(gate: state.Gate) -> LadoError:
+    return LadoError(f"gate #{gate.id} is closed already: {gate.answer} by {gate.answered_by}")
 
 
 # The one spelling of the choice by which the human approves a session the supervisor

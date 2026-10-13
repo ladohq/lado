@@ -3567,7 +3567,7 @@ def test_no_copy_of_the_humans_text_to_the_supervisor_or_of_answers(repo, fake_t
     assert first and second
     runtime.answer_question("s", asked[0], choice="yes")
     runtime.dismiss_question("s", asked[1])
-    assert [m.sender for m in state.list_messages("s") if m.recipient == "supervisor"] == ["human"]
+    assert [m.sender for m in _messages() if m.recipient == "supervisor"] == ["human"]
 
 
 @pytest.mark.parametrize(
@@ -3608,7 +3608,7 @@ def test_an_agent_asks_the_human_a_question(repo, fake_tmux):
     _session_with_worker(repo)
     typed_before = len(fake_tmux)
     result = runtime.ask_human("s", "w1", "Merge now?", "Tests pass.", ["yes", "later"], False)
-    [question] = state.list_messages("s")
+    [question] = _messages()
     assert result == (
         f"question #{question.id} asked; the human's answer or dismissal comes as a message "
         "from human"
@@ -3631,7 +3631,7 @@ def test_an_agent_asks_the_human_a_question(repo, fake_tmux):
 def test_a_question_without_choices_takes_a_free_answer(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.ask_human("s", "w1", "Which port?")
-    [question] = state.list_messages("s")
+    [question] = _messages()
     assert (question.choices, question.free_answer) == (None, True)
 
 
@@ -3656,12 +3656,18 @@ def test_a_question_is_refused_with_a_reason(repo, fake_tmux, question, choices,
     assert state.list_messages("s") == []
 
 
+def _messages():
+    """The session's messages but LADO's requests for the lead's recommendation, which a
+    worker's question queues too (test_recommendation.py)."""
+    return [m for m in state.list_messages("s") if not m.summary.startswith("recommend on ")]
+
+
 def _asked(repo, choices=("yes", "later"), free=True):
     """w1, idle, asked the human a question; returns it."""
     _session_with_worker(repo)
     state.set_status("s", "w1", state.IDLE)
     runtime.ask_human("s", "w1", "Merge now?", None, list(choices) if choices else None, free)
-    return state.list_messages("s")[-1]
+    return _messages()[-1]
 
 
 @pytest.mark.parametrize(
@@ -3683,7 +3689,7 @@ def test_the_humans_answer_comes_to_the_agent_as_a_message(
 ):
     question = _asked(repo)
     runtime.answer_question("s", question.id, choice, text)
-    asked, answer = state.list_messages("s")
+    asked, answer = _messages()
     summary = summary.format(id=question.id)
     assert (answer.sender, answer.recipient, answer.summary, answer.body) == (
         "human",
@@ -3700,7 +3706,7 @@ def test_the_humans_answer_comes_to_the_agent_as_a_message(
 def test_a_long_own_answer_is_cut_in_the_summary_and_whole_in_the_body(repo, fake_tmux):
     question = _asked(repo)
     runtime.answer_question("s", question.id, None, "x" * 300)
-    answer = state.list_messages("s")[-1]
+    answer = _messages()[-1]
     assert len(answer.summary) == state.SUMMARY_LIMIT and answer.summary.endswith("…")
     assert answer.body == "x" * 300
 
@@ -3708,7 +3714,7 @@ def test_a_long_own_answer_is_cut_in_the_summary_and_whole_in_the_body(repo, fak
 def test_the_human_dismisses_a_question_and_the_agent_hears_of_it(repo, fake_tmux):
     question = _asked(repo)
     runtime.dismiss_question("s", question.id)
-    asked, dismissal = state.list_messages("s")
+    asked, dismissal = _messages()
     assert (dismissal.sender, dismissal.recipient, dismissal.summary) == (
         "human",
         "w1",
@@ -3722,7 +3728,7 @@ def test_the_human_dismisses_a_question_and_the_agent_hears_of_it(repo, fake_tmu
 def test_a_dismissal_carries_the_humans_comment_as_its_body(repo, fake_tmux):
     question = _asked(repo)
     runtime.dismiss_question("s", question.id, "  not now:\nask after the release  ")
-    asked, dismissal = state.list_messages("s")
+    asked, dismissal = _messages()
     assert (dismissal.summary, dismissal.body) == (
         f"Dismissed #{question.id}",
         "not now:\nask after the release",
@@ -3735,7 +3741,7 @@ def test_a_dismissal_carries_the_humans_comment_as_its_body(repo, fake_tmux):
 def test_a_blank_comment_leaves_the_dismissal_without_a_body(repo, fake_tmux):
     question = _asked(repo)
     runtime.dismiss_question("s", question.id, " \n ")
-    assert state.list_messages("s")[-1].body == ""
+    assert _messages()[-1].body == ""
 
 
 def test_a_too_long_comment_is_refused_and_the_question_stays_open(repo, fake_tmux):
@@ -3743,7 +3749,7 @@ def test_a_too_long_comment_is_refused_and_the_question_stays_open(repo, fake_tm
     long = "x" * (runtime.MAX_MESSAGE + 1)
     with pytest.raises(runtime.LadoError, match=f"the limit is {runtime.MAX_MESSAGE}"):
         runtime.dismiss_question("s", question.id, long)
-    assert [m.question_state for m in state.list_messages("s")] == [state.OPEN_QUESTION]
+    assert [m.question_state for m in _messages()] == [state.OPEN_QUESTION]
 
 
 @pytest.mark.parametrize(
@@ -3771,7 +3777,7 @@ def test_a_wrong_answer_is_refused(repo, fake_tmux, choices, free, choice, text,
     question = _asked(repo, choices, free)
     with pytest.raises(runtime.LadoError, match=re.escape(reason.format(id=question.id))):
         runtime.answer_question("s", question.id, choice, text)
-    assert state.list_messages("s")[-1].question_state == state.OPEN_QUESTION
+    assert _messages()[-1].question_state == state.OPEN_QUESTION
 
 
 def test_only_an_open_question_takes_an_answer(repo, fake_tmux):
@@ -3783,7 +3789,7 @@ def test_only_an_open_question_takes_an_answer(repo, fake_tmux):
     ):
         with pytest.raises(runtime.LadoError, match=f"question #{question.id} is answered"):
             act()
-    assert len(state.list_messages("s")) == 2
+    assert len(_messages()) == 2
 
 
 def test_an_answer_to_no_question_is_refused(repo, fake_tmux):
@@ -4010,7 +4016,7 @@ def test_a_body_read_in_a_turn_without_a_reply_is_flagged(repo, fake_tmux):
 def test_an_answer_to_a_question_needs_no_reply(repo, fake_tmux):
     question = _asked(repo)
     runtime.answer_question("s", question.id, "yes")
-    answer = state.list_messages("s")[-1]
+    answer = _messages()[-1]
     _hook("UserPromptSubmit", "w1", {"prompt": runtime.format_message(answer)})
     _hook("Stop", "w1")
     assert _reply_state(answer) is None

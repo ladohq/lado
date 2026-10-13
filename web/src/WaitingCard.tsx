@@ -1,8 +1,9 @@
 // The waiting card (docs/design/ui.md, The waiting card): what waits for the human in a
 // session, in one card above the chat's composer and on Needs you. A tab per agent with open
 // questions (all of them) and a tab per open gate, in the order their first item was asked.
-// An agent's tab picks an answer per question (a choice, Other… for own words, or Skip) and
-// sends them all in one request, so the agent gets them in one hand-over; a gate's tab is
+// An agent's tab picks an answer per question (a choice, Other… for own words, or Skip; the
+// supervisor's recommended choice is picked ahead until the human picks) and sends them all
+// in one request, so the agent gets them in one hand-over; a gate's tab is
 // the gate's panel, whose buttons answer at once. Nothing shows ahead of the server: a tab
 // goes when the live lists bring its items closed. The card is at most half the chat's
 // height; expanded, it covers the window until Esc, its fold button, or nothing waits.
@@ -14,6 +15,7 @@ import { Attachments } from "./Attachments";
 import { Body } from "./ChatText";
 import { avatar } from "./FeedRow";
 import { GatePanel } from "./GateCard";
+import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon } from "./icons";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
@@ -48,8 +50,19 @@ export function waitingTabs(questions: MessageInfo[], gates: GateInfo[]): Waitin
 // asks for the same item apart.
 export type Focus = { key: string; item: number; at: number } | null;
 
-// The human's pick for a question: a choice, own words (Other…), or Skip with a comment.
+// The human's pick for a question: a choice, own words (Other…), or Skip with a comment;
+// null, none (the human unpicked it).
 type Pick = { choice: string } | { own: string } | { skip: string };
+type Picks = Record<number, Pick | null>;
+
+// A question's pick: the human's, else the supervisor's recommended choice when it is one of
+// the question's choices.
+function pickOf(picks: Picks, question: MessageInfo): Pick | undefined {
+  if (question.id in picks) return picks[question.id] ?? undefined;
+  const rec = question.recommendation;
+  const choice = rec?.state === "given" ? rec.choice : null;
+  return choice && question.choices?.includes(choice) ? { choice } : undefined;
+}
 
 const MARKED_FOR = 1500; // ms an item asked for stays marked
 
@@ -81,7 +94,7 @@ export function WaitingCard({
 }) {
   const tabs = waitingTabs(questions, gates);
   const [chosen, setChosen] = useState<string | null>(null);
-  const [picks, setPicks] = useState<Record<number, Pick>>({});
+  const [picks, setPicks] = useState<Picks>({});
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -151,9 +164,7 @@ export function WaitingCard({
 
   function pick(id: number, next: Pick | undefined) {
     setPicks((now) => {
-      const rest = { ...now };
-      delete rest[id];
-      return next === undefined ? rest : { ...rest, [id]: next };
+      return { ...now, [id]: next ?? null };
     });
   }
 
@@ -163,7 +174,7 @@ export function WaitingCard({
     try {
       await answerQuestions(
         session,
-        tab.questions.map((one) => toReply(one.id, picks[one.id])),
+        tab.questions.map((one) => toReply(one.id, pickOf(picks, one)!)),
       );
     } catch (error) {
       setProblem({ key: tab.key, text: error instanceof ApiError ? error.message : String(error) });
@@ -269,8 +280,9 @@ export function WaitingCard({
   return createPortal(<div className="waiting-overlay">{body}</div>, document.body);
 }
 
-// An agent's tab: its questions, numbered when more than one, each with its choices, Other…
-// (a question with a free answer) and Skip; then Send, on once each has an answer.
+// An agent's tab: its questions, numbered when more than one, each with the supervisor's
+// recommendation (Recommendation.tsx), its choices, Other… (a question with a free answer)
+// and Skip; then Send, on once each has an answer.
 function AgentPanel({
   session,
   tab,
@@ -283,7 +295,7 @@ function AgentPanel({
 }: {
   session: string;
   tab: AgentTab;
-  picks: Record<number, Pick>;
+  picks: Picks;
   pick: (id: number, next: Pick | undefined) => void;
   marked: number | null;
   off: boolean;
@@ -291,13 +303,13 @@ function AgentPanel({
   send: () => void;
 }) {
   const many = tab.questions.length > 1;
-  const done = tab.questions.filter((one) => answered(picks[one.id])).length;
+  const done = tab.questions.filter((one) => answered(pickOf(picks, one))).length;
   const all = done === tab.questions.length;
   return (
     <>
       <ol className="waiting-list" aria-label={`Questions from ${tab.agent}`}>
         {tab.questions.map((question, n) => {
-          const now = picks[question.id];
+          const now = pickOf(picks, question);
           const text = pickText(now);
           return (
             <li
@@ -312,6 +324,7 @@ function AgentPanel({
               </h4>
               {question.body && <Body text={question.body} />}
               <Attachments session={session} attachments={question.attachments} />
+              <Recommendation rec={question.recommendation} />
               <div className="waiting-options" role="group" aria-label={`Answer to question #${question.id}`}>
                 {(question.choices ?? []).map((choice) => {
                   const on = now !== undefined && "choice" in now && now.choice === choice;

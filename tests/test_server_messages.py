@@ -60,6 +60,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
         "choice": None,
         "reply_state": None,
         "attachments": [],
+        "recommendation": None,
     }
     assert (asked["kind"], asked["from"], asked["choices"], asked["question_state"]) == (
         "question",
@@ -67,6 +68,7 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
         ["yes", "no"],
         "open",
     )
+    assert asked["recommendation"]["state"] == "asked"
     assert (thanks["from"], thanks["to"], thanks["summary"]) == ("human", "supervisor", "thanks")
 
 
@@ -113,13 +115,40 @@ def test_a_message_to_a_stopped_or_unknown_session_is_refused(client, session):
     assert 'session "s" is stopped' in answer.json()["detail"]
 
 
+def _messages():
+    """The session's messages but LADO's requests for the lead's recommendation, which a
+    worker's question queues too."""
+    return [m for m in state.list_messages("s") if not m.summary.startswith("recommend on ")]
+
+
+def test_a_question_carries_its_recommendation_and_a_message_none(client, session):
+    runtime.ask_human("s", "w1", "Ship?", None, ["yes", "later"])
+    [question] = [m for m in _messages() if m.kind == state.QUESTION]
+    runtime.recommend(
+        "s", "supervisor", "Later: CI is red", question=question.id, choice="later", disagrees=True
+    )
+    items = {m["id"]: m for m in client.get(MESSAGES).json()["items"]}
+    rec = items[question.id]["recommendation"]
+    assert rec["at"].endswith("Z")
+    del rec["at"]
+    assert rec == {
+        "state": "given",
+        "text": "Later: CI is red",
+        "choice": "later",
+        "disagrees": True,
+        "by": "w1",  # who asks
+    }
+    request = next(m for m in items.values() if m["summary"].startswith("recommend on"))
+    assert request["recommendation"] is None
+
+
 ANSWERS = "/api/sessions/s/answers"
 
 
 def test_the_human_answers_a_tab_in_one_request(client, session):
     runtime.ask_human("s", "w1", "Ship?", None, ["yes", "no"])
     runtime.ask_human("s", "w1", "Port?")
-    ship, port = state.list_messages("s")
+    ship, port = _messages()
     answered = client.post(
         ANSWERS,
         json={
@@ -131,7 +160,7 @@ def test_the_human_answers_a_tab_in_one_request(client, session):
     )
     assert answered.status_code == 200
     assert answered.json()["result"].startswith("queued")  # w1 is starting
-    _, _, answer, dismissal = state.list_messages("s")
+    _, _, answer, dismissal = _messages()
     assert (answer.summary, answer.reply_to) == (f"Answer to #{ship.id}: yes", ship.id)
     assert (dismissal.summary, dismissal.body, dismissal.reply_to) == (
         f"Dismissed #{port.id}",
@@ -151,7 +180,7 @@ def test_an_empty_tab_is_refused(client, session):
     runtime.ask_human("s", "w1", "Ship?")
     answer = client.post(ANSWERS, json={"answers": []})
     assert (answer.status_code, answer.json()["detail"]) == (400, "no answers")
-    assert [m.kind for m in state.list_messages("s")] == ["question"]
+    assert [m.kind for m in _messages()] == ["question"]
 
 
 def test_answers_to_an_unknown_session_are_404(client, session):
@@ -161,7 +190,7 @@ def test_answers_to_an_unknown_session_are_404(client, session):
 @pytest.mark.parametrize("act", ["answer", "dismiss"])
 def test_the_old_question_endpoints_are_gone(client, session, act):
     runtime.ask_human("s", "w1", "Ship?", None, ["yes"])
-    (ship,) = state.list_messages("s")
+    (ship,) = _messages()
     gone = client.post(f"/api/sessions/s/questions/{ship.id}/{act}", json={"choice": "yes"})
     assert gone.status_code in (404, 405)
     assert state.get_message("s", ship.id).question_state == state.OPEN_QUESTION
@@ -180,7 +209,7 @@ def test_a_change_needs_the_servers_own_origin(client, session, path, payload):
     assert client.post(path, json=payload).status_code == 403
     client.headers["origin"] = "http://evil.example"
     assert client.post(path, json=payload).status_code == 403
-    assert [m.kind for m in state.list_messages("s")] == ["question"]
+    assert [m.kind for m in _messages()] == ["question"]
 
 
 @pytest.mark.parametrize(("path", "payload"), CHANGES, ids=["messages", "answers"])

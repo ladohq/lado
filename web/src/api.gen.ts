@@ -1383,6 +1383,7 @@ export interface components {
             answered_at: string | null;
             /** Problem */
             problem: string | null;
+            recommendation: components["schemas"]["RecommendationInfo"] | null;
         };
         /**
          * GuiSession
@@ -1700,6 +1701,7 @@ export interface components {
             attachments: components["schemas"]["AttachmentInfo"][];
             /** Created At */
             created_at: string;
+            recommendation: components["schemas"]["RecommendationInfo"] | null;
         };
         /**
          * MessagePage
@@ -1932,6 +1934,29 @@ export interface components {
             /** Path */
             path: string;
             session: components["schemas"]["SessionInfo"];
+        };
+        /**
+         * RecommendationInfo
+         * @description The lead's recommendation on a gate or on another agent's question to the human
+         *     (lado.runtime.recommend): asked for, given, or not given when the lead's turn (or the
+         *     lead) ended without it.
+         */
+        RecommendationInfo: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "asked" | "given" | "missing";
+            /** Text */
+            text: string;
+            /** Choice */
+            choice: string | null;
+            /** Disagrees */
+            disagrees: boolean;
+            /** By */
+            by: string | null;
+            /** At */
+            at: string | null;
         };
         /**
          * RecordInfo

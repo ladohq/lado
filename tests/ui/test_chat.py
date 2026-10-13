@@ -96,6 +96,57 @@ def test_the_supervisor_asks_twice_and_the_human_answers_both_in_one_tab(
     shot(page, "answered")
 
 
+def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
+    page: Page, server, repo, shot
+):
+    session = running_session(repo)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session
+    )
+    runtime.send_message(session, "human", "w1", "askhuman Ship it? | yes, later")
+    question = agent_helpers.wait_for(
+        lambda: next((m for m in state.list_messages(session) if m.kind == state.QUESTION), None),
+        "the question",
+        session,
+    )
+    runtime.recommend(
+        session,
+        "supervisor",
+        "Later: CI is red on the branch.",
+        question=question.id,
+        choice="later",
+        disagrees=True,
+    )
+    page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    item = card.get_by_role("listitem", name=f"Question #{question.id}")
+    block = item.get_by_role("region", name="Supervisor's recommendation")
+    expect(block).to_contain_text("Later: CI is red on the branch.")
+    expect(block.locator(".rec-differs")).to_have_text("disagrees with w1")
+    # The recommended choice is picked ahead: Send sends it as it is.
+    expect(item.get_by_role("button", name="later")).to_have_attribute("aria-pressed", "true")
+    expect(item.get_by_role("button", name="yes")).to_have_attribute("aria-pressed", "false")
+    shot(page, "open")
+    card.get_by_role("button", name="Send answer to w1").click()
+    expect(card).to_have_count(0)
+    closed = page.get_by_role("log", name="Chat with the session").get_by_role(
+        "article", name="Question from w1"
+    )
+    expect(closed.locator(".chosen")).to_have_text("✓ later")
+    quiet = closed.locator("details.rec-closed")
+    expect(quiet.locator("summary")).to_have_text(
+        "SSupervisor recommended: later · disagreed with w1"
+    )
+    expect(closed.locator(".question-answer")).not_to_contain_text("later")
+    expect(closed.locator(".rec")).to_have_count(0)
+    quiet.locator("summary").click()
+    expect(quiet.locator(".chat-body")).to_contain_text("CI is red")
+    shot(page, "closed")
+
+
 def test_three_tabs_switch_a_gate_is_approved_on_its_tab_and_the_card_expands(
     page: Page, server, repo, shot
 ):

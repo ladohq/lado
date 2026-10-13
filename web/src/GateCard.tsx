@@ -13,6 +13,7 @@ import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
 import { clock, Preview } from "./ChatText";
 import { useLive } from "./live";
+import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
 
 const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
 
@@ -21,6 +22,8 @@ const LABELS: Record<string, Record<string, string>> = {
   approval: { approve: "Approve", reject: "Reject" },
   loop: { continue: "Continue", cancel: "Cancel run" },
 };
+
+const label = (gate: GateInfo) => (option: string) => LABELS[gate.kind]?.[option] ?? option;
 
 // How a gate is named wherever one title stands for it (a closed gate's line, a run's page).
 export const gateTitle = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
@@ -50,9 +53,10 @@ export function GateCard({
 }
 
 // What answers an open gate, wherever it is answered (a gate's card, its tab of the waiting
-// card): the question, the note that led to it in full with its chips, then the artifacts it
-// reads, the comment for the next step and a button per option. `compact`: without the note
-// and the artifacts. `inTab`: the question, note, reads and comment as the tab's list
+// card): the question, the note that led to it in full with its chips, the artifacts it
+// reads, the supervisor's recommendation (Recommendation.tsx), the comment for the next step
+// and a button per option, the recommended one primary. `compact`: without the note and the
+// artifacts. `inTab`: the question, note, reads and comment as the tab's list
 // (`.waiting-list`, it scrolls), the buttons in its Send row (`.waiting-send`, always shown);
 // `marked`, the gate a link asked for.
 export function GatePanel({
@@ -73,6 +77,7 @@ export function GatePanel({
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const primary = primaryOf(gate.options, gate.recommendation);
 
   async function answer(option: string) {
     setBusy(true);
@@ -92,6 +97,7 @@ export function GatePanel({
       {!compact && <Note session={session} gate={gate} />}
       {!compact && gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
       {!compact && <Reads session={session} names={gate.reads ?? []} />}
+      <Recommendation rec={gate.recommendation} />
     </>
   );
   const field = (
@@ -104,15 +110,15 @@ export function GatePanel({
       onChange={(event) => setComment(event.target.value)}
     />
   );
-  const buttons = gate.options.map((option, i) => (
+  const buttons = gate.options.map((option) => (
     <button
       key={option}
       type="button"
-      className={i === 0 ? "primary" : "quiet"}
+      className={option === primary ? "primary" : "quiet"}
       disabled={busy || stopped}
       onClick={() => void answer(option)}
     >
-      {LABELS[gate.kind]?.[option] ?? option}
+      {label(gate)(option)}
     </button>
   ));
   const said = (
@@ -212,7 +218,8 @@ function Reads({ session, names }: { session: string; names: string[] }) {
   );
 }
 
-// A closed gate: who answered what, the comment; the question and the note on a click.
+// A closed gate: who answered what, the comment; the question, the note and the
+// supervisor's recommendation's line on a click.
 export function GateLine({ session, gate }: { session: string; gate: GateInfo }) {
   const [shown, setShown] = useState(false);
   const when = gate.answered_at ?? gate.created_at;
@@ -229,6 +236,7 @@ export function GateLine({ session, gate }: { session: string; gate: GateInfo })
         <div className="gate-closed-text">
           <p className="gate-question">{gate.question}</p>
           <Note session={session} gate={gate} />
+          <RecommendationLine rec={gate.recommendation} label={label(gate)} />
         </div>
       )}
     </article>

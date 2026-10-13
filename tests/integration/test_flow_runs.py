@@ -1,7 +1,9 @@
 """Flow runs for real: the fake supervisor starts a run, its worker and the supervisor do
 the steps through the MCP tools, LADO delivers each step and cleans up at the end."""
 
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +13,8 @@ from test_agents import (
     SESSION,
     inputs,
     lado_cli,
+    paused,
+    release,
     seen,
     supervisor_runs,
     wait_for,
@@ -236,7 +240,7 @@ def test_a_run_waits_at_a_gate_until_the_human_sets_it(repo, flow_kit):
     name = "gated/check-it"
     supervisor_runs("flow_start gated check it")
     [waiting] = seen("supervisor")["flow_start"]["notices"]
-    assert waiting.startswith(f"flow {name}: waiting for the human at check (gate #1)\n")
+    assert waiting.startswith(f"flow {name}: recommend on gate #1: {name} at check\nGo?\n")
     assert "gate #1 waiting: Go?" in lado_cli("ls").stdout
     result = lado_cli("flow-set", SESSION, name, "end", "--reason", "looks fine")
     assert result.returncode == 0, result.stderr
@@ -280,7 +284,7 @@ def to_the_gate(name: str) -> None:
     supervisor_runs(f"spawnrun {name}")
     wait_status("worker", state.IDLE)
     runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
-    waiting = f"[from lado] flow {name}: waiting for the human at check (gate #1)"
+    waiting = f"[from lado] recommend on gate #1: {name} at check"
     wait_for(lambda: got("supervisor", waiting), "the gate")
 
 
@@ -355,10 +359,12 @@ def test_runs_and_gates_survive_stop_and_start(repo, flow_kit):
     wait_status("supervisor", state.IDLE)
     # Its first input, through its queue: the line typed in, the text read. Bodies the old
     # supervisor never read were dropped at the stop: it starts fresh.
-    [told] = seen("supervisor")["first_read"]
+    # The gate's recommendation was not given: the new supervisor is asked again.
+    told, request = seen("supervisor")["first_read"]
     assert told["summary"] == "session resumed: 2 open runs"
     assert f'spawn_worker(role="worker", run="{ship}")' in told["body"]
     assert f"lado answer {SESSION} {gate.id}" in told["body"]
+    assert request["summary"] == f"recommend on gate #{gate.id}: {gated} at check"
 
     # A new worker takes over the run's worktree and branch, with the earlier commit.
     supervisor_runs(f"spawnrun {ship}")
@@ -440,3 +446,65 @@ def test_the_supervisor_forwards_the_humans_file_to_a_runs_worker_which_reads_it
     blocks = wait_for(lambda: seen("worker").get("artifact_read_blocks"), "read_artifact")
     assert [b["type"] for b in blocks] == ["text", "image"]
     assert seen("worker")["artifact_read"]["name"] == f"/{shot}"
+
+
+# The lead's recommendation on each gate (LAD-27): asked by LADO through the queue, given
+# with the lead's MCP tool, marked missing at the end of a turn without it.
+
+
+def recommendation(gate_id: int) -> tuple:
+    gate = state.get_gate(gate_id)
+    return gate.recommendation_state, gate.recommended_choice
+
+
+def test_a_gate_asks_the_lead_and_its_recommendation_reaches_the_gate(repo, flow_kit):
+    name = "reviewed/check-it"
+    to_the_gate(name)  # the worker's advance: the supervisor got the request
+    # Its turn ended without recommend (the fake only runs commands): said so.
+    wait_status("supervisor", state.IDLE)
+    wait_for(lambda: recommendation(1) == (state.REC_MISSING, None), "missing")
+    request = next(m for m in state.list_messages(SESSION) if m.summary.startswith("recommend"))
+    assert request.state in (state.DELIVERED, state.READ)
+    supervisor_runs("give_recommendation gate 1 Reject")
+    assert seen("supervisor")["recommend"] == (
+        "recommendation on gate #1 stored; the human sees it on the gate's card"
+    )
+    assert recommendation(1) == (state.REC_GIVEN, "reject")
+    assert state.get_gate(1).recommendation_disagrees is True
+    # The popup's `lado answer`, left with Enter: the gate stays open.
+    shown = subprocess.run(
+        [sys.executable, "-m", "lado.cli", "answer", SESSION, "1"],
+        input="\n",
+        capture_output=True,
+        text=True,
+        env=os.environ,
+        check=False,
+    )
+    assert shown.returncode == 0, shown.stderr
+    assert "Supervisor recommends: reject (disagrees with worker)\n  my own view\n" in shown.stdout
+    assert "  2) reject   ← supervisor recommends\n" in shown.stdout
+
+
+def test_a_gate_answered_first_drops_the_request(repo, flow_kit):
+    name = "reviewed/check-it"
+    supervisor_runs("flow_start reviewed check it")
+    supervisor_runs(f"spawnrun {name}")
+    wait_status("worker", state.IDLE)
+    runtime.send_message(SESSION, "human", "supervisor", "pause")
+    paused("supervisor", 1)  # busy: the request waits in its queue
+    runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
+    # The gate opens first, then its request is queued.
+    request = wait_for(
+        lambda: next(
+            (m for m in state.list_messages(SESSION) if m.summary.startswith("recommend")), None
+        ),
+        "the request",
+    )
+    assert request.state == state.PENDING
+    result = lado_cli("answer", SESSION, "1", "approve")
+    assert result.returncode == 0, result.stderr
+    assert state.get_message(SESSION, request.id).state == state.DROPPED
+    release("supervisor", 1)
+    wait_status("supervisor", state.IDLE)
+    assert not got("supervisor", "recommend on gate #1")
+    assert state.get_message(SESSION, request.id).state == state.DROPPED

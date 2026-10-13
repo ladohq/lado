@@ -1504,8 +1504,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     # No statistics sender from the sender itself, nor from `lado update`, which starts
-    # nothing of its own after the installer (self_update).
-    kicks = args.command != "update" and not (args.command == "telemetry" and args.sub == "send")
+    # nothing of its own after the installer (self_update), nor from `lado uninstall`,
+    # which deletes LADO_HOME and the program: a kick or a journal line would make
+    # LADO_HOME again (lado.uninstall).
+    removes = args.command == "uninstall"
+    kicks = args.command != "update" and not removes
+    kicks = kicks and not (args.command == "telemetry" and args.sub == "send")
     try:
         # `lado stop` is what the refusal asks for: it migrates once no session runs.
         # `lado doctor` checks the environment as it is, a migration due included.
@@ -1531,7 +1535,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except Exception as exc:
         # Unexpected: journaled (lado.telemetry), then the traceback as before.
-        telemetry.record(f"cli:{_where(args)}", exc)
+        if not removes:
+            telemetry.record(f"cli:{_where(args)}", exc)
         raise
     finally:
         if kicks:  # a human's command: the statistics sender, when something is due

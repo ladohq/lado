@@ -388,6 +388,40 @@ def test_a_file_that_cannot_be_deleted_is_named(workers, lado_home):
     assert any(line.startswith(f"lado: could not delete {locked / 'file'}: ") for line in lines)
 
 
+def hold_send_lock(seconds: float | None):
+    """A statistics sender (`lado telemetry send`) that runs `seconds`, or on (None)."""
+    import threading
+
+    from lado import telemetry
+
+    telemetry.folder().mkdir(parents=True, exist_ok=True)
+    lock = open(telemetry.folder() / "send.lock", "a")
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    if seconds is not None:
+        threading.Timer(seconds, lock.close).start()
+    return lock
+
+
+def test_a_running_statistics_sender_is_waited_for_before_the_home_goes(workers, lado_home):
+    hold_send_lock(0.3)
+    code, lines = run(uninstall.plan())
+    assert code == 0 and not lado_home.exists()
+
+
+def test_a_statistics_sender_that_does_not_end_keeps_the_home(workers, lado_home, monkeypatch):
+    monkeypatch.setattr(uninstall, "SENDER_WAIT", 0.2)
+    lock = hold_send_lock(None)
+    try:
+        code, lines = run(uninstall.plan())
+    finally:
+        lock.close()
+    assert code == 1 and lado_home.exists()
+    assert (
+        f"lado: kept {lado_home}: LADO's statistics sender still runs "
+        "(LADO_HOME/telemetry/send.lock is held); run lado uninstall again"
+    ) in lines
+
+
 def test_a_guarded_home_is_kept_with_exit_1(user_home, monkeypatch, tmux_server):
     monkeypatch.setenv("LADO_HOME", str(user_home))
     (user_home / "mine.txt").write_text("x")

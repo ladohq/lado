@@ -305,9 +305,12 @@ fixes and docs only: no new feature, no API or schema change.
     network, never raises) starts a detached `lado telemetry send` when sending is on,
     something is due (no report in `REPORT_EVERY`, or a queued error) and no try in
     `RETRY_AFTER`: `cli.main` after every command but `hook`, `mcp`, `loop`, `telemetry
-    send` and `update` (which starts nothing after its installer), `doctor` included;
+    send`, `update` (which starts nothing after its installer) and `uninstall` (which
+    also records no error: either would make the deleted LADO_HOME again), `doctor`
+    included;
     the session loop every `KICK_EVERY`; the UI server's housekeeping. A hook only
-    queues. `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
+    queues. `sender_ended` waits for that lock (`lado uninstall`, before it deletes
+    LADO_HOME). `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
     the network: `_build` (`_expire` drops errors older than `OUTBOX_MAX_AGE`; `report`
     counted from lado.db by `state.usage_counts` from the last report, at most
     `REPORT_MAX_WINDOW` back, never stored; `_groups`, PostHog's `$exception` per

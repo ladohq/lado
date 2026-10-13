@@ -21,10 +21,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import lado
-from lado import loop, runtime, self_update, state, terminal, tmux, update
+from lado import loop, runtime, self_update, state, telemetry, terminal, tmux, update
 from lado.server import run as server_run
 
 Say = Callable[..., None]  # print's signature: text, file=, end=, flush=
+
+# Seconds to wait for a statistics sender that runs (it lives SEND_DEADLINE at most).
+SENDER_WAIT = telemetry.SEND_DEADLINE + 5
 
 DOCS = "docs/install.md, Uninstall"
 AGENT_CLIS = (
@@ -448,6 +451,12 @@ class _Uninstall:
         if self.plan.home_kept:
             self.fail(f"kept {home}: {self.plan.home_kept}")
             self.left.append(f"  {home}: {self.plan.home_kept}")
+            return
+        # A sender `lado telemetry send` started before the stop writes into LADO_HOME.
+        if not telemetry.sender_ended(SENDER_WAIT):
+            why = "LADO's statistics sender still runs (LADO_HOME/telemetry/send.lock is held)"
+            self.fail(f"kept {home}: {why}; run lado uninstall again")
+            self.left.append(f"  {home}: {why}")
             return
         errors: list[str] = []
 

@@ -2438,6 +2438,28 @@ def test_uninstall_asks_and_needs_yes_without_a_terminal(lado_home, capsys, monk
     assert [found.keep_data for found in ran] == [False, False, True]
 
 
+@pytest.mark.parametrize("ends", ["deleted", "crashed"])
+def test_uninstall_starts_no_statistics_sender_and_records_no_error(lado_home, monkeypatch, ends):
+    """Both would make the LADO_HOME it deleted again (lado.telemetry's folder)."""
+    from lado import telemetry, uninstall
+
+    def run(found, say=print):
+        if ends == "crashed":
+            raise RuntimeError("boom")
+        return 0
+
+    called = []
+    monkeypatch.setattr(uninstall, "run", run)
+    monkeypatch.setattr(telemetry, "kick", lambda: called.append("kick"))
+    monkeypatch.setattr(telemetry, "record", lambda *a, **k: called.append("record"))
+    if ends == "crashed":
+        with pytest.raises(RuntimeError):
+            main(["uninstall", "--yes"])
+    else:
+        assert main(["uninstall", "--yes"]) == 0
+    assert called == []
+
+
 def test_uninstall_does_not_migrate_before_its_plan(repo, fake_tmux, capsys, monkeypatch):
     assert main(["start", str(repo), "--provider", "claude", "--name", "old", "--no-attach"]) == 0
     agent_helpers.previous_schema()

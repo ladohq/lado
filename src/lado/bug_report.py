@@ -11,6 +11,7 @@ is where they submit it."""
 import datetime
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from urllib.parse import quote, urlencode
@@ -33,6 +34,9 @@ WARNING = (
 PLACEHOLDER = "<!-- What did you do, what did you expect, and what happened instead? -->"
 WHAT_HAPPENED = f"### What happened\n\n{PLACEHOLDER}\n"
 NO_ERRORS = "No LADO errors in the last 30 days."
+# The shape of the UI's browser line (web/src/SystemPanel.tsx, browserLine): the only text
+# of a request that gets into a report.
+BROWSER_LINE = re.compile(r"- Browser: [A-Za-z0-9 .]{1,40} on [A-Za-z ]{1,20}")
 
 
 @dataclass(frozen=True)

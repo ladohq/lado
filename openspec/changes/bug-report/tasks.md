@@ -27,7 +27,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 5. API (D5)
 
-- [ ] 5.1 `GET /api/bug-report` (`BugReport`, the browser line's check); `make web-types`,
+- [x] 5.1 `GET /api/bug-report` (`BugReport`, the browser line's check); `make web-types`,
   both files committed. Check: `uv run pytest tests/test_server_bug_report.py -n auto`,
   `make web`.
 

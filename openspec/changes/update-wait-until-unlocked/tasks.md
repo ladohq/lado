@@ -22,9 +22,9 @@
 
 ## 3. Acceptance
 
-- [ ] 3.1 20 runs in a row of `test_the_ui_update_rolls_back_when_the_new_version_is_wrong`
+- [x] 3.1 20 runs in a row of `test_the_ui_update_rolls_back_when_the_new_version_is_wrong`
   (`-m integration -n0`, a loop) and of `SystemPanel.test.tsx`, counted in the build
   report (AC-4).
-- [ ] 3.2 `make lint`, `make test`, `uv run pytest -m integration -n auto
+- [x] 3.2 `make lint`, `make test`, `uv run pytest -m integration -n auto
   tests/integration/test_update_process.py`, `make web` pass; `ci-ok` green on the pull
   request (AC-5).

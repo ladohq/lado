@@ -179,3 +179,9 @@ Reviewer:
 Integrator:
 - Never bump the version, date CHANGELOG.md or tag: a release is a separate task the
   human starts.
+- After merging `origin/<target>` into the run's branch (the kit's Merge, step 2), run
+  none of the settings' **Checks** locally but `openspec validate --specs --strict`
+  (CI does not run it); with it green, push and wait for the pull request's CI, which
+  runs the rest. A red CI then follows step 3 as written: the merge commit stays, and
+  a cause in the work is `conflicts`, fixed by the developer on top. This replaces
+  step 2's local run of the Checks on this project.

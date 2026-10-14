@@ -24,7 +24,7 @@
 
 ## 2. Integrator's merge (R6)
 
-- [ ] 2.1 In `.lado/sdlc.md`, **Extra instructions**, Integrator, add after the item
+- [x] 2.1 In `.lado/sdlc.md`, **Extra instructions**, Integrator, add after the item
   "Never bump the version" this item (AC-5, AC-6):
 
   ```markdown

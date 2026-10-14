@@ -189,8 +189,8 @@ lado ui` works, and a restart (under 8 s) keeps the uid; the same home volume in
 container with projects of 2002 is 2002's, with `lado doctor` clean and `lado ls` working;
 an owner of 0 keeps 1000 and warns in `docker logs`, as does a `LADO_REPOS` not mounted; a
 gid of 0 is not taken; with the entrypoint replaced (the sudo rule left), a `setpriv`
-first on the PATH its caller hands over does not run as root; with no-new-privileges or
-`--cap-drop ALL` the server starts as uid 1000 and `docker logs` says why. A
+first on the PATH its caller hands over does not run as root; with no-new-privileges,
+`--cap-drop ALL` or `--read-only` the server starts as uid 1000 and `docker logs` says why. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -1124,10 +1124,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   (`/usr/bin/setpriv`). The root run uses a fixed PATH and gives back the caller's
   (`LADO_ENTRYPOINT_PATH`, as sudo sets its `secure_path`) only after the drop: where the
   entrypoint was replaced the rule stays, and its SETENV must not let a caller choose what
-  runs as root. A step of the root run that fails (`usermod`, the home's `chown`) is a
-  warning, and the start goes on. A container that may not become root (`NoNewPrivs`, a
-  `CapBnd` without CHOWN, DAC_OVERRIDE, FOWNER, SETGID or SETUID: no-new-privileges,
-  `--cap-drop`) is not sent to sudo: it warns and runs as uid 1000, the agents'
+  runs as root. A step of the root run that fails (the rule's removal, `usermod`, the
+  home's `chown`) is a warning, and the start goes on. A container that may not become
+  root (`NoNewPrivs`, a `CapBnd` without CHOWN, DAC_OVERRIDE, FOWNER, SETGID or SETUID:
+  no-new-privileges, `--cap-drop`) or whose `/` is read-only (`/proc/self/mountinfo`:
+  `--read-only`) is not sent to sudo: it warns and runs as uid 1000, the agents'
   `LADO_REPOS` the image's default `lado-repos.sh` (`/projects`). `docker run --user root`
   runs its command as `lado` too. Every start then warns in `docker logs` about a `LADO_REPOS` that is no
   folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's.

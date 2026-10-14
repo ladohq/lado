@@ -23,6 +23,10 @@ NO_ROOT = (
     "capabilities): lado keeps uid 1000 instead of the owner's of {}, and the agents' "
     "LADO_REPOS is /projects"
 )
+READ_ONLY = (
+    "lado: warning: the container's root file system is read-only: lado keeps uid 1000 "
+    "instead of the owner's of {}, and the agents' LADO_REPOS is /projects"
+)
 
 
 def git(*args: str) -> subprocess.CompletedProcess:
@@ -162,6 +166,16 @@ def test_a_container_that_may_not_become_root_starts_as_1000(start, projects_vol
                "-e", "LADO_REPOS=/srv/projects")  # fmt: skip
     assert c.exec("id", "-u").stdout.strip() == "1000"
     assert NO_ROOT.format("/srv/projects") in c.logs().splitlines(), c.logs()
+
+
+def test_a_read_only_container_starts_as_1000(start, projects_volume):
+    """A read-only root file system (`--read-only`, Kubernetes' readOnlyRootFilesystem):
+    nothing of the root step could be written, so the server starts as uid 1000."""
+    c = served(start, "--read-only", "--tmpfs", "/tmp",
+               "-v", f"{projects_volume(2001, 2001)}:/srv/projects",
+               "-e", "LADO_REPOS=/srv/projects")  # fmt: skip
+    assert c.exec("id", "-u").stdout.strip() == "1000"
+    assert READ_ONLY.format("/srv/projects") in c.logs().splitlines(), c.logs()
 
 
 def test_lado_repos_not_mounted_warns(start):

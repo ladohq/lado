@@ -159,7 +159,7 @@ def test_the_entrypoint_removes_its_way_to_root_first():
     body = ENTRYPOINT.split('if [ "$(id -u)" = 0 ]; then\n', 1)[1]
     first, second = (line.strip() for line in body.splitlines()[:2])
     assert first == f"PATH={ROOT_PATH}"
-    assert second == 'rm -f "$RULE" "$MARK"'
+    assert second == 'if ! rm -f "$RULE" "$MARK"; then'
     assert "RULE=/etc/sudoers.d/lado-entrypoint" in ENTRYPOINT
     assert "MARK=/etc/lado/first-start" in ENTRYPOINT
 
@@ -192,7 +192,8 @@ def test_the_entrypoint_goes_on_without_root():
     """A container that may not become root (no-new-privileges, `--cap-drop`) does not try
     sudo: the first start checks first, so the server starts as uid 1000."""
     phase1 = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[0]
-    assert phase1.index("if may_become_root; then") < phase1.index("exec sudo -E -n")
+    assert phase1.index("if ! may_become_root; then") < phase1.index("exec sudo -E -n")
+    assert phase1.index("elif read_only_root; then") < phase1.index("exec sudo -E -n")
     assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 

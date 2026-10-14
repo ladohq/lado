@@ -2,14 +2,16 @@
 # LADO's image: between tini and the command (the UI server). Three phases, by who runs it:
 #
 # 1. lado at a container's first start (the marker is there): reruns itself as root through
-#    the sudo rule for this script alone, when the container lets it become root; else it
-#    warns and goes on as phase 3 with uid 1000 (no-new-privileges, `--cap-drop`).
+#    the sudo rule for this script alone, when the container lets it become root and its
+#    root file system is writable; else it warns and goes on as phase 3 with uid 1000
+#    (no-new-privileges, `--cap-drop`, `--read-only`).
 # 2. root: deletes that rule and the marker before anything else, so no process started
 #    later, an agent included, can become root through them; gives lado the uid and gid of
 #    LADO_REPOS's owner (not uid 0: Docker Desktop shows a bind mount so; not gid 0, root's
 #    group), gives lado its home volume, writes LADO_REPOS for the agents' login shells,
-#    and drops back to lado; a step of these that fails is a warning. Where the entrypoint was replaced, the rule stays: this phase
-#    runs nothing by its caller's PATH, so the rule still runs only this script's steps.
+#    and drops back to lado; a step of these that fails is a warning. Where the entrypoint
+#    was replaced, the rule stays: this phase runs nothing by its caller's PATH, so the
+#    rule still runs only this script's steps.
 # 3. lado with no marker (after phase 2, or a restart, which keeps the uid taken): warns in
 #    `docker logs` about a LADO_REPOS that is not mounted or not writable, then runs the
 #    command.
@@ -39,15 +41,27 @@ may_become_root() {
     [ -n "$bounding" ] && [ $((0x$bounding & 0xcb)) = $((0xcb)) ]
 }
 
+# Whether / is mounted read-only (`--read-only`, Kubernetes' readOnlyRootFilesystem): the
+# root step could write neither /etc/passwd nor the profile there.
+read_only_root() {
+    case $(awk '$5 == "/" { print $6 }' /proc/self/mountinfo) in
+    ro | ro,*) return 0 ;;
+    *) return 1 ;;
+    esac
+}
+
 if [ "$(id -u)" = 0 ]; then
     PATH=/usr/sbin:/usr/bin:/sbin:/bin
-    rm -f "$RULE" "$MARK"
+    if ! rm -f "$RULE" "$MARK"; then
+        echo "lado: warning: could not remove the sudo rule $RULE and the marker $MARK" >&2
+    fi
+    # A step here that fails is a warning, and the server starts as lado all the same: a
+    # container that stopped here would only restart into the same failure. A rule left
+    # behind is harmless, as below; a marker left behind brings this phase back next start.
     # The rule stays in a container whose entrypoint was replaced, and SETENV lets its
     # caller set any variable: nothing here runs by the caller's PATH, which comes back
     # only after the drop to lado.
     saved=${LADO_ENTRYPOINT_PATH:-$PATH}
-    # A step below that fails is a warning, and the server starts as lado all the same: a
-    # container that stopped here would only restart into the same failure.
     repos=${LADO_REPOS:-/projects}
     if [ -d "$repos" ]; then
         owner=$(stat -c '%u %g' "$repos")
@@ -75,12 +89,16 @@ if [ "$(id -u)" = 0 ]; then
 fi
 
 if [ -e "$MARK" ] && [ "$(id -un 2>/dev/null)" = lado ]; then
-    if may_become_root; then
+    # The image's /etc/profile.d/lado-repos.sh, which only root writes, keeps /projects.
+    kept="lado keeps uid $(id -u) instead of the owner's of ${LADO_REPOS:-/projects}, and the agents' LADO_REPOS is /projects"
+    if ! may_become_root; then
+        echo "lado: warning: the container may not become root (no-new-privileges or dropped capabilities): $kept" >&2
+    elif read_only_root; then
+        echo "lado: warning: the container's root file system is read-only: $kept" >&2
+    else
         export LADO_ENTRYPOINT_PATH="$PATH"
         exec sudo -E -n "$SELF" "$@"
     fi
-    # The image's /etc/profile.d/lado-repos.sh, which only root writes, keeps /projects.
-    echo "lado: warning: the container may not become root (no-new-privileges or dropped capabilities): lado keeps uid $(id -u) instead of the owner's of ${LADO_REPOS:-/projects}, and the agents' LADO_REPOS is /projects" >&2
 fi
 
 repos=${LADO_REPOS:-/projects}

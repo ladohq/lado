@@ -111,7 +111,7 @@ the image's entrypoint was replaced, the rule stays; the root step SHALL then ru
 program chosen by its caller's environment (its commands by a fixed PATH or full paths,
 the caller's PATH given back only after the drop to `lado`), so that the rule runs only
 that step's own work. A container whose settings forbid becoming root (no-new-privileges,
-capabilities dropped) SHALL start as before, `lado` with uid 1000 and the agents'
+capabilities dropped) or whose root file system is read-only SHALL start as before, `lado` with uid 1000 and the agents'
 `LADO_REPOS` the image's `/projects`, with one warning line in `docker logs`; a step of the
 root run that fails SHALL be a warning line, and the server SHALL start anyway. A
 restart of the same container SHALL keep the uid it took. A folder `LADO_REPOS` that is no
@@ -158,6 +158,14 @@ with one warning line, and the server SHALL start anyway.
   line `lado: warning: the container may not become root (no-new-privileges or dropped
   capabilities): lado keeps uid 1000 instead of the owner's of <path>, and the agents'
   LADO_REPOS is /projects`
+
+#### Scenario: A read-only root file system
+
+- **WHEN** the container runs with `--read-only --tmpfs /tmp` and projects owned by uid
+  2001
+- **THEN** the server answers `/api/health`, `id -u` prints 1000, and `docker logs` has a
+  line `lado: warning: the container's root file system is read-only: lado keeps uid 1000
+  instead of the owner's of <path>, and the agents' LADO_REPOS is /projects`
 
 #### Scenario: A restart
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import socket
 import subprocess
 import time
@@ -16,7 +17,13 @@ IMAGE = os.environ.get("LADO_TEST_IMAGE", "lado:local")
 PYTHON = "/opt/uv/tools/lado/bin/python"  # LADO's own Python in the image
 # Every container a test makes: no statistics, no look at PyPI.
 QUIET = ["-e", "LADO_TELEMETRY=0", "-e", "LADO_NO_UPDATE_CHECK=1"]
-PREFIX = "lado-test-"  # each container, volume and compose project a test makes
+# Each container, volume and compose project of this test run is named PREFIX<hex>: the
+# run's own prefix, so a run beside it (another worktree) is not taken for one left behind.
+PREFIX = f"lado-test-{secrets.token_hex(3)}-"
+
+
+def new_name() -> str:
+    return f"{PREFIX}{secrets.token_hex(4)}"
 
 
 def docker(*args: str, check: bool = True, timeout: float = 120, **kw):

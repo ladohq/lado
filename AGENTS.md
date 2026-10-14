@@ -166,8 +166,10 @@ Container tests (`tests/container/`, marker `container`) run LADO's image (`dock
 real Docker and no model, driving the `docker` CLI from the host against an image built
 already (`make docker`; `LADO_TEST_IMAGE`, else `lado:local`); they skip when Docker does
 not run or the image is missing. Each container, volume and compose project a test makes is
-named `lado-test-<hex>`, runs with `LADO_TELEMETRY=0` and `LADO_NO_UPDATE_CHECK=1` and is
-removed after it, also on a failure (the session's teardown fails when one is left). They
+named with the test run's own prefix, `lado-test-<run hex>-<hex>` (`container_helpers`), so
+a run beside it is never taken for one left behind; it runs with `LADO_TELEMETRY=0` and
+`LADO_NO_UPDATE_CHECK=1` and is removed after the test by a finalizer, also on a failure
+(the session's teardown fails when a container or volume of the run is left). They
 check: one `docker run` serves `/api/health` (the wheel's version) and the UI on its
 `LADO_PORT` (8765 without it), with the container note in `docker logs` and `lado ui
 --no-open`'s link on that port; `lado doctor` has no `[FAIL]`, says `in a container`, Claude
@@ -176,8 +178,10 @@ session against the fake endpoint, run inside the container on its own loopback 
 through `~/.profile`, gets its supervisor to idle, the window's process is the `claude`
 binary itself (`/proc/<pid>/exe`), and `lado doctor` run with exactly that process's
 environment (`/proc/<pid>/environ`) says `in a container`; `docker/compose.yaml` serves on
-its `LADO_PORT` and refuses without `LADO_PROJECTS`. A failed test keeps the container's
-`docker logs` and LADO's logs in `real_clis.EVIDENCE`. `make test-container`; not in `make
+its `LADO_PORT` and refuses without `LADO_PROJECTS`. A test that fails in its setup or its
+call keeps, for each container it started (a compose project's too), `docker logs` and
+LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
+anything can fail, and its finalizer runs after the failure's report. `make test-container`; not in `make
 check`.
 
 CI (`.github/workflows/ci.yml`) runs on each pull request, each push to main, daily on main
@@ -224,7 +228,8 @@ its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the sa
 Every `uses:` of every workflow, GitHub's own actions too, is a full commit SHA followed by
 `# vX.Y.Z`, the release it is (`tests/test_workflow_security.py`); Dependabot
 (`.github/dependabot.yml`) updates those pins, the uv and the web UI's npm dependencies and
-the base images of `docker/Dockerfile` (pinned by digest) weekly, minor and patch in one pull request per ecosystem, a release once it is 7 days old.
+the base images of `docker/Dockerfile` (pinned by digest) weekly, minor and patch in one
+pull request per ecosystem, a release once it is 7 days old.
 `claude.yml` (the `@claude` reviewer) starts its job only for an author who is the
 repository's `OWNER`, `MEMBER` or `COLLABORATOR`. Vulnerability reports: SECURITY.md.
 Live tests are not in CI: they run locally, at release only, every provider (Claude Code with

@@ -4,23 +4,11 @@ agents' PATH, a Claude Code agent gets to idle and knows it runs in a container,
 compose file publishes one port number."""
 
 import json
-import os
-import secrets
 import time
 import urllib.request
 
 import pytest
-from container_helpers import (
-    IMAGE,
-    PREFIX,
-    PYTHON,
-    ROOT,
-    docker,
-    free_port,
-    health,
-    remove_container,
-    run_container,
-)
+from container_helpers import PYTHON, ROOT, docker, free_port, health
 
 pytestmark = pytest.mark.container
 
@@ -49,13 +37,10 @@ def test_docker_run_serves_the_ui_on_its_port(container):
     assert link.startswith(f"http://127.0.0.1:{container.port}/?token="), link
 
 
-def test_without_lado_port_the_server_is_on_8765():
-    name, port = f"{PREFIX}{secrets.token_hex(4)}", free_port()
-    run_container(name, "-p", f"127.0.0.1:{port}:8765")
-    try:
-        assert health(port)["ok"] is True
-    finally:
-        remove_container(name)
+def test_without_lado_port_the_server_is_on_8765(start):
+    port = free_port()
+    start(port, "-p", f"127.0.0.1:{port}:8765")
+    assert health(port)["ok"] is True
 
 
 def test_lado_doctor_is_clean_in_the_container(container):
@@ -154,43 +139,15 @@ def test_a_claude_session_gets_to_idle_and_knows_the_container(container):
     assert stopped.returncode == 0, stopped.stdout + stopped.stderr
 
 
-# The compose project's own settings for a test: no statistics, no look at PyPI.
-QUIET_OVERRIDE = """services:
-  lado:
-    environment:
-      LADO_TELEMETRY: "0"
-      LADO_NO_UPDATE_CHECK: "1"
-"""
+def test_compose_serves_on_lado_port(compose):
+    compose.run("up", "-d")
+    assert health(compose.port)["ok"] is True
+    link = compose.run("exec", "-T", "lado", "lado", "ui", "--no-open")
+    assert link.stdout.strip().startswith(f"http://127.0.0.1:{compose.port}/?token="), link.stdout
 
 
-def compose(project: str, override, env: dict, *args: str, check: bool = True):
-    files = ["-f", str(ROOT / "docker" / "compose.yaml"), "-f", str(override)]
-    return docker("compose", *files, "-p", project, *args, check=check, env=env, timeout=180)
-
-
-def test_compose_serves_on_lado_port(tmp_path):
-    override = tmp_path / "quiet.yaml"
-    override.write_text(QUIET_OVERRIDE)
-    project, port = f"{PREFIX}{secrets.token_hex(4)}", free_port()
-    env = {
-        **os.environ,
-        "LADO_IMAGE": IMAGE,
-        "LADO_PORT": str(port),
-        "LADO_PROJECTS": str(tmp_path),
-    }
-    try:
-        compose(project, override, env, "up", "-d")
-        assert health(port)["ok"] is True
-        link = compose(project, override, env, "exec", "-T", "lado", "lado", "ui", "--no-open")
-        assert link.stdout.strip().startswith(f"http://127.0.0.1:{port}/?token="), link.stdout
-    finally:
-        compose(project, override, env, "down", "-v", check=False)
-
-
-def test_compose_refuses_without_the_projects_folder(tmp_path):
-    override = tmp_path / "quiet.yaml"
-    override.write_text(QUIET_OVERRIDE)
-    env = {k: v for k, v in os.environ.items() if k != "LADO_PROJECTS"}
-    done = compose(f"{PREFIX}config", override, env, "config", check=False)
+def test_compose_refuses_without_the_projects_folder(compose):
+    del compose.env["LADO_PROJECTS"]
+    done = compose.run("config", check=False)
     assert done.returncode != 0
     assert "LADO_PROJECTS" in done.stderr

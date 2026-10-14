@@ -229,6 +229,21 @@ def test_doctor_kicks_too_and_migrates_nothing(monkeypatch, capsys):
     assert (kicked, migrated) == ([1], [])
 
 
+def test_the_server_kicks_nothing_at_its_exit(monkeypatch):
+    """The running server kicks every KICK_EVERY; a kick at its exit could make LADO_HOME
+    again after `lado uninstall` deleted it. `lado server stop` is a human's command."""
+    from lado.server import run as server_run
+
+    kicked = []
+    monkeypatch.setattr(telemetry, "kick", lambda: kicked.append(1))
+    monkeypatch.setattr(server_run, "serve", lambda *args: 0)
+    assert cli.main(["server", "--port", "0"]) == 0
+    assert kicked == []
+    monkeypatch.setattr(server_run, "stop", lambda: None)
+    assert cli.main(["server", "stop"]) == 0
+    assert kicked == [1]
+
+
 def test_update_starts_nothing_after_the_installer(monkeypatch):
     """After the installer the old process starts nothing of its own (self_update.py):
     no statistics sender either (F3)."""

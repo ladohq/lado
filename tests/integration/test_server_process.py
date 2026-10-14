@@ -89,6 +89,18 @@ def test_ui_starts_one_server_in_the_background_and_stop_ends_it():
     assert "not running" in lado_cli("server", "stop").stdout
 
 
+def test_stop_returns_once_the_servers_process_has_ended():
+    """The server frees its lock a moment before its process ends; a stop that returned
+    on the lock let `lado uninstall` go on while the old server lived."""
+    for _ in range(5):
+        started = lado_cli("ui", "--no-open", "--port", "0")
+        assert started.returncode == 0, started.stderr
+        pid = server_run.running()["pid"]
+        assert server_run.stop()["pid"] == pid
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+
+
 def test_a_server_on_every_address_warns_and_gives_a_link_for_other_machines():
     """On macOS with its firewall on, a dialog may ask to accept incoming connections; the
     test does not need them."""

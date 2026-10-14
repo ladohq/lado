@@ -2,6 +2,7 @@
 waiting card, and a gate answered elsewhere (`lado answer`) leaves the card and is a closed
 line on the open page."""
 
+import re
 import subprocess
 import sys
 import uuid
@@ -136,7 +137,11 @@ def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     card.get_by_role("textbox", name="Comment for the next step (optional)").fill("ship it\nnow")
     card.get_by_role("button", name="Approve", exact=True).click()
     # One line: the run's move from You, the comment under it; the run's end may follow it.
-    move = feed.locator(":scope > .run-group").last.get_by_role("listitem").filter(has_text="You")
+    # The gate's opening stays above, with the gate: its line says "waits for you".
+    last = feed.locator(":scope > .run-group").last
+    expect(last.locator("li.run-gate_open")).to_have_count(0)
+    you = page.locator(".run-actor", has_text=re.compile(r"^You$"))
+    move = last.get_by_role("listitem").filter(has=you)
     expect(move.locator(".run-state")).to_have_text(["check", "end"])
     expect(move.locator(".run-outcome")).to_have_text("approved")
     expect(move.locator(".run-comment")).to_contain_text("ship it")

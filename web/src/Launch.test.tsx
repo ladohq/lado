@@ -178,11 +178,15 @@ const providerSelect = () => screen.getByRole("combobox", { name: "Provider" }) 
 
 // A folder that will do, with claude suggested unless `more` says otherwise; the providers
 // answered.
-async function ready(path: string, more: Partial<FolderInfo> = {}) {
+async function ready(path: string, more: Partial<FolderInfo> = {}, chosen = false) {
   folders[path] = folder(path, { provider: { name: "claude", reason: "only_installed" }, ...more });
   type(path);
   await screen.findByText(/✓ git repository · branch main/);
   await waitFor(() => expect(providerSelect().disabled).toBe(false));
+  // The suggested provider is set in an effect after the folder's render: Start needs it.
+  // `chosen`: the human picked one, which the suggestion leaves alone.
+  const suggested = folders[path].provider?.name;
+  if (suggested && !chosen) await waitFor(() => expect(providerSelect().value).toBe(suggested));
 }
 
 // Launch on the rail and "+"
@@ -213,7 +217,7 @@ test("the folder is checked by the server and its reason shown; Start stays off 
   expect(await screen.findByText("/tmp/x is not inside a git repository")).toBeTruthy();
   expect(startButton().disabled).toBe(true);
   await ready("/src/lado");
-  expect(startButton().disabled).toBe(false);
+  await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
 const FIRST_COMMIT = "git add -A && git commit -m 'First commit'";
@@ -399,7 +403,7 @@ test("the folder's suggested provider is chosen, with the core's reason", async 
   await waitFor(() => expect(providerSelect().value).toBe("claude"));
   expect(screen.getByText("the only one installed")).toBeTruthy();
   expect(screen.queryByText("from the folder's last session")).toBeNull();
-  expect(startButton().disabled).toBe(false);
+  await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
 test("without a suggestion no provider is chosen and Start is off until the human picks one", async () => {
@@ -410,7 +414,7 @@ test("without a suggestion no provider is chosen and Start is off until the huma
   expect(startButton().disabled).toBe(true);
   fireEvent.change(providerSelect(), { target: { value: "kilo" } });
   expect(providerSelect().value).toBe("kilo");
-  expect(startButton().disabled).toBe(false);
+  await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
 test("a provider not installed cannot be chosen, even when suggested", async () => {
@@ -428,7 +432,7 @@ test("the human's own choice of provider is kept when the folder changes", async
   await ready("/src/app", { provider: { name: "kilo", reason: "last_session" } });
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   fireEvent.change(providerSelect(), { target: { value: "claude" } });
-  await ready("/src/other", { provider: { name: "kilo", reason: "only_installed" } });
+  await ready("/src/other", { provider: { name: "kilo", reason: "only_installed" } }, true);
   expect(providerSelect().value).toBe("claude");
   expect(screen.queryByText("the only one installed")).toBeNull();
 });
@@ -507,7 +511,7 @@ test("a refused start shows the core's whole reason and keeps the window", async
   fireEvent.click(startButton());
   const dialog = screen.getByRole("dialog", { name: "New session" });
   expect((await within(dialog).findByRole("alert")).textContent).toBe('kit "nope" not found; looked in /a, /b');
-  expect(startButton().disabled).toBe(false);
+  await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
 test("a name in two kits offers to switch off either one, into the Switch off field", async () => {
@@ -640,7 +644,7 @@ test("a first message over the limit keeps Start off, also folded", async () => 
   expect(startButton().disabled).toBe(true);
   fireEvent.click(firstRow().querySelector("summary")!);
   fireEvent.change(firstField(), { target: { value: "x".repeat(20) } });
-  expect(startButton().disabled).toBe(false);
+  await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
 test("the Resume window sends its first message", async () => {

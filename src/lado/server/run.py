@@ -332,14 +332,30 @@ def wait_ready(started: Started | None = None, timeout: float | None = None) -> 
         time.sleep(0.1)
 
 
+def _gone(pid: int) -> bool:
+    """Whether the process `pid` has ended: reaped when it is this process's child, else
+    no longer there (a pid we may not signal is no longer our server's)."""
+    try:
+        done, _ = os.waitpid(pid, os.WNOHANG)
+        return done == pid
+    except ChildProcessError:
+        pass
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return True
+    return False
+
+
 def stop() -> dict | None:
-    """Stop the running server; its server.json, or None when none runs."""
+    """Stop the running server and wait until its process has ended (it frees its lock a
+    moment before); its server.json, or None when none runs."""
     info = running()
     if info is None:
         return None
     os.kill(info["pid"], signal.SIGTERM)
     deadline = time.monotonic() + STOP_TIMEOUT
-    while _held():
+    while _held() or not _gone(info["pid"]):
         if time.monotonic() > deadline:
             raise LadoError(f"the LADO server (pid {info['pid']}) did not end in {STOP_TIMEOUT:g}s")
         time.sleep(0.05)

@@ -82,8 +82,10 @@ def test_a_session_starts_takes_messages_and_stops(smoke_repo, smoke_provider, f
         wait_for(delivered(state.HUMAN, "supervisor", summary), "the human's message", 120)
         wait_for(lambda: events("supervisor", state.TURN_ERROR), "the supervisor's turn_error", 120)
         print(f"{provider}: turn_error {events('supervisor', state.TURN_ERROR)[0].detail!r}")
+    # Codex posts its first request after its prompt-submit hook confirmed the input, so the
+    # confirmation can come first; for the others the turn_error above came after it.
+    wait_for(lambda: fake_endpoint.requests, "the supervisor's turn at the endpoint", 120)
     asked = len(fake_endpoint.requests)
-    assert asked, "the supervisor's turn reached no model API"
 
     # 5. A worker: its worktree, a second agent, its hooks; its task reaches it.
     worker = runtime.spawn_worker(SESSION, TASK, name="w1")

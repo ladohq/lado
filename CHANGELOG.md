@@ -11,6 +11,12 @@
   a GitHub pre-release.
 - UI: the empty strip above a session's tabs is gone: the tabs start right under the top
   bar, level with the terminals' tabs; a start or resume notice still stands above them.
+- `lado server stop`, `lado update` and `lado uninstall` wait until the old UI server's
+  process has ended; a server that has stopped no longer makes `~/.lado` again after
+  `lado uninstall`.
+- Messages queued during an agent's turn reach it in its turn-end hook's output whenever
+  its CLI takes that output; a race sometimes pasted them into its window.
+- A gate in a session's chat always shows after the run's move that opened it.
 
 ## 0.37.0 (2026-10-13)
 

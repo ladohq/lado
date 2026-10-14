@@ -236,24 +236,29 @@ def _idle(
     1. At a turn's end (`turn_end`) that went on from the previous turn-end hook's output
        (Event.continued), handle has confirmed the messages in that output already; at
        one that did not, it has left them to be typed in (state.output_not_taken).
-    2. Mark idle, then 3. take the queue (runtime.hand_over): what 1 confirmed does not
-       keep the next batch back, so a chain of turns that go on from the hook's output
-       gets each new batch at once. lado.runtime.send_message queues first and takes
-       second, so a message sent in between is handed over by exactly one of us. At a
-       turn's end a provider that can carries the queue on in the hook's output (returned)
-       unless its CLI ignores that output; otherwise the messages are typed in.
-    4. Sweep what was handed over and never confirmed (runtime.sweep).
+    2. Mark idle and take the queue in one transaction (runtime.hand_over with `become`):
+       the session loop never sees the agent idle with the queue this hook takes. What 1
+       confirmed does not keep the next batch back, so a chain of turns that go on from
+       the hook's output gets each new batch at once. lado.runtime.send_message queues
+       first and takes second, so a message sent at any time is handed over by exactly one
+       of us. At a turn's end a provider that can carries the queue on in the hook's output
+       (returned) unless its CLI ignores that output; otherwise the messages are typed in.
+    3. Sweep what was handed over and never confirmed (runtime.sweep).
 
-    If the hook fails after 3, or the CLI does not take its output, the messages stay sent
+    If the hook fails after 2, or the CLI does not take its output, the messages stay sent
     and sweep deals with them (runtime._plan)."""
     background = turn_end is not None and turn_end.background
-    state.set_status(session, agent, state.BACKGROUND if background else state.IDLE)
     by_output = (
         turn_end is not None
         and not turn_end.output_ignored
         and provider.capabilities.deliver_on_turn_end
     )
-    text = runtime.hand_over(session, agent, state.HOOK_OUTPUT if by_output else state.TYPED)
+    text = runtime.hand_over(
+        session,
+        agent,
+        state.HOOK_OUTPUT if by_output else state.TYPED,
+        become=state.BACKGROUND if background else state.IDLE,
+    )
     runtime.sweep(session, agent)
     return provider.continue_output(text) if by_output and text else None
 

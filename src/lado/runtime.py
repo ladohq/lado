@@ -1762,14 +1762,19 @@ def _deliver(session: str, recipient: str, message: int | None = None) -> str:
     return "queued"
 
 
-def hand_over(session: str, recipient: str, channel: str = state.TYPED) -> str:
+def hand_over(
+    session: str, recipient: str, channel: str = state.TYPED, become: str | None = None
+) -> str:
     """Hand the recipient's pending messages over by `channel`, the one way every path takes
     a queue: only from an idle recipient with no batch handed over and unconfirmed, checked
-    as they are taken (state.take_pending), which is then busy. Returns their lines, ''
-    for none: typed into its window (TYPED), or for its turn-end hook to print
-    (HOOK_OUTPUT). They stay "sent" until the recipient confirms them (lado.hooks), and
-    sweep deals with them until then (_plan)."""
-    pending = state.take_pending(session, recipient, state.SENT, state.BUSY, True, channel)
+    as they are taken (state.take_pending), which is then busy. `become`: the status a hook
+    sets first, in the same transaction (lado.hooks._idle). Returns their lines, '' for
+    none: typed into its window (TYPED), or for its turn-end hook to print (HOOK_OUTPUT).
+    They stay "sent" until the recipient confirms them (lado.hooks), and sweep deals with
+    them until then (_plan)."""
+    pending = state.take_pending(
+        session, recipient, state.SENT, state.BUSY, True, channel, become=become
+    )
     if not pending:
         return ""
     text = format_messages(pending)

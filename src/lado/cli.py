@@ -1506,9 +1506,12 @@ def main(argv: list[str] | None = None) -> int:
     # No statistics sender from the sender itself, nor from `lado update`, which starts
     # nothing of its own after the installer (self_update), nor from `lado uninstall`,
     # which deletes LADO_HOME and the program: a kick or a journal line would make
-    # LADO_HOME again (lado.uninstall).
+    # LADO_HOME again (lado.uninstall), nor from `lado server`, which kicks every
+    # KICK_EVERY while it runs (server/run.housekeeping): one at its exit could make
+    # LADO_HOME again after an uninstall stopped it.
     removes = args.command == "uninstall"
-    kicks = args.command != "update" and not removes
+    serves = args.command == "server" and args.action is None
+    kicks = args.command != "update" and not removes and not serves
     kicks = kicks and not (args.command == "telemetry" and args.sub == "send")
     try:
         # `lado stop` is what the refusal asks for: it migrates once no session runs.

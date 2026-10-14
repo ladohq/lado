@@ -45,9 +45,10 @@ http://127.0.0.1:8765/?token=<token>
 Another port: `-e LADO_PORT=8766 -p 127.0.0.1:8766:8766`. With compose, from `docker/`:
 
 ```
-$ LADO_PROJECTS=~/projects docker compose up -d
+$ export LADO_PROJECTS=~/projects      # every compose command of the file reads it
+$ docker compose up -d
 $ docker compose exec lado lado ui --no-open
-$ LADO_PROJECTS=~/projects LADO_PORT=8766 docker compose -p lado-2 up -d   # a second one
+$ LADO_PORT=8766 docker compose -p lado-2 up -d   # a second one
 ```
 
 Inside: LADO's UI server on `0.0.0.0:$LADO_PORT` under tini, Claude Code at its pin, git,

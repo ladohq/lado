@@ -1,13 +1,14 @@
 # LADO's image (Dockerfile) with compose: the same as one `docker run`, kept in a file.
 #
-#   LADO_PROJECTS=~/projects docker compose up -d           # from this folder
+#   export LADO_PROJECTS=~/projects     # every compose command of this file needs it
+#   docker compose up -d                # from this folder
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
 #
 # LADO_PORT (8765) is the server's port in the container and the one published on this
 # computer's loopback, always the same number. A second LADO beside the first, with its
 # own container and home volume:
 #
-#   LADO_PROJECTS=~/projects LADO_PORT=8766 docker compose -p lado-2 up -d
+#   LADO_PORT=8766 docker compose -p lado-2 up -d
 #   docker compose -p lado-2 exec lado lado ui --no-open
 #
 # LADO_IMAGE names the image (lado:local, which `make docker` builds).

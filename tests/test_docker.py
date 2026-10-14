@@ -148,6 +148,25 @@ def test_compose_names_no_container_and_needs_the_projects_folder(compose):
     assert projects.startswith("${LADO_PROJECTS:?")
 
 
+def test_the_compose_headers_commands_all_have_the_projects_folder():
+    """Compose reads `${LADO_PROJECTS:?}` for every command (exec, logs, down too), so each
+    `docker compose` line the header shows must have it: set on that line, or exported
+    before it."""
+    header = [
+        line.lstrip("# ").strip()
+        for line in (DOCKER / "compose.yaml").read_text().splitlines()
+        if line.startswith("#")
+    ]
+    exported = False
+    commands = 0
+    for line in header:
+        exported = exported or line.startswith("export LADO_PROJECTS=")
+        if "docker compose" in line:
+            commands += 1
+            assert exported or "LADO_PROJECTS=" in line, line
+    assert commands >= 4
+
+
 def test_compose_mounts_nothing_only_docker_desktop_has(compose):
     assert "/run/host-services" not in str(compose)
     assert "group_add" not in compose["services"]["lado"]

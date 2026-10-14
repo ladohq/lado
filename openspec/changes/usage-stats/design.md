@@ -117,6 +117,14 @@ forget, since the counted events are written by other processes (the loop, hooks
 
 ## Risks
 
+- The migration (schema 26 → 27) only adds an empty table: no existing row or column
+  changes. It runs as LADO's 26 steps before it: in one transaction (`state.migrate`, a
+  failure leaves the database as it was), only with no session running
+  (`runtime.migrate_if_safe`), and `lado update` backs `lado.db` up first
+  (`LADO_HOME/backups/`) and rolls back a bad new version. The one cost: an older LADO
+  refuses the migrated database (as for every schema step), so a downgrade takes that
+  backup.
+
 - LAD-33 (in parallel) may also bump the schema: then the branch merged second renumbers
   its step and `schema_before`; checked at merge.
 - `errors.jsonl` keeps at most about 2 MiB: older errors are not counted; the line says

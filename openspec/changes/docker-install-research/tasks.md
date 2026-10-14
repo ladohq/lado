@@ -15,11 +15,11 @@
 
 ## 2. Report
 
-- [ ] 2.1 Write `docs/research/docker-install.md` with the eight sections of the
+- [x] 2.1 Write `docs/research/docker-install.md` with the eight sections of the
   proposal (AC-1-AC-5), each claim with its source. Check: by reading against AC-1-AC-5.
-- [ ] 2.2 Redact the evidence and the prototype files (AC-7). Check: `git diff
+- [x] 2.2 Redact the evidence and the prototype files (AC-7). Check: `git diff
   origin/main --stat` and a grep for tokens, e-mails and `/Users/`.
-- [ ] 2.3 `openspec validate docker-install-research --strict` and `make lint` pass.
+- [x] 2.3 `openspec validate docker-install-research --strict` and `make lint` pass.
 
 ## 3. Tracker
 

@@ -17,29 +17,19 @@ prototype image on a Mac (Apple silicon, Docker Desktop, engine 29.7.2, linux/ar
 
 ## 1. Summary
 
-**Verdict: worth building, as a second way in, not as the default one.** LADO and all four
-agent CLIs run in one container, are reached from the host's browser through the web UI,
-start sessions and workers on a bind-mounted project, survive a restart and resume (H1,
-H2, H5-H7); a Claude Code subscription login made inside works for LADO's agents and
-survives recreating the container (H3). For a user who already has Docker Desktop, or on Windows, where today's way is a
-whole Ubuntu in WSL2, the image is one command instead of seven steps. For the macOS or
-Linux user with Homebrew or apt, a one-command install script removes most of the same
-pain at a fraction of the cost (section 7).
+**Verdict: worth building as a second way in, not the default.** LADO and the four CLIs
+run in one container, reached through the web UI; sessions, workers, a Claude Code
+subscription login, restarts and resumes work (H1-H3, H5-H7). On Windows, or for a user
+with Docker, it is one command instead of seven steps; on macOS and Linux a one-command
+install script removes most of the same pain far cheaper (section 7). Largest difficulties:
 
-The three largest difficulties:
-
-1. **The agents' toolchains.** Agents run the project's builds and tests inside the
-   container, which has only what the image put there; a Python, Go or Java project needs
-   its toolchain in the image or a derived one. A non-programmer cannot do that.
-2. **Paths seen twice.** LADO stores the container's paths (`/projects/demo`), and the
-   worktrees git links with absolute paths; on the host, `git worktree list` shows a
-   worker's worktree as `prunable`, and `git worktree prune` there would drop it (H6).
-3. **Updates and logins.** `lado update` inside kills itself (it stops the UI server, the
-   container's main process, H7), so the image is updated from outside; and every CLI's
-   login must be made inside and kept on a volume, Codex's not carried to its agents at all
-   (BACKLOG.md). The login the CLI already has on the host cannot simply be reused: on
-   macOS Claude Code keeps it in the keychain, and a host CLI cannot run as LADO's agent
-   in the container (section 5.1).
+1. **Toolchains**: agents build and test with what the image holds; a Python, Go or Java
+   project needs its own toolchain added, which a non-programmer cannot do (5.2).
+2. **Paths seen twice**: git links worktrees by the container's absolute paths; on the
+   host a worker's worktree is `prunable`, and `git worktree prune` drops it (H6, 5.3).
+3. **Updates and logins**: `lado update` inside kills itself (H7); each CLI's login is
+   made inside, Codex's not carried to its agents, and the host's logged-in CLI cannot be
+   reused, its macOS login being in the keychain (5.1).
 
 ## 2. Today and with Docker
 

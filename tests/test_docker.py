@@ -157,10 +157,25 @@ def test_the_entrypoint_removes_its_way_to_root_first():
     """The root branch deletes the sudo rule and the marker before any step that can fail,
     so no later process, an agent included, can become root through them."""
     body = ENTRYPOINT.split('if [ "$(id -u)" = 0 ]; then\n', 1)[1]
-    first = body.splitlines()[0].strip()
-    assert first == 'rm -f "$RULE" "$MARK"'
+    first, second = (line.strip() for line in body.splitlines()[:2])
+    assert first == f"PATH={ROOT_PATH}"
+    assert second == 'rm -f "$RULE" "$MARK"'
     assert "RULE=/etc/sudoers.d/lado-entrypoint" in ENTRYPOINT
     assert "MARK=/etc/lado/first-start" in ENTRYPOINT
+
+
+ROOT_PATH = "/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def test_the_root_phase_takes_no_command_from_the_callers_path():
+    """The sudo rule stays where the entrypoint was skipped, and SETENV lets its caller set
+    any variable: the root phase runs on a fixed PATH and gives the caller's back only
+    after the drop to lado."""
+    root = ENTRYPOINT.split('if [ "$(id -u)" = 0 ]; then\n', 1)[1].split("\nfi\n", 1)[0]
+    assert re.findall(r"^\s*(?:export\s+)?PATH\b.*$", root, re.M) == [f"    PATH={ROOT_PATH}"]
+    [drop] = [line.strip() for line in root.splitlines() if "setpriv" in line]
+    assert drop.startswith("exec /usr/bin/setpriv --reuid=lado --regid=lado --init-groups --")
+    assert '/usr/bin/env PATH="$saved" "$SELF" "$@"' in drop
 
 
 def test_the_entrypoint_writes_lado_repos_for_the_agents():

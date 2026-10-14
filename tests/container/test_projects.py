@@ -123,6 +123,28 @@ def test_an_owner_of_0_keeps_1000_and_warns(start, projects_volume):
     assert NOT_WRITABLE.format("/srv/projects") in c.logs().splitlines()
 
 
+def test_projects_of_group_0_leave_lado_its_group(start, projects_volume):
+    c = served(start, "-v", f"{projects_volume(2001, 0)}:/srv/projects",
+               "-e", "LADO_REPOS=/srv/projects")  # fmt: skip
+    assert c.exec("id", "-u").stdout.strip() == "2001"
+    assert c.exec("id", "-g").stdout.strip() == "1000"
+
+
+def test_a_skipped_entrypoint_leaves_its_rule_harmless(start):
+    """With the entrypoint replaced (`--entrypoint`, compose's `entrypoint:`, Kubernetes'
+    `command:`), the sudo rule stays: the caller's environment must not choose what the
+    root phase runs. A `setpriv` first on the PATH the caller hands over is not run."""
+    c = start(0, "--entrypoint", "/usr/bin/sleep", command=("infinity",))
+    c.sh("mkdir -p /tmp/x && printf '#!/bin/sh\\necho uid=$(id -u)\\n' > /tmp/x/setpriv "
+         "&& chmod +x /tmp/x/setpriv")  # fmt: skip
+    done = c.sh(
+        "LADO_ENTRYPOINT_PATH=/tmp/x:$PATH PATH=/tmp/x:$PATH "
+        "sudo -E -n /usr/local/bin/lado-entrypoint id -u",
+        check=False,
+    )
+    assert done.stdout.strip() == "1000", done.stdout + done.stderr
+
+
 def test_lado_repos_not_mounted_warns(start):
     c = served(start, "-e", "LADO_REPOS=/home/me/projects")
     assert NOT_MOUNTED.format("/home/me/projects") in c.logs().splitlines()

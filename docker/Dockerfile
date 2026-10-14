@@ -47,7 +47,8 @@ RUN useradd --create-home --uid 1000 --shell /bin/bash lado \
 
 # The entrypoint (entrypoint.sh) gives lado the uid of the projects' owner at a container's
 # first start, as root once: the sudo rule for it alone and the marker are deleted by that
-# run before anything else. git trusts every repository: the projects' owner may seem
+# run before anything else. Where the entrypoint is replaced the rule stays; that run takes
+# no program from its caller's environment, so the rule does only its work. git trusts every repository: the projects' owner may seem
 # another user (git 2.39 has no `<path>/*` form, and the container has one user).
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/lado-entrypoint
 RUN printf '%s\n' 'lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint' > /etc/sudoers.d/lado-entrypoint \

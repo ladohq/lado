@@ -59,11 +59,11 @@ def start(request, projects_volume):
     and the volume removed after the test. It takes `projects_volume` so that fixture's
     teardown, which removes the volumes a container mounts, runs after this one's."""
 
-    def start(port: int, *args: str, home: str | None = None) -> Container:
+    def start(port: int, *args: str, home: str | None = None, command=()) -> Container:
         started = Container(new_name(), port)
         keep(request.node, started)
         request.addfinalizer(lambda: remove_container(started.name, home))
-        run_container(started.name, *args, home=home)
+        run_container(started.name, *args, home=home, command=command)
         return started
 
     return start

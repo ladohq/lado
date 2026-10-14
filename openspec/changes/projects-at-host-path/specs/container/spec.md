@@ -100,12 +100,17 @@ git on the host reads a worktree LADO made in the container as a working tree.
 
 At a container's first start, before the UI server starts, the image SHALL give its user
 `lado` the uid and gid of the owner of `LADO_REPOS`'s folder, unless that owner's uid is 0
-(how Docker Desktop shows a bind mount) or equal to `lado`'s already, and SHALL then give
+(how Docker Desktop shows a bind mount) or equal to `lado`'s already; a gid of 0, root's
+group, SHALL never be taken (`lado` keeps its own group). It SHALL then give
 `lado` everything under `/home/lado` whose owner is not `lado`'s uid and gid. The server,
 `docker exec <container> <command>` with no `-u`, and every agent SHALL run as `lado`
 with that uid. The change SHALL be made by a step that runs as root once per container
 and, first of all, removes the only way to it (a sudo rule for the entrypoint alone), so
-that no process started after it, an agent included, can become root through it. A
+that no process started after it, an agent included, can become root through it. Where
+the image's entrypoint was replaced, the rule stays; the root step SHALL then run no
+program chosen by its caller's environment (its commands by a fixed PATH or full paths,
+the caller's PATH given back only after the drop to `lado`), so that the rule runs only
+that step's own work. A
 restart of the same container SHALL keep the uid it took. A folder `LADO_REPOS` that is no
 folder in the container, or one `lado` may not write in, SHALL be named in `docker logs`
 with one warning line, and the server SHALL start anyway.
@@ -130,6 +135,17 @@ with one warning line, and the server SHALL start anyway.
 - **THEN** in the new container `id -u` prints 2002, nothing under `/home/lado` belongs to
   another uid, the server answers `/api/health`, `lado doctor` prints no `[FAIL]`, and
   `lado ls` works
+
+#### Scenario: Projects of root's group
+
+- **WHEN** `LADO_REPOS`'s folder is owned by uid 2001 and gid 0
+- **THEN** `id -u` in the container prints 2001 and `id -g` 1000
+
+#### Scenario: The entrypoint replaced
+
+- **WHEN** the container runs with `--entrypoint`, so the sudo rule stays, and `lado` runs
+  the entrypoint through it with a `setpriv` of its own first on the PATH it hands over
+- **THEN** that `setpriv` does not run, and the command runs as `lado`
 
 #### Scenario: A restart
 

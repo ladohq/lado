@@ -67,9 +67,12 @@ it follows the folder.
   POSIX `sh`, no bashisms. Phases, chosen by who runs it:
   1. As `lado` while the marker `/etc/lado/first-start` exists: `exec sudo -E -n
      /usr/local/bin/lado-entrypoint "$@"`.
-  2. As root: remove `/etc/sudoers.d/lado-entrypoint` and the marker first, then D3 and
-     D4, then `exec setpriv --reuid=lado --regid=lado --init-groups --
-     /usr/local/bin/lado-entrypoint "$@"` with `HOME=/home/lado USER=lado LOGNAME=lado`.
+  2. As root: set a fixed `PATH=/usr/sbin:/usr/bin:/sbin:/bin`, remove
+     `/etc/sudoers.d/lado-entrypoint` and the marker first, then D3 and D4, then `exec
+     /usr/bin/setpriv --reuid=lado --regid=lado --init-groups -- /usr/bin/env
+     PATH="<phase 1's PATH>" /usr/local/bin/lado-entrypoint "$@"` with `HOME=/home/lado
+     USER=lado LOGNAME=lado`. Phase 1 hands its PATH over in `LADO_ENTRYPOINT_PATH`, as
+     sudo replaces PATH by its `secure_path`; it is given back only after the drop (D6).
   3. As `lado` with no marker (after phase 2, or on a restart, where `USER lado` resolves
      to the uid taken before): D5's checks, then `exec "$@"`.
   Phase 1 is only for the user named `lado` (`id -un`): a container started with
@@ -77,9 +80,10 @@ it follows the folder.
   and the marker are gone already, so the next start is phase 3 with uid 1000, and the
   human sees why in `docker logs`.
 - **D3. The uid and gid.** `stat -c '%u %g' "$LADO_REPOS"`; when it is no folder, or the
-  uid is 0, or uid and gid are `lado`'s already, nothing changes. Else `groupmod -o -g
-  <gid> lado` and `usermod -o -u <uid> -g <gid> lado` (`-o`: a host's gid such as 100
-  may exist in the image). Then, whatever the uid, when anything under `/home/lado` has
+  uid is 0, or uid and gid are `lado`'s already, nothing changes. Else, for a gid that is
+  not 0 and not `lado`'s, `groupmod -o -g <gid> lado` and `usermod -g <gid> lado` (gid 0
+  is root's group: `lado` keeps its own), and for another uid `usermod -o -u <uid> lado`
+  (`-o`: a host's gid such as 100 may exist in the image). Then, whatever the uid, when anything under `/home/lado` has
   another owner than `lado`'s uid and gid (`find /home/lado ! -user lado -o ! -group lado
   -print -quit`), `chown -R lado:lado /home/lado`: a home volume of an earlier container
   with another uid follows. `/opt` is left as it is (Out of scope).
@@ -99,6 +103,12 @@ it follows the folder.
   (SETENV for `-E`: the server needs the container's `LADO_PORT`, `LADO_REPOS` and the
   rest), checked at build with `visudo -cf`. The marker `/etc/lado/first-start` (root's,
   readable) is made in the image. Phase 2 deletes both before it does anything else.
+  The rule stays in a container whose entrypoint was replaced (`--entrypoint`, compose's
+  `entrypoint:`, Kubernetes' `command:`), and SETENV lets its caller set any variable
+  (sudo itself drops `LD_*` and `BASH_ENV`, not `LADO_ENTRYPOINT_PATH`): so phase 2
+  runs nothing by its caller's PATH (a fixed one, `/usr/bin/setpriv` and `/usr/bin/env` by
+  full path) and gives the caller's PATH back only once it runs as `lado`. The rule then
+  does only phase 2's own work, whoever calls it (review finding F1, round 1).
 - **D7. git's trust.** `git config --system --add safe.directory '*'` in the Dockerfile:
   the container has one user, and after D3 the files are its own on Linux; on Docker
   Desktop the owner it sees may flicker (H6's benchmark), which `*` covers.

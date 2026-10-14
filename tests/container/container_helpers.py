@@ -51,11 +51,15 @@ def health(port: int, timeout: float = 90) -> dict:
             time.sleep(0.5)
 
 
-def run_container(name: str, *args: str, home: str | None = None) -> None:
+def run_container(
+    name: str, *args: str, home: str | None = None, command: tuple[str, ...] = ()
+) -> None:
     """The image as one `docker run` starts it, with the home volume `home`, by default one
-    of its own (`<name>-home`)."""
+    of its own (`<name>-home`), and `command` in place of the image's when given."""
     home = home or f"{name}-home"
-    docker("run", "-d", "--name", name, *QUIET, "-v", f"{home}:/home/lado", *args, IMAGE)
+    docker(
+        "run", "-d", "--name", name, *QUIET, "-v", f"{home}:/home/lado", *args, IMAGE, *command
+    )  # fmt: skip
 
 
 def remove_container(name: str, home: str | None = None) -> None:

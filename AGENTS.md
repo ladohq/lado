@@ -187,7 +187,9 @@ worker's process has the container's `LADO_REPOS`; a projects volume owned by 20
 (`projects_volume`) makes `lado` uid 2001, its home too, leaves no sudo rule, `docker exec
 lado ui` works, and a restart (under 8 s) keeps the uid; the same home volume in a new
 container with projects of 2002 is 2002's, with `lado doctor` clean and `lado ls` working;
-an owner of 0 keeps 1000 and warns in `docker logs`, as does a `LADO_REPOS` not mounted. A
+an owner of 0 keeps 1000 and warns in `docker logs`, as does a `LADO_REPOS` not mounted; a
+gid of 0 is not taken; with the entrypoint replaced (the sudo rule left), a `setpriv`
+first on the PATH its caller hands over does not run as root. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -1114,11 +1116,14 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   on the host too. The entrypoint, at a container's first start (the marker
   `/etc/lado/first-start`), reruns itself as root by `sudo -E` through
   `/etc/sudoers.d/lado-entrypoint`, a rule for it alone; that run deletes the rule and the
-  marker first, gives `lado` the uid and gid of `LADO_REPOS`'s owner unless it is 0
-  (Docker Desktop shows a bind mount so; `usermod -o`, `groupmod -o`), `chown -R`s the home
-  when anything there has another owner, writes `LADO_REPOS` to
-  `/etc/profile.d/lado-repos.sh` for the agents, and drops back to `lado` (`setpriv`, PATH
-  as before sudo). Every start then warns in `docker logs` about a `LADO_REPOS` that is no
+  marker first, gives `lado` the uid of `LADO_REPOS`'s owner unless it is 0 (Docker
+  Desktop shows a bind mount so) and its gid unless that is 0 (root's group; `usermod -o`,
+  `groupmod -o`), `chown -R`s the home when anything there has another owner, writes
+  `LADO_REPOS` to `/etc/profile.d/lado-repos.sh` for the agents, and drops back to `lado`
+  (`/usr/bin/setpriv`). The root run uses a fixed PATH and gives back the caller's
+  (`LADO_ENTRYPOINT_PATH`, as sudo sets its `secure_path`) only after the drop: where the
+  entrypoint was replaced the rule stays, and its SETENV must not let a caller choose what
+  runs as root. Every start then warns in `docker logs` about a `LADO_REPOS` that is no
   folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's.
   git's system config has `safe.directory = *`. The environment is set twice with the same
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in

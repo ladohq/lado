@@ -23,5 +23,5 @@
 
 ## 3. Tracker
 
-- [ ] 3.1 Post a Russian comment on LAD-52 with the summary and the proposed tasks
+- [x] 3.1 Post a Russian comment on LAD-52 with the summary and the proposed tasks
   (AC-6); create no task. Check: the comment by its id in the task.

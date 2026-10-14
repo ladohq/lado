@@ -45,8 +45,8 @@ the tests' code and the commit.
   (D11). Plan, Task 5.
 - [x] 5.2 Regression: `make lint`, `make test`, `openspec validate --specs --strict`,
   `openspec validate projects-at-host-path --strict`; with Docker `make test-container`.
-- [ ] 5.3 The pull request's CI: `container (amd64)`, `container (arm64)` and `ci-ok`
+- [x] 5.3 The pull request's CI: `container (amd64)`, `container (arm64)` and `ci-ok`
   green (the Linux runner's uid 1001 is AC-3), the jobs' times in the build report.
-- [ ] 5.4 By hand on a Mac (AC-9): a session in the UI on a project of the folder mounted
+- [x] 5.4 By hand on a Mac (AC-9): a session in the UI on a project of the folder mounted
   at its path, a worker commits, `git worktree list` on the host clean; screenshots as run
   artifacts.

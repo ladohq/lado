@@ -41,13 +41,12 @@ BUILT = """\
 - `make check` is green."""
 
 
-def flows_session(repo) -> str:
-    """A running session of the fake agent with two runs: ship/x took two steps and waits
-    at gate "check", ship/y is at its first step."""
+def flow_session(repo, name: str, flow: str) -> str:
+    """A running session of the fake agent with kit uiflow, which has the flow `name`."""
     kit = repo.parent / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
-    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    (kit / "flows" / f"{name}.yaml").write_text(flow)
     agent_helpers.install_kit(kit)
     session = f"ui-{uuid.uuid4().hex[:6]}"
     runtime.start_session(str(repo), session, None, "fake", ["default", "uiflow"])
@@ -55,12 +54,113 @@ def flows_session(repo) -> str:
         lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
     )
     agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
+    return session
+
+
+def flows_session(repo) -> str:
+    """A running session of the fake agent with two runs: ship/x took two steps and waits
+    at gate "check", ship/y is at its first step."""
+    session = flow_session(repo, "ship", SHIP)
     runs.start(session, "ship", "Add a login page", name="x")
     artifacts.write(session, "supervisor", "ship/x/plan", "a form in two steps")
     runs.advance(session, "supervisor", "ship/x", "ready", "the plan: a form in two steps")
     runs.advance(session, "supervisor", "ship/x", "done", "built the form", BUILT)
     runs.start(session, "ship", "Add a logout button", name="y")
     return session
+
+
+REVIEWED = """\
+name: reviewed
+description: built, then reviewed until approved
+start: build
+states:
+  build: {agent: supervisor, do: sleep 0, outcomes: {ready: review}}
+  review:
+    agent: supervisor
+    do: sleep 0
+    max_visits: 3
+    outcomes: {changes: build, again: review, approved: end}
+  end: {end: true}
+"""
+
+
+def reviewed_session(repo) -> str:
+    """A running session whose run reviewed/x went ready, changes, ready and again: forward,
+    back, forward and back (a stay), by its flow's order (docs/design/ui.md, Flow events)."""
+    session = flow_session(repo, "reviewed", REVIEWED)
+    runs.start(session, "reviewed", "Add a login page", name="x")
+    for outcome, note in [
+        ("ready", "built it"),
+        ("changes", "two findings"),
+        ("ready", "fixed both"),
+        ("again", "one more look"),
+    ]:
+        runs.advance(session, "supervisor", "reviewed/x", outcome, note)
+    return session
+
+
+def tone(chip) -> str:
+    """Which of the UI's colours a chip's text has: done, human or another."""
+    return chip.evaluate(
+        """chip => {
+            const of = (token) => {
+                const probe = document.createElement("span");
+                probe.style.color = `var(${token})`;
+                document.body.append(probe);
+                const colour = getComputedStyle(probe).color;
+                probe.remove();
+                return colour;
+            };
+            const colour = getComputedStyle(chip).color;
+            return colour === of("--done") ? "done" : colour === of("--human") ? "human" : colour;
+        }"""
+    )
+
+
+def tooltip_lines(page: Page, chip) -> list[str]:
+    """The lines of the UI's tooltip that hovering the chip shows."""
+    chip.hover()
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_be_visible()
+    lines = tip.locator(".tooltip-line").all_inner_texts()
+    page.mouse.move(0, 0)
+    expect(tip).to_have_count(0)
+    return lines
+
+
+FORWARD = ["Forward in the flow, to review"]
+BACK = ["Back: the work returns to build", "Runs again: build › review"]
+STAY = ["Back: the work returns to review", "Runs again: review"]
+
+
+def test_a_step_back_has_the_return_icon_and_each_step_says_where_it_goes(
+    page: Page, server, repo, shot
+):
+    """The run's history colours a step by its flow's order, as the chat does (AC-4, AC-6)."""
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    session = reviewed_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/flows/reviewed%2Fx")
+    events = page.get_by_role("region", name="Run reviewed/x").get_by_role("list", name="Events")
+    chips = events.locator(".feed-chip")  # the newest first
+    expect(chips).to_have_text(["again", "ready", "changes", "ready"])
+    expect(chips.locator("svg")).to_have_count(2)
+    names = [chips.nth(n).get_attribute("aria-label") for n in range(4)]
+    assert names == [
+        "again, a step back",
+        "ready, a step forward",
+        "changes, a step back",
+        "ready, a step forward",
+    ]
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        assert [tone(chips.nth(n)) for n in range(4)] == ["human", "done", "human", "done"]
+        chips.nth(2).hover()
+        expect(page.get_by_role("tooltip")).to_be_visible()
+        shot(page, f"{theme}-back")
+        page.mouse.move(0, 0)
+    page.emulate_media(color_scheme="light")
+    assert [tooltip_lines(page, chips.nth(n)) for n in range(4)] == [STAY, FORWARD, BACK, FORWARD]
 
 
 def tab_bar_fit(page: Page) -> dict:

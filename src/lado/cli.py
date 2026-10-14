@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 
 PAGER = ["less", "-R"]  # for a gate's full note
 POLL = 1.0  # seconds between two checks that a gate the human is asked about is open
+OPEN_ON_HOST = "Open it in your browser on the host."  # `lado ui` in a container
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -1147,6 +1148,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
 def cmd_ui(args: argparse.Namespace) -> int:
     import webbrowser
 
+    from lado import update
     from lado.server import app, auth
     from lado.server import run as server_run
 
@@ -1181,13 +1183,18 @@ def cmd_ui(args: argparse.Namespace) -> int:
         print(f"lado: restarted the LADO server: {old} -> {info['version']}", file=sys.stderr)
     if app.bundle_missing(app.STATIC):
         print(f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr)
-    listening = server_run.Listening.of(info["host"], info["port"])
+    container = update.in_container()
+    listening = server_run.Listening.of(info["host"], info["port"], container)
     if listening.warning:
         print(f"lado: warning: {listening.warning}", file=sys.stderr)
+    if listening.note:
+        print(f"lado: note: {listening.note}", file=sys.stderr)
     token = auth.token()
     url = f"{info['url']}/?token={token}"
-    if args.no_open:
+    if args.no_open or container:  # a container has no browser: the host's opens the link
         print(url)
+        if not args.no_open:
+            print(OPEN_ON_HOST)
     else:
         print(f"Opening {url}")
         webbrowser.open(url)

@@ -24,14 +24,7 @@ import { GatePanel } from "./GateCard";
 import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon, MinimizeIcon, RestoreIcon } from "./icons";
 import { VIEW_PARAM } from "./paths";
-import {
-  FEED_MIN,
-  storedMinimized,
-  storedWaitingHeight,
-  storeMinimized,
-  storeWaitingHeight,
-  WAITING_MIN,
-} from "./prefs";
+import { storedMinimized, storedWaitingHeight, storeMinimized, storeWaitingHeight, WAITING_MIN } from "./prefs";
 import { fitWidth, Splitter, useHeight } from "./Splitter";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
@@ -81,6 +74,7 @@ function pickOf(picks: Picks, question: MessageInfo): Pick | undefined {
 }
 
 const MARKED_FOR = 1500; // ms an item asked for stays marked
+const FEED_MIN = 160; // the chat feed's least height (styles.css, .chat-feed)
 const NARROW = "(max-width: 900px)"; // the window that scrolls (styles.css)
 
 const answered = (pick: Pick | undefined) =>

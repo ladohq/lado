@@ -155,11 +155,9 @@ export function storeArtifactPanel(panel: ArtifactPanelPrefs): void {
 // The waiting card in a session's chat (docs/design/ui.md, The waiting card): the height the
 // human gave it, one value for every session (none: the stylesheet's, at most half the
 // chat), and its least height while resized, its head, two lines of its list and its Send
-// row (measured in Chromium: 36 + 2 × 14 padding + 2 border + 12 gap + 2 × 22.5 + 43); the
-// feed keeps FEED_MIN (styles.css, .chat-feed).
+// row (measured in Chromium: 36 + 2 × 14 padding + 2 border + 12 gap + 2 × 22.5 + 43).
 const WAITING_HEIGHT = "lado.waitingHeight";
 export const WAITING_MIN = 166;
-export const FEED_MIN = 160;
 
 export function storedWaitingHeight(): number | null {
   const height = Number(read(WAITING_HEIGHT) ?? NaN);
@@ -176,12 +174,8 @@ export function storeWaitingHeight(height: number | null): void {
 const MINIMIZED = "lado.waitingMinimized.";
 
 export function storedMinimized(session: string): string[] | null {
-  try {
-    const keys: unknown = JSON.parse(read(MINIMIZED + session) ?? "null");
-    return Array.isArray(keys) && keys.every((key) => typeof key === "string") ? keys : null;
-  } catch {
-    return null;
-  }
+  const keys = readJson(MINIMIZED + session);
+  return Array.isArray(keys) && keys.every((key) => typeof key === "string") ? keys : null;
 }
 
 export function storeMinimized(session: string, keys: string[] | null): void {

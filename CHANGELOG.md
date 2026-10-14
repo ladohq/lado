@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.37.1 (unreleased)
+## 0.38.0 (unreleased)
+
+- `lado bug-report` and **Report a bug** on the UI's left menu: a report for a new GitHub
+  issue, with the system info and LADO's errors of the last 30 days by kind, and no paths,
+  session or repository names, nor message texts; a link opens GitHub's new issue form
+  filled in with it (the terminal asks first), and nothing is sent until you submit it.
+  `errors.jsonl` now keeps each error's scrubbed form too. API: `GET /api/bug-report`.
 
 - UI: the expanded waiting card covers the session's chat (on Needs you, the page) instead
   of the whole window, so an artifact opened from it shows over it; Esc closes that

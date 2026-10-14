@@ -40,7 +40,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 7. Docs (D11)
 
-- [ ] 7.1 AGENTS.md, `docs/design/ui.md`, `docs/telemetry.md`, README, CHANGELOG.md
+- [x] 7.1 AGENTS.md, `docs/design/ui.md`, `docs/telemetry.md`, README, CHANGELOG.md
   (`## 0.38.0 (unreleased)`). Check: `make lint`.
 
 ## 8. Regression

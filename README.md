@@ -211,6 +211,10 @@ yes, and never a path, a name, a message or a key. `lado telemetry show` prints 
 would go, `lado telemetry off` or `DO_NOT_TRACK=1` switches it off. What is sent and where:
 [docs/telemetry.md](docs/telemetry.md).
 
+Found a bug? `lado bug-report` (or **Report a bug** in the UI's left menu) prints a report
+with no paths or names and a link to a new GitHub issue filled in with it; nothing is sent
+until you submit that issue.
+
 ## License
 
 MIT (placeholder; to be confirmed before the first release).

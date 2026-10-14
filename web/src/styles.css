@@ -1733,6 +1733,40 @@ h3 {
 }
 
 /* The UI's own tooltip (Tooltip.tsx): compact, over everything, never in the pointer's way. */
+/* Over text the human selected (SelectionBar.tsx): Copy and Quote in reply, or a note in
+   their place; under the tooltips. */
+.selection-bar {
+  position: fixed;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px var(--shadow);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.selection-bar .icon-button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+}
+
+.selection-bar .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.selection-note {
+  padding: 5px 8px;
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
 .tooltip {
   position: fixed;
   z-index: 50;

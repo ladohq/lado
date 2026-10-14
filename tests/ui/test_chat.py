@@ -744,6 +744,7 @@ def drag_edge(page: Page, edge, by: float) -> None:
     x, y = box["x"] + box["width"] / 4, box["y"] + box["height"] / 2  # beside the grip
     page.mouse.move(x, y)
     page.mouse.down()
+    expect(edge).to_have_attribute("data-dragging", "true")  # the press took the edge
     page.mouse.move(x, y + by / 2, steps=5)
     page.mouse.move(x, y + by, steps=5)
     page.mouse.up()

@@ -17,12 +17,12 @@
 
 ## 2. The release candidate's checklist
 
-- [ ] 2.1 `docs/release.md` section 4: the clean install's commands start with
+- [x] 2.1 `docs/release.md` section 4: the clean install's commands start with
   `LADO_TELEMETRY=0 LADO_HOME=$(mktemp -d) LADO_TMUX_SOCKET=lado-rc`, "with the same
   variables" kept for the start and stop, and one sentence: the scratch home is a new
   install to PostHog, so it never sends and `lado start` does not ask; the upgrade of the
   human's own LADO stays their install, counted once as before. Check: read through (AC-6).
-- [ ] 2.2 `tests/test_telemetry.py`, next to `test_docs_list_every_field`: every line of
+- [x] 2.2 `tests/test_telemetry.py`, next to `test_docs_list_every_field`: every line of
   `docs/release.md` with `LADO_HOME=$(mktemp -d)` has `LADO_TELEMETRY=0` in the same
   command (the same line, as the docs write it); the failure names the line. Check:
   `uv run pytest -n0 tests/test_telemetry.py` (AC-7).

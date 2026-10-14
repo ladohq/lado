@@ -40,6 +40,6 @@
 
 ## 3. Close
 
-- [ ] 3.1 (AC-7) `openspec validate ci-flake-policy --strict`, `openspec validate --specs
+- [x] 3.1 (AC-7) `openspec validate ci-flake-policy --strict`, `openspec validate --specs
   --strict` and `make lint` pass; no other file than `.lado/sdlc.md` and this change
   changed (`git diff origin/main --stat`).

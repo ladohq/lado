@@ -44,6 +44,8 @@ def test_failing_hook_journals_and_queues(repo, session, telemetry_on):
     [line] = [line for line in _journal() if line["where"].startswith("hook:")]
     assert line["where"] == "hook:turn_end"
     assert (line["session"], line["agent"]) == (session, "supervisor")
+    assert line["provider"] == "fake"
+    assert any(frame.startswith("lado/") for frame in line["stack"])
     [event] = telemetry.queued()
     assert event["where"] == "hook:turn_end" and event["provider"] == "fake"
     text = json.dumps(event)

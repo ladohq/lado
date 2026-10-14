@@ -108,7 +108,20 @@ def test_record_writes_journal_line(monkeypatch):
     monkeypatch.setenv("LADO_TELEMETRY", "0")
     telemetry.record("hook:turn_end", _raise(KeyError("w1")), "claude", session="s", agent="w1")
     [line] = _journal()
-    assert set(line) == {"at", "lado", "where", "type", "message", "traceback", "session", "agent"}
+    assert set(line) == {
+        "at",
+        "lado",
+        "where",
+        "type",
+        "message",
+        "traceback",
+        "session",
+        "agent",
+        "chain",
+        "stack",
+        "fingerprint",
+        "provider",
+    }
     assert line["where"] == "hook:turn_end"
     assert line["type"] == "KeyError"
     assert line["message"] == "'w1'"
@@ -116,6 +129,34 @@ def test_record_writes_journal_line(monkeypatch):
     assert (line["session"], line["agent"]) == ("s", "w1")
     mode = (state.home() / "errors.jsonl").stat().st_mode
     assert stat.S_IMODE(mode) == 0o600
+
+
+def test_journal_line_holds_the_scrubbed_form(telemetry_on):
+    try:
+        try:
+            {}["w1"]
+        except KeyError as inner:
+            raise RuntimeError("in /Users/ann/acme") from inner
+    except RuntimeError as exc:
+        telemetry.record("hook:turn_end", exc, "claude", session="s", agent="w1")
+    [line] = _journal()
+    [event] = telemetry.queued()
+    assert line["provider"] == "claude"
+    assert line["chain"] == ["KeyError"]
+    assert line["stack"] == event["stack"] == [telemetry.EXTERNAL]  # this test's own frame
+    assert line["fingerprint"] == event["fingerprint"]
+
+
+def test_journal_line_keeps_lado_frames(monkeypatch):
+    monkeypatch.setenv("LADO_TELEMETRY", "0")
+    try:
+        telemetry.fingerprint(None, ["x"])  # a TypeError inside lado/telemetry.py
+    except Exception as exc:
+        telemetry.record("loop", exc)
+    [line] = _journal()
+    assert line["provider"] is None
+    assert any(frame.startswith("lado/telemetry.py:fingerprint:") for frame in line["stack"])
+    assert telemetry.queued() == []
 
 
 def test_record_queues_only_when_on(telemetry_on):

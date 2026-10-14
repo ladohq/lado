@@ -1052,6 +1052,51 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return doctor.main()
 
 
+def cmd_bug_report(args: argparse.Namespace) -> int:
+    """`lado bug-report`: the warning, the report and its link, then, on a terminal where a
+    browser can show, the question whether to open it. Sends nothing: only the human's `y`
+    opens the link, and only GitHub's form, once they submit it, makes the issue."""
+    import ipaddress
+    import webbrowser
+
+    from lado import bug_report, doctor
+    from lado.server import run as server_run
+
+    info = server_run.running()
+    server = None
+    if info is not None:
+        host = info.get("host", "127.0.0.1")
+        try:
+            loopback = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            loopback = False
+        server = doctor.ServerState(open_to_network=not loopback, up_seconds=None)
+    report = bug_report.build(doctor.system_info(), server)
+    print(bug_report.WARNING)
+    print(report.text)
+    print(f"Open a new issue: {report.url}")
+    if not (sys.stdin.isatty() and sys.stdout.isatty() and bug_report.can_show_browser()):
+        return 0
+    print("Open it in the browser? [y/N] ", end="", flush=True)
+    try:
+        answer = sys.stdin.readline()
+    except KeyboardInterrupt:
+        print()
+        return 0
+    if not answer:  # EOF
+        print()
+        return 0
+    if answer.strip().lower() not in ("y", "yes"):
+        return 0
+    try:
+        opened = webbrowser.open(report.url)
+    except Exception:  # webbrowser.Error, or a browser command that cannot run
+        opened = False
+    if not opened:
+        print("could not open a browser: open the link above")
+    return 0
+
+
 def cmd_telemetry(args: argparse.Namespace) -> int:
     """`lado telemetry [status|on|off|show]`, and the detached sender, `send`."""
     if args.sub == "send":
@@ -1477,6 +1522,11 @@ def main(argv: list[str] | None = None) -> int:
     # Internal: the detached sender (telemetry.kick).
     telemetry_sub.add_parser("send")
 
+    bug_report_cmd = commands.add_parser(
+        "bug-report", help="print a bug report for a new GitHub issue, and open it"
+    )
+    bug_report_cmd.set_defaults(func=cmd_bug_report)
+
     # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")
     hook = commands.add_parser("hook")
@@ -1518,7 +1568,8 @@ def main(argv: list[str] | None = None) -> int:
         # `lado doctor` checks the environment as it is, a migration due included.
         # `lado telemetry` keeps its files outside lado.db and reads it only.
         # `lado uninstall` shows an older lado.db as it is and stops (so migrates) itself.
-        if args.command not in ("stop", "doctor", "telemetry", "uninstall"):
+        # `lado bug-report` reports lado.db's schema as it is, as `lado doctor`.
+        if args.command not in ("stop", "doctor", "telemetry", "uninstall", "bug-report"):
             runtime.migrate_if_safe()
         return args.func(args)
     except (

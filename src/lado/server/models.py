@@ -568,6 +568,17 @@ class SystemInfo(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class BugReport(BaseModel):
+    """The Report a bug page (lado.bug_report.Report): the whole report to show and copy,
+    and GitHub's new issue form with it, the oldest kinds of errors left out until the link
+    fits."""
+
+    title: str  # "<type> at <where>" of the newest error, "" with none
+    text: str  # Markdown: no address, path, session name, message or token
+    url: str  # https://github.com/ladohq/lado/issues/new?title=…&body=…
+    left_out: int  # kinds of errors left out of the link's body
+
+
 class TelemetryInfo(BaseModel):
     """Whether LADO sends usage statistics and its errors (lado.telemetry.State), whether
     the UI asks (its banner), and how the last try went."""

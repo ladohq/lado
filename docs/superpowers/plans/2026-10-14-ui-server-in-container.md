@@ -70,10 +70,13 @@ window's `WhereField` takes the folder as the parent of an empty field.
 - [ ] **Step 1: Failing tests** (append beside the existing `Listening` and `lado ui` tests)
 
 ```python
-@pytest.mark.parametrize(("address", "url"), [
-    ("0.0.0.0", "http://127.0.0.1:8765"),
-    ("192.0.2.7", "http://192.0.2.7:8765"),
-])
+@pytest.mark.parametrize(
+    ("address", "url"),
+    [
+        ("0.0.0.0", "http://127.0.0.1:8765"),
+        ("192.0.2.7", "http://192.0.2.7:8765"),
+    ],
+)
 def test_in_a_container_a_server_on_another_address_notes_the_publication(address, url):
     listening = server_run.Listening.of(address, 8765, container=True)
     assert listening.url == url
@@ -89,7 +92,10 @@ def test_in_a_container_a_server_on_another_address_notes_the_publication(addres
 def test_in_a_container_a_loopback_server_has_no_note():
     listening = server_run.Listening.of("127.0.0.1", 8765, container=True)
     assert (listening.url, listening.remote, listening.warning, listening.note) == (
-        "http://127.0.0.1:8765", None, None, None
+        "http://127.0.0.1:8765",
+        None,
+        None,
+        None,
     )
 
 
@@ -170,7 +176,7 @@ class Listening:
         local = f"http://127.0.0.1:{port}" if ip.is_unspecified else f"http://{host}:{port}"
         if container:
             return cls(local, None, None, CONTAINER_NOTE.format(host=host, port=port))
-        warning = (...)  # as today
+        warning = ...  # as today
         if ip.is_unspecified:
             return cls(local, f"http://{socket.gethostname()}:{port}", warning)
         return cls(local, local, warning)
@@ -650,7 +656,9 @@ def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot
     expect(where).to_have_value(f"{repos}/app")
     expect(dialog).to_contain_text("✓ git repository · branch main")
     dialog.get_by_role("button", name="Clone from URL").click()
-    dialog.get_by_role("textbox", name=re.compile("Where")).fill("https://example.invalid/acme/site.git")
+    dialog.get_by_role("textbox", name=re.compile("Where")).fill(
+        "https://example.invalid/acme/site.git"
+    )
     # Clone into follows /api/clone-target, which needs no network; the branch listing fails.
     expect(dialog.get_by_role("textbox", name="Clone into")).to_have_value(f"{repos}/site")
     shot(page, "clone")

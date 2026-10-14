@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from agent_helpers import init_repo
 
 from lado import providers
 from lado.providers import claude, codex, kilo, opencode
@@ -255,8 +256,11 @@ def test_the_skip_list_takes_one_path_per_line_and_drops_blanks():
     assert smoke_ci.skip_list("  web/\n\nREADME.md  \n") == ["web/", "README.md"]
 
 
-def git(repo, *args):
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+def git(repo, *args) -> str:
+    done = subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    )
+    return done.stdout.strip()
 
 
 def run_needed(repo, *args, skip=SKIP):
@@ -273,28 +277,17 @@ def run_needed(repo, *args, skip=SKIP):
 
 @pytest.fixture
 def pr(tmp_path):
-    """A repository with a base commit; the test adds the pull request's commits."""
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
-    git(repo, "config", "user.email", "t@example.com")
-    git(repo, "config", "user.name", "t")
-    (repo / "README.md").write_text("x\n")
-    git(repo, "add", "README.md")
-    git(repo, "commit", "-q", "-m", "base")
-    return repo
+    """A repository; the test adds the base's and the pull request's commits."""
+    return init_repo(tmp_path / "repo")
 
 
-def commit(repo, path, text="y\n"):
+def commit(repo, path, text="y\n") -> str:
     file = repo / path
     file.parent.mkdir(parents=True, exist_ok=True)
     file.write_text(text)
     git(repo, "add", path)
     git(repo, "commit", "-q", "-m", path)
-    head = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
-    )
-    return head.stdout.strip()
+    return git(repo, "rev-parse", "HEAD")
 
 
 def test_needed_prints_false_for_a_docs_only_pull_request(pr):
@@ -324,9 +317,7 @@ def test_a_file_moved_from_code_into_docs_needs_the_smoke(pr):
     (pr / "docs").mkdir()
     git(pr, "mv", "src/lado/x.py", "docs/x.py")
     git(pr, "commit", "-q", "-m", "move")
-    head = subprocess.run(
-        ["git", "-C", str(pr), "rev-parse", "HEAD"], capture_output=True, text=True
-    ).stdout.strip()
+    head = git(pr, "rev-parse", "HEAD")
     done = run_needed(pr, "pull_request", base, head)
     assert done.stdout == "smoke=true\n", done.stderr
 

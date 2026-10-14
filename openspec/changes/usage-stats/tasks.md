@@ -30,7 +30,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-usage-stats-design.md`.
 
 ## 6. Regression
 
-- [ ] 6.1 `make lint`, `make test`, the changed integration files with `-m integration`,
+- [x] 6.1 `make lint`, `make test`, the changed integration files with `-m integration`,
   `openspec validate usage-stats --strict`, `openspec validate --specs --strict`; the
   output of `lado stats` by hand, and a migration of a copy of a real schema-26 `lado.db`,
   in the build report.

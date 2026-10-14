@@ -18,12 +18,12 @@
 
 ## 2. Doctor and the report
 
-- [ ] 2.1 Unit tests first, `tests/test_doctor.py`: `check_lado` in a container, latest
+- [x] 2.1 Unit tests first, `tests/test_doctor.py`: `check_lado` in a container, latest
   (`[ok  ] LADO: 0.38.0, the latest version, in a container`) and with an update out
   (`warn`, detail `0.38.0, in a container`, the hint with the command); outside a container
   unchanged; `report` with `System(container=True)` reads `(uv tool, in a container)` and
   `(no uv tool or pipx install, in a container)`; `system_info` sets `container`.
-- [ ] 2.2 `doctor.py`: `System.container`, `check_lado`, `report` (D4). `make test`.
+- [x] 2.2 `doctor.py`: `System.container`, `check_lado`, `report` (D4). `make test`.
 
 ## 3. The API and the System panel
 

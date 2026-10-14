@@ -76,7 +76,9 @@ the stages; later stages (Projects, the desktop app) do not touch it.
   steps without the checks (each one's failure ignored) and exits 130.
 - **D5. The kept copy.** `~/.lado-rc/lado.db.<final>`, outside `LADO_HOME`, so neither
   `lado update` nor `lado uninstall` removes it. `upgrade` reads the human's `lado
-  --version` before the update; when it was a final and the update exited 0, it copies
+  --version` before the update and again after it; when it was a final and is the RC
+  after (whatever the update's exit code: `lado update` exits 1 for `partial`, a session
+  that did not resume, after it installed the RC and made the final's backup), it copies
   `<LADO_HOME or ~/.lado>/backups/lado.db.<final>` there (`shutil.copy2`: the backup is a
   closed file the update wrote through SQLite's backup API) and removes the other files of
   `~/.lado-rc/`. A missing backup (a fresh install with no lado.db) is one warning line.

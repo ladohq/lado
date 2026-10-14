@@ -46,7 +46,11 @@ remove the folder and exit 0. It SHALL never read or change the human's own `LAD
 ### Requirement: Moving onto a release candidate keeps the final's database
 
 `python3 scripts/rc_check.py upgrade VERSION` SHALL run the human's own `lado update
-VERSION` on the terminal, without `--yes`, and exit with its exit code when that fails.
+VERSION` on the terminal, without `--yes`, then read `lado --version`. When that is not
+`VERSION`, it SHALL keep nothing and exit with the update's exit code (1 when that was 0).
+When it is `VERSION`, it SHALL keep the copy below also when the update exited non-zero
+(an update that installed the RC exits 1 when a session did not resume on it), and then
+exit with that code, saying that LADO is on `VERSION` now.
 When the LADO it updated was a final release and `~/.lado/backups/lado.db.<final>` exists
 (under `LADO_HOME` when set), it SHALL copy that file to `~/.lado-rc/lado.db.<final>` and
 remove every other file of `~/.lado-rc/`; when the LADO it updated was a pre-release, it
@@ -62,6 +66,17 @@ SHALL leave `~/.lado-rc/` as it is. It SHALL refuse inside an agent (`LADO_AGENT
 - **WHEN** LADO 0.38.0rc1 runs and the human runs `upgrade 0.38.0rc2`
 - **THEN** `~/.lado-rc/lado.db.0.37.1` stays as it was, although `lado update` replaced
   its own backup with `lado.db.0.38.0rc1`
+
+#### Scenario: The RC is installed but a session did not resume
+- **WHEN** LADO 0.37.1 runs, the human runs `upgrade 0.38.0rc1`, and `lado update`
+  installs 0.38.0rc1 but exits 1 as a session did not resume on it
+- **THEN** `~/.lado-rc/` holds `lado.db.0.37.1`, and the script exits 1 saying that LADO
+  is 0.38.0rc1 now
+
+#### Scenario: The update did not install the RC
+- **WHEN** the human answers `n` to `lado update`'s question, or its installer fails
+- **THEN** `lado --version` is still the final, `~/.lado-rc/` is not changed, and the
+  script exits with the update's exit code
 
 ### Requirement: Going back from a release candidate
 

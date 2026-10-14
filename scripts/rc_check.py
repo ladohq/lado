@@ -451,14 +451,16 @@ def upgrade(version: Version) -> int:
     before = installed(lado)
     print(f"Your LADO is {before}; running lado update {version}:", flush=True)
     code = run([lado, "update", str(version)], terminal=True).code
-    if code:
-        print(
-            f"rc_check: lado update {version} did not update (exit {code}): nothing kept",
-            file=sys.stderr,
-        )
-        return code
+    # By the version, not the exit code: an update that installed the RC exits 1 when a
+    # session did not resume on it (`partial`), and its backup is the final's all the same.
     after = installed(lado)
     if after != version:
+        if code:
+            print(
+                f"rc_check: lado update {version} did not update (exit {code}): nothing kept",
+                file=sys.stderr,
+            )
+            return code
         raise RcError(f"lado --version says lado {after} after the update, not {version}")
     if before.final:
         backup = lado_home() / "backups" / f"lado.db.{before}"
@@ -482,7 +484,13 @@ def upgrade(version: Version) -> int:
                 "restore lado.db"
             )
     print_checklist(version)
-    return 0
+    if code:
+        print(
+            f"rc_check: lado update {version} exited {code}, but LADO is {version} now: "
+            "read what it printed above (a session that did not resume?)",
+            file=sys.stderr,
+        )
+    return code
 
 
 def _terminal() -> bool:
@@ -613,10 +621,14 @@ def print_plan(p: Plan) -> None:
         print(f"- lado.db is kept: its schema {p.live_schema} is the copy's")
 
 
-def _stopped(p: Plan, why: str) -> int:
-    print(
-        f"rc_check: {why}: lado.db is not restored, and your sessions are stopped.", file=sys.stderr
+def _stopped(p: Plan, why: str, all_stopped: bool = True) -> int:
+    """The rollback ends before the restore: what is left and how to start it again."""
+    sessions = (
+        "your sessions are stopped"
+        if all_stopped
+        else "some of your sessions may be stopped (lado ls)"
     )
+    print(f"rc_check: {why}: lado.db is not restored, and {sessions}.", file=sys.stderr)
     lines = p.resume_lines()
     if lines:
         print("Start them again with:", file=sys.stderr)
@@ -634,10 +646,12 @@ def rollback() -> int:
     if input("Roll back? [y/N] ").strip().lower() not in ("y", "yes"):
         print("Not rolled back.")
         return 1
-    for argv in ([p.lado, "stop", "--all"], [p.lado, "server", "stop"]):
-        code = run(argv, terminal=True).code
-        if code:
-            return _stopped(p, f"{' '.join(['lado', *argv[1:]])} exited {code}")
+    code = run([p.lado, "stop", "--all"], terminal=True).code
+    if code:
+        return _stopped(p, f"lado stop --all exited {code}", all_stopped=False)
+    code = run([p.lado, "server", "stop"], terminal=True).code
+    if code:
+        return _stopped(p, f"lado server stop exited {code}")
     code = run([p.lado, "update", str(p.final)], terminal=True).code
     if code:
         return _stopped(p, f"lado update {p.final} did not update (exit {code})")

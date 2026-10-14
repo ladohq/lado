@@ -478,6 +478,18 @@ def test_upgrade_from_a_final_without_a_backup_warns(recorder, homes, capsys):
     assert f"warning: no backup {homes.backups / 'lado.db.0.37.1'}" in out
 
 
+def test_an_update_that_installed_the_rc_but_failed_after_keeps_the_copy(recorder, homes, capsys):
+    """`lado update` exits 1 for a session that did not resume (`partial`), after it
+    installed the RC: its backup is the final's all the same, and the next update drops it."""
+    recorder.version("0.37.1", "0.38.0rc1")
+    recorder.answer("update", 1, then=lambda: homes.back_up("0.37.1", b"the final's"))
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 1
+    assert (homes.keep / "lado.db.0.37.1").read_bytes() == b"the final's"
+    err = capsys.readouterr().err
+    assert "lado update 0.38.0rc1 exited 1, but LADO is 0.38.0rc1 now" in err
+    assert "nothing kept" not in err
+
+
 def test_a_failed_update_copies_nothing(recorder, homes, capsys):
     homes.back_up("0.37.0")
     recorder.version("0.37.1")
@@ -685,6 +697,18 @@ def test_update_refused_stops_before_the_restore(recorder, homes, on_rc, capsys)
     assert "lado update 0.37.1 did not update (exit 1): lado.db is not restored" in err
     assert "lado start /r/app --name app" in err
     assert "lado ui --port 8003" in err
+    assert "your sessions are stopped" in err
+
+
+def test_a_failed_stop_does_not_say_the_sessions_are_stopped(recorder, homes, on_rc, capsys):
+    recorder.answer("stop --all", 1)
+    assert rc.rollback() == 1
+    assert "update" not in recorder.verbs()
+    err = capsys.readouterr().err
+    assert "lado stop --all exited 1: lado.db is not restored" in err
+    assert "your sessions are stopped" not in err
+    assert "some of your sessions may be stopped (lado ls)" in err
+    assert "lado start /r/app --name app" in err
 
 
 def test_an_update_to_another_version_stops_before_the_restore(recorder, homes, on_rc, capsys):

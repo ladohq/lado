@@ -721,6 +721,22 @@ def height(locator) -> float:
     return box["height"]
 
 
+def settles_at(page: Page, locator, want: float, within: float = 2) -> None:
+    """Wait until the element is `want` px high (± `within`): a drag, a key or a reload
+    lays the card out a frame later."""
+    page.wait_for_function(
+        "([el, want, within]) => Math.abs(el.getBoundingClientRect().height - want) <= within",
+        arg=[locator.element_handle(), want, within],
+        timeout=5000,
+    )
+
+
+def laid_out(edge) -> None:
+    """Wait until the edge knows the room the card shares with the feed: before that its
+    largest height is the card's own."""
+    expect(edge).not_to_have_attribute("aria-valuemax", re.compile(r"^(166|230)$"))
+
+
 def drag_edge(page: Page, edge, by: float) -> None:
     """Drag the edge `by` pixels down (up when negative), as the human does."""
     box = edge.bounding_box()
@@ -801,8 +817,9 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
     expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
     edge = card.get_by_role("separator", name="Resize the card")
     expect(edge).to_have_attribute("aria-orientation", "horizontal")
+    laid_out(edge)
     drag_edge(page, edge, height(card) - 230)
-    assert abs(height(card) - 230) <= 2, height(card)
+    settles_at(page, card, 230)
     # Its list scrolls inside, the buttons in view.
     approve = card.get_by_role("button", name="Approve", exact=True)
     expect(approve).to_be_in_viewport()
@@ -816,22 +833,23 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
     page.emulate_media(color_scheme="light")
     page.reload()
     expect(card.get_by_role("tabpanel")).to_be_visible()
-    assert abs(height(card) - 230) <= 2, height(card)
+    settles_at(page, card, 230)
     page.goto(f"{server['url']}/sessions/{other}")
     other_card = waiting_card(page, other)
     expect(other_card.get_by_role("tabpanel")).to_contain_text("Which branch?")
-    assert abs(height(other_card) - 230) <= 2, height(other_card)
+    settles_at(page, other_card, 230)
     page.goto(f"{server['url']}/sessions/{session}")
     expect(card.get_by_role("tabpanel")).to_be_visible()
     # The keys move it by steps.
+    laid_out(edge)
     edge.focus()
     page.keyboard.press("ArrowUp")
-    assert abs(height(card) - 270) <= 2, height(card)
+    settles_at(page, card, 270)
     # A double click: the stylesheet's height, half the chat.
     edge.dblclick()
     chat = page.get_by_role("region", name="Chat", exact=True)
     expect(card).not_to_have_class(re.compile(r"\bsized\b"))
-    assert abs(height(card) - height(chat) / 2) <= 2, (height(card), height(chat))
+    settles_at(page, card, height(chat) / 2)
     # Dragged down past its least height: minimized, its height kept for the restore.
     drag_edge(page, edge, height(card))
     expect(card.locator(".waiting-line")).to_be_visible()

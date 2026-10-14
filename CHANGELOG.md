@@ -7,6 +7,10 @@
   `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System
   panel (a `container` mark beside the version) and the system info for an issue say that
   LADO runs in a container.
+- UI: in a session's chat the waiting card can be minimized to one line, so the chat has
+  the room while you talk a gate over with the supervisor; it comes back by itself when
+  something new waits. Its top edge can be dragged to give it another height. Both are
+  remembered in the browser.
 
 ## 0.38.0 (2026-10-14)
 

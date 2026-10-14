@@ -10,7 +10,7 @@
   hand, the guard fails a scratch test that deletes `LADO_TELEMETRY`, stores the yes and
   writes `sent.json` without `telemetry_on`, and fails every test with the conftest line
   commented out (AC-2, AC-3); the scratch test is not committed.
-- [ ] 1.2 `tests/test_isolation.py`: `lado telemetry status` run as a subprocess (the way
+- [x] 1.2 `tests/test_isolation.py`: `lado telemetry status` run as a subprocess (the way
   the suite runs the CLI in one, `interpreter.run_module` or `sys.executable -m lado.cli`)
   prints `statistics: off: LADO_TELEMETRY=0 is set`. Check: `uv run pytest -n0
   tests/test_isolation.py` (AC-5).

@@ -2,6 +2,12 @@
 
 ## 0.39.0 (unreleased)
 
+- A session can have a title, shown in the UI over its name (the list, the head, the
+  browser tab, Needs you and notifications), the name small beside it: set it with the
+  pencil in the session's head, Rename… in the session list's ⋯, or `lado title <session>
+  TEXT` (`--clear` removes it); `lado ls` shows it. The name stays the session's
+  identifier: its address, branches and CLI name do not change. The list's search finds a
+  session by either. lado.db goes to schema 28.
 - After an update from the UI, the System panel no longer says an update is running and
   keeps its Update… button: the page's wait ends once the update has released its lock.
 - In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and

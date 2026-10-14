@@ -98,7 +98,6 @@ def test_profile_sets_what_env_sets_for_the_agents():
     assert set(exported) == {
         "PATH",
         "LADO_CONTAINER",
-        "LADO_REPOS",
         "CLAUDE_CONFIG_DIR",
         "DISABLE_AUTOUPDATER",
         "LANG",
@@ -111,12 +110,15 @@ def test_profile_sets_what_env_sets_for_the_agents():
         else:
             assert image[key] == value, key
     assert image["LADO_CONTAINER"] == "1"
+    # The container's own LADO_REPOS (-e) reaches the agents through the entrypoint's
+    # lado-repos.sh, so profile.sh does not set the image's default.
+    assert image["LADO_REPOS"] == "/projects"
     assert image["LADO_PORT"] == "8765"
     assert image["SHELL"] == "/bin/bash"
 
 
 def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
-    assert 'ENTRYPOINT ["/usr/bin/tini", "--"]' in lines()
+    assert 'ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lado-entrypoint"]' in lines()
     [cmd] = [line for line in lines() if line.startswith("CMD ")]
     assert cmd == 'CMD ["sh", "-c", "exec lado server --host 0.0.0.0 --port \\"$LADO_PORT\\""]'
     assert "USER lado" in lines()
@@ -124,7 +126,46 @@ def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
 
 def test_the_build_context_is_an_allowlist():
     ignore = (DOCKER / "Dockerfile.dockerignore").read_text().split()
-    assert ignore == ["*", "!dist/lado-*.whl", "!docker/profile.sh"]
+    assert ignore == ["*", "!dist/lado-*.whl", "!docker/profile.sh", "!docker/entrypoint.sh"]
+
+
+RULE = "lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint"
+ENTRYPOINT = (DOCKER / "entrypoint.sh").read_text()
+
+
+def test_the_entrypoint_is_copied_in_place():
+    assert "COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/lado-entrypoint" in lines()
+    assert ENTRYPOINT.startswith("#!/bin/sh\n")
+    assert "\nset -eu\n" in ENTRYPOINT
+
+
+def test_the_sudo_rule_names_the_entrypoint_alone():
+    [run] = [line for line in lines() if "/etc/sudoers.d/lado-entrypoint" in line]
+    assert f"printf '%s\\n' '{RULE}' > /etc/sudoers.d/lado-entrypoint" in run
+    assert "chmod 0440 /etc/sudoers.d/lado-entrypoint" in run
+    assert "visudo -cf /etc/sudoers.d/lado-entrypoint" in run
+    assert "touch /etc/lado/first-start" in run
+    [install] = [line for line in lines() if "apt-get install" in line]
+    assert " sudo " in install
+
+
+def test_git_trusts_every_repository():
+    assert any("git config --system --add safe.directory '*'" in line for line in lines())
+
+
+def test_the_entrypoint_removes_its_way_to_root_first():
+    """The root branch deletes the sudo rule and the marker before any step that can fail,
+    so no later process, an agent included, can become root through them."""
+    body = ENTRYPOINT.split('if [ "$(id -u)" = 0 ]; then\n', 1)[1]
+    first = body.splitlines()[0].strip()
+    assert first == 'rm -f "$RULE" "$MARK"'
+    assert "RULE=/etc/sudoers.d/lado-entrypoint" in ENTRYPOINT
+    assert "MARK=/etc/lado/first-start" in ENTRYPOINT
+
+
+def test_the_entrypoint_writes_lado_repos_for_the_agents():
+    assert "/etc/profile.d/lado-repos.sh" in ENTRYPOINT
+    assert "export LADO_REPOS=" in ENTRYPOINT
 
 
 @pytest.fixture(scope="module")

@@ -11,11 +11,11 @@ the tests' code and the commit.
 
 ## 2. The entrypoint, the sudo rule and git's trust
 
-- [ ] 2.1 Unit tests first, `tests/test_docker.py`: profile.sh without `LADO_REPOS`, the
+- [x] 2.1 Unit tests first, `tests/test_docker.py`: profile.sh without `LADO_REPOS`, the
   entrypoint under tini, the sudo rule's line, mode and `visudo -cf`, the marker,
   `safe.directory '*'`, the allowlist with `docker/entrypoint.sh`, the root branch deleting
   the rule and marker before anything else, `lado-repos.sh` written. Plan, Task 2.
-- [ ] 2.2 `docker/entrypoint.sh`, the Dockerfile (sudo, rule, marker, entrypoint, git
+- [x] 2.2 `docker/entrypoint.sh`, the Dockerfile (sudo, rule, marker, entrypoint, git
   config, header), `docker/profile.sh`, the dockerignore (D2-D7). `uv run pytest
   tests/test_docker.py -n0`; with Docker, `make docker` and the existing `make
   test-container` green.

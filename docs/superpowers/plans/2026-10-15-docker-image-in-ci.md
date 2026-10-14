@@ -288,7 +288,10 @@ def run_container(tmp_path, **env):
     }
     done = subprocess.run(
         [sys.executable, str(SCRIPT), "container", str(out)],
-        env=full, capture_output=True, text=True, timeout=60,
+        env=full,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     ran = tmp_path / "ran"
     return done, out, ran.read_text() if ran.exists() else ""
@@ -493,7 +496,12 @@ def test_profile_sets_what_env_sets_for_the_agents():
     )
     image = env()
     assert set(exported) == {
-        "PATH", "LADO_CONTAINER", "LADO_REPOS", "CLAUDE_CONFIG_DIR", "DISABLE_AUTOUPDATER", "LANG"
+        "PATH",
+        "LADO_CONTAINER",
+        "LADO_REPOS",
+        "CLAUDE_CONFIG_DIR",
+        "DISABLE_AUTOUPDATER",
+        "LANG",
     }
     for key, value in exported.items():
         value = value.replace("$HOME", "/home/lado")
@@ -990,7 +998,13 @@ def agent_pid(container, session: str, window: str) -> int:
     CLI in place and Claude Code 2.x is a native binary. Checked, never guessed: its
     executable must be the file the `claude` command names."""
     pane = container.exec(
-        "tmux", "-L", "lado", "display-message", "-p", "-t", f"{session}:{window}",
+        "tmux",
+        "-L",
+        "lado",
+        "display-message",
+        "-p",
+        "-t",
+        f"{session}:{window}",
         "#{pane_pid}",
     ).stdout.strip()
     running = container.exec("readlink", f"/proc/{pane}/exe").stdout.strip()
@@ -1001,9 +1015,19 @@ def agent_pid(container, session: str, window: str) -> int:
 
 def test_a_claude_session_gets_to_idle_and_knows_the_container(container):
     # The fake model API inside the container, on its own loopback.
-    docker("cp", str(ROOT / "tests" / "fake_endpoint.py"), f"{container.name}:/tmp/fake_endpoint.py")
-    docker("exec", "-d", container.name, PYTHON, "-I", "/tmp/fake_endpoint.py",
-           str(ENDPOINT_PORT), "/tmp/endpoint.jsonl")
+    docker(
+        "cp", str(ROOT / "tests" / "fake_endpoint.py"), f"{container.name}:/tmp/fake_endpoint.py"
+    )
+    docker(
+        "exec",
+        "-d",
+        container.name,
+        PYTHON,
+        "-I",
+        "/tmp/fake_endpoint.py",
+        str(ENDPOINT_PORT),
+        "/tmp/endpoint.jsonl",
+    )
     # Claude Code pointed at it through the login shell, as a human gives a token; its
     # first-run screens, the bypass mode's disclaimer and the repository's trust done.
     container.sh(
@@ -1014,18 +1038,32 @@ def test_a_claude_session_gets_to_idle_and_knows_the_container(container):
         "export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n"
         "EOF"
     )
-    container.write("/home/lado/.claude/.claude.json", json.dumps({
-        "hasCompletedOnboarding": True,
-        "bypassPermissionsModeAccepted": True,
-        "projects": {"/home/lado/repo": {"hasTrustDialogAccepted": True}},
-    }))
+    container.write(
+        "/home/lado/.claude/.claude.json",
+        json.dumps(
+            {
+                "hasCompletedOnboarding": True,
+                "bypassPermissionsModeAccepted": True,
+                "projects": {"/home/lado/repo": {"hasTrustDialogAccepted": True}},
+            }
+        ),
+    )
     container.sh(
         "git init -q -b main ~/repo && git -C ~/repo -c user.name=lado "
         "-c user.email=lado@example.com commit -q --allow-empty -m first"
     )
     started = container.exec(
-        "lado", "start", "/home/lado/repo", "--name", "smoke", "--provider", "claude",
-        "--permission-mode", "bypassPermissions", "--no-attach", check=False,
+        "lado",
+        "start",
+        "/home/lado/repo",
+        "--name",
+        "smoke",
+        "--provider",
+        "claude",
+        "--permission-mode",
+        "bypassPermissions",
+        "--no-attach",
+        check=False,
     )
     assert started.returncode == 0, started.stdout + started.stderr
 
@@ -1071,8 +1109,12 @@ def test_compose_serves_on_lado_port(tmp_path):
     override = tmp_path / "quiet.yaml"
     override.write_text(QUIET_OVERRIDE)
     project, port = f"lado-test-{secrets.token_hex(4)}", free_port()
-    env = {**os.environ, "LADO_IMAGE": IMAGE, "LADO_PORT": str(port),
-           "LADO_PROJECTS": str(tmp_path)}
+    env = {
+        **os.environ,
+        "LADO_IMAGE": IMAGE,
+        "LADO_PORT": str(port),
+        "LADO_PROJECTS": str(tmp_path),
+    }
     try:
         compose(project, override, env, "up", "-d")
         assert health(port)["ok"] is True

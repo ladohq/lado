@@ -72,8 +72,8 @@ short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each
 hook's confirmation under `-n auto`, the comment there says by how much); only tests set
 either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
-`LADO_TMUX_SOCKET`, `TMUX` and `LADO_CONTAINER` for the test run, so the tests run in an
-agent's shell (or LADO's image) as is,
+`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER` and `LADO_REPOS` for the test run, so the
+tests run in an agent's shell (or LADO's image) as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
 login shell (tests of the shell set their own `SHELL`). It also sets
 `LADO_NO_UPDATE_CHECK=1`, so no test looks on PyPI; the tests of the update check switch it
@@ -236,6 +236,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `git` (after `tmux`, `check_git`) is the folder check's own look, `runtime.git_version`:
     `FAIL` with the core's text and hint when git is missing or does not run, `WARN` below
     `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
+    `Repositories folder` (after `git`, `check_repos_folder`, only while `LADO_REPOS` is
+    set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
+    that is no folder or a value that is not absolute (which `clone.repos_folder` ignores).
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
@@ -275,8 +278,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `CONTAINER_UPDATE`, `docker compose pull && docker compose up -d`, instead of `lado
     update`: `available_line`), whether LADO runs in its container (`in_container`:
     `LADO_CONTAINER` set, not empty, not `0`, which only the image sets; never guessed from
-    `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report, and the
-    UI server), the installer (`installer`: by this
+    `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report (its
+    `Server:` line says `in a container` instead of loopback or open to the network), and
+    the UI server, whose `run.serve` and `lado ui` pass it to `run.Listening.of`), the
+    installer (`installer`: by this
     LADO's `sys.prefix`, a uv tool with `uv-receipt.toml` or pipx with
     `pipx_metadata.json` of lado from an index, else None,
     also for an editable, folder, git or URL install of lado; its `command` installs
@@ -461,7 +466,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `is_url` (`https://`, `http://`, `ssh://`, `git://`, `file://`, or the scp form only
     with a user; anything else, `/srv/app.git` too, is a folder), `Address` (host and path
     by which two URLs are `same_repo`; scheme, user and port aside; local ones by real
-    path), `default_folder` (`DEFAULT_PARENT`/<repo>, `~/lado`), `check_target` (a
+    path), `repos_folder` (the one reader of `REPOS`, `LADO_REPOS`, the folder of the
+    human's repositories that LADO's image sets: `~` expanded, None when unset, empty or
+    not absolute; read at each call), `default_folder` (`default_parent()`/<repo>: the
+    repositories folder, else `DEFAULT_PARENT`, `~/lado`), `check_target` (a
     `Target`: `new`, `empty`, `same_repo`, `other_repo` with a free `~/lado/<owner>-<repo>`
     beside it, `not_empty`, `not_folder`; only `CAN_CLONE` lets a clone start, and LADO
     changes nothing in a folder of another state: no clone over it, no fetch, no branch
@@ -941,6 +949,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
     `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
+    `/api/repos-folder` (in `app.py`; `ReposFolder`, `clone.repos_folder` or none: where
+    an empty Where starts),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
     `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default);
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
@@ -979,7 +989,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `bug_report.BROWSER_LINE`'s shape is 422; it reads only, so not under
     `Guard.changes`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
-    `Listening`: the local link, the remote one and the warning for the address taken),
+    `Listening`: the local link, the remote one and the warning for the address taken; in a
+    container, `container=update.in_container()`, no remote link and no warning but a
+    `note`, `CONTAINER_NOTE`, as the port's publication decides who reaches it; `lado ui`
+    there prints the link and `OPEN_ON_HOST` and opens no browser),
     the background start and stop (`stop` returns once the server's process has ended, not
     only its lock: `_gone` reaps a child of its own), server.log's bound (`rotate` at a background start,
     `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). `static/`:
@@ -1482,7 +1495,7 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
 `uv run lado start <repo>` runs the working copy (a repository without commits is refused:
 make a first commit). `lado start <git-url> [<folder>] [--branch NAME]` clones the URL's
 branch (the remote's default without `--branch`) into the folder, a full path, by default
-`~/lado/<repo>`, then starts there as `lado start <folder>` does: the folder must be new or
+`$LADO_REPOS/<repo>` (an absolute `LADO_REPOS`), else `~/lado/<repo>`, then starts there as `lado start <folder>` does: the folder must be new or
 empty (a clone of the same repository there is refused with the `lado start <folder>` that
 uses it as it is; LADO never fetches into or switches a folder that exists), and a name a
 session of another folder has is refused before the clone (`runtime.check_name`). git's

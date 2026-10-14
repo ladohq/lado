@@ -345,3 +345,11 @@ export const UnseenIcon = () => (
     <path d="M10 10.2a2.6 2.6 0 0 0 3.7 3.7" />
   </Icon>
 );
+
+// An arrow that turns back: a flow step that sends the work back (flowSteps.tsx).
+export const BackIcon = () => (
+  <Icon>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
+  </Icon>
+);

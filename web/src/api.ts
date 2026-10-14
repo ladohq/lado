@@ -246,6 +246,7 @@ export const answerQuestions = (session: string, answers: Reply[]) =>
 
 export type FolderInfo = components["schemas"]["FolderInfo"];
 export type RecentFolder = components["schemas"]["RecentFolder"];
+export type ReposFolder = components["schemas"]["ReposFolder"];
 export type KitInfo = components["schemas"]["KitInfo"];
 export type ProviderInfo = components["schemas"]["ProviderInfo"];
 export type SessionAbout = components["schemas"]["SessionAbout"];
@@ -268,6 +269,8 @@ const query = (params: Record<string, string>) => new URLSearchParams(params).to
 export const getFolder = (path: string) => get<FolderInfo>(`/api/folders?${query({ path })}`);
 
 export const getRecentFolders = () => get<RecentFolder[]>("/api/folders/recent");
+
+export const getReposFolder = () => get<ReposFolder>("/api/repos-folder");
 
 export type RemoteInfo = components["schemas"]["RemoteInfo"];
 export type CloneTarget = components["schemas"]["CloneTarget"];

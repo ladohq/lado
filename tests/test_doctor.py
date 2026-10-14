@@ -63,6 +63,65 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     assert all(c.level == doctor.OK for c in checks)
 
 
+def test_no_repositories_folder_line_without_the_variable(monkeypatch):
+    monkeypatch.delenv("LADO_REPOS", raising=False)
+    assert doctor.check_repos_folder() is None
+    monkeypatch.setenv("LADO_REPOS", "")
+    assert doctor.check_repos_folder() is None
+
+
+def test_the_repositories_folder_line(tmp_path, monkeypatch):
+    name = "Repositories folder"
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
+    assert doctor.check_repos_folder() == doctor.Check(name, doctor.OK, f"{tmp_path} (LADO_REPOS)")
+    missing = tmp_path / "repos"
+    monkeypatch.setenv("LADO_REPOS", str(missing))
+    assert doctor.check_repos_folder() == doctor.Check(
+        name, doctor.INFO, f"{missing} (LADO_REPOS), not made yet: the first clone makes it"
+    )
+    afile = tmp_path / "file"
+    afile.write_text("")
+    monkeypatch.setenv("LADO_REPOS", str(afile))
+    assert doctor.check_repos_folder() == doctor.Check(
+        name, doctor.WARN, f"LADO_REPOS is not a folder: {afile}"
+    )
+    monkeypatch.setenv("LADO_REPOS", "code")
+    assert doctor.check_repos_folder() == doctor.Check(
+        name,
+        doctor.WARN,
+        "LADO_REPOS is not an absolute path: code; LADO ignores it",
+        "set it to a full path, e.g. ~/repos or /Users/me/repos",
+    )
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any folder")
+def test_a_repositories_folder_lado_may_not_look_at_warns_with_the_reason(tmp_path, monkeypatch):
+    closed = tmp_path / "closed"
+    closed.mkdir(mode=0)
+    folder = closed / "repos"
+    monkeypatch.setenv("LADO_REPOS", str(folder))
+    try:
+        check = doctor.check_repos_folder()
+    finally:
+        closed.chmod(0o700)
+    assert (check.name, check.level) == ("Repositories folder", doctor.WARN)
+    assert check.detail.startswith(f"cannot look at LADO_REPOS {folder}: ")
+    assert "Permission denied" in check.detail
+
+
+def test_the_checks_hold_the_repositories_folder_only_when_it_is_set(tmp_path, monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+
+    def names():
+        return [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+
+    assert "Repositories folder" not in names()
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
+    found = names()
+    assert found[found.index("git") + 1] == "Repositories folder"
+
+
 @pytest.mark.parametrize(
     ("version", "hint"),
     [
@@ -630,5 +689,21 @@ def test_report_statistics_without_an_endpoint(monkeypatch):
 )
 def test_report_server_line(server, line):
     report = doctor.report(doctor.system_info(which=lambda cmd: None), server)
+    [found] = [text for text in report.splitlines() if text.startswith("- Server: ")]
+    assert found.startswith(line)
+
+
+@pytest.mark.parametrize(
+    ("server", "line"),
+    [
+        (doctor.ServerState(True, 60), "- Server: in a container, up 1 min, schema "),
+        (doctor.ServerState(True, None), "- Server: running, in a container, schema "),
+        (doctor.ServerState(False, None), "- Server: running, in a container, schema "),
+        (None, "- Server: not running, schema "),
+    ],
+)
+def test_report_server_line_in_a_container(server, line):
+    system = dataclasses.replace(doctor.system_info(which=lambda cmd: None), container=True)
+    report = doctor.report(system, server)
     [found] = [text for text in report.splitlines() if text.startswith("- Server: ")]
     assert found.startswith(line)

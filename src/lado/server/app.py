@@ -30,6 +30,7 @@ import lado
 from lado import (
     artifacts,
     bug_report,
+    clone,
     doctor,
     kits,
     marketplaces,
@@ -86,6 +87,7 @@ from lado.server.models import (
     RemoteAsk,
     RemoteInfo,
     Replies,
+    ReposFolder,
     Resume,
     RunEventInfo,
     RunInfo,
@@ -485,8 +487,8 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
     def clone_target(
         url: str, path: str | None = None, has_db: bool = Depends(database)
     ) -> CloneTarget:
-        """The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it
-        takes one, and the session name it gives."""
+        """The folder a clone of `url` would go to (by default $LADO_REPOS/<repo>, else
+        ~/lado/<repo>): whether it takes one, and the session name it gives."""
         return clone_core(clones.target_info, url, path, has_db)
 
     @app.post(
@@ -524,6 +526,12 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
     def recent_folders(has_db: bool = Depends(database)) -> list[RecentFolder]:
         """The folders of past sessions, the latest started first."""
         return launch.recent_folders() if has_db else []
+
+    @app.get("/api/repos-folder", dependencies=[Depends(guard)])
+    def repos_folder() -> ReposFolder:
+        """The folder the New session window starts Where from (LADO_REPOS), or none."""
+        folder = clone.repos_folder()
+        return ReposFolder(path=str(folder) if folder else None)
 
     @app.get("/api/kits", dependencies=[Depends(guard)])
     def list_kits(has_db: bool = Depends(database)) -> list[KitInfo]:

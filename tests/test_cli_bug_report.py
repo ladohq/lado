@@ -178,6 +178,22 @@ def test_a_running_server_open_to_the_network(capsys):
     assert "0.0.0.0" not in out and "8040" not in out
 
 
+def test_a_running_server_in_a_container(capsys, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    state.home()
+    server_run.info_path().write_text(
+        json.dumps({"url": "http://127.0.0.1:8765", "host": "0.0.0.0", "port": 8765, "pid": 1})
+    )
+    lock = server_run.take_lock()
+    try:
+        assert _run() == 0
+    finally:
+        lock.close()
+    out = capsys.readouterr().out
+    assert "- Server: running, in a container, schema " in out
+    assert "open to the network" not in out
+
+
 def test_the_errors_of_the_journal_are_in_it(capsys):
     try:
         raise KeyError("/Users/ann/acme")

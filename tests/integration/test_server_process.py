@@ -125,6 +125,22 @@ def test_a_server_on_every_address_warns_and_gives_a_link_for_other_machines():
     assert gone(info["pid"])
 
 
+def test_a_server_in_a_container_notes_the_publication_and_no_other_machines(monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    first = lado_cli("ui", "--no-open", "--host", "0.0.0.0", "--port", "0")
+    assert first.returncode == 0, first.stderr
+    info = server_run.running()
+    assert first.stdout.splitlines() == [f"{info['url']}/?token={auth.token()}"]
+    log = (state.home() / "server.log").read_text()
+    for text in (log, first.stderr):
+        assert f"listens on 0.0.0.0:{info['port']} inside it" in text
+        assert "open to other machines" not in text
+
+    stopped = lado_cli("server", "stop")
+    assert stopped.returncode == 0, stopped.stderr
+    assert gone(info["pid"])
+
+
 def test_ui_restarts_a_server_of_another_version_on_its_port():
     first = lado_cli("ui", "--no-open", "--port", "0")
     assert first.returncode == 0, first.stderr

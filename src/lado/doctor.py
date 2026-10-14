@@ -5,6 +5,7 @@ import platform
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -14,6 +15,7 @@ import lado
 from lado import (
     agent_env,
     artifacts,
+    clone,
     gui_session,
     kits,
     providers,
@@ -437,10 +439,13 @@ class ServerState:
     up_seconds: float | None
 
 
-def _server_line(server: ServerState | None) -> str:
+def _server_line(server: ServerState | None, container: bool = False) -> str:
     if server is None:
         return "not running"
-    place = "open to the network" if server.open_to_network else "loopback only"
+    if container:  # the port's publication, not the address, decides who reaches it
+        place = "in a container"
+    else:
+        place = "open to the network" if server.open_to_network else "loopback only"
     if server.up_seconds is None:
         return f"running, {place}"
     return f"{place}, up {_duration(server.up_seconds)}"
@@ -459,7 +464,8 @@ def report(system: System, server: ServerState | None) -> str:
         f"- OS: {system.os} ({system.machine})",
         f"- Update: {_update_line(system.check)}",
         *([f"- Statistics: {statistics_line(system.statistics)}"] if system.statistics else []),
-        f"- Server: {_server_line(server)}, schema {system.schema if system.schema else 'none'}",
+        f"- Server: {_server_line(server, system.container)}, "
+        f"schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",
         f"- tmux: {system.tmux}, socket {system.tmux_socket}",
         f"- git: {system.git}",
@@ -515,13 +521,43 @@ def _duration(seconds: float) -> str:
     return f"{minutes // (24 * 60)} d {minutes // 60 % 24} h"
 
 
+def check_repos_folder() -> Check | None:
+    """LADO_REPOS when it is set: the folder the New session window and a clone start
+    from, or why LADO ignores it."""
+    value = os.environ.get(clone.REPOS, "")
+    if not value:
+        return None
+    name = "Repositories folder"
+    folder = clone.repos_folder()
+    if folder is None:
+        return Check(
+            name,
+            WARN,
+            f"LADO_REPOS is not an absolute path: {value}; LADO ignores it",
+            "set it to a full path, e.g. ~/repos or /Users/me/repos",
+        )
+    # stat, not exists(): for a folder above it LADO may not look in, exists() raises on some
+    # Pythons and says "missing" on others; stat says why on all.
+    try:
+        info = folder.stat()
+    except FileNotFoundError:
+        return Check(name, INFO, f"{folder} (LADO_REPOS), not made yet: the first clone makes it")
+    except OSError as error:
+        return Check(name, WARN, f"cannot look at LADO_REPOS {folder}: {error.strerror or error}")
+    if not stat.S_ISDIR(info.st_mode):
+        return Check(name, WARN, f"LADO_REPOS is not a folder: {folder}")
+    return Check(name, OK, f"{folder} (LADO_REPOS)")
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
+    repos = check_repos_folder()
     return [
         check_lado(),
         Check("Python", OK, platform.python_version()),
         check_tmux(which),
         check_git(),
+        *([repos] if repos else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

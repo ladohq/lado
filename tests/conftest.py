@@ -16,7 +16,7 @@ TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
 
 # An agent's shell has these set (its session, its LADO home, its tmux): the tests run there
 # as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess. LADO's
-# image sets LADO_CONTAINER: a test that wants a container sets it itself.
+# image sets LADO_CONTAINER and LADO_REPOS: a test that wants either sets it itself.
 for _var in (
     "LADO_AGENT",
     "LADO_SESSION",
@@ -24,6 +24,7 @@ for _var in (
     "LADO_TMUX_SOCKET",
     "TMUX",
     "LADO_CONTAINER",
+    "LADO_REPOS",
 ):
     os.environ.pop(_var, None)
 

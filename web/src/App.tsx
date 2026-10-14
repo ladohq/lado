@@ -6,6 +6,7 @@ import { ArtifactTabPage } from "./ArtifactTab";
 import { Kits } from "./Kits";
 import { NeedsYou } from "./NeedsYou";
 import { Home, NotFound, Projects } from "./pages";
+import { ReportBug } from "./ReportBug";
 import { NoSession, Session, Sessions } from "./Sessions";
 import { Settings } from "./Settings";
 import { Shell } from "./Shell";
@@ -27,6 +28,7 @@ export function App() {
         <Route path="kits/:tab?" element={<Kits />} />
         {/* The Marketplace page of earlier versions is the Kits page now. */}
         <Route path="marketplace" element={<Navigate to="/kits" replace />} />
+        <Route path="report" element={<ReportBug />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Route>

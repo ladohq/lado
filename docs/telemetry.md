@@ -101,4 +101,19 @@ home (`scripts/rc_check.py sandbox`) is run with it too.
 Whatever you choose, LADO keeps each of its unexpected errors, with its full traceback, in
 `LADO_HOME/errors.jsonl` on your machine, readable by you only. It never leaves the machine
 by itself. It and LADO's logs (`hooks.log`, `loop.log`, `server.log`) stay under 1 MiB each
-plus one older `.1` file.
+plus one older `.1` file. Each line also keeps the error's scrubbed form (its type, its
+causes' types, LADO's own frames, the agent CLI), the only part a bug report reads.
+
+## Reporting a bug yourself
+
+`lado bug-report`, or **Report a bug** on the UI's left menu, shows a report for a new
+issue on github.com/ladohq/lado: a place for what happened, the system info the System
+panel copies, in the UI your browser and its OS, and LADO's errors of the last 30 days from
+the journal, by kind (type, where, agent CLI, how often, the days, LADO's versions, and
+LADO's own frames). It holds no message or traceback of an error, no path, and no session,
+agent or repository name. Nothing is sent: the link opens GitHub's new issue form filled
+in (in the terminal only when you answer `y`), and the issue goes up only when you submit
+the form there, where you can edit or delete any of it. The link holds at most 8000
+characters: the oldest kinds of errors are left out of it when needed, and the report
+printed or shown is always whole. A vulnerability goes to GitHub's private reporting
+instead (SECURITY.md).

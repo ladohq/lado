@@ -424,10 +424,28 @@ def system_info(which: Callable[[str], str | None] = shutil.which) -> System:
     )
 
 
-def report(system: System, open_to_network: bool, up_seconds: float) -> str:
+@dataclass(frozen=True)
+class ServerState:
+    """The UI server as the report names it: whether it is open to the network, and how
+    long it has run (None when the asker cannot tell, as the CLI)."""
+
+    open_to_network: bool
+    up_seconds: float | None
+
+
+def _server_line(server: ServerState | None) -> str:
+    if server is None:
+        return "not running"
+    place = "open to the network" if server.open_to_network else "loopback only"
+    if server.up_seconds is None:
+        return f"running, {place}"
+    return f"{place}, up {_duration(server.up_seconds)}"
+
+
+def report(system: System, server: ServerState | None) -> str:
     """The system info as Markdown for an issue: no address, path, repository, session
-    name, token or message (the human's rule), only whether the server is open to the
-    network and whether LADO_HOME is set."""
+    name, token or message (the human's rule), only whether the server runs and is open
+    to the network and whether LADO_HOME is set."""
     installer = system.installer or "no uv tool or pipx install"
     lines = [
         "### LADO system info",
@@ -435,8 +453,7 @@ def report(system: System, open_to_network: bool, up_seconds: float) -> str:
         f"- OS: {system.os} ({system.machine})",
         f"- Update: {_update_line(system.check)}",
         *([f"- Statistics: {statistics_line(system.statistics)}"] if system.statistics else []),
-        f"- Server: {'open to the network' if open_to_network else 'loopback only'}, "
-        f"up {_duration(up_seconds)}, schema {system.schema if system.schema else 'none'}",
+        f"- Server: {_server_line(server)}, schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",
         f"- tmux: {system.tmux}, socket {system.tmux_socket}",
         f"- git: {system.git}",

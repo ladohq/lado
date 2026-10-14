@@ -405,8 +405,8 @@ Sessions for now. The UI's texts are in English.
 
 - **Rail** on the left, top to bottom: Home, **Launch** (a button that opens the New
   session window: Launch and session control, below), Needs you, Sessions, Projects, Kits
-  (one page for the kits and their marketplaces: Kits below); Settings apart at the
-  bottom. A button collapses it to icons (each with its
+  (one page for the kits and their marketplaces: Kits below); Report a bug (a bug icon:
+  Report a bug, below) and Settings apart at the bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
   remembers the choice; a window narrower than 900 px starts collapsed.
 - **Top bar**: the page's title on the left, or on a session's page the session's head
@@ -1413,6 +1413,24 @@ change feed: a choice made in the CLI shows after a reload.
   environment: the heading's `— switched off by the environment`, the switch disabled on
   Don't send, "Off: `DO_NOT_TRACK=1` is set in the LADO server's environment."; no
   endpoint: disabled, "This LADO has no statistics endpoint: nothing is sent."
+
+### Report a bug (decided 2026-10-14, LAD-33)
+
+A bug report the human sends as a new GitHub issue (`ReportBug.tsx`; the mockup
+`task/lad-33/mockup-bug-report.html`, variant A approved, B and C and the first version, a
+button in the system panel, rejected: it must always be in sight). **Report a bug** is on
+the rail above Settings on every page, its icon alone with its name as tooltip when the
+rail is collapsed, and opens the page `/report` (title "Report a bug"), a page like
+Settings. The page loads `GET /api/bug-report?browser=<browserLine>` on each visit (never
+from the change feed; the server checks the line's shape, 422 else) and shows: the warning
+(a public issue on github.com/ladohq/lado, nothing is sent until the human submits it
+there, where they can edit it, no paths, session or repository names nor message texts,
+and **private reporting** ↗ for a vulnerability), the whole report in `pre.log` (the same
+as `lado bug-report` prints, with the page's `- Browser:` line), **Open a new issue on
+GitHub ↗** (the report's link to GitHub's new issue form, in a new tab; the oldest kinds of
+errors may be left out of it, counted in its last line, never on the page) and **Copy
+text** ("Report copied"). Loading shows "Loading…", a failed load its reason. Nothing goes
+to GitHub before the human's click. The system panel keeps its own copy button.
 
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 

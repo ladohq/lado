@@ -145,6 +145,53 @@
         }
       }
     },
+    "/api/bug-report": {
+      "get": {
+        "summary": "Bug Report ",
+        "description": "The Report a bug page: the report and its GitHub link (bug_report.build), with\nthe page's browser line when it has the shape of browserLine's, else 422. It reads\nonly and sends nothing: the human opens the link.",
+        "operationId": "bug_report__api_bug_report_get",
+        "parameters": [
+          {
+            "name": "browser",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Browser"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BugReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/telemetry": {
       "get": {
         "summary": "Telemetry State",
@@ -2859,6 +2906,35 @@
         ],
         "title": "AttachmentInfo",
         "description": "An artifact as a message or a note has it attached: the record it was at then. It\nchanged since when its artifact's latest record has another hash (the UI compares)."
+      },
+      "BugReport": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "left_out": {
+            "type": "integer",
+            "title": "Left Out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "text",
+          "url",
+          "left_out"
+        ],
+        "title": "BugReport",
+        "description": "The Report a bug page (lado.bug_report.Report): the whole report to show and copy,\nand GitHub's new issue form with it, the oldest kinds of errors left out until the link\nfits."
       },
       "CloneJob": {
         "properties": {

@@ -343,17 +343,26 @@ def record(
     if isinstance(exc, db.SchemaError):
         return
     with contextlib.suppress(Exception):
-        line = _journal(where, exc, session, agent)
+        scrubbed = scrub(where, exc, provider)
+        line = _journal(where, exc, scrubbed, session, agent)
         if state().on:
-            _queue({**scrub(where, exc, provider), "at": line["at"], "lado": line["lado"]})
+            _queue({**scrubbed, "at": line["at"], "lado": line["lado"]})
 
 
 def _journal(
-    where: str, exc: BaseException, session: str | None = None, agent: str | None = None
+    where: str,
+    exc: BaseException,
+    scrubbed: dict | None = None,
+    session: str | None = None,
+    agent: str | None = None,
 ) -> dict:
-    """Append the exception's line to errors.jsonl; the line."""
+    """Append the exception's line to errors.jsonl; the line. It holds the scrubbed form
+    too (`chain`, `stack`, `fingerprint`, `provider`), the only fields a bug report reads
+    besides the time, version, where and type."""
     import lado
 
+    if scrubbed is None:
+        scrubbed = scrub(where, exc, None)
     line = {
         "at": format_time(now()),
         "lado": lado.__version__,
@@ -363,6 +372,10 @@ def _journal(
         "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
         "session": session,
         "agent": agent,
+        "chain": scrubbed["chain"],
+        "stack": scrubbed["stack"],
+        "fingerprint": scrubbed["fingerprint"],
+        "provider": scrubbed["provider"],
     }
     bounded_append(journal_path(), json.dumps(line) + "\n", mode=0o600)
     return line

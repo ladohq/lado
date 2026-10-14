@@ -30,6 +30,8 @@ def test_the_cli_imports_what_only_some_commands_need_in_those_commands():
         "lado.self_update",
         "lado.server",
         "lado.stats",
+        "lado.bug_report",
+        "webbrowser",
         "importlib.metadata",
     }
     assert lazy.isdisjoint(loaded)

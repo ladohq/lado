@@ -29,6 +29,7 @@ from starlette.concurrency import run_in_threadpool
 import lado
 from lado import (
     artifacts,
+    bug_report,
     doctor,
     kits,
     marketplaces,
@@ -46,6 +47,7 @@ from lado.server.models import (
     AgentDetails,
     AgentInfo,
     ArtifactInfo,
+    BugReport,
     CloneJob,
     CloneRefused,
     CloneStart,
@@ -404,8 +406,20 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             sessions=SessionCounts(**facts.sessions),
             last=models.update_result_info(facts.last),
             telemetry=models.telemetry_info(facts.statistics or telemetry.state()),
-            report=doctor.report(facts, open_to_network, up),
+            report=doctor.report(facts, doctor.ServerState(open_to_network, up)),
         )
+
+    @app.get("/api/bug-report", dependencies=[Depends(guard)])
+    def bug_report_(browser: str | None = None) -> BugReport:
+        """The Report a bug page: the report and its GitHub link (bug_report.build), with
+        the page's browser line when it has the shape of browserLine's, else 422. It reads
+        only and sends nothing: the human opens the link."""
+        if browser is not None and not bug_report.BROWSER_LINE.fullmatch(browser):
+            raise HTTPException(422, "browser: not a line of the page's browserLine")
+        up = (datetime.datetime.now(datetime.timezone.utc) - started).total_seconds()
+        server = doctor.ServerState(open_to_network, up)
+        built = bug_report.build(doctor.system_info(), server, browser)
+        return BugReport(title=built.title, text=built.text, url=built.url, left_out=built.left_out)
 
     @app.get("/api/telemetry", dependencies=[Depends(guard)])
     def telemetry_state() -> TelemetryInfo:

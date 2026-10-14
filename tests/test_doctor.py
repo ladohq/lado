@@ -212,10 +212,10 @@ def test_the_report_says_this_lado_is_a_pre_release(monkeypatch):
     import lado
 
     monkeypatch.setattr(lado, "__version__", "0.37.0rc1", raising=False)
-    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
+    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), doctor.ServerState(False, 0))
     assert "- LADO 0.37.0rc1 (pre-release) (" in report
     monkeypatch.setattr(lado, "__version__", "0.36.0", raising=False)
-    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
+    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), doctor.ServerState(False, 0))
     assert "- LADO 0.36.0 (" in report
 
 
@@ -528,7 +528,7 @@ def test_system_info_and_report_give_gits_version_never_its_path(
     path = _git_on_path(tmp_path, monkeypatch, script)
     system = doctor.system_info(which=lambda cmd: cmd)
     assert system.git == shown
-    report = doctor.report(system, False, 0)
+    report = doctor.report(system, doctor.ServerState(False, 0))
     assert f"- git: {shown}\n" in report
     assert path not in report
 
@@ -537,10 +537,10 @@ def test_system_info_and_report_give_only_the_kind_of_place(mac):
     mac("remote", "gui")
     system = doctor.system_info(which=lambda cmd: cmd)
     assert system.gui_session == (Place.REMOTE, Place.GUI)
-    report = doctor.report(system, False, 0)
+    report = doctor.report(system, doctor.ServerState(False, 0))
     assert "- Graphical session: process remote, server gui\n" in report
     mac("no-gui", None)
-    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), False, 0)
+    report = doctor.report(doctor.system_info(which=lambda cmd: cmd), doctor.ServerState(False, 0))
     assert "- Graphical session: process no-gui, no tmux server\n" in report
 
 
@@ -562,7 +562,7 @@ def test_report_has_statistics_line(telemetry_on, monkeypatch, consent, env, lin
         (state.home() / "telemetry" / "consent.json").unlink()
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    report = doctor.report(doctor.system_info(which=lambda cmd: None), False, 0)
+    report = doctor.report(doctor.system_info(which=lambda cmd: None), doctor.ServerState(False, 0))
     assert line in report.splitlines()
 
 
@@ -571,5 +571,21 @@ def test_report_statistics_without_an_endpoint(monkeypatch):
 
     monkeypatch.delenv("LADO_TELEMETRY")
     monkeypatch.setattr(telemetry, "PROJECT_TOKEN", "")
-    report = doctor.report(doctor.system_info(which=lambda cmd: None), False, 0)
+    report = doctor.report(doctor.system_info(which=lambda cmd: None), doctor.ServerState(False, 0))
     assert "- Statistics: off: no endpoint" in report.splitlines()
+
+
+@pytest.mark.parametrize(
+    ("server", "line"),
+    [
+        (doctor.ServerState(False, 8040), "- Server: loopback only, up 2 h 14 min, schema "),
+        (doctor.ServerState(True, 60), "- Server: open to the network, up 1 min, schema "),
+        (doctor.ServerState(False, None), "- Server: running, loopback only, schema "),
+        (doctor.ServerState(True, None), "- Server: running, open to the network, schema "),
+        (None, "- Server: not running, schema "),
+    ],
+)
+def test_report_server_line(server, line):
+    report = doctor.report(doctor.system_info(which=lambda cmd: None), server)
+    [found] = [text for text in report.splitlines() if text.startswith("- Server: ")]
+    assert found.startswith(line)

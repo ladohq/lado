@@ -60,6 +60,10 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (["/events", "/runs", "/notes", "/gates", "/artifacts"].some((end) => path.endsWith(end))) {
       return new Response("[]");
     }
+    // The Report a bug page (ReportBug.test.tsx).
+    if (path.startsWith("/api/bug-report?")) {
+      return new Response(JSON.stringify({ title: "", text: "### What happened\n", url: "https://github.com/", left_out: 0 }));
+    }
     // The Kits page's lists (Kits.test.tsx).
     if (path.startsWith("/api/kits/") || path === "/api/marketplaces") return new Response("[]");
     expect(path).toBe("/api/sessions");
@@ -129,6 +133,7 @@ test("the rail lists every section in order, Settings at the bottom", () => {
     "Sessions",
     "Projects",
     "Kits",
+    "Report a bug",
     "Settings",
   ]);
   const settings = within(rail()).getByRole("link", { name: "Settings" });
@@ -144,6 +149,7 @@ test.each([
   ["/kits/updates", "Kits", "Kits"],
   ["/marketplace", "Kits", "Kits"], // the Marketplace page of earlier versions
   ["/settings", "Settings", "Settings"],
+  ["/report", "Report a bug", "Report a bug"],
 ])("%s shows %s, marked in the rail", (path, title, item) => {
   open(path);
   expect(heading()).toBe(title);
@@ -202,6 +208,16 @@ test("the rail collapses to icons with names and remembers it", () => {
   expect(screen.getByRole("button", { name: "Expand menu" }).getAttribute("aria-expanded")).toBe(
     "false",
   );
+});
+
+test("Report a bug sits on the rail above Settings, by its icon alone when collapsed", () => {
+  open("/sessions/lado");
+  const report = within(rail()).getByRole("link", { name: "Report a bug" });
+  expect(report.getAttribute("href")).toBe("/report");
+  expect(report.getAttribute("title")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Collapse menu" }));
+  expect(report.getAttribute("title")).toBe("Report a bug");
+  expect(report.querySelector("svg")).toBeTruthy();
 });
 
 test("on a narrow window the rail starts collapsed", () => {

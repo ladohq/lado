@@ -20,7 +20,8 @@ prototype image on a Mac (Apple silicon, Docker Desktop, engine 29.7.2, linux/ar
 **Verdict: worth building, as a second way in, not as the default one.** LADO and all four
 agent CLIs run in one container, are reached from the host's browser through the web UI,
 start sessions and workers on a bind-mounted project, survive a restart and resume (H1,
-H2, H5-H7). For a user who already has Docker Desktop, or on Windows, where today's way is a
+H2, H5-H7); a Claude Code subscription login made inside works for LADO's agents and
+survives recreating the container (H3). For a user who already has Docker Desktop, or on Windows, where today's way is a
 whole Ubuntu in WSL2, the image is one command instead of seven steps. For the macOS or
 Linux user with Homebrew or apt, a one-command install script removes most of the same
 pain at a fraction of the cost (section 7).
@@ -36,7 +37,9 @@ The three largest difficulties:
 3. **Updates and logins.** `lado update` inside kills itself (it stops the UI server, the
    container's main process, H7), so the image is updated from outside; and every CLI's
    login must be made inside and kept on a volume, Codex's not carried to its agents at all
-   (BACKLOG.md).
+   (BACKLOG.md). The login the CLI already has on the host cannot simply be reused: on
+   macOS Claude Code keeps it in the keychain, and a host CLI cannot run as LADO's agent
+   in the container (section 5.1).
 
 ## 2. Today and with Docker
 
@@ -105,8 +108,8 @@ Evidence, not a product: no build or CI picks them up.
 |---|---|---|---|
 | H1 | The image built for linux/arm64; `lado doctor` inside | works | [H1](#h1-image-and-lado-doctor) |
 | H2 | The UI from the host's browser; a session from the New session window; an agent's terminal; the token and Origin guard through the port map | works | [H2](#h2-the-ui-from-the-host) |
-| H3 | Claude Code: subscription login inside, a LADO session's turn on it, the login after recreating | PENDING | [H3](#h3-claude-code-login) |
-| H4 | Codex: ChatGPT login inside; a LADO Codex agent on it | PENDING | [H4](#h4-codex-login) |
+| H3 | Claude Code: subscription login inside, a LADO session's turn on it, the login after recreating | works | [H3](#h3-claude-code-login) |
+| H4 | Codex: ChatGPT login inside; a LADO Codex agent on it | not checked: the human has no ChatGPT/Codex subscription | [H4](#h4-codex-login) |
 | H5 | OpenCode and Kilo supervisors run a turn on LM Studio's model on the host | works | [H5](#h5-local-model-on-the-host) |
 | H6 | A worker commits on the bind-mounted repository; the host's view of it | works with a workaround | [H6](#h6-a-worker-on-the-bind-mount) |
 | H7 | Container stopped and started; recreated from the image; `lado update` inside | works (restart, recreate); `lado update` does not work | [H7](#h7-restart-recreate-update) |
@@ -165,11 +168,50 @@ cookie's name holds the server's port (auth.py, `cookie_name`), so another host 
 
 ### H3: Claude Code login
 
-PENDING (the human's login).
+The human ran `docker exec -it lado claude` in a terminal on the host, chose the login
+with a Claude subscription, opened the link it printed in the host's browser and pasted
+the code back. The login is a file on the home volume (`CLAUDE_CONFIG_DIR` is
+`~/.claude`):
+
+```
+$ docker exec lado claude auth status
+  "loggedIn": true,
+  "authMethod": "claude.ai",
+$ docker exec lado stat -c '%a %n' /home/lado/.claude/.credentials.json
+600 /home/lado/.claude/.credentials.json
+```
+
+A LADO session with `--provider claude` on `/projects/demo`:
+
+```
+$ docker exec lado lado start /projects/demo --name demo-claude --provider claude --no-attach --prompt "Say hello ..."
+lado: Claude Code asks whether to trust /projects/demo: in its terminal choose "Yes, I trust this folder" (Enter alone answers "No, exit" and closes the agent)
+# answered "Yes, I trust this folder" in the agent's window
+$ docker exec lado lado log demo-claude
+07:53:53 supervisor: blocked (Claude Code asks whether to trust /projects/demo: ...)
+07:54:04 supervisor: mcp_ready (...)
+07:54:11 supervisor → human [delivered] Hello! I'm the supervisor of this LADO session, and I run on Claude Opus 5.5 (claude-opus-5-5).
+```
+
+After `docker compose up -d --force-recreate`, `claude auth status` still said
+`"loggedIn": true`, and `lado start /projects/demo --name demo-claude` resumed the
+session with no trust question (the answer is in `.claude.json` on the volume): the
+supervisor ran its turn. The other way, `CLAUDE_CODE_OAUTH_TOKEN` from `claude
+setup-token`, was not run (it needs a token of the human's); its catch in a container is
+in section 5.1.
 
 ### H4: Codex login
 
-PENDING (the human's login).
+Not checked: the human has no ChatGPT or Codex subscription. From documentation and the
+CLI: `codex login --device-auth` (its `--help` lists it) prints a link and a code to enter
+in any browser, so it needs no callback port into the container; Codex keeps the login in
+`auth.json` under `CODEX_HOME` when its `cli_auth_credentials_store` is `file`, or in the
+system's credential store (`keyring`, `auto`)
+(<https://developers.openai.com/codex/auth>). In a container without a keyring that is
+`~/.codex/auth.json` on the home volume. A LADO Codex agent would not use it: each agent
+gets its own `CODEX_HOME`, and LADO does not carry `auth.json` into it (providers/codex.py;
+BACKLOG.md, "Codex agents cannot log in"), so it would show Codex's login screen, in the
+container as on a host.
 
 ### H5: local model on the host
 
@@ -302,8 +344,8 @@ $ docker exec lado git -C /projects/demo push scratch main             # a scrat
 
 A push over ssh to a remote was not done: there is no scratch remote, and the design
 forbids the project's own; the ssh login above is the part the container changes. The
-agents' login shell has `SSH_AUTH_SOCK` (it is in the container's environment, which
-`docker exec` and the server pass on). The first push, right after the bare repository was
+agents get `SSH_AUTH_SOCK`: it is one of the few variables `agent_env.resolve` starts the
+login shell with (checked by calling it inside the container, section 5.1). The first push, right after the bare repository was
 made on the host, failed with `does not appear to be a git repository`; the same push a
 moment later worked.
 
@@ -333,10 +375,60 @@ Each: its cause, what the user sees, ways out with their cost.
      `~/.claude/.credentials.json`, <https://docs.anthropic.com/en/docs/claude-code/iam>).
   2. A token in the environment: `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` (its
      help: "Set up a long-lived authentication token (requires Claude subscription)"),
-     `OPENAI_API_KEY` or `codex login --with-api-key` for Codex with an API key. Cost: the
-     token in compose's environment or an env file.
+     `OPENAI_API_KEY` or `codex login --with-api-key` for Codex with an API key. Catch:
+     compose's `environment:` does not reach the agents. LADO builds an agent's environment
+     from the login shell started with a few variables only (AGENTS.md, How agents talk;
+     `agent_env.resolve`). Called inside the container with `-e LADO_PROBE=1 -e
+     CLAUDE_CODE_OAUTH_TOKEN=dummy`, it gave neither, but `SSH_AUTH_SOCK` and what
+     `/etc/profile.d/lado.sh` exports. The token must be in a file the login shell reads
+     (`~/.profile` on the volume, or a profile script reading a Docker secret). Cost: a
+     long-lived token in a file; the image must document where.
   3. LADO carries Codex's `auth.json` into each agent's `CODEX_HOME` (the BACKLOG entry):
      needed for Codex with a ChatGPT login in any setup, not only Docker. Cost: S/M.
+
+**The agent CLI the user already has on the host, logged in.** The wish: no login step in
+the container at all. By documentation, LADO's code and two harmless checks (no host
+login or config was mounted):
+
+- *Mount the host's login and config into the container.* What is on the host:
+  - Claude Code on macOS keeps its login in the login keychain ("Claude
+    Code-credentials", providers/claude.py, `keychain_login`;
+    <https://docs.anthropic.com/en/docs/claude-code/iam>), not in a file, so mounting
+    `~/.claude` carries no login; only a Mac whose keychain refused the write has
+    `~/.claude/.credentials.json`. Its settings and folder trust are in `~/.claude.json`,
+    outside `~/.claude`, with the host's paths. On a Linux host the login is
+    `~/.claude/.credentials.json` (mode 600, same page), which a mount does carry.
+  - Codex: `~/.codex/auth.json` when `cli_auth_credentials_store` is `file`, else the
+    system's store (<https://developers.openai.com/codex/auth>); and LADO does not carry
+    it to its agents anyway (H4).
+  - OpenCode and Kilo: `~/.local/share/opencode/auth.json` and
+    `~/.local/share/kilo/auth.json` (`opencode auth list` and `kilo auth list` print the
+    path; <https://opencode.ai/docs/providers/>), plain files; LADO's OpenCode and Kilo
+    agents read the user's data folder, so a mount would work for them.
+
+  Costs: two programs then use one OAuth login, and both refresh it. Codex says it
+  refreshes ChatGPT tokens during use (same page). Whether a refresh in one breaks the
+  other is not checked; a copy instead of a mount is more likely to break, since only one
+  side gets the new refresh token. File ownership on a Linux host (5.4). And the mount
+  gives every agent in the container the host's real credentials (5.14).
+- *Run the host's CLI binary in the container.* Impossible on macOS and Windows: their
+  binaries are not Linux programs. Checked with a copy of macOS's `/bin/echo` mounted into
+  a Debian container: `exec /x/echo: exec format error`. On a Linux host with the same
+  architecture, an npm-installed CLI might run from a mount if its Node and libraries
+  match. Cost: the image no longer pins the version LADO is tested with.
+- *Agents on the host, only LADO in the container.* LADO cannot split so: an agent is a
+  process in LADO's tmux server, and its hooks, `lado mcp` and the session loop are LADO
+  processes on the same `lado.db` (AGENTS.md, Layout: `runtime.py`, `interpreter.py`,
+  `hooks.py`). A host agent needs tmux, LADO and its Python on the host: that is the
+  native install, and the container would only hold the UI server, which `lado ui`
+  starts natively anyway. Nothing of the Docker gain is left.
+- *A token from the host.* `claude setup-token` run once on the host gives a long-lived
+  `CLAUDE_CODE_OAUTH_TOKEN` (way 2 above). This is the one host-side way that works for
+  Claude Code on a Mac. Cost: the catch of way 2, and the token is a full login to the
+  subscription in a file. Not run here: it needs the human's token.
+
+Recommendation: log in inside once (way 1). Use a token from the host only when the user
+already has one. Mount the host's files only on Linux, and only for OpenCode and Kilo.
 
 ### 5.2 The project's own toolchains
 
@@ -506,6 +598,9 @@ Each: its cause, what the user sees, ways out with their cost.
   install.
 - **Limits**: the ssh agent (5.5) and a Docker socket (5.9) given to the container give
   the agents those powers too; the logins on the volume are readable by every agent.
+  Mounting the host's own CLI logins (5.1) hands agents with bypassed permissions the
+  host's real credentials. An agent could read and send them elsewhere. That gives up the
+  isolation that is the image's gain here.
   The UI's port must stay on the host's loopback (compose.yaml), as the server inside
   listens on every address.
 
@@ -546,6 +641,7 @@ Each: its cause, what the user sees, ways out with their cost.
 | One-command install script (`curl ... \| sh`): installs what `lado doctor` would print (brew or apt, uv, Node.js, LADO, a chosen CLI) | the typing and the order of docs/install.md, most failures of "If something goes wrong" | Homebrew on macOS, WSL on Windows, the CLI's login | S/M |
 | Homebrew formula (`brew install lado` with tmux, uv, node as dependencies) | three steps on macOS | the CLI and its login; macOS and Linuxbrew only | S |
 | Desktop app (ROADMAP stage 7) | the terminal entirely; the UI as an app | the runtime's dependencies, unless it bundles them (or a container) | L, planned |
+| The host's agent CLI, already logged in, used by the image (section 5.1) | the login step | macOS and Windows binaries do not run in the container; Claude Code's macOS login is in the keychain; agents on the host means the native install | none to build; mounting logins costs the sandbox |
 | Dev container (<https://containers.dev/>): LADO as a feature added to a project's `.devcontainer` | the toolchain problem (5.2): the project's own image | the user must use VS Code or a devcontainer CLI; per project | M |
 
 **Recommendation**: build the one-command install script first: it serves the macOS and
@@ -570,7 +666,8 @@ tracker is.
    5.6 for a server published on the host's loopback; the picker's start folder. Size S.
    Depends on nothing.
 5. **«Образ Docker для LADO»** — the image (from this prototype: projects at the host's
-   path, any uid, tini, a stop that runs `lado stop --all`), compose file, multi-arch build
+   path, any uid, tini, a stop that runs `lado stop --all`, a documented file the login
+   shell reads for `CLAUDE_CODE_OAUTH_TOKEN`), compose file, multi-arch build
    and publishing in the release workflow (GHCR), a docs/install.md section, a smoke test
    of the image in CI. Size L. Depends on 2, 3, 4.
 6. **«Возобновление сессий при старте контейнера»** — resume the sessions that ran when

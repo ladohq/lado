@@ -8,8 +8,10 @@
   section 4.
 - [x] 1.3 Run H5-H8 (local model, worker on the bind mount, restart and recreate, push
   with the host's ssh agent on a scratch repository). Check: as 1.2.
-- [ ] 1.4 Ask the human once, with exact steps, for the Claude Code and Codex logins; run
-  H3 and H4. Check: as 1.2; the volumes with logins removed after the run.
+- [x] 1.4 Ask the human once, with exact steps, for the Claude Code and Codex logins; run
+  H3 and H4. Check: as 1.2; the volumes with logins removed after the run. H4 is
+  `not checked`: the human has no ChatGPT/Codex subscription (described from
+  documentation).
 
 ## 2. Report
 

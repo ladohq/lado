@@ -632,3 +632,19 @@ def test_report_server_line(server, line):
     report = doctor.report(doctor.system_info(which=lambda cmd: None), server)
     [found] = [text for text in report.splitlines() if text.startswith("- Server: ")]
     assert found.startswith(line)
+
+
+@pytest.mark.parametrize(
+    ("server", "line"),
+    [
+        (doctor.ServerState(True, 60), "- Server: in a container, up 1 min, schema "),
+        (doctor.ServerState(True, None), "- Server: running, in a container, schema "),
+        (doctor.ServerState(False, None), "- Server: running, in a container, schema "),
+        (None, "- Server: not running, schema "),
+    ],
+)
+def test_report_server_line_in_a_container(server, line):
+    system = dataclasses.replace(doctor.system_info(which=lambda cmd: None), container=True)
+    report = doctor.report(system, server)
+    [found] = [text for text in report.splitlines() if text.startswith("- Server: ")]
+    assert found.startswith(line)

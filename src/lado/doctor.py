@@ -437,10 +437,13 @@ class ServerState:
     up_seconds: float | None
 
 
-def _server_line(server: ServerState | None) -> str:
+def _server_line(server: ServerState | None, container: bool = False) -> str:
     if server is None:
         return "not running"
-    place = "open to the network" if server.open_to_network else "loopback only"
+    if container:  # the port's publication, not the address, decides who reaches it
+        place = "in a container"
+    else:
+        place = "open to the network" if server.open_to_network else "loopback only"
     if server.up_seconds is None:
         return f"running, {place}"
     return f"{place}, up {_duration(server.up_seconds)}"
@@ -459,7 +462,7 @@ def report(system: System, server: ServerState | None) -> str:
         f"- OS: {system.os} ({system.machine})",
         f"- Update: {_update_line(system.check)}",
         *([f"- Statistics: {statistics_line(system.statistics)}"] if system.statistics else []),
-        f"- Server: {_server_line(server)}, schema {system.schema if system.schema else 'none'}",
+        f"- Server: {_server_line(server, system.container)}, schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",
         f"- tmux: {system.tmux}, socket {system.tmux_socket}",
         f"- git: {system.git}",

@@ -52,7 +52,7 @@ An error, one event per kind of error since the last send:
 | `type` | 1 | the exception's type, e.g. `KeyError` |
 | `chain` | 1 | the types of the exceptions that caused it |
 | `stack` | 1 | where in LADO's own code: file, function and line; other code only as `<external>` |
-| `where` | 1 | the command, hook event, MCP tool, `loop`, or API route that failed, with no names or ids |
+| `where` | 1 | the command, hook event, MCP tool, `loop`, or API route that failed, or LADO's own scrubbing of an error (`telemetry:scrub`), with no names or ids |
 | `provider` | 1 | the agent CLI of a failing hook |
 | `fingerprint` | 1 | a hash of the type and LADO's functions, to group the same error |
 | `count` | 1 | how often it happened since the last send |

@@ -20,7 +20,7 @@
   `_journal` takes a scrubbed form or None and leaves the four fields out for None (never
   calls `scrub` itself); `record` queues only a scrubbed form; `_journal_only` uses the
   helper without queueing. Docstrings say so. `make lint`, `make test`.
-- [ ] 1.3 AGENTS.md, Layout `telemetry.py`: the line survives a failing scrub, and the
+- [x] 1.3 AGENTS.md, Layout `telemetry.py`: the line survives a failing scrub, and the
   scrub's failure is recorded at `telemetry:scrub`; docs/telemetry.md, the `where` row:
   "or LADO's own scrubbing of an error (`telemetry:scrub`)". `openspec validate
   journal-line-survives-scrub --strict`.

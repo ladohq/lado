@@ -130,6 +130,7 @@ export function WaitingCard({
   const folded = useRef(false); // focus goes back to the expand button after a fold
   const minimizer = useRef<HTMLButtonElement>(null);
   const toggled = useRef(false); // focus goes to the minimize button after the human's toggle
+  const dragBelow = useRef(false); // the edge is dragged below the card's least height
   const cardRef = useCallback(
     (element: HTMLElement | null) => {
       card.current = element;
@@ -264,13 +265,22 @@ export function WaitingCard({
     chat && !folds && !expanded && height !== null
       ? fitWidth(height, { initial: height, min: WAITING_MIN, max }, room)
       : null;
-  const resize = (next: number) => {
-    if (next < WAITING_MIN) {
-      minimize(); // the height stays for the restore
+  // Below its least height: a key minimizes at once; a drag shows the least height and
+  // minimizes when the edge is let go (`dragEnded`), so the release, which the edge still
+  // holds, lands on no line or tab of the minimized card. The height stays for the restore.
+  const resize = (next: number, dragging: boolean) => {
+    dragBelow.current = dragging && next < WAITING_MIN;
+    if (next < WAITING_MIN && !dragging) {
+      minimize();
       return;
     }
-    setHeight(next);
-    storeWaitingHeight(next);
+    setHeight(Math.max(WAITING_MIN, next));
+    storeWaitingHeight(Math.max(WAITING_MIN, next));
+  };
+  const dragEnded = () => {
+    if (!dragBelow.current) return;
+    dragBelow.current = false;
+    minimize();
   };
 
   function pick(id: number, next: Pick | undefined) {
@@ -316,6 +326,7 @@ export function WaitingCard({
           width={Math.round(given ?? cardHeight ?? 0)}
           bounds={{ initial: WAITING_MIN, min: 0, max }}
           onChange={resize}
+          onEnd={dragEnded}
           onReset={() => {
             setHeight(null);
             storeWaitingHeight(null);

@@ -852,7 +852,9 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
     expect(card).not_to_have_class(re.compile(r"\bsized\b"))
     settles_at(page, card, height(chat) / 2)
     # Dragged down past its least height: minimized, its height kept for the restore.
-    drag_edge(page, edge, height(card))
+    # The pointer is let go where the minimized card's line comes: the release restores
+    # nothing.
+    drag_edge(page, edge, height(card) - 15)
     expect(card.locator(".waiting-line")).to_be_visible()
     assert page.evaluate("localStorage.getItem('lado.waitingHeight')") is not None
 

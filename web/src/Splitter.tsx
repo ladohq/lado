@@ -61,7 +61,9 @@ export function useStripFocus(collapsed: boolean) {
 // an iframe; it ends on the release or when the browser cancels it. `grip`: a small handle
 // drawn in the middle of the edge (the artifact panel's); the whole edge stays the handle.
 // `onReset`: what a double click does instead of the default width (the waiting card goes
-// back to its height by the stylesheet).
+// back to its height by the stylesheet). `onChange` is told whether a drag moved it (true)
+// or a key (false), and `onEnd` when a drag ends: the waiting card minimizes on the release
+// of a drag below its least height, while the edge still holds the pointer.
 export function Splitter({
   label,
   edge,
@@ -69,14 +71,16 @@ export function Splitter({
   bounds,
   onChange,
   onReset,
+  onEnd,
   grip = false,
 }: {
   label: string;
   edge: "left" | "right" | "top";
   width: number;
   bounds: Bounds;
-  onChange: (width: number) => void;
+  onChange: (width: number, dragging: boolean) => void;
   onReset?: () => void;
+  onEnd?: () => void;
   grip?: boolean;
 }) {
   const across = edge === "top";
@@ -93,12 +97,13 @@ export function Splitter({
     const at = (pointer: { clientX: number; clientY: number }) => (across ? pointer.clientY : pointer.clientX);
     const start = at(event);
     const startWidth = width;
-    const move = (moved: PointerEvent) => onChange(clamp(startWidth + outward * (at(moved) - start), bounds));
+    const move = (moved: PointerEvent) => onChange(clamp(startWidth + outward * (at(moved) - start), bounds), true);
     const end = () => {
       separator.removeEventListener("pointermove", move);
       separator.removeEventListener("pointerup", end);
       separator.removeEventListener("pointercancel", end);
       setDragging(false);
+      onEnd?.();
     };
     separator.addEventListener("pointermove", move);
     separator.addEventListener("pointerup", end);
@@ -118,10 +123,10 @@ export function Splitter({
       className={`splitter splitter-${edge}`}
       data-dragging={dragging || undefined}
       onPointerDown={drag}
-      onDoubleClick={() => (onReset ? onReset() : onChange(bounds.initial))}
+      onDoubleClick={() => (onReset ? onReset() : onChange(bounds.initial, false))}
       onKeyDown={(event) => {
-        if (event.key === less) onChange(clamp(width - STEP, bounds));
-        if (event.key === more) onChange(clamp(width + STEP, bounds));
+        if (event.key === less) onChange(clamp(width - STEP, bounds), false);
+        if (event.key === more) onChange(clamp(width + STEP, bounds), false);
       }}
     >
       {grip && (

@@ -145,6 +145,33 @@ test("a top edge is horizontal: up makes its block taller, by the keys and by th
   expect(width()).toBe(300);
 });
 
+test("a drag says so to onChange and calls onEnd when let go or cancelled; the keys are no drag", () => {
+  const changed: [number, boolean | undefined][] = [];
+  const ended = vi.fn();
+  render(
+    <Splitter
+      label="Resize the column"
+      edge="top"
+      width={300}
+      bounds={BOUNDS}
+      onChange={(value, dragging) => changed.push([value, dragging])}
+      onEnd={ended}
+    />,
+  );
+  fireEvent.keyDown(splitter(), { key: "ArrowUp" });
+  fireEvent.pointerDown(splitter(), { clientY: 600 });
+  fireEvent.pointerMove(splitter(), { clientY: 590 });
+  expect(ended).not.toHaveBeenCalled();
+  fireEvent.pointerUp(splitter());
+  fireEvent.pointerDown(splitter(), { clientY: 600 });
+  fireEvent.pointerCancel(splitter());
+  expect(changed).toEqual([
+    [340, false],
+    [310, true],
+  ]);
+  expect(ended).toHaveBeenCalledTimes(2);
+});
+
 test("the side edges take no up and down keys", () => {
   render(<Column edge="right" />);
   fireEvent.keyDown(splitter(), { key: "ArrowUp" });

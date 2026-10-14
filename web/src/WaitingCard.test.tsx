@@ -624,6 +624,35 @@ test("in the chat an edge above the card sets its height in its bounds, kept for
   expect(localStorage.getItem("lado.waitingHeight")).toBeNull();
 });
 
+test("dragged below the least height the card minimizes when the edge is let go, not before; the keys at once", () => {
+  columnWidth(null);
+  const view = show({ questions: [], gates: [GATE_812], chat: { feed: 400, loaded: true } });
+  FakeResizeObserver.resize(
+    () => 800,
+    () => 300,
+  );
+  let separator = edge()!;
+  fireEvent.pointerDown(separator, { clientY: 100 });
+  fireEvent.pointerMove(separator, { clientY: 400 }); // 0: below its least height
+  expect(isMinimized()).toBe(false);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe(`${WAITING_MIN}px`);
+  fireEvent.pointerMove(separator, { clientY: 150 }); // back up before the release
+  fireEvent.pointerUp(separator);
+  expect(isMinimized()).toBe(false);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("250px");
+  fireEvent.pointerDown(separator, { clientY: 100 });
+  fireEvent.pointerMove(separator, { clientY: 400 });
+  fireEvent.pointerUp(separator);
+  expect(isMinimized()).toBe(true);
+  expect(document.activeElement).toBe(iconButton("Restore the card"));
+  // The keys: below the least height minimizes at once.
+  fireEvent.click(iconButton("Restore the card"));
+  view.rerender(<Card questions={[]} gates={[GATE_812]} chat={{ feed: 400, loaded: true }} />);
+  separator = edge()!;
+  for (let i = 0; i < 3 && !isMinimized(); i++) fireEvent.keyDown(edge()!, { key: "ArrowDown" });
+  expect(isMinimized()).toBe(true);
+});
+
 test("a stored height too tall for the chat shows lower and is kept; dragged below the least height the card minimizes", () => {
   localStorage.setItem("lado.waitingHeight", "600");
   columnWidth(null);
@@ -640,6 +669,8 @@ test("a stored height too tall for the chat shows lower and is kept; dragged bel
   expect(isMinimized()).toBe(false);
   expect(card().style.getPropertyValue("--waiting-height")).toBe(`${WAITING_MIN}px`);
   fireEvent.pointerMove(separator, { clientY: 100 + 400 - WAITING_MIN + 1 });
+  expect(isMinimized()).toBe(false); // until the edge is let go
+  fireEvent.pointerUp(separator);
   expect(isMinimized()).toBe(true);
   expect(localStorage.getItem("lado.waitingHeight")).toBe(String(WAITING_MIN)); // kept for the restore
   expect(document.activeElement).toBe(iconButton("Restore the card"));

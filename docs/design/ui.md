@@ -930,7 +930,10 @@ Built in the chat task (2026-10-03):
   (`FEED_MIN`); a double click forgets it, back to the stylesheet's half. The height is one
   value for every session, as the columns' widths are (`lado.waitingHeight`); a chat too
   short for it shows the card lower and keeps the chosen height. Dragged down past the
-  least height, the card minimizes (below) and keeps its height for the restore. No edge
+  least height, the card stays at it and minimizes (below) when the edge is let go, while
+  the edge still holds the pointer, so the release lands on no line or tab of the
+  minimized card (`Splitter`'s `onEnd`); ↓ past it minimizes at once. The card keeps its
+  height for the restore. No edge
   while the card is minimized or expanded, on Needs you, or on a narrow window, whose page
   scrolls. **Minimize** (LAD-54, screens 2 and 2a: the pair of icons): in a session's chat
   only, an icon button left of the expand one, in its style, "Minimize the card" (a line,

@@ -3,7 +3,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 1. Error journal (D2)
 
-- [ ] 1.1 `telemetry._journal` writes `chain`, `stack`, `fingerprint` and `provider`;
+- [x] 1.1 `telemetry._journal` writes `chain`, `stack`, `fingerprint` and `provider`;
   `record` scrubs once. Check: `uv run pytest tests/test_telemetry.py -n auto`, `uv run
   pytest -m integration -n auto tests/integration/test_telemetry_processes.py`.
 

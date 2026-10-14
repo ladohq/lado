@@ -1345,9 +1345,10 @@ h3 {
     opacity: 0;
   }
 
+  /* A message's own button: never the Copy code of a block in it. */
   .code-block:hover > .copy-icon-button,
-  .feed-row:hover .copy-icon-button,
-  .agent-messages li:hover .copy-icon-button,
+  .feed-row:hover :is(.feed-head, .feed-copy) > .copy-icon-button,
+  .agent-messages li:hover > .copy-icon-button,
   .copy-icon-button:focus-within {
     opacity: 1;
   }
@@ -1804,7 +1805,6 @@ h3 {
   height: 16px;
 }
 
-/* The UI's own tooltip (Tooltip.tsx): compact, over everything, never in the pointer's way. */
 /* Over text the human selected (SelectionBar.tsx): Copy and Quote in reply, or a note in
    their place; under the tooltips. */
 .selection-bar {
@@ -1839,6 +1839,7 @@ h3 {
   font-size: 12.5px;
 }
 
+/* The UI's own tooltip (Tooltip.tsx): compact, over everything, never in the pointer's way. */
 .tooltip {
   position: fixed;
   z-index: 50;

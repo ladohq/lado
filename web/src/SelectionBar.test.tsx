@@ -48,6 +48,17 @@ test("a selection across two areas, outside any or collapsed has none", () => {
   expect(areaOf(null)).toBeNull();
 });
 
+test("a selection that ends at the start of what follows, taking none of its text, is still its area's", () => {
+  page(MESSAGES);
+  const selection = select("#b", 0, "#c", 0); // a triple click on a message's last line
+  expect(areaOf(selection)?.id).toBe("one");
+  expect(quoteOf(areaOf(selection)!, selection)).toBe("> its second line");
+  expect(areaOf(select("#b", 0, "#d", 0))).toBeNull(); // past all of the next message
+  page(`<div data-quote="text" data-quote-session="s" id="one"><p id="a">last line</p></div><form><span id="d">to supervisor</span></form>`);
+  expect(areaOf(select("#a", 0, "#d", 0))?.id).toBe("one"); // ends in the UI's chrome
+  expect(areaOf(select("#a", 0, "#d", 2))).toBeNull(); // takes some of it
+});
+
 test("a selection of blanks only has none", () => {
   page(`<div data-quote="text" data-quote-session="s"><p id="a">a   b</p></div>`);
   expect(areaOf(select("#a", 1, "#a", 4))).toBeNull();

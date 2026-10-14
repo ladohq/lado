@@ -87,6 +87,22 @@ def test_the_bar_shows_over_a_message_and_esc_hides_it(page: Page, server, repo,
     expect(toolbar).to_have_count(0)
 
 
+@pytest.mark.parametrize("text", ["The bar hides on Esc.", "next: the docs"])
+def test_a_triple_click_on_a_messages_last_paragraph_shows_the_bar(
+    page: Page, server, repo, shot, text
+):
+    # The browser ends such a selection at the start of the next block (the next row's
+    # time, the composer): no text of another area, so still the message's.
+    session = talked_session(repo)
+    chat = chat_page(page, server, session)
+    chat.get_by_text(text).click(click_count=3)
+    expect(bar(page)).to_be_visible()
+    shot(page)
+    bar(page).get_by_role("button", name="Quote in reply").click()
+    field = page.get_by_role("textbox", name="Write to the supervisor…")
+    expect(field).to_have_value(f"> {text}\n")
+
+
 def test_copy_copies_the_selection_and_keeps_it(page: Page, server, repo, shot):
     session = talked_session(repo)
     chat = chat_page(page, server, session)
@@ -300,6 +316,10 @@ def test_copy_buttons_show_on_hover(page: Page, server, repo, shot):
     expect(message_box).to_have_css("opacity", "0")
     shot(page, "hidden")
     page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=server["url"])
+    # Over the message but not its code block: its Copy message, not Copy code.
+    first.get_by_text("Run it:").hover()
+    expect(first.locator(".feed-head > .copy-icon-button")).to_have_css("opacity", "1")
+    expect(code_box).to_have_css("opacity", "0")
     first.locator(".code-block").hover()
     expect(code_box).to_have_css("opacity", "1")
     copy_code.click()

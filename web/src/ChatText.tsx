@@ -90,13 +90,13 @@ function lineBreaks() {
 // GitHub-flavoured Markdown: tables, task lists, autolinks, footnotes, and strikethrough
 // only by a double tilde ("5~10 min" stays text).
 const GFM: [typeof remarkGfm, { singleTilde: boolean }] = [remarkGfm, { singleTilde: false }];
-// A table in a frame of its own, which scrolls sideways when the table is wider than the body.
 // The text of a node of Markdown's HTML tree, as its code shows it.
 type Hast = { type: string; value?: string; children?: Hast[] };
 const textOf = (node: Hast | undefined): string =>
   node?.type === "text" ? (node.value ?? "") : (node?.children ?? []).map(textOf).join("");
 
 const COMPONENTS: Components = {
+  // A table in a frame of its own, which scrolls sideways when the table is wider than the body.
   table: ({ node: _node, ...props }) => (
     <div className="md-table">
       <table {...props} />

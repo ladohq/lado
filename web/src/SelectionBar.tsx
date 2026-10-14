@@ -20,15 +20,23 @@ const TOUCH = "(hover: none)";
 
 const elementOf = (node: Node | null) => (node instanceof Element ? node : (node?.parentElement ?? null));
 
-// The readable area both ends of the selection lie in, or null: none for an empty or blank
-// selection, one across two areas, or one inside a field, an editable element or a terminal.
+// The readable area the selection lies in, or null: none for an empty or blank selection,
+// one that takes text of two areas, or one inside a field, an editable element or a
+// terminal. A selection that ends past its area but takes none of the text after it is
+// still the area's: a triple click on an area's last line ends at the next block's start
+// (the next row's time, the composer).
 export function areaOf(selection: Selection | null): HTMLElement | null {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
   if (!selection.toString().trim()) return null;
-  const ends = [elementOf(selection.anchorNode), elementOf(selection.focusNode)];
-  if (ends.some((end) => !end || end.closest(NOT_AREAS))) return null;
-  const [first, second] = ends.map((end) => end!.closest<HTMLElement>("[data-quote]"));
-  return first && first === second ? first : null;
+  const range = selection.getRangeAt(0);
+  const [start, end] = [elementOf(range.startContainer), elementOf(range.endContainer)];
+  if (!start || !end || start.closest(NOT_AREAS)) return null;
+  const area = start.closest<HTMLElement>("[data-quote]");
+  if (!area) return null;
+  if (area.contains(end)) return end.closest(NOT_AREAS) ? null : area;
+  const past = range.cloneRange();
+  past.setStartAfter(area);
+  return past.toString().trim() ? null : area;
 }
 
 // How many characters of `cell`'s text lie before the range's start (or end), or null when

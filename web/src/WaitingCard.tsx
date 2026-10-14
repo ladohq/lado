@@ -21,6 +21,7 @@ import { GatePanel } from "./GateCard";
 import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon } from "./icons";
 import { VIEW_PARAM } from "./paths";
+import { onQuote } from "./quotes";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
 
@@ -136,6 +137,8 @@ export function WaitingCard({
       return kept.length === Object.keys(now).length ? now : Object.fromEntries(kept);
     });
   }, [gatesKey]);
+  // A quote of the session folds it, so the composer it goes to shows (the focus goes there).
+  useEffect(() => onQuote(session, () => setExpanded(false)), [session]);
   // Nothing waits: no card, so not expanded either.
   useEffect(() => {
     if (tabs.length === 0 && expanded) setExpanded(false);

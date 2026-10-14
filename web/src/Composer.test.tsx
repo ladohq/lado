@@ -1,11 +1,12 @@
 // The composer's files (docs/design/ui.md, Composer): the paperclip, paste and drop, chips
 // with the eye on a file an agent cannot read, the limits from the server, and Send, which
 // uploads each file, then sends the message with their names.
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Limits } from "./api";
 import { Composer } from "./Composer";
+import { sendQuote } from "./quotes";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
 const LIMITS: Limits = {
@@ -304,4 +305,24 @@ test("a file dropped while Send uploads stays for the next message; only the sen
   });
   expect(revoked).toEqual(["blob:thumb-1"]); // the sent image's, not the late one's
   expect(screen.getByRole("button", { name: "Remove late.png" })).toBeTruthy();
+});
+
+test("a quote is appended to the composer's text, focused, the cursor at its end, its recipient kept", async () => {
+  serve();
+  open({ to: "developer" });
+  fireEvent.change(field(), { target: { value: "Почему?" } });
+  act(() => sendQuote("lado", "> A\n> B", () => {}));
+  expect(field().value).toBe("Почему?\n\n> A\n> B\n");
+  await waitFor(() => expect(document.activeElement).toBe(field()));
+  expect(field().selectionStart).toBe(field().value.length);
+  expect(screen.getByText("developer", { selector: ".composer-name" })).toBeTruthy();
+});
+
+test("a quote kept for the session is in the composer when it mounts", () => {
+  serve();
+  const navigate = vi.fn();
+  sendQuote("lado", "> A", navigate);
+  expect(navigate).toHaveBeenCalled();
+  open();
+  expect(field().value).toBe("> A\n");
 });

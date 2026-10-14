@@ -14,7 +14,7 @@
   issue, with the system info and LADO's errors of the last 30 days by kind, and no paths,
   session or repository names, nor message texts; a link opens GitHub's new issue form
   filled in with it (the terminal asks first), and nothing is sent until you submit it.
-  `errors.jsonl` now keeps each error's scrubbed form too. API: `GET /api/bug-report`.
+  `errors.jsonl` now keeps each error's scrubbed form too.
 - UI: the expanded waiting card covers the session's chat (on Needs you, the page) instead
   of the whole window, so an artifact opened from it shows over it; Esc closes that
   artifact first, then folds the card. On Needs you an artifact opens over the page,
@@ -30,6 +30,8 @@
 - Messages queued during an agent's turn reach it in its turn-end hook's output whenever
   its CLI takes that output; a race sometimes pasted them into its window.
 - A gate in a session's chat always shows after the run's move that opened it.
+- Upgrade: schema 27, restart running sessions after the update (lado update does it).
+- API: `GET /api/bug-report`.
 
 ## 0.37.0 (2026-10-13)
 

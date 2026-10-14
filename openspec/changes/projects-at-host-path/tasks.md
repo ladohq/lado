@@ -22,10 +22,10 @@ the tests' code and the commit.
 
 ## 3. Compose at the host's path
 
-- [ ] 3.1 Tests first: `tests/test_docker.py` (the same-path volume and `LADO_REPOS`),
+- [x] 3.1 Tests first: `tests/test_docker.py` (the same-path volume and `LADO_REPOS`),
   `test_compose_serves_on_lado_port` (the doctor's `Repositories folder` line on the
   compose project's projects path). Plan, Task 3.
-- [ ] 3.2 `docker/compose.yaml` and its header (D1). `uv run pytest tests/test_docker.py
+- [x] 3.2 `docker/compose.yaml` and its header (D1). `uv run pytest tests/test_docker.py
   -n0`; `make test-container`.
 
 ## 4. Container tests of the path and the owner

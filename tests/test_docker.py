@@ -184,9 +184,16 @@ def test_compose_names_no_container_and_needs_the_projects_folder(compose):
     assert "container_name" not in lado
     assert "build" not in lado
     assert lado["image"] == "${LADO_IMAGE:-lado:local}"
-    assert "home:/home/lado" in lado["volumes"]
-    [projects] = [v for v in lado["volumes"] if v.endswith(":/projects")]
-    assert projects.startswith("${LADO_PROJECTS:?")
+    assert lado["volumes"][0] == "home:/home/lado"
+
+
+def test_compose_mounts_the_projects_at_the_hosts_own_path(compose):
+    """The same path inside as on the host, named by LADO_REPOS: git's worktree links and
+    LADO's stored paths are then right on both sides."""
+    lado = compose["services"]["lado"]
+    projects = "${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}"
+    assert lado["volumes"] == ["home:/home/lado", f"{projects}:{projects}"]
+    assert lado["environment"]["LADO_REPOS"] == projects
 
 
 def test_the_compose_headers_commands_all_have_the_projects_folder():

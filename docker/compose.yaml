@@ -1,6 +1,7 @@
 # LADO's image (Dockerfile) with compose: the same as one `docker run`, kept in a file.
 #
-#   export LADO_PROJECTS=~/projects     # every compose command of this file needs it
+#   export LADO_PROJECTS=~/projects     # every compose command of this file needs it;
+#                                       # the container sees it at this same path
 #   docker compose up -d                # from this folder
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
 #
@@ -20,14 +21,16 @@ services:
     hostname: lado
     environment:
       LADO_PORT: ${LADO_PORT:-8765}
+      LADO_REPOS: ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}
     ports:
       # This computer only: the UI's token is the one guard.
       - "127.0.0.1:${LADO_PORT:-8765}:${LADO_PORT:-8765}"
     volumes:
       # LADO_HOME (~/.lado) and Claude Code's login and config.
       - home:/home/lado
-      # The human's projects (LADO_REPOS in the image).
-      - ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}:/projects
+      # The human's projects at the host's own path (LADO_REPOS above), so a worker's
+      # worktree made in the container is one on the host too.
+      - ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}:${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}
     extra_hosts:
       # A local model on the host: Docker Desktop has it already, a Linux host needs it.
       - "host.docker.internal:host-gateway"

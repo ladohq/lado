@@ -1092,3 +1092,29 @@ test("a title set elsewhere shows in the open page from the feed", async () => {
   expect(barHeadings()).toEqual(["Review"]);
   expect(within(list()).getByRole("link", { name: /^Review/ })).toBeTruthy();
 });
+
+test("the head's field closes when the page goes to another session: its text is never saved there", async () => {
+  const puts = titles();
+  sessions = [session("lado"), session("other")];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  fireEvent.click(within(bar()).getByRole("button", { name: "Rename session" }));
+  const field = within(bar()).getByRole("textbox", { name: "Session title" });
+  fireEvent.change(field, { target: { value: "Mine" } });
+  fireEvent.click(within(list()).getByRole("link", { name: /^other/ })); // no blur, as "Back" goes
+  await screen.findByRole("region", { name: "Session other" });
+  expect(within(bar()).queryByRole("textbox", { name: "Session title" })).toBeNull();
+  expect(barHeadings()).toEqual(["other"]);
+  fireEvent.blur(field);
+  fireEvent.keyDown(field, { key: "Enter" });
+  await act(async () => {});
+  expect(puts).toEqual([]);
+});
+
+test("an icon's letters from a title that starts with an emoji are whole characters", async () => {
+  collapsed();
+  sessions = [session("lado", { title: "🚀 Релиз" }), session("x", { title: "𝒜𝒷" })];
+  open("/sessions");
+  await within(strip()!).findByRole("link", { name: "🚀 Релиз, idle" });
+  expect(icons().map((icon) => icon.textContent)).toEqual(["🚀Р", "𝒜𝒷"]);
+});

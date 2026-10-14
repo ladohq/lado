@@ -237,10 +237,12 @@ function SessionStrip({
 }
 
 // A session's two letters: the first of its first two words, else its first two letters.
-// Two sessions may share them: the tooltip and the label tell them apart.
+// Two sessions may share them: the tooltip and the label tell them apart. Letters are whole
+// characters (code points), as a title may start with an emoji.
 const initials = (name: string) => {
   const words = name.split(/[-_./\s]+/).filter(Boolean);
-  return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase();
+  const first = (text: string) => [...text][0];
+  return (words.length > 1 ? first(words[0]) + first(words[1]) : [...name].slice(0, 2).join("")).toUpperCase();
 };
 
 function StripIcon({ session }: { session: SessionInfo }) {

@@ -32,8 +32,11 @@ import json
 import math
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +47,11 @@ PYPI_TIMEOUT = 10  # seconds
 VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?")  # the only forms LADO publishes
 PYPROJECT_VERSION = re.compile(r'^version = "([^"]*)"', re.MULTILINE)
 OUTPUT_LINES = 10  # of a failed command's output, under its [FAIL] line
+SESSION = "rc-check"  # the sandbox's session
+# A calling agent's identity, the working copy's venv and the human's own tmux client
+# never reach the sandbox's LADO.
+DROPPED = ("LADO_SESSION", "LADO_AGENT", "LADO_INSTANCE", "VIRTUAL_ENV", "TMUX", "TMUX_PANE")
+IDENTITY = "rc-check"  # the scratch repository's commit, with no git identity of the human's
 BY_HAND = [
     "[ ] A session with the sdlc kit through one run to its first gate, answered in the UI",
     "[ ] The UI: the chat, a gate's card, the System panel with its pre-release pill",
@@ -187,8 +195,191 @@ def print_checklist(version: Version) -> None:
         print(f"  {line}")
 
 
+class Failed(Exception):
+    """A check failed; its [FAIL] line is printed."""
+
+
+def _ran(
+    report: Report,
+    what: str,
+    name: str,
+    argv: list[str],
+    env: dict[str, str],
+    cwd: Path | None = None,
+) -> Result:
+    """`argv`'s result; a [FAIL] line for `what` and Failed when it exits non-zero."""
+    result = run(argv, env=env, cwd=cwd)
+    if result.code:
+        report.fail(what, f"{name} exited {result.code}", result.output)
+        raise Failed
+    return result
+
+
+@dataclass(frozen=True)
+class Sandbox:
+    """The temporary folder of a clean install: its LADO home, uv tool folders, scratch
+    repository, and a tmux socket of its own."""
+
+    root: Path
+    socket: str
+
+    @classmethod
+    def create(cls) -> Sandbox:
+        return cls(Path(tempfile.mkdtemp(prefix="lado-rc-")), f"lado-rc-{os.getpid()}")
+
+    @property
+    def home(self) -> Path:
+        return self.root / "home"
+
+    @property
+    def tools(self) -> Path:
+        return self.root / "tools"
+
+    @property
+    def bin(self) -> Path:
+        return self.root / "bin"
+
+    @property
+    def repo(self) -> Path:
+        return self.root / "repo"
+
+    @property
+    def lado(self) -> str:
+        return str(self.bin / "lado")
+
+    def env(self) -> dict[str, str]:
+        """The environment of every command of the sandbox: nothing of it reaches the
+        human's LADO home, tmux server or uv tools, and its LADO sends no statistics."""
+        env = {name: value for name, value in os.environ.items() if name not in DROPPED}
+        env.update(
+            LADO_HOME=str(self.home),
+            LADO_TMUX_SOCKET=self.socket,
+            UV_TOOL_DIR=str(self.tools),
+            UV_TOOL_BIN_DIR=str(self.bin),
+            LADO_TELEMETRY="0",
+        )
+        return env
+
+    def cleanup_line(self) -> str:
+        """One command that stops and removes a kept sandbox."""
+        q = shlex.quote
+        return (
+            f"LADO_HOME={q(str(self.home))} LADO_TMUX_SOCKET={q(self.socket)} LADO_TELEMETRY=0 "
+            f"{q(self.lado)} uninstall --yes; tmux -L {q(self.socket)} kill-server; "
+            f"rm -rf {q(str(self.root))}"
+        )
+
+    def remove(self, stop: bool) -> None:
+        """Everything of the sandbox gone, whatever each step says (after a Ctrl-C)."""
+        env = self.env()
+        if stop:
+            run([self.lado, "stop", SESSION], env=env)
+        run([self.lado, "uninstall", "--yes"], env=env)
+        run(["tmux", "-L", self.socket, "kill-server"], env=env)
+        shutil.rmtree(self.root, ignore_errors=True)
+
+
+def _sandbox_checks(
+    box: Sandbox, version: Version, provider: str, ui: bool, report: Report, done: list[str]
+) -> None:
+    """The sandbox's checks in order; Failed at the first that fails. `done` gets
+    "session" once its session may run and "stopped" once it is stopped."""
+    env, lado = box.env(), box.lado
+    install = ["uv", "tool", "install", "--refresh-package", "lado", f"lado=={version}"]
+    _ran(report, "install", "uv tool install", install, env)
+    report.ok(f"install: lado {version} with uv tool install")
+
+    said = _ran(report, "version", "lado --version", [lado, "--version"], env).output.strip()
+    if said != f"lado {version}":
+        report.fail("version", f"lado --version says {said}")
+        raise Failed
+    report.ok(f"version: {said}")
+
+    status = _ran(
+        report, "statistics off", "lado telemetry status", [lado, "telemetry", "status"], env
+    )
+    if "LADO_TELEMETRY=0 is set" not in status.output:
+        report.fail(
+            "statistics off",
+            "lado telemetry status does not say LADO_TELEMETRY=0 is set",
+            status.output,
+        )
+        raise Failed
+    report.ok("statistics off: LADO_TELEMETRY=0")
+
+    doctor = _ran(report, "doctor", "lado doctor", [lado, "doctor"], env)
+    shown = f"{version} (pre-release)"
+    if shown not in doctor.output:
+        report.fail("doctor", f"it does not say {shown}", doctor.output)
+        raise Failed
+    report.ok(f"doctor: no FAIL, {shown}")
+
+    box.repo.mkdir()
+    _ran(report, "scratch repository", "git init", ["git", "init", "-q", str(box.repo)], env)
+    (box.repo / "README.md").write_text("A scratch repository of scripts/rc_check.py.\n")
+    _ran(report, "scratch repository", "git add", ["git", "add", "README.md"], env, box.repo)
+    identity = {
+        f"GIT_{who}_{what}": value
+        for who in ("AUTHOR", "COMMITTER")
+        for what, value in (("NAME", IDENTITY), ("EMAIL", f"{IDENTITY}@localhost"))
+    }
+    commit = ["git", "commit", "-q", "--no-verify", "--no-gpg-sign", "-m", "A scratch repository"]
+    _ran(report, "scratch repository", "git commit", commit, {**env, **identity}, box.repo)
+    report.ok(f"scratch repository: {box.repo}, one commit")
+
+    done.append("session")
+    start = [lado, "start", str(box.repo), "--name", SESSION, "--provider", provider, "--no-attach"]
+    _ran(report, "session starts", "lado start", start, env)
+    listed = _ran(report, "session starts", "lado ls", [lado, "ls"], env).output
+    if not any(line.split()[:1] == [SESSION] and "(" not in line for line in listed.splitlines()):
+        report.fail("session starts", f"lado ls does not show {SESSION} running", listed)
+        raise Failed
+    report.ok(f"session starts: {SESSION} with {provider}, shown by lado ls")
+
+    if ui:
+        shown_ui = run([lado, "ui", "--no-open", "--port", "0"], env=env, terminal=True)
+        if shown_ui.code:
+            report.fail("UI", f"lado ui exited {shown_ui.code}")
+            raise Failed
+        try:
+            input("Look at the sandbox's UI (the link above), then press Enter: ")
+        except EOFError:
+            print()
+
+    _ran(report, "session stops", "lado stop", [lado, "stop", SESSION], env)
+    done.append("stopped")
+    report.ok(f"session stops: lado stop {SESSION}")
+
+    removed = _ran(report, "uninstall", "lado uninstall", [lado, "uninstall", "--yes"], env)
+    if box.home.exists():
+        report.fail("uninstall", f"{box.home} is still there", removed.output)
+        raise Failed
+    server = run(["tmux", "-L", box.socket, "list-sessions"], env=env)
+    if server.code == 0:
+        report.fail("uninstall", "its tmux server still runs", server.output)
+        raise Failed
+    report.ok("uninstall: its LADO home and tmux server are gone")
+
+
 def sandbox(version: Version, provider: str, ui: bool) -> int:
-    raise NotImplementedError
+    """`sandbox`: a clean install of `version`, checked, then removed."""
+    box = Sandbox.create()
+    print(f"Sandbox of LADO {version}: {box.root} (tmux socket {box.socket})", flush=True)
+    done: list[str] = []
+    try:
+        _sandbox_checks(box, version, provider, ui, Report(), done)
+    except Failed:
+        print(f"\nThe sandbox is kept for a look: {box.root}")
+        print(f"Remove it with: {box.cleanup_line()}")
+        return 1
+    except KeyboardInterrupt:
+        box.remove(stop="session" in done and "stopped" not in done)
+        print("\nInterrupted: the sandbox is removed.")
+        return 130
+    shutil.rmtree(box.root, ignore_errors=True)
+    print(f"The sandbox is removed: {box.root}")
+    print_checklist(version)
+    return 0
 
 
 def upgrade(version: Version) -> int:

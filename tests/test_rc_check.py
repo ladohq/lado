@@ -137,3 +137,237 @@ def test_the_real_run_passes_output_and_exit_code():
     assert (done.code, done.output) == (3, "out\n")
     missing = rc.run(["no-such-command-of-rc-check"])
     assert missing.code == 127 and "no-such-command-of-rc-check" in missing.output
+
+
+def verb(argv: list[str]) -> str:
+    """What a recorded command does: `doctor`, `telemetry status`, `stop --all`,
+    `uv tool install`, `git commit`, `tmux has-session`..."""
+    program, rest = Path(argv[0]).name, argv[1:]
+    if program == "tmux":
+        rest = rest[2:] if rest[:1] == ["-L"] else rest
+        return f"tmux {rest[0]}"
+    if program in ("uv", "git"):
+        return " ".join([program, *rest[: 2 if program == "uv" else 1]])
+    if rest[0] in ("telemetry", "server") or rest[1:2] == ["--all"]:
+        return " ".join(rest[:2])
+    return rest[0]
+
+
+class Recorder:
+    """`rc.run` replaced: each call recorded with its environment, answered by its verb."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[str], dict | None, bool]] = []
+        self.answers: dict[str, list] = {}
+        self.alive: set[str] = set()
+        self.target = "0.38.0rc1"  # the sandbox's RC: what its lado says it is
+
+    def answer(self, what: str, code: int, output: str = "", then=None) -> None:
+        """`what`'s answer from now on; `then` runs when it is called."""
+        self.answers[what] = [(code, output, then)]
+
+    def version(self, *versions: str) -> None:
+        """`lado --version`'s answers in turn, the last one from then on."""
+        self.answers["--version"] = [(0, f"lado {v}\n", None) for v in versions]
+
+    def default(self, what: str, argv: list[str]) -> tuple[int, str]:
+        if what == "--version":
+            return 0, f"lado {self.target}\n"
+        if what == "telemetry status":
+            return 0, "statistics: off: LADO_TELEMETRY=0 is set (your choice: not chosen)\n"
+        if what == "doctor":
+            return 0, f"[ok  ] LADO: {self.target} (pre-release)\n[ok  ] tmux: 3.5a\n"
+        if what == "ls":
+            return 0, "rc-check  /tmp/lado-rc-x/repo\n  supervisor   supervisor claude  waiting\n"
+        if what == "tmux list-sessions":
+            return 1, "no server running on /private/tmp/tmux-501/lado-rc-1\n"
+        if what == "tmux has-session":
+            return (0, "") if argv[-1].lstrip("=") in self.alive else (1, "can't find session")
+        return 0, ""
+
+    def __call__(self, argv, env=None, terminal=False, cwd=None):
+        self.calls.append((list(argv), env, terminal))
+        what = verb(argv)
+        queue = self.answers.get(what)
+        if not queue:
+            return rc.Result(*self.default(what, argv))
+        code, output, then = queue.pop(0) if len(queue) > 1 else queue[0]
+        if then:
+            then()
+        return rc.Result(code, "" if terminal else output)
+
+    def verbs(self) -> list[str]:
+        return [verb(argv) for argv, _, _ in self.calls]
+
+    def argvs(self, what: str) -> list[list[str]]:
+        return [argv for argv, _, _ in self.calls if verb(argv) == what]
+
+
+@pytest.fixture
+def recorder(monkeypatch):
+    recorder = Recorder()
+    monkeypatch.setattr(rc, "run", recorder)
+    return recorder
+
+
+@pytest.fixture
+def temp(tmp_path, monkeypatch):
+    """The temporary folder the sandbox is made in."""
+    folder = tmp_path / "temp"
+    folder.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(folder))
+    return folder
+
+
+def test_every_lado_call_of_the_sandbox_has_statistics_off_and_its_own_home(
+    recorder, temp, lado_home, monkeypatch
+):
+    """D9: the rule LAD-50 held docs/release.md's scratch home to, now held by the script."""
+    for name in ("LADO_AGENT", "LADO_SESSION", "LADO_INSTANCE", "VIRTUAL_ENV"):
+        monkeypatch.setenv(name, "from-the-caller")
+    monkeypatch.setenv("LADO_TELEMETRY", "1")
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False) == 0
+    calls = [(argv, env) for argv, env, _ in recorder.calls]
+    assert {verb(argv) for argv, _ in calls} >= {"uv tool install", "doctor", "start", "uninstall"}
+    for argv, env in calls:
+        assert env is not None, argv
+        assert env["LADO_TELEMETRY"] == "0", argv
+        for name in ("LADO_HOME", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR"):
+            assert env[name].startswith(str(temp / "lado-rc-")), (argv, name)
+        assert env["LADO_HOME"] != str(lado_home)
+        assert env["LADO_TMUX_SOCKET"].startswith("lado-rc-")
+        for name in ("LADO_AGENT", "LADO_SESSION", "LADO_INSTANCE", "VIRTUAL_ENV"):
+            assert name not in env, (argv, name)
+    sandbox_lado = [argv[0] for argv, _ in calls if verb(argv) == "doctor"][0]
+    assert sandbox_lado.startswith(str(temp)) and sandbox_lado.endswith("/bin/lado")
+
+
+def test_the_sandbox_steps_in_order_and_everything_removed(recorder, temp, capsys, monkeypatch):
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda prompt: asked.append(prompt) or "")
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "codex", ui=True) == 0
+    assert recorder.verbs() == [
+        "uv tool install",
+        "--version",
+        "telemetry status",
+        "doctor",
+        "git init",
+        "git add",
+        "git commit",
+        "start",
+        "ls",
+        "ui",
+        "stop",
+        "uninstall",
+        "tmux list-sessions",
+    ]
+    assert recorder.argvs("uv tool install")[0][3:] == [
+        "--refresh-package",
+        "lado",
+        "lado==0.38.0rc1",
+    ]
+    start = recorder.argvs("start")[0]
+    assert start[3:] == ["--name", "rc-check", "--provider", "codex", "--no-attach"]
+    assert start[2].startswith(str(temp)) and start[2].endswith("/repo")
+    ui = [(argv, terminal) for argv, _, terminal in recorder.calls if verb(argv) == "ui"]
+    assert ui == [([ui[0][0][0], "ui", "--no-open", "--port", "0"], True)]
+    assert list(temp.iterdir()) == []
+    out = capsys.readouterr().out
+    assert out.count("[ok  ]") == 8 and "[FAIL]" not in out
+    assert "Left to check by hand on LADO 0.38.0rc1:" in out
+    assert len(asked) == 1 and "press Enter" in asked[0]
+
+
+def test_without_ui_it_does_not_wait(recorder, temp, monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("no question without the UI"))
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False) == 0
+    assert "ui" not in recorder.verbs()
+
+
+def test_the_scratch_repository_needs_no_git_identity_or_hooks_of_the_human(recorder, temp):
+    rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False)
+    commit = [(argv, env) for argv, env, _ in recorder.calls if verb(argv) == "git commit"][0]
+    assert "--no-verify" in commit[0] and "--no-gpg-sign" in commit[0]
+    assert commit[1]["GIT_AUTHOR_EMAIL"] == commit[1]["GIT_COMMITTER_EMAIL"] == "rc-check@localhost"
+
+
+@pytest.mark.parametrize(
+    ("what", "code", "output", "line"),
+    [
+        ("uv tool install", 2, "No solution found", "[FAIL] install: uv tool install exited 2"),
+        ("--version", 0, "lado 0.37.1\n", "[FAIL] version: lado --version says lado 0.37.1"),
+        ("telemetry status", 0, "statistics: not chosen\n", "[FAIL] statistics off"),
+        (
+            "doctor",
+            0,
+            "[ok  ] LADO: 0.38.0rc1\n",
+            "[FAIL] doctor: it does not say 0.38.0rc1 (pre-release)",
+        ),
+        ("doctor", 1, "[FAIL] tmux: missing\n", "[FAIL] doctor: lado doctor exited 1"),
+        (
+            "start",
+            1,
+            "lado: claude is not installed\n",
+            "[FAIL] session starts: lado start exited 1",
+        ),
+        ("ls", 0, "No sessions.\n", "[FAIL] session starts: lado ls does not show rc-check"),
+        ("stop", 1, "lado: tmux\n", "[FAIL] session stops: lado stop exited 1"),
+        ("uninstall", 1, "lado: refused\n", "[FAIL] uninstall: lado uninstall exited 1"),
+        (
+            "tmux list-sessions",
+            0,
+            "rc-check: 1 windows\n",
+            "[FAIL] uninstall: its tmux server still runs",
+        ),
+    ],
+)
+def test_a_failed_check_stops_and_keeps_the_sandbox(
+    recorder, temp, capsys, what, code, output, line
+):
+    recorder.answer(what, code, output)
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False) == 1
+    out = capsys.readouterr().out
+    assert line in out
+    assert [x for x in out.splitlines() if x.startswith("[FAIL]")] == [
+        x for x in out.splitlines() if x.startswith(line)
+    ]
+    assert output.strip().splitlines()[-1] in out  # the command's own words, under the line
+    assert recorder.verbs()[-1] == what  # no later check
+    (kept,) = temp.iterdir()
+    assert f"The sandbox is kept for a look: {kept}" in out
+    socket = recorder.calls[0][1]["LADO_TMUX_SOCKET"]
+    assert (
+        f"LADO_HOME={kept}/home LADO_TMUX_SOCKET={socket} LADO_TELEMETRY=0 "
+        f"{kept}/bin/lado uninstall --yes; tmux -L {socket} kill-server; rm -rf {kept}"
+    ) in out
+    assert "Left to check by hand" not in out
+
+
+def test_ctrl_c_at_the_ui_removes_everything(recorder, temp, monkeypatch, capsys):
+    def interrupt(*_):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", interrupt)
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=True) == 130
+    assert recorder.verbs()[-4:] == ["ui", "stop", "uninstall", "tmux kill-server"]
+    assert list(temp.iterdir()) == []
+    assert "Interrupted: the sandbox is removed." in capsys.readouterr().out
+
+
+def test_ctrl_c_before_the_session_removes_everything_too(recorder, temp):
+    def interrupt():
+        raise KeyboardInterrupt
+
+    recorder.answer("doctor", 0, "", then=interrupt)
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False) == 130
+    assert recorder.verbs()[-2:] == ["uninstall", "tmux kill-server"]
+    assert "stop" not in recorder.verbs()
+    assert list(temp.iterdir()) == []
+
+
+def test_enter_at_the_end_of_input_is_enter(recorder, temp, monkeypatch):
+    def eof(*_):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", eof)
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=True) == 0

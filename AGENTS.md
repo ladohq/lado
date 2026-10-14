@@ -974,6 +974,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   host, no event; docs/release.md); standard library and `lado.telemetry` only.
   `scripts/release_notes.py`: a release tag's notes from CHANGELOG.md for its GitHub
   release, checked before PyPI too (docs/release.md); standard library only.
+  `scripts/rc_check.py`: the human's checks of a release candidate (docs/release.md,
+  section 4): `sandbox` (a clean install in a temporary folder, statistics off, removed
+  after), `upgrade` (the human's `lado update X.Y.ZrcN`, keeping the final's database in
+  `~/.lado-rc/`) and `rollback`; run with `python3`, never `uv run`; standard library
+  only, nothing of `lado` imported (its CHANGELOG items through `release_notes.section`).
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

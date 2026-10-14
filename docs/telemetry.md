@@ -92,7 +92,7 @@ Any of:
 LADO's own tests and release checks never send: every test, the live and smoke tests
 included, runs with `LADO_TELEMETRY=0`, which a guard checks for each of them (the tests of
 sending post only to a local port), and the release candidate's scratch install in a fresh
-home is run with it too.
+home (`scripts/rc_check.py sandbox`) is run with it too.
 
 ## The local error journal
 

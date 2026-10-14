@@ -21,7 +21,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 4. CLI (D7, D9)
 
-- [ ] 4.1 `lado bug-report`, `can_show_browser`, no migration; `BROWSER=true` in
+- [x] 4.1 `lado bug-report`, `can_show_browser`, no migration; `BROWSER=true` in
   `tests/conftest.py` with its guard. Check: `uv run pytest tests/test_cli_bug_report.py
   tests/test_cli.py -n auto`.
 

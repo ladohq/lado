@@ -52,7 +52,7 @@
   `## 0.39.0 (unreleased)`: in a container (`LADO_CONTAINER`), `lado update` and the UI's
   update refuse and name `docker compose pull && docker compose up -d`; `lado doctor` and
   the System panel say LADO runs in a container.
-- [ ] 4.2 By hand, in the LAD-52 prototype (`docs/research/docker-install/`), the image
+- [x] 4.2 By hand, in the LAD-52 prototype (`docs/research/docker-install/`), the image
   built with this branch's LADO and `LADO_CONTAINER=1`: `docker exec lado lado update
   --yes` exits 1 with the line, `docker ps` still shows the container up, `lado doctor`
   shows `in a container`, the System panel shows the pill. Record the output in the build

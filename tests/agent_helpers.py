@@ -187,6 +187,12 @@ def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on. Step 22 changes only data that
     cannot come back (the needs it drops): undoing it sets the version alone."""
+    assert state.MIGRATIONS[26] == [
+        state.USAGE,
+        state.USAGE_TIME,
+        state.usage_from_history,
+        *state.USAGE_TRIGGERS,
+    ]
     assert state.MIGRATIONS[25] == state.RECOMMENDATION
     assert state.MIGRATIONS[24] == [state.AGENTS_READ_ONLY]
     assert state.MIGRATIONS[23] == [state.MESSAGES_PRINTED]
@@ -201,8 +207,14 @@ def schema_before(version: int) -> None:
     assert state.MIGRATIONS[14] == state.NOTES_STEP
     assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
     assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
-    assert 13 <= version <= state.SCHEMA_VERSION == 26
+    assert 13 <= version <= state.SCHEMA_VERSION == 27
     with state.connect() as db:
+        for source in state.USAGE_SOURCES:
+            db.execute(f"DROP TRIGGER usage_from_{source.name}")
+        db.execute("DROP TABLE usage")  # its index with it
+        if version == 27:
+            db.execute("PRAGMA user_version = 26")
+            return
         for statement in state.RECOMMENDATION:
             table, column = statement.split()[2], statement.split()[5]
             db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")

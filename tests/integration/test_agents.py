@@ -344,7 +344,7 @@ def test_worker_report_is_one_line_and_its_body_is_read_once(repo):
     at = log.index(next(x for x in log if "w1 → supervisor [read] DONE: work.txt added" in x))
     assert log[at + 1 : at + 4] == ["    Status: DONE", "    Files: work.txt", "    Checks: ok"]
     lines = [line.split(" ", 1)[1] for line in log if line[:1] != " "]
-    assert lines[0] == "w1: spawned (role worker, provider fake)"
+    assert lines[0] == "w1: spawned (role worker, kit default, provider fake)"
     assert "w1: busy" in lines
     assert "w1: idle" in lines
     assert "supervisor → w1 [delivered] hello w1" in lines

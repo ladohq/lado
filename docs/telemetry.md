@@ -41,9 +41,11 @@ A daily report, at most once a day while LADO is used:
 | `lado_errors` | 1 | LADO's own unexpected errors |
 | `errors_dropped` | 1 | errors not sent because too many waited |
 
-The counts come from LADO's database when the report is sent: a session you forgot
-(`lado forget`) before that is missing from them. Nothing is collected for the report in
-the meantime.
+The counts come from LADO's database when the report is sent, from a local table LADO
+keeps for `lado stats` also with sending off: one anonymous row per counted fact (its kind,
+a role or flow with its kit, an agent CLI, a time; no names, paths or texts). So a session
+you forgot (`lado forget`) is still counted (from 0.38.0). Nothing is collected for the
+report itself in the meantime, and `lado stats` sends nothing.
 
 An error, one event per kind of error since the last send:
 

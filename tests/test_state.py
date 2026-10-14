@@ -346,7 +346,7 @@ def test_schema_26_adds_the_recommendation_columns(lado_home):
         }
         assert RECOMMENDATION_COLUMNS <= _columns(db, "gates")
         assert RECOMMENDATION_COLUMNS <= _columns(db, "messages")
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(26)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     assert not RECOMMENDATION_COLUMNS & _columns(db, "gates")
     assert not RECOMMENDATION_COLUMNS & _columns(db, "messages")

@@ -268,8 +268,20 @@ class Sandbox:
         return (
             f"LADO_HOME={q(str(self.home))} LADO_TMUX_SOCKET={q(self.socket)} LADO_TELEMETRY=0 "
             f"{q(self.lado)} uninstall --yes; tmux -L {q(self.socket)} kill-server; "
-            f"rm -rf {q(str(self.root))}"
+            f"rm -rf {q(str(self.root))} {q(str(self.socket_file))}"
         )
+
+    @property
+    def socket_file(self) -> Path:
+        """The socket's file, which tmux leaves behind when its server ends."""
+        folder = Path(os.environ.get("TMUX_TMPDIR") or "/tmp") / f"tmux-{os.getuid()}"
+        return folder / self.socket
+
+    def delete(self) -> None:
+        """The folder and the socket's file gone."""
+        shutil.rmtree(self.root, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            self.socket_file.unlink()
 
     def remove(self, stop: bool) -> None:
         """Everything of the sandbox gone, whatever each step says (after a Ctrl-C)."""
@@ -278,7 +290,7 @@ class Sandbox:
             run([self.lado, "stop", SESSION], env=env)
         run([self.lado, "uninstall", "--yes"], env=env)
         run(["tmux", "-L", self.socket, "kill-server"], env=env)
-        shutil.rmtree(self.root, ignore_errors=True)
+        self.delete()
 
 
 def _sandbox_checks(
@@ -378,7 +390,7 @@ def sandbox(version: Version, provider: str, ui: bool) -> int:
         box.remove(stop="session" in done and "stopped" not in done)
         print("\nInterrupted: the sandbox is removed.")
         return 130
-    shutil.rmtree(box.root, ignore_errors=True)
+    box.delete()
     print(f"The sandbox is removed: {box.root}")
     print_checklist(version)
     return 0

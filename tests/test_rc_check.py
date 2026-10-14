@@ -348,6 +348,37 @@ def test_a_failed_check_stops_and_keeps_the_sandbox(
     assert "Left to check by hand" not in out
 
 
+@pytest.fixture
+def socket_file(tmp_path, monkeypatch):
+    """The sandbox's tmux socket file, which tmux leaves behind when its server ends."""
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path / "tmux"))
+    path = tmp_path / "tmux" / f"tmux-{os.getuid()}" / f"lado-rc-{os.getpid()}"
+    path.parent.mkdir(parents=True)
+    path.touch()
+    return path
+
+
+def test_the_socket_file_tmux_leaves_is_removed(recorder, temp, socket_file):
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False) == 0
+    assert not socket_file.exists()
+
+
+def test_a_kept_sandbox_names_its_socket_file_in_its_cleanup(recorder, temp, socket_file, capsys):
+    recorder.answer("doctor", 1)
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=False) == 1
+    assert socket_file.exists()
+    assert capsys.readouterr().out.rstrip().endswith(f"rm -rf {next(temp.iterdir())} {socket_file}")
+
+
+def test_ctrl_c_removes_the_socket_file_too(recorder, temp, socket_file, monkeypatch):
+    def interrupt(*_):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", interrupt)
+    assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=True) == 130
+    assert not socket_file.exists()
+
+
 def test_ctrl_c_at_the_ui_removes_everything(recorder, temp, monkeypatch, capsys):
     def interrupt(*_):
         raise KeyboardInterrupt

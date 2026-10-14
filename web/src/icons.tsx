@@ -177,6 +177,14 @@ export const LinkIcon = () => (
 
 export const FolderIcon = ProjectsIcon;
 
+// A pencil: rename the session (its title) in its head.
+export const PencilIcon = () => (
+  <Icon>
+    <path d="M15.5 5.5 18.5 8.5" />
+    <path d="M4.5 19.5 5.5 15 16.5 4a1.4 1.4 0 0 1 2 0l1.5 1.5a1.4 1.4 0 0 1 0 2L9 18.5z" />
+  </Icon>
+);
+
 // Two commits and a branch: a session's git repository.
 export const GitIcon = () => (
   <Icon>

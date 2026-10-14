@@ -17,6 +17,7 @@ const LIMITS: Limits = {
   image_limit: 500,
   image_max_side: 8000,
   max_message: 20,
+  max_title: 80,
 };
 
 type Call = { path: string; body: unknown };

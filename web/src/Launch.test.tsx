@@ -40,6 +40,7 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
     running_since: null,
     busy: 0,
     stopped_at: null,
+    title: null,
     ...more,
   };
 }

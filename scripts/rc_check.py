@@ -27,6 +27,7 @@ on Ctrl-C. Standard library only; nothing of LADO is imported.
 from __future__ import annotations  # the human's python3 may be older than LADO's
 
 import argparse
+import contextlib
 import importlib.util
 import json
 import math
@@ -34,6 +35,7 @@ import os
 import re
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -478,8 +480,183 @@ def upgrade(version: Version) -> int:
     return 0
 
 
+def _terminal() -> bool:
+    return sys.stdin.isatty()
+
+
+def _schema(path: Path) -> int:
+    with contextlib.closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)) as db:
+        return db.execute("PRAGMA user_version").fetchone()[0]
+
+
+def _restore(copy: Path, live: Path) -> None:
+    """lado.db's content replaced by the copy's, by SQLite's backup API."""
+    with contextlib.closing(sqlite3.connect(copy)) as source:
+        with contextlib.closing(sqlite3.connect(live)) as target:
+            source.backup(target)
+
+
+def _alive(pid: object) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+@dataclass(frozen=True)
+class Plan:
+    """What a rollback does, read before it changes anything."""
+
+    lado: str
+    now: Version
+    final: Version
+    copy: Path
+    live: Path
+    sessions: list[tuple[str, str]]  # (name, repo): not stopped and alive in tmux
+    server: dict | None  # server.json of a UI server that runs
+    live_schema: int
+    copy_schema: int
+
+    @property
+    def restore(self) -> bool:
+        return self.live_schema > self.copy_schema
+
+    def resume_lines(self) -> list[str]:
+        """The commands that start the sessions and the UI server again by hand."""
+        lines = [f"lado start {shlex.quote(repo)} --name {name}" for name, repo in self.sessions]
+        if self.server:
+            lines.append(" ".join(_ui_args("lado", self.server, opened=True)))
+        return lines
+
+
+def _ui_args(lado: str, server: dict, opened: bool = False) -> list[str]:
+    """`lado ui` of a server on the same host and port again."""
+    argv = [lado, "ui", *([] if opened else ["--no-open"]), "--port", str(server["port"])]
+    host = server.get("host", "127.0.0.1")
+    return argv if host == "127.0.0.1" else [*argv, "--host", host]
+
+
+def plan() -> Plan:
+    lado = own_lado()
+    now = installed(lado)
+    if now.final:
+        raise RcError(f"your LADO is {now}, no pre-release: nothing to roll back")
+    copies = kept()
+    if not copies:
+        raise RcError(
+            "~/.lado-rc holds no copy of a final's lado.db: upgrade from a final makes it. "
+            "Without a schema change since that final, `lado update <final>` is enough"
+        )
+    if len(copies) > 1:
+        names = ", ".join(p.name for p in copies)
+        raise RcError(f"~/.lado-rc holds more than one copy ({names}): keep the one to go back to")
+    copy = copies[0]
+    final = parse(copy.name.removeprefix("lado.db."))
+    home = lado_home()
+    live = home / "lado.db"
+    sessions: list[tuple[str, str]] = []
+    live_schema = 0
+    if live.exists():
+        with contextlib.closing(sqlite3.connect(f"{live.as_uri()}?mode=ro", uri=True)) as db:
+            live_schema = db.execute("PRAGMA user_version").fetchone()[0]
+            rows = db.execute(
+                "SELECT name, repo FROM sessions WHERE stopped_at IS NULL ORDER BY name"
+            ).fetchall()
+        socket = os.environ.get("LADO_TMUX_SOCKET") or "lado"
+        for name, repo in rows:
+            # A session whose tmux is gone is no running one: it is not started again.
+            if run(["tmux", "-L", socket, "has-session", "-t", f"={name}"]).code == 0:
+                sessions.append((name, repo))
+    server = None
+    try:
+        info = json.loads((home / "server.json").read_text())
+    except (OSError, ValueError):
+        info = None
+    if isinstance(info, dict) and _alive(info.get("pid")) and "port" in info:
+        server = info
+    return Plan(lado, now, final, copy, live, sessions, server, live_schema, _schema(copy))
+
+
+def print_plan(p: Plan) -> None:
+    print(f"Roll back LADO {p.now} to {p.final}:")
+    if p.sessions:
+        listed = ", ".join(f"{name} ({repo})" for name, repo in p.sessions)
+        print(f"- stop your sessions and start them again on {p.final}: {listed}")
+    else:
+        print("- no session runs")
+    if p.server:
+        where = f"{p.server.get('host', '127.0.0.1')}:{p.server['port']}"
+        print(f"- stop the UI server and start it again on {where}")
+    else:
+        print("- the UI server does not run")
+    print(f"- lado update {p.final} (it shows its plan and asks too)")
+    if p.restore:
+        print(
+            f"- restore lado.db from {p.copy}: its schema {p.copy_schema} is older than "
+            f"lado.db's {p.live_schema}, so everything done on the RC since the upgrade is lost"
+        )
+    else:
+        print(f"- lado.db is kept: its schema {p.live_schema} is the copy's")
+
+
+def _stopped(p: Plan, why: str) -> int:
+    print(
+        f"rc_check: {why}: lado.db is not restored, and your sessions are stopped.", file=sys.stderr
+    )
+    lines = p.resume_lines()
+    if lines:
+        print("Start them again with:", file=sys.stderr)
+        for line in lines:
+            print(f"  {line}", file=sys.stderr)
+    return 1
+
+
 def rollback() -> int:
-    raise NotImplementedError
+    """`rollback`: back to the final of the kept copy, after the human's yes."""
+    p = plan()
+    print_plan(p)
+    if not _terminal():
+        raise RcError("rollback asks first: run it on a terminal")
+    if input("Roll back? [y/N] ").strip().lower() not in ("y", "yes"):
+        print("Not rolled back.")
+        return 1
+    for argv in ([p.lado, "stop", "--all"], [p.lado, "server", "stop"]):
+        code = run(argv, terminal=True).code
+        if code:
+            return _stopped(p, f"{' '.join(['lado', *argv[1:]])} exited {code}")
+    code = run([p.lado, "update", str(p.final)], terminal=True).code
+    if code:
+        return _stopped(p, f"lado update {p.final} did not update (exit {code})")
+    after = installed(p.lado)
+    if after != p.final:
+        return _stopped(p, f"lado --version says lado {after}, not {p.final}")
+    report = Report()
+    if p.restore:
+        _restore(p.copy, p.live)
+        restored = _schema(p.live)
+        if restored != p.copy_schema:
+            report.fail("lado.db restored", f"its schema is {restored}, not {p.copy_schema}")
+            return _stopped(p, "the restore did not take")
+        report.ok(f"lado.db restored: schema {restored}, from {p.copy}")
+    for name, repo in p.sessions:
+        started = run([p.lado, "start", repo, "--name", name, "--no-attach"])
+        if started.code:
+            report.fail(f"session {name}", f"lado start exited {started.code}", started.output)
+        else:
+            report.ok(f"session {name} started on {p.final}")
+    if p.server:
+        ui = run(_ui_args(p.lado, p.server))
+        if ui.code:
+            report.fail("UI server", f"lado ui exited {ui.code}", ui.output)
+        else:
+            report.ok(f"UI server started on {p.final}")
+    print(f"Rolled back to LADO {p.final}.")
+    return 1 if report.failed else 0
 
 
 def _version(text: str) -> Version:

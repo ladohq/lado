@@ -1,7 +1,12 @@
 """scripts/rc_check.py: the human's checks of a release candidate (docs/release.md, section
 4). Every command it runs goes through `rc.run`, which a recorder replaces here."""
 
+import contextlib
 import importlib.util
+import json
+import os
+import sqlite3
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -480,4 +485,202 @@ def test_upgrade_and_rollback_inside_an_agent_are_refused(monkeypatch, capsys, r
     assert rc.main(["upgrade", "0.38.0rc1"]) == 1
     assert rc.main(["rollback"]) == 1
     assert "not in an agent" in capsys.readouterr().err
+    assert recorder.calls == []
+
+
+def make_db(path: Path, schema: int, sessions: list[tuple[str, str, str | None]]) -> None:
+    """A lado.db as far as rollback reads it: its sessions and its schema."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.closing(sqlite3.connect(path)) as db:
+        db.execute("CREATE TABLE sessions (name TEXT PRIMARY KEY, repo TEXT, stopped_at TEXT)")
+        db.executemany("INSERT INTO sessions VALUES (?, ?, ?)", sessions)
+        db.execute(f"PRAGMA user_version = {schema}")
+        db.commit()
+
+
+def schema(path: Path) -> int:
+    with contextlib.closing(sqlite3.connect(path)) as db:
+        return db.execute("PRAGMA user_version").fetchone()[0]
+
+
+def names(path: Path) -> list[str]:
+    with contextlib.closing(sqlite3.connect(path)) as db:
+        return [row[0] for row in db.execute("SELECT name FROM sessions ORDER BY name")]
+
+
+@pytest.fixture
+def on_rc(recorder, homes, monkeypatch):
+    """The human's LADO on 0.38.0rc1 (schema 27) with session `app` running, the copy of
+    0.37.1 (schema 26) kept, a terminal, and `y` to the question."""
+    make_db(homes.lado / "lado.db", 27, [("app", "/r/app", None), ("done", "/r/done", "2026")])
+    make_db(homes.keep / "lado.db.0.37.1", 26, [("app", "/r/app", "2026"), ("old", "/r/old", None)])
+    recorder.version("0.38.0rc1", "0.37.1")
+    recorder.alive = {"app"}
+    asked = []
+    monkeypatch.setattr(rc, "_terminal", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt: asked.append(prompt) or "y")
+    return asked
+
+
+def test_rollback_restores_a_newer_schema_and_resumes(recorder, homes, on_rc, capsys):
+    assert rc.rollback() == 0
+    out = capsys.readouterr().out
+    assert on_rc == ["Roll back? [y/N] "]
+    assert "Roll back LADO 0.38.0rc1 to 0.37.1:" in out
+    assert "start them again on 0.37.1: app (/r/app)\n" in out  # not `done`: it is stopped
+    assert "restore lado.db from" in out and "schema 26" in out and "lost" in out
+    assert recorder.verbs() == [
+        "--version",
+        "tmux has-session",
+        "stop --all",
+        "server stop",
+        "update",
+        "--version",
+        "start",
+    ]
+    assert [LADO, "update", "0.37.1"] in recorder.argvs("update")
+    terminal = {verb(argv): t for argv, _, t in recorder.calls}
+    assert terminal["update"] and terminal["stop --all"]
+    assert schema(homes.lado / "lado.db") == 26
+    assert names(homes.lado / "lado.db") == ["app", "old"]  # the copy's content
+    assert recorder.argvs("start") == [[LADO, "start", "/r/app", "--name", "app", "--no-attach"]]
+    assert (homes.keep / "lado.db.0.37.1").exists()  # kept for a second rollback
+    assert "[ok  ] lado.db restored: schema 26" in out
+    assert "[ok  ] session app started on 0.37.1" in out
+
+
+def test_the_has_session_check_names_the_session_exactly(recorder, homes, on_rc, monkeypatch):
+    monkeypatch.setenv("LADO_TMUX_SOCKET", "lado-other")
+    rc.rollback()
+    checks = recorder.argvs("tmux has-session")
+    assert ["tmux", "-L", "lado-other", "has-session", "-t", "=app"] in checks
+
+
+def test_same_schema_restores_nothing(recorder, homes, on_rc, capsys):
+    (homes.keep / "lado.db.0.37.1").unlink()
+    make_db(homes.keep / "lado.db.0.37.1", 27, [("old", "/r/old", None)])
+    assert rc.rollback() == 0
+    out = capsys.readouterr().out
+    assert "lado.db is kept: its schema 27 is the copy's" in out
+    assert names(homes.lado / "lado.db") == ["app", "done"]
+    assert "restored" not in out
+
+
+def test_a_session_whose_tmux_is_gone_is_not_resumed(recorder, homes, on_rc, capsys):
+    recorder.alive = set()
+    assert rc.rollback() == 0
+    assert recorder.argvs("start") == []
+    assert "no session runs" in capsys.readouterr().out
+
+
+def test_the_server_is_started_again_on_its_port(recorder, homes, on_rc, capsys):
+    info = {"url": "http://127.0.0.1:8003", "host": "127.0.0.1", "port": 8003, "pid": os.getpid()}
+    (homes.lado / "server.json").write_text(json.dumps(info))
+    assert rc.rollback() == 0
+    assert recorder.argvs("ui") == [[LADO, "ui", "--no-open", "--port", "8003"]]
+    out = capsys.readouterr().out
+    assert "stop the UI server and start it again on 127.0.0.1:8003" in out
+    assert "[ok  ] UI server started on 0.37.1" in out
+
+
+def test_a_server_on_another_host_gets_its_host_again(recorder, homes, on_rc):
+    info = {"url": "http://127.0.0.1:8003", "host": "0.0.0.0", "port": 8003, "pid": os.getpid()}
+    (homes.lado / "server.json").write_text(json.dumps(info))
+    rc.rollback()
+    assert recorder.argvs("ui") == [
+        [LADO, "ui", "--no-open", "--port", "8003", "--host", "0.0.0.0"]
+    ]
+
+
+def test_a_dead_servers_file_is_no_server(recorder, homes, on_rc, capsys):
+    dead = subprocess.Popen([sys.executable, "-c", ""])
+    dead.wait()
+    info = {"host": "127.0.0.1", "port": 8003, "pid": dead.pid}
+    (homes.lado / "server.json").write_text(json.dumps(info))
+    rc.rollback()
+    assert recorder.argvs("ui") == []
+    assert "the UI server does not run" in capsys.readouterr().out
+
+
+def test_no_copy_is_refused_with_nothing_run(recorder, homes, on_rc, capsys):
+    (homes.keep / "lado.db.0.37.1").unlink()
+    assert rc.main(["rollback"]) == 1
+    err = capsys.readouterr().err
+    assert "~/.lado-rc holds no copy of a final's lado.db" in err
+    assert "upgrade from a final makes it" in err
+    assert "lado update <final>" in err
+    assert recorder.verbs() == ["--version"]
+    assert on_rc == []
+
+
+def test_two_copies_are_refused(recorder, homes, on_rc, capsys):
+    make_db(homes.keep / "lado.db.0.36.0", 25, [])
+    assert rc.main(["rollback"]) == 1
+    assert "holds more than one copy" in capsys.readouterr().err
+    assert on_rc == []
+
+
+def test_not_on_an_rc_is_refused(recorder, homes, on_rc, capsys):
+    recorder.version("0.37.1")
+    assert rc.main(["rollback"]) == 1
+    assert "your LADO is 0.37.1, no pre-release: nothing to roll back" in capsys.readouterr().err
+    assert recorder.verbs() == ["--version"]
+
+
+def test_answer_no_changes_nothing(recorder, homes, on_rc, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda _: "")
+    assert rc.rollback() == 1
+    assert "Not rolled back." in capsys.readouterr().out
+    assert "stop --all" not in recorder.verbs()
+    assert schema(homes.lado / "lado.db") == 27
+
+
+def test_without_a_terminal_rollback_refuses(recorder, homes, on_rc, monkeypatch, capsys):
+    monkeypatch.setattr(rc, "_terminal", lambda: False)
+    assert rc.main(["rollback"]) == 1
+    assert "rollback asks first: run it on a terminal" in capsys.readouterr().err
+    assert on_rc == [] and "stop --all" not in recorder.verbs()
+
+
+def test_update_refused_stops_before_the_restore(recorder, homes, on_rc, capsys):
+    (homes.lado / "server.json").write_text(
+        json.dumps({"host": "127.0.0.1", "port": 8003, "pid": os.getpid()})
+    )
+    recorder.answer("update", 1)
+    assert rc.rollback() == 1
+    assert schema(homes.lado / "lado.db") == 27
+    assert "start" not in recorder.verbs() and "ui" not in recorder.verbs()
+    err = capsys.readouterr().err
+    assert "lado update 0.37.1 did not update (exit 1): lado.db is not restored" in err
+    assert "lado start /r/app --name app" in err
+    assert "lado ui --port 8003" in err
+
+
+def test_an_update_to_another_version_stops_before_the_restore(recorder, homes, on_rc, capsys):
+    recorder.version("0.38.0rc1", "0.38.0rc1")
+    assert rc.rollback() == 1
+    assert schema(homes.lado / "lado.db") == 27
+    assert "start" not in recorder.verbs()
+    assert "lado --version says lado 0.38.0rc1, not 0.37.1" in capsys.readouterr().err
+
+
+def test_a_failing_resume_goes_on_with_the_others(recorder, homes, on_rc, capsys):
+    (homes.lado / "lado.db").unlink()
+    make_db(homes.lado / "lado.db", 27, [("app", "/r/gone", None), ("web", "/r/web", None)])
+    recorder.alive = {"app", "web"}
+    # The first start (app's, by name) fails, the next one works.
+    recorder.answers["start"] = [(1, "lado: /r/gone does not exist\n", None), (0, "", None)]
+    assert rc.rollback() == 1
+    out = capsys.readouterr().out
+    assert [argv[2] for argv in recorder.argvs("start")] == ["/r/gone", "/r/web"]
+    assert "[FAIL] session app: lado start exited 1" in out
+    assert "/r/gone does not exist" in out
+    assert "[ok  ] session web started on 0.37.1" in out
+
+
+def test_the_working_copys_lado_is_refused_for_rollback(monkeypatch, capsys, recorder):
+    found = str(ROOT / ".venv" / "bin" / "lado")
+    monkeypatch.setattr(rc.shutil, "which", lambda _: found)
+    assert rc.main(["rollback"]) == 1
+    assert f"lado on PATH is this repository's {found}" in capsys.readouterr().err
     assert recorder.calls == []

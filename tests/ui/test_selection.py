@@ -20,7 +20,10 @@ SELECT = """(element, [start, end]) => {
   const walk = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   while (walk.nextNode()) nodes.push(walk.currentNode);
   const first = nodes.find((node) => node.data.includes(start));
-  const last = nodes.find((node) => node.data.includes(end) && (node !== first || node.data.indexOf(end) >= node.data.indexOf(start)));
+  const last = nodes.find(
+    (node) => node.data.includes(end)
+      && (node !== first || node.data.indexOf(end) >= node.data.indexOf(start)),
+  );
   if (!first || !last) throw new Error(`no text ${start} … ${end}`);
   const range = document.createRange();
   range.setStart(first, first.data.indexOf(start));
@@ -153,7 +156,9 @@ def test_quote_from_a_text_artifact_names_its_lines(page: Page, server, repo, sh
     session = running_session(repo)
     artifacts.write(session, "supervisor", "notes.py", PYTHON)
     log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}/artifacts/{artifacts.find(session, 'notes.py')[0].id}")
+    page.goto(
+        f"{server['url']}/sessions/{session}/artifacts/{artifacts.find(session, 'notes.py')[0].id}"
+    )
     table = page.get_by_role("table", name="notes.py")
     expect(table).to_contain_text("splitlines")
     select(table, "lines =", "join(")

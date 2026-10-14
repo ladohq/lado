@@ -16,6 +16,7 @@ import {
   getLimits,
   getProviders,
   getRecentFolders,
+  getReposFolder,
   getRemoteBranches,
   resumeSession,
   startClone,
@@ -139,6 +140,9 @@ function parentOf(path: string): { parent: string; prefix: string } | null {
   return { parent: path.slice(0, slash + 1), prefix: path.slice(slash + 1) };
 }
 
+// The repositories folder as a parent: "/" stays "/", "/a/b" becomes "/a/b/".
+const withSlash = (folder: string) => (folder.endsWith("/") ? folder : `${folder}/`);
+
 const splitWithout = (text: string) => text.split(/[\s,]+/).filter(Boolean);
 
 // "agent:reviewer@kit-a" as the button that switches it off says it.
@@ -258,6 +262,7 @@ function LaunchDialog({
   const folder = valueOf(checked);
   const current = folder !== null && folder.path === settled && settled === path.trim() ? folder : null;
   const recent = valueOf(useOnce(getRecentFolders, resuming !== null)) ?? [];
+  const repos = valueOf(useOnce(getReposFolder, resuming !== null))?.path ?? null;
   const root = resuming?.repo ?? folder?.root ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
   const providerList = useOnce(getProviders);
@@ -521,6 +526,7 @@ function LaunchDialog({
             checking={!resuming && path.trim() !== "" && current === null}
             problem={checked !== null && "error" in checked ? checked.error : null}
             recent={recent}
+            repos={repos}
             disabled={busy || resuming !== null}
             head={resuming ? null : <SourceSwitch source={source} onSource={setSource} disabled={busy} />}
           />
@@ -534,7 +540,7 @@ function LaunchDialog({
                 <input
                   id={`${ids}-into`}
                   value={into ?? target?.path ?? ""}
-                  placeholder="~/lado/<repo>"
+                  placeholder={repos ? `${withSlash(repos)}<repo>` : "~/lado/<repo>"}
                   autoComplete="off"
                   spellCheck={false}
                   disabled={busy}
@@ -817,6 +823,7 @@ function WhereField({
   checking,
   problem,
   recent,
+  repos,
   disabled,
   head,
 }: {
@@ -826,13 +833,16 @@ function WhereField({
   checking: boolean;
   problem: string | null;
   recent: RecentFolder[];
+  repos: string | null; // the repositories folder (LADO_REPOS), or none
   disabled: boolean;
   head: ReactNode; // the switch to Clone from URL, beside the label
 }) {
   const ids = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const split = parentOf(path);
+  const empty = path.trim() === "";
+  // An empty field suggests the repositories folder's subfolders.
+  const split = empty && repos ? { parent: withSlash(repos), prefix: "" } : parentOf(path);
   const parent = useDebounced(split?.parent ?? null);
   const listed = valueOf(useAsked(open && parent ? parent : null, getFolder));
   const prefix = (split?.prefix ?? "").toLowerCase();
@@ -863,7 +873,7 @@ function WhereField({
           aria-controls={`${ids}-folders`}
           aria-activedescendant={active >= 0 && options[active] ? `${ids}-folder-${active}` : undefined}
           value={path}
-          placeholder="~/projects/app"
+          placeholder={repos ? `${withSlash(repos)}…` : "~/projects/app"}
           autoComplete="off"
           spellCheck={false}
           disabled={disabled}
@@ -871,6 +881,9 @@ function WhereField({
             onPath(event.target.value);
             setOpen(true);
             setActive(-1);
+          }}
+          onFocus={() => {
+            if (empty && repos) setOpen(true);
           }}
           onBlur={() => setOpen(false)}
           onKeyDown={(event) => {
@@ -907,6 +920,21 @@ function WhereField({
           </ul>
         )}
       </div>
+      {repos && !disabled && (
+        <div className="recent">
+          Repositories folder:
+          <button
+            type="button"
+            className="chip-button"
+            onClick={() => {
+              onPath(withSlash(repos));
+              setOpen(true);
+            }}
+          >
+            {repos}
+          </button>
+        </div>
+      )}
       {recent.length > 0 && !disabled && (
         <div className="recent">
           Recent:

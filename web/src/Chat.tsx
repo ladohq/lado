@@ -429,7 +429,7 @@ function EventText({ event, states }: { event: RunEventInfo; states: RunInfo["st
           from={transition.from_state}
           to={transition.to_state}
           outcome={transition.outcome}
-          className={(way) => (way ? `run-outcome ${way}` : "run-outcome")}
+          base="run-outcome"
         />
       </>
     );

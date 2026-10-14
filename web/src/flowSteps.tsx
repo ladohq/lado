@@ -47,27 +47,28 @@ export function runsAgain(states: State[], from: string, to: string): string[] |
   return null;
 }
 
-// A step's outcome as a chip: green forward, orange with the return icon back, each in the
-// UI's tooltip that says where the step goes; neutral, with no tooltip, when the direction
-// is not known. Its accessible name says the direction, as the icon is decorative and the
-// tooltip shows only on hover (the chips are no tab stops).
+// A step's outcome as a chip of class `base` and its direction: green forward, orange with
+// the return icon back, each in the UI's tooltip that says where the step goes; `base`
+// alone, with no tooltip, when the direction is not known. Its accessible name says the
+// direction, as the icon is decorative and the tooltip shows only on hover (the chips are
+// no tab stops).
 export function OutcomeChip({
   states,
   from,
   to,
   outcome,
-  className,
+  base,
 }: {
   states: State[] | null;
   from: string;
   to: string;
   outcome: string;
-  className: (way: Direction | null) => string;
+  base: string;
 }) {
   const way = states ? direction(states, from, to) : null;
-  if (way === null) return <span className={className(null)}>{outcome}</span>;
+  if (way === null) return <span className={base}>{outcome}</span>;
   const chip = (
-    <span className={className(way)} aria-label={`${outcome}, a step ${way}`}>
+    <span className={`${base} ${way}`} aria-label={`${outcome}, a step ${way}`}>
       {way === "back" && <BackIcon />}
       {outcome}
     </span>

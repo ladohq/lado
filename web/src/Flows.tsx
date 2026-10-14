@@ -509,9 +509,9 @@ function History({ session, run, lists }: { session: string; run: RunInfo; lists
 // One line of the history. A step: when, a dot (green; orange for a way back or the human's
 // answer), who, `from [outcome] → to` (the outcome green forward, orange with the return
 // icon back, and its tooltip: flowSteps.tsx, as in the chat) and its summary, which opens
-// its facts and its note's body. A note kept before LADO 0.18 has only its state; the human's flow-set has no
-// outcome; a loop limit's answer is the human's override with one. The start, end and
-// cancel are one line each (a blue dot), never opened.
+// its facts and its note's body. A note kept before LADO 0.18 has only its state; the
+// human's flow-set has no outcome; a loop limit's answer is the human's override with one.
+// The start, end and cancel are one line each (a blue dot), never opened.
 function Row({
   session,
   run,
@@ -601,7 +601,7 @@ function Row({
                     from={note.state}
                     to={note.target}
                     outcome={note.outcome}
-                    className={(way) => (way === "back" ? "feed-chip back" : "feed-chip")}
+                    base="feed-chip"
                   />
                 </>
               )}

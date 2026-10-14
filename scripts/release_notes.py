@@ -63,15 +63,22 @@ def _footer(version: str, candidate: bool) -> str:
 
 def notes(tag: str, changelog: str) -> str:
     """The notes of `tag` from the text of CHANGELOG.md."""
-    version, release, candidate = _parse(tag)
+    _, release, candidate = _parse(tag)
+    return f"{section(tag, changelog)}\n\n---\n\n{_footer(release, candidate)}"
+
+
+def section(tag: str, changelog: str) -> str:
+    """The text of `tag`'s section of CHANGELOG.md, each list item on one line (also
+    scripts/rc_check.py's checklist)."""
+    version, _, candidate = _parse(tag)
     found: str | None = None  # the section's heading
-    section: list[str] = []
+    lines: list[str] = []
     undated = False
     for line in changelog.splitlines():
         if found is not None:
             if line.startswith("## "):
                 break
-            section.append(line)
+            lines.append(line)
             continue
         heading = HEADING.fullmatch(line)
         if not heading or heading[1] != version:
@@ -87,10 +94,10 @@ def notes(tag: str, changelog: str) -> str:
         if undated:
             problem += ": its heading still says (unreleased); date it in the release commit"
         raise NotesError(problem)
-    body = "\n".join(_unwrap(section)).strip()
+    body = "\n".join(_unwrap(lines)).strip()
     if not body:
         raise NotesError(f'CHANGELOG.md\'s section "{found}" is empty')
-    return f"{body}\n\n---\n\n{_footer(release, candidate)}"
+    return body
 
 
 def _unwrap(lines: list[str]) -> list[str]:

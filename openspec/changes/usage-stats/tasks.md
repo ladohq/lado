@@ -21,7 +21,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-usage-stats-design.md`.
 
 ## 4. End to end
 
-- [ ] 4.1 `tests/integration/test_usage_stats.py`: start, spawn, stop, stats, forget,
+- [x] 4.1 `tests/integration/test_usage_stats.py`: start, spawn, stop, stats, forget,
   stats. Check: `uv run pytest -m integration -n auto tests/integration/test_usage_stats.py`.
 
 ## 5. Docs

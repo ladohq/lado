@@ -26,8 +26,8 @@ value that is not absolute or a path that is not a folder (`LADO_REPOS is not a 
 <path>`). When it is unset or empty, `lado doctor` SHALL print no such line.
 
 #### Scenario: The image's folder
-- **WHEN** `lado doctor` runs with `LADO_REPOS=/Users/kao/lado`, a folder
-- **THEN** it prints `[ok  ] Repositories folder: /Users/kao/lado (LADO_REPOS)`
+- **WHEN** `lado doctor` runs with `LADO_REPOS=/Users/me/repos`, a folder
+- **THEN** it prints `[ok  ] Repositories folder: /Users/me/repos (LADO_REPOS)`
 
 #### Scenario: Unset
 - **WHEN** `lado doctor` runs without `LADO_REPOS`
@@ -46,14 +46,14 @@ into**'s placeholder SHALL be `<folder>/<repo>`. Without a folder the window SHA
 before.
 
 #### Scenario: A first session in the container
-- **WHEN** `LADO_REPOS=/Users/kao/lado` holds `app`, `lado` and `site`, and the human opens
+- **WHEN** `LADO_REPOS=/Users/me/repos` holds `app`, `api` and `site`, and the human opens
   New session and clicks into Where
-- **THEN** the list shows `app/`, `lado/`, `site/`, and picking `app/` puts
-  `/Users/kao/lado/app` into Where, which is checked as any folder
+- **THEN** the list shows `api/`, `app/`, `site/`, and picking `app/` puts
+  `/Users/me/repos/app` into Where, which is checked as any folder
 
 #### Scenario: The button
-- **WHEN** the human clicks `/Users/kao/lado` in the Repositories folder row
-- **THEN** Where reads `/Users/kao/lado/` and lists its subfolders
+- **WHEN** the human clicks `/Users/me/repos` in the Repositories folder row
+- **THEN** Where reads `/Users/me/repos/` and lists its subfolders
 
 #### Scenario: Without the variable
 - **WHEN** the server runs without `LADO_REPOS`

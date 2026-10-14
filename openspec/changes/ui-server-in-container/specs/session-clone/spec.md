@@ -13,9 +13,9 @@ folders above it SHALL be made when missing.
 - **THEN** the folder is `~/lado/marketplace`
 
 #### Scenario: Default folder in the repositories folder
-- **WHEN** `LADO_REPOS=/Users/kao/lado` and the human clones `git@github.com:acme/app.git`
+- **WHEN** `LADO_REPOS=/Users/me/repos` and the human clones `git@github.com:acme/app.git`
   with no folder, by `lado start` or the New session window
-- **THEN** the folder is `/Users/kao/lado/app`, and the window's Clone into shows it
+- **THEN** the folder is `/Users/me/repos/app`, and the window's Clone into shows it
 
 ### Requirement: lado start clones a git URL
 

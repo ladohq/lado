@@ -65,8 +65,8 @@ start).
 - **D7. The doctor's check `Repositories folder`.** Only when `LADO_REPOS` is set and not
   empty: `OK` `<path> (LADO_REPOS)` for a folder; `INFO` `<path> (LADO_REPOS), not made
   yet: the first clone makes it` when missing; `WARN` for a value that is not absolute
-  (`LADO_REPOS is not an absolute path: <value>; LADO ignores it`, hint: an absolute path
-  or `~/...`) or a path that is not a folder (`LADO_REPOS is not a folder: <path>`).
+  (`LADO_REPOS is not an absolute path: <value>; LADO ignores it`, hint `set it to a full
+  path, e.g. ~/repos or /Users/me/repos`) or a path that is not a folder (`LADO_REPOS is not a folder: <path>`).
   Unset: no line, as nothing changes. It reads the variable itself only to word the
   warning; the folder is `repos_folder()`'s.
 - **D8. Test layers.** `Listening`, `cmd_ui`, the report line, `repos_folder`,
@@ -76,11 +76,17 @@ start).
   (`tests/integration/test_server_process.py`, `LADO_CONTAINER=1` in the server's
   environment; crosses a process). The window: vitest (`Launch.test.tsx`) and one UI e2e
   test (`tests/ui/test_launch.py`) against a server started with `LADO_REPOS` (a temp folder with two repositories).
-  The image: by hand in the LAD-52 prototype.
+  The image: by hand in the LAD-52 prototype. The plan
+  (docs/superpowers/plans/2026-10-14-ui-server-in-container.md) names each test.
+- **D9. The tests never see the developer's `LADO_REPOS`.** `tests/conftest.py` clears it
+  with `LADO_CONTAINER`, and a test that wants it sets it itself; else a developer whose
+  shell sets it would see the clone and doctor tests fail.
 
 ## Risks
 
 - A host that publishes another port number gets a link with the wrong port. The note
   names the publication rule, and T3's compose keeps the numbers equal.
+- `LADO_REPOS=/` or with a trailing `/`: the window takes the folder as a parent with
+  exactly one `/` at its end (`/`, not `//`).
 - `LADO_REPOS` pointing at a huge folder: the window lists at most `launch.SUBFOLDERS`
   (50) subfolders, as for any folder.

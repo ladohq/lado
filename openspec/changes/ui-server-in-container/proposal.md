@@ -49,7 +49,7 @@ LADO `LADO_CONTAINER`.
 `src/lado/server/run.py` (`Listening`), `src/lado/cli.py` (`lado ui`, `lado bug-report`'s
 server state, `lado start`'s help), `src/lado/doctor.py` (the report's server line, a check
 of `LADO_REPOS`), `src/lado/clone.py` (the repositories folder, the default folder),
-`src/lado/server/app.py` and `models.py` (`GET /api/repos-folder`), `web/src/Launch.tsx`
+`src/lado/server/app.py` and `models.py`, `tests/conftest.py` (clears `LADO_REPOS`) (`GET /api/repos-folder`), `web/src/Launch.tsx`
 and `web/src/api.ts`, `web/openapi.json` and `web/src/api.gen.ts`, tests at the layers
 tasks.md names, AGENTS.md (Layout: `clone.py`, `server/`; Try it locally), docs/design/ui.md
 (Server's Host; Launch and session control), CHANGELOG.md. Capabilities: `container` and

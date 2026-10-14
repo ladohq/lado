@@ -74,12 +74,10 @@ def test_set_title_of_an_unknown_session_is_false():
     assert not state.set_title("nope", "x")
 
 
-def test_a_title_survives_stop_and_resume_and_goes_with_forget():
-    ...  # add, set_title, stop_session, resume (state's resume path), check title; delete_session, add again: None
+def test_a_title_survives_stop_and_resume_and_goes_with_forget(): ...  # add, set_title, stop_session, resume (state's resume path), check title; delete_session, add again: None
 
 
-def test_setting_a_title_is_journaled_as_a_session_update():
-    ...  # the changes table gets ('sessions', 's', '', 'update')
+def test_setting_a_title_is_journaled_as_a_session_update(): ...  # the changes table gets ('sessions', 's', '', 'update')
 ```
 
 - [ ] **Step 2:** `uv run pytest tests/test_state.py -n0 -k title` — FAIL.
@@ -108,17 +106,30 @@ def test_setting_a_title_is_journaled_as_a_session_update():
 ```python
 @pytest.mark.parametrize(
     "text, stored",
-    [("Review", "Review"), ("  Ревью kit-sdlc  ", "Ревью kit-sdlc"), ("   ", None),
-     ("", None), (None, None), ("s", None), ("  s ", None), ("x" * 80, "x" * 80),
-     ("  " + "я" * 80 + " ", "я" * 80), ("🚀 launch", "🚀 launch")],
+    [
+        ("Review", "Review"),
+        ("  Ревью kit-sdlc  ", "Ревью kit-sdlc"),
+        ("   ", None),
+        ("", None),
+        (None, None),
+        ("s", None),
+        ("  s ", None),
+        ("x" * 80, "x" * 80),
+        ("  " + "я" * 80 + " ", "я" * 80),
+        ("🚀 launch", "🚀 launch"),
+    ],
 )
 def test_set_title_stores_what_the_rule_says(text, stored): ...  # session "s"
 
 
 @pytest.mark.parametrize(
     "text, reason",
-    [("x" * 81, "a title is at most 80 characters"), ("a\nb", "a title is one line"),
-     ("a\tb", "a title is one line"), ("a\x00b", "a title is one line")],
+    [
+        ("x" * 81, "a title is at most 80 characters"),
+        ("a\nb", "a title is one line"),
+        ("a\tb", "a title is one line"),
+        ("a\x00b", "a title is one line"),
+    ],
 )
 def test_set_title_refuses_and_changes_nothing(text, reason): ...  # title stays "Old"
 

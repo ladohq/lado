@@ -999,8 +999,10 @@ Built in the chat task (2026-10-03):
   session's runs the chat watches), never by which other events are loaded: a move goes
   back when it leads to a state the flow declares no later than the state it left (a stay
   in its state too), else forward. A step back's outcome has a return icon before its
-  word; the chip's accessible name says `<outcome>, a step back` / `a step forward`, as
-  the icon is decorative and the chips are no tab stops. Hovering a forward or back
+  word; a screen reader hears `<outcome>, a step back` / `a step forward`, from hidden
+  text (`.visually-hidden`) right after the chip, as the icon is decorative and the chips
+  are no tab stops (an `aria-label` on a plain span is not allowed, and Chromium drops
+  it); the chip's own text stays its outcome. Hovering a forward or back
   outcome shows the UI's tooltip (`Tooltip.tsx`; `OutcomeChip` and its text are shared
   with Flows): `Forward in the flow, to <to>`, or `Back: the work returns to <to>` and,
   muted in the mono face, `Runs again: <to> › … › <from>`, the shortest way through the
@@ -1732,7 +1734,7 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     a step whose `target` the flow declares no later than its state, or the human's
     answer; none is a way back without the flow), who (a link while it lives; the human
     is "you"), `<from> [outcome] → <to>` (a way back's outcome orange with the return
-    icon, and the outcome's tooltip and accessible name, by the chat's one rule: Flow
+    icon, and the outcome's tooltip and the direction read out, by the chat's one rule: Flow
     events in Look of the feed), "flow-set" or
     "loop limit" for an override, and the summary on one line. It opens to its facts
     (Who, From, Outcome, To, Step took: the time since the run's previous event) and the

@@ -667,9 +667,9 @@ test("the history is newest first; its switch turns it and is remembered", async
   const region = await page("fix/gate-bubble");
   expect(within(region).getByRole("heading", { name: "History · 4 events" })).toBeTruthy();
   const newest = [
-    "developer implement done → review",
-    "reviewer review changes → implement",
-    "developer implement done → review",
+    "developer implement done, a step forward → review",
+    "reviewer review changes, a step back → implement",
+    "developer implement done, a step forward → review",
     "supervisor started the run",
   ];
   expect(lines(list)).toEqual(newest);
@@ -715,10 +715,17 @@ test("a step back has the return icon and says so in its name; hovering a step s
   serve(STEPS);
   open(runPath("lado", ACTIVE.name));
   const list = await feed("fix/gate-bubble");
-  const [fixed, findings] = steps(list).map((one) => one.querySelector<HTMLElement>(".feed-chip")!);
-  expect([fixed.getAttribute("aria-label"), fixed.querySelector("svg")]).toEqual(["done, a step forward", null]);
-  expect(findings.getAttribute("aria-label")).toBe("changes, a step back");
-  expect(findings.querySelector("svg")).not.toBeNull();
+  const moves = steps(list)
+    .slice(0, 2)
+    .map((one) => one.querySelector<HTMLElement>(".feed-move")!);
+  const [fixed, findings] = moves.map((one) => one.querySelector<HTMLElement>(".feed-chip")!);
+  // The direction is read out with the move's text; the chip's own text is the outcome.
+  expect(moves.map((one) => one.textContent)).toEqual([
+    "implement done, a step forward → review",
+    "review changes, a step back → implement",
+  ]);
+  expect([fixed.textContent, fixed.querySelector("svg")]).toEqual(["done", null]);
+  expect([findings.textContent, findings.querySelector("svg") !== null]).toEqual(["changes", true]);
   const lines = async () =>
     [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
   fireEvent.mouseEnter(findings);
@@ -806,7 +813,7 @@ test("a flow-set, a loop limit's answer and a note from before steps were kept s
   open(runPath("lado", ACTIVE.name));
   const list = await feed("fix/gate-bubble");
   expect(lines(list)).toEqual([
-    "you review continue → review loop limit",
+    "you review continue, a step back → review loop limit",
     "you review → implement flow-set",
     "implement",
   ]);

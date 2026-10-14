@@ -9,7 +9,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_artifacts_tab import MANY, MEASURE_TABLES
-from test_flows_tab import BACK, FORWARD, STAY, reviewed_session, tone, tooltip_lines
+from test_flows_tab import BACK, FORWARD, STAY, read_out, reviewed_session, tone, tooltip_lines
 from test_gates import gated_session
 from test_images import png
 from test_main_screen import log_in, running_session
@@ -536,8 +536,7 @@ def test_a_flow_step_is_green_forward_and_orange_with_the_icon_back_and_says_whe
     expect(chips).to_have_text(["ready", "changes", "ready", "again"])
     expect(chips.nth(0)).to_have_class("run-outcome forward")
     expect(chips.locator("svg")).to_have_count(2)
-    names = [chips.nth(n).get_attribute("aria-label") for n in range(4)]
-    assert names == [
+    assert read_out(group) == [
         "ready, a step forward",
         "changes, a step back",
         "ready, a step forward",

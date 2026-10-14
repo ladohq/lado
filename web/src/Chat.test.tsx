@@ -823,19 +823,24 @@ test("ready, changes and ready again: both ready forward and green, changes back
   open();
   const log = await chat();
   await waitFor(() => expect(log.querySelectorAll(".run-outcome.forward")).toHaveLength(2));
-  const [ready, changes, again, stays] = within(log).getAllByRole("listitem").map(outcome);
+  const lines = within(log).getAllByRole("listitem");
+  const [ready, changes, again, stays] = lines.map(outcome);
   expect([ready, changes, again, stays].map((one) => one.className)).toEqual([
     "run-outcome forward",
     "run-outcome back",
     "run-outcome forward",
     "run-outcome back",
   ]);
-  expect([ready, changes, again, stays].map((one) => one.getAttribute("aria-label"))).toEqual([
-    "ready, a step forward",
-    "changes, a step back",
-    "ready, a step forward",
-    "again, a step back",
-  ]);
+  // The direction is read out with the line's text (a name on a plain span is dropped), and
+  // shown by the colour and the icon only.
+  expect(lines.map((line) => line.textContent)).toEqual(
+    ["ready, a step forward", "changes, a step back", "ready, a step forward", "again, a step back"].map((said) =>
+      expect.stringContaining(said),
+    ),
+  );
+  expect(lines.map((line) => line.querySelector(".visually-hidden")?.textContent)).toEqual(
+    Array(4).fill(expect.stringMatching(/^, a step /)),
+  );
   expect([ready, changes, again, stays].map((one) => one.querySelector("svg") !== null)).toEqual([false, true, false, true]);
   expect(changes.textContent).toBe("changes");
 });
@@ -876,8 +881,13 @@ test("a step of a run whose flow cannot be read, or that is not loaded, is neutr
   open();
   const log = await chat();
   await waitFor(() => expect(log.querySelectorAll(".run-outcome")).toHaveLength(2));
-  for (const one of within(log).getAllByRole("listitem").map(outcome)) {
-    expect([one.className, one.getAttribute("aria-label"), one.querySelector("svg")]).toEqual(["run-outcome", null, null]);
+  for (const line of within(log).getAllByRole("listitem")) {
+    const one = outcome(line);
+    expect([one.className, one.querySelector("svg"), line.textContent]).toEqual([
+      "run-outcome",
+      null,
+      expect.not.stringContaining("a step"),
+    ]);
     fireEvent.mouseEnter(one);
   }
   await new Promise((done) => setTimeout(done, 400)); // past the tooltip's delay

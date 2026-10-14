@@ -128,6 +128,14 @@ def tooltip_lines(page: Page, chip) -> list[str]:
     return lines
 
 
+def read_out(region) -> list[str]:
+    """Each step's outcome and direction as the browser's accessibility tree reads them out
+    in the region (its aria snapshot, which puts a space between the chip's text and the
+    hidden text after it), in order."""
+    said = re.findall(r"(\w+) ?, a step (back|forward)", region.aria_snapshot())
+    return [f"{outcome}, a step {way}" for outcome, way in said]
+
+
 FORWARD = ["Forward in the flow, to review"]
 BACK = ["Back: the work returns to build", "Runs again: build › review"]
 STAY = ["Back: the work returns to review", "Runs again: review"]
@@ -145,8 +153,7 @@ def test_a_step_back_has_the_return_icon_and_each_step_says_where_it_goes(
     chips = events.locator(".feed-chip")  # the newest first
     expect(chips).to_have_text(["again", "ready", "changes", "ready"])
     expect(chips.locator("svg")).to_have_count(2)
-    names = [chips.nth(n).get_attribute("aria-label") for n in range(4)]
-    assert names == [
+    assert read_out(events) == [
         "again, a step back",
         "ready, a step forward",
         "changes, a step back",
@@ -272,8 +279,8 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     rows = events.locator(":scope > li")  # a note's Markdown has list items of its own
     expect(tops).to_have_text(
         [
-            "supervisor build done → check",
-            "supervisor plan ready → build",
+            "supervisor build done, a step forward → check",
+            "supervisor plan ready, a step forward → build",
             "supervisor started the run",
         ]
     )
@@ -298,7 +305,7 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     expect(run.locator(".run-head .pill")).to_have_text("Ended")
     # The end comes first, the human's answer after it, open with its note.
     expect(tops.first).to_have_text("ended the run")
-    expect(tops.nth(1)).to_have_text("you check approved → end")
+    expect(tops.nth(1)).to_have_text("you check approved, a step forward → end")
     answer = rows.nth(1)
     expect(answer.get_by_role("button", name=re.compile("^approved: ship it"))).to_have_attribute(
         "aria-expanded", "true"

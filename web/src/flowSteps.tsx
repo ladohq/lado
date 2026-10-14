@@ -49,9 +49,10 @@ export function runsAgain(states: State[], from: string, to: string): string[] |
 
 // A step's outcome as a chip of class `base` and its direction: green forward, orange with
 // the return icon back, each in the UI's tooltip that says where the step goes; `base`
-// alone, with no tooltip, when the direction is not known. Its accessible name says the
-// direction, as the icon is decorative and the tooltip shows only on hover (the chips are
-// no tab stops).
+// alone, with no tooltip, when the direction is not known. Hidden text after the chip says
+// the direction to a screen reader, as the icon is decorative and the tooltip shows only on
+// hover (the chips are no tab stops); not an aria-label, which a plain span may not have
+// and browsers drop. After the chip, not in it, so the chip's text stays its outcome.
 export function OutcomeChip({
   states,
   from,
@@ -68,13 +69,18 @@ export function OutcomeChip({
   const way = states ? direction(states, from, to) : null;
   if (way === null) return <span className={base}>{outcome}</span>;
   const chip = (
-    <span className={`${base} ${way}`} aria-label={`${outcome}, a step ${way}`}>
+    <span className={`${base} ${way}`}>
       {way === "back" && <BackIcon />}
       {outcome}
     </span>
   );
   const again = way === "back" ? runsAgain(states!, from, to) : null;
-  return <Tooltip tip={<StepTip way={way} to={to} again={again} />}>{chip}</Tooltip>;
+  return (
+    <>
+      <Tooltip tip={<StepTip way={way} to={to} again={again} />}>{chip}</Tooltip>
+      <span className="visually-hidden">, a step {way}</span>
+    </>
+  );
 }
 
 function StepTip({ way, to, again }: { way: Direction; to: string; again: string[] | null }) {

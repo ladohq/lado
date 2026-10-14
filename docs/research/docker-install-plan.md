@@ -91,14 +91,15 @@ is done.
 
 ### Stage 0. LADO knows it is in a container (LADO's code, no image)
 
-**T1. The "LADO in a container" sign, and no `lado update` there** (S; LAD-59)
+**T1. The "LADO in a container" sign, and no `lado update` there** (S; LAD-59, done:
+pull request #40)
 The variable `LADO_CONTAINER` (the image sets it). `lado update` and the UI's update
 button refuse and name the way: `docker compose pull && docker compose up -d`.
 `lado doctor` and the System panel show "in a container". The same task puts this plan
 into the repository beside the research.
 Check: unit tests; in the prototype `lado update` no longer kills the container.
 
-**T2. The UI server's links and warning in a container** (S)
+**T2. The UI server's links and warning in a container** (S; LAD-63)
 With `LADO_CONTAINER` there is no false "open to other machines", no dead link
 `http://lado:8765`, and the link for the host is printed. The folder picker starts in the
 projects folder (a variable).
@@ -110,8 +111,12 @@ Check: unit tests; the output of `lado ui --no-open` in the prototype.
 The prototype in a lasting place (`docker/`), with Claude Code only; built in CI on amd64
 and arm64 (GitHub has arm runners); smoke: the container starts, `lado doctor` is green,
 `/api/health` answers, a session with a fake endpoint (as in the existing smoke tests)
-gets to idle. Nothing published.
-Check: a green CI job on both architectures.
+gets to idle. Nothing published. The image sets `LADO_CONTAINER` for the agents too (in
+`/etc/profile.d`): their environment comes from the login shell (`agent_env.resolve`),
+not from the image's `ENV`, so without it an agent's `lado doctor` does not say "in a
+container" (LAD-59's review report, "Not checked").
+Check: a green CI job on both architectures; `lado doctor` run by an agent says "in a
+container".
 
 **T4. Projects at the host's path** (S)
 Compose mounts the projects folder at the same path as on the host; `safe.directory` for

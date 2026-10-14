@@ -2477,3 +2477,66 @@ def test_uninstall_of_a_newer_database_is_an_error(lado_home, capsys):
     assert main(["uninstall", "--yes"]) == 1
     err = capsys.readouterr().err
     assert err.startswith("lado: ") and "made by a newer LADO" in err
+
+
+def test_title_sets_reads_and_clears(capsys):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    assert main(["title", "s"]) == 0
+    assert capsys.readouterr().out == "s has no title\n"
+    assert main(["title", "s", "  Review  "]) == 0
+    assert capsys.readouterr().out == 's: title "Review"\n'
+    assert main(["title", "s"]) == 0
+    assert capsys.readouterr().out == "Review\n"
+    assert main(["title", "s", "--clear"]) == 0
+    assert capsys.readouterr().out == "s has no title\n"
+    assert state.get_session("s").title is None
+    assert main(["title", "s", "s"]) == 0  # its own name is no title
+    assert capsys.readouterr().out == "s has no title\n"
+
+
+def test_title_with_text_and_clear_exits_2(capsys):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    with pytest.raises(SystemExit) as exit_:
+        main(["title", "s", "Review", "--clear"])
+    assert exit_.value.code == 2
+    assert "argument --clear: not allowed with argument text" in capsys.readouterr().err
+
+
+def test_title_refuses_a_bad_title_and_changes_nothing(capsys):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    main(["title", "s", "Old"])
+    capsys.readouterr()
+    assert main(["title", "s", "a\nb"]) == 1
+    assert "a title is one line" in capsys.readouterr().err
+    assert main(["title", "s", "x" * 81]) == 1
+    assert "a title is at most 80 characters" in capsys.readouterr().err
+    assert state.get_session("s").title == "Old"
+
+
+def test_title_is_refused_inside_an_agent_but_read(capsys, monkeypatch):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    state.set_title("s", "Review")
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    for argv in (["title", "s", "x"], ["title", "s", "--clear"]):
+        assert main(argv) == 1
+        assert 'lado title is for the human; agent "w1" cannot use it' in capsys.readouterr().err
+    assert state.get_session("s").title == "Review"
+    assert main(["title", "s"]) == 0
+    assert capsys.readouterr().out == "Review\n"
+
+
+def test_title_of_an_unknown_session(capsys):
+    for argv in (["title", "nope"], ["title", "nope", "x"]):
+        assert main(argv) == 1
+        assert 'unknown session "nope"' in capsys.readouterr().err
+
+
+def test_ls_shows_the_title_after_the_name(repo, fake_tmux, capsys):
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
+    main(["start", str(repo), "--provider", "claude", "--name", "t", "--no-attach"])
+    runtime.set_title("s", "Rename sessions (LAD-66)")
+    capsys.readouterr()
+    main(["ls"])
+    lines = capsys.readouterr().out.splitlines()
+    heads = [line.partition("  (")[0] for line in lines if not line.startswith(" ")]
+    assert heads == [f's "Rename sessions (LAD-66)"  {repo}', f"t  {repo}"]

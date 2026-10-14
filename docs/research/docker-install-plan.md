@@ -99,28 +99,42 @@ button refuse and name the way: `docker compose pull && docker compose up -d`.
 into the repository beside the research.
 Check: unit tests; in the prototype `lado update` no longer kills the container.
 
-**T2. The UI server's links and warning in a container** (S; LAD-63)
+**T2. The UI server's links and warning in a container** (S; LAD-63, done: pull request
+#45)
 With `LADO_CONTAINER` there is no false "open to other machines", no dead link
 `http://lado:8765`, and the link for the host is printed. The folder picker starts in the
 projects folder (a variable).
 Check: unit tests; the output of `lado ui --no-open` in the prototype.
+Result: the variable is `LADO_REPOS` (the folder of the human's repositories, also without
+Docker): Where's suggestions in the New session window, the default clone folder, a
+`lado doctor` line. The link printed is `http://127.0.0.1:<port>/...`, the container's own
+port: it works when the server listens on `0.0.0.0` and the host publishes the same port
+number (T3). Not checked in Docker by hand: no image yet.
 
 ### Stage 1. The image in the repository and in CI (walking skeleton)
 
-**T3. Dockerfile in the repository, the image's build and smoke test in CI** (M)
+**T3. Dockerfile in the repository, the image's build and smoke test in CI** (M; LAD-64)
 The prototype in a lasting place (`docker/`), with Claude Code only; built in CI on amd64
 and arm64 (GitHub has arm runners); smoke: the container starts, `lado doctor` is green,
 `/api/health` answers, a session with a fake endpoint (as in the existing smoke tests)
 gets to idle. Nothing published. The image sets `LADO_CONTAINER` for the agents too (in
 `/etc/profile.d`): their environment comes from the login shell (`agent_env.resolve`),
 not from the image's `ENV`, so without it an agent's `lado doctor` does not say "in a
-container" (LAD-59's review report, "Not checked").
+container" (LAD-59's review report, "Not checked"). The server runs on `0.0.0.0`. The
+port is one compose variable, `LADO_PORT` (8765 by default): the server's `--port` inside
+and the publication `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, so the numbers always agree
+and LADO's link is right; several containers on one host take different numbers. The
+image's CI job is one of `ci-ok`'s `needs` (the one check main's ruleset requires since
+LAD-60), and `docker/` is not on the smoke's skip list. The session smoke may be
+`scripts/smoke_ci.py run claude` inside the container.
 Check: a green CI job on both architectures; `lado doctor` run by an agent says "in a
-container".
+container"; by hand on a Mac, the link from `docker logs` opens in the host's browser, and
+a second container with `LADO_PORT=8766` and its own volume runs beside the first.
 
 **T4. Projects at the host's path** (S)
-Compose mounts the projects folder at the same path as on the host; `safe.directory` for
-it; the UI's start folder is that folder.
+Compose mounts the projects folder at the same path as on the host and sets
+`LADO_REPOS` to it (the UI's start folder and the default clone folder, from T2);
+`safe.directory` for it.
 Check: a worker in the container commits; on the host `git -C <the worker's worktree>
 status` works and `git worktree list` says no `prunable`.
 
@@ -196,6 +210,9 @@ Check: on a Mac a double click opens the UI.
 - **LADO as a Dev Container Feature** (M).
 - **A one-command install script without Docker** (M).
 - **A container per session**: an item of ROADMAP, with its own research.
+- **A container manager**: several LADO containers on one host (the human's plan). Each
+  has its own `LADO_PORT` and volume from T3. If the manager puts one address in front of
+  them (a proxy), LADO's link needs that outer address: decided with the manager.
 
 ### Dependencies
 

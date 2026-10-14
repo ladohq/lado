@@ -1,6 +1,6 @@
 ## 1. The guard
 
-- [ ] 1.1 `tests/conftest.py`: an autouse fixture (after `lado_home`), e.g.
+- [x] 1.1 `tests/conftest.py`: an autouse fixture (after `lado_home`), e.g.
   `_no_statistics(request, lado_home)`: before the test, `telemetry.state().off_by ==
   "LADO_TELEMETRY=0"`, else fail with one line naming `LADO_TELEMETRY=0` and the conftest;
   after it, unless `"telemetry_on" in request.fixturenames`, fail when

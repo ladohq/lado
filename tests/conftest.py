@@ -30,7 +30,8 @@ os.environ["LADO_AGENT_ENV"] = "inherit"
 os.environ["LADO_NO_UPDATE_CHECK"] = "1"
 
 # No test sends usage statistics or errors (lado.telemetry); the tests of sending switch it
-# on with telemetry_on, and send only to a local endpoint (telemetry_endpoint).
+# on with telemetry_on, and send only to a local endpoint (telemetry_endpoint). _no_statistics
+# checks both for every test.
 os.environ["LADO_TELEMETRY"] = "0"
 os.environ.pop("DO_NOT_TRACK", None)
 os.environ.pop("LADO_TELEMETRY_URL", None)
@@ -66,6 +67,34 @@ def lado_home(tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_HOME", str(home))
     monkeypatch.setenv("LADO_TMUX_SOCKET", TEST_SOCKET)
     return home
+
+
+@pytest.fixture(autouse=True)
+def _no_statistics(request, lado_home):
+    """Every test runs with sending off by LADO_TELEMETRY=0 (set above), and leaves nothing
+    sent or queued in its LADO_HOME unless it took telemetry_on, which sends to a local port."""
+    from lado import telemetry
+
+    # off_by, not state(): state() makes LADO_HOME, which some tests check is not there.
+    off_by = telemetry.off_by(os.environ)
+    if off_by != "LADO_TELEMETRY=0":
+        pytest.fail(
+            f"statistics are not off by LADO_TELEMETRY=0 (off by: {off_by}): "
+            "tests/conftest.py must set it for the whole test run",
+            pytrace=False,
+        )
+    yield
+    if "telemetry_on" in request.fixturenames:
+        return
+    folder = lado_home / "telemetry"
+    outbox = folder / "outbox"
+    left = [folder / "sent.json"] if (folder / "sent.json").exists() else []
+    left += sorted(outbox.iterdir()) if outbox.is_dir() else []
+    if left:
+        pytest.fail(
+            f"the test sent or queued statistics without telemetry_on: {left[0]}",
+            pytrace=False,
+        )
 
 
 @pytest.fixture

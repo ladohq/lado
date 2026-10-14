@@ -453,8 +453,7 @@ def report(system: System, server: ServerState | None) -> str:
         f"- OS: {system.os} ({system.machine})",
         f"- Update: {_update_line(system.check)}",
         *([f"- Statistics: {statistics_line(system.statistics)}"] if system.statistics else []),
-        f"- Server: {_server_line(server)}, "
-        f"schema {system.schema if system.schema else 'none'}",
+        f"- Server: {_server_line(server)}, schema {system.schema if system.schema else 'none'}",
         f"- Home: {'LADO_HOME set' if system.home_set else 'default home'}",
         f"- tmux: {system.tmux}, socket {system.tmux_socket}",
         f"- git: {system.git}",

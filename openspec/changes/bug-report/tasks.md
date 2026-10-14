@@ -15,7 +15,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 3. Report and link (D1, D3, D4)
 
-- [ ] 3.1 `bug_report.py`: `errors`, `kinds`, `build`, the 8000-character bound, the
+- [x] 3.1 `bug_report.py`: `errors`, `kinds`, `build`, the 8000-character bound, the
   privacy test. Check: `uv run pytest tests/test_bug_report.py tests/test_lazy_imports.py
   -n auto`.
 

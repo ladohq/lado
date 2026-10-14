@@ -572,15 +572,21 @@ settings. Cost: M/L, code in LADO's server and UI. It helps the native install a
   ownership".
   Files may even be ones the user cannot change or delete without `sudo`.
 - **Ways out**:
-  1. **The image takes the uid of the projects' owner** (recommended). At start, as root,
-     its entrypoint reads the owner of `/projects` and gives the user `lado` that uid and
-     gid, then drops to it (tools such as fixuid or gosu). Files the agents write are then
-     the host user's. VS Code Dev Containers do the same on Linux by default:
-     `updateRemoteUserUID` "the user's UID/GID will be updated to match the local user's
-     UID/GID to avoid permission problems with bind mounts", default `true`
-     (<https://containers.dev/implementors/json_reference/>). Cost: S inside the image
+  1. **On Docker Engine on Linux only, the image takes the uid of the projects' owner**
+     (recommended there). At start, as root, its entrypoint reads the owner of
+     `/projects` and gives the user `lado` that uid and gid, then drops to it (tools such
+     as fixuid or gosu). Files the agents write are then the host user's. VS Code Dev
+     Containers do the same, also only on Linux: `updateRemoteUserUID` "On Linux, if
+     `containerUser` or `remoteUser` is specified, the user's UID/GID will be updated to
+     match the local user's UID/GID to avoid permission problems with bind mounts",
+     default `true` (<https://containers.dev/implementors/json_reference/>). On Docker
+     Desktop the entrypoint must leave uid 1000 alone. There the bind mount's folder shows
+     as `0:0` to any container user: `docker run --rm -u <uid> -v <folder>:/projects
+     debian:bookworm-slim stat -c '%u:%g' /projects` printed `0:0` for uid 0, 1000 and 1234
+     on this Mac. So the entrypoint would make `lado` root. It skips an owner of 0, and
+     Docker Desktop maps the files to the host user anyway (H6). Cost: S inside the image
      task; the home volume's files must follow the new uid (a `chown` of the volume when
-     the uid changes). Not checked here: it needs a Linux host.
+     the uid changes). Not checked on a Linux host.
   2. **Rootless Podman with `--userns=keep-id`**, which maps "the current user's UID:GID
      ... to the same values in the container"
      (<https://docs.podman.io/en/latest/markdown/podman-run.1.html>), or rootless Docker
@@ -597,8 +603,9 @@ settings. Cost: M/L, code in LADO's server and UI. It helps the native install a
      container. The UI then must show the work and hand it out (files, a diff, a
      download). Cost: M/L of UI work.
 
-  Recommendation: by default a bind mount with the uid taken from the projects' owner, so
-  the user sees the files as before; projects in a volume as an option. If isolation
+  Recommendation: by default a bind mount, so the user sees the files as before, with the
+  uid taken from the projects' owner on a Linux host's Docker Engine and uid 1000 kept on
+  Docker Desktop; projects in a volume as an option. If isolation
   becomes the main goal, the volume is the stricter default to weigh, together with a
   container per session (5.14).
 
@@ -843,9 +850,10 @@ it usable without a terminal, then the fallback and the next steps.
 4. **«Образ Docker для LADO»** — the image from this prototype, with:
    - a thin base and mise with its shims on the login shell's `PATH`, and the agents told
      to install a missing tool with it (5.2, H9);
-   - the projects mounted at the host's path (5.3); an entrypoint that gives `lado` the
-     uid of the projects' owner (5.4); `safe.directory` for `/projects` in the image's git
-     config (H6);
+   - the projects mounted at the host's path (5.3); on a Linux host's Docker Engine only,
+     an entrypoint that gives `lado` the uid of the projects' owner, never an owner of 0,
+     which is what Docker Desktop shows (5.4); `safe.directory` for `/projects` in the
+     image's git config (H6);
    - tini, and a stop that runs `lado stop --all` (5.8);
    - a documented way to pass `CLAUDE_CODE_OAUTH_TOKEN`: `LADO_AGENT_ENV=inherit` or the
      login shell's profile (5.1);

@@ -2,6 +2,8 @@
 
 ## 0.39.0 (unreleased)
 
+- After an update from the UI, the System panel no longer says an update is running and
+  keeps its Update… button: the page's wait ends once the update has released its lock.
 - In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and
   the UI's update refuse at once, stopping nothing, and name the way to update there:
   `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System

@@ -1,6 +1,6 @@
 ## 1. Reproduce
 
-- [ ] 1.1 Inject a delay (e.g. `time.sleep(3)`) in `self_update.run` after `done.run()`
+- [x] 1.1 Inject a delay (e.g. `time.sleep(3)`) in `self_update.run` after `done.run()`
   returns and before the lock is released; run
   `uv run pytest -m integration -n0 -k rolls_back tests/integration/test_update_process.py`
   and see it fail on `info["running"]`. Not committed; quote the failure in the build
@@ -8,15 +8,15 @@
 
 ## 2. The fix
 
-- [ ] 2.1 `web/src/SystemPanel.tsx`: `finished()` returns false while `update.running`
+- [x] 2.1 `web/src/SystemPanel.tsx`: `finished()` returns false while `update.running`
   is true; its comment says so. vitest in `web/src/SystemPanel.test.tsx`: the three
   scenarios of spec `ui-update-wait` (result written, lock held → false; lock released
   → true; not started with `running` false → true, with `running` true → false)
   (AC-1). `make web` passes.
-- [ ] 2.2 `tests/integration/test_update_process.py`: `update_from_the_ui`'s `back()`
+- [x] 2.2 `tests/integration/test_update_process.py`: `update_from_the_ui`'s `back()`
   also waits for `info[1]["running"]` false; its docstring says so. With the delay of 1.1
   still in place the test passes; then remove the delay (AC-2, AC-3).
-- [ ] 2.3 `docs/design/ui.md`, The wait (U2): the end condition names `running` false.
+- [x] 2.3 `docs/design/ui.md`, The wait (U2): the end condition names `running` false.
   CHANGELOG.md, under `0.39.0 (unreleased)`: after an update from the UI, the System
   panel no longer says an update is running and keeps its Update… button.
 

@@ -1401,10 +1401,12 @@ M2, P1–P3 of round 3, F3 and U1–U3).
 - **The wait** (U2), under the top bar: "Updating to X · The server is restarting · m:ss".
   The page polls `/api/health` and `/api/update` every 2 s and ends on both: a server whose
   `started_at` is newer than the one before, and `UpdateInfo.last` with the id the 202
-  answered and an outcome other than `running`. So it ends after a rollback too, where the
-  version is the same; when the version changed, the version banner offers the reload. An
-  update that ended before it started (a failed result of that id with no log) ends the
-  wait on the same server. After 5 minutes it says "The server did not come back. See <update.log>; start it with
+  answered and an outcome other than `running`, and in either case `running` false: the
+  result is written while the update still holds its lock, and the `UpdateInfo` that ends
+  the wait is the one the System panel keeps (LAD-57: before, it could say an update runs,
+  without Update…). So it ends after a rollback too, where the version is the same; when
+  the version changed, the version banner offers the reload. An update that ended before
+  it started (a failed result of that id with no log) ends the wait on the same server. After 5 minutes it says "The server did not come back. See <update.log>; start it with
   `lado ui`" and goes on polling. The page cannot learn the steps while the server is gone.
 - **The result** (U3), under the top bar, from `UpdateInfo.last`, also after a reload:
   ok; partial with the sessions that did not resume and their `lado start`; failed, rolled

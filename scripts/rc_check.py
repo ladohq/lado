@@ -211,10 +211,15 @@ def _ran(
 ) -> Result:
     """`argv`'s result; a [FAIL] line for `what` and Failed when it exits non-zero."""
     result = run(argv, env=env, cwd=cwd)
-    if result.code:
-        report.fail(what, f"{name} exited {result.code}", result.output)
-        raise Failed
+    _require(report, what, not result.code, f"{name} exited {result.code}", result.output)
     return result
+
+
+def _require(report: Report, what: str, holds: bool, reason: str, output: str = "") -> None:
+    """Nothing when `holds`; else a [FAIL] line for `what` and Failed."""
+    if not holds:
+        report.fail(what, reason, output)
+        raise Failed
 
 
 @dataclass(frozen=True)
@@ -304,38 +309,31 @@ def _sandbox_checks(
     report.ok(f"install: lado {version} with uv tool install")
 
     said = _ran(report, "version", "lado --version", [lado, "--version"], env).output.strip()
-    if said != f"lado {version}":
-        report.fail("version", f"lado --version says {said}")
-        raise Failed
+    _require(report, "version", said == f"lado {version}", f"lado --version says {said}")
     report.ok(f"version: {said}")
 
-    status = _ran(
-        report, "statistics off", "lado telemetry status", [lado, "telemetry", "status"], env
-    )
-    if "LADO_TELEMETRY=0 is set" not in status.output:
-        report.fail(
-            "statistics off",
-            "lado telemetry status does not say LADO_TELEMETRY=0 is set",
-            status.output,
-        )
-        raise Failed
+    what = "statistics off"
+    status = _ran(report, what, "lado telemetry status", [lado, "telemetry", "status"], env)
+    off = "LADO_TELEMETRY=0 is set"
+    holds = off in status.output
+    _require(report, what, holds, f"lado telemetry status does not say {off}", status.output)
     report.ok("statistics off: LADO_TELEMETRY=0")
 
     doctor = _ran(report, "doctor", "lado doctor", [lado, "doctor"], env)
     shown = f"{version} (pre-release)"
-    if shown not in doctor.output:
-        report.fail("doctor", f"it does not say {shown}", doctor.output)
-        raise Failed
+    _require(report, "doctor", shown in doctor.output, f"it does not say {shown}", doctor.output)
     report.ok(f"doctor: no FAIL, {shown}")
 
     box.repo.mkdir()
     _ran(report, "scratch repository", "git init", ["git", "init", "-q", str(box.repo)], env)
     (box.repo / "README.md").write_text("A scratch repository of scripts/rc_check.py.\n")
     _ran(report, "scratch repository", "git add", ["git", "add", "README.md"], env, box.repo)
+    email = f"{IDENTITY}@localhost"
     identity = {
-        f"GIT_{who}_{what}": value
-        for who in ("AUTHOR", "COMMITTER")
-        for what, value in (("NAME", IDENTITY), ("EMAIL", f"{IDENTITY}@localhost"))
+        "GIT_AUTHOR_NAME": IDENTITY,
+        "GIT_AUTHOR_EMAIL": email,
+        "GIT_COMMITTER_NAME": IDENTITY,
+        "GIT_COMMITTER_EMAIL": email,
     }
     commit = ["git", "commit", "-q", "--no-verify", "--no-gpg-sign", "-m", "A scratch repository"]
     _ran(report, "scratch repository", "git commit", commit, {**env, **identity}, box.repo)
@@ -345,16 +343,14 @@ def _sandbox_checks(
     start = [lado, "start", str(box.repo), "--name", SESSION, "--provider", provider, "--no-attach"]
     _ran(report, "session starts", "lado start", start, env)
     listed = _ran(report, "session starts", "lado ls", [lado, "ls"], env).output
-    if not any(line.split()[:1] == [SESSION] and "(" not in line for line in listed.splitlines()):
-        report.fail("session starts", f"lado ls does not show {SESSION} running", listed)
-        raise Failed
+    # Its line, `<name>  <repo>`, has no `(stopped)` or `(tmux session is gone)` after it.
+    holds = any(line.split()[:1] == [SESSION] and "(" not in line for line in listed.splitlines())
+    _require(report, "session starts", holds, f"lado ls does not show {SESSION} running", listed)
     report.ok(f"session starts: {SESSION} with {provider}, shown by lado ls")
 
     if ui:
-        shown_ui = run([lado, "ui", "--no-open", "--port", "0"], env=env, terminal=True)
-        if shown_ui.code:
-            report.fail("UI", f"lado ui exited {shown_ui.code}")
-            raise Failed
+        code = run([lado, "ui", "--no-open", "--port", "0"], env=env, terminal=True).code
+        _require(report, "UI", not code, f"lado ui exited {code}")
         try:
             input("Look at the sandbox's UI (the link above), then press Enter: ")
         except EOFError:
@@ -365,13 +361,10 @@ def _sandbox_checks(
     report.ok(f"session stops: lado stop {SESSION}")
 
     removed = _ran(report, "uninstall", "lado uninstall", [lado, "uninstall", "--yes"], env)
-    if box.home.exists():
-        report.fail("uninstall", f"{box.home} is still there", removed.output)
-        raise Failed
+    gone = not box.home.exists()
+    _require(report, "uninstall", gone, f"{box.home} is still there", removed.output)
     server = run(["tmux", "-L", box.socket, "list-sessions"], env=env)
-    if server.code == 0:
-        report.fail("uninstall", "its tmux server still runs", server.output)
-        raise Failed
+    _require(report, "uninstall", server.code != 0, "its tmux server still runs", server.output)
     report.ok("uninstall: its LADO home and tmux server are gone")
 
 
@@ -496,8 +489,12 @@ def _terminal() -> bool:
     return sys.stdin.isatty()
 
 
+def _read_only(path: Path) -> contextlib.closing:
+    return contextlib.closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True))
+
+
 def _schema(path: Path) -> int:
-    with contextlib.closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)) as db:
+    with _read_only(path) as db:
         return db.execute("PRAGMA user_version").fetchone()[0]
 
 
@@ -574,8 +571,8 @@ def plan() -> Plan:
     sessions: list[tuple[str, str]] = []
     live_schema = 0
     if live.exists():
-        with contextlib.closing(sqlite3.connect(f"{live.as_uri()}?mode=ro", uri=True)) as db:
-            live_schema = db.execute("PRAGMA user_version").fetchone()[0]
+        live_schema = _schema(live)
+        with _read_only(live) as db:
             rows = db.execute(
                 "SELECT name, repo FROM sessions WHERE stopped_at IS NULL ORDER BY name"
             ).fetchall()

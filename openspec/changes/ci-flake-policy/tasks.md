@@ -1,6 +1,6 @@
 ## 1. Flake policy (R5)
 
-- [ ] 1.1 In `.lado/sdlc.md`, **Review traps**, add after the entry "A timeout failure
+- [x] 1.1 In `.lado/sdlc.md`, **Review traps**, add after the entry "A timeout failure
   under machine load" this entry (AC-1-AC-4):
 
   ```markdown

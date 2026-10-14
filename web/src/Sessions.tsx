@@ -264,9 +264,8 @@ function StripIcon({ session }: { session: SessionInfo }) {
 }
 
 // Who a session is, the card of its row and of its icon: its title and name (or its name),
-// status and agents, how
-// long it ran (the icons have no row line), what waits for the human, its folder, its kits,
-// provider and permission mode; a stopped one, how to bring it back (Resume is in the
+// status and agents, how long it ran (the icons have no row line), what waits for the
+// human, its folder, its kits, provider and permission mode; a stopped one, how to bring it back (Resume is in the
 // session's head). Its status word explains the colours of the row and the icon: in its
 // group's tone, a session in trouble (tmux gone, loop down) in the danger colour.
 function SessionTip({ session }: { session: SessionInfo }) {
@@ -392,28 +391,15 @@ function Group({
 // turns the title into a field in the row (TitleEdit), the row no link while it edits; the
 // focus goes back to ⋯ when it closes.
 function SessionRow({ session }: { session: SessionInfo }) {
-  const live = useLiveStore();
-  const [editing, setEditing] = useState(false);
   const item = useRef<HTMLLIElement>(null);
-  const back = useRef(false);
-  useEffect(() => {
-    if (editing || !back.current) return;
-    back.current = false;
-    item.current?.querySelector<HTMLButtonElement>(".row-menu button")?.focus();
-  }, [editing]);
+  const { editing, edit, closed } = useTitleEdit(() =>
+    item.current?.querySelector<HTMLButtonElement>(".row-menu button")?.focus(),
+  );
   if (editing) {
     return (
       <li ref={item} className="session-row">
         <div className="session-link session-row-edit">
-          <TitleEdit
-            session={session}
-            hint={`${session.name} · Enter to save · Esc to cancel`}
-            onClose={(saved) => {
-              if (saved) live.sessionChanged(saved);
-              back.current = true;
-              setEditing(false);
-            }}
-          />
+          <TitleEdit session={session} hint={`${session.name} · Enter to save · Esc to cancel`} onClose={closed} />
         </div>
       </li>
     );
@@ -436,9 +422,32 @@ function SessionRow({ session }: { session: SessionInfo }) {
           {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
         </NavLink>
       </Tooltip>
-      <SessionRowMenu name={session.name} onRename={() => setEditing(true)} />
+      <SessionRowMenu name={session.name} onRename={edit} />
     </li>
   );
+}
+
+// Whether a session's title is edited in place (TitleEdit), in its head or its row: `closed`
+// shows a saved session at once (Live.sessionChanged) and, once the field is gone, gives the
+// focus back to its opener (`refocus`).
+function useTitleEdit(refocus: () => void) {
+  const live = useLiveStore();
+  const [editing, setEditing] = useState(false);
+  const back = useRef(false);
+  useEffect(() => {
+    if (editing || !back.current) return;
+    back.current = false;
+    refocus();
+  });
+  return {
+    editing,
+    edit: () => setEditing(true),
+    closed: (saved?: SessionInfo) => {
+      if (saved) live.sessionChanged(saved);
+      back.current = true;
+      setEditing(false);
+    },
+  };
 }
 
 function Status({ status }: { status: SessionStatus }) {
@@ -670,32 +679,17 @@ function HeadLine({ session }: { session: SessionInfo }) {
   const repository = about?.repos[0];
   const cli = about?.provider;
   const trouble = status === "tmux_gone" || status === "loop_down";
-  const live = useLiveStore();
   // The title edited in place (Session title): the pencil or a double click opens the field,
   // which gives the focus back to the pencil when it closes.
-  const [editing, setEditing] = useState(false);
   const pencil = useRef<HTMLButtonElement>(null);
-  const back = useRef(false);
-  useEffect(() => {
-    if (editing || !back.current) return;
-    back.current = false;
-    pencil.current?.focus();
-  }, [editing]);
+  const { editing, edit, closed } = useTitleEdit(() => pencil.current?.focus());
   return (
     <div className="session-head">
       <StatusDot status={status} />
       {editing ? (
-        <TitleEdit
-          session={session}
-          hint="Enter to save · Esc to cancel · empty shows the name"
-          onClose={(saved) => {
-            if (saved) live.sessionChanged(saved);
-            back.current = true;
-            setEditing(false);
-          }}
-        />
+        <TitleEdit session={session} hint="Enter to save · Esc to cancel · empty shows the name" onClose={closed} />
       ) : (
-        <h1 title={label(session)} onDoubleClick={() => setEditing(true)}>
+        <h1 title={label(session)} onDoubleClick={edit}>
           {label(session)}
         </h1>
       )}
@@ -711,7 +705,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
             type="button"
             className="icon-button session-rename"
             aria-label="Rename session"
-            onClick={() => setEditing(true)}
+            onClick={edit}
           >
             <PencilIcon />
           </button>

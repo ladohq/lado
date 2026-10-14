@@ -13,7 +13,7 @@ from test_gates import gated_session
 from test_images import png
 from test_main_screen import log_in, running_session
 
-from lado import artifacts, runtime, state
+from lado import artifacts, runs, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -705,3 +705,163 @@ def test_the_human_attaches_files_and_the_agent_gets_them(page: Page, server, re
 DRAGGED = "() => { const d = new DataTransfer(); d.items.add(new File(['x'], 'x.txt')); return d; }"
 
 SHOT = png(320, 180)
+
+
+def second_gate(session: str) -> None:
+    """Run ship/y of gated_session's flow waits at its gate too: gate #2."""
+    runs.start(session, "ship", "Add a logout page", name="y")
+    artifacts.write(session, "supervisor", "ship/y/plan", "# The plan\n\nOne step.", title="Plan")
+    runs.advance(session, "supervisor", "ship/y", "ready", "planned")
+    runs.advance(session, "supervisor", "ship/y", "done", "the plan is reviewed")
+
+
+def height(locator) -> float:
+    box = locator.bounding_box()
+    assert box is not None
+    return box["height"]
+
+
+def drag_edge(page: Page, edge, by: float) -> None:
+    """Drag the edge `by` pixels down (up when negative), as the human does."""
+    box = edge.bounding_box()
+    assert box is not None
+    x, y = box["x"] + box["width"] / 4, box["y"] + box["height"] / 2  # beside the grip
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x, y + by / 2, steps=5)
+    page.mouse.move(x, y + by, steps=5)
+    page.mouse.up()
+
+
+def test_the_card_minimizes_to_one_line_until_restored_or_a_new_gate_waits(
+    page: Page, server, repo, shot
+):
+    """The pair of icons: minimized, the card is its tab and the gate's question on one line,
+    the feed takes the room; a reload keeps it; the line restores it; expanded from minimized
+    and Esc; a second gate restores it with the shown tab kept (docs/design/ui.md, The waiting
+    card)."""
+    session = gated_session(repo)
+    page.set_viewport_size({"width": 1400, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    feed = page.get_by_role("log", name="Chat with the session")
+    expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
+    whole = height(feed)
+    minimize = card.get_by_role("button", name="Minimize the card")
+    expand = card.get_by_role("button", name="Expand the card")
+    assert minimize.bounding_box()["x"] < expand.bounding_box()["x"]  # left of Expand
+    minimize.click()
+    line = card.locator(".waiting-line")
+    expect(line).to_have_text("Build it as planned?")
+    expect(card.get_by_role("tab", name="ship/x 1")).to_have_attribute("aria-selected", "false")
+    expect(card.get_by_role("button", name="Approve", exact=True)).to_have_count(0)
+    expect(card.get_by_role("textbox")).to_have_count(0)
+    expect(card.get_by_role("separator")).to_have_count(0)
+    expect(card.get_by_role("button", name="Restore the card")).to_be_focused()
+    assert height(line) < 45, height(line)  # one line
+    assert height(feed) > whole + 150, (height(feed), whole)
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-minimized")
+    page.emulate_media(color_scheme="light")
+    page.reload()
+    expect(line).to_be_visible()
+    line.click()
+    expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
+    expect(card.get_by_role("button", name="Minimize the card")).to_be_focused()
+    # Expanded from minimized: whole; Esc brings it back minimized.
+    card.get_by_role("button", name="Minimize the card").click()
+    expand.click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(card).not_to_have_class(re.compile(r"\bexpanded\b"))
+    expect(line).to_be_visible()
+    # Something new restores it, the tab the human looked at still shown.
+    second_gate(session)
+    expect(card.get_by_role("tab")).to_have_count(2)
+    expect(line).to_have_count(0)
+    expect(card.get_by_role("tab", name="ship/x 1")).to_have_attribute("aria-selected", "true")
+    shot(page, "restored-by-a-new-gate")
+
+
+def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes_at_the_bottom(
+    page: Page, server, repo, shot
+):
+    """The edge: dragged to 230 px, kept after a reload and in another session's chat; the
+    keys; a double click gives half the chat; dragged to the bottom, the card minimizes."""
+    session = gated_session(repo)
+    other = running_session(repo)
+    runtime.ask_human(other, "supervisor", "Which branch?", "No epic: main.", ["main", "epic"])
+    page.set_viewport_size({"width": 1400, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
+    edge = card.get_by_role("separator", name="Resize the card")
+    expect(edge).to_have_attribute("aria-orientation", "horizontal")
+    drag_edge(page, edge, height(card) - 230)
+    assert abs(height(card) - 230) <= 2, height(card)
+    # Its list scrolls inside, the buttons in view.
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    expect(approve).to_be_in_viewport()
+    assert approve.bounding_box()["y"] + approve.bounding_box()["height"] <= (
+        card.bounding_box()["y"] + height(card) + 1
+    )
+    edge.hover()
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-resized")
+    page.emulate_media(color_scheme="light")
+    page.reload()
+    expect(card.get_by_role("tabpanel")).to_be_visible()
+    assert abs(height(card) - 230) <= 2, height(card)
+    page.goto(f"{server['url']}/sessions/{other}")
+    other_card = waiting_card(page, other)
+    expect(other_card.get_by_role("tabpanel")).to_contain_text("Which branch?")
+    assert abs(height(other_card) - 230) <= 2, height(other_card)
+    page.goto(f"{server['url']}/sessions/{session}")
+    expect(card.get_by_role("tabpanel")).to_be_visible()
+    # The keys move it by steps.
+    edge.focus()
+    page.keyboard.press("ArrowUp")
+    assert abs(height(card) - 270) <= 2, height(card)
+    # A double click: the stylesheet's height, half the chat.
+    edge.dblclick()
+    chat = page.get_by_role("region", name="Chat", exact=True)
+    expect(card).not_to_have_class(re.compile(r"\bsized\b"))
+    assert abs(height(card) - height(chat) / 2) <= 2, (height(card), height(chat))
+    # Dragged down past its least height: minimized, its height kept for the restore.
+    drag_edge(page, edge, height(card))
+    expect(card.locator(".waiting-line")).to_be_visible()
+    assert page.evaluate("localStorage.getItem('lado.waitingHeight')") is not None
+
+
+def test_a_narrow_window_has_no_edge_and_needs_you_neither_minimizes_nor_resizes(
+    page: Page, server, repo, shot
+):
+    """At 800 px wide there is no edge and minimizing works; Needs you shows the card a chat
+    minimized whole, with no minimize icon and no edge."""
+    session = gated_session(repo)
+    page.set_viewport_size({"width": 800, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
+    expect(card.get_by_role("separator", name="Resize the card")).to_be_hidden()
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-narrow")
+    page.emulate_media(color_scheme="light")
+    card.get_by_role("button", name="Minimize the card").click()
+    expect(card.locator(".waiting-line")).to_have_text("Build it as planned?")
+    shot(page, "narrow-minimized")
+    page.set_viewport_size({"width": 1400, "height": 900})
+    page.goto(f"{server['url']}/needs-you")
+    expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
+    expect(
+        card.get_by_role("button", name=re.compile(r"^(Minimize|Restore) the card$"))
+    ).to_have_count(0)
+    expect(card.get_by_role("separator")).to_have_count(0)
+    shot(page, "needs-you")

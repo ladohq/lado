@@ -27,7 +27,8 @@ setup step under 5 s) and runner queues (0.0-0.1 min on Linux) cost little.
 Taken (the human's decision): **R1** shard the integration tests (3 jobs per Python) and
 the UI tests (2 jobs), CI ~9.7 → ~4-5 min, 10-15 min less per task; **R2** one required
 check `ci-ok` (taken in part: heavy jobs are not skipped for research-only pull requests);
-**R3** smoke only where it can break, on `main` and once a day; **R4** cancel a pull
+**R3** no smoke for a pull request that changes only the web UI, its tests or
+documentation (13 of 38), and a daily smoke on `main`; **R4** cancel a pull
 request's superseded runs; **R5** a flake policy in `.lado/sdlc.md`; **R6** the
 integrator relies on the pull request's CI instead of running the checks locally. Not
 taken: **R7** a merge queue, **R8** more caching, sharded unit tests, a lower review
@@ -193,7 +194,10 @@ median 35 min. Dependabot's wait about a day for the human. The tasks LAD-58 nam
 | LAD-53 | #36 | 3 | 0 | 30 |
 
 The pull request opens in `build`, so this is review, `merge_ok` and merge. Only #33
-changes nothing but R2's docs-only paths (research report, openspec, review report).
+changes nothing but R2's docs-only paths (research report, openspec, review report). 13
+of the 38 (#3, #4, #7, #9, #16, #20, #23-#27, #29, #33) change nothing but R3's paths the
+smoke cannot concern (`web/`, `docs/`, `openspec/`, `tests/ui/`, `tests/js/`, the top-level
+Markdown files, `.github/dependabot.yml`): the web UI, its tests and documentation.
 
 ### 3.5 Reviews
 
@@ -246,16 +250,17 @@ checks"](https://docs.github.com/en/pull-requests/collaborating-with-pull-reques
 so projects require one final job that needs all others and decides
 ([re-actors/alls-green](https://github.com/re-actors/alls-green) is a published action
 for exactly that). **For LADO:** the aggregate check yes (R2); a path filter only for the
-smoke (R3), guarded by a test, since a list of paths drifts from what the code and tests
-read. Skipping the required jobs for documents is not worth it here (R2).
+smoke (R3), written as the paths it skips for (any other change runs it, so a new file
+is covered by default) and guarded by a test, since a list of paths drifts from what the
+code and tests read. Skipping the required jobs for documents is not worth it here (R2).
 
 **Fast required checks, slow ones after the merge or nightly.** Large projects keep the
 pull request's checks short and run the slow or platform-wide ones on the merged branch
 and on a [schedule](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows)
 (Kubernetes' periodic jobs, Chromium's post-submit bots). The price: a break is seen
-after the merge and someone must own the red. **For LADO:** for the smoke only (R3),
-whose failures are mostly the CLIs' own; the unit, integration and UI tests stay required
-on every pull request ("Tested end to end").
+after the merge and someone must own the red. **For LADO:** a daily smoke on `main`
+besides each pull request that can concern it (R3); the unit, integration and UI tests
+stay required on every pull request ("Tested end to end").
 
 **Caching.** Dependency and tool caches ([GitHub's
 cache](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/caching-dependencies-to-speed-up-workflows),
@@ -353,25 +358,47 @@ is green on `main`); `tests/test_ci_workflow.py` (`ci-ok` needs every other job)
 `.lado/sdlc.md` "What CI proves" is unchanged by R2: every pull request still runs the
 full suite.
 
-### R3. Smoke where it can break, on `main` and once a day — taken
+### R3. No smoke for pull requests it cannot concern, a daily smoke on `main` — taken
 
-What: the smoke jobs run on pushes to `main`, on a daily schedule, on manual dispatch,
-and on pull requests that change `src/lado/providers/`, `runtime.py`, `hooks.py`,
-`agent_env.py`, `mcp_server.py`, `tests/smoke/`, `tests/real_clis.py`,
-`scripts/smoke_ci.py` or `ci.yml`.
+What: the smoke jobs run on every push to `main`, on a daily schedule, on manual
+dispatch, and on every pull request except one whose every changed file is under a path
+the smoke cannot concern: `web/`, `docs/`, `openspec/`, `tests/ui/`, `tests/js/`,
+`README.md`, `CHANGELOG.md`, `AGENTS.md`, `BACKLOG.md`, `ROADMAP.md`, `SECURITY.md`,
+`.github/dependabot.yml`. The list names what the smoke skips for, not what it runs for:
+the smoke imports most of LADO (`tests/smoke/test_smoke.py`: `loop`, `runtime`, `state`,
+`tmux`, the providers; through them `interpreter`, `cli`, `mcp_exec`, `gui_session`,
+`hooks`, the built-in kits) and runs on the locked dependencies (`pyproject.toml`,
+`uv.lock`), so a list of what it runs for would miss a file, and a new file runs it by
+default.
 
-Gain: no macOS smoke red on pull requests it cannot concern (Codex on macOS: 15 of 214
-failed); four fewer macOS runners per pull request (their queue p90 3.4-4.8 min).
+Guard: a test in `tests/test_ci_workflow.py` that the list in `ci.yml` is exactly the
+one the test holds, and that no listed path is or contains `src/`, `scripts/`,
+`tests/` (but `tests/ui/` and `tests/js/`), `pyproject.toml`, `uv.lock` or
+`.github/workflows/`: what the smoke runs. It holds because LADO at run time reads its
+own package (`src/lado/`) and the agents' repositories, never its checkout's `docs/` or
+`web/` sources (the code names `docs/...` and `BACKLOG.md` only in comments; the smoke
+runs from `uv sync`, without the built web UI). Adding a path to the list is a change of
+that test, seen in review.
 
-Risk: a change outside the filter that breaks a CLI is seen only on `main` or the next
-day. The release keeps its rule: the release commit is a push to `main`, so it gets the
-smoke (docs/release.md, section 2, unchanged).
+Gain: in the window 13 pull requests of 38 (the web UI's, its tests' and documentation)
+would not have run it: four fewer macOS runners each (their queue p90 3.4-4.8 min) and no
+red from Codex on macOS (15 of 214 failed) on a change that cannot cause it; #27 had one.
+
+Risk: low. Every pull request that changes LADO's code, its tests (but the UI's and the
+Node ones), its scripts, dependencies or workflows still runs the smoke, on Linux and on
+macOS, before the merge: CI's only check on macOS stays on every change that can break
+it there. A web UI change, which the smoke never ran in the browser, loses nothing.
+What is lost: a pull request on the list gets no smoke until `main`, and a wrong path on
+the list would skip it for a change it concerns, which the guard test catches. The
+release keeps its rule: the release commit is a push to `main`, so it gets the smoke
+(docs/release.md, section 2, unchanged).
 
 Rules it changes, named: AGENTS.md "Commands" (CI's job `smoke` "on Linux and macOS"
-becomes "on `main`, daily and on pull requests that touch the providers") and "Testing"
-(layer 5, "in CI on Linux and macOS"); the docstring of `tests/test_ci_workflow.py` ("on
-each pull request and push to main"); `.lado/sdlc.md` "What CI proves" ("A green CI is
-the full `make check` plus the smoke" only for pull requests the filter takes).
+becomes "on `main`, daily and on pull requests that change more than the web UI, its
+tests and documentation") and "Testing" (layer 5, "in CI on Linux and macOS"); the
+docstring of `tests/test_ci_workflow.py` ("on each pull request and push to main");
+`.lado/sdlc.md` "What CI proves" ("A green CI is the full `make check` plus the smoke",
+but for a pull request on the list).
 
 ### R4. Cancel a pull request's superseded runs — taken
 
@@ -439,13 +466,13 @@ of heavy jobs taken out of A; each is a tracker task with the label `component l
 derived from LAD-58.
 
 **A (LAD-60). «CI: параллельные шарды тестов, одна обязательная проверка ci-ok, smoke по
-путям»** (size M). R1, R2's aggregate check only, R3, R4: `ci.yml`, `tests/test_ci_workflow.py`
-(the shards, `ci-ok` and the jobs it needs, the smoke filter, the concurrency rule),
-AGENTS.md (Commands, Testing),
+путям»** (size M). R1, R2's aggregate check only, R3, R4: `ci.yml`,
+`tests/test_ci_workflow.py` (the shards, `ci-ok` and the jobs it needs, R3's list of paths
+the smoke skips for and its guard, the concurrency rule), AGENTS.md (Commands, Testing),
 `.lado/sdlc.md` ("What CI proves"). The ruleset of `main` is changed by the human (or
 with their yes) to require `ci-ok` once the job is green on `main`. Depends on nothing.
 Measured again with `measure.py` after a week of runs.
 
-**B (LAD-61). «sdlc.md: политика флейков и слияние без локальных проверок»** (size S). R5, R6 in
-`.lado/sdlc.md` (Review traps; Extra instructions for the integrator). Independent of A;
+**B (LAD-61). «sdlc.md: политика флейков и слияние без локальных проверок»** (size S).
+R5, R6 in `.lado/sdlc.md` (Review traps; Extra instructions for the integrator). Independent of A;
 after A the CI wait it relies on is shorter.

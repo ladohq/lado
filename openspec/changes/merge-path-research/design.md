@@ -88,8 +88,9 @@ The CI time can be cut three ways:
 Against AGENTS.md: "Tested end to end" and the layers stay as they are (no test layer is
 dropped from a pull request whose code it covers); "No silent drops": a skipped job says
 why in its summary, and the aggregate check fails when any job it needs failed;
-"One source of truth": the docs-only path list lives in one place, `ci.yml`, with a test
-that no path on it is read by a test. ROADMAP's coming stages add providers and kits, which
+"One source of truth": the one path list left, R3's paths the smoke skips for, lives in
+`ci.yml`, with a test that holds it and that no path on it is what the smoke runs (the
+docs-only list of R2 was dropped). ROADMAP's coming stages add providers and kits, which
 grow the smoke matrix and the integration suite, so sharding pays more over time.
 
 ## Recommendations
@@ -99,22 +100,25 @@ grow the smoke matrix and the integration suite, so sharding pays more over time
   `make dist` in the first. Gain: CI wall ~9.6 → ~4-5 min; with 2-3 CI waits per task,
   ~10-15 min per task. Risk: low; the required check names change (ruleset), and
   AGENTS.md ("CI runs …", the worker counts) and `tests/test_ci_workflow.py` change.
-- R2 (taken in part: the human took `ci-ok` and dropped the docs-only skip once the
-  report measured 1 docs-only pull request of 38, not 5). One required check, `ci-ok`, a job that needs every other job and fails
-  unless each succeeded or was skipped on purpose; the ruleset requires only it. On a
-  pull request whose every changed file is on an allow-list of paths no test reads
-  (`docs/research/`, `docs/superpowers/`, `openspec/`, `BACKLOG.md`, `ROADMAP.md`), the
-  heavy jobs are skipped. A push to `main` always runs everything. Gain: a docs-only pull
-  request's CI ~1 min instead of ~10 (5 of 38 pull requests); the ruleset stops depending
-  on job names (R1 can reshape jobs freely). Risk: medium: a wrong path on the list lets
-  untested code into `main`; guarded by a unit test that no file a test opens is under a
-  listed path, and caught at the latest by `main`'s full run.
-- R3 (taken). Smoke runs on pushes to `main`, once a day (schedule), on manual dispatch,
-  and on pull requests that change `src/lado/providers/`, `runtime.py`, `hooks.py`,
-  `agent_env.py`, `mcp_server.py`, `tests/smoke/`, `tests/real_clis.py`,
-  `scripts/smoke_ci.py` or `ci.yml`. Gain: no flaky macOS red on unrelated pull requests;
-  fewer macOS runners queued. Risk: a change outside the filter that breaks a CLI is seen
-  only after the merge, on `main`. Changes AGENTS.md ("in CI on Linux and macOS (job
+- R2 (taken in part). One required check, `ci-ok`, a job that needs every other job and
+  fails unless each succeeded or was skipped on purpose; the ruleset requires only it.
+  Gain: the ruleset stops depending on job names (R1 can reshape jobs freely). Not
+  taken (the human, after the report's measurement): skipping the heavy jobs for a pull
+  request of research documents only. The report measured 1 such pull request of 38,
+  not the 5 estimated here, at a medium risk (a wrong path on the list lets untested
+  code into `main`).
+- R3 (taken; its list turned round in review). Smoke runs on pushes to `main`, once a day
+  (schedule), on manual dispatch, and on every pull request but one that changes only
+  paths the smoke cannot concern (`web/`, `docs/`, `openspec/`, `tests/ui/`, `tests/js/`,
+  the top-level Markdown files, `.github/dependabot.yml`). The smoke imports most of
+  LADO and runs on the locked dependencies, so a list of what it runs for would miss
+  files (`tmux.py`, `loop.py`, `state.py`, `gui_session.py`, `uv.lock`), and macOS is
+  checked by the smoke alone. Guarded by a test that the list holds no path the smoke
+  runs (`src/`, `scripts/`, `tests/` but the UI and Node tests, `pyproject.toml`,
+  `uv.lock`, workflows). Gain: no smoke for 13 of 38 pull requests (the web UI's, its
+  tests' and documentation), and no unrelated macOS red on them. Risk: low; every change
+  to code, scripts, dependencies or workflows still runs it on Linux and macOS before
+  the merge. Changes AGENTS.md ("in CI on Linux and macOS (job
   smoke)", "on each pull request and push to main" in `tests/test_ci_workflow.py`'s
   docstring) and `.lado/sdlc.md` ("What CI proves": a green pull request is then not
   always the smoke).

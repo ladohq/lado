@@ -312,7 +312,15 @@ def ci_section(gh: GitHub, args: argparse.Namespace, since: datetime, until: dat
         f"({len(red_late)}{since_text}).\n"
     )
 
-    pr_section(gh, runs, since, until, window, args.docs_paths.split(","))
+    pr_section(
+        gh,
+        runs,
+        since,
+        until,
+        window,
+        args.docs_paths.split(","),
+        args.smoke_skip_paths.split(","),
+    )
     review_section(gh, args.review_workflow, since, until, window)
 
 
@@ -343,6 +351,7 @@ def pr_section(
     until: datetime,
     window: str,
     docs_paths: list[str],
+    smoke_skip_paths: list[str],
 ) -> None:
     pulls = [p for p in gh.pulls() if since <= parse_time(p["createdAt"]) < until]
     pulls.sort(key=lambda p: p["number"])
@@ -351,13 +360,17 @@ def pr_section(
         if r["event"] == "pull_request":
             by_branch[r["head_branch"]].append(r)
     print(f"## Pull requests opened {window}\n")
-    rows, counts, docs_only = [], [], []
+    rows, counts, docs_only, no_smoke = [], [], [], []
     for p in pulls:
         mine = by_branch.get(p["headRefName"], [])
         counts.append(len(mine))
-        only_docs = all(f.startswith(tuple(docs_paths)) for f in gh.files(p["number"]))
+        files = gh.files(p["number"])
+        only_docs = all(f.startswith(tuple(docs_paths)) for f in files)
         if only_docs:
             docs_only.append(f"#{p['number']}")
+        skips_smoke = all(f.startswith(tuple(smoke_skip_paths)) for f in files)
+        if skips_smoke:
+            no_smoke.append(f"#{p['number']}")
         open_min = seconds(p["createdAt"], p["mergedAt"])
         rows.append(
             [
@@ -368,12 +381,15 @@ def pr_section(
                 sum(r["run_attempt"] - 1 for r in mine),
                 round(open_min / 60) if open_min is not None else "not merged",
                 "yes" if only_docs else "",
+                "yes" if skips_smoke else "",
             ]
         )
     print(
         f"{len(pulls)} pull requests; CI runs per pull request: median "
         f"{median(counts):g}, max {max(counts, default=0)}. Only paths of the docs-only "
-        f"list ({', '.join(docs_paths)}): {len(docs_only)} ({', '.join(docs_only)}).\n"
+        f"list ({', '.join(docs_paths)}): {len(docs_only)} ({', '.join(docs_only)}). "
+        f"Only paths the smoke skips ({', '.join(smoke_skip_paths)}): {len(no_smoke)} "
+        f"({', '.join(no_smoke)}).\n"
     )
     human = [
         seconds(p["createdAt"], p["mergedAt"]) / 60
@@ -392,7 +408,16 @@ def pr_section(
     )
     print(
         table(
-            ["PR", "Title", "Author", "CI runs", "Reruns", "Open to merge, min", "Docs only"],
+            [
+                "PR",
+                "Title",
+                "Author",
+                "CI runs",
+                "Reruns",
+                "Open to merge, min",
+                "Docs only",
+                "No smoke",
+            ],
             rows,
         )
     )
@@ -402,6 +427,13 @@ def pr_section(
 # The paths no test reads that recommendation R2 proposed to skip the heavy jobs for (its
 # skip not taken; docs/research/merge-path.md): how many pull requests it would have spared.
 DOCS_PATHS = "docs/research/,docs/superpowers/,openspec/,BACKLOG.md,ROADMAP.md"
+
+# Recommendation R3's paths the smoke cannot concern: a pull request that changes only
+# these skips the smoke; any other change runs it (docs/research/merge-path.md).
+SMOKE_SKIP_PATHS = (
+    "web/,docs/,openspec/,tests/ui/,tests/js/,README.md,CHANGELOG.md,AGENTS.md,"
+    "BACKLOG.md,ROADMAP.md,SECURITY.md,.github/dependabot.yml"
+)
 
 FLOW = re.compile(r"^(\S+) -(\S+)-> (\S+)$")
 
@@ -479,6 +511,11 @@ def main() -> None:
         "--docs-paths",
         default=DOCS_PATHS,
         help="comma-separated path prefixes a docs-only pull request changes only",
+    )
+    parser.add_argument(
+        "--smoke-skip-paths",
+        default=SMOKE_SKIP_PATHS,
+        help="comma-separated path prefixes a pull request skips the smoke for",
     )
     parser.add_argument("--run-prefix", default="task/lad-", help="flow runs to measure")
     parser.add_argument(

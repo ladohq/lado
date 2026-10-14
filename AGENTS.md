@@ -72,7 +72,8 @@ short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each
 hook's confirmation under `-n auto`, the comment there says by how much); only tests set
 either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
-`LADO_TMUX_SOCKET` and `TMUX` for the test run, so the tests run in an agent's shell as is,
+`LADO_TMUX_SOCKET`, `TMUX` and `LADO_CONTAINER` for the test run, so the tests run in an
+agent's shell (or LADO's image) as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
 login shell (tests of the shell set their own `SHELL`). It also sets
 `LADO_NO_UPDATE_CHECK=1`, so no test looks on PyPI; the tests of the update check switch it
@@ -270,7 +271,12 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `CHECK_TIMEOUT` seconds, a failure kept there too, for `lado ls`, `lado doctor` and the
     UI's `GET /api/update` alike; the file keeps the kind it looked for, `pre`, and one of
     the other kind, or without the key for a pre-release, is stale;
-    `LADO_NO_UPDATE_CHECK=1`: no look and no line), the installer (`installer`: by this
+    `LADO_NO_UPDATE_CHECK=1`: no look and no line; in a container it names
+    `CONTAINER_UPDATE`, `docker compose pull && docker compose up -d`, instead of `lado
+    update`: `available_line`), whether LADO runs in its container (`in_container`:
+    `LADO_CONTAINER` set, not empty, not `0`, which only the image sets; never guessed from
+    `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report, and the
+    UI server), the installer (`installer`: by this
     LADO's `sys.prefix`, a uv tool with `uv-receipt.toml` or pipx with
     `pipx_metadata.json` of lado from an index, else None,
     also for an editable, folder, git or URL install of lado; its `command` installs
@@ -344,7 +350,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     of `lado start` and `lado ui` (both ttys, not in an agent).
   - `self_update.py`: `lado update` for the CLI and the UI alike (`cli.cmd_update` only
     asks and prints). `refusal` is the one answer to "can this LADO update itself now"
-    (inside an agent, an update running, no installer), the CLI's and the API's `can_update`.
+    (inside an agent, in a container, an update running, no installer, in that order), the
+    CLI's and the API's `can_update`; the CLI and `POST /api/update` refuse a container's at
+    once, stopping nothing and before PyPI (the container's main process is the UI server,
+    whose stop would end it), naming `update.CONTAINER_UPDATE`.
     `plan` is what an update would do (the sessions `runtime.session_status` says run, also
     with the loop down, those whose tmux is gone, the UI server; `print_plan`,
     `print_by_hand`, the API's `UpdatePlan`). `run` holds an exclusive flock on

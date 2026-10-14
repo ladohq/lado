@@ -45,7 +45,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 AGENTS.md, Layout: `update.py` names `in_container` and `CONTAINER_UPDATE`,
+- [x] 4.1 AGENTS.md, Layout: `update.py` names `in_container` and `CONTAINER_UPDATE`,
   `self_update.py`'s `refusal` names the container. docs/design/ui.md: `UpdateInfo`'s
   `container` and `by_hand` in a container (A newer LADO), the head's `container` pill
   (P1) and the container case of the Update block (P3). CHANGELOG.md under

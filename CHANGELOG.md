@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.39.0 (unreleased)
+
+- In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and
+  the UI's update refuse at once, stopping nothing, and name the way to update there:
+  `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System
+  panel (a `container` mark beside the version) and the system info for an issue say that
+  LADO runs in a container.
+
 ## 0.38.0 (2026-10-14)
 
 - `lado stats` prints how you used LADO on this machine in the last 30 days (`--days N`,

@@ -34,13 +34,14 @@ in it), the chat SHALL show the step's outcome as neither forward nor back.
 
 The web UI SHALL show a forward step's outcome green with no icon and a step back's
 outcome orange with a return icon before it, in the session's chat and in the Flows tab
-alike, and SHALL name the direction in the outcome's accessible name.
+alike, and SHALL say the direction to assistive technology with the outcome (`<outcome>,
+a step back` / `<outcome>, a step forward`).
 
 #### Scenario: Changes sends the work back
 - **WHEN** a reviewer's step `review → build` with outcome `changes` is shown in the chat
   and in the Flows tab
-- **THEN** both show `changes` orange with the return icon, and its accessible name says
-  it is a step back
+- **THEN** both show `changes` orange with the return icon, and a screen reader reads it
+  as `changes, a step back`
 
 ### Requirement: A step's outcome explains its direction in the UI's tooltip
 

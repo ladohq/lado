@@ -23,10 +23,12 @@
   `states` (none while the runs are not loaded or the run has a `problem`): `forward`
   green, `back` orange with `BackIcon`, `null` neutral (`.run-outcome` alone); a forward
   or back outcome inside the UI's `Tooltip` (2.4); its accessible name `<outcome>, a step
-  forward` / `<outcome>, a step back`. Check: `Chat.test.tsx`, `feedRows.test.ts` (3.1).
+  forward` / `<outcome>, a step back` (done as hidden text after the chip, not an
+  aria-label: review F1). Check: `Chat.test.tsx`, `feedRows.test.ts` (3.1).
 - [x] 2.3 `web/src/Flows.tsx`: its `goesBack` replaced by `flowSteps.direction` (back
   when `"back"`, as before; no way back without the flow, as before); the back chip with
-  `BackIcon`, the chip inside the same `Tooltip` (2.4), its accessible name as in 2.2;
+  `BackIcon`, the chip inside the same `Tooltip` (2.4), its accessible name as in 2.2
+  (hidden text, as there);
   the dot's rule unchanged (orange for a way back or the human's answer). Check:
   `Flows.test.tsx` (3.1).
 - [x] 2.4 One component for the tooltip's text, shared by both (e.g. `StepTip` in
@@ -45,7 +47,8 @@
   second `ready` forward (AC-1); a run with a `problem` and a run not loaded give a
   neutral chip with no icon (AC-3); the icon and accessible names (2.2). `feedRows.test.ts`
   — the window rule's test goes with the rule. `Flows.test.tsx` — the existing "a way
-  back is marked" test keeps passing, plus the icon and accessible name. Check: `make web`.
+  back is marked" test keeps passing, plus the icon and accessible name (checked as the
+  line's text read out, not an attribute: review F1). Check: `make web`.
 - [x] 3.2 UI e2e, `tests/ui/test_chat.py`: a run of the fake agent moves forward, back
   (a stay in a state or an outcome to an earlier state) and forward again; both forward
   outcomes have the done colour, the back one the human colour and the icon; hovering

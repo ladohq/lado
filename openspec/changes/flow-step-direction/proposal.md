@@ -63,7 +63,7 @@ the Flows tab's run history. Nothing in the core, the API, the MCP tools or the 
   sentence): the human chose `Runs again`.
 - The Flows tab's orange dot for the human's answer: not a step's direction, unchanged.
 - The tooltip from the keyboard: the chips are no tab stops (a chat has many); the
-  direction is in the chip's accessible name instead.
+  direction is read out with the outcome instead.
 
 ## Acceptance criteria
 
@@ -108,9 +108,10 @@ the Flows tab's run history. Nothing in the core, the API, the MCP tools or the 
   declares states and their outcomes, so the line is stable.
 - Unknown is neutral in the chat rather than guessed by the old window rule: a second rule
   would be the bug again. The Flows tab keeps its own "no way back without the flow".
-- The chip's accessible name says the direction (`<outcome>, a step back` / `<outcome>,
-  a step forward`), since the icon is decorative (icons.tsx) and the tooltip is hover
-  only there.
+- A screen reader hears the direction with the outcome (`<outcome>, a step back` /
+  `<outcome>, a step forward`), since the icon is decorative (icons.tsx) and the tooltip
+  is hover only there: hidden text (`.visually-hidden`) right after the chip, not an
+  `aria-label`, which a plain span may not have and Chromium drops (found in review).
 - Test layers: the rule and the way in vitest (`flowSteps.test.ts`, pure logic); the
-  components' classes, icon and accessible names in vitest; the tooltip on hover and the
+  components' classes, icon and the text read out in vitest; the tooltip on hover and the
   colours in both themes in the UI e2e tests (a real browser and the fake agent's run).

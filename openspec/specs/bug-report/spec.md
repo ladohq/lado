@@ -88,7 +88,9 @@ browser. Enter, `n`, EOF or Ctrl-C SHALL open nothing and exit 0. A browser that
 open SHALL print `could not open a browser: open the link above`. Otherwise it SHALL ask
 nothing. The command SHALL NOT migrate `lado.db`, and SHALL work with a `lado.db` of
 another schema version or with none. Its `Server:` line SHALL say whether the UI server
-runs (`not running`, or `running, loopback only` / `running, open to the network`).
+runs (`not running`, or `running, loopback only` / `running, open to the network`; in a
+container `running, in a container`, as the container's port publication, not LADO,
+decides who reaches it).
 
 #### Scenario: Over ssh on Linux
 - **WHEN** the human runs `lado bug-report` over ssh, with no `DISPLAY`, `WAYLAND_DISPLAY` or `BROWSER`
@@ -101,6 +103,12 @@ runs (`not running`, or `running, loopback only` / `running, open to the network
 #### Scenario: A database of a newer LADO
 - **WHEN** `lado.db` has a newer schema than this LADO's
 - **THEN** `lado bug-report` prints the report with `schema <n>`, and the database is unchanged
+
+#### Scenario: The server in a container
+- **WHEN** the human runs `lado bug-report` in a container (`LADO_CONTAINER=1`) whose UI
+  server listens on `0.0.0.0`
+- **THEN** its `Server:` line reads `running, in a container`, and the System panel's copy
+  and the Report a bug page read `in a container, up <time>`
 
 ### Requirement: The UI shows Report a bug on every page
 

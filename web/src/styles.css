@@ -774,6 +774,27 @@ h3 {
   outline: none;
 }
 
+/* The edge above a block (Splitter's "top": the waiting card's): in the flow of its column,
+   8 px high over the column's gaps, the line across it. */
+.splitter-top {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  flex: none;
+  width: auto;
+  height: 8px;
+  cursor: row-resize;
+}
+
+.splitter-top::after {
+  top: 3px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: auto;
+  height: 2px;
+}
+
 .sessions > .splitter {
   left: calc(var(--list-width, 260px) - 4px);
 }
@@ -4177,7 +4198,8 @@ h3 {
   /* The page's columns stack: their edges go. The artifact panel, drawn inside the session
      page, keeps its own. */
   .terminals > .splitter,
-  .sessions > .splitter {
+  .sessions > .splitter,
+  .chat > .splitter-top {
     display: none;
   }
 }
@@ -7152,6 +7174,20 @@ del.kit-mcp-name {
   height: 2.5px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+
+/* On a top edge the grip lies across it, its dots in a row. */
+.splitter-top .splitter-grip {
+  top: -1px;
+  left: 50%;
+  flex-direction: row;
+  width: 34px;
+  height: 10px;
+  margin: 0 0 0 -17px;
+}
+
+.splitter-top[data-dragging]::after {
+  background: var(--action);
 }
 
 .artifact-panel > .splitter[data-dragging]::after {

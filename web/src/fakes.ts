@@ -114,21 +114,26 @@ export class FakeResizeObserver {
   static width: number | null = null;
   private targets: Element[] = [];
 
-  constructor(private readonly callback: (entries: { target: Element; contentRect: { width: number } }[]) => void) {
+  constructor(
+    private readonly callback: (entries: { target: Element; contentRect: { width: number; height: number } }[]) => void,
+  ) {
     FakeResizeObserver.all.push(this);
   }
   observe(target: Element) {
     this.targets.push(target);
     const width = FakeResizeObserver.width;
-    if (width !== null) this.callback([{ target, contentRect: { width } }]);
+    if (width !== null) this.callback([{ target, contentRect: { width, height: 0 } }]);
   }
   disconnect() {
     this.targets = [];
   }
-  static resize(width: (target: Element) => number) {
+  // Each observed element laid out anew, `width` wide and `height` high (0 when not given).
+  static resize(width: (target: Element) => number, height: (target: Element) => number = () => 0) {
     act(() =>
       FakeResizeObserver.all.forEach((observer) =>
-        observer.targets.forEach((target) => observer.callback([{ target, contentRect: { width: width(target) } }])),
+        observer.targets.forEach((target) =>
+          observer.callback([{ target, contentRect: { width: width(target), height: height(target) } }]),
+        ),
       ),
     );
   }

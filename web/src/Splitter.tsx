@@ -15,21 +15,25 @@ const clamp = (value: number, { min, max }: Bounds) => Math.round(Math.min(max, 
 export const fitWidth = (width: number, bounds: Bounds, room: number | null) =>
   room === null ? width : Math.max(bounds.min, Math.min(width, Math.floor(room)));
 
-// The width of an element as it is laid out, or null before its first layout (and in jsdom,
-// which has no ResizeObserver and lays out nothing). The element is the one the returned ref
-// is set on: it is observed as soon as it is drawn, however late, and again when another
-// element takes its place.
-export function useWidth<T extends HTMLElement>(): [(element: T | null) => void, number | null] {
+// The width (or height) of an element as it is laid out, or null before its first layout
+// (and in jsdom, which has no ResizeObserver and lays out nothing). The element is the one
+// the returned ref is set on: it is observed as soon as it is drawn, however late, and again
+// when another element takes its place.
+function useSize<T extends HTMLElement>(side: "width" | "height"): [(element: T | null) => void, number | null] {
   const [element, setElement] = useState<T | null>(null);
-  const [width, setWidth] = useState<number | null>(null);
+  const [size, setSize] = useState<number | null>(null);
   useEffect(() => {
     if (element === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    const observer = new ResizeObserver(([entry]) => setSize(entry.contentRect[side]));
     observer.observe(element);
     return () => observer.disconnect();
-  }, [element]);
-  return [setElement, width];
+  }, [element, side]);
+  return [setElement, size];
 }
+
+export const useWidth = <T extends HTMLElement>() => useSize<T>("width");
+
+export const useHeight = <T extends HTMLElement>() => useSize<T>("height");
 
 // The focus of a column that collapses to a strip: after the human collapses it (`toggled`
 // called before the change), the strip's button that opens it has the focus; after they open
@@ -51,32 +55,45 @@ export function useStripFocus(collapsed: boolean) {
 }
 
 // `edge`: the side of its column the splitter is on; moving it outward widens the column.
+// "top" is the edge above a block (the waiting card's): horizontal, moving it up makes the
+// block taller, and `width` is the block's height.
 // A drag captures the pointer, so the moves and the release come to the separator also over
 // an iframe; it ends on the release or when the browser cancels it. `grip`: a small handle
 // drawn in the middle of the edge (the artifact panel's); the whole edge stays the handle.
+// `onReset`: what a double click does instead of the default width (the waiting card goes
+// back to its height by the stylesheet).
 export function Splitter({
   label,
   edge,
   width,
   bounds,
   onChange,
+  onReset,
   grip = false,
 }: {
   label: string;
-  edge: "left" | "right";
+  edge: "left" | "right" | "top";
   width: number;
   bounds: Bounds;
   onChange: (width: number) => void;
+  onReset?: () => void;
   grip?: boolean;
 }) {
-  const outward = edge === "left" ? -1 : 1;
+  const across = edge === "top";
+  const outward = edge === "right" ? 1 : -1;
+  const [less, more] = across
+    ? ["ArrowDown", "ArrowUp"]
+    : edge === "left"
+      ? ["ArrowRight", "ArrowLeft"]
+      : ["ArrowLeft", "ArrowRight"];
   const [dragging, setDragging] = useState(false);
   const drag = (event: React.PointerEvent<HTMLDivElement>) => {
     const separator = event.currentTarget;
     separator.setPointerCapture?.(event.pointerId); // jsdom has none
-    const startX = event.clientX;
+    const at = (pointer: { clientX: number; clientY: number }) => (across ? pointer.clientY : pointer.clientX);
+    const start = at(event);
     const startWidth = width;
-    const move = (moved: PointerEvent) => onChange(clamp(startWidth + outward * (moved.clientX - startX), bounds));
+    const move = (moved: PointerEvent) => onChange(clamp(startWidth + outward * (at(moved) - start), bounds));
     const end = () => {
       separator.removeEventListener("pointermove", move);
       separator.removeEventListener("pointerup", end);
@@ -92,19 +109,19 @@ export function Splitter({
     <div
       role="separator"
       aria-label={label}
-      aria-orientation="vertical"
+      aria-orientation={across ? "horizontal" : "vertical"}
       aria-valuenow={width}
       aria-valuemin={bounds.min}
       aria-valuemax={bounds.max}
       tabIndex={0}
-      title={`${label}: drag, or double-click for the default width`}
+      title={`${label}: drag, or double-click for the default ${across ? "height" : "width"}`}
       className={`splitter splitter-${edge}`}
       data-dragging={dragging || undefined}
       onPointerDown={drag}
-      onDoubleClick={() => onChange(bounds.initial)}
+      onDoubleClick={() => (onReset ? onReset() : onChange(bounds.initial))}
       onKeyDown={(event) => {
-        if (event.key === "ArrowLeft") onChange(clamp(width - outward * STEP, bounds));
-        if (event.key === "ArrowRight") onChange(clamp(width + outward * STEP, bounds));
+        if (event.key === less) onChange(clamp(width - STEP, bounds));
+        if (event.key === more) onChange(clamp(width + STEP, bounds));
       }}
     >
       {grip && (

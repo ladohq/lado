@@ -438,7 +438,7 @@
     "/api/clone-target": {
       "get": {
         "summary": "Clone Target",
-        "description": "The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it\ntakes one, and the session name it gives.",
+        "description": "The folder a clone of `url` would go to (by default $LADO_REPOS/<repo>, else\n~/lado/<repo>): whether it takes one, and the session name it gives.",
         "operationId": "clone_target_api_clone_target_get",
         "parameters": [
           {

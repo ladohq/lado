@@ -254,8 +254,8 @@ export interface paths {
         };
         /**
          * Clone Target
-         * @description The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it
-         *     takes one, and the session name it gives.
+         * @description The folder a clone of `url` would go to (by default $LADO_REPOS/<repo>, else
+         *     ~/lado/<repo>): whether it takes one, and the session name it gives.
          */
         get: operations["clone_target_api_clone_target_get"];
         put?: never;

@@ -238,7 +238,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
     `Repositories folder` (after `git`, `check_repos_folder`, only while `LADO_REPOS` is
     set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
-    that is no folder or a value that is not absolute (which `clone.repos_folder` ignores).
+    that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
+    there on some Pythons) or a value that is not absolute (which `clone.repos_folder`
+    ignores).
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from

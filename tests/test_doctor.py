@@ -94,6 +94,21 @@ def test_the_repositories_folder_line(tmp_path, monkeypatch):
     )
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any folder")
+def test_a_repositories_folder_lado_may_not_look_at_warns_with_the_reason(tmp_path, monkeypatch):
+    closed = tmp_path / "closed"
+    closed.mkdir(mode=0)
+    folder = closed / "repos"
+    monkeypatch.setenv("LADO_REPOS", str(folder))
+    try:
+        check = doctor.check_repos_folder()
+    finally:
+        closed.chmod(0o700)
+    assert (check.name, check.level) == ("Repositories folder", doctor.WARN)
+    assert check.detail.startswith(f"cannot look at LADO_REPOS {folder}: ")
+    assert "Permission denied" in check.detail
+
+
 def test_the_checks_hold_the_repositories_folder_only_when_it_is_set(tmp_path, monkeypatch):
     _versions(monkeypatch)
     monkeypatch.setattr(gui_session.sys, "platform", "linux")

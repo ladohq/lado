@@ -1160,9 +1160,11 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   empty field's placeholder is `<folder>/…` (else `~/projects/app`), its focus lists the
   folder's subfolders (a pick sets `<folder>/<name>`), and a row **Repositories folder:**
   with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
-  `<folder>/` and opens the list. The folder is the parent with one `/` at its end (`/`
-  stays `/`). The folder check runs only on what is typed or picked, never on the empty
-  field.
+  `<folder>/`, gives the field the focus (its keys and its blur work the list) and opens
+  the list. The folder is the parent with one `/` at its end (`/` stays `/`). The folder
+  check runs only on what is typed or picked, never on the empty field nor on the
+  repositories folder itself (with or without its last `/`): it holds the repositories,
+  and its "not inside a git repository" would offer a `git init` over them all.
   **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
   says of it (`name_state`): taken by a running session, by a session of another folder,
   or a stopped session of this folder with **Resume it**, which turns the window to Resume.

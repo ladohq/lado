@@ -5,6 +5,7 @@ import platform
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -535,9 +536,15 @@ def check_repos_folder() -> Check | None:
             f"LADO_REPOS is not an absolute path: {value}; LADO ignores it",
             "set it to a full path, e.g. ~/repos or /Users/me/repos",
         )
-    if not folder.exists():
+    # stat, not exists(): for a folder above it LADO may not look in, exists() raises on some
+    # Pythons and says "missing" on others; stat says why on all.
+    try:
+        info = folder.stat()
+    except FileNotFoundError:
         return Check(name, INFO, f"{folder} (LADO_REPOS), not made yet: the first clone makes it")
-    if not folder.is_dir():
+    except OSError as error:
+        return Check(name, WARN, f"cannot look at LADO_REPOS {folder}: {error.strerror or error}")
+    if not stat.S_ISDIR(info.st_mode):
         return Check(name, WARN, f"LADO_REPOS is not a folder: {folder}")
     return Check(name, OK, f"{folder} (LADO_REPOS)")
 

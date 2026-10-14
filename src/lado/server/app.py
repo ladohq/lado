@@ -487,8 +487,8 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
     def clone_target(
         url: str, path: str | None = None, has_db: bool = Depends(database)
     ) -> CloneTarget:
-        """The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it
-        takes one, and the session name it gives."""
+        """The folder a clone of `url` would go to (by default $LADO_REPOS/<repo>, else
+        ~/lado/<repo>): whether it takes one, and the session name it gives."""
         return clone_core(clones.target_info, url, path, has_db)
 
     @app.post(

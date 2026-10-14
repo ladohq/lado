@@ -143,6 +143,8 @@ function parentOf(path: string): { parent: string; prefix: string } | null {
 // The repositories folder as a parent: "/" stays "/", "/a/b" becomes "/a/b/".
 const withSlash = (folder: string) => (folder.endsWith("/") ? folder : `${folder}/`);
 
+const sameFolder = (path: string, folder: string | null) => folder !== null && withSlash(path) === withSlash(folder);
+
 const splitWithout = (text: string) => text.split(/[\s,]+/).filter(Boolean);
 
 // "agent:reviewer@kit-a" as the button that switches it off says it.
@@ -257,12 +259,15 @@ function LaunchDialog({
       : defaultBranch(remote)
     : null;
 
+  const repos = valueOf(useOnce(getReposFolder, resuming !== null))?.path ?? null;
+  // The repositories folder itself holds the repositories, it is none: no check, as for an
+  // empty field (its "not inside a git repository" would offer `git init` over them all).
+  const toCheck = (where: string) => (where !== "" && !sameFolder(where, repos) ? where : null);
   const settled = useDebounced(path.trim());
-  const checked = useAsked(resuming || !settled ? null : settled, getFolder);
+  const checked = useAsked(resuming ? null : toCheck(settled), getFolder);
   const folder = valueOf(checked);
   const current = folder !== null && folder.path === settled && settled === path.trim() ? folder : null;
   const recent = valueOf(useOnce(getRecentFolders, resuming !== null)) ?? [];
-  const repos = valueOf(useOnce(getReposFolder, resuming !== null))?.path ?? null;
   const root = resuming?.repo ?? folder?.root ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
   const providerList = useOnce(getProviders);
@@ -523,7 +528,7 @@ function LaunchDialog({
               setRefused(null);
             }}
             folder={current}
-            checking={!resuming && path.trim() !== "" && current === null}
+            checking={!resuming && toCheck(path.trim()) !== null && current === null}
             problem={checked !== null && "error" in checked ? checked.error : null}
             recent={recent}
             repos={repos}
@@ -838,6 +843,7 @@ function WhereField({
   head: ReactNode; // the switch to Clone from URL, beside the label
 }) {
   const ids = useId();
+  const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const empty = path.trim() === "";
@@ -866,6 +872,7 @@ function WhereField({
       </div>
       <div className="where-box">
         <input
+          ref={input}
           id={`${ids}-where`}
           role="combobox"
           aria-autocomplete="list"
@@ -928,6 +935,7 @@ function WhereField({
             className="chip-button"
             onClick={() => {
               onPath(withSlash(repos));
+              input.current?.focus(); // the list's keys and its closing on blur are the field's
               setOpen(true);
             }}
           >

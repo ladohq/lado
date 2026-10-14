@@ -350,6 +350,31 @@ test("the Repositories folder row puts the folder in Where and lists it", async 
   expect(where().value).toBe(`${REPOS}/`);
   const list = await screen.findByRole("listbox", { name: "Folders" });
   expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["api/", "app/", "site/"]);
+  // The field has the focus: the keys pick, and leaving it closes the list.
+  expect(document.activeElement).toBe(where());
+  fireEvent.keyDown(where(), { key: "ArrowDown" });
+  expect(within(list).getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
+  fireEvent.blur(where());
+  expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
+});
+
+test("the repositories folder itself in Where is not checked as a folder for a session", async () => {
+  repos = REPOS;
+  const problem = `${REPOS} is not inside a git repository`;
+  folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem, root: null, subfolders: ["api"] });
+  folders[REPOS] = folders[`${REPOS}/`];
+  const dialog = await openLaunch();
+  fireEvent.click(within(await within(dialog).findByText(/Repositories folder:/)).getByRole("button", { name: REPOS }));
+  await screen.findByRole("listbox", { name: "Folders" });
+  for (const value of [`${REPOS}/`, REPOS]) {
+    type(value);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400))); // past the check's debounce
+    expect(screen.queryByText(problem)).toBeNull();
+    expect(screen.queryByText("checking…")).toBeNull();
+  }
+  type(`${REPOS}/api`);
+  folders[`${REPOS}/api`] = folder(`${REPOS}/api`, { ok: false, problem: "api is not inside a git repository" });
+  expect(await screen.findByText("api is not inside a git repository")).toBeTruthy();
 });
 
 test("a repositories folder of / is listed as /, never //", async () => {

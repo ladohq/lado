@@ -257,10 +257,10 @@ def _db_with_usage():
                 "INSERT INTO sessions (name, repo, created_at) VALUES (?, '/r', ?)", (name, at)
             )
         rows = [
-            ("b", state.SPAWNED, state.spawned_detail("worker", "claude"), new),
-            ("b", state.SPAWNED, state.spawned_detail("supervisor", "claude"), new),
-            ("c", state.SPAWNED, state.spawned_detail("worker", "codex"), new),
-            ("a", state.SPAWNED, state.spawned_detail("worker", "codex"), old),
+            ("b", state.SPAWNED, state.spawned_detail("worker", "default", "claude"), new),
+            ("b", state.SPAWNED, state.spawned_detail("supervisor", "default", "claude"), new),
+            ("c", state.SPAWNED, state.spawned_detail("worker", "default", "codex"), new),
+            ("a", state.SPAWNED, state.spawned_detail("worker", "default", "codex"), old),
             ("a", state.SESSION_RESUME, "", new),
             ("b", state.FLOW_START, "", new),
             ("b", state.GATE_OPEN, "", new),
@@ -285,7 +285,9 @@ def _sent(**fields):
 
 
 def test_spawned_provider_reads_what_is_written():
-    assert state.spawned_provider(state.spawned_detail("a role, provider x", "codex")) == "codex"
+    detail = state.spawned_detail("a role, provider x", "a kit, provider y", "codex")
+    assert state.spawned_provider(detail) == "codex"
+    assert state.spawned_provider("role worker, provider claude") == "claude"  # before 0.38.0
     assert state.spawned_provider("something else") is None
 
 

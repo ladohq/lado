@@ -654,7 +654,7 @@ def start_session(
             )
         # None of its agents runs: what an older LADO or a failed launch left goes.
         providers.base.remove_session_config_dirs(session)
-        _add_agent(agent)
+        _add_agent(agent, env.lead.kit)
         # Written once the session is taken, as the provider's config: a start that lost
         # does not touch the running lead's files.
         _write_lead_skills(agent, env.lead_skills())
@@ -774,7 +774,7 @@ def spawn_worker(
     if not run:
         exclude_worktrees(sess.repo)
         git(sess.repo, "worktree", "add", "-b", branch, str(worktree), "HEAD")
-    _add_agent(agent)
+    _add_agent(agent, role_def.kit)
     try:
         # A step is reported with flow_advance, as the run worker's instructions say.
         text = task if has_step else task + REPORT_REMINDER
@@ -2533,9 +2533,10 @@ def _write_lead_skills(agent: state.Agent, lead_skills: list[kits.LeadSkill]) ->
         (folder / "SKILL.md").write_text(f"---\n{dump}---\n" + "\n\n".join(parts) + "\n")
 
 
-def _add_agent(agent: state.Agent) -> None:
+def _add_agent(agent: state.Agent, kit: str) -> None:
+    """Store the agent and its SPAWNED event; `kit`: the kit of its role."""
     state.add_agent(agent)
-    detail = state.spawned_detail(agent.role, agent.provider)
+    detail = state.spawned_detail(agent.role, kit, agent.provider)
     state.add_event(agent.session, agent.name, state.SPAWNED, detail)
 
 

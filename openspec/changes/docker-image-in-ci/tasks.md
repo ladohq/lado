@@ -60,7 +60,7 @@ tests' code and the commit.
 - [x] 6.2 Regression: `make lint`, `make test`, `openspec validate --specs --strict`,
   `openspec validate docker-image-in-ci --strict`; with Docker `make test-container`; with
   Claude Code `uv run pytest -m smoke -n0 -k claude`.
-- [ ] 6.3 The pull request's CI: `container (amd64)`, `container (arm64)` and `ci-ok`
+- [x] 6.3 The pull request's CI: `container (amd64)`, `container (arm64)` and `ci-ok`
   green, the jobs' times in the build report.
-- [ ] 6.4 By hand on a Mac (AC-9): the `docker run` link in the host's browser, a second
+- [x] 6.4 By hand on a Mac (AC-9): the `docker run` link in the host's browser, a second
   LADO with `LADO_PORT=8766` and `-p lado-2` beside it; screenshots as run artifacts.

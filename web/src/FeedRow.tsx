@@ -7,8 +7,8 @@ import type { ReactNode } from "react";
 
 import { HUMAN, LADO } from "./api";
 import { clock } from "./ChatText";
-import { CopyButton } from "./Copy";
-import { CopyIcon, GateIcon } from "./icons";
+import { CopyIconButton } from "./Copy";
+import { GateIcon } from "./icons";
 import { quoteArea } from "./quote";
 
 // The avatars' colours, --avatar-1 … --avatar-6 in tokens.css.
@@ -87,14 +87,7 @@ export function FeedRow({
   const time = <time dateTime={at}>{clock(at)}</time>;
   // In the head, or at a continued row's top right; shown on hover (styles.css).
   const copier = copy !== undefined && (
-    <CopyButton
-      label="Copy message"
-      copied="Copied"
-      text={copy}
-      field={{ title: "Message to copy", label: "Message" }}
-      icon={<CopyIcon />}
-      className="copy-icon-button"
-    />
+    <CopyIconButton label="Copy message" text={copy} field={{ title: "Message to copy", label: "Message" }} />
   );
   const classes = ["feed-row", kind === "human" && "mine", continued && "continued", className].filter(Boolean);
   return (

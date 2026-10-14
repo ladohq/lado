@@ -176,7 +176,7 @@ export function SelectionBar() {
 
   function quote() {
     const selection = document.getSelection();
-    if (!shown || !selection) return;
+    if (!shown || !selection) return; // shown: for TypeScript, the bar is drawn only then
     const text = quoteOf(shown.area, selection);
     const session = shown.area.dataset.quoteSession ?? "";
     setShown(null);

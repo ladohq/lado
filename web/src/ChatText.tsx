@@ -4,8 +4,7 @@ import { useId, useState } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { CopyButton } from "./Copy";
-import { CopyIcon } from "./icons";
+import { CopyIconButton } from "./Copy";
 
 // The characters a line that is not blank counts for: a text of n such lines may have
 // n * CHARS_PER_LINE characters before it is long, and a cut one shows as many.
@@ -108,13 +107,10 @@ const COMPONENTS: Components = {
   pre: ({ node, ...props }) => (
     <div className="code-block">
       <pre {...props} />
-      <CopyButton
+      <CopyIconButton
         label="Copy code"
-        copied="Copied"
         text={textOf(node as Hast | undefined).replace(/\n$/, "")}
         field={{ title: "Code to copy", label: "Code" }}
-        icon={<CopyIcon />}
-        className="copy-icon-button"
       />
     </div>
   ),

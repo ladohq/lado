@@ -6,6 +6,7 @@
 // role="status". Only when both fail is the text shown selected, to copy by hand.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 
+import { CopyIcon } from "./icons";
 import { useBelow, useDismiss } from "./Menu";
 import { Tooltip } from "./Tooltip";
 
@@ -103,6 +104,12 @@ export function CopyField({
       <p className="muted">Press ⌘C / Ctrl+C to copy</p>
     </div>
   );
+}
+
+// Copy code and Copy message (docs/design/ui.md, Selected text and copy buttons): a small
+// copy icon, "Copied", shown on hover by styles.css (.copy-icon-button).
+export function CopyIconButton({ label, text, field }: { label: string; text: string; field: { title: string; label: string } }) {
+  return <CopyButton label={label} copied="Copied" text={text} field={field} icon={<CopyIcon />} className="copy-icon-button" />;
 }
 
 // An icon button that copies `text`, with its tooltip, its note and, when the copy fails,

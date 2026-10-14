@@ -35,6 +35,9 @@ test-live: ## live e2e tests with real agent CLIs and models, serially; PROVIDER
 test-smoke: ## smoke tests: real agent CLIs, a local endpoint instead of a model, serially; PROVIDER=claude|codex|kilo|opencode picks one
 	uv run pytest -m smoke -n0 $(if $(PROVIDER),-k $(PROVIDER)) -v
 
+test-container: ## container tests: LADO's image with real Docker, no model, serially (make docker first)
+	uv run pytest -m container -n0 -v
+
 test-ui: ## UI end-to-end tests: Chromium against a real lado server, fake agent
 	$(LOCK) $(MAKE) --no-print-directory _test-ui
 

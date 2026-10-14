@@ -213,6 +213,17 @@ test("what waits shows by session: its name, In the chat, its waiting card, then
   expect(within(w2).queryByRole("link")).toBeNull();
 });
 
+test("Needs you shows a card minimized in its chat whole, with no minimize icon and no edge", async () => {
+  localStorage.setItem("lado.waitingMinimized.lado", JSON.stringify(["gate:1"]));
+  waiting = [waits.gate("lado", gate(1))];
+  open();
+  const lado = await card("lado");
+  expect(lado.classList.contains("minimized")).toBe(false);
+  expect(within(lado).getByRole("tabpanel")).toBeTruthy();
+  expect(within(lado).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
+  expect(within(lado).queryByRole("separator")).toBeNull();
+});
+
 test("a gate and a question are answered in place, each to its session; an answered one goes when the feed says so", async () => {
   waiting = [waits.gate("lado", gate(1)), waits.question("lado", question(5)), waits.question("api", question(7))];
   open();

@@ -303,6 +303,9 @@ test("an open question is one line in the feed whose arrow leads to its tab; it 
   // The card stands between the feed and the composer.
   const section = screen.getByRole("region", { name: "Chat" });
   expect([...section.children].map((one) => one.className.split(" ")[0])).toEqual(["chat-feed", "waiting-card", "composer"]);
+  // In the chat it minimizes, and the edge above it resizes it.
+  expect(within(card).getByRole("button", { name: "Minimize the card" })).toBeTruthy();
+  expect(within(card).getByRole("separator", { name: "Resize the card" })).toBeTruthy();
   scrolled.mockClear();
   fireEvent.click(within(line).getByRole("button", { name: "Answer question #5" }));
   await waitFor(() => expect(card.querySelector('[data-item="5"]')?.className).toContain("marked"));

@@ -6,7 +6,7 @@
 // grouped by sender, with a divider between days; an open question or gate is a quiet line
 // leading to its tab. What the human sends shows only once the feed brings it: nothing
 // ahead of the server.
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
 import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
@@ -28,6 +28,7 @@ import {
 } from "./live";
 import { runPath } from "./paths";
 import { messageAnchor, Question, replyOf, type Reply } from "./Question";
+import { useHeight } from "./Splitter";
 import { agentTab, gateTab, WaitingCard, type Focus } from "./WaitingCard";
 
 // The run events the feed shows as lines, and the word each kind's line says: the one list.
@@ -195,6 +196,14 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   const window = messageWindow(state, session, spec);
   const loaded = all(window, state.events[session] ?? null, state.gates[session] ?? null);
   const feed = useRef<HTMLDivElement>(null);
+  const [measured, feedHeight] = useHeight<HTMLDivElement>(); // the waiting card's edge needs it
+  const feedRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      feed.current = element;
+      measured(element);
+    },
+    [measured],
+  );
   const top = useRef<HTMLDivElement>(null);
   const scroll = useRef<Scroll>({ window: null, first: null, last: null, height: 0, top: 0, bottom: true });
   useEffect(() => live.watchMessages(session, spec), [live, session, key]); // key: the spec's
@@ -306,7 +315,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
 
   return (
     <section className="chat" aria-label="Chat">
-      <div className="chat-feed" role="log" aria-label="Chat with the session" ref={feed} onScroll={scrolled}>
+      <div className="chat-feed" role="log" aria-label="Chat with the session" ref={feedRef} onScroll={scrolled}>
         {loaded === null && <p className="muted">Loading…</p>}
         {loaded && "error" in loaded && (
           <p className="problem" role="alert">
@@ -326,6 +335,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         runs={runs && "items" in runs ? runs.items : null}
         stopped={stopped}
         focus={focus}
+        chat={{ feed: feedHeight }}
       />
       <Composer session={session} stopped={stopped} />
     </section>

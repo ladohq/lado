@@ -44,10 +44,10 @@
 
 ## 5. In CI
 
-- [ ] 5.1 Push the branch: every job green on the pull request; `ci-ok` green; the
+- [x] 5.1 Push the branch: every job green on the pull request; `ci-ok` green; the
   integration shards' times in the build report (each shard's test count and minutes,
   against 6 min before).
-- [ ] 5.2 Check the filter on the pull request's own run (it changes `scripts/`, so the
+- [x] 5.2 Check the filter on the pull request's own run (it changes `scripts/`, so the
   smoke runs) and, by `scripts/smoke_ci.py needed` locally on a docs-only commit range,
   that it would skip.
 - [ ] 5.3 At merge (integrator, D8): the ruleset to `ci-ok` only with the human's yes,

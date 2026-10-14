@@ -56,6 +56,7 @@ test("Enter saves the trimmed text through the API and closes", async () => {
   fireEvent.keyDown(field, { key: "Enter" });
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(calls).toEqual([{ method: "PUT", path: "/api/sessions/lado-2/title", body: { title: "Review" } }]);
+  expect(onClose).toHaveBeenCalledWith(expect.objectContaining({ name: "lado-2", title: "Review" })); // as stored
 });
 
 test("leaving the field saves too", async () => {

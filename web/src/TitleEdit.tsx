@@ -2,13 +2,22 @@
 // (docs/design/ui.md, Session title). Enter or leaving the field saves, Esc cancels; empty
 // clears the title. A text over the server's limit is said under the field and not sent; the
 // server's refusal is said there too, the field kept open with the text. The same text as
-// stored sends nothing. `onClose` puts the focus back on the opener.
+// stored sends nothing. `onClose` gets the session as the server stored it after a save (the
+// page shows it before the feed brings it), and puts the focus back on the opener.
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError, getLimits, setSessionTitle, type SessionInfo } from "./api";
 import { titleLength } from "./sessionLabel";
 
-export function TitleEdit({ session, hint, onClose }: { session: SessionInfo; hint: string; onClose: () => void }) {
+export function TitleEdit({
+  session,
+  hint,
+  onClose,
+}: {
+  session: SessionInfo;
+  hint: string;
+  onClose: (saved?: SessionInfo) => void;
+}) {
   const [text, setText] = useState(session.title ?? "");
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -30,9 +39,9 @@ export function TitleEdit({ session, hint, onClose }: { session: SessionInfo; hi
 
   const length = titleLength(text);
   const over = limit !== null && length > limit;
-  const close = () => {
+  const close = (saved?: SessionInfo) => {
     closed.current = true;
-    onClose();
+    onClose(saved);
   };
 
   const save = async () => {
@@ -41,14 +50,15 @@ export function TitleEdit({ session, hint, onClose }: { session: SessionInfo; hi
     if (wanted === (session.title ?? "")) return close();
     setSaving(true);
     setProblem(null);
+    let saved: SessionInfo;
     try {
-      await setSessionTitle(session.name, wanted || null);
+      saved = await setSessionTitle(session.name, wanted || null);
     } catch (error) {
       setSaving(false);
       setProblem(error instanceof ApiError ? error.message : String(error));
       return;
     }
-    close();
+    close(saved);
   };
 
   return (

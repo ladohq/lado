@@ -848,6 +848,9 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
     settles_at(page, card, 270)
     # A double click: the stylesheet's height, half the chat.
     edge.dblclick()
+    # It selects nothing: a selection under the next press would start the browser's own
+    # drag, which cancels the edge's.
+    assert page.evaluate("String(window.getSelection())") == ""
     chat = page.get_by_role("region", name="Chat", exact=True)
     expect(card).not_to_have_class(re.compile(r"\bsized\b"))
     settles_at(page, card, height(chat) / 2)

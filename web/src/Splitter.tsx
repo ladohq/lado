@@ -93,6 +93,9 @@ export function Splitter({
   const [dragging, setDragging] = useState(false);
   const drag = (event: React.PointerEvent<HTMLDivElement>) => {
     const separator = event.currentTarget;
+    // No text selected and no drag of the browser's own: a selection a double click left
+    // under the press would start one, and the browser would cancel this drag for it.
+    event.preventDefault();
     separator.setPointerCapture?.(event.pointerId); // jsdom has none
     const at = (pointer: { clientX: number; clientY: number }) => (across ? pointer.clientY : pointer.clientX);
     const start = at(event);

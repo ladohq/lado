@@ -172,6 +172,11 @@ test("a drag says so to onChange and calls onEnd when let go or cancelled; the k
   expect(ended).toHaveBeenCalledTimes(2);
 });
 
+test("a press on the edge selects no text and starts no drag of the browser's own", () => {
+  render(<Column edge="top" />);
+  expect(fireEvent.pointerDown(splitter(), { clientY: 600 })).toBe(false); // default prevented
+});
+
 test("the side edges take no up and down keys", () => {
   render(<Column edge="right" />);
   fireEvent.keyDown(splitter(), { key: "ArrowUp" });

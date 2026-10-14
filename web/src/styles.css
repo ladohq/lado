@@ -754,6 +754,7 @@ h3 {
   width: 8px;
   cursor: col-resize;
   touch-action: none;
+  user-select: none;
 }
 
 .splitter::after {

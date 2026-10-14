@@ -60,8 +60,9 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 # Integration tests (real tmux, git and agent processes, no LLM) run with `-m integration`,
 # live tests (real agent CLIs and models) with `-m live`.
-addopts = "-m 'not integration and not live and not smoke and not ui'"
+addopts = "-m 'not integration and not live and not smoke and not ui and not container'"
 markers = [
+    "container: LADO's image with real Docker (docker/, make docker first); no model",
     "ui: the web UI in a browser (Chromium) against a real lado server, fake agent; no LLM",
     "integration: real tmux, git and subprocesses with a fake agent; no LLM",
     "live: real agent CLIs and real models; costs tokens or needs network",

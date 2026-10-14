@@ -3,10 +3,10 @@ the tests' code and the commit.
 
 ## 1. The doctor's write check
 
-- [ ] 1.1 Unit tests first (layer 1), `tests/test_doctor.py`: a folder LADO may not write
+- [x] 1.1 Unit tests first (layer 1), `tests/test_doctor.py`: a folder LADO may not write
   in warns `LADO may not write in LADO_REPOS <path>: <reason>` with the hint and leaves no
   file; a writable folder is `ok` and holds no file after. Plan, Task 1.
-- [ ] 1.2 `doctor.check_repos_folder`: the probe file (D8). `uv run pytest
+- [x] 1.2 `doctor.check_repos_folder`: the probe file (D8). `uv run pytest
   tests/test_doctor.py -n0`.
 
 ## 2. The entrypoint, the sudo rule and git's trust

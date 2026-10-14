@@ -48,8 +48,10 @@ report's end and created in the tracker only on the human's separate yes.
 - Measurements of this repository's CI history (GitHub Actions API through `gh`), its
   pull requests, and the flow runs of LAD tasks in this machine's `lado.db`.
 - Desk research of other projects' practices, with links.
-- Recommendations as the human chose them: R1-R6 taken, R7 (merge queue) and R8 (caching,
-  sharding the unit tests, review round caps) not taken, each with its reason.
+- Recommendations as the human chose them: R1-R6 taken (R2 in part: the aggregate check
+  `ci-ok`, not the skip of heavy jobs for docs-only pull requests, decided after the
+  measurement), R7 (merge queue) and R8 (caching, sharding the unit tests, review round
+  caps) not taken, each with its reason.
 
 ## Out of scope
 
@@ -72,8 +74,8 @@ report's end and created in the tracker only on the human's separate yes.
   link and a verdict for LADO.
 - AC-4: Section 5 has R1-R8, each with gain, risk and the rule it changes named
   explicitly (AGENTS.md "Commands"/"Testing", docs/release.md, `.lado/sdlc.md`,
-  `tests/test_ci_workflow.py`), and marked taken (R1-R6) or not taken (R7, R8) with the
-  reason.
+  `tests/test_ci_workflow.py`), and marked taken (R1-R6; R2 in part) or not taken (R7,
+  R8) with the reason.
 - AC-5: Section 6 has drafts A and B with size and dependencies; no tracker task is
   created without the human's "yes, create" for that list.
 - AC-6: `python3 docs/research/merge-path/measure.py --help` runs with the standard

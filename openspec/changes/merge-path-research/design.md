@@ -99,7 +99,8 @@ grow the smoke matrix and the integration suite, so sharding pays more over time
   `make dist` in the first. Gain: CI wall ~9.6 → ~4-5 min; with 2-3 CI waits per task,
   ~10-15 min per task. Risk: low; the required check names change (ruleset), and
   AGENTS.md ("CI runs …", the worker counts) and `tests/test_ci_workflow.py` change.
-- R2 (taken). One required check, `ci-ok`, a job that needs every other job and fails
+- R2 (taken in part: the human took `ci-ok` and dropped the docs-only skip once the
+  report measured 1 docs-only pull request of 38, not 5). One required check, `ci-ok`, a job that needs every other job and fails
   unless each succeeded or was skipped on purpose; the ruleset requires only it. On a
   pull request whose every changed file is on an allow-list of paths no test reads
   (`docs/research/`, `docs/superpowers/`, `openspec/`, `BACKLOG.md`, `ROADMAP.md`), the
@@ -142,7 +143,7 @@ grow the smoke matrix and the integration suite, so sharding pays more over time
 ## Proposed tasks
 
 - A (size M): «CI: параллельные шарды тестов, одна обязательная проверка ci-ok, smoke по
-  путям» — R1-R4: `ci.yml`, `tests/test_ci_workflow.py`, AGENTS.md (Commands, Testing),
+  путям» — R1, R2's `ci-ok` only, R3, R4: `ci.yml`, `tests/test_ci_workflow.py`, AGENTS.md (Commands, Testing),
   `.lado/sdlc.md` ("What CI proves"); the ruleset of `main` changed by the human (or with
   their yes) to require `ci-ok` once the job is green on `main`. Depends on nothing.
 - B (size S): «sdlc.md: политика флейков и слияние без локальных проверок» — R5, R6 in

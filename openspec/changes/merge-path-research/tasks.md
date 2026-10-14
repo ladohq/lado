@@ -22,9 +22,9 @@
 
 ## 3. Tracker
 
-- [ ] 3.1 Post a Russian comment on LAD-58 with the summary and the proposed tasks
+- [x] 3.1 Post a Russian comment on LAD-58 with the summary and the proposed tasks
   (AC-7). Check: the comment by its id in the task.
-- [ ] 3.2 Ask the human once for "yes, create" on tasks A and B as drafted; create them
+- [x] 3.2 Ask the human once for "yes, create" on tasks A and B as drafted; create them
   only on that yes, each with the label `component lado`, linked to LAD-58 as `derived`
   (D5). Check: each new task by its key; when the human says no, the ledger says so and
   nothing is created.

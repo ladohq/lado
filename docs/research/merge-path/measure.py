@@ -399,7 +399,8 @@ def pr_section(
     print()
 
 
-# Recommendation R2's list of paths no test reads (docs/research/merge-path.md).
+# The paths no test reads that recommendation R2 proposed to skip the heavy jobs for (its
+# skip not taken; docs/research/merge-path.md): how many pull requests it would have spared.
 DOCS_PATHS = "docs/research/,docs/superpowers/,openspec/,BACKLOG.md,ROADMAP.md"
 
 FLOW = re.compile(r"^(\S+) -(\S+)-> (\S+)$")

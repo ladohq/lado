@@ -26,7 +26,7 @@ setup step under 5 s) and runner queues (0.0-0.1 min on Linux) cost little.
 
 Taken (the human's decision): **R1** shard the integration tests (3 jobs per Python) and
 the UI tests (2 jobs), CI ~9.7 → ~4-5 min, 10-15 min less per task; **R2** one required
-check `ci-ok`, and heavy jobs skipped for a pull request of research documents only;
+check `ci-ok` (taken in part: heavy jobs are not skipped for research-only pull requests);
 **R3** smoke only where it can break, on `main` and once a day; **R4** cancel a pull
 request's superseded runs; **R5** a flake policy in `.lado/sdlc.md`; **R6** the
 integrator relies on the pull request's CI instead of running the checks locally. Not
@@ -88,7 +88,8 @@ reruns, 19 of those reruns in one run of LAD-44. The median of CI runs per pull 
 is 2.5 (design 3): a run after the window's end is not counted. Pull requests that change
 only R2's docs-only paths: 1 of 38 (design: 5 of 38); the documentation pull requests
 the design also counted (#3, #4, #7, #28) change CHANGELOG.md, which the release tests
-read, README.md, which `make dist` packs, or code. R2's gain is corrected in section 5. The flow table is the design's to the minute.
+read, README.md, which `make dist` packs, or code. This is why R2's skip of heavy jobs
+was then not taken (section 5). The flow table is the design's to the minute.
 
 ### 3.1 CI wall time
 
@@ -244,8 +245,9 @@ A required check that a path filter skips leaves the pull request waiting ([GitH
 checks"](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks)),
 so projects require one final job that needs all others and decides
 ([re-actors/alls-green](https://github.com/re-actors/alls-green) is a published action
-for exactly that). **For LADO:** yes (R2, R3), with the filter lists guarded by a test,
-since a list of paths drifts from what the tests read.
+for exactly that). **For LADO:** the aggregate check yes (R2); a path filter only for the
+smoke (R3), guarded by a test, since a list of paths drifts from what the code and tests
+read. Skipping the required jobs for documents is not worth it here (R2).
 
 **Fast required checks, slow ones after the merge or nightly.** Large projects keep the
 pull request's checks short and run the slow or platform-wide ones on the merged branch
@@ -325,31 +327,31 @@ workers" for the UI tests becomes "two jobs of two workers") and "Testing"; the 
 commands in `tests/test_ci_workflow.py`. `make check` and the local commands are
 unchanged.
 
-### R2. One required check `ci-ok`, heavy jobs skipped for research-only pull requests — taken
+### R2. One required check `ci-ok` — taken in part
 
-What: a last job `ci-ok` that needs every other job and fails unless each succeeded or
-was skipped on purpose; the ruleset of `main` requires only it. On a pull request whose
-every changed file is under a path no test reads (`docs/research/`, `docs/superpowers/`,
-`openspec/`, `BACKLOG.md`, `ROADMAP.md`), the jobs `check`, `ui` and `smoke` are skipped
-and `ci-ok` says why in its summary. A push to `main` always runs everything.
+What was proposed: a last job `ci-ok` that needs every other job and fails unless each
+succeeded or was skipped on purpose, the only check the ruleset of `main` requires; and,
+on a pull request whose every changed file is under a path no test reads
+(`docs/research/`, `docs/superpowers/`, `openspec/`, `BACKLOG.md`, `ROADMAP.md`), the
+jobs `check`, `ui` and `smoke` skipped, with `ci-ok` saying why.
 
-Gain: the ruleset stops naming jobs, so R1 and later changes reshape jobs without touching
-it. A research pull request's CI ~1 min instead of ~10. Corrected from the design: in the
-window that is 1 pull request of 38 (#33, LAD-52's seven runs), and this report's own.
-CHANGELOG.md, docs/release.md and docs/telemetry.md are read by tests, README.md is packed
-by `make dist`, so they stay off the list, and a user-facing documentation change brings
-a CHANGELOG line anyway. So the skip is a small gain; the aggregate check is the main
-one.
+Taken: the aggregate check `ci-ok`. Gain: the ruleset stops naming jobs, so R1 and later
+changes reshape jobs without touching it. Risk: low; a `ci-ok` that passed over a failed
+job would be silent, so the job checks each needed result explicitly ("No silent
+drops"); the only job it may see skipped is the smoke under R3's filter.
 
-Risk: medium. A wrong path on the list lets untested code into `main`; a unit test checks
-that no file under a listed path is opened by a test or by the code, and `main`'s full
-run catches the rest after the merge. A `ci-ok` that passes over a failed job would be
-silent: the job checks each needed result explicitly ("No silent drops").
+Not taken (the human's decision after the measurement): the skip for research-only pull
+requests. Its gain is small: a research pull request's CI ~1 min instead of ~10, but in
+the window that was 1 pull request of 38 (#33, LAD-52's seven runs), not 5 as the design
+estimated; CHANGELOG.md, docs/release.md and docs/telemetry.md are read by tests and
+README.md is packed by `make dist`, so documentation for users never fits the list. Its
+risk is medium: a wrong path on the list lets untested code into `main`, and the list
+needs a guard test that keeps up with every file the code and tests read.
 
 Rules it changes, named: the ruleset of `main` (required: `ci-ok` only, set once the job
-is green on `main`); `.lado/sdlc.md` "What CI proves" (a green CI of a research-only pull
-request is not the full `make check`); `tests/test_ci_workflow.py` (the list and its
-guard).
+is green on `main`); `tests/test_ci_workflow.py` (`ci-ok` needs every other job).
+`.lado/sdlc.md` "What CI proves" is unchanged by R2: every pull request still runs the
+full suite.
 
 ### R3. Smoke where it can break, on `main` and once a day — taken
 
@@ -432,16 +434,18 @@ about one per pull request (3.5). No time is lost there.
 
 ## 6. Proposed tasks
 
-In the order to build them. Each is created in the tracker only on the human's "yes,
-create" for this list, with the label `component lado` and a link to LAD-58.
+In the order to build them. The human said "yes, create" for this list, with R2's skip
+of heavy jobs taken out of A; each is a tracker task with the label `component lado`,
+derived from LAD-58.
 
-**A. «CI: параллельные шарды тестов, одна обязательная проверка ci-ok, smoke по путям»**
-(size M). R1-R4: `ci.yml`, `tests/test_ci_workflow.py` (the shards, the docs-only list
-and its guard, the smoke filter, the concurrency rule), AGENTS.md (Commands, Testing),
+**A (LAD-60). «CI: параллельные шарды тестов, одна обязательная проверка ci-ok, smoke по
+путям»** (size M). R1, R2's aggregate check only, R3, R4: `ci.yml`, `tests/test_ci_workflow.py`
+(the shards, `ci-ok` and the jobs it needs, the smoke filter, the concurrency rule),
+AGENTS.md (Commands, Testing),
 `.lado/sdlc.md` ("What CI proves"). The ruleset of `main` is changed by the human (or
 with their yes) to require `ci-ok` once the job is green on `main`. Depends on nothing.
 Measured again with `measure.py` after a week of runs.
 
-**B. «sdlc.md: политика флейков и слияние без локальных проверок»** (size S). R5, R6 in
+**B (LAD-61). «sdlc.md: политика флейков и слияние без локальных проверок»** (size S). R5, R6 in
 `.lado/sdlc.md` (Review traps; Extra instructions for the integrator). Independent of A;
 after A the CI wait it relies on is shorter.

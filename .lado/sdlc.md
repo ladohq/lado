@@ -64,10 +64,15 @@ at the start of every step.
   - `make test-live`: real models, run only at a release, Claude Code only with the
     human's yes;
   - `make test-smoke`: needs the real CLIs; CI runs it.
-- What CI proves: on every push, `ruff format --check`, `ruff check`, the unit and
-  integration tests on Python 3.10 and 3.13, the Node tests, `make dist` with the UI e2e
-  tests, and the smoke tests on Linux and macOS per provider. A green CI is the full
-  `make check` plus the smoke.
+- What CI proves: on every pull request and push to main, `ruff format --check`,
+  `ruff check`, the unit tests and the integration tests (three shards per Python) on
+  Python 3.10 and 3.13, the Node tests, `make dist` and the UI e2e tests (two shards). The
+  smoke tests on Linux and macOS per provider run on every push to main, daily on main,
+  and on each pull request that changes a file off ci.yml's skip list (`web/`, `docs/`,
+  `openspec/`, `tests/ui/`, `tests/js/`, the top-level Markdown documents,
+  `.github/dependabot.yml`). The one required check is `ci-ok`: green means the full
+  `make check` plus the smoke, but for a pull request within the skip list, where the
+  smoke was skipped.
 - CI time ceiling: 40 minutes
 
 ## External reviewer
@@ -98,6 +103,19 @@ at the start of every step.
   fails on timeouts") — the test passes when its node id is rerun alone with `-n0` and its
   marker — rerun it up to twice; a pass is a flake: record it in the ledger, do not change
   code for it.
+- A CI job red with no cause in the work (a timeout, a runner or service that fails at
+  random) — `gh run view <id>` names the failed job, step and test, and nothing in the
+  diff or the target branch it meets explains it — the agent that waits for CI (the
+  developer in `build`, the reviewer in `review`, the integrator in `merge`) reruns the
+  failed jobs alone, `gh run rerun <id> --failed`, at most twice, without asking the
+  supervisor first; any job of CI, the smoke included; never the whole run, never an
+  automatic retry inside pytest. A pass on a rerun is a flake: name its job, step and
+  test in the ledger (the developer in `build-report`, the integrator in its note);
+  search the tracker for an open task on that test and name it when there is one,
+  otherwise propose a task to the human at once with `ask_human` (as LAD-57), go on
+  without waiting, and create it only on their "yes, create"; the reviewer, who has no
+  tracker, leaves the search and the proposal to the supervisor with `send_message`.
+  Red after the second rerun follows kit sdlc's "A red check".
 - `web/openapi.json` or `web/src/api.gen.ts` stale after an API model change — `make web`
   fails its stale-types check — run `make web-types` and commit both files.
 - A live test added or changed — it only collects without real CLIs — say "written, not
@@ -168,3 +186,10 @@ Reviewer:
 Integrator:
 - Never bump the version, date CHANGELOG.md or tag: a release is a separate task the
   human starts.
+- After merging `origin/<target>` into the run's branch (the kit's Merge, step 2), run
+  none of the settings' **Checks** locally but `openspec validate --specs --strict`
+  (CI does not run it); with it green, push and wait for the pull request's CI, which
+  runs the rest. A red CI then follows step 3 as written, after the Review trap's
+  reruns for a CI job red with no cause in the work: the merge commit stays, and a
+  cause in the work is `conflicts`, fixed by the developer on top. This replaces step
+  2's local run of the Checks on this project.

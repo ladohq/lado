@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 from agent_helpers import init_repo, no_maintenance_env, write_index
 
+# `--shard K/N`: CI's integration and UI shards (tests/shard.py).
+from shard import pytest_addoption, pytest_collection_modifyitems, pytest_configure  # noqa: F401
+
 # Tests never use the user's LADO tmux server (socket "lado").
 TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
 

@@ -1495,8 +1495,10 @@ the quote icon of variant 1; openspec change `selection-actions`).
   table, in the panel and in the Artifacts tab. Not areas: inputs, the composer, terminals,
   HTML artifacts (their frame), images, and the UI's chrome (rail, tabs, heads, buttons).
 - **The selection bar** (`SelectionBar.tsx`, mounted once in the shell): when a selection
-  that is not blank has both ends in one area (none across two, nor in a field, an
-  editable element or a terminal), a small bar of two icon buttons, their names in the
+  that is not blank lies in one area (none that takes text of two, nor in a field, an
+  editable element or a terminal; one that ends at the next block's start without taking
+  its text, as a triple click on an area's last line does, is still that area's), a small
+  bar of two icon buttons, their names in the
   UI's tooltips: **Copy** (two sheets) and **Quote in reply** (a speech bubble with quote
   marks). It stands over the selection's middle, 8 px above it; below it on a touch screen
   (`(hover: none)`, where the system's own menu stands above) or with no room above; never

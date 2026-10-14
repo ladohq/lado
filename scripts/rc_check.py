@@ -382,8 +382,100 @@ def sandbox(version: Version, provider: str, ui: bool) -> int:
     return 0
 
 
+def own_lado() -> str:
+    """The human's own `lado` on PATH; RcError for none, or for one of this repository
+    (its `.venv`, first on PATH under `uv run`)."""
+    found = shutil.which("lado")
+    if found is None:
+        raise RcError("no lado on PATH: install LADO first (docs/install.md)")
+    if Path(found).resolve().is_relative_to(ROOT):
+        raise RcError(
+            f"lado on PATH is this repository's {found}, not your installed LADO: run "
+            "python3 scripts/rc_check.py, not under uv run or an activated .venv"
+        )
+    return found
+
+
+def lado_home() -> Path:
+    return Path(os.environ.get("LADO_HOME") or Path.home() / ".lado").expanduser()
+
+
+def keep_dir() -> Path:
+    """Where the final's database is kept: outside LADO_HOME, so neither `lado update`
+    nor `lado uninstall` removes it."""
+    return Path.home() / ".lado-rc"
+
+
+def kept() -> list[Path]:
+    """The copies in keep_dir(), `lado.db.<version>` each."""
+    folder = keep_dir()
+    if not folder.is_dir():
+        return []
+    prefix = "lado.db."
+    return sorted(
+        p for p in folder.iterdir() if p.name.startswith(prefix) and parse(p.name[len(prefix) :])
+    )
+
+
+def installed(lado: str) -> Version:
+    """The version `lado --version` says; RcError when it says none."""
+    said = run([lado, "--version"]).output.strip()
+    version = parse(said.removeprefix("lado "))
+    if version is None:
+        raise RcError(f"{lado} --version says {said or 'nothing'}, no LADO version")
+    return version
+
+
+def _copy(source: Path, target: Path) -> None:
+    """`source` as `target`, the only file of its folder: written beside it, then renamed."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    written = target.with_name(f".{target.name}.tmp")
+    shutil.copy2(source, written)
+    written.replace(target)
+    for other in target.parent.iterdir():
+        if other != target:
+            other.unlink()
+
+
 def upgrade(version: Version) -> int:
-    raise NotImplementedError
+    """`upgrade`: the human's `lado update <version>`, then, coming from a final, a copy
+    of that final's database backup in keep_dir()."""
+    lado = own_lado()
+    before = installed(lado)
+    print(f"Your LADO is {before}; running lado update {version}:", flush=True)
+    code = run([lado, "update", str(version)], terminal=True).code
+    if code:
+        print(
+            f"rc_check: lado update {version} did not update (exit {code}): nothing kept",
+            file=sys.stderr,
+        )
+        return code
+    after = installed(lado)
+    if after != version:
+        raise RcError(f"lado --version says lado {after} after the update, not {version}")
+    if before.final:
+        backup = lado_home() / "backups" / f"lado.db.{before}"
+        if backup.is_file():
+            target = keep_dir() / backup.name
+            _copy(backup, target)
+            print(f"Kept a copy of LADO {before}'s database: {target} (for rollback)")
+        else:
+            print(
+                f"warning: no backup {backup} (no lado.db to back up?): rollback has no copy, "
+                f"and `lado update {before}` alone goes back"
+            )
+    else:
+        copies = kept()
+        if copies:
+            final = copies[-1].name.removeprefix("lado.db.")
+            print(f"{copies[-1]} stays: rollback goes back to LADO {final}")
+        else:
+            print(
+                "warning: ~/.lado-rc holds no copy of a final's database: rollback cannot "
+                "restore lado.db"
+            )
+    print_checklist(version)
+    return 0
 
 
 def rollback() -> int:

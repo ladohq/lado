@@ -371,3 +371,113 @@ def test_enter_at_the_end_of_input_is_enter(recorder, temp, monkeypatch):
 
     monkeypatch.setattr("builtins.input", eof)
     assert rc.sandbox(rc.parse("0.38.0rc1"), "claude", ui=True) == 0
+
+
+LADO = "/home/u/.local/bin/lado"  # the human's own
+
+
+class Homes:
+    def __init__(self, user: Path, lado: Path) -> None:
+        self.user = user  # HOME
+        self.lado = lado  # LADO_HOME
+        self.keep = user / ".lado-rc"
+        self.backups = lado / "backups"
+
+    def back_up(self, version: str, content: bytes = b"backup") -> None:
+        """What `lado update` leaves: one backup, of the version it updated from."""
+        self.backups.mkdir(parents=True, exist_ok=True)
+        for old in self.backups.iterdir():
+            old.unlink()
+        (self.backups / f"lado.db.{version}").write_bytes(content)
+
+
+@pytest.fixture
+def homes(tmp_path, lado_home, monkeypatch):
+    user = tmp_path / "user"
+    user.mkdir()
+    lado_home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(user))
+    monkeypatch.setattr(rc.shutil, "which", lambda name: LADO if name == "lado" else None)
+    return Homes(user, lado_home)
+
+
+def test_upgrade_from_a_final_keeps_its_backup(recorder, homes, capsys):
+    homes.back_up("0.36.0")  # an older update's
+    (homes.keep).mkdir()
+    (homes.keep / "lado.db.0.36.0").write_bytes(b"an older cycle's")
+    recorder.version("0.37.1", "0.38.0rc1")
+    recorder.answer("update", 0, then=lambda: homes.back_up("0.37.1", b"the final's"))
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
+    updates = [(argv, terminal) for argv, _, terminal in recorder.calls if verb(argv) == "update"]
+    assert updates == [([LADO, "update", "0.38.0rc1"], True)]  # its own question, no --yes
+    assert [p.name for p in homes.keep.iterdir()] == ["lado.db.0.37.1"]
+    assert (homes.keep / "lado.db.0.37.1").read_bytes() == b"the final's"
+    out = capsys.readouterr().out
+    assert f"Kept a copy of LADO 0.37.1's database: {homes.keep / 'lado.db.0.37.1'}" in out
+    assert "Left to check by hand on LADO 0.38.0rc1:" in out
+
+
+def test_upgrade_from_an_rc_leaves_the_copy(recorder, homes, capsys):
+    homes.keep.mkdir()
+    (homes.keep / "lado.db.0.37.1").write_bytes(b"final")
+    recorder.version("0.38.0rc1", "0.38.0rc2")
+    recorder.answer("update", 0, then=lambda: homes.back_up("0.38.0rc1"))
+    assert rc.upgrade(rc.parse("0.38.0rc2")) == 0
+    assert [p.name for p in homes.keep.iterdir()] == ["lado.db.0.37.1"]
+    assert (homes.keep / "lado.db.0.37.1").read_bytes() == b"final"
+    assert "rollback goes back to LADO 0.37.1" in capsys.readouterr().out
+
+
+def test_upgrade_from_an_rc_without_a_copy_warns(recorder, homes, capsys):
+    recorder.version("0.38.0rc1", "0.38.0rc2")
+    assert rc.upgrade(rc.parse("0.38.0rc2")) == 0
+    assert "warning: ~/.lado-rc holds no copy of a final's database" in capsys.readouterr().out
+
+
+def test_upgrade_from_a_final_without_a_backup_warns(recorder, homes, capsys):
+    recorder.version("0.37.1", "0.38.0rc1")
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 0
+    assert not homes.keep.exists()
+    out = capsys.readouterr().out
+    assert f"warning: no backup {homes.backups / 'lado.db.0.37.1'}" in out
+
+
+def test_a_failed_update_copies_nothing(recorder, homes, capsys):
+    homes.back_up("0.37.0")
+    recorder.version("0.37.1")
+    recorder.answer("update", 1)
+    assert rc.upgrade(rc.parse("0.38.0rc1")) == 1
+    assert not homes.keep.exists()
+    assert "lado update 0.38.0rc1 did not update (exit 1): nothing kept" in capsys.readouterr().err
+
+
+def test_an_update_that_left_another_version_is_a_failure(recorder, homes, capsys):
+    recorder.version("0.37.1", "0.37.1")
+    recorder.answer("update", 0, then=lambda: homes.back_up("0.37.1"))
+    assert rc.main(["upgrade", "0.38.0rc1"]) == 1
+    assert not homes.keep.exists()
+    assert "lado --version says lado 0.37.1 after the update" in capsys.readouterr().err
+
+
+def test_the_working_copys_lado_is_refused(monkeypatch, capsys, recorder):
+    found = str(ROOT / ".venv" / "bin" / "lado")
+    monkeypatch.setattr(rc.shutil, "which", lambda _: found)
+    assert rc.main(["upgrade", "0.38.0rc1"]) == 1
+    err = capsys.readouterr().err
+    assert f"lado on PATH is this repository's {found}" in err
+    assert "python3 scripts/rc_check.py" in err
+    assert recorder.calls == []
+
+
+def test_no_lado_on_path_is_refused(monkeypatch, capsys, recorder):
+    monkeypatch.setattr(rc.shutil, "which", lambda _: None)
+    assert rc.main(["upgrade", "0.38.0rc1"]) == 1
+    assert "no lado on PATH" in capsys.readouterr().err
+
+
+def test_upgrade_and_rollback_inside_an_agent_are_refused(monkeypatch, capsys, recorder, homes):
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    assert rc.main(["upgrade", "0.38.0rc1"]) == 1
+    assert rc.main(["rollback"]) == 1
+    assert "not in an agent" in capsys.readouterr().err
+    assert recorder.calls == []

@@ -79,7 +79,10 @@ login shell (tests of the shell set their own `SHELL`). It also sets
 on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`). Likewise
 `LADO_TELEMETRY=0` (and no `DO_NOT_TRACK` or `LADO_TELEMETRY_URL`), so no test sends
 statistics: `telemetry_on` switches sending on towards a closed local port and stores the
-yes, `telemetry_endpoint` adds a local endpoint that keeps each request.
+yes, `telemetry_endpoint` adds a local endpoint that keeps each request. An autouse guard
+(`_no_statistics`) fails a test when sending is not off by `LADO_TELEMETRY=0` before it, or
+when, after a test without `telemetry_on`, its `LADO_HOME` holds `telemetry/sent.json` or a
+file in `telemetry/outbox/`; the live and smoke tests, under `tests/`, get it too.
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's

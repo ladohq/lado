@@ -71,12 +71,15 @@ in section 6 catches a mistake before it is published.
 
 The human, on the RC:
 
-- A clean install in a home of its own: `LADO_HOME=$(mktemp -d) LADO_TMUX_SOCKET=lado-rc
+- A clean install in a home of its own:
+  `LADO_TELEMETRY=0 LADO_HOME=$(mktemp -d) LADO_TMUX_SOCKET=lado-rc
   uvx --from lado==X.Y.ZrcN lado doctor`, then with the same variables `uvx --from
   lado==X.Y.ZrcN lado start <scratch repository>` and `uvx --from lado==X.Y.ZrcN lado stop
-  <its session>` (a bare `lado` is the human's installed final, not the RC).
+  <its session>` (a bare `lado` is the human's installed final, not the RC). A fresh home is
+  a new install to the usage statistics (docs/telemetry.md), so it never sends, and
+  `lado start` does not ask; a test keeps each scratch home of this file with it.
 - The upgrade of the human's own LADO from the last final with a session running:
-  `lado update X.Y.ZrcN`. The migration when the schema moved, the sessions resumed, the
+  `lado update X.Y.ZrcN` (their own install, counted once as before). The migration when the schema moved, the sessions resumed, the
   UI server back; `update.log` read.
 - A session with the sdlc kit through one run to its first gate, answered in the UI.
 - The UI: the chat, a gate's card, the System panel with its `pre-release` pill.

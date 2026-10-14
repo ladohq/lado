@@ -84,6 +84,14 @@ export const SettingsIcon = () => (
   </Icon>
 );
 
+// A bug: its body, legs and feelers; Report a bug on the rail.
+export const BugIcon = () => (
+  <Icon>
+    <rect x="7.5" y="8" width="9" height="11" rx="4.5" />
+    <path d="M12 8v11M9 6l1.5 2M15 6l-1.5 2M7.5 12H4.5M19.5 12h-3M8 16.5l-3 1.5M16 16.5l3 1.5" />
+  </Icon>
+);
+
 // A column collapses to a strip at its side: the terminal panel on the right, the session
 // list on the left.
 export const CollapsePanelIcon = ({ side = "right" }: { side?: "left" | "right" }) => (

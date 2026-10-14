@@ -111,6 +111,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bug-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bug Report
+         * @description The Report a bug page: the report and its GitHub link (bug_report.build), with
+         *     the page's browser line when it has the shape of browserLine's, else 422. It reads
+         *     only and sends nothing: the human opens the link.
+         */
+        get: operations["bug_report__api_bug_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/telemetry": {
         parameters: {
             query?: never;
@@ -1201,6 +1223,22 @@ export interface components {
             size: number;
             /** Hash */
             hash: string;
+        };
+        /**
+         * BugReport
+         * @description The Report a bug page (lado.bug_report.Report): the whole report to show and copy,
+         *     and GitHub's new issue form with it, the oldest kinds of errors left out until the link
+         *     fits.
+         */
+        BugReport: {
+            /** Title */
+            title: string;
+            /** Text */
+            text: string;
+            /** Url */
+            url: string;
+            /** Left Out */
+            left_out: number;
         };
         /**
          * CloneJob
@@ -2764,6 +2802,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
+    bug_report__api_bug_report_get: {
+        parameters: {
+            query?: {
+                browser?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BugReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

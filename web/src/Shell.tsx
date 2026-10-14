@@ -18,6 +18,7 @@ import { NavLink, Outlet } from "react-router";
 
 import { getHealth, onDenied } from "./api";
 import {
+  BugIcon,
   CollapseIcon,
   HomeIcon,
   KitsIcon,
@@ -136,6 +137,7 @@ export function Shell() {
           ))}
         </ul>
         <div className="rail-bottom">
+          <RailLink to="/report" name="Report a bug" icon={<BugIcon />} collapsed={collapsed} />
           <RailLink to="/settings" name="Settings" icon={<SettingsIcon />} collapsed={collapsed} />
         </div>
       </nav>

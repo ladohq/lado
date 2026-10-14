@@ -36,6 +36,11 @@ os.environ["LADO_TELEMETRY"] = "0"
 os.environ.pop("DO_NOT_TRACK", None)
 os.environ.pop("LADO_TELEMETRY_URL", None)
 
+# No test opens a browser (`lado bug-report`'s y): webbrowser runs `true <url>`, which does
+# nothing, also in a test that forgot to replace webbrowser.open (test_cli_bug_report.py
+# checks it is set).
+os.environ["BROWSER"] = "true"
+
 # On a Mac, the test run is taken for one in the graphical session, wherever it runs (over
 # ssh too): no test starts LADO's tmux server through launchd unless it says so
 # (lado.gui_session; its own tests and the integration test of launchd set their place).

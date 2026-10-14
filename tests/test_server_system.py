@@ -284,7 +284,7 @@ def test_a_cli_whose_version_cannot_be_read_puts_no_path_in_the_report(tmp_path)
     found = doctor.system_info(
         lambda command: str(bin / command) if (bin / command).exists() else None
     )
-    report = doctor.report(found, False, 60)
+    report = doctor.report(found, doctor.ServerState(False, 60))
     assert str(tmp_path) not in report
     assert "- tmux: version unknown, socket" in report
     assert "  - claude: installed, version unknown\n" in report

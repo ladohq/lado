@@ -41,9 +41,11 @@ A daily report, at most once a day while LADO is used:
 | `lado_errors` | 1 | LADO's own unexpected errors |
 | `errors_dropped` | 1 | errors not sent because too many waited |
 
-The counts come from LADO's database when the report is sent: a session you forgot
-(`lado forget`) before that is missing from them. Nothing is collected for the report in
-the meantime.
+The counts come from LADO's database when the report is sent, from a local table LADO
+keeps for `lado stats` also with sending off: one anonymous row per counted fact (its kind,
+a role or flow with its kit, an agent CLI, a time; no names, paths or texts). So a session
+you forgot (`lado forget`) is still counted (from 0.38.0). Nothing is collected for the
+report itself in the meantime, and `lado stats` sends nothing.
 
 An error, one event per kind of error since the last send:
 
@@ -52,7 +54,7 @@ An error, one event per kind of error since the last send:
 | `type` | 1 | the exception's type, e.g. `KeyError` |
 | `chain` | 1 | the types of the exceptions that caused it |
 | `stack` | 1 | where in LADO's own code: file, function and line; other code only as `<external>` |
-| `where` | 1 | the command, hook event, MCP tool, `loop`, or API route that failed, with no names or ids |
+| `where` | 1 | the command, hook event, MCP tool, `loop`, or API route that failed, or LADO's own scrubbing of an error (`telemetry:scrub`), with no names or ids |
 | `provider` | 1 | the agent CLI of a failing hook |
 | `fingerprint` | 1 | a hash of the type and LADO's functions, to group the same error |
 | `count` | 1 | how often it happened since the last send |
@@ -99,4 +101,19 @@ home (`scripts/rc_check.py sandbox`) is run with it too.
 Whatever you choose, LADO keeps each of its unexpected errors, with its full traceback, in
 `LADO_HOME/errors.jsonl` on your machine, readable by you only. It never leaves the machine
 by itself. It and LADO's logs (`hooks.log`, `loop.log`, `server.log`) stay under 1 MiB each
-plus one older `.1` file.
+plus one older `.1` file. Each line also keeps the error's scrubbed form (its type, its
+causes' types, LADO's own frames, the agent CLI), the only part a bug report reads.
+
+## Reporting a bug yourself
+
+`lado bug-report`, or **Report a bug** on the UI's left menu, shows a report for a new
+issue on github.com/ladohq/lado: a place for what happened, the system info the System
+panel copies, in the UI your browser and its OS, and LADO's errors of the last 30 days from
+the journal, by kind (type, where, agent CLI, how often, the days, LADO's versions, and
+LADO's own frames). It holds no message or traceback of an error, no path, and no session,
+agent or repository name. Nothing is sent: the link opens GitHub's new issue form filled
+in (in the terminal only when you answer `y`), and the issue goes up only when you submit
+the form there, where you can edit or delete any of it. The link holds at most 8000
+characters: the oldest kinds of errors are left out of it when needed, and the report
+printed or shown is always whole. A vulnerability goes to GitHub's private reporting
+instead (SECURITY.md).

@@ -82,7 +82,10 @@ statistics: `telemetry_on` switches sending on towards a closed local port and s
 yes, `telemetry_endpoint` adds a local endpoint that keeps each request. An autouse guard
 (`_no_statistics`) fails a test when sending is not off by `LADO_TELEMETRY=0` before it, or
 when, after a test without `telemetry_on`, its `LADO_HOME` holds `telemetry/sent.json` or a
-file in `telemetry/outbox/`; the live and smoke tests, under `tests/`, get it too.
+file in `telemetry/outbox/`; the live and smoke tests, under `tests/`, get it too. And
+`BROWSER=true`, so no test opens a browser (`lado bug-report`'s `y`: `webbrowser` runs
+`true <url>`), a test that forgot to replace `webbrowser.open` neither
+(`tests/test_cli_bug_report.py` checks it is set).
 
 Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
 is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's
@@ -240,8 +243,21 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     session counts, on a Mac where it and LADO's tmux server run, `gui_places`, also
     `lado doctor`'s Graphical session, the update check and the last update's result) and
     the text to copy for
-    an issue from `doctor.report`: no address, path, repository, session name, token or
-    message, only whether the server is open to the network and whether LADO_HOME is set.
+    an issue from `doctor.report(system, server)`: no address, path, repository, session
+    name, token or message, only whether the server runs and is open to the network (a
+    `ServerState`, its uptime when the server itself asks; None is `not running`) and
+    whether LADO_HOME is set.
+  - `bug_report.py`: a bug report for a new GitHub issue (openspec change bug-report), the
+    one builder for `lado bug-report` and `GET /api/bug-report`: `build` gives a `Report`,
+    `What happened`'s placeholder, `doctor.report`, the UI's browser line (checked against
+    `BROWSER_LINE`) and the error journal's lines of the last `WINDOW` (30 days, both
+    files; `errors`) grouped by kind (`kinds`: by `fingerprint`, a line without one by type
+    and where; newest first; at most `MAX_FRAMES` innermost frames). Of a line it reads
+    only `READ`, never the message, traceback, session or agent. `url` is GitHub's new
+    issue form (`ISSUES_NEW`, title and body in its query) of at most `MAX_URL` characters:
+    the oldest kinds leave its `body`, counted in a last line, `text` is never cut.
+    `can_show_browser`: on macOS the graphical session (`gui_session.place`), else
+    `DISPLAY`, `WAYLAND_DISPLAY` or `BROWSER`. It sends nothing.
   - `update.py`: upgrading LADO, no tmux, providers or UI: PyPI's JSON of the package
     (`fetch_index`; `latest` skips pre-releases and yanked ones, with `pre` it takes the
     newest of all; `release` finds a named one), what an update of this LADO is offered
@@ -279,7 +295,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `lado.state` only at its top (every hook imports it). `record(where, exc, ...)` is the
     one capture of an unexpected exception (never raises; `state.SchemaError` is none): a
     JSON line in `LADO_HOME/errors.jsonl` (mode 600; time, version, where, type, message,
-    traceback, session, agent), and, only while sending is on, a scrubbed event in
+    traceback, session, agent, and the scrubbed form's `chain`, `stack`, `fingerprint` and
+    `provider`, which a bug report reads; LADO 0.37's lines lack them, and so does a line
+    whose `scrub` failed: that line is still written and nothing of it queued, and the
+    scrub's failure is an error of its own at `telemetry:scrub`, `SCRUB_FAILED`, once,
+    `_scrubbed`), and, only while sending is on, a scrubbed event in
     `LADO_HOME/telemetry/outbox/` (`scrub`: types, LADO's own frames as
     `lado/<file>:<function>:<line>`, others `<external>`, `where`, provider, `fingerprint`;
     never a text, path or name), at most `OUTBOX_MAX` (200), further ones counted in
@@ -299,7 +319,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     network, never raises) starts a detached `lado telemetry send` when sending is on,
     something is due (no report in `REPORT_EVERY`, or a queued error) and no try in
     `RETRY_AFTER`: `cli.main` after every command but `hook`, `mcp`, `loop`, `telemetry
-    send`, `update` (which starts nothing after its installer), `server` while it serves
+    send`, `update` (which starts nothing after its installer), `stats` (which promises to
+    send nothing), `server` while it serves
     (it kicks in its housekeeping; one at its exit could make LADO_HOME again after an
     uninstall stopped it; `server stop` kicks) and `uninstall` (which also records no
     error: either would make the deleted LADO_HOME again), `doctor` included;
@@ -307,7 +328,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     queues. `sender_ended` waits for that lock (`lado uninstall`, before it deletes
     LADO_HOME). `send` (a flock, `send.lock`; a second one exits) is the only code that goes to
     the network: `_build` (`_expire` drops errors older than `OUTBOX_MAX_AGE`; `report`
-    counted from lado.db by `state.usage_counts` from the last report, at most
+    counted from lado.db's `usage` table by `state.usage_counts` from the last report,
+    so a forgotten session still counts, at most
     `REPORT_MAX_WINDOW` back, never stored; `_groups`, PostHog's `$exception` per
     fingerprint), `_post` within `SEND_TIMEOUT` per operation, the whole try within
     `SEND_DEADLINE` (`_deadline`, SIGALRM: DNS too; `_Deadline` is a `BaseException`, so
@@ -813,12 +835,33 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `pending` (`_drop_requests`), `recommendations_missed` is the lead's turn-end check, and
     the lead's end and a stop mark every `asked` one `missing` (`_missed`). The existing
     triggers journal them: the feed sends the gate or message again.
+    From schema 27 the `usage` table (`USAGE`: kind, key, provider, agrees, created_at; no
+    session column) holds one anonymous row per counted fact (`USAGE_KINDS`): a session
+    added, a resume, an agent spawned (key `<role>@<kit>`, with its provider), its process
+    ended by itself, a turn error (key the error's kind), a run started, ended or cancelled
+    (key `<flow>@<kit>`), a gate opened (its kind) or closed (its answer, and whether it is
+    the lead's recommended choice; none when closed by no answer of the human,
+    `GATE_UNANSWERED`: `cancelled`, `overridden`), a question to the human, a message failed or dropped.
+    Only `USAGE_TRIGGERS` write it (one per `USAGE_SOURCES` entry, on `sessions`, `events`,
+    `gates` and `messages`), in the writer's transaction; the migration fills it once from
+    the rows kept (`usage_from_history`, the same `USAGE_SOURCES`), and `lado forget`
+    leaves it, so the counts outlive their session. The `spawned` event's detail names the
+    role's kit (`spawned_detail`: `role <r>, kit <k>, provider <p>`); an older one is keyed
+    `<role>@?`. An agent's provider in `ended` and `turn_error` is its latest spawn's (a
+    stop forgets the agent). A trigger stays in lado.db as it was made: a new count, or a
+    change of what one reads (`spawned_detail`'s form, `base.error_line`'s), is a migration
+    step that makes it again (tests/test_usage.py compares both forms). `usage_summary`
+    (a `Usage`: per kind by key, provider, both, and agreement) and `usage_start` are
+    `lado stats`'; `usage_counts` the report's.
   - `fingerprint.py`: a read-only agent's git fingerprint (Read-only roles, below): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's
     hash; no copy of a file; all git commands within a budget, `--no-optional-locks`, else
     `FingerprintError`) and `diff` (one short line per change). Only git, no state.
   - `log.py`: `lado log`: a session's messages and events merged into one time-ordered feed.
+  - `stats.py`: `lado stats`: the lines of a period's usage (`lines`), from
+    `state.usage_summary`, `state.usage_start` and `telemetry.lado_errors`; reads only,
+    sends nothing (`cli.cmd_stats` prints them).
   - `loop.py`: the session loop, `lado loop <session>` (see How agents talk).
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
     rules in [docs/design/ui.md](docs/design/ui.md), section Server). `auth.py`: the token
@@ -922,6 +965,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     (`TelemetryInfo`, `models.telemetry_info`, also `SystemInfo.telemetry`), `POST
     /api/telemetry` (under `Guard.changes`; 409 while the server's environment switches it
     off) and `GET /api/telemetry/preview` (`TelemetryPreview`, `telemetry.preview`);
+    the Report a bug page's `GET /api/bug-report?browser=<line>` (`BugReport`,
+    `bug_report.build` with the server's own `ServerState`; a `browser` that is not
+    `bug_report.BROWSER_LINE`'s shape is 422; it reads only, so not under
+    `Guard.changes`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
     `Listening`: the local link, the remote one and the warning for the address taken),
     the background start and stop (`stop` returns once the server's process has ended, not
@@ -1593,6 +1640,31 @@ sender posts them (no token); `lado telemetry send` (hidden) is the detached sen
 them migrates lado.db. `lado start` and `lado ui` ask once on a terminal before their work
 (`telemetry.ask_if_needed`; Enter is off, EOF or Ctrl-C keeps no choice). What is sent and
 where: docs/telemetry.md; how: `telemetry.py` (Layout).
+
+`lado stats [--days N | --all]` prints how LADO was used on this machine in the last 30
+days (`--days N`: N days, `--all`: everything kept; both, or an N that is no positive whole
+number, exit 2), from lado.db's `usage` table (`state.py`, schema 27) and LADO's error
+journal: sessions started and resumed; agents started per agent CLI and per role
+(`<role>@<kit>`, `@?` for one spawned before 0.38.0, with a note), agents ended by
+themselves, turn errors per CLI and kind; flow runs started per flow, ended, cancelled;
+gates opened per kind, closed per answer, and how many of the human's answers with a
+recommended choice took it (a cancelled or overridden gate is closed, never in that); questions to the human; messages failed and dropped; LADO's own errors. A
+breakdown lists the larger first, then by name, and wraps under itself. The first line
+names the period in UTC and says nothing is sent; `Earliest record:` follows with `--all`
+or when the earliest row is later than the period's start. It reads only, opens no
+connection and starts no statistics sender (`cli.main` does not kick after it); it
+migrates lado.db as `lado ls` does.
+
+`lado bug-report` prints a warning (the issue is public, nothing is sent until the human
+submits GitHub's form, a vulnerability goes to private reporting), the bug report and
+`Open a new issue: <link>` (`bug_report.build`; Layout); then, only when stdin and stdout
+are terminals and a browser can show (`bug_report.can_show_browser`), asks `Open it in the
+browser? [y/N]`: `y` runs `webbrowser.open`, one that fails prints `could not open a
+browser: open the link above`, anything else (Enter, EOF, Ctrl-C) opens nothing; exit 0.
+It does not migrate lado.db (a newer one is reported as it is) and is refused nowhere,
+also not inside an agent. Its `Server:` line says `not running` or `running, loopback
+only` / `open to the network` by the running server's `server.json`. The UI's Report a bug
+page shows the same report (docs/design/ui.md, Report a bug).
 
 Gates: a run that enters a gate state, or would enter a state more often than its
 `max_visits`, waits for the human with an open gate (`lado ls`: `gate #<id> waiting:

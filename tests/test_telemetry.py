@@ -108,7 +108,20 @@ def test_record_writes_journal_line(monkeypatch):
     monkeypatch.setenv("LADO_TELEMETRY", "0")
     telemetry.record("hook:turn_end", _raise(KeyError("w1")), "claude", session="s", agent="w1")
     [line] = _journal()
-    assert set(line) == {"at", "lado", "where", "type", "message", "traceback", "session", "agent"}
+    assert set(line) == {
+        "at",
+        "lado",
+        "where",
+        "type",
+        "message",
+        "traceback",
+        "session",
+        "agent",
+        "chain",
+        "stack",
+        "fingerprint",
+        "provider",
+    }
     assert line["where"] == "hook:turn_end"
     assert line["type"] == "KeyError"
     assert line["message"] == "'w1'"
@@ -116,6 +129,34 @@ def test_record_writes_journal_line(monkeypatch):
     assert (line["session"], line["agent"]) == ("s", "w1")
     mode = (state.home() / "errors.jsonl").stat().st_mode
     assert stat.S_IMODE(mode) == 0o600
+
+
+def test_journal_line_holds_the_scrubbed_form(telemetry_on):
+    try:
+        try:
+            {}["w1"]
+        except KeyError as inner:
+            raise RuntimeError("in /Users/ann/acme") from inner
+    except RuntimeError as exc:
+        telemetry.record("hook:turn_end", exc, "claude", session="s", agent="w1")
+    [line] = _journal()
+    [event] = telemetry.queued()
+    assert line["provider"] == "claude"
+    assert line["chain"] == ["KeyError"]
+    assert line["stack"] == event["stack"] == [telemetry.EXTERNAL]  # this test's own frame
+    assert line["fingerprint"] == event["fingerprint"]
+
+
+def test_journal_line_keeps_lado_frames(monkeypatch):
+    monkeypatch.setenv("LADO_TELEMETRY", "0")
+    try:
+        telemetry.fingerprint(None, ["x"])  # a TypeError inside lado/telemetry.py
+    except Exception as exc:
+        telemetry.record("loop", exc)
+    [line] = _journal()
+    assert line["provider"] is None
+    assert any(frame.startswith("lado/telemetry.py:fingerprint:") for frame in line["stack"])
+    assert telemetry.queued() == []
 
 
 def test_record_queues_only_when_on(telemetry_on):
@@ -134,6 +175,91 @@ def test_record_never_raises(tmp_path, monkeypatch):
     home.write_text("")
     monkeypatch.setenv("LADO_HOME", str(home))
     telemetry.record("loop", _raise(KeyError("x")))  # no exception
+
+
+SCRUBBED = {"chain", "stack", "fingerprint", "provider"}
+LINE = {"at", "lado", "where", "type", "message", "traceback", "session", "agent"}
+
+
+@pytest.fixture
+def scrub_fails_for(monkeypatch):
+    """`scrub` raises a TypeError for the exceptions a test names, or for all with None."""
+    scrub = telemetry.scrub
+    failing: list = []
+
+    def broken(where, exc, provider):
+        if failing == [None] or exc in failing:
+            raise TypeError("scrub broke")
+        return scrub(where, exc, provider)
+
+    monkeypatch.setattr(telemetry, "scrub", broken)
+    return failing
+
+
+def _line_and_failure():
+    """The journal's two lines: the error's, then the scrub's failure (written first)."""
+    failure, line = _journal()
+    assert failure["where"] == "telemetry:scrub"
+    return line, failure
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_a_failing_scrub_keeps_the_line_and_is_an_error_of_its_own(
+    telemetry_on, monkeypatch, scrub_fails_for, on
+):
+    if not on:
+        monkeypatch.setenv("LADO_TELEMETRY", "0")
+    exc = _raise(KeyError("w1"))
+    scrub_fails_for.append(exc)
+    telemetry.record("hook:turn_end", exc, "claude", session="s", agent="w1")
+    line, failure = _line_and_failure()
+    assert set(line) == LINE
+    assert (line["where"], line["type"], line["message"]) == ("hook:turn_end", "KeyError", "'w1'")
+    assert (line["session"], line["agent"]) == ("s", "w1")
+    assert "Traceback" in line["traceback"] and line["lado"] and line["at"]
+    assert set(failure) == LINE | SCRUBBED
+    assert (failure["where"], failure["type"]) == ("telemetry:scrub", "TypeError")
+    assert any(frame.startswith("lado/telemetry.py:") for frame in failure["stack"])
+    if on:
+        [event] = telemetry.queued()
+        assert (event["where"], event["type"]) == ("telemetry:scrub", "TypeError")
+        assert event["fingerprint"] == failure["fingerprint"]
+    else:
+        assert telemetry.queued() == []
+
+
+def test_a_scrub_that_always_fails_leaves_two_bare_lines(telemetry_on, scrub_fails_for):
+    scrub_fails_for.append(None)
+    telemetry.record("loop", _raise(KeyError("x")))  # no exception, no recursion
+    line, failure = _line_and_failure()
+    assert set(line) == set(failure) == LINE
+    assert (line["where"], failure["where"]) == ("loop", "telemetry:scrub")
+    assert telemetry.queued() == []
+
+
+def test_the_sender_s_own_failure_survives_a_failing_scrub(telemetry_on, scrub_fails_for):
+    exc = _raise(ZeroDivisionError())
+    scrub_fails_for.append(exc)
+    telemetry._journal_only("telemetry:send", exc)
+    line, failure = _line_and_failure()
+    assert set(line) == LINE and line["where"] == "telemetry:send"
+    assert set(failure) == LINE | SCRUBBED and failure["where"] == "telemetry:scrub"
+    assert telemetry.queued() == []
+
+
+def test_a_line_without_its_scrub_reads_as_a_kind_without_frames(
+    telemetry_on, monkeypatch, scrub_fails_for
+):
+    from lado import bug_report
+
+    monkeypatch.setenv("LADO_TELEMETRY", "0")
+    exc = _raise(KeyError("w1"))
+    scrub_fails_for.append(exc)
+    telemetry.record("hook:turn_end", exc, "claude")
+    kinds = {kind.where: kind for kind in bug_report.kinds(bug_report.errors())}
+    bare = kinds["hook:turn_end"]
+    assert (bare.type, bare.provider, bare.count, bare.stack) == ("KeyError", None, 1, [])
+    assert kinds["telemetry:scrub"].stack
 
 
 def test_schema_error_is_never_recorded(telemetry_on):
@@ -257,14 +383,12 @@ def _db_with_usage():
                 "INSERT INTO sessions (name, repo, created_at) VALUES (?, '/r', ?)", (name, at)
             )
         rows = [
-            ("b", state.SPAWNED, state.spawned_detail("worker", "claude"), new),
-            ("b", state.SPAWNED, state.spawned_detail("supervisor", "claude"), new),
-            ("c", state.SPAWNED, state.spawned_detail("worker", "codex"), new),
-            ("a", state.SPAWNED, state.spawned_detail("worker", "codex"), old),
+            ("b", state.SPAWNED, state.spawned_detail("worker", "default", "claude"), new),
+            ("b", state.SPAWNED, state.spawned_detail("supervisor", "default", "claude"), new),
+            ("c", state.SPAWNED, state.spawned_detail("worker", "default", "codex"), new),
+            ("a", state.SPAWNED, state.spawned_detail("worker", "default", "codex"), old),
             ("a", state.SESSION_RESUME, "", new),
             ("b", state.FLOW_START, "", new),
-            ("b", state.GATE_OPEN, "", new),
-            ("b", state.GATE_OPEN, "", old),
             ("c", state.TURN_ERROR, "overloaded", new),
         ]
         for session, kind, detail, at in rows:
@@ -272,6 +396,12 @@ def _db_with_usage():
                 "INSERT INTO events (session, agent, kind, detail, created_at) "
                 "VALUES (?, 'x', ?, ?, ?)",
                 (session, kind, detail, at),
+            )
+        for run, at in (("f/x", new), ("f/y", old)):  # a gate counts by its row (USAGE_TRIGGERS)
+            db.execute(
+                "INSERT INTO gates (session, run, state, kind, question, options, created_at)"
+                " VALUES ('b', ?, 'ok', 'approval', 'Ship?', '[]', ?)",
+                (run, at),
             )
 
 
@@ -285,7 +415,9 @@ def _sent(**fields):
 
 
 def test_spawned_provider_reads_what_is_written():
-    assert state.spawned_provider(state.spawned_detail("a role, provider x", "codex")) == "codex"
+    detail = state.spawned_detail("a role, provider x", "a kit, provider y", "codex")
+    assert state.spawned_provider(detail) == "codex"
+    assert state.spawned_provider("role worker, provider claude") == "claude"  # before 0.38.0
     assert state.spawned_provider("something else") is None
 
 
@@ -305,6 +437,19 @@ def test_report_counts_window(telemetry_on, monkeypatch):
     assert event["distinct_id"] == props["install"]
     assert set(props) - {"$process_person_profile", "$geoip_disable"} <= set(telemetry.FIELDS)
     assert "db" not in props
+
+
+def test_report_counts_a_forgotten_session(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    _db_with_usage()
+    _sent(report_at="2026-10-12T09:00:00Z")
+    before = telemetry.report(NOW)["properties"]
+    for name in ("a", "b", "c"):
+        state.delete_session(name)
+    after = telemetry.report(NOW)["properties"]
+    assert after["agents"] == before["agents"] == {"claude": 2, "codex": 1}
+    keys = ("sessions", "runs", "gates", "turn_errors")
+    assert [after[k] for k in keys] == [before[k] for k in keys] == [3, 1, 1, 1]
 
 
 def test_report_first_one_counts_a_day(telemetry_on, monkeypatch):

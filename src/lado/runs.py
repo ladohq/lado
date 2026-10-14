@@ -323,7 +323,7 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     noted = dataclasses.replace(run, note=f"set by the human: {reason}"[:NOTE_LIMIT], note_body="")
     after, events, gate = _enter(noted, flow, target, limit=False)
     forced = (HUMAN, state.FLOW_SET, f"{run.state} -> {target}: {reason}")
-    closes = (HUMAN, "overridden", reason, None)
+    closes = (HUMAN, state.GATE_OVERRIDDEN, reason, None)
     noted = state.Noted(run.state, state.OVERRIDE, HUMAN, "", target)
     return _commit(run, after, [forced, *events], flow, HUMAN, gate, closes, noted=noted)
 
@@ -336,7 +336,7 @@ def cancel(session: str, run_name: str, reason: str) -> list[runtime.Finished]:
     if run.status not in state.OPEN:
         raise LadoError(f'run "{run.name}" is {run.status} already')
     reason = reason.strip() or "no reason given"
-    return _cancel(run, reason, SUPERVISOR, (SUPERVISOR, "cancelled", reason, None))
+    return _cancel(run, reason, SUPERVISOR, (SUPERVISOR, state.GATE_CANCELLED, reason, None))
 
 
 def _cancel(run: state.Run, reason: str, by: str, closes: state.Close) -> list[runtime.Finished]:

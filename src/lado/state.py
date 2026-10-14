@@ -11,6 +11,7 @@ import re
 import sqlite3
 import time
 import uuid
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
@@ -18,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 27
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -478,6 +479,7 @@ MIGRATIONS = {
     23: [MESSAGES_PRINTED],
     24: [AGENTS_READ_ONLY],
     25: RECOMMENDATION,
+    # 26: the usage table, below with its event kinds (USAGE).
 }
 
 # Agent statuses. Hooks move an agent between them; see lado.hooks.
@@ -529,11 +531,14 @@ UNRECEIVED = f"(state IN (?, ?, ?) OR (state = ? AND {TO_READ})) AND recipient !
 UNRECEIVED_ARGS = (PENDING, SENT, FAILED, DELIVERED, HUMAN)
 
 # Event kinds.
-SPAWNED = "spawned"  # detail: spawned_detail, "role <role>, provider <provider>"
+SPAWNED = "spawned"  # detail: spawned_detail, "role <role>, kit <kit>, provider <provider>"
 
 
-def spawned_detail(role: str, provider: str) -> str:
-    return f"role {role}, provider {provider}"
+def spawned_detail(role: str, kit: str, provider: str) -> str:
+    """A SPAWNED event's detail. The role's kit is in it from version 27 on (before:
+    "role <role>, provider <provider>"); the usage table's trigger reads both forms
+    (USAGE_TRIGGERS), so a change of this form is a migration of that trigger."""
+    return f"role {role}, kit {kit}, provider {provider}"
 
 
 def spawned_provider(detail: str) -> str | None:
@@ -566,6 +571,11 @@ FLOW_CANCEL = "flow_cancel"
 FLOW_SET = "flow_set"  # the human forced the run into a state
 GATE_OPEN = "gate_open"  # the run waits for the human; detail: "#<id> <kind> at <state>: ..."
 GATE_ANSWER = "gate_answer"  # the gate closed; detail: "#<id> <answer>[: <comment>]"
+# How a gate is closed when the human gave no answer at it: its run was cancelled, or the
+# human set the run past it (`lado flow-set`). A loop limit's `cancel` is an answer.
+GATE_CANCELLED = "cancelled"
+GATE_OVERRIDDEN = "overridden"
+GATE_UNANSWERED = (GATE_CANCELLED, GATE_OVERRIDDEN)
 # Session events, by LADO.
 SESSION_STOP = "session_stop"  # detail: what was dropped
 SESSION_RESUME = "session_resume"  # detail: what changed
@@ -617,6 +627,246 @@ WAITING = "waiting"  # for the human: a gate or a loop limit
 ENDED = "ended"
 CANCELLED = "cancelled"
 OPEN = (ACTIVE, WAITING)
+
+# The usage table, from version 27 on: one anonymous row per counted fact of LADO's work,
+# which `lado stats` and the telemetry report count (usage_summary, usage_counts). Only
+# USAGE_TRIGGERS write it, in the transaction that writes the fact, and the migration once
+# from the rows kept then (usage_from_history). It belongs to no session, so forgetting one
+# keeps its counts. A row never holds a session's or agent's name, a path or a text. A
+# trigger stays in lado.db as it was made: a new count, or a change of what a trigger reads
+# (spawned_detail's form, base.error_line's), is a migration step that makes it again.
+USAGE = """
+CREATE TABLE IF NOT EXISTS usage (
+    kind TEXT NOT NULL,  -- USAGE_KINDS
+    key TEXT,  -- a role or flow with its kit, a gate's kind or answer, an error's kind
+    provider TEXT,  -- the agent CLI, of an agent's facts
+    agrees INTEGER,  -- a gate's close: whether it is the lead's recommended choice; NULL: none
+    created_at TEXT NOT NULL  -- UTC: the fact's own time
+)"""
+USAGE_TIME = "CREATE INDEX IF NOT EXISTS usage_time ON usage (created_at)"
+USAGE_SESSION = "session"  # a session added
+USAGE_RESUME = "resume"
+USAGE_AGENT = "agent"  # key <role>@<kit> (<role>@? before version 27), with its provider
+USAGE_AGENT_ENDED = "agent_ended"  # its process ended by itself; with its provider
+USAGE_TURN_ERROR = "turn_error"  # key the error's kind, with the agent's provider
+USAGE_RUN_START = "run_start"  # key <flow>@<kit>, as the run's end and cancel
+USAGE_RUN_END = "run_end"
+USAGE_RUN_CANCEL = "run_cancel"
+USAGE_GATE_OPEN = "gate_open"  # key the gate's kind
+USAGE_GATE_CLOSE = "gate_close"  # key its answer, or how it was closed otherwise
+USAGE_QUESTION = "question"  # an agent's question to the human
+USAGE_MESSAGE_FAILED = "message_failed"
+USAGE_MESSAGE_DROPPED = "message_dropped"
+USAGE_KINDS = (
+    USAGE_SESSION,
+    USAGE_RESUME,
+    USAGE_AGENT,
+    USAGE_AGENT_ENDED,
+    USAGE_TURN_ERROR,
+    USAGE_RUN_START,
+    USAGE_RUN_END,
+    USAGE_RUN_CANCEL,
+    USAGE_GATE_OPEN,
+    USAGE_GATE_CLOSE,
+    USAGE_QUESTION,
+    USAGE_MESSAGE_FAILED,
+    USAGE_MESSAGE_DROPPED,
+)
+# The events counted, each with its usage kind.
+USAGE_EVENTS = {
+    SESSION_RESUME: USAGE_RESUME,
+    SPAWNED: USAGE_AGENT,
+    ENDED: USAGE_AGENT_ENDED,
+    TURN_ERROR: USAGE_TURN_ERROR,
+    FLOW_START: USAGE_RUN_START,
+    FLOW_END: USAGE_RUN_END,
+    FLOW_CANCEL: USAGE_RUN_CANCEL,
+}
+_RUN_EVENTS = (FLOW_START, FLOW_END, FLOW_CANCEL)
+
+
+def _sql_list(values: Sequence[str]) -> str:
+    return ", ".join(f"'{v}'" for v in values)
+
+
+def _spawned_sql(row: str) -> tuple[str, str]:
+    """The role with its kit and the provider of a SPAWNED event's detail, in SQL on the
+    row `row`: spawned_detail's form, or the one before version 27, whose role is keyed with
+    the kit `?`, as its kit was not recorded. No provider: NULL, as spawned_provider."""
+    detail = f"{row}.detail"
+    kit_at, provider_at = f"instr({detail}, ', kit ')", f"instr({detail}, ', provider ')"
+    end = f"length({detail}) + 1"
+    role_end = (
+        f"CASE WHEN {kit_at} > 0 THEN {kit_at} WHEN {provider_at} > 0 THEN {provider_at}"
+        f" ELSE {end} END"
+    )
+    kit_end = f"CASE WHEN {provider_at} > {kit_at} THEN {provider_at} ELSE {end} END"
+    kit = (
+        f"CASE WHEN {kit_at} > 0 THEN substr({detail}, {kit_at} + 6, {kit_end} - {kit_at} - 6)"
+        " ELSE '?' END"
+    )
+    key = f"substr({detail}, 6, {role_end} - 6) || '@' || {kit}"
+    provider = (
+        f"CASE WHEN {provider_at} > 0 THEN nullif(substr({detail}, {provider_at} + 11), '') END"
+    )
+    return key, provider
+
+
+def _events_select(row: str) -> str:
+    """kind, key, provider, agrees and time of a counted event `row`. An agent's provider
+    is its latest spawn's (the agent may be forgotten since, as a stop does); a run's flow
+    is keyed with the run's kit."""
+    kind = (
+        f"CASE {row}.kind "
+        + " ".join(f"WHEN '{event}' THEN '{usage}'" for event, usage in USAGE_EVENTS.items())
+        + " END"
+    )
+    role, provider_of_row = _spawned_sql(row)
+    _, provider_of_spawn = _spawned_sql("s")
+    detail = f"{row}.detail"
+    error_kind = (
+        f"CASE WHEN instr({detail}, ': ') > 0 THEN substr({detail}, 1, instr({detail}, ': ') - 1)"
+        f" ELSE {detail} END"
+    )
+    flow = (
+        "(SELECT r.flow || '@' || coalesce(json_extract(r.kit, '$.name'), '?') FROM runs r"
+        f" WHERE r.session = {row}.session AND r.name = {row}.run)"
+    )
+    agent_provider = (
+        f"(SELECT {provider_of_spawn} FROM events s WHERE s.session = {row}.session"
+        f" AND s.agent = {row}.agent AND s.kind = '{SPAWNED}' AND s.id < {row}.id"
+        " ORDER BY s.id DESC LIMIT 1)"
+    )
+    key = (
+        f"CASE WHEN {row}.kind = '{SPAWNED}' THEN {role}"
+        f" WHEN {row}.kind = '{TURN_ERROR}' THEN {error_kind}"
+        f" WHEN {row}.kind IN ({_sql_list(_RUN_EVENTS)}) THEN {flow} END"
+    )
+    provider = (
+        f"CASE WHEN {row}.kind = '{SPAWNED}' THEN {provider_of_row}"
+        f" WHEN {row}.kind IN ('{ENDED}', '{TURN_ERROR}') THEN {agent_provider} END"
+    )
+    return f"{kind}, {key}, {provider}, NULL, {row}.created_at"
+
+
+def _gate_close_select(row: str) -> str:
+    """A gate's close agrees with the lead only as the human's answer: one closed by no
+    answer (GATE_UNANSWERED) or with no recommended choice has no agreement."""
+    agrees = (
+        f"CASE WHEN {row}.recommended_choice IS NULL"
+        f" OR {row}.answer IN ({_sql_list(GATE_UNANSWERED)}) THEN NULL"
+        f" ELSE {row}.answer = {row}.recommended_choice END"
+    )
+    at = f"coalesce({row}.answered_at, {row}.created_at)"
+    return f"'{USAGE_GATE_CLOSE}', {row}.answer, NULL, {agrees}, {at}"
+
+
+def _plain_select(kind: str, at: str = "{row}.created_at") -> Callable[[str], str]:
+    return lambda row: f"'{kind}', NULL, NULL, NULL, " + at.format(row=row)
+
+
+_NOW = "strftime('%Y-%m-%d %H:%M:%f', 'now')"
+
+
+@dataclass(frozen=True)
+class _Counted:
+    """One source of usage rows: the rows of `table` that `where` takes (on the row
+    `{row}`) are each a fact, whose usage row `select` gives. Its trigger runs `on` its
+    write, with `changed` (on OLD and NEW) besides for an update; the backfill takes the
+    rows kept, with `kept` instead of `select` where the row keeps less than the live write
+    knows."""
+
+    name: str
+    table: str
+    on: str  # INSERT, or UPDATE OF <column>
+    select: Callable[[str], str]
+    where: str = ""
+    changed: str = ""
+    kept: Callable[[str], str] | None = None
+
+
+USAGE_SOURCES = [
+    _Counted("sessions", "sessions", "INSERT", _plain_select(USAGE_SESSION)),
+    _Counted(
+        "events",
+        "events",
+        "INSERT",
+        _events_select,
+        where=f"{{row}}.kind IN ({_sql_list(list(USAGE_EVENTS))})",
+    ),
+    _Counted(
+        "gates_open",
+        "gates",
+        "INSERT",
+        lambda row: f"'{USAGE_GATE_OPEN}', {row}.kind, NULL, NULL, {row}.created_at",
+    ),
+    _Counted(
+        "gates_close",
+        "gates",
+        "UPDATE OF answer",
+        _gate_close_select,
+        where="{row}.answer IS NOT NULL",
+        changed="OLD.answer IS NULL",
+    ),
+    _Counted(
+        "questions",
+        "messages",
+        "INSERT",
+        _plain_select(USAGE_QUESTION),
+        where=f"{{row}}.kind = '{QUESTION}'",
+    ),
+    _Counted(
+        "messages_failed",
+        "messages",
+        "UPDATE OF state",
+        _plain_select(
+            USAGE_MESSAGE_FAILED,
+            "coalesce(strftime('%Y-%m-%d %H:%M:%f', {row}.failed_at, 'unixepoch'),"
+            " {row}.created_at)",
+        ),
+        where=f"{{row}}.state = '{FAILED}'",
+        changed="OLD.state IS NOT NEW.state",
+    ),
+    # A drop keeps no time of its own: live it is now, among the rows kept its message's.
+    _Counted(
+        "messages_dropped",
+        "messages",
+        "UPDATE OF state",
+        _plain_select(USAGE_MESSAGE_DROPPED, _NOW),
+        where=f"{{row}}.state = '{DROPPED}'",
+        changed="OLD.state IS NOT NEW.state",
+        kept=_plain_select(USAGE_MESSAGE_DROPPED),
+    ),
+]
+
+
+def _usage_insert(select: str) -> str:
+    return f"INSERT INTO usage (kind, key, provider, agrees, created_at) SELECT {select}"
+
+
+def _usage_trigger(source: _Counted) -> str:
+    conditions = [c for c in (source.where.format(row="NEW"), source.changed) if c]
+    when = f" WHEN {' AND '.join(conditions)}" if conditions else ""
+    return (
+        f"CREATE TRIGGER IF NOT EXISTS usage_from_{source.name} AFTER {source.on}"
+        f" ON {source.table}{when} BEGIN {_usage_insert(source.select('NEW'))}; END"
+    )
+
+
+USAGE_TRIGGERS = [_usage_trigger(source) for source in USAGE_SOURCES]
+
+
+def usage_from_history(db: sqlite3.Connection) -> None:
+    """Version 27: fill the usage table from the rows lado.db keeps, by the triggers'
+    rules (USAGE_SOURCES), each fact with its own time. Run before the triggers are made."""
+    for source in USAGE_SOURCES:
+        select = (source.kept or source.select)("f")
+        where = f" WHERE {source.where.format(row='f')}" if source.where else ""
+        db.execute(_usage_insert(f"{select} FROM {source.table} AS f{where} ORDER BY f.rowid"))
+
+
+SCHEMA += ";\n".join([USAGE, USAGE_TIME, *USAGE_TRIGGERS]) + ";\n"
+MIGRATIONS[26] = [USAGE, USAGE_TIME, usage_from_history, *USAGE_TRIGGERS]
 
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
@@ -1427,35 +1677,59 @@ def add_event(
         _add_event(db, session, agent, kind, detail, run)
 
 
+@dataclass
+class Usage:
+    """The usage table's rows of a period, counted per kind (USAGE_KINDS): by key, by
+    provider, by both, and a gate close's agreement with the lead (1 or 0; a close
+    without a recommended choice is not in it)."""
+
+    keys: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    providers: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    provider_keys: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    agrees: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+
+    def count(self, kind: str) -> int:
+        return sum(self.keys[kind].values())
+
+
+def usage_summary(since: str) -> Usage:
+    """The usage of the period from `since` (UTC, `YYYY-MM-DD HH:MM:SS`) on. Reads only."""
+    usage = Usage()
+    with connect() as db:
+        rows = db.execute(
+            "SELECT kind, key, provider, agrees, count(*) FROM usage WHERE created_at >= ?"
+            " GROUP BY kind, key, provider, agrees",
+            (since,),
+        ).fetchall()
+    for kind, key, provider, agrees, n in rows:
+        usage.keys[kind][key] += n
+        usage.providers[kind][provider] += n
+        usage.provider_keys[kind][provider, key] += n
+        if agrees is not None:
+            usage.agrees[kind][agrees] += n
+    return usage
+
+
+def usage_start() -> str | None:
+    """The time of the usage table's earliest row, UTC to the second; None for none."""
+    with connect() as db:
+        return db.execute("SELECT substr(min(created_at), 1, 19) FROM usage").fetchone()[0]
+
+
 def usage_counts(since: str) -> dict:
     """What happened from `since` (UTC, `YYYY-MM-DD HH:MM:SS`) on, for the daily report
     (lado.telemetry): sessions started or resumed, agents spawned per provider, flow runs
-    started, gates opened, turns ended on an error. Reads only; a forgotten session's rows
-    are gone."""
-    with connect() as db:
-
-        def count(kind: str) -> int:
-            query = "SELECT count(*) FROM events WHERE kind = ? AND created_at >= ?"
-            return db.execute(query, (kind, since)).fetchone()[0]
-
-        started = db.execute(
-            "SELECT count(*) FROM sessions WHERE created_at >= ?", (since,)
-        ).fetchone()[0]
-        agents: dict[str, int] = {}
-        spawned = db.execute(
-            "SELECT detail FROM events WHERE kind = ? AND created_at >= ?", (SPAWNED, since)
-        )
-        for (detail,) in spawned:
-            provider = spawned_provider(detail)
-            if provider:
-                agents[provider] = agents.get(provider, 0) + 1
-        return {
-            "sessions": started + count(SESSION_RESUME),
-            "agents": agents,
-            "runs": count(FLOW_START),
-            "gates": count(GATE_OPEN),
-            "turn_errors": count(TURN_ERROR),
-        }
+    started, gates opened, turns ended on an error. Reads only the usage table, so a
+    forgotten session is still counted."""
+    usage = usage_summary(since)
+    agents = usage.providers[USAGE_AGENT]
+    return {
+        "sessions": usage.count(USAGE_SESSION) + usage.count(USAGE_RESUME),
+        "agents": {provider: n for provider, n in agents.items() if provider},
+        "runs": usage.count(USAGE_RUN_START),
+        "gates": usage.count(USAGE_GATE_OPEN),
+        "turn_errors": usage.count(USAGE_TURN_ERROR),
+    }
 
 
 def _add_event(

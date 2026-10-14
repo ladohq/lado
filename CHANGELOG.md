@@ -1,7 +1,20 @@
 # Changelog
 
-## 0.37.1 (unreleased)
+## 0.38.0 (2026-10-14)
 
+- `lado stats` prints how you used LADO on this machine in the last 30 days (`--days N`,
+  `--all`): sessions, agents per agent CLI and per role (with its kit), turn errors, flow
+  runs, gates and how often you answered as the lead advised, questions, undelivered
+  messages and LADO's own errors. It sends nothing.
+- LADO now keeps an anonymous local record of these counts (no names, paths or texts),
+  filled from your existing history at the upgrade, so `lado forget` no longer makes them
+  smaller; the statistics report counts from it with the same fields. `lado log` names an
+  agent's kit in its `spawned` line.
+- `lado bug-report` and **Report a bug** on the UI's left menu: a report for a new GitHub
+  issue, with the system info and LADO's errors of the last 30 days by kind, and no paths,
+  session or repository names, nor message texts; a link opens GitHub's new issue form
+  filled in with it (the terminal asks first), and nothing is sent until you submit it.
+  `errors.jsonl` now keeps each error's scrubbed form too.
 - UI: the expanded waiting card covers the session's chat (on Needs you, the page) instead
   of the whole window, so an artifact opened from it shows over it; Esc closes that
   artifact first, then folds the card. On Needs you an artifact opens over the page,
@@ -17,6 +30,8 @@
 - Messages queued during an agent's turn reach it in its turn-end hook's output whenever
   its CLI takes that output; a race sometimes pasted them into its window.
 - A gate in a session's chat always shows after the run's move that opened it.
+- Upgrade: schema 27, restart running sessions after the update (lado update does it).
+- API: `GET /api/bug-report`.
 
 ## 0.37.0 (2026-10-13)
 

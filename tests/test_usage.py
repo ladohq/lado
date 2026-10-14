@@ -312,7 +312,7 @@ def test_the_migration_fills_usage_as_the_triggers_did(lado_home):
     counts = {kind: [r[0] for r in live].count(kind) for kind in state.USAGE_KINDS}
     assert (counts["session"], counts["agent"], counts["gate_close"]) == (2, 5, 3)
     assert all(counts[kind] for kind in state.USAGE_KINDS), counts
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(27)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()
@@ -331,14 +331,14 @@ def test_the_migration_counts_no_agreement_for_a_gate_closed_by_no_answer(lado_h
         _close(dataclass_waiting(run), closed, gate.id)
     live = [r for r in _rows() if r[0] == state.USAGE_GATE_CLOSE]
     assert [r[3] for r in live] == [None, None, 1]
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(27)
     state.migrate()
     assert [r for r in _rows() if r[0] == state.USAGE_GATE_CLOSE] == live
 
 
 def test_the_migration_keys_an_older_spawned_event_with_no_kit(lado_home):
     _session()
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(27)
     db = sqlite3.connect(lado_home / "lado.db")
     db.execute(
         "INSERT INTO events (session, agent, kind, detail) VALUES (?, 'w1', 'spawned', ?)",
@@ -364,7 +364,7 @@ def test_the_migration_makes_usage_as_a_new_database_has_it(lado_home):
         name for _, name, _ in fresh if name.startswith("usage_from_")
     }
     assert len(fresh) == 2 + len(state.USAGE_TRIGGERS)
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(27)
     state.migrate()
     with state.connect() as db:
         assert [tuple(row) for row in db.execute(USAGE_OBJECTS)] == fresh

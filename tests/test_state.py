@@ -323,6 +323,61 @@ def test_the_migration_gives_agents_their_read_only_flag(lado_home):
     assert state.get_agent("s", "w2").read_only is True
 
 
+def test_a_session_has_no_title_until_one_is_set(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    assert state.get_session("s").title is None
+    assert state.set_title("s", "Review")
+    assert state.get_session("s").title == "Review"
+    assert state.set_title("s", None)
+    assert state.get_session("s").title is None
+
+
+def test_set_title_of_an_unknown_session_is_false(lado_home):
+    assert not state.set_title("nope", "x")
+
+
+def test_a_title_survives_stop_and_resume_and_goes_with_forget(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    state.set_title("s", "Review")
+    state.stop_session("s")
+    assert state.get_session("s").title == "Review"
+    assert state.resume_session(state.Session("s", "/r", "auto", "codex"), "")
+    assert state.get_session("s").title == "Review"
+    state.stop_session("s")
+    state.delete_session("s")
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    assert state.get_session("s").title is None
+
+
+def test_setting_a_title_is_journaled_as_a_session_update(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    with state.connect() as db:
+        after = db.execute("SELECT max(id) FROM changes").fetchone()[0]
+    state.set_title("s", "Review")
+    with state.connect() as db:
+        rows = db.execute(
+            "SELECT kind, session, op FROM changes WHERE id > ?", (after,)
+        ).fetchall()
+    assert [tuple(row) for row in rows] == [("sessions", "s", "update")]
+
+
+def test_schema_28_gives_sessions_a_title(lado_home):
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    with state.connect() as db:
+        fresh = db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
+    agent_helpers.schema_before(28)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert "title" not in _columns(db, "sessions")
+    db.close()
+    assert state.migrate() == state.SCHEMA_VERSION == 28
+    with state.connect() as db:
+        assert db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[
+            0
+        ] == fresh
+    assert state.get_session("s").title is None
+    assert state.set_title("s", "Review")
+
+
 RECOMMENDATION_COLUMNS = {
     "recommendation_state",
     "recommendation",

@@ -7,6 +7,10 @@
   `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System
   panel (a `container` mark beside the version) and the system info for an issue say that
   LADO runs in a container.
+- The UI colours a flow step's outcome by the order its flow declares, in the chat as in
+  the Flows tab: green forward, orange back, so a `ready` after a review's `changes` no
+  longer turns orange. A step back has a return icon, and hovering an outcome says where
+  the step goes and, for a step back, which states run again.
 
 ## 0.38.0 (2026-10-14)
 

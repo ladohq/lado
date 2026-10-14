@@ -16,7 +16,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-usage-stats-design.md`.
 
 ## 3. The command (D7, D8)
 
-- [ ] 3.1 `stats.py`, the `stats` parser and `cmd_stats`, no kick after `stats`. Check:
+- [x] 3.1 `stats.py`, the `stats` parser and `cmd_stats`, no kick after `stats`. Check:
   `uv run pytest tests/test_stats.py tests/test_cli.py tests/test_lazy_imports.py -n auto`.
 
 ## 4. End to end

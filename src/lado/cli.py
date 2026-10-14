@@ -1078,6 +1078,25 @@ def cmd_telemetry(args: argparse.Namespace) -> int:
     return 0
 
 
+def _positive_days(text: str) -> int:
+    try:
+        days = int(text)
+    except ValueError:
+        days = 0
+    if days < 1:
+        raise argparse.ArgumentTypeError(f"not a positive whole number of days: {text}")
+    return days
+
+
+def cmd_stats(args: argparse.Namespace) -> int:
+    """`lado stats [--days N | --all]`: reads lado.db and the error journal, sends nothing."""
+    from lado import stats
+
+    for line in stats.lines(None if args.all else args.days or stats.DEFAULT_DAYS):
+        print(line)
+    return 0
+
+
 def cmd_ui(args: argparse.Namespace) -> int:
     import webbrowser
 
@@ -1477,6 +1496,16 @@ def main(argv: list[str] | None = None) -> int:
     # Internal: the detached sender (telemetry.kick).
     telemetry_sub.add_parser("send")
 
+    stats_cmd = commands.add_parser(
+        "stats", help="how you used LADO on this machine in a period; sends nothing"
+    )
+    period = stats_cmd.add_mutually_exclusive_group()
+    period.add_argument(
+        "--days", type=_positive_days, metavar="N", help="the last N days (default: 30)"
+    )
+    period.add_argument("--all", action="store_true", help="everything kept")
+    stats_cmd.set_defaults(func=cmd_stats)
+
     # Internal: started by the agent CLIs of LADO agents.
     commands.add_parser("mcp")
     hook = commands.add_parser("hook")
@@ -1508,10 +1537,11 @@ def main(argv: list[str] | None = None) -> int:
     # which deletes LADO_HOME and the program: a kick or a journal line would make
     # LADO_HOME again (lado.uninstall), nor from `lado server`, which kicks every
     # KICK_EVERY while it runs (server/run.housekeeping): one at its exit could make
-    # LADO_HOME again after an uninstall stopped it.
+    # LADO_HOME again after an uninstall stopped it. Nor from `lado stats`, which promises
+    # that it sends nothing.
     removes = args.command == "uninstall"
     serves = args.command == "server" and args.action is None
-    kicks = args.command != "update" and not removes and not serves
+    kicks = args.command not in ("update", "stats") and not removes and not serves
     kicks = kicks and not (args.command == "telemetry" and args.sub == "send")
     try:
         # `lado stop` is what the refusal asks for: it migrates once no session runs.

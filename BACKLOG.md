@@ -1875,6 +1875,21 @@ Found: 2026-10-14, feature/lad-44-flake-races (design, from the smoke's evidence
 
 # P3: maybe never
 
+## A worktree git has forgotten while its folder stays makes finish fail
+
+Size: S. Why here: only a `git worktree prune` or a `git gc` that prunes, or a hand
+removal of `.git/worktrees/<name>`, makes it. A container whose paths the host does not
+have makes it ordinary: the host's git sees such a worktree as `prunable`
+(docs/research/docker-install.md, H6).
+
+`runtime.gone` judges a worktree by its folder only. A folder git no longer knows is not
+gone to it, so `remove_work` calls `git worktree remove`, and git refuses: `fatal:
+'<path>' is not a working tree`. `lado finish`, `finish_worker` and a run's end fail on
+it.
+Wanted: a worktree git does not list (`git worktree list --porcelain`) counts as gone. Its
+folder is left for the human, or removed after LADO's usual check for uncommitted work.
+Found: 2026-10-14, review of lado/lad-52/task-lad-52.
+
 ## Code artifacts have no syntax highlighting
 
 Size: S. Why here: the human's decision (2026-10-07, run feature/artifacts-ui): text and

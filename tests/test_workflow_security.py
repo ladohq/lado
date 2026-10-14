@@ -93,6 +93,7 @@ def test_dependabot_keeps_actions_and_dependencies_current():
     assert config["version"] == 2
     updates = config["updates"]
     assert sorted((u["package-ecosystem"], u["directory"]) for u in updates) == [
+        ("docker", "/docker"),
         ("github-actions", "/"),
         ("npm", "/web"),
         ("uv", "/"),

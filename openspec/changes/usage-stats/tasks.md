@@ -26,7 +26,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-usage-stats-design.md`.
 
 ## 5. Docs
 
-- [ ] 5.1 CHANGELOG.md (`0.38.0 (unreleased)`), AGENTS.md, docs/telemetry.md.
+- [x] 5.1 CHANGELOG.md (`0.38.0 (unreleased)`), AGENTS.md, docs/telemetry.md.
 
 ## 6. Regression
 

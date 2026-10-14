@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.37.1 (unreleased)
+## 0.38.0 (unreleased)
+
+- `lado stats` prints how you used LADO on this machine in the last 30 days (`--days N`,
+  `--all`): sessions, agents per agent CLI and per role (with its kit), turn errors, flow
+  runs, gates and how often you answered as the lead advised, questions, undelivered
+  messages and LADO's own errors. It sends nothing.
+- LADO now keeps an anonymous local record of these counts (no names, paths or texts),
+  filled from your existing history at the upgrade, so `lado forget` no longer makes them
+  smaller; the statistics report counts from it with the same fields. `lado log` names an
+  agent's kit in its `spawned` line.
 
 - UI: the expanded waiting card covers the session's chat (on Needs you, the page) instead
   of the whole window, so an artifact opened from it shows over it; Esc closes that

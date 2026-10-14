@@ -21,6 +21,7 @@ import { GatePanel } from "./GateCard";
 import { Recommendation } from "./Recommendation";
 import { ExpandIcon, FlowsIcon } from "./icons";
 import { VIEW_PARAM } from "./paths";
+import { quoteArea } from "./quote";
 import { onQuote } from "./quotes";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
@@ -362,6 +363,7 @@ function AgentPanel({
               className={`waiting-question${marked === question.id ? " marked" : ""}`}
               data-item={question.id}
               aria-label={`Question #${question.id}`}
+              {...quoteArea(session)}
             >
               <h4 className="waiting-question-text">
                 {many && <span className="waiting-question-n">{n + 1}.</span>}

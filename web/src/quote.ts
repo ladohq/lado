@@ -1,6 +1,20 @@
 // The text a quote puts into the composer (docs/design/ui.md, Selected text and copy
 // buttons): a Markdown quote, an artifact's lead line, a text artifact's lines fenced.
 
+// The attributes of a readable area, set by the component that renders it: what it holds
+// (text, a Markdown or a text artifact), its session, and an artifact's full name and
+// whether its record is older than the latest. The selection bar reads them (SelectionBar.tsx).
+export type AreaKind = "text" | "markdown" | "code";
+
+export function quoteArea(session: string, kind: AreaKind = "text", artifact?: { fullName: string; earlier: boolean }) {
+  return {
+    "data-quote": kind,
+    "data-quote-session": session,
+    ...(artifact && { "data-quote-artifact": artifact.fullName }),
+    ...(artifact?.earlier && { "data-quote-earlier": "" }),
+  };
+}
+
 // Each line prefixed with "> ", an empty one with a bare ">"; trailing blank lines dropped.
 export function blockquote(text: string): string {
   const lines = text.replace(/\r\n?/g, "\n").replace(/\s+$/, "").split("\n");

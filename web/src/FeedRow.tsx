@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { HUMAN, LADO } from "./api";
 import { clock } from "./ChatText";
 import { GateIcon } from "./icons";
+import { quoteArea } from "./quote";
 
 // The avatars' colours, --avatar-1 … --avatar-6 in tokens.css.
 export const AVATAR_COLOURS = 6;
@@ -66,6 +67,7 @@ export function FeedRow({
   label,
   id,
   className = "",
+  session,
   children,
 }: {
   kind: RowKind;
@@ -76,6 +78,7 @@ export function FeedRow({
   label: string;
   id?: string;
   className?: string;
+  session?: string; // its text is a readable area of the selection bar, of this session
   children: ReactNode;
 }) {
   const time = <time dateTime={at}>{clock(at)}</time>;
@@ -83,7 +86,7 @@ export function FeedRow({
   return (
     <article className={classes.join(" ")} id={id} aria-label={label}>
       <div className="feed-side">{continued ? time : <Avatar kind={kind} who={who} />}</div>
-      <div className="feed-main">
+      <div className="feed-main" {...(session !== undefined && quoteArea(session))}>
         {!continued && (
           <header className="feed-head">
             <span className="feed-who">{who}</span>

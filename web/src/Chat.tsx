@@ -29,6 +29,7 @@ import {
 } from "./live";
 import { runPath } from "./paths";
 import { messageAnchor, Question, replyOf, type Reply } from "./Question";
+import { quoteArea } from "./quote";
 import { agentTab, gateTab, WaitingCard, type Focus } from "./WaitingCard";
 
 // The run events the feed shows as lines, and the word each kind's line says: the one list.
@@ -394,7 +395,7 @@ function RunEvents({
         {events.map((event) => {
           const comment = gateOf(event, gates)?.comment;
           return (
-            <li key={event.id} className={`run-event run-${event.kind}`}>
+            <li key={event.id} className={`run-event run-${event.kind}`} {...quoteArea(session)}>
               <div className="run-line">
                 <MiniAvatar who={event.actor} />
                 <span className="run-actor">{event.actor === HUMAN ? "You" : event.actor}</span>
@@ -504,7 +505,7 @@ function Rows({
     const { message, continued } = row;
     if (isReply(message)) {
       const reply = replyOf(message);
-      return <Answer key={message.id} message={message} reply={reply} continued={continued} go={go} />;
+      return <Answer key={message.id} session={session} message={message} reply={reply} continued={continued} go={go} />;
     }
     if (message.kind !== "question") {
       return <Message key={message.id} session={session} message={message} continued={continued} />;
@@ -537,6 +538,7 @@ function Rows({
         continued={continued}
         label={`Question from ${message.from}`}
         id={messageAnchor(message.id)}
+        session={session}
       >
         <Question session={session} question={message} answer={answer} anchored={answer !== undefined && !late.has(answer.id)} />
       </FeedRow>
@@ -621,11 +623,13 @@ function DayDivider({ at }: { at: string }) {
 // the human's row with the answer (the choice, else the own words) and the comment under a
 // choice.
 function Answer({
+  session,
   message,
   reply,
   continued,
   go,
 }: {
+  session: string;
   message: MessageInfo;
   reply: Reply;
   continued: boolean;
@@ -638,6 +642,7 @@ function Answer({
         className={`chat-quiet${reply.comment ? " commented" : ""}`}
         id={messageAnchor(message.id)}
         aria-label={`You skipped question #${asked}`}
+        {...quoteArea(session)}
       >
         <span>You skipped question #{asked}</span> <time dateTime={message.created_at}>{clock(message.created_at)}</time>
         {reply.comment && <Body text={reply.comment} breaks />}
@@ -668,6 +673,7 @@ function Answer({
       label="Message from you"
       id={messageAnchor(message.id)}
       className="chat-message"
+      session={session}
     >
       <h4 className="chat-summary chat-answer">{reply.text}</h4>
       {reply.comment && <p className="chat-comment">{reply.comment}</p>}
@@ -722,6 +728,7 @@ function Message({ session, message, continued }: { session: string; message: Me
       label={label}
       id={messageAnchor(message.id)}
       className={`chat-message${between ? " between" : ""}`}
+      session={session}
     >
       <MessageText message={message} />
       {mine && <ImagePreviews session={session} attachments={message.attachments} />}

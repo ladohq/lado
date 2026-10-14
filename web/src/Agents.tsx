@@ -24,6 +24,7 @@ import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } fro
 import { ListPage, type Entry } from "./ListPage";
 import { agentPath, runPath, sessionPath } from "./paths";
 import { storeAgentMessages } from "./prefs";
+import { quoteArea } from "./quote";
 import { StatusDot, SUPERVISOR } from "./Team";
 import { useOpenTerminal } from "./Terminals";
 
@@ -255,7 +256,7 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
         {task && (
           <>
             <dt>Task</dt>
-            <dd className="agent-task">
+            <dd className="agent-task" {...quoteArea(session)}>
               <Preview text={task} lines={TASK_LINES} />
             </dd>
           </>
@@ -340,7 +341,7 @@ function AgentMessages({ session, name, from }: { session: string; name: string;
       ) : (
         <ol>
           {latest.map((one) => (
-            <li key={one.id}>
+            <li key={one.id} {...quoteArea(session)}>
               <span className="muted">
                 <time dateTime={one.created_at}>{clock(one.created_at)}</time> {one.from} → {one.to}
               </span>{" "}

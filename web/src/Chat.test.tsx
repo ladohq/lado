@@ -1503,3 +1503,28 @@ test("a link to a message that is not in the chat loads once and scrolls nowhere
   // Only the terminal panel scrolls its tab into view.
   expect(scrolled.mock.contexts.filter((one) => log.contains(one as Node))).toEqual([]);
 });
+
+// The selection bar's areas (docs/design/ui.md, Selected text and copy buttons).
+const area = (element: Element | null | undefined) => {
+  const found = element?.closest<HTMLElement>("[data-quote]");
+  return found && [found.dataset.quote, found.dataset.quoteSession];
+};
+
+test("each message, run event, closed gate and open gate's text is a text area of its session", async () => {
+  serve(
+    [message(1, "supervisor", "human", "merged w1", { body: "All checks pass." })],
+    undefined,
+    [event(5, "flow_start", "a", "2026-10-03T12:00:00Z")],
+    [closed(1, "approve", { comment: "ship it" }), gate(2)],
+  );
+  open();
+  const log = await chat();
+  const said = await within(log).findByText("All checks pass.");
+  expect(area(said)).toEqual(["text", "lado"]);
+  expect(said.closest("[data-quote]")?.classList.contains("feed-main")).toBe(true);
+  expect(area(await within(log).findByText("a"))).toEqual(["text", "lado"]);
+  expect(area(within(await gateCard()).getByText("ship it"))).toEqual(["text", "lado"]);
+  expect(area(within(await gateTab()).getByText("Ship it?"))).toEqual(["text", "lado"]);
+  expect(area(within(await gateTab()).getByRole("textbox"))).toBeNull(); // the comment is no area
+  expect(area(screen.getByRole("textbox", { name: "Write to the supervisor…" }))).toBeFalsy();
+});

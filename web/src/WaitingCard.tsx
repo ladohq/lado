@@ -103,7 +103,9 @@ export function WaitingCard({
   runs: RunInfo[] | null; // for the runs' colours; null while they load
   stopped: boolean;
   focus: Focus;
-  chat?: { feed: number | null }; // in a session's chat: the feed's height (null: not laid out)
+  // In a session's chat: the feed's height (null: not laid out), and whether its open
+  // questions and gates are both loaded.
+  chat?: { feed: number | null; loaded: boolean };
 }) {
   const tabs = waitingTabs(questions, gates);
   // Minimized: the tab keys the card had when the human minimized it, per session (the chat
@@ -213,11 +215,17 @@ export function WaitingCard({
       expander.current?.focus();
     }
   }, [expanded]);
-  // A new tab restores a minimized card, which forgets it was minimized.
+  // A new tab restores a minimized card, which forgets it was minimized. Once what waits is
+  // loaded, the kept keys narrow to the tabs there are (none left: forgotten), so an agent
+  // whose tab went away has a new tab when it asks again.
   const tabKeys = tabs.map((tab) => tab.key).join(" ");
+  const loaded = chat?.loaded ?? false;
   useEffect(() => {
-    if (keys !== null && tabs.length > 0 && !minimized) remember(null);
-  }, [keys, tabKeys]);
+    if (keys === null) return;
+    if (tabs.length > 0 && !minimized) remember(null);
+    else if (loaded && tabs.length === 0) remember(null);
+    else if (loaded && keys.length > tabs.length) remember(keys.filter((key) => tabs.some((tab) => tab.key === key)));
+  }, [keys, tabKeys, loaded]);
   // Minimized by the human, the focus goes to Restore; restored by its icon or line, to
   // Minimize (a tab clicked keeps it).
   useLayoutEffect(() => {

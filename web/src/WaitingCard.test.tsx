@@ -72,7 +72,7 @@ type Props = {
   stopped?: boolean;
   focus?: Focus;
   at?: string; // the address, the session's Activity tab by default
-  chat?: { feed: number | null }; // in a session's chat: the feed's height; none on Needs you
+  chat?: { feed: number | null; loaded: boolean }; // in a session's chat (none on Needs you)
 };
 
 let posted: { path: string; body: unknown }[] = [];
@@ -455,7 +455,7 @@ test("the expanded card folds itself when nothing waits any more", async () => {
 });
 
 // Minimized and resized: only in a session's chat (`chat`).
-const IN_CHAT = { feed: null };
+const IN_CHAT = { feed: null, loaded: true };
 const GATE_812 = gate(812, "task/lad-52", "2026-10-03T12:00:01.000Z", {
   question: "Archive the change and merge the pull request?",
 });
@@ -531,6 +531,39 @@ test("a new tab restores a minimized card, the shown tab kept; a question added 
   expect(isMinimized()).toBe(false);
 });
 
+test("an agent whose tab went away asks again: a new tab, so a minimized card restores itself", () => {
+  const view = show({ questions: [question(5, "supervisor")], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  view.rerender(<Card questions={[]} gates={[GATE_812]} chat={IN_CHAT} />); // answered elsewhere
+  expect(isMinimized()).toBe(true);
+  expect(JSON.parse(localStorage.getItem("lado.waitingMinimized.s") ?? "null")).toEqual(["gate:812"]);
+  view.rerender(<Card questions={[question(9, "supervisor")]} gates={[GATE_812]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(false);
+});
+
+test("when nothing waits any more the minimized card is forgotten, so the next question shows whole", () => {
+  const view = show({ questions: [question(5, "supervisor")], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  view.rerender(<Card questions={[]} chat={IN_CHAT} />);
+  expect(localStorage.getItem("lado.waitingMinimized.s")).toBeNull();
+  view.rerender(<Card questions={[question(9, "supervisor")]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(false);
+});
+
+test("what waits not loaded yet forgets nothing of a minimized card", () => {
+  localStorage.setItem("lado.waitingMinimized.s", JSON.stringify(["gate:812", "agent:supervisor"]));
+  const loading = { feed: null, loaded: false };
+  // The questions came, the gates not yet: then both.
+  const view = show({ questions: [question(5, "supervisor")], gates: [], chat: loading });
+  expect(isMinimized()).toBe(true);
+  view.rerender(<Card questions={[question(5, "supervisor")]} gates={[GATE_812]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(true);
+  expect(JSON.parse(localStorage.getItem("lado.waitingMinimized.s") ?? "null")).toEqual(["gate:812", "agent:supervisor"]);
+  // Nothing loaded: nothing forgotten either.
+  view.rerender(<Card questions={[]} gates={[]} chat={loading} />);
+  expect(localStorage.getItem("lado.waitingMinimized.s")).not.toBeNull();
+});
+
 test("a minimized card stays minimized when it is drawn again (a reload), while its tabs are the same or fewer", () => {
   const view = show({ questions: [question(5, "supervisor")], gates: [GATE_812], chat: IN_CHAT });
   fireEvent.click(iconButton("Minimize the card"));
@@ -569,7 +602,7 @@ test("on Needs you (no chat) the card has no minimize icon and no edge, whatever
 
 test("in the chat an edge above the card sets its height in its bounds, kept for every session; a double click forgets it", () => {
   columnWidth(null);
-  show({ questions: [], gates: [GATE_812], chat: { feed: 400 } });
+  show({ questions: [], gates: [GATE_812], chat: { feed: 400, loaded: true } });
   FakeResizeObserver.resize(
     () => 800,
     () => 300, // the card, laid out by the stylesheet
@@ -594,7 +627,7 @@ test("in the chat an edge above the card sets its height in its bounds, kept for
 test("a stored height too tall for the chat shows lower and is kept; dragged below the least height the card minimizes", () => {
   localStorage.setItem("lado.waitingHeight", "600");
   columnWidth(null);
-  show({ questions: [], gates: [GATE_812], chat: { feed: 160 } });
+  show({ questions: [], gates: [GATE_812], chat: { feed: 160, loaded: true } });
   FakeResizeObserver.resize(
     () => 800,
     () => 400,

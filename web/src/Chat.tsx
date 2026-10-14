@@ -335,7 +335,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         runs={runs && "items" in runs ? runs.items : null}
         stopped={stopped}
         focus={focus}
-        chat={{ feed: feedHeight }}
+        chat={{ feed: feedHeight, loaded: ready && waits !== null }}
       />
       <Composer session={session} stopped={stopped} />
     </section>

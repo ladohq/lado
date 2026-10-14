@@ -90,6 +90,12 @@ export type SystemInfo = components["schemas"]["SystemInfo"];
 // The system panel's facts and the report to copy.
 export const getSystem = () => get<SystemInfo>("/api/system");
 
+export type BugReport = components["schemas"]["BugReport"];
+
+// The Report a bug page: the report with the page's browser line, and its GitHub link.
+export const getBugReport = (browser: string) =>
+  get<BugReport>(`/api/bug-report?browser=${encodeURIComponent(browser)}`);
+
 const agentsPath = (session: string) => `${sessionPath(session)}/agents`;
 
 export const getAgents = (session: string) => get<AgentInfo[]>(agentsPath(session));

@@ -33,7 +33,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 6. UI (D8)
 
-- [ ] 6.1 `BugIcon`, the rail's Report a bug above Settings, route `/report`,
+- [x] 6.1 `BugIcon`, the rail's Report a bug above Settings, route `/report`,
   `ReportBug.tsx` to the mockup's variant A; vitest. Check: `make web`.
 - [ ] 6.2 UI e2e `tests/ui/test_bug_report.py` with screenshots. Check: `uv run pytest -m
   ui tests/ui/test_bug_report.py`.

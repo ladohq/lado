@@ -42,6 +42,44 @@ def stopped_session(repo) -> str:
     return session
 
 
+@pytest.fixture
+def repos(tmp_path, monkeypatch):
+    """A repositories folder of two repositories as LADO_REPOS; a test takes it before
+    `server`, so the server's process has it."""
+    folder = tmp_path / "repos"
+    agent_helpers.init_repo(folder / "api")
+    agent_helpers.init_repo(folder / "app")
+    monkeypatch.setenv("LADO_REPOS", str(folder))
+    return folder
+
+
+def test_where_starts_in_the_repositories_folder(page: Page, repos, server, shot):
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
+    dialog = page.get_by_role("dialog", name="New session")
+    where = dialog.get_by_role("combobox", name=re.compile("Where"))
+    expect(where).to_have_value("")
+    expect(where).to_have_attribute("placeholder", f"{repos}/…")
+    row = dialog.locator(".recent", has_text="Repositories folder:")
+    expect(row.get_by_role("button", name=str(repos))).to_be_visible()
+    where.blur()
+    shot(page, "empty")
+    where.focus()
+    folders = dialog.get_by_role("listbox", name="Folders")
+    expect(folders.get_by_role("option")).to_have_text(["api/", "app/"])
+    shot(page, "list")
+    folders.get_by_role("option", name="app/").click()
+    expect(where).to_have_value(f"{repos}/app")
+    expect(dialog).to_contain_text("✓ git repository · branch main")
+
+    dialog.get_by_role("button", name="Clone from URL").click()
+    url = dialog.get_by_role("textbox", name=re.compile("Where"))
+    url.fill("https://example.invalid/acme/site.git")
+    # Clone into follows /api/clone-target, which needs no network; the branch listing fails.
+    expect(dialog.get_by_role("textbox", name="Clone into")).to_have_value(f"{repos}/site")
+    shot(page, "clone")
+
+
 def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, shot):
     log_in(page, server)
     page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()

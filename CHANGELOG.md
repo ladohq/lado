@@ -7,6 +7,12 @@
   `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System
   panel (a `container` mark beside the version) and the system info for an issue say that
   LADO runs in a container.
+- In a container the UI server no longer warns that it is open to other machines: it notes
+  that how the container publishes its port decides who reaches it. `lado ui` there prints
+  only the link for the host's browser and opens none, and the system info for an issue
+  says the server runs in a container. `LADO_REPOS` names the folder of your repositories:
+  the New session window suggests its subfolders in an empty Where, a clone by URL goes
+  there by default (`lado start <git-url>` too), and `lado doctor` shows it.
 - UI: in a session's chat the waiting card can be minimized to one line, so the chat has
   the room while you talk a gate over with the supervisor; it comes back by itself when
   something new waits. Its top edge can be dragged to give it another height. Both are

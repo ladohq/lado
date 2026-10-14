@@ -438,7 +438,7 @@
     "/api/clone-target": {
       "get": {
         "summary": "Clone Target",
-        "description": "The folder a clone of `url` would go to (by default ~/lado/<repo>): whether it\ntakes one, and the session name it gives.",
+        "description": "The folder a clone of `url` would go to (by default $LADO_REPOS/<repo>, else\n~/lado/<repo>): whether it takes one, and the session name it gives.",
         "operationId": "clone_target_api_clone_target_get",
         "parameters": [
           {
@@ -687,6 +687,25 @@
                   },
                   "type": "array",
                   "title": "Response Recent Folders Api Folders Recent Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repos-folder": {
+      "get": {
+        "summary": "Repos Folder",
+        "description": "The folder the New session window starts Where from (LADO_REPOS), or none.",
+        "operationId": "repos_folder_api_repos_folder_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReposFolder"
                 }
               }
             }
@@ -5699,6 +5718,27 @@
         ],
         "title": "RepoInfo",
         "description": "A repository of a session: now its one folder; a project will have several."
+      },
+      "ReposFolder": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ReposFolder",
+        "description": "The folder of the human's repositories (LADO_REPOS, clone.repos_folder): the New\nsession window's start folder, or None."
       },
       "Resume": {
         "properties": {

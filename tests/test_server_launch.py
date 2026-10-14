@@ -193,6 +193,18 @@ def test_a_folder_that_will_not_do_suggests_by_what_is_installed(client, tmp_pat
     assert folder(client, tmp_path)["provider"] == {"name": "claude", "reason": "only_installed"}
 
 
+# The repositories folder
+
+
+def test_the_repositories_folder(client, tmp_path, monkeypatch):
+    monkeypatch.delenv("LADO_REPOS", raising=False)
+    assert client.get("/api/repos-folder").json() == {"path": None}
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
+    assert client.get("/api/repos-folder").json() == {"path": str(tmp_path)}
+    monkeypatch.setenv("LADO_REPOS", "code")
+    assert client.get("/api/repos-folder").json() == {"path": None}
+
+
 # Recent folders
 
 

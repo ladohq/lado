@@ -168,6 +168,13 @@ class RecentFolder(BaseModel):
     session: SessionInfo  # its latest started session
 
 
+class ReposFolder(BaseModel):
+    """The folder of the human's repositories (LADO_REPOS, clone.repos_folder): the New
+    session window's start folder, or None."""
+
+    path: str | None
+
+
 class KitSummary(BaseModel):
     """A kit as it loads now: what every list of kits shows of it."""
 

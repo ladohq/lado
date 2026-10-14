@@ -107,8 +107,8 @@ later desktop app and a later cloud setup; the UI is its client.
   version stayed the same (a rollback). `GET /api/system` (`SystemInfo`) is the system
   panel's facts (`doctor.system_info`, from what `lado doctor` checks) and `report`
   (`doctor.report`): Markdown to paste into an issue, with no server address, home path,
-  repository path, session name, token or message, only "open to the network" or
-  "loopback only" and "LADO_HOME set" or "default home".
+  repository path, session name, token or message, only "open to the network",
+  "loopback only" or "in a container" and "LADO_HOME set" or "default home".
 - Host (decided 2026-10-04): 127.0.0.1 by default; `--host` takes any IPv4 address or name
   (`lado server`, and `lado ui` for a server it starts), e.g. `0.0.0.0` to open the UI of a
   remote host from another machine. An IPv6 address is refused (not supported yet). A
@@ -125,7 +125,15 @@ later desktop app and a later cloud setup; the UI is its client.
   (names resolved: `localhost` is 127.0.0.1) is an error naming its address; without
   `--host` it takes the running server wherever it listens, and for a non-loopback one
   prints the warning and, after the local link, `From another machine: <link>`. The
-  restart of a server of another version keeps its host and port.
+  restart of a server of another version keeps its host and port. In a container
+  (`LADO_CONTAINER`, decided 2026-10-14, LAD-63) the address does not decide who reaches
+  the server, the port's publication does: a non-loopback address prints no warning and no
+  `From another machine` link but a note (`lado: note: ...`, `run.CONTAINER_NOTE`, also in
+  `server.log`) naming the address inside the container, that the publication decides
+  (`127.0.0.1:<port>:<port>`: this computer only), and that a link published to other
+  machines carries the token unencrypted. `lado ui` there opens no browser: it prints the
+  local link (with `--no-open` that one line only) and, without `--no-open`, `Open it in
+  your browser on the host.`; the issue report's server line says `in a container`.
 - Port: 8000, or the next free one up to 8020; `--port N` takes exactly N (busy: an error;
   0: any free port, as the tests use).
 - One per `LADO_HOME`: the server holds an exclusive flock on `LADO_HOME/server.lock` and
@@ -155,7 +163,8 @@ later desktop app and a later cloud setup; the UI is its client.
   (start), `POST /api/sessions/{name}/resume`, `POST /api/sessions/{name}/stop` and
   `DELETE /api/sessions/{name}` (forget) change state like the composer and are guarded
   the same way (`Guard.changes`: the token and the server's own Origin). The lookups the
-  New session window makes (`GET /api/folders`, `/api/folders/recent`, `/api/kits`,
+  New session window makes (`GET /api/folders`, `/api/folders/recent`,
+  `/api/repos-folder`, `/api/kits`,
   `/api/providers`, the stop and forget previews) need the token; `/api/providers` runs
   each CLI's `--version` on every request.
 - Data only through `lado.state` and `lado.runtime`, no SQL in the server but the journal's
@@ -1177,6 +1186,17 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   or commit itself: the human runs the command. Subfolders are suggested from the folder up to the last
   `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
   (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
+  With a repositories folder (`LADO_REPOS`, which LADO's image sets to the projects folder
+  mounted at the host's path; `GET /api/repos-folder`, `ReposFolder`, read once per window;
+  decided 2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html` variant 2) the
+  empty field's placeholder is `<folder>/…` (else `~/projects/app`), its focus lists the
+  folder's subfolders (a pick sets `<folder>/<name>`), and a row **Repositories folder:**
+  with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
+  `<folder>/`, gives the field the focus (its keys and its blur work the list) and opens
+  the list. The folder is the parent with one `/` at its end (`/` stays `/`). The folder
+  check runs only on what is typed or picked, never on the empty field nor on the
+  repositories folder itself (with or without its last `/`): it holds the repositories,
+  and its "not inside a git repository" would offer a `git init` over them all.
   **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
   says of it (`name_state`): taken by a running session, by a session of another folder,
   or a stopped session of this folder with **Resume it**, which turns the window to Resume.
@@ -1228,7 +1248,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - **Clone from URL** (decided 2026-10-12, LAD-6; mockup `task/lad-6/mockup-clone.html`
   v3): the Where field takes a git URL (`lado.clone.is_url`: `https://`, `http://`,
   `ssh://`, `git://`, `file://`, or `user@host:path`). **Clone into** is the default folder
-  (`~/lado/<repo>`, the server's `CloneTarget.path`) until the human edits it, with the
+  (`$LADO_REPOS/<repo>`, else `~/lado/<repo>`: the server's `CloneTarget.path`; its
+  placeholder names the same parent) until the human edits it, with the
   folder's state from `GET /api/clone-target` (200 ms after typing, like the folder): "✓ a
   new folder", "✓ an empty folder", or the core's text for a folder that holds something.
   **Branch** lists the remote's branches by itself, from `POST /api/remote-branches` (one

@@ -90,6 +90,7 @@ type Call = { method: string; path: string; body: unknown };
 let sessions: SessionInfo[];
 let folders: Record<string, FolderInfo>;
 let recent: RecentFolder[];
+let repos: string | null; // the repositories folder, LADO_REPOS
 let kits: KitInfo[];
 let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: () => Promise<ProviderInfo[]>;
@@ -104,6 +105,7 @@ beforeEach(() => {
   sessions = [session("lado")];
   folders = {};
   recent = [];
+  repos = null;
   kits = [kit("default"), kit("team")];
   abouts = {};
   providers = async () => [provider("claude"), provider("kilo")];
@@ -131,6 +133,7 @@ beforeEach(() => {
         return json(folders[asked] ?? folder(asked, { ok: false, problem: `${asked} does not exist`, root: null }));
       }
       if (url.pathname === "/api/folders/recent") return json(recent);
+      if (url.pathname === "/api/repos-folder") return json({ path: repos });
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers());
       const about = /^\/api\/sessions\/([^/]+)\/about$/.exec(url.pathname);
@@ -317,6 +320,110 @@ test("a recent folder is one click, and its last session gives kits, provider an
   await waitFor(() => expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).value).toBe("kilo"));
   expect(screen.getByText("from the folder's last session")).toBeTruthy();
   expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
+});
+
+// The repositories folder (LADO_REPOS)
+
+const REPOS = "/Users/me/repos";
+
+test("an empty Where suggests the repositories folder's subfolders on focus, and a pick is its full path", async () => {
+  repos = REPOS;
+  folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
+  await openLaunch();
+  await waitFor(() => expect(where().placeholder).toBe(`${REPOS}/…`));
+  expect(where().value).toBe("");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(calls.some((c) => c.path.startsWith("/api/folders?"))).toBe(false); // nothing before focus
+  fireEvent.focus(where());
+  const list = await screen.findByRole("listbox", { name: "Folders" });
+  expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["api/", "app/", "site/"]);
+  fireEvent.mouseDown(within(list).getByRole("option", { name: "app/" }));
+  expect(where().value).toBe(`${REPOS}/app`);
+});
+
+test("the Repositories folder row puts the folder in Where and lists it", async () => {
+  repos = REPOS;
+  folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem: "no", subfolders: ["api", "app", "site"] });
+  const dialog = await openLaunch();
+  const row = await within(dialog).findByText(/Repositories folder:/);
+  fireEvent.click(within(row).getByRole("button", { name: REPOS }));
+  expect(where().value).toBe(`${REPOS}/`);
+  const list = await screen.findByRole("listbox", { name: "Folders" });
+  expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["api/", "app/", "site/"]);
+  // The field has the focus: the keys pick, and leaving it closes the list.
+  expect(document.activeElement).toBe(where());
+  fireEvent.keyDown(where(), { key: "ArrowDown" });
+  expect(within(list).getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
+  fireEvent.blur(where());
+  expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
+});
+
+test("the repositories folder itself in Where is not checked as a folder for a session", async () => {
+  repos = REPOS;
+  const problem = `${REPOS} is not inside a git repository`;
+  folders[`${REPOS}/`] = folder(`${REPOS}/`, { ok: false, problem, root: null, subfolders: ["api"] });
+  folders[REPOS] = folders[`${REPOS}/`];
+  const dialog = await openLaunch();
+  fireEvent.click(within(await within(dialog).findByText(/Repositories folder:/)).getByRole("button", { name: REPOS }));
+  await screen.findByRole("listbox", { name: "Folders" });
+  for (const value of [`${REPOS}/`, REPOS]) {
+    type(value);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400))); // past the check's debounce
+    expect(screen.queryByText(problem)).toBeNull();
+    expect(screen.queryByText("checking…")).toBeNull();
+  }
+  type(`${REPOS}/api`);
+  folders[`${REPOS}/api`] = folder(`${REPOS}/api`, { ok: false, problem: "api is not inside a git repository" });
+  expect(await screen.findByText("api is not inside a git repository")).toBeTruthy();
+});
+
+test("a repositories folder of / is listed as /, never //", async () => {
+  repos = "/";
+  folders["/"] = folder("/", { ok: false, problem: "no", subfolders: ["srv"] });
+  await openLaunch();
+  await waitFor(() => expect(where().placeholder).toBe("/…"));
+  fireEvent.focus(where());
+  await screen.findByRole("listbox", { name: "Folders" });
+  expect(calls.some((c) => c.path === "/api/folders?path=%2F")).toBe(true);
+  expect(calls.some((c) => c.path.includes("%2F%2F"))).toBe(false);
+});
+
+test("Resume shows no Repositories folder row", async () => {
+  repos = REPOS;
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado" })];
+  open("/sessions/lado");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(within(dialog).queryByText(/Repositories folder:/)).toBeNull();
+});
+
+test("Clone into's placeholder is in the repositories folder", async () => {
+  repos = REPOS;
+  const dialog = await openLaunch();
+  await waitFor(() => expect(where().placeholder).toBe(`${REPOS}/…`));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Clone from URL" }));
+  fireEvent.change(screen.getByRole("textbox", { name: /Where/ }), {
+    target: { value: "git@github.com:acme/app.git" },
+  });
+  const into = (await screen.findByRole("textbox", { name: "Clone into" })) as HTMLInputElement;
+  expect(into.placeholder).toBe(`${REPOS}/<repo>`);
+});
+
+test("without a repositories folder an empty Where suggests nothing and has no row", async () => {
+  const dialog = await openLaunch();
+  expect(where().placeholder).toBe("~/projects/app");
+  fireEvent.focus(where());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByRole("listbox", { name: "Folders" })).toBeNull();
+  expect(calls.some((c) => c.path.startsWith("/api/folders?"))).toBe(false);
+  expect(within(dialog).queryByText(/Repositories folder:/)).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Clone from URL" }));
+  fireEvent.change(screen.getByRole("textbox", { name: /Where/ }), {
+    target: { value: "git@github.com:acme/app.git" },
+  });
+  const into = (await screen.findByRole("textbox", { name: "Clone into" })) as HTMLInputElement;
+  expect(into.placeholder).toBe("~/lado/<repo>");
 });
 
 // Name

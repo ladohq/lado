@@ -11,6 +11,7 @@ import type { GateInfo, MessageInfo, RecommendationInfo, RunInfo } from "./api";
 import { avatar } from "./FeedRow";
 import { FakeEventSource } from "./fakes";
 import { Live, LiveContext } from "./live";
+import { sendQuote, takePending } from "./quotes";
 import { runColours } from "./Team";
 import { WaitingCard, waitingTabs, type Focus } from "./WaitingCard";
 
@@ -354,6 +355,18 @@ test("a gate's tab is its panel: question, note, comment, its buttons in the Sen
   fireEvent.change(within(panel).getByRole("textbox", { name: "Comment for the next step (optional)" }), { target: { value: "fine" } });
   fireEvent.click(within(row).getByRole("button", { name: "Approve" }));
   await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/s/gates/1/answer", body: { option: "approve", comment: "fine" } }]));
+});
+
+test("an expanded card folds on a quote of its session, not of another", async () => {
+  show({ questions: [question(5, "w1")] });
+  fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  act(() => sendQuote("other", "> A", () => {}));
+  expect(isExpanded()).toBe(true);
+  act(() => sendQuote("s", "> A", () => {}));
+  await waitFor(() => expect(isExpanded()).toBe(false));
+  takePending("s");
+  takePending("other");
 });
 
 test("a gate's comment and an own answer stay through a switch of tabs and through expanding and folding the card", async () => {

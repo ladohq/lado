@@ -34,6 +34,9 @@
   and on Linux the container's user takes the folder owner's uid, so the files the agents
   write are yours. `docker logs` warns when that folder is not mounted or not writable.
 - `lado doctor` warns when LADO may not write in its repositories folder (`LADO_REPOS`).
+- Selecting text in the UI shows a small bar to copy it or quote it into the composer; a
+  quote from an artifact names it and its lines. Code blocks and messages have a copy
+  button that shows on hover.
 
 ## 0.38.0 (2026-10-14)
 

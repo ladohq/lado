@@ -19,6 +19,8 @@ import { ApiError, getLimits, uploadFile, writeMessage, type Limits } from "./ap
 import { kindOf, size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { ClipIcon, UnseenIcon } from "./icons";
+import { withQuote } from "./quote";
+import { registerComposer, takePending } from "./quotes";
 import { Tooltip } from "./Tooltip";
 
 // The lines the composer's field grows to before it scrolls.
@@ -88,6 +90,29 @@ export function Composer({
   const field = inputRef ?? own;
   const thumbs = useRef(new Set<string>());
   useLayoutEffect(() => grow(field.current), [text, field]);
+
+  // A quote (the selection bar's Quote in reply, quotes.ts) is appended to the text; the
+  // field takes the focus with the cursor at the end once it shows. One kept for the
+  // session while no composer was mounted is taken on mount.
+  const quoted = useRef(false);
+  useEffect(() => {
+    const insert = (quote: string) => {
+      quoted.current = true;
+      setText((now) => withQuote(now, quote));
+    };
+    const kept = takePending(session);
+    if (kept) insert(kept.replace(/\s+$/, ""));
+    return registerComposer(session, insert);
+  }, [session]);
+  useEffect(() => {
+    if (!quoted.current) return;
+    quoted.current = false;
+    const box = field.current;
+    if (!box) return;
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+    box.scrollTop = box.scrollHeight;
+  }, [text, field]);
 
   useEffect(() => {
     let mounted = true;

@@ -18,6 +18,7 @@ import { GateCard, gateTitle } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { filterGroups, ListGroup, type Entry as ListEntry } from "./ListPage";
 import { FIND_PARAM, runPath, sessionPath } from "./paths";
+import { quoteArea } from "./quote";
 import {
   storedFlowsGroups,
   storedFlowsOrder,
@@ -624,7 +625,7 @@ function Row({
         </span>
       </div>
       {open && (
-        <div className="feed-detail">
+        <div className="feed-detail" {...quoteArea(session)}>
           <dl className="feed-facts">
             {facts
               .filter(([, value]) => value)

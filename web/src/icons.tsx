@@ -354,6 +354,22 @@ export const UnseenIcon = () => (
   </Icon>
 );
 
+// Two overlapping sheets: Copy (the selection bar, Copy code, Copy message).
+export const CopyIcon = () => (
+  <Icon>
+    <rect x="8" y="8" width="12" height="12" rx="2" />
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+  </Icon>
+);
+
+// A speech bubble with two quote marks: Quote in reply (the selection bar).
+export const QuoteIcon = () => (
+  <Icon>
+    <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
+    <path d="M8.5 13v-2.2c0-1 .5-1.6 1.6-1.8M13.5 13v-2.2c0-1 .5-1.6 1.6-1.8" />
+  </Icon>
+);
+
 // An arrow that turns back: a flow step that sends the work back (flowSteps.tsx).
 export const BackIcon = () => (
   <Icon>

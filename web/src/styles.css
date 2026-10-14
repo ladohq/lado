@@ -1276,9 +1276,82 @@ h3 {
   white-space: nowrap;
 }
 
-.session-head-actions .copy-button .row-note {
+.session-head-actions .copy-button .row-note,
+.copy-icon-button .row-note {
   right: 0;
   left: auto;
+}
+
+/* Copy code and Copy message (docs/design/ui.md, Selected text and copy buttons): small,
+   borderless; with a pointer that can hover, shown only over their block or message, or
+   with the focus (opacity, so Tab still reaches them); on a touch screen always. */
+.copy-icon-button .icon-button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.copy-icon-button .icon-button:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.copy-icon-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.code-block {
+  position: relative;
+  margin: 0 0 0.8em;
+}
+
+.code-block > pre {
+  margin: 0;
+}
+
+.code-block > .copy-icon-button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.code-block > .copy-icon-button .icon-button {
+  background: var(--ground);
+}
+
+.feed-head > .copy-icon-button {
+  align-self: center;
+  margin: -4px 0;
+}
+
+.feed-copy {
+  position: absolute;
+  top: 4px;
+  right: var(--row-pad);
+}
+
+/* A continued row's text keeps clear of its Copy message. */
+.feed-main:has(> .feed-copy) {
+  padding-right: 26px;
+}
+
+@media (hover: hover) {
+  .code-block > .copy-icon-button,
+  .feed-row .copy-icon-button,
+  .agent-messages .copy-icon-button {
+    opacity: 0;
+  }
+
+  /* A message's own button: never the Copy code of a block in it. */
+  .code-block:hover > .copy-icon-button,
+  .feed-row:hover :is(.feed-head, .feed-copy) > .copy-icon-button,
+  .agent-messages li:hover > .copy-icon-button,
+  .copy-icon-button:focus-within {
+    opacity: 1;
+  }
 }
 
 /* One line; a name longer than its room ends in "…", whole in its title. It does not shrink
@@ -1837,6 +1910,40 @@ h3 {
   place-items: center;
   width: 16px;
   height: 16px;
+}
+
+/* Over text the human selected (SelectionBar.tsx): Copy and Quote in reply, or a note in
+   their place; under the tooltips. */
+.selection-bar {
+  position: fixed;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px var(--shadow);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.selection-bar .icon-button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+}
+
+.selection-bar .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.selection-note {
+  padding: 5px 8px;
+  color: var(--ink);
+  font-size: 12.5px;
 }
 
 /* The UI's own tooltip (Tooltip.tsx): compact, over everything, never in the pointer's way. */
@@ -2517,6 +2624,7 @@ h3 {
 }
 
 .feed-row {
+  position: relative; /* a continued row's Copy message, .feed-copy */
   display: flex;
   gap: var(--row-gap);
   margin-top: 6px;
@@ -3063,6 +3171,11 @@ h3 {
   color: var(--human);
   font: 600 13px var(--mono);
   overflow-wrap: anywhere;
+}
+
+/* The gate's readable texts, one area of the selection bar; its children lay out as before. */
+.gate-about {
+  display: contents;
 }
 
 .gate-question {
@@ -4770,7 +4883,8 @@ h3 {
   width: min(360px, calc(100vw - 32px));
 }
 
-.link-popover input {
+.link-popover input,
+.link-popover textarea {
   width: 100%;
   box-sizing: border-box;
   font-family: var(--mono);
@@ -5266,6 +5380,11 @@ h3 {
   list-style: none;
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.agent-messages li .copy-icon-button {
+  margin-left: 4px;
+  vertical-align: middle;
 }
 
 .agent-composer .hint {

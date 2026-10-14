@@ -96,7 +96,7 @@ function SessionWaits({ session, items }: { session: string; items: WaitingItem[
 function WaitingAgent({ session, agent, since }: { session: string; agent: AgentInfo; since: string }) {
   const navigate = useNavigate();
   return (
-    <FeedRow kind="agent" who={agent.name} aside={`${agent.role} · ${SINCE}`} at={since} label={`${agent.name} waits`}>
+    <FeedRow kind="agent" who={agent.name} aside={`${agent.role} · ${SINCE}`} at={since} label={`${agent.name} waits`} session={session}>
       <div className="waits-agent">
         <p className="waits-reason">{agentWaits(agent)}</p>
         <div className="answer-actions">

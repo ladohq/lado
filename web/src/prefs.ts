@@ -155,9 +155,10 @@ export function storeArtifactPanel(panel: ArtifactPanelPrefs): void {
 // The waiting card in a session's chat (docs/design/ui.md, The waiting card): the height the
 // human gave it, one value for every session (none: the stylesheet's, at most half the
 // chat), and its least height while resized, its head, two lines of its list and its Send
-// row; the feed keeps FEED_MIN (styles.css, .chat-feed).
+// row (measured in Chromium: 36 + 2 × 14 padding + 2 border + 12 gap + 2 × 22.5 + 43); the
+// feed keeps FEED_MIN (styles.css, .chat-feed).
 const WAITING_HEIGHT = "lado.waitingHeight";
-export const WAITING_MIN = 150;
+export const WAITING_MIN = 166;
 export const FEED_MIN = 160;
 
 export function storedWaitingHeight(): number | null {

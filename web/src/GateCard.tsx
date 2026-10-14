@@ -13,6 +13,7 @@ import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
 import { clock, Preview } from "./ChatText";
 import { useLive } from "./live";
+import { quoteArea } from "./quote";
 import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
 
 const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
@@ -98,14 +99,15 @@ export function GatePanel({
     }
   }
 
+  // A readable area of the selection bar, laid out as if it were not there.
   const about = (
-    <>
+    <div className="gate-about" {...quoteArea(session)}>
       <p className="gate-question">{gate.question}</p>
       {!compact && <Note session={session} gate={gate} />}
       {!compact && gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
       {!compact && <Reads session={session} names={gate.reads ?? []} />}
       <Recommendation rec={gate.recommendation} />
-    </>
+    </div>
   );
   const field = (
     <textarea
@@ -231,7 +233,7 @@ export function GateLine({ session, gate }: { session: string; gate: GateInfo })
   const [shown, setShown] = useState(false);
   const when = gate.answered_at ?? gate.created_at;
   return (
-    <article className="chat-gate closed" id={gateAnchor(gate.id)} aria-label={`Gate #${gate.id}`}>
+    <article className="chat-gate closed" id={gateAnchor(gate.id)} aria-label={`Gate #${gate.id}`} {...quoteArea(session)}>
       <div className="gate-line">
         <button type="button" className="gate-toggle" aria-expanded={shown} onClick={() => setShown(!shown)}>
           {gateTitle(gate)}: {gate.answer} by {gate.answered_by}

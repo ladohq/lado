@@ -17,13 +17,16 @@ import {
   type FinishPreviewInfo,
   type RunInfo,
 } from "./api";
+import { messageText } from "./Chat";
 import { clock, Preview, since } from "./ChatText";
 import { Composer } from "./Composer";
+import { CopyIconButton } from "./Copy";
 import { isOpen } from "./Flows";
 import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } from "./live";
 import { ListPage, type Entry } from "./ListPage";
 import { agentPath, runPath, sessionPath } from "./paths";
 import { storeAgentMessages } from "./prefs";
+import { quoteArea } from "./quote";
 import { StatusDot, SUPERVISOR } from "./Team";
 import { useOpenTerminal } from "./Terminals";
 
@@ -255,7 +258,7 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
         {task && (
           <>
             <dt>Task</dt>
-            <dd className="agent-task">
+            <dd className="agent-task" {...quoteArea(session)}>
               <Preview text={task} lines={TASK_LINES} />
             </dd>
           </>
@@ -340,11 +343,12 @@ function AgentMessages({ session, name, from }: { session: string; name: string;
       ) : (
         <ol>
           {latest.map((one) => (
-            <li key={one.id}>
+            <li key={one.id} {...quoteArea(session)}>
               <span className="muted">
                 <time dateTime={one.created_at}>{clock(one.created_at)}</time> {one.from} → {one.to}
               </span>{" "}
               · {one.summary} · <span className="muted">{one.state}</span>
+              <CopyIconButton label="Copy message" text={messageText(one)} field={{ title: "Message to copy", label: "Message" }} />
             </li>
           ))}
         </ol>

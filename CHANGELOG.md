@@ -29,6 +29,9 @@
   Claude Code, started with one `docker run` (or `docker/compose.yaml`, whose `LADO_PORT`
   sets the port inside and on the host alike). `make docker` builds it from a checkout; CI
   builds and tests it on amd64 and arm64. It is not published yet.
+- Selecting text in the UI shows a small bar to copy it or quote it into the composer; a
+  quote from an artifact names it and its lines. Code blocks and messages have a copy
+  button that shows on hover.
 
 ## 0.38.0 (2026-10-14)
 

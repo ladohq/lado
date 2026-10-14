@@ -29,6 +29,7 @@ import {
   ShieldIcon,
 } from "./icons";
 import { artifactPath, viewPath } from "./paths";
+import { quoteArea } from "./quote";
 import { Tooltip } from "./Tooltip";
 
 // The bytes of a text the viewer reads at most; the rest is a download.
@@ -278,11 +279,12 @@ function Text({ session, artifact, record, markdown }: { session: string; artifa
       for all of it.
     </p>
   );
+  const named = { fullName: artifact.full_name, earlier: record.id !== artifact.latest.id };
   if (markdown) {
     return (
       <>
         {cut}
-        <article className="artifact-markdown">
+        <article className="artifact-markdown" {...quoteArea(session, "markdown", named)}>
           <Body text={read.text} />
         </article>
       </>
@@ -302,10 +304,10 @@ function Text({ session, artifact, record, markdown }: { session: string; artifa
           </button>
         </p>
         <div className="code-scroll">
-          <table aria-label={artifact.full_name}>
+          <table aria-label={artifact.full_name} {...quoteArea(session, "code", named)}>
             <tbody>
               {lines.map((line, i) => (
-                <tr key={i}>
+                <tr key={i} data-line={i + 1}>
                   <td className="line-number">{i + 1}</td>
                   <td className="line">{line}</td>
                 </tr>

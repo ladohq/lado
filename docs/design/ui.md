@@ -1528,6 +1528,52 @@ errors may be left out of it, counted in its last line, never on the page) and *
 text** ("Report copied"). Loading shows "Loading…", a failed load its reason. Nothing goes
 to GitHub before the human's click. The system panel keeps its own copy button.
 
+### Selected text and copy buttons (decided 2026-10-15, LAD-67)
+
+What the human can do with text they read (the mockup `task/lad-67/mockup-selection.html`,
+the quote icon of variant 1; openspec change `selection-actions`).
+
+- **Readable areas.** A component that renders text to read marks its root as an area
+  (`quoteArea` in `quote.ts`: `data-quote` `text`, `markdown` or `code`, the session, and
+  for an artifact its full name and whether the record is older than the latest; a text
+  artifact's rows carry `data-line`): each message of the chat (`.feed-main`), its run
+  events, closed gates and skipped questions; the waiting card's questions and a gate's
+  question, note and recommendation; the agent page's task and messages; an open note of
+  the Flows tab; the cards of Needs you; a Markdown artifact's body and a text artifact's
+  table, in the panel and in the Artifacts tab. Not areas: inputs, the composer, terminals,
+  HTML artifacts (their frame), images, and the UI's chrome (rail, tabs, heads, buttons).
+- **The selection bar** (`SelectionBar.tsx`, mounted once in the shell): when a selection
+  that is not blank lies in one area (none that takes text of two, nor in a field, an
+  editable element or a terminal; one that ends at the next block's start without taking
+  its text, as a triple click on an area's last line does, is still that area's), a small
+  bar of two icon buttons, their names in the
+  UI's tooltips: **Copy** (two sheets) and **Quote in reply** (a speech bubble with quote
+  marks). It stands over the selection's middle, 8 px above it; below it on a touch screen
+  (`(hover: none)`, where the system's own menu stands above) or with no room above; never
+  past the window's edge. Esc, a press outside it, a scroll or an empty selection hide it;
+  a resize places it again. Its buttons never take the selection away.
+- **Copy** copies the live selection as Ctrl+C does (`execCommand("copy")`), else the
+  selection's text by the Clipboard API, and says "Copied" in the bar's place for 2 s; the
+  selection stays. When both fail, it says "Press ⌘C / Ctrl+C to copy".
+- **Quote in reply** builds a Markdown quote (`quote.ts`): each line `> `, an empty one
+  `>`; from a Markdown artifact under `In <full name>:`; from a text artifact its selected
+  lines, cut at the selection's ends and without their numbers, as a fenced block (a fence
+  longer than any backticks in them) under `In <full name> (lines a–b):` or `(line a)`; a
+  record older than the latest says `, an earlier record`. The quote goes to the page's
+  composer (the chat's, to the supervisor, or an agent page's, to that agent; also under
+  an artifact panel), after one blank line when it holds text, then a new line with the
+  cursor, focused; the recipient never changes. On a page with no composer (Artifacts,
+  Flows, Needs you) the session's chat opens with the quote in its composer
+  (`quotes.ts`). An expanded waiting card of the session folds.
+- **Copy code and Copy message.** Each fenced code block of Markdown the UI renders has an
+  icon button **Copy code** at its top right (its code exactly); each message of the chat
+  has **Copy message** at the end of its head, or at a continued row's top right, and so
+  has each message on an agent's page: the human's text, an agent's summary (unless its
+  body's first line says it) and body after a blank line, by the chat's own rule. Both say
+  "Copied" for 2 s, and fall back to the text to copy by hand as Copy link does. With a
+  pointer that can hover they show only over their block or message, or with the focus;
+  on a touch screen always.
+
 ### Notifications (decided 2026-10-03, task Needs you and notifications)
 
 So the human can work from the browser without watching tmux. The tmux popup stays as it

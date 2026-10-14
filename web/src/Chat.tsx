@@ -9,11 +9,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, useLocation } from "react-router";
 
-import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo } from "./api";
+import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo, type RunInfo } from "./api";
 import { Attachments, ImagePreviews } from "./Attachments";
 import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
 import { Composer } from "./Composer";
 import { FeedRow, MiniAvatar } from "./FeedRow";
+import { OutcomeChip } from "./flowSteps";
 import { gateAnchor, GateLine } from "./GateCard";
 import { ChevronIcon, FlowsIcon, GateIcon } from "./icons";
 import {
@@ -137,21 +138,6 @@ export function feedRows(list: Entry[]): FeedItem[] {
   return out;
 }
 
-// The flow events, in time order, whose move goes back: it stays in its state, or enters a
-// state an earlier move of its run in these events left. Only what is loaded counts, so a
-// move may turn from forward to back when earlier pages load; its outcome says it in words.
-export function goesBack(events: RunEventInfo[]): Set<number> {
-  const left = new Map<string, Set<string>>();
-  const back = new Set<number>();
-  for (const { id, run, transition } of events) {
-    if (transition === null) continue;
-    const states = left.get(run) ?? new Set<string>();
-    if (transition.to_state === transition.from_state || states.has(transition.to_state)) back.add(id);
-    left.set(run, states.add(transition.from_state));
-  }
-  return back;
-}
-
 // The gate the human's flow event answered: of its run, answered by the human, in the state
 // the run left (an approval or a choice) or entered (a loop limit's continue), the one closed
 // nearest to the event (the answer and the move are one transaction).
@@ -202,7 +188,7 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   useEffect(() => live.watch("gates", session), [live, session]);
   useEffect(() => live.watch("artifacts", session), [live, session]); // whether chips changed since
   useEffect(() => live.watch("waiting"), [live]); // the open questions
-  useEffect(() => live.watch("runs", session), [live, session]); // the runs' colours
+  useEffect(() => live.watch("runs", session), [live, session]); // the runs' colours and flows
 
   const ready = loaded !== null && !("error" in loaded);
   const shown = ready ? entries(loaded) : [];
@@ -316,7 +302,14 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         {ready && <Top session={session} window={loaded.window} first={shown[0]} retry={loadEarlier} marker={top} />}
         {ready && shown.length === 0 && <p className="empty">No messages yet. Write to the supervisor below.</p>}
         {ready && (
-          <Rows session={session} entries={shown} messages={loaded.window.items} gates={loaded.gates} go={go} />
+          <Rows
+            session={session}
+            entries={shown}
+            messages={loaded.window.items}
+            gates={loaded.gates}
+            runs={runs && "items" in runs ? runs.items : null}
+            go={go}
+          />
         )}
       </div>
       <WaitingCard
@@ -375,19 +368,20 @@ function Top({
 
 // A run's events in a row (docs/design/ui.md, Flow events): the run's name once, linking to
 // the run, then a line per event: who, what (a move from state to state and its outcome,
-// green forward and orange back; else its word and the core's detail as it is) and when.
+// green forward and orange with a return icon back by the run's flow, neutral while the
+// flow is not known; else its word and the core's detail as it is) and when.
 // The human's move answered a gate: the answer's comment stands under it.
 function RunEvents({
   session,
   run,
   events,
-  back,
+  states,
   gates,
 }: {
   session: string;
   run: string;
   events: RunEventInfo[];
-  back: Set<number>;
+  states: RunInfo["states"] | null;
   gates: GateInfo[];
 }) {
   return (
@@ -404,7 +398,7 @@ function RunEvents({
               <div className="run-line">
                 <MiniAvatar who={event.actor} />
                 <span className="run-actor">{event.actor === HUMAN ? "You" : event.actor}</span>
-                <EventText event={event} back={back.has(event.id)} />
+                <EventText event={event} states={states} />
                 <time dateTime={event.created_at}>{clock(event.created_at)}</time>
               </div>
               {comment && (
@@ -420,7 +414,7 @@ function RunEvents({
   );
 }
 
-function EventText({ event, back }: { event: RunEventInfo; back: boolean }) {
+function EventText({ event, states }: { event: RunEventInfo; states: RunInfo["states"] | null }) {
   const { transition } = event;
   if (event.kind === "flow" && transition !== null) {
     return (
@@ -430,7 +424,13 @@ function EventText({ event, back }: { event: RunEventInfo; back: boolean }) {
           →
         </span>
         <span className="run-state now">{transition.to_state}</span>
-        <span className={`run-outcome ${back ? "back" : "forward"}`}>{transition.outcome}</span>
+        <OutcomeChip
+          states={states}
+          from={transition.from_state}
+          to={transition.to_state}
+          outcome={transition.outcome}
+          className={(way) => (way ? `run-outcome ${way}` : "run-outcome")}
+        />
       </>
     );
   }
@@ -451,23 +451,27 @@ function Rows({
   entries,
   messages,
   gates,
+  runs,
   go,
 }: {
   session: string;
   entries: Entry[];
   messages: MessageInfo[];
   gates: GateInfo[];
+  runs: RunInfo[] | null;
   go: (anchor: string) => void;
 }) {
   const byId = new Map(messages.map((one) => [one.id, one]));
   const rows = feedRows(entries);
   const late = new Set(rows.flatMap((row) => ("late" in row ? [row.late.id] : [])));
-  const back = goesBack(entries.flatMap((one) => ("event" in one ? [one.event] : [])));
+  // A run's flow, while the runs are loaded and its snapshot can be read.
+  const flows = new Map((runs ?? []).flatMap((run) => (run.problem ? [] : [[run.name, run.states] as const])));
   return rows.map((row) => {
     if ("day" in row) return <DayDivider key={`day-${row.day}`} at={row.day} />;
     if ("events" in row) {
       const key = `events-${row.events[0].id}`;
-      return <RunEvents key={key} session={session} run={row.run} events={row.events} back={back} gates={gates} />;
+      const states = flows.get(row.run) ?? null;
+      return <RunEvents key={key} session={session} run={row.run} events={row.events} states={states} gates={gates} />;
     }
     if ("gate" in row) {
       const { gate } = row;

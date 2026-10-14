@@ -1,8 +1,6 @@
 // A flow step's direction, one rule for the chat and the Flows tab (docs/design/ui.md, Flow
 // events): by the order the run's flow declares its states, never by which other steps are
 // loaded. And what its outcome's tooltip says.
-import type { ReactNode } from "react";
-
 import type { RunInfo } from "./api";
 import { BackIcon } from "./icons";
 import { Tooltip } from "./Tooltip";
@@ -74,7 +72,8 @@ export function OutcomeChip({
       {outcome}
     </span>
   );
-  return <Tooltip tip={<StepTip way={way} to={to} again={way === "back" ? runsAgain(states!, from, to) : null} />}>{chip}</Tooltip>;
+  const again = way === "back" ? runsAgain(states!, from, to) : null;
+  return <Tooltip tip={<StepTip way={way} to={to} again={again} />}>{chip}</Tooltip>;
 }
 
 function StepTip({ way, to, again }: { way: Direction; to: string; again: string[] | null }) {
@@ -89,13 +88,7 @@ function StepTip({ way, to, again }: { way: Direction; to: string; again: string
       <div className="tooltip-line">
         Back: the work returns to <b>{to}</b>
       </div>
-      {again && <div className="tooltip-line step-way">Runs again: {joined(again)}</div>}
+      {again && <div className="tooltip-line step-way">Runs again: {again.join(" › ")}</div>}
     </>
-  );
-}
-
-function joined(way: string[]): ReactNode[] {
-  return way.flatMap((state, index) =>
-    index ? [<span key={`sep-${index}`} className="step-way-sep"> › </span>, state] : [state],
   );
 }

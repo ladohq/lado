@@ -711,6 +711,23 @@ test("a row has the time, who, from, outcome, to and the summary; a way back is 
   expect(unread.querySelectorAll(".back")).toHaveLength(0);
 });
 
+test("a step back has the return icon and says so in its name; hovering a step says where it goes, as in the chat", async () => {
+  serve(STEPS);
+  open(runPath("lado", ACTIVE.name));
+  const list = await feed("fix/gate-bubble");
+  const [fixed, findings] = steps(list).map((one) => one.querySelector<HTMLElement>(".feed-chip")!);
+  expect([fixed.getAttribute("aria-label"), fixed.querySelector("svg")]).toEqual(["done, a step forward", null]);
+  expect(findings.getAttribute("aria-label")).toBe("changes, a step back");
+  expect(findings.querySelector("svg")).not.toBeNull();
+  const lines = async () =>
+    [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  fireEvent.mouseEnter(findings);
+  expect(await lines()).toEqual(["Back: the work returns to implement", "Runs again: implement › review"]);
+  fireEvent.mouseLeave(findings);
+  fireEvent.mouseEnter(fixed);
+  expect(await lines()).toEqual(["Forward in the flow, to review"]);
+});
+
 test("the latest event with a body is open at first: its facts and its body as Markdown; Open all opens all", async () => {
   serve(STEPS);
   open(runPath("lado", ACTIVE.name));

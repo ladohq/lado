@@ -768,3 +768,14 @@ def test_docs_list_every_field():
     rows = re.findall(r"^\| `([a-z_]+)` \| (\d+) \|", docs.read_text(), re.MULTILINE)
     assert {name: int(since) for name, since in rows} == telemetry.FIELDS
     assert len(rows) == len(telemetry.FIELDS)  # each once
+
+
+def test_release_checks_in_a_fresh_home_send_nothing():
+    # A fresh LADO_HOME is a new install to PostHog: the RC's scratch install never sends.
+    from pathlib import Path
+
+    docs = Path(__file__).parent.parent / "docs" / "release.md"
+    lines = [line for line in docs.read_text().splitlines() if "LADO_HOME=$(mktemp -d)" in line]
+    assert lines
+    for line in lines:
+        assert "LADO_TELEMETRY=0" in line, f"docs/release.md: {line.strip()}"

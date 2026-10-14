@@ -23,6 +23,14 @@ function write(key: string, value: string): void {
   }
 }
 
+function remove(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Not forgotten: the next read takes what is stored.
+  }
+}
+
 // The server version this tab reloaded for (the version banner's Reload), kept for the
 // tab only: after the reload, a banner for the same version says to restart the server.
 const RELOADED_FOR = "lado.reloadedFor";
@@ -142,6 +150,42 @@ export function storedArtifactPanel(): ArtifactPanelPrefs {
 
 export function storeArtifactPanel(panel: ArtifactPanelPrefs): void {
   write(ARTIFACT_PANEL, JSON.stringify(panel));
+}
+
+// The waiting card in a session's chat (docs/design/ui.md, The waiting card): the height the
+// human gave it, one value for every session (none: the stylesheet's, at most half the
+// chat), and its least height while resized, its head, two lines of its list and its Send
+// row; the feed keeps FEED_MIN (styles.css, .chat-feed).
+const WAITING_HEIGHT = "lado.waitingHeight";
+export const WAITING_MIN = 150;
+export const FEED_MIN = 160;
+
+export function storedWaitingHeight(): number | null {
+  const height = Number(read(WAITING_HEIGHT) ?? NaN);
+  return Number.isFinite(height) && height >= WAITING_MIN ? height : null;
+}
+
+export function storeWaitingHeight(height: number | null): void {
+  if (height === null) remove(WAITING_HEIGHT);
+  else write(WAITING_HEIGHT, String(height));
+}
+
+// The keys of the tabs a session's waiting card had when the human minimized it (none: not
+// minimized): it stays minimized while each tab it shows is one of them.
+const MINIMIZED = "lado.waitingMinimized.";
+
+export function storedMinimized(session: string): string[] | null {
+  try {
+    const keys: unknown = JSON.parse(read(MINIMIZED + session) ?? "null");
+    return Array.isArray(keys) && keys.every((key) => typeof key === "string") ? keys : null;
+  } catch {
+    return null;
+  }
+}
+
+export function storeMinimized(session: string, keys: string[] | null): void {
+  if (keys === null) remove(MINIMIZED + session);
+  else write(MINIMIZED + session, JSON.stringify(keys));
 }
 
 // Whether Take control asks first (until the human says not to ask again).

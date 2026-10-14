@@ -2,14 +2,17 @@
 folder, kits and agents' CLI, Copy link and Copy path, over the page's content; and the
 Activity chat in the middle of a wide column. The fake agent's sessions."""
 
+import os
 import re
 import subprocess
+import sys
 
+import fake_provider
 import pytest
 from playwright.sync_api import Page, expect
 from test_main_screen import log_in, running_session
 
-from lado import kits, runtime
+from lado import kits, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -305,3 +308,61 @@ def test_the_head_shows_the_remote_and_branch_and_a_kits_version_on_hover(
     expect(tip).to_contain_text("installed now: the next agent starts with it")
     expect(tip).not_to_contain_text("mode")
     shot(page, "cli")
+
+
+def test_the_pencil_renames_the_session_in_place(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    title = head(page).get_by_role("heading", level=1)
+    expect(title).to_have_text(session)
+    pencil = head(page).get_by_role("button", name="Rename session")
+    title.hover()
+    expect(pencil).to_have_css("opacity", "1")
+    shot(page, "pencil")
+    pencil.click()
+    field = head(page).get_by_role("textbox", name="Session title")
+    expect(field).to_be_focused()
+    expect(field).to_have_attribute("placeholder", session)
+    field.fill("Переименовать сессии (LAD-66)")
+    shot(page, "editing")
+    field.press("Enter")
+    expect(title).to_have_text("Переименовать сессии (LAD-66)")
+    expect(head(page).locator(".session-name-id")).to_have_text(session)
+    expect(pencil).to_be_focused()
+    expect(page).to_have_title("Переименовать сессии (LAD-66) · LADO")
+    row = page.get_by_role("navigation", name="Sessions").locator(".session-row").first
+    expect(row.locator(".session-name")).to_have_text("Переименовать сессии (LAD-66)")
+    expect(row.locator(".session-about")).to_contain_text(f"{session} · ")
+    assert page.url == f"{server['url']}/sessions/{session}"  # the address keeps the name
+    assert state.get_session(session).title == "Переименовать сессии (LAD-66)"
+    assert state.get_agent(session, "supervisor") is not None  # its agents run on
+    shot(page, "renamed")
+
+    pencil.click()
+    field.fill("x" * 81)
+    expect(head(page).get_by_text("81 characters, the limit is 80")).to_be_visible()
+    shot(page, "too-long")
+    field.press("Escape")
+    expect(title).to_have_text("Переименовать сессии (LAD-66)")
+
+
+def test_a_title_set_by_the_cli_shows_without_a_reload(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    title = head(page).get_by_role("heading", level=1)
+    expect(title).to_have_text(session)
+    done = subprocess.run(
+        [sys.executable, str(fake_provider.LADO), "title", session, "Review"],
+        capture_output=True,
+        text=True,
+        env=os.environ,
+    )
+    assert (done.returncode, done.stdout) == (0, f'{session}: title "Review"\n'), done.stderr
+    expect(title).to_have_text("Review")
+    row = page.get_by_role("navigation", name="Sessions").locator(".session-row").first
+    expect(row.locator(".session-name")).to_have_text("Review")
+    shot(page, "from-cli")

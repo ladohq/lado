@@ -103,6 +103,7 @@ from lado.server.models import (
     TelemetryChoice,
     TelemetryInfo,
     TelemetryPreview,
+    TitleChange,
     TmuxInfo,
     UpdateAsk,
     UpdateInfo,
@@ -827,6 +828,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             image_limit=artifacts.IMAGE_LIMIT,
             image_max_side=artifacts.IMAGE_MAX_SIDE,
             max_message=runtime.MAX_MESSAGE,
+            max_title=runtime.MAX_TITLE,
         )
 
     @app.get("/api/sessions/{name}/artifacts/{artifact}", dependencies=[Depends(guard)])
@@ -955,6 +957,14 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
         """Stop the session, as `lado stop` does: its history, runs and worktrees stay."""
         known(name, has_db)
         return Stopped(dropped=core(runtime.stop_session, name).dropped)
+
+    @app.put("/api/sessions/{name}/title", dependencies=[Depends(guard.changes)])
+    def set_title(name: str, given: TitleChange, has_db: bool = Depends(database)) -> SessionInfo:
+        """Set or clear the session's title, as `lado title` does; its name stays. The
+        answer is the session as stored, before the feed brings it."""
+        known(name, has_db)
+        core(runtime.set_title, name, given.title)
+        return models.session_info(state.get_session(name))
 
     @app.get("/api/sessions/{name}/forget-preview", dependencies=[Depends(guard)])
     def forget_preview(name: str, has_db: bool = Depends(database)) -> ForgetPreview:

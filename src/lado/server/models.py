@@ -55,6 +55,15 @@ class SessionInfo(BaseModel):
     ran_seconds: int
     running_since: str | None
     stopped_at: str | None  # UTC, ISO 8601: when it was stopped; None unless stopped
+    # The human's label over its name (runtime.set_title), None for none: the UI shows it
+    # in place of the name, the name beside it.
+    title: str | None
+
+
+class TitleChange(BaseModel):
+    """A session's new title; None or empty clears it (runtime.set_title's rule)."""
+
+    title: str | None
 
 
 class Where(BaseModel):
@@ -1042,6 +1051,7 @@ class Limits(BaseModel):
     image_limit: int  # bytes of an image an agent is shown
     image_max_side: int  # px
     max_message: int  # characters of a message's text; a longer paste becomes a file
+    max_title: int  # characters of a session's title, after trimming
 
 
 class Reply(BaseModel):
@@ -1396,6 +1406,7 @@ def session_info(sess: state.Session) -> SessionInfo:
         ran_seconds=ran.ran_seconds,
         running_since=_iso(ran.running_since) if ran.running_since else None,
         stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
+        title=sess.title,
     )
 
 

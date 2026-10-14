@@ -40,6 +40,7 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
     running_since: null,
     busy: 0,
     stopped_at: null,
+    title: null,
     ...more,
   };
 }
@@ -810,12 +811,12 @@ test.each([
   ["loop_down", ["Stop session…"]],
   ["stopped", ["Resume…", "Forget…"]],
   ["tmux_gone", ["Resume…", "Stop session…"]],
-] as const)("a %s session's head has Copy path, Copy link and the icons %j, each with its tooltip, and no menu", async (status, labels) => {
+] as const)("a %s session's head has Rename session, Copy path, Copy link and the icons %j, each with its tooltip, and no menu", async (status, labels) => {
   sessions = [session("lado", { status })];
   open("/sessions/lado");
   await screen.findByRole("region", { name: "Session lado" });
   const buttons = within(head()).getAllByRole("button");
-  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Copy path", "Copy link", ...labels]);
+  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Rename session", "Copy path", "Copy link", ...labels]);
   for (const button of buttons) {
     expect(button.querySelector("svg")).toBeTruthy();
     expect(button.getAttribute("title")).toBeNull(); // the UI's tooltip, not the browser's
@@ -979,7 +980,7 @@ async function openRowMenu(name: string) {
 }
 
 test.each(["running", "loop_down", "stopped", "tmux_gone"] as const)(
-  "a %s session's row has only its menu, of Copy link and Open in new tab",
+  "a %s session's row has only its menu, of Rename…, Copy link and Open in new tab",
   async (status) => {
     sessions = [session("lado", { status })];
     localStorage.setItem("lado.stoppedSessions", "open");
@@ -987,7 +988,7 @@ test.each(["running", "loop_down", "stopped", "tmux_gone"] as const)(
     const buttons = within(await row("lado")).getAllByRole("button");
     expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Actions for lado"]);
     const menu = await openRowMenu("lado");
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Copy link", "Open in new tab"]);
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Rename…", "Copy link", "Open in new tab"]);
   },
 );
 
@@ -1005,12 +1006,14 @@ test("Open in new tab is a link to the session's page in a new tab", async () =>
 test("the row's menu is used from the keyboard: the first item has the focus, arrows move, Esc closes", async () => {
   open("/sessions");
   const menu = await openRowMenu("lado");
-  const [copy, tab] = within(menu).getAllByRole("menuitem");
+  const [rename, copy, tab] = within(menu).getAllByRole("menuitem");
+  expect(document.activeElement).toBe(rename);
+  fireEvent.keyDown(menu, { key: "ArrowDown" });
   expect(document.activeElement).toBe(copy);
   fireEvent.keyDown(menu, { key: "ArrowDown" });
   expect(document.activeElement).toBe(tab);
   fireEvent.keyDown(menu, { key: "ArrowDown" });
-  expect(document.activeElement).toBe(copy);
+  expect(document.activeElement).toBe(rename);
   fireEvent.keyDown(menu, { key: "ArrowUp" });
   expect(document.activeElement).toBe(tab);
   fireEvent.keyDown(menu, { key: "Escape" });

@@ -514,7 +514,8 @@ def cmd_ls(args: argparse.Namespace) -> int:
                 f"see {state.home() / 'loop.log'})"
             ),
         }[runtime.session_status(sess)]
-        print(f"{sess.name}  {sess.repo}{alive}")
+        title = f' "{sess.title}"' if sess.title else ""
+        print(f"{sess.name}{title}  {sess.repo}{alive}")
         since = state.status_since(sess.name)
         now = datetime.datetime.now(datetime.timezone.utc)
         reasons = runtime.status_reasons(sess.name)
@@ -977,6 +978,19 @@ def cmd_forget(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_title(args: argparse.Namespace) -> int:
+    if args.text is None and not args.clear:
+        session = state.get_session(args.session)
+        if not session:
+            raise runtime.NoSuchSession(f'unknown session "{args.session}"')
+        print(session.title or f"{session.name} has no title")
+        return 0
+    _human_only("title")
+    title = runtime.set_title(args.session, None if args.clear else args.text)
+    print(f'{args.session}: title "{title}"' if title else f"{args.session} has no title")
+    return 0
+
+
 def cmd_artifacts_list(args: argparse.Namespace) -> int:
     rows = [
         (
@@ -1431,6 +1445,20 @@ def main(argv: list[str] | None = None) -> int:
     forget.add_argument("session")
     forget.add_argument("--force", action="store_true", help="also if it has open runs")
     forget.set_defaults(func=cmd_forget)
+
+    title = commands.add_parser(
+        "title", help="print, set or clear a session's title, a label shown over its name"
+    )
+    title.add_argument("session")
+    title_change = title.add_mutually_exclusive_group()
+    title_change.add_argument(
+        "text",
+        nargs="?",
+        help=f"the new title: one line, at most {runtime.MAX_TITLE} characters; the session's "
+        "name stays as it is",
+    )
+    title_change.add_argument("--clear", action="store_true", help="remove the title")
+    title.set_defaults(func=cmd_title)
 
     artifacts_cmd = commands.add_parser(
         "artifacts", help="list a session's artifacts, show or get one (also when stopped)"

@@ -22,6 +22,7 @@ const session = (name: string, status: SessionInfo["status"] = "running"): Sessi
   running_since: null,
   busy: 0,
   stopped_at: null,
+  title: null,
 });
 
 const item = (key: string): WaitingItem => ({

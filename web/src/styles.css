@@ -1364,6 +1364,98 @@ h3 {
   text-overflow: ellipsis;
 }
 
+/* The session title (docs/design/ui.md, Session title): the name, small and grey, after a
+   title, in the head and in Needs you; the pencil after them, on the title's hover, its own
+   focus, and always on a device without hover. */
+.session-name-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 13px var(--mono);
+  line-height: 32px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waits-session h2 .session-name-id {
+  flex: none;
+  line-height: inherit;
+}
+
+.session-rename {
+  flex: none;
+  margin-top: 2px;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+  opacity: 0;
+}
+
+.session-rename:hover {
+  color: var(--ink);
+}
+
+.session-head h1:hover ~ .session-rename,
+.session-head .session-name-id:hover ~ .session-rename,
+.session-rename:hover,
+.session-rename:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .session-rename {
+    opacity: 1;
+  }
+}
+
+/* The title's field, in the head in the place of the title (a third of the bar), and in a
+   list row in the place of its link; the hint or the problem under it. */
+.title-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.session-head .title-edit {
+  flex: none;
+  width: 33%;
+}
+
+.title-edit input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--action);
+  border-radius: 6px;
+  outline: 2px solid color-mix(in srgb, var(--action) 30%, transparent);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.title-edit input[aria-invalid] {
+  border-color: var(--danger);
+  outline-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.title-edit-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.title-edit .field-problem {
+  font-size: 12px;
+}
+
+.session-row-edit input {
+  height: 28px;
+  font-size: 15px;
+}
+
 /* A window too narrow for the head on one line: the facts go to a second line of the top
    bar, the dot, the name, the run time, the icons and the link's dot stay on the first. */
 @media (max-width: 1100px) {
@@ -1382,6 +1474,21 @@ h3 {
   /* The dot, the run time, the icons and the link's dot, with their gaps. */
   .session-head h1 {
     max-width: calc(100% - 190px);
+  }
+
+  /* With a title, its name and the pencil stay beside it too. */
+  .session-head:has(.session-name-id) h1,
+  .session-head .title-edit {
+    max-width: calc(100% - 320px);
+  }
+
+  .session-head .title-edit {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .session-head .session-name-id {
+    max-width: 12ch;
   }
 
   .session-head > .meta-sep {

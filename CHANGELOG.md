@@ -2,6 +2,12 @@
 
 ## 0.39.0 (unreleased)
 
+- A session can have a title, shown in the UI over its name (the list, the head, the
+  browser tab, Needs you and notifications), the name small beside it: set it with the
+  pencil in the session's head, Rename… in the session list's ⋯, or `lado title <session>
+  TEXT` (`--clear` removes it); `lado ls` shows it. The name stays the session's
+  identifier: its address, branches and CLI name do not change. The list's search finds a
+  session by either. lado.db goes to schema 28.
 - After an update from the UI, the System panel no longer says an update is running and
   keeps its Update… button: the page's wait ends once the update has released its lock.
 - In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and
@@ -19,6 +25,10 @@
   the Flows tab: green forward, orange back, so a `ready` after a review's `changes` no
   longer turns orange. A step back has a return icon, and hovering an outcome says where
   the step goes and, for a step back, which states run again.
+- LADO's Docker image is in the repository (`docker/`): LADO from the build's wheel and
+  Claude Code, started with one `docker run` (or `docker/compose.yaml`, whose `LADO_PORT`
+  sets the port inside and on the host alike). `make docker` builds it from a checkout; CI
+  builds and tests it on amd64 and arm64. It is not published yet.
 - Selecting text in the UI shows a small bar to copy it or quote it into the composer; a
   quote from an artifact names it and its lines. Code blocks and messages have a copy
   button that shows on hover.

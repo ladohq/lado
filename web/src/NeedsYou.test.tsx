@@ -16,7 +16,7 @@ const SINCE = "2026-10-03T12:00:00.000Z";
 
 function session(name: string, waiting = { gates: 0, questions: 0, agents: 0 }, more: Partial<SessionInfo> = {}) {
   const settings = { kits: ["default"], provider: "claude", permission_mode: null, without: [] };
-  const time = { ran_seconds: 0, running_since: null, stopped_at: null, busy: 0 };
+  const time = { ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null };
   return { name, repo: `/src/${name}`, status: "running", agents: 2, waiting, ...settings, ...time, ...more } as SessionInfo;
 }
 
@@ -211,6 +211,20 @@ test("what waits shows by session: its name, In the chat, its waiting card, then
   const w3 = within(lado).getByRole("article", { name: "w3 waits" });
   expect(within(w3).getByText("waits for you in its terminal")).toBeTruthy();
   expect(within(w2).queryByRole("link")).toBeNull();
+});
+
+test("a titled session's line shows its title, then its name in grey; the links keep the name", async () => {
+  sessions = [session("lado", undefined, { title: "Ревью kit-sdlc" }), session("api")];
+  waiting = [waits.gate("lado", gate(1)), waits.question("api", question(5))];
+  open();
+  const lado = await group("lado");
+  const title = within(lado).getByRole("link", { name: "Ревью kit-sdlc" });
+  expect(title.getAttribute("href")).toBe("/sessions/lado/activity");
+  expect(lado.querySelector("h2 .session-name-id")!.textContent).toBe("lado");
+  expect(within(lado).getByRole("link", { name: "lado's chat" })).toBeTruthy();
+  const api = await group("api");
+  expect(within(api).getByRole("link", { name: "api" })).toBeTruthy();
+  expect(api.querySelector(".session-name-id")).toBeNull();
 });
 
 test("a gate and a question are answered in place, each to its session; an answered one goes when the feed says so", async () => {
@@ -413,6 +427,16 @@ describe("notifications", () => {
     await changeWaiting([waits.agent("lado", agent("w3", "did not take 1 message"))], "13");
     await waitFor(() => expect(shown()).toHaveLength(3));
     expect(shown()[2][1]).toBe("w3 waits: did not take 1 message");
+  });
+
+  test("a notification names the session by its title, else by its name", async () => {
+    notificationsOn();
+    sessions = [session("lado", undefined, { title: "Review" }), session("api")];
+    open("/sessions");
+    await waitFor(() => expect(waitingAsked()).toBe(1));
+    await changeWaiting([waits.gate("lado", gate(1)), waits.question("api", question(5))], "11");
+    await waitFor(() => expect(shown()).toHaveLength(2));
+    expect(shown().map((one) => one[0])).toEqual(["LADO · Review", "LADO · api"]);
   });
 
   test("nothing shows while the tab is on the screen, and what came then is not shown later", async () => {

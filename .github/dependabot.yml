@@ -34,3 +34,15 @@ updates:
       web:
         patterns: ["*"]
         update-types: [minor, patch]
+
+  # The base images of LADO's image (docker/Dockerfile), pinned by digest.
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns: ["*"]
+        update-types: [minor, patch]

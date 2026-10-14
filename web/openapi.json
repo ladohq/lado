@@ -694,6 +694,25 @@
         }
       }
     },
+    "/api/repos-folder": {
+      "get": {
+        "summary": "Repos Folder",
+        "description": "The folder the New session window starts Where from (LADO_REPOS), or none.",
+        "operationId": "repos_folder_api_repos_folder_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReposFolder"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/kits": {
       "get": {
         "summary": "List Kits",
@@ -5699,6 +5718,27 @@
         ],
         "title": "RepoInfo",
         "description": "A repository of a session: now its one folder; a project will have several."
+      },
+      "ReposFolder": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ReposFolder",
+        "description": "The folder of the human's repositories (LADO_REPOS, clone.repos_folder): the New\nsession window's start folder, or None."
       },
       "Resume": {
         "properties": {

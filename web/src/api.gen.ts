@@ -351,6 +351,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/repos-folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Repos Folder
+         * @description The folder the New session window starts Where from (LADO_REPOS), or none.
+         */
+        get: operations["repos_folder_api_repos_folder_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/kits": {
         parameters: {
             query?: never;
@@ -2143,6 +2163,15 @@ export interface components {
             branch: string | null;
         };
         /**
+         * ReposFolder
+         * @description The folder of the human's repositories (LADO_REPOS, clone.repos_folder): the New
+         *     session window's start folder, or None.
+         */
+        ReposFolder: {
+            /** Path */
+            path: string | null;
+        };
+        /**
          * Resume
          * @description A stopped session started again; what is given replaces its stored settings.
          */
@@ -3256,6 +3285,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecentFolder"][];
+                };
+            };
+        };
+    };
+    repos_folder_api_repos_folder_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReposFolder"];
                 };
             };
         };

@@ -52,3 +52,5 @@
   that it would skip.
 - [ ] 5.3 At merge (integrator, D8): the ruleset to `ci-ok` only with the human's yes,
   merge, `ci-ok` green on `main`.
+  Left unchecked at the archive: it runs after the archive commit, at merge (D8); the
+  review report records it.

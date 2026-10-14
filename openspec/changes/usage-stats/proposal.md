@@ -2,67 +2,83 @@ Task: LAD-34
 
 ## Why
 
-The human cannot see how they use LADO: how many sessions they ran, which agent CLIs they
-started, how many flow runs and gates they went through, how often turns ended on an
-error. All of it is in `lado.db` already (the daily telemetry report of LAD-32 counts it
-with `state.usage_counts`), but only the maintainers' report reads it, and only with the
-human's yes to sending.
+The human cannot see how they use LADO: how many sessions and agents they ran, on which
+agent CLIs, how their flow runs and gates went, how often LADO asked them something, and
+how reliable each CLI was. Most of it is in `lado.db` already, but only the telemetry
+sender counts a part of it (`state.usage_counts`), and only for the maintainers.
 
-Root cause: the counts exist as a function of the telemetry sender alone, with no command
-that shows them locally; and `lado forget` deletes a session's rows, so every count of the
-past, the telemetry report's too, silently shrinks with each forget.
+Root cause: the counts are derived from rows that do not last. `lado forget` deletes a
+session's events, gates and messages, so every count of the past, the telemetry report's
+too, shrinks with each forget; and no command shows the counts locally.
 
 ## What Changes
 
-- **`lado stats`**: a new command that prints the usage counts of a period, read from
-  `lado.db` and `errors.jsonl` on this machine. It sends nothing and never goes to the
-  network. The period is the last 30 days by default, `--days N` for another number of
-  days, `--all` for everything kept. The counts are exactly the daily report's:
-  sessions started or resumed, agents spawned (in all and per agent CLI), flow runs
-  started, gates opened, turns ended on an error, and LADO's own errors (with a note that
-  `errors.jsonl` keeps only its latest part). The header names the period (UTC dates) and,
-  when the earliest record is later than the period's start, that date.
-- **A forgotten session is still counted.** `lado forget` keeps, in the same transaction
-  as the delete, one anonymous row per counted event of the session (its start, each
-  resume, each spawned agent with its provider, each flow run started, each gate opened,
-  each turn error): only the kind, the provider and the time, never a name, path or
-  text. `state.usage_counts` adds them, so `lado stats` and the telemetry report count
-  the same, also after a forget. Sessions forgotten before this LADO stay uncounted.
-- Schema 27: the table `forgotten_usage`.
-- Docs: AGENTS.md (`stats.py`, `state.py`'s schema 27, the `lado stats` paragraph, the
-  forget paragraph), docs/telemetry.md (a forgotten session is counted), CHANGELOG.md.
+- **A local usage table, `usage`, filled as things happen.** SQLite triggers on
+  `sessions`, `agents`' events, `gates` and `messages` add one anonymous row per counted
+  fact, in the transaction that writes it: its kind, a short key (a role, a flow, a gate
+  kind or answer, an error's kind), the agent CLI where there is one, whether the human
+  agreed with the lead's recommendation, and the time. Never a session or agent name, a
+  path, a message, a comment or an error's text. No other code path writes it, `lado
+  forget` leaves it alone, so the counts survive any deletion of a session.
+- **Backfilled once**: the migration fills `usage` from what `lado.db` holds at that
+  moment, so the history starts with the oldest session still kept, not with the upgrade.
+  Sessions forgotten before it are gone.
+- **`lado stats [--days N | --all]`** prints the counts of a period (the last 30 days by
+  default) from `usage` and LADO's error journal on this machine. It sends nothing and
+  starts no sender. The counts, chosen with the human:
+  - sessions started, resumed;
+  - agents started, per agent CLI and per role; agents whose process ended by itself, per
+    CLI; turns that ended on an error, per CLI and per error kind;
+  - flow runs started (per flow), ended, cancelled;
+  - gates opened (per kind), closed (per answer), and how often the human's answer was the
+    lead's recommended one; questions agents asked the human;
+  - messages that failed to be delivered, messages dropped;
+  - LADO's own errors (`errors.jsonl`, which keeps only its latest part).
+- **The telemetry report keeps its fields** (`FIELDS_VERSION` unchanged, no new question
+  to the human); `state.usage_counts` counts its numbers from `usage`, so a forgotten
+  session stays counted there too.
+- Schema 27: the table, its triggers and the backfill.
+- Docs: AGENTS.md (`stats.py`, `state.py`'s schema 27 and the rule that a new count or a
+  changed event detail needs a migration of the triggers, `lado stats`), docs/telemetry.md
+  (the local table, kept also with sending off; the report counts from it), CHANGELOG.md.
 - A minor release (a CLI command and a schema migration): 0.38.0.
 
 ## Scope
 
-- `src/lado/state.py`: the table, the migration, the copy in `delete_session`,
-  `usage_counts` reading both tables, `usage_start` (the earliest record).
+- `src/lado/state.py`: `USAGE`, its triggers, `MIGRATIONS[26]` with the backfill,
+  `usage_counts` from `usage`, `usage_summary`, `usage_start`.
 - `src/lado/stats.py` (new): the period and the lines `lado stats` prints.
-- `src/lado/telemetry.py`: `_lado_errors` becomes public (`lado_errors`), no other change.
-- `src/lado/cli.py`: the `stats` parser and `cmd_stats`, which only prints.
-- Tests: `tests/test_state.py`, `tests/test_stats.py` (new), `tests/test_telemetry.py`,
+- `src/lado/telemetry.py`: `_lado_errors` becomes `lado_errors`; the report unchanged.
+- `src/lado/cli.py`: the `stats` parser and `cmd_stats`, and no kick after `stats`.
+- Tests: `tests/test_state.py`, `tests/test_usage.py` (new: the triggers and the
+  backfill), `tests/test_stats.py` (new), `tests/test_telemetry.py`, `tests/test_cli.py`,
   `tests/agent_helpers.py`, one integration test.
 
 ## Out of scope
 
-- **A view in the UI**: it needs its own mock-up and screen design, and session lad-33
-  changes the UI at the same time (LAD-33); a later task can serve the same counts.
-- **`--json`**: no reader of it yet (Only what is used).
-- **Counts per session, kit or flow, or new metrics** (messages, run outcomes, time spent):
-  the human chose exactly the report's counts; a new count is a new task, and for the
-  report a new field with the consent's re-ask.
-- **Counts kept by a counter that each event increments**: a second source of truth that
-  can drift from `events`; refused with the human.
-- **Sessions forgotten before this LADO**: their rows are gone and cannot come back.
-- **A bound on `forgotten_usage`**: a few rows per session (a heavy year is some thousand
-  rows of three short columns); `lado uninstall` deletes it with `LADO_HOME`.
+- **Durations** (how long sessions ran, agents were busy, runs took, agents waited for
+  the human): they need totals computed at a session's stop or forget, a second
+  mechanism with edge cases of its own (a session that crashed, a wait across a pause).
+  A next task, once the counters work.
+- **Rework** (a run that comes back to a state it passed): no exact definition yet.
+- **The human's own messages, automatic resumes after a transient error, repository
+  changes by read-only agents**: little use, by the human's choice.
+- **Counts per session** (`lado stats <session>`): not needed, by the human's choice;
+  `usage` keeps no session.
+- **New fields in the telemetry report**: each needs the consent's question again; a
+  separate decision.
+- **A view in the UI, `--json`**: no reader yet; LAD-33 changes the UI at the same time.
+- **Tokens, cost, models, lines of code, merged pull requests**: LADO does not know them
+  without provider-specific work.
+- **A bound on `usage`**: a few rows per session and agent (no row per turn), some
+  thousand a year; `lado uninstall` deletes it with `LADO_HOME`.
 
 ## Impact
 
 - CLI: a new command `lado stats [--days N | --all]`.
-- Schema: version 27 (`forgotten_usage`), a migration as usual (`lado stop --all` first
-  when a session runs).
-- Telemetry: the report's fields and `FIELDS_VERSION` stay; its counts include forgotten
-  sessions from now on. No new question to the human.
+- Schema: version 27 (`usage`, its triggers, the backfill), a migration as usual
+  (`lado stop --all` first when a session runs; `lado update` backs `lado.db` up).
+- Telemetry: the same fields and question; its counts come from `usage`.
 - Parallel work: LAD-33 changes `cli.py`, CHANGELOG.md and AGENTS.md too; only textual
-  conflicts are expected, resolved at merge by the branch merged second.
+  conflicts are expected. If it also bumps the schema, the branch merged second
+  renumbers its step.

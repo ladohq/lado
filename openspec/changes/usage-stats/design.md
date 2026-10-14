@@ -1,131 +1,192 @@
 ## Context
 
-`state.usage_counts(since)` (LAD-32) counts, from `since` on: sessions started
-(`sessions.created_at`) or resumed (`session_resume` events), agents spawned per provider
-(`spawned` events, provider parsed from the detail by `state.spawned_provider`), flow runs
-started (`flow_start`), gates opened (`gate_open`) and turns ended on an error
-(`turn_error`). Only `telemetry.report` calls it; `telemetry._lado_errors(since)` counts
-LADO's own errors in `errors.jsonl` and `errors.jsonl.1` (bounded at 1 MiB each).
-`state.delete_session` (`lado forget`) deletes the session's row, and its events go by
-`ON DELETE CASCADE`: every count of the past shrinks with each forget, the report's too.
+`state.usage_counts(since)` (LAD-32) counts from `events` and `sessions`: sessions started
+or resumed, agents spawned per provider (`state.spawned_provider` parses the `spawned`
+detail, `role <r>, provider <p>`), flow runs started, gates opened, turns ended on an
+error. Only `telemetry.report` calls it; `telemetry._lado_errors(since)` counts LADO's own
+errors in `errors.jsonl` and `.1` (1 MiB each). `state.delete_session` (`lado forget`)
+deletes the session's rows, and its events, gates and messages go by `ON DELETE CASCADE`.
+LADO already writes rows by trigger: the UI's `changes` journal (`JOURNALED`,
+`JOURNAL_WHEN`), whose conditions stay in `lado.db` as they were made.
 
-Root cause: the counts serve the sender alone, and a forget deletes what they count.
+The facts the human chose to count, and where each is written today:
+
+| Fact | Written by | What the trigger reads |
+|---|---|---|
+| a session added | `state.add_session` (`INSERT … ON CONFLICT DO NOTHING`) | `NEW.created_at` |
+| a resume | event `session_resume` | the event |
+| an agent spawned | event `spawned`, detail `role <r>, provider <p>` | role and provider from the detail |
+| an agent's process ended by itself | event `ended` | `agents.provider` of the agent |
+| a turn ended on an error | event `turn_error`, detail `<kind>[: <details>]` (`base.error_line`) | the kind, `agents.provider` |
+| a run started, ended, cancelled | events `flow_start`, `flow_end`, `flow_cancel` (run column set) | `runs.flow` of the run |
+| a gate opened | `gates` insert | `NEW.kind` |
+| a gate closed | `gates.answer` set from NULL (an option, `overridden`, `cancelled`) | `NEW.answer`, `NEW.recommended_choice` |
+| a question to the human | `messages` insert with `kind = 'question'` | the row |
+| a message failed, dropped | `messages.state` becomes `failed`, `dropped` | the row |
+
+Root cause: the counts are derived from rows a forget deletes.
 
 ## Options
 
-1. **Count what is left; say that forgotten sessions are missing.** No schema change. Cost:
-   totals "of all time" fall with every forget, and the telemetry report stays short for a
-   session forgotten within its day. Honest, but the number is wrong exactly for the
-   people who tidy up.
-2. **Chosen with the human: at forget, keep an anonymous copy of the counted records**
-   (`forgotten_usage`: kind, provider, time). One table, one `INSERT … SELECT` in the
-   forget's transaction, and `usage_counts` reads both tables. Long-term cost: a schema
-   step and a few rows per forgotten session; every count of LADO, local and sent, stays
-   right after a forget. A new count later must add its kind to the copy (D2's list is
-   the one place).
-3. **Counters incremented at each event.** A second source of truth that drifts from
-   `events` (a missed increment, a rollback); refused (AGENTS.md, One source of truth).
+1. **Count what is left; say forgotten sessions are missing.** No schema change; totals
+   fall with every forget. Refused with the human.
+2. **Copy the counted rows into a table at forget.** One `INSERT … SELECT` in
+   `delete_session`; but forget must know every count, and any other deletion later
+   (a cleanup of old events) loses them again. Designed in the first visit, then replaced
+   at the human's suggestion.
+3. **Chosen with the human: record each counted fact as it happens, by trigger.** One
+   anonymous row in `usage` per fact, in the writer's transaction. No code path can forget
+   it, forget and any later cleanup leave it, and every count reads one table. Long-term
+   cost: a schema step; a trigger stays in `lado.db` as it was made, so a new count, or a
+   changed event detail the trigger parses, is a migration of its trigger (the same rule as
+   `JOURNAL_WHEN`'s).
+4. **Counters incremented in code at each place.** Ten places to keep in step with
+   `events`; refused (AGENTS.md, One source of truth).
 
-Held against AGENTS.md's Design principles and ROADMAP: nothing depends on a provider
-(neutral core: the provider is a column); one source of truth (the live rows, plus the
-copy of rows that no longer exist; no row is counted in both, as the copy and the delete
-are one transaction); no silent drops (`lado stats` names its period and the earliest
-record, and says the error journal is bounded); only what is used (exactly the report's
-counts, no `--json`, no UI). ROADMAP's Stage 7 (desktop app) can show the same counts
-through the API later without a change here.
+Held against AGENTS.md's Design principles and ROADMAP: neutral core (the provider is a
+column; an error's kind is whatever the provider's `error_line` puts first); one source of
+truth (`usage` is written only by triggers on the rows that are the facts, in their
+transaction, and is the one thing `lado stats` and the report count); no silent drops
+(`lado stats` names its period and the earliest row, and says the error journal is
+bounded); only what is used (the human's list, no durations, no per-session view, no
+`--json`, no UI). ROADMAP's Stage 7 (desktop app) can serve the same counts through the
+API later.
 
 ## Decisions
 
-### D1. One table `forgotten_usage`, no session column
+### D1. One table `usage`, no session column
 
-`forgotten_usage (kind TEXT NOT NULL, provider TEXT, created_at TEXT NOT NULL)`, made in
-`SCHEMA` and by migration step 26 (schema 27). `kind` is `session` for a session's start
-or the event's kind; `provider` only for `spawned`. No name, id, detail or path: what is
-forgotten stays forgotten, but its count. Not journaled (`changes`): the UI shows nothing
-of it. No index: a few rows per session.
+`usage (kind TEXT NOT NULL, key TEXT, provider TEXT, agrees INTEGER, created_at TEXT NOT
+NULL)`, in `SCHEMA` and made by `MIGRATIONS[26]` (schema 27). The kinds are constants of
+`state.py` (`USAGE_SESSION = "session"`, …) listed in one tuple, `USAGE_KINDS`. No
+session, agent, id or detail column: what is forgotten stays forgotten, but its count. Not
+journaled (`changes`): the UI shows nothing of it. An index on `created_at`
+(`usage_time`): every read is by period.
 
-### D2. The copy is in `state.delete_session`, in its transaction
+### D2. Triggers, one per source, in `USAGE_TRIGGERS`
 
-Before the `DELETE FROM sessions`, in the same `with connect() as db:`, the session's
-`created_at` as one `session` row, and its events of the counted kinds
-(`USAGE_KINDS = (SESSION_RESUME, SPAWNED, FLOW_START, GATE_OPEN, TURN_ERROR)`, the one
-list) with their `created_at`. A `spawned` event's provider is parsed with
-`spawned_provider` in Python; one with none is not kept, as `usage_counts` does not count
-it either. A failure rolls both back, so a forget run again copies once.
+`AFTER INSERT ON sessions`, `AFTER INSERT ON events WHEN NEW.kind IN (...)` (one trigger,
+a `CASE` per kind), `AFTER INSERT ON gates`, `AFTER UPDATE OF answer ON gates WHEN
+OLD.answer IS NULL AND NEW.answer IS NOT NULL`, `AFTER INSERT ON messages WHEN NEW.kind =
+'question'`, `AFTER UPDATE OF state ON messages WHEN NEW.state IN ('failed', 'dropped')
+AND OLD.state IS NOT NEW.state`. Named `usage_<source>`, kept in one list next to
+`JOURNALED`. Each takes its time from the row (`NEW.created_at`, `NEW.answered_at`;
+`strftime('%Y-%m-%d %H:%M:%f', NEW.failed_at, 'unixepoch')` for a failed message; `now`
+for a dropped one). The provider of `ended` and `turn_error` is
+`(SELECT provider FROM agents WHERE session = NEW.session AND name = NEW.agent)`; the flow
+of a run's event `(SELECT flow FROM runs WHERE session = NEW.session AND name =
+NEW.run)`. A message that fails, goes back to the queue and fails again counts twice: two
+failed hand-overs.
 
-### D3. `usage_counts` counts both tables, same shape
+### D3. The `spawned` detail and the error's kind parsed in SQL, pinned by a test
 
-Each count adds the `forgotten_usage` rows of its kind with `created_at >= since`; the
-agents per provider add the rows of `spawned`. The returned dict is unchanged, so
-`telemetry.report` changes nothing and its fields and `FIELDS_VERSION` stay (no new
-question to the human: no new field).
+The trigger cuts the role between `role ` and `, provider `, the provider after `, provider
+` (one with none gets a NULL provider and is still an agent), and an error's kind before
+its first `: ` (the whole text when there is none). A unit test runs the same details
+through `spawned_detail`/`spawned_provider` and `base.error_line` and through the trigger
+and compares them, so a change of either format fails it (and needs a migration, D10).
 
-### D4. `state.usage_start()`: the earliest counted record
+### D4. The backfill is a callable step of the migration
 
-The smallest `created_at` of `sessions`, of the events of `USAGE_KINDS` and of
-`forgotten_usage`, as `YYYY-MM-DD HH:MM:SS` text, or None. `lado stats` prints its date.
+`usage_from_history(conn)`, after the table and before the triggers in `MIGRATIONS[26]`:
+one `INSERT … SELECT` per source by the triggers' rules over the rows there, each with its
+own time; a dropped message with its `created_at` (no time of the drop is kept). In the
+migration's one transaction.
 
-### D5. `stats.py` builds the lines, `cmd_stats` prints them
+### D5. `usage_counts` reads `usage`; the report's shape stays
 
-`stats.lines(days: int | None, now: datetime | None = None) -> list[str]` (None: everything
-kept): the period in UTC, `state.usage_counts` with `since` as `YYYY-MM-DD HH:MM:SS`
-(`0000-01-01 00:00:00` for `--all`), `telemetry.lado_errors` with
-`telemetry.format_time(since)`, `state.usage_start`. `cli.py` gets only the parser and a
-three-line `cmd_stats`: `cli.py` is shared with LAD-33's change, so its diff stays small.
-The output, labels padded to one column:
+`usage_counts(since)` returns the same dict as before (sessions = `session` + `resume`,
+agents per provider, runs = `run_start`, gates = `gate_open`, turn_errors), from `usage`.
+`telemetry.report` does not change, nor its fields or `FIELDS_VERSION`.
+
+### D6. `state.usage_summary(since)` and `state.usage_start()`
+
+`usage_summary(since) -> dict[str, Counter]`: per kind, a `collections.Counter` of keys
+(with `None` for none), plus per-provider counters for `agent`, `agent_ended` and
+`turn_error`, and for `turn_error` per provider and kind; and the agreement (`agrees` 1
+and not NULL). One query, `GROUP BY kind, key, provider, agrees`. `usage_start()`: the
+smallest `created_at` of `usage`, cut to seconds, or None.
+
+### D7. `stats.py` builds the lines, `cmd_stats` prints them
+
+`stats.lines(days: int | None, now: datetime | None = None) -> list[str]` (None: all): the
+period in UTC, `state.usage_summary` with `since` as `YYYY-MM-DD HH:MM:SS`
+(`0000-01-01 00:00:00` for `--all`), `telemetry.lado_errors(telemetry.format_time(since))`,
+`state.usage_start`. `cli.py` gets the parser and a short `cmd_stats` only: LAD-33 edits
+`cli.py` too. The output, labels padded to one column, a breakdown after the count, a
+group with no counts still printed with `0`s:
 
 ```
 Usage from 2026-09-14 to 2026-10-14 (UTC, 30 days) on this machine; nothing is sent.
 Earliest record: 2026-10-01.
-  sessions started or resumed   12
-  agents spawned                41  (claude 30, codex 8, kilo 3)
-  flow runs started              9
-  gates opened                  17
-  turns ended on an error        4
-  LADO's own errors              2  (errors.jsonl keeps only its latest part)
+
+Sessions
+  started                       8
+  resumed                       4
+Agents
+  started                      41  claude 30, codex 8, kilo 3
+  by role                          developer 15, supervisor 12, reviewer 12, analyst 2
+  ended by themselves           2  claude 1, kilo 1
+  turns ended on an error       4  claude 3 (overloaded 2, rate_limit 1), kilo 1 (APIError 1)
+Flow runs
+  started                       9  task 7, hotfix 2
+  ended                         6
+  cancelled                     1
+Gates and questions
+  gates opened                 17  approval 15, choice 1, loop 1
+  gates closed                 16  approve 12, reject 3, cancelled 1
+  answered as the lead advised 12 of 14 with a recommended choice
+  questions to you             23
+Messages
+  failed to deliver             1
+  dropped                       5
+LADO
+  own errors                    2  (errors.jsonl keeps only its latest part)
 ```
 
-The `Earliest record:` line shows with `--all` always (`none yet` without one), else only
-when that date is later than the period's start. `--all` names the period
-`Usage of everything kept, to <date> (UTC)`. A `0` agents line has no parentheses.
+`--all` names the period `Usage of everything kept, to <date> (UTC)` and always prints
+`Earliest record: <date>.` or `Earliest record: none yet.`. With no recommended choice in
+the period the agreement line says `no recommended choice`.
 
-### D6. `telemetry._lado_errors` becomes `telemetry.lado_errors`
+### D8. `lado stats` does not kick the statistics sender; argparse's options
 
-One counter of the journal for the report and `lado stats`; renamed, not copied.
+`stats` joins the commands after which `cli.main` does not call `telemetry.kick()`, so a
+command that promises to send nothing starts no sender. It goes through
+`runtime.migrate_if_safe` as `lado ls` does. `--days N` (a positive int type, else exit 2)
+and `--all` in a mutually exclusive group; neither: 30.
 
-### D7. `lado stats` does not kick the statistics sender
+### D9. `telemetry._lado_errors` becomes `telemetry.lado_errors`
 
-`cli.main` kicks `telemetry.kick()` after a human's command; `stats` joins the commands
-that do not, so a command that promises to send nothing starts no sender either. It goes
-through `runtime.migrate_if_safe` as `lado ls` does: on an older `lado.db` with a session
-running it is refused with the usual `lado stop --all`.
+One counter of the journal, renamed, not copied.
 
-### D8. `--days` is argparse's
+### D10. A new count or a changed detail is a migration
 
-`--days N` (`type` a positive int, else argparse's error, exit 2) and `--all` in a mutually
-exclusive group; neither: 30.
+AGENTS.md (`state.py`, schema 27) says: `usage` is written only by `USAGE_TRIGGERS`; a
+new count, or a change of the `spawned` detail or of `base.error_line`'s form, adds a
+migration step that drops and makes the trigger again (D3's test fails until then).
 
-### D9. Tests
+### D11. Tests
 
-Unit (`tests/test_state.py`, `tests/test_stats.py`, `tests/test_telemetry.py`,
-`tests/test_cli.py` for the kick) for every requirement; the network check monkeypatches
-`socket.socket.connect` and `socket.create_connection` to fail the test. One integration
-test (`tests/integration/test_usage_stats.py`): a real session of the fake agent started,
-stopped and forgotten through the CLI, with `lado stats --all` before and after the
-forget, since the counted events are written by other processes (the loop, hooks).
-`tests/agent_helpers.schema_before` undoes step 26 (`DROP TABLE forgotten_usage`).
+Unit: `tests/test_usage.py` (each trigger with its row, the anonymity check on every
+column, a rollback, forget keeps the rows, D3's comparison, the backfill from a schema-26
+database built by `previous_schema`), `tests/test_stats.py` (each scenario of the
+`lado stats` requirements, the socket and kick checks), `tests/test_telemetry.py` (the
+report counts a forgotten session), `tests/test_state.py` (`usage_counts`' shape).
+Integration, `tests/integration/test_usage_stats.py`: the counted facts are written by
+other processes (hooks, `lado mcp`, the loop), so a fake-agent session started, a worker
+spawned, stopped and forgotten through the CLI, with `lado stats --all` before and after
+the forget. `tests/agent_helpers.schema_before` undoes step 26 (drop the triggers and the
+table).
 
 ## Risks
 
-- The migration (schema 26 → 27) only adds an empty table: no existing row or column
-  changes. It runs as LADO's 26 steps before it: in one transaction (`state.migrate`, a
-  failure leaves the database as it was), only with no session running
-  (`runtime.migrate_if_safe`), and `lado update` backs `lado.db` up first
-  (`LADO_HOME/backups/`) and rolls back a bad new version. The one cost: an older LADO
-  refuses the migrated database (as for every schema step), so a downgrade takes that
-  backup.
-
-- LAD-33 (in parallel) may also bump the schema: then the branch merged second renumbers
-  its step and `schema_before`; checked at merge.
-- `errors.jsonl` keeps at most about 2 MiB: older errors are not counted; the line says
-  so.
+- The migration adds a table, an index, triggers and their rows: no existing row or
+  column changes. It runs in one transaction (`state.migrate`; a failure leaves the
+  database as it was), only with no session running, and `lado update` backs `lado.db` up
+  first (`LADO_HOME/backups/`). An older LADO refuses the migrated database, as for every
+  schema step, so a downgrade takes that backup.
+- A trigger's extra insert costs microseconds per counted fact (no row per status change
+  or message hand-over).
+- LAD-33 (in parallel) may also bump the schema: the branch merged second renumbers its
+  step and `schema_before`; checked at merge.
+- `errors.jsonl` keeps about 2 MiB: older errors are not counted; the line says so.

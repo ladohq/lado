@@ -2,14 +2,14 @@
 
 ### Requirement: Statistics are counted when sent, never collected
 
-LADO SHALL NOT keep usage events of its own for statistics: the daily report SHALL be
-counted from `lado.db` when it is built and not stored after it is sent. The only usage
-rows LADO keeps apart from a session's own are those `lado forget` keeps of a forgotten
-session (`forgotten_usage`: kind, provider and time of each counted record), which the
-report counts with the live ones, so a session forgotten before the report is still
-counted. What waits to be sent SHALL be at most 200 queued errors and the drop count; an
-error queued more than 30 days ago SHALL be removed and counted as dropped; a report's
-window SHALL start no earlier than 30 days before it is built.
+LADO SHALL NOT keep usage data for sending: the daily report SHALL be counted from
+`lado.db` when it is built and not stored after it is sent. Its counts SHALL come from the
+local table `usage` (capability usage-stats), which LADO keeps for `lado stats` whatever
+the human's choice about sending, and which no send reads but the report's counts; so a
+session forgotten before the report is still counted. What waits to be sent SHALL be at
+most 200 queued errors and the drop count; an error queued more than 30 days ago SHALL be
+removed and counted as dropped; a report's window SHALL start no earlier than 30 days
+before it is built.
 
 #### Scenario: A month without network
 - **WHEN** LADO is used daily for 45 days with the endpoint unreachable and records 500

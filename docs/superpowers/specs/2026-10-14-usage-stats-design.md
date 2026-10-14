@@ -1,7 +1,7 @@
 # Usage stats: design
 
 Task: LAD-34. Change: `openspec/changes/usage-stats/` (proposal, deltas `usage-stats` and
-`usage-telemetry`, `design.md` D1-D11).
+`usage-telemetry`, `design.md` D1-D12).
 
 ## Problem
 
@@ -22,6 +22,9 @@ counts, so every count of the past shrinks with each forget.
 - The counts survive `lado forget`: each counted fact is recorded as it happens in a
   local, anonymous table (kind, a short key such as a role or flow, the CLI, the time). At
   the upgrade the table is filled from what `lado.db` still holds.
+- Roles and flows are counted with their kit (`developer@sdlc`, `task@sdlc`): two kits
+  may use the same names. Agents started before 0.38.0 show as `<role>@?`, since their
+  kit was not recorded; `lado log`'s `spawned` line now names the kit.
 - The telemetry report has the same fields and asks nothing new; its numbers now also
   count forgotten sessions.
 
@@ -70,3 +73,5 @@ A minor release, 0.38.0: a CLI command and a schema migration. CHANGELOG.md's he
 4. No per-session view; the telemetry report's fields unchanged.
 5. UI: none in this task. Format: text only, no `--json`.
 6. The migration's risk was asked about and answered (`design.md`, Risks).
+7. Round 5 (rejection): roles and flows of different kits may share names; now keyed
+   with their kit (D12).

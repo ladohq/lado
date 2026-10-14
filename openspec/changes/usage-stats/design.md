@@ -15,10 +15,10 @@ The facts the human chose to count, and where each is written today:
 |---|---|---|
 | a session added | `state.add_session` (`INSERT … ON CONFLICT DO NOTHING`) | `NEW.created_at` |
 | a resume | event `session_resume` | the event |
-| an agent spawned | event `spawned`, detail `role <r>, provider <p>` | role and provider from the detail |
+| an agent spawned | event `spawned`, detail `role <r>, provider <p>`; from this change `role <r>, kit <k>, provider <p>` (D12) | `<r>@<k>` and the provider from the detail |
 | an agent's process ended by itself | event `ended` | `agents.provider` of the agent |
 | a turn ended on an error | event `turn_error`, detail `<kind>[: <details>]` (`base.error_line`) | the kind, `agents.provider` |
-| a run started, ended, cancelled | events `flow_start`, `flow_end`, `flow_cancel` (run column set) | `runs.flow` of the run |
+| a run started, ended, cancelled | events `flow_start`, `flow_end`, `flow_cancel` (run column set) | `runs.flow` and `runs.kit`'s name: `<flow>@<kit>` |
 | a gate opened | `gates` insert | `NEW.kind` |
 | a gate closed | `gates.answer` set from NULL (an option, `overridden`, `cancelled`) | `NEW.answer`, `NEW.recommended_choice` |
 | a question to the human | `messages` insert with `kind = 'question'` | the row |
@@ -74,14 +74,16 @@ AND OLD.state IS NOT NEW.state`. Named `usage_<source>`, kept in one list next t
 `strftime('%Y-%m-%d %H:%M:%f', NEW.failed_at, 'unixepoch')` for a failed message; `now`
 for a dropped one). The provider of `ended` and `turn_error` is
 `(SELECT provider FROM agents WHERE session = NEW.session AND name = NEW.agent)`; the flow
-of a run's event `(SELECT flow FROM runs WHERE session = NEW.session AND name =
-NEW.run)`. A message that fails, goes back to the queue and fails again counts twice: two
+of a run's event `(SELECT flow || '@' || json_extract(kit, '$.name') FROM runs WHERE
+session = NEW.session AND name = NEW.run)`. A message that fails, goes back to the queue and fails again counts twice: two
 failed hand-overs.
 
 ### D3. The `spawned` detail and the error's kind parsed in SQL, pinned by a test
 
-The trigger cuts the role between `role ` and `, provider `, the provider after `, provider
-` (one with none gets a NULL provider and is still an agent), and an error's kind before
+The trigger cuts the role between `role ` and `, kit `, the kit between `, kit ` and `,
+provider `, and keys the row `<role>@<kit>`; a detail with no `, kit ` (written before
+this change) gives `<role>@?`, the role cut before `, provider `. The provider is the
+text after `, provider ` (one with none gets a NULL provider and is still an agent), and an error's kind before
 its first `: ` (the whole text when there is none). A unit test runs the same details
 through `spawned_detail`/`spawned_provider` and `base.error_line` and through the trigger
 and compares them, so a change of either format fails it (and needs a migration, D10).
@@ -90,7 +92,10 @@ and compares them, so a change of either format fails it (and needs a migration,
 
 `usage_from_history(conn)`, after the table and before the triggers in `MIGRATIONS[26]`:
 one `INSERT … SELECT` per source by the triggers' rules over the rows there, each with its
-own time; a dropped message with its `created_at` (no time of the drop is kept). In the
+own time; a dropped message with its `created_at` (no time of the drop is kept). Every
+`spawned` event there predates D12, so its key is `<role>@?`: the role's kit was not
+recorded, and guessing it from the session's kits would be wrong where two kits name it
+alike. A run's flow is exact: `runs.kit` has always been kept. In the
 migration's one transaction.
 
 ### D5. `usage_counts` reads `usage`; the report's shape stays
@@ -125,11 +130,13 @@ Sessions
   resumed                       4
 Agents
   started                      41  claude 30, codex 8, kilo 3
-  by role                          developer 15, supervisor 12, reviewer 12, analyst 2
+  by role                          developer@sdlc 15, supervisor@default 12,
+                                   reviewer@sdlc 12, developer@? 2
+                                   (@?: kit not recorded, before 0.38.0)
   ended by themselves           2  claude 1, kilo 1
   turns ended on an error       4  claude 3 (overloaded 2, rate_limit 1), kilo 1 (APIError 1)
 Flow runs
-  started                       9  task 7, hotfix 2
+  started                       9  task@sdlc 7, hotfix@sdlc 2
   ended                         6
   cancelled                     1
 Gates and questions
@@ -144,7 +151,8 @@ LADO
   own errors                    2  (errors.jsonl keeps only its latest part)
 ```
 
-`--all` names the period `Usage of everything kept, to <date> (UTC)` and always prints
+A breakdown longer than the line wraps under itself; the `@?` note shows only when a
+`@?` key is shown. `--all` names the period `Usage of everything kept, to <date> (UTC)` and always prints
 `Earliest record: <date>.` or `Earliest record: none yet.`. With no recommended choice in
 the period the agreement line says `no recommended choice`.
 
@@ -168,7 +176,8 @@ migration step that drops and makes the trigger again (D3's test fails until the
 ### D11. Tests
 
 Unit: `tests/test_usage.py` (each trigger with its row, the anonymity check on every
-column, a rollback, forget keeps the rows, D3's comparison, the backfill from a schema-26
+column, a rollback, forget keeps the rows, D3's comparison (both detail forms), one role
+and one flow name in two kits counted apart, the backfill from a schema-26
 database built by `previous_schema`), `tests/test_stats.py` (each scenario of the
 `lado stats` requirements, the socket and kick checks), `tests/test_telemetry.py` (the
 report counts a forgotten session), `tests/test_state.py` (`usage_counts`' shape).
@@ -177,6 +186,20 @@ other processes (hooks, `lado mcp`, the loop), so a fake-agent session started, 
 spawned, stopped and forgotten through the CLI, with `lado stats --all` before and after
 the forget. `tests/agent_helpers.schema_before` undoes step 26 (drop the triggers and the
 table).
+
+
+### D12. A role and a flow are keyed with their kit
+
+Two kits may name a role or a flow alike (`developer` of `sdlc` and of another kit; a
+kit's names are unique only within a session), so a key without the kit would add up
+different things. A flow's kit is the run's `kit` (`{"name", "version", "source"}`), kept
+since runs exist. A role's kit is known only at the spawn (`kits.AgentDef.kit`, the
+built-in lead's `default`): `state.spawned_detail(role, kit, provider)` writes
+`role <r>, kit <k>, provider <p>`, which `lado log` shows as before with the kit in it.
+`state.spawned_provider` still takes the text after `, provider `, so the telemetry
+report reads old and new details alike. By kit name, not version: a kit's next version
+is the same role. A gate's answer is not qualified: its words (`approve`, `reject`,
+`continue`, `cancel`, a choice's outcome) are counted as words.
 
 ## Risks
 
@@ -189,4 +212,7 @@ table).
   or message hand-over).
 - LAD-33 (in parallel) may also bump the schema: the branch merged second renumbers its
   step and `schema_before`; checked at merge.
+- `lado log`'s `spawned` line gains `kit <k>`: the tests that pin it
+  (`tests/test_log.py`, `tests/test_runtime.py`, `tests/integration/test_agents.py`)
+  change with it.
 - `errors.jsonl` keeps about 2 MiB: older errors are not counted; the line says so.

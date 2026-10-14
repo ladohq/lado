@@ -5,23 +5,33 @@
 `lado.db` SHALL hold a table `usage` with one row per counted fact, written by SQLite
 triggers in the transaction that writes the fact, and by no other code: a session added
 (`session`), a `session_resume` event (`resume`), a `spawned` event (`agent`, key the
-role, with its provider), an `ended` event (`agent_ended`, with the agent's provider), a
+role with its kit, with its provider), an `ended` event (`agent_ended`, with the agent's provider), a
 `turn_error` event (`turn_error`, key the error's kind: its text before the first `: `,
 with the agent's provider), a `flow_start`, `flow_end` or `flow_cancel` event
-(`run_start`, `run_end`, `run_cancel`, key the run's flow), a gate added (`gate_open`,
+(`run_start`, `run_end`, `run_cancel`, key the run's flow with its kit), a gate added (`gate_open`,
 key its kind), a gate's answer set (`gate_close`, key the answer, and whether it is the
 lead's recommended choice, none without one), a question added (`question`), and a
 message whose state becomes `failed` (`message_failed`) or `dropped`
-(`message_dropped`). A row SHALL hold only its kind, key, provider, agreement and time,
+(`message_dropped`). A role and a flow SHALL be keyed with the kit they come from,
+`<role>@<kit>` and `<flow>@<kit>`, since two kits may name a role or a flow alike: the
+role's kit is written into the `spawned` event's detail (`role <role>, kit <kit>,
+provider <provider>`), the flow's is the run's `kit`. A row SHALL hold only its kind, key, provider, agreement and time,
 never a session or agent name, a path, a message, a comment or an error's details.
 Deleting a session (`lado forget`) SHALL NOT delete or change any row of `usage`.
 
 #### Scenario: A worker's life
-- **WHEN** a session is started, a worker of role `developer` on `kilo` is spawned, one of
-  its turns ends on the error `overloaded: try later`, and its process ends by itself
-- **THEN** `usage` has rows `session`, `agent` (`developer`, `kilo`, and one for the
+- **WHEN** a session is started, a worker of role `developer` of kit `sdlc` on `kilo` is
+  spawned, one of its turns ends on the error `overloaded: try later`, and its process
+  ends by itself
+- **THEN** `usage` has rows `session`, `agent` (`developer@sdlc`, `kilo`, and one for the
   supervisor), `turn_error` (key `overloaded`, `kilo`) and `agent_ended` (`kilo`), and no
   row holds the session's or the agent's name or `try later`
+
+#### Scenario: One role name in two kits
+- **WHEN** one session spawns a `developer` of kit `sdlc` and another a `developer` of kit
+  `acme`, and each starts a run of a flow `task` of its kit
+- **THEN** `usage` keys them `developer@sdlc`, `developer@acme`, `task@sdlc` and
+  `task@acme`, and `lado stats` counts them apart
 
 #### Scenario: A gate answered as the lead recommended
 - **WHEN** an approval gate opens, the lead recommends `approve`, and the human approves
@@ -41,7 +51,9 @@ Deleting a session (`lado forget`) SHALL NOT delete or change any row of `usage`
 
 The migration to schema 27 SHALL fill `usage` once from the rows `lado.db` holds then, by
 the same rules as the triggers and with each fact's own time (a failed message's
-`failed_at`; a dropped message, which keeps no time of its drop, its `created_at`), so
+`failed_at`; a dropped message, which keeps no time of its drop, its `created_at`; a
+`spawned` event written before this change, whose detail names no kit, the key
+`<role>@?`), so
 that every count of a period before the upgrade is what the rows still kept give.
 
 #### Scenario: An upgrade with history
@@ -57,7 +69,9 @@ and the count of LADO's own errors in `errors.jsonl` and its `.1`: sessions star
 resumed; agents started, per provider and per role; agents ended by themselves, per
 provider; turns ended on an error, per provider and per error kind; flow runs started (per
 flow), ended and cancelled; gates opened (per kind), closed (per answer) and how many
-closes agreed with the lead of those that had a recommended choice; questions asked of the
+closes agreed with the lead of those that had a recommended choice; roles and flows by
+their kit-qualified keys, with a note that `@?` marks a role whose kit was not recorded
+when one is shown; questions asked of the
 human; messages failed and dropped. A count of 0 SHALL be printed as `0`, and a breakdown
 SHALL list its parts by count, the larger first, then by name. The period SHALL be the
 last 30 days by default, the last N days with `--days N` (N a positive whole number), and

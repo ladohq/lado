@@ -13,7 +13,7 @@ statistics sender after `stats`.
 **Tech Stack:** Python 3.10+, SQLite triggers, argparse, pytest (+ xdist).
 
 **Spec:** `openspec/changes/usage-stats/` (proposal, deltas `usage-stats` and
-`usage-telemetry`, `design.md` D1-D11) and
+`usage-telemetry`, `design.md` D1-D12) and
 `docs/superpowers/specs/2026-10-14-usage-stats-design.md`.
 
 ## Global Constraints
@@ -33,11 +33,14 @@ statistics sender after `stats`.
   never through a pipe (`.lado/sdlc.md`, Review traps).
 - Edit with the edit tools, not `sed -i` or heredocs.
 
+- A role and a flow are keyed `<name>@<kit>` (D12); `spawned` events before this change
+  give `<role>@?`, never a guessed kit.
+
 ## Tests per requirement
 
 | Requirement | Tests | Layer |
 |---|---|---|
-| Usage is recorded as it happens, anonymously, and outlives its session | `tests/test_usage.py`: one test per trigger (session, resume, agent with role and provider, agent_ended, turn_error kind, run start/end/cancel with flow, gate_open kind, gate_close answer and agrees, question, message failed and dropped); every column of every row free of the session's and agents' names and the error's details; a rolled-back transaction leaves no row; `delete_session` leaves `usage` unchanged; D3's comparison with `spawned_detail` and `base.error_line`; the grep for `INSERT INTO usage`; `tests/integration/test_usage_stats.py` | unit, integration |
+| Usage is recorded as it happens, anonymously, and outlives its session | `tests/test_usage.py`: one test per trigger (session, resume, agent with role and provider, agent_ended, turn_error kind, run start/end/cancel with flow, gate_open kind, gate_close answer and agrees, question, message failed and dropped); every column of every row free of the session's and agents' names and the error's details; a rolled-back transaction leaves no row; `delete_session` leaves `usage` unchanged; D3's comparison with `spawned_detail` (both detail forms) and `base.error_line`; one role and one flow name in two kits keyed apart (`developer@sdlc`, `developer@acme`, `task@sdlc`, `task@acme`); the grep for `INSERT INTO usage`; `tests/integration/test_usage_stats.py` | unit, integration |
 | The migration fills usage from the history kept | `tests/test_usage.py::test_migration_fills_usage` (a schema-26 database from `previous_schema` with two sessions, five agents, three answered gates, a failed and a dropped message) | unit |
 | lado stats prints the usage of a period from this machine's records | `tests/test_stats.py`: the default period, `--all`, `--days 90` with a 5-day history, agreement 2 of 3, breakdown order, zeros and `none yet`, bad options exit 2 (through `cli.main`) | unit |
 | lado stats never goes to the network | `tests/test_stats.py::test_stats_opens_no_socket` (`telemetry_on`, a report due, `socket.socket.connect` and `socket.create_connection` patched to fail, outbox and `sent.json` unchanged); `tests/test_cli.py`: `stats` calls no `telemetry.kick` | unit |
@@ -60,9 +63,14 @@ End to end: `tests/integration/test_usage_stats.py` (Task 4). Regression run: Ta
 
 ---
 
-### Task 1: The table, its triggers and the backfill (D1-D4, D10)
+### Task 1: The table, its triggers and the backfill (D1-D4, D10, D12)
 
 **Files:**
+- Modify: `src/lado/state.py` (`spawned_detail(role, kit, provider)` writes
+  `role <r>, kit <k>, provider <p>`; `spawned_provider` unchanged), `src/lado/runtime.py`
+  (`_add_agent(agent, kit)`: the lead's `env.lead.kit`, a worker's `role_def.kit`)
+- Modify: the tests that pin the detail: `tests/test_log.py`, `tests/test_runtime.py`,
+  `tests/test_telemetry.py`, `tests/integration/test_agents.py`
 - Modify: `src/lado/state.py` (`SCHEMA_VERSION` 27, `USAGE`, `USAGE_TIME`, the
   `USAGE_*` kinds and `USAGE_KINDS`, `USAGE_TRIGGERS`, `usage_from_history`, `SCHEMA`,
   `MIGRATIONS[26] = [USAGE, USAGE_TIME, usage_from_history, *USAGE_TRIGGERS]`)
@@ -80,9 +88,10 @@ End to end: `tests/integration/test_usage_stats.py` (Task 4). Regression run: Ta
   the message state changes) so the tests see what LADO writes. The anonymity check reads
   every column of every row and asserts no session or agent name and no error details.
 - [ ] **Step 2: Run** `uv run pytest -n0 tests/test_usage.py`. Expected: FAIL.
-- [ ] **Step 3: Implement** the table, index and triggers (D2) and the backfill (D4).
-  Each trigger's time from its row; the provider and flow by subquery (D2); the role,
-  provider and error kind by `substr`/`instr` (D3).
+- [ ] **Step 3: Implement** the kit in `spawned_detail` (D12), the table, index and
+  triggers (D2) and the backfill (D4). Each trigger's time from its row; the provider and
+  `<flow>@<kit>` by subquery (D2); `<role>@<kit>` (or `@?`), provider and error kind by
+  `substr`/`instr` (D3).
 - [ ] **Step 4: Live and backfill agree.** A test records a history live (triggers),
   copies the facts' rows into a fresh schema-26 database (`previous_schema`), migrates it,
   and compares the two `usage` tables (ordered, without times of dropped messages).
@@ -137,7 +146,7 @@ End to end: `tests/integration/test_usage_stats.py` (Task 4). Regression run: Ta
   the other integration tests start it), wait until the supervisor is idle, have it spawn a
   worker (its `spawn_worker` command), wait until the worker is idle, `lado stop`, run
   `lado stats --all` as a subprocess and read its Sessions and Agents lines (1 started, 2
-  agents with their roles), `lado forget <session>`, run `lado stats --all` again: the
+  agents, roles `supervisor@default` and the worker's `<role>@<kit>`), `lado forget <session>`, run `lado stats --all` again: the
   same lines.
 - [ ] **Step 2: Run** `uv run pytest -m integration -n auto tests/integration/test_usage_stats.py > /tmp/lad34-int.log 2>&1; echo $?`.
   Expected: 0.
@@ -147,7 +156,7 @@ End to end: `tests/integration/test_usage_stats.py` (Task 4). Regression run: Ta
 
 - [ ] **Step 1: CHANGELOG.md**: the heading becomes `## 0.38.0 (unreleased)`; add:
   - `lado stats` prints how you used LADO on this machine in the last 30 days (`--days
-    N`, `--all`): sessions, agents per agent CLI and role, turn errors, flow runs, gates
+    N`, `--all`): sessions, agents per agent CLI and role (with its kit), turn errors, flow runs, gates
     and how often you answered as the lead advised, questions, undelivered messages and
     LADO's own errors. It sends nothing.
   - LADO now keeps an anonymous local record of these counts (no names, paths or texts),

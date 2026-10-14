@@ -1,9 +1,9 @@
 Plan: `docs/superpowers/plans/2026-10-14-usage-stats.md` (each task's tests and steps).
 Design doc: `docs/superpowers/specs/2026-10-14-usage-stats-design.md`.
 
-## 1. The usage table (D1-D4, D10)
+## 1. The usage table (D1-D4, D10, D12)
 
-- [ ] 1.1 `usage`, `usage_time`, `USAGE_KINDS`, `USAGE_TRIGGERS`, the backfill, schema 27
+- [ ] 1.1 `spawned_detail` with the role's kit (and the tests that pin it), `usage`, `usage_time`, `USAGE_KINDS`, `USAGE_TRIGGERS`, the backfill, schema 27
   (`MIGRATIONS[26]`); `tests/agent_helpers.schema_before`. Check: `uv run pytest
   tests/test_usage.py tests/test_state.py -n auto` and the tests that use
   `previous_schema`.

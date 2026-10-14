@@ -16,7 +16,8 @@ too, shrinks with each forget; and no command shows the counts locally.
 - **A local usage table, `usage`, filled as things happen.** SQLite triggers on
   `sessions`, `agents`' events, `gates` and `messages` add one anonymous row per counted
   fact, in the transaction that writes it: its kind, a short key (a role, a flow, a gate
-  kind or answer, an error's kind), the agent CLI where there is one, whether the human
+  kind or answer, an error's kind; a role or a flow with its kit, `developer@sdlc`, as two
+kits may name them alike), the agent CLI where there is one, whether the human
   agreed with the lead's recommendation, and the time. Never a session or agent name, a
   path, a message, a comment or an error's text. No other code path writes it, `lado
   forget` leaves it alone, so the counts survive any deletion of a session.
@@ -27,13 +28,16 @@ too, shrinks with each forget; and no command shows the counts locally.
   default) from `usage` and LADO's error journal on this machine. It sends nothing and
   starts no sender. The counts, chosen with the human:
   - sessions started, resumed;
-  - agents started, per agent CLI and per role; agents whose process ended by itself, per
+  - agents started, per agent CLI and per role (`<role>@<kit>`); agents whose process ended by itself, per
     CLI; turns that ended on an error, per CLI and per error kind;
-  - flow runs started (per flow), ended, cancelled;
+  - flow runs started (per flow, `<flow>@<kit>`), ended, cancelled;
   - gates opened (per kind), closed (per answer), and how often the human's answer was the
     lead's recommended one; questions agents asked the human;
   - messages that failed to be delivered, messages dropped;
   - LADO's own errors (`errors.jsonl`, which keeps only its latest part).
+- **The `spawned` event names the role's kit**: `role <r>, kit <k>, provider <p>`
+  (`lado log` shows it). Agents spawned before the upgrade are keyed `<role>@?`: their
+  kit was not recorded.
 - **The telemetry report keeps its fields** (`FIELDS_VERSION` unchanged, no new question
   to the human); `state.usage_counts` counts its numbers from `usage`, so a forgotten
   session stays counted there too.
@@ -47,6 +51,7 @@ too, shrinks with each forget; and no command shows the counts locally.
 
 - `src/lado/state.py`: `USAGE`, its triggers, `MIGRATIONS[26]` with the backfill,
   `usage_counts` from `usage`, `usage_summary`, `usage_start`.
+- `src/lado/runtime.py`: `_add_agent` passes the role's kit to `state.spawned_detail`.
 - `src/lado/stats.py` (new): the period and the lines `lado stats` prints.
 - `src/lado/telemetry.py`: `_lado_errors` becomes `lado_errors`; the report unchanged.
 - `src/lado/cli.py`: the `stats` parser and `cmd_stats`, and no kick after `stats`.

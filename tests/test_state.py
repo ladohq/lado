@@ -355,9 +355,7 @@ def test_setting_a_title_is_journaled_as_a_session_update(lado_home):
         after = db.execute("SELECT max(id) FROM changes").fetchone()[0]
     state.set_title("s", "Review")
     with state.connect() as db:
-        rows = db.execute(
-            "SELECT kind, session, op FROM changes WHERE id > ?", (after,)
-        ).fetchall()
+        rows = db.execute("SELECT kind, session, op FROM changes WHERE id > ?", (after,)).fetchall()
     assert [tuple(row) for row in rows] == [("sessions", "s", "update")]
 
 
@@ -371,9 +369,10 @@ def test_schema_28_gives_sessions_a_title(lado_home):
     db.close()
     assert state.migrate() == state.SCHEMA_VERSION == 28
     with state.connect() as db:
-        assert db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[
-            0
-        ] == fresh
+        assert (
+            db.execute("SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
+            == fresh
+        )
     assert state.get_session("s").title is None
     assert state.set_title("s", "Review")
 

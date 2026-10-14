@@ -1238,9 +1238,7 @@ def set_title(name: str, title: str | None) -> bool:
     """Store the session's title (None: no title) as it is given; lado.runtime.set_title
     decides what a title is. False when there is no such session."""
     with connect() as db:
-        changed = db.execute(
-            "UPDATE sessions SET title = ? WHERE name = ?", (title, name)
-        ).rowcount
+        changed = db.execute("UPDATE sessions SET title = ? WHERE name = ?", (title, name)).rowcount
     return changed == 1
 
 

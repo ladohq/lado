@@ -61,6 +61,14 @@ def test_a_release_candidate_gets_the_unreleased_section_and_names_its_version()
     assert "pre-release" in footer
 
 
+def test_the_section_is_the_notes_without_their_footer():
+    """scripts/rc_check.py reads a release candidate's items by the notes' own rules."""
+    for tag in ("v0.37.0", "v0.38.0rc1"):
+        assert notes.section(tag, CHANGELOG) == notes.notes(tag, CHANGELOG).split("\n\n---\n\n")[0]
+    with pytest.raises(notes.NotesError, match="no section"):
+        notes.section("v0.39.0rc1", CHANGELOG)
+
+
 def test_the_last_section_of_the_file_runs_to_its_end():
     assert notes.notes("v0.36.1", CHANGELOG).split("\n---\n")[0].strip() == "- A fix."
 

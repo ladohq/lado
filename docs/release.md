@@ -57,7 +57,7 @@ them into one. Past sections stay as they were written.
 5. Push the tag `vX.Y.ZrcN`. Its spelling is PEP 440's, no dash (`v0.37.0rc1`, never
    `v0.37.0-rc1`): the workflow compares the tag with `uv version --short`. The Release
    workflow publishes `X.Y.ZrcN` to PyPI as a pre-release, then a GitHub pre-release
-   with the `(unreleased)` section as its notes (section 7).
+   with the `(unreleased)` section as its notes (section 7); then section 4.
 
 ## 3. The freeze
 
@@ -69,25 +69,70 @@ in section 6 catches a mistake before it is published.
 
 ## 4. The manual checklist
 
-The human, on the RC:
+Each RC is checked with `scripts/rc_check.py`, run with `python3` from the repository's
+root on the RC's commit (it needs `uv`, `tmux` and `git`). It does every step a machine
+can and ends with a list of what is left to the human.
 
-- A clean install in a home of its own:
-  `LADO_TELEMETRY=0 LADO_HOME=$(mktemp -d) LADO_TMUX_SOCKET=lado-rc
-  uvx --from lado==X.Y.ZrcN lado doctor`, then with the same variables `uvx --from
-  lado==X.Y.ZrcN lado start <scratch repository>` and `uvx --from lado==X.Y.ZrcN lado stop
-  <its session>` (a bare `lado` is the human's installed final, not the RC). A fresh home is
-  a new install to the usage statistics (docs/telemetry.md), so it never sends, and
-  `lado start` does not ask; a test keeps each scratch home of this file with it.
-- The upgrade of the human's own LADO from the last final with a session running:
-  `lado update X.Y.ZrcN` (their own install, counted once as before). The migration when the schema moved, the sessions resumed, the
-  UI server back; `update.log` read.
+### 4.1 A clean install (every RC)
+
+```
+python3 scripts/rc_check.py sandbox [X.Y.ZrcN]
+```
+
+Without a version it takes the newest release on PyPI (and asks for one when that is a
+final). In a temporary folder, with a LADO home and a tmux server of its own and
+statistics off (`LADO_TELEMETRY=0` for every LADO command of it; a fresh home would be a
+new install to the usage statistics, docs/telemetry.md), it installs the RC the way users
+do (`uv tool install`) and checks, one line each, `[ok  ]` or `[FAIL]`:
+
+- the installed version is the RC's, and statistics are off;
+- `lado doctor` finds no problem and says `(pre-release)`;
+- a session on a scratch repository starts (Claude Code; `--provider` for another) and
+  `lado ls` shows it.
+
+Then it opens the RC's UI and prints the link: look at the System panel (the
+`pre-release` pill) and at the session, then press Enter (`--no-ui` skips this). It
+stops the session, removes everything with the RC's own `lado uninstall`, and prints
+the list of what is left to check by hand. Your own `~/.lado` is never touched.
+
+A check that fails stops the script and keeps the folder for a look, with its path and
+the one command that removes it. Ctrl-C stops and removes everything.
+
+### 4.2 Your own LADO on the RC (the first RC of a cycle)
+
+```
+python3 scripts/rc_check.py upgrade X.Y.ZrcN
+```
+
+With your sessions running. It runs `lado update X.Y.ZrcN` (your own install, counted
+once as before), which shows its plan and asks as usual. A LADO on a final release is
+never offered an RC, so this one named update is the way onto it; after it, the next RCs
+and the final are offered as usual (the UI's Update, or `lado update`).
+
+Coming from a final, it then keeps a copy of that final's database backup in
+`~/.lado-rc/`: `lado update` keeps only one backup, and the next update would replace
+it. Check what the update printed: the migration when the schema moved, your sessions
+back, the UI back.
+
+### 4.3 By hand, on your own LADO
+
 - A session with the sdlc kit through one run to its first gate, answered in the UI.
 - The UI: the chat, a gate's card, the System panel with its `pre-release` pill.
-- Each line of CHANGELOG.md's `## X.Y.Z (unreleased)` tried once.
-- Going back when needed: `lado update <last final>`; when the schema moved, after
-  `lado stop --all` restore the backup `~/.lado/backups/lado.db.<last final>` by hand.
+- Each line of CHANGELOG.md's `## X.Y.Z (unreleased)` tried once (both commands above
+  print them as a checklist).
 
-There is no fixed soak time: the final follows the human's "ok".
+There is no fixed soak time: the final follows your "ok".
+
+### 4.4 Going back
+
+```
+python3 scripts/rc_check.py rollback
+```
+
+It says what it will do and asks first: stop your sessions and the UI, install the
+final the copy in `~/.lado-rc/` was taken from, and, when the RC moved the database's
+schema, put that copy back (what was done on the RC is then lost: it says so). Then it
+starts your sessions and the UI again on the final.
 
 ## 5. The final
 

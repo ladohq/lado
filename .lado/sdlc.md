@@ -64,10 +64,15 @@ at the start of every step.
   - `make test-live`: real models, run only at a release, Claude Code only with the
     human's yes;
   - `make test-smoke`: needs the real CLIs; CI runs it.
-- What CI proves: on every push, `ruff format --check`, `ruff check`, the unit and
-  integration tests on Python 3.10 and 3.13, the Node tests, `make dist` with the UI e2e
-  tests, and the smoke tests on Linux and macOS per provider. A green CI is the full
-  `make check` plus the smoke.
+- What CI proves: on every pull request and push to main, `ruff format --check`,
+  `ruff check`, the unit tests and the integration tests (three shards per Python) on
+  Python 3.10 and 3.13, the Node tests, `make dist` and the UI e2e tests (two shards). The
+  smoke tests on Linux and macOS per provider run on every push to main, daily on main,
+  and on each pull request that changes a file off ci.yml's skip list (`web/`, `docs/`,
+  `openspec/`, `tests/ui/`, `tests/js/`, the top-level Markdown documents,
+  `.github/dependabot.yml`). The one required check is `ci-ok`: green means the full
+  `make check` plus the smoke, but for a pull request within the skip list, where the
+  smoke was skipped.
 - CI time ceiling: 40 minutes
 
 ## External reviewer
@@ -115,7 +120,8 @@ at the start of every step.
   fails its stale-types check — run `make web-types` and commit both files.
 - A live test added or changed — it only collects without real CLIs — say "written, not
   run" in the build report; never claim it passed.
-- An HTML mockup that inlines `web/src/index.css` — it does not scroll in a window wider
+- An HTML mockup that inlines the UI's CSS (`web/src/styles.css`, after
+  `web/src/tokens.css`) — it does not scroll in a window wider
   than 900px (`html, body { overflow: hidden; overscroll-behavior: none }`) — end its
   `<style>` with `html, body { height: auto !important; overflow: visible !important;
   overscroll-behavior: auto !important; }` (`overflow: auto` is not enough: the wheel
@@ -145,7 +151,7 @@ Analyst:
   agent.
 - UI work: name the change to `docs/design/ui.md`, and attach an HTML mockup of each new
   or changed screen as a run artifact. A mockup that inlines the UI's CSS
-  (`web/src/index.css`) takes its app-shell rules too: on a window wider than 900px
+  (`web/src/tokens.css`, then `web/src/styles.css`) takes its app-shell rules too: on a window wider than 900px
   `html, body { overflow: hidden; overscroll-behavior: none }` stops the page from
   scrolling, as only `.content` scrolls in the app. End the mockup's `<style>` with
   `html, body { height: auto !important; overflow: visible !important;

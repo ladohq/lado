@@ -340,6 +340,38 @@ def test_another_address_is_reached_by_itself_with_the_warning():
     )
 
 
+@pytest.mark.parametrize(
+    ("address", "url"),
+    [("0.0.0.0", "http://127.0.0.1:8765"), ("192.0.2.7", "http://192.0.2.7:8765")],
+)
+def test_in_a_container_a_server_on_another_address_notes_the_publication(address, url):
+    listening = server_run.Listening.of(address, 8765, container=True)
+    assert listening.url == url
+    assert listening.remote is None and listening.warning is None
+    assert listening.note == (
+        f"the LADO server runs in a container and listens on {address}:8765 inside it; who "
+        "reaches it depends on how the container publishes the port (127.0.0.1:8765:8765: "
+        "this computer only). Published to other machines, the token travels unencrypted "
+        "(plain HTTP)."
+    )
+
+
+def test_in_a_container_a_loopback_server_has_no_note():
+    listening = server_run.Listening.of("127.0.0.1", 8765, container=True)
+    assert (listening.url, listening.remote, listening.warning, listening.note) == (
+        "http://127.0.0.1:8765",
+        None,
+        None,
+        None,
+    )
+
+
+def test_outside_a_container_there_is_no_note(monkeypatch):
+    monkeypatch.setattr(socket, "gethostname", lambda: "box")
+    assert server_run.Listening.of("0.0.0.0", 8001).note is None
+    assert server_run.Listening.of("192.0.2.7", 8001).note is None
+
+
 def test_an_ipv6_address_is_refused():
     with pytest.raises(runtime.LadoError, match="IPv6 is not supported yet"):
         server_run.bind("::1", 0)
@@ -579,6 +611,42 @@ def test_ui_opens_the_local_link_and_prints_the_one_for_other_machines(capsys, m
         f"From another machine: http://192.0.2.7:8001/?token={token} (or this host's address)",
     ]
     assert "listens on 192.0.2.7:8001" in err
+
+
+def test_ui_in_a_container_prints_only_the_link(capsys, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    with server_run.take_lock():
+        write_info(8765, host="0.0.0.0")
+        assert cli.main(["ui", "--no-open"]) == 0
+        out, err = capsys.readouterr()
+    assert out == f"http://127.0.0.1:8765/?token={auth.token()}\n"
+    assert "lado: note: the LADO server runs in a container" in err
+    assert "open to other machines" not in err
+
+
+def test_ui_in_a_container_opens_no_browser(capsys, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    opened = []
+    monkeypatch.setattr("webbrowser.open", opened.append)
+    with server_run.take_lock():
+        write_info(8765, host="0.0.0.0")
+        assert cli.main(["ui"]) == 0
+        out, _ = capsys.readouterr()
+    assert opened == []
+    assert out.splitlines() == [
+        f"http://127.0.0.1:8765/?token={auth.token()}",
+        "Open it in your browser on the host.",
+    ]
+
+
+def test_ui_in_a_container_against_a_loopback_server_is_as_outside(capsys, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    with server_run.take_lock():
+        write_info(8001)
+        assert cli.main(["ui", "--no-open"]) == 0
+        out, err = capsys.readouterr()
+    assert out == f"http://127.0.0.1:8001/?token={auth.token()}\n"
+    assert "note" not in err
 
 
 def test_ui_starts_a_server_on_the_host_and_port_it_is_given(capsys, monkeypatch):

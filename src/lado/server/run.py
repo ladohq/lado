@@ -36,6 +36,12 @@ READY_TIMEOUT = 15.0  # seconds `lado ui` waits for a server it started
 STOP_TIMEOUT = 10.0  # seconds `lado server stop` waits for the server to end
 # Seconds a stopping server waits for open requests; its event streams end at once (app.Server).
 SHUTDOWN_GRACE = 1
+CONTAINER_NOTE = (
+    "the LADO server runs in a container and listens on {host}:{port} inside it; who "
+    "reaches it depends on how the container publishes the port "
+    "(127.0.0.1:{port}:{port}: this computer only). Published to other machines, the "
+    "token travels unencrypted (plain HTTP)."
+)
 
 
 def lock_path():
@@ -109,26 +115,32 @@ def running() -> dict | None:
 class Listening:
     """Where a server listening on an address is reached: `url` from this machine (what
     server.json keeps), `remote` from others with the `warning` that says so, or None
-    for a loopback address."""
+    for a loopback address. In a container (`container`, the caller's
+    `update.in_container()`) only the port's publication decides who reaches it: no
+    `remote` and no `warning`, but a `note` that says so."""
 
     url: str
     remote: str | None
     warning: str | None
+    note: str | None = None
 
     @classmethod
-    def of(cls, host: str, port: int) -> "Listening":
+    def of(cls, host: str, port: int, container: bool = False) -> "Listening":
         """For the address the socket took (`getsockname`), not the name it was given."""
         ip = ipaddress.ip_address(host)
         if ip.is_loopback:
             return cls(f"http://{host}:{port}", None, None)
+        local = f"http://127.0.0.1:{port}" if ip.is_unspecified else f"http://{host}:{port}"
+        if container:
+            return cls(local, None, None, CONTAINER_NOTE.format(host=host, port=port))
         warning = (
             f"the LADO server listens on {host}:{port}, open to other machines: whoever "
             "reaches it with the token can run commands as you, and the token travels "
             "unencrypted (plain HTTP). Use it only on a network you trust."
         )
         if ip.is_unspecified:
-            return cls(f"http://127.0.0.1:{port}", f"http://{socket.gethostname()}:{port}", warning)
-        return cls(f"http://{host}:{port}", f"http://{host}:{port}", warning)
+            return cls(local, f"http://{socket.gethostname()}:{port}", warning)
+        return cls(local, local, warning)
 
 
 def _ipv4(host: str) -> None:
@@ -199,6 +211,7 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
     """`lado server`: serve until stopped (Ctrl-C, SIGTERM from `lado server stop`)."""
     import uvicorn
 
+    from lado import update
     from lado.server import app, auth
 
     lock = take_lock(LOCK_WAIT)
@@ -210,9 +223,11 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
         token = auth.token(new=new_token)
         sock = bind(host, port)
         listens, bound = sock.getsockname()
-        listening = Listening.of(listens, bound)
+        listening = Listening.of(listens, bound, update.in_container())
         if listening.warning:
             print(f"lado: warning: {listening.warning}", file=sys.stderr, flush=True)
+        if listening.note:
+            print(f"lado: note: {listening.note}", file=sys.stderr, flush=True)
         if app.bundle_missing(app.STATIC):
             print(
                 f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr

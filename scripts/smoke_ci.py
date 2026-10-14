@@ -1,6 +1,7 @@
 """One cell of LADO's smoke tests in CI: a provider's CLI on one system, no model.
 
     python scripts/smoke_ci.py run <provider> <out>
+    python scripts/smoke_ci.py needed <event> [<base> <head>]
 
 `run` does one (system, provider) cell of ci.yml's job `smoke` or of the Windows probe's WSL
 part: it installs the provider's CLI at its pin from npm into ~/.local (first on PATH from
@@ -9,6 +10,13 @@ PROVIDER=<provider>` does. Its output goes to the terminal and to
 `<out>/smoke-<provider>.log`. The cell passes only when pytest exits 0 and its last summary
 line has a `passed` and no `skipped` (a missing CLI skips). A failing cell copies the
 test's evidence into `<out>/evidence`.
+
+`needed` answers ci.yml's job `changes`: whether this run needs the smoke. It prints
+`smoke=true` or `smoke=false` (a line for `$GITHUB_OUTPUT`) and, on stderr, the files it
+went by. Outside a pull request (`<event>` is GitHub's event name) the smoke always runs.
+On a pull request it is skipped only when `git diff --name-only <base>...<head>` names at
+least one file and every one is on the skip list, `$SMOKE_SKIP`, one path per line (one
+ending in `/` is a folder, another a file); ci.yml holds that list.
 
 Standard library only: it imports nothing of LADO, and tests/test_smoke_ci.py compares it
 with LADO.
@@ -34,7 +42,7 @@ PINS = {
 
 # pytest's last line, e.g. `===== 1 failed, 2 passed in 10.00s (0:00:10) =====`.
 SUMMARY = re.compile(r"^=+ .* in [0-9.]+s\b.*=+$")
-USAGE = "usage: smoke_ci.py run <provider> <out>"
+USAGE = "usage: smoke_ci.py run <provider> <out> | needed <event> [<base> <head>]"
 
 
 def summary(log: str) -> str:
@@ -89,12 +97,68 @@ def run(provider: str, out: Path) -> int:
     return 1
 
 
+def skip_list(text: str) -> list[str]:
+    """The skip list from `$SMOKE_SKIP`: one path per line; an empty one is refused, as it
+    is a broken ci.yml, not a list that skips nothing."""
+    paths = [line.strip() for line in text.splitlines() if line.strip()]
+    if not paths:
+        raise ValueError("empty skip list ($SMOKE_SKIP)")
+    return paths
+
+
+def on_list(path: str, skip: list[str]) -> bool:
+    return any(path.startswith(p) if p.endswith("/") else path == p for p in skip)
+
+
+def needed(event: str, files: list[str], skip: list[str]) -> bool:
+    """Whether a run needs the smoke: always but on a pull request whose every changed file
+    is on the skip list (none changed: it runs)."""
+    if event != "pull_request":
+        return True
+    return not files or not all(on_list(f, skip) for f in files)
+
+
+def changed(base: str, head: str) -> list[str]:
+    diff = subprocess.run(
+        # --no-renames: a file moved from src/ into docs/ names src/ too.
+        ["git", "diff", "--name-only", "--no-renames", f"{base}...{head}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return diff.stdout.splitlines()
+
+
+def main_needed(argv: list[str]) -> int:
+    event, refs = argv[0], argv[1:]
+    if len(refs) != (2 if event == "pull_request" else 0):
+        print(USAGE, file=sys.stderr)
+        return 2
+    try:
+        skip = skip_list(os.environ.get("SMOKE_SKIP", ""))
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        return 1
+    files = []
+    if refs:
+        try:
+            files = changed(*refs)
+        except subprocess.CalledProcessError as e:
+            print(f"git diff failed: {e.stderr.strip()}", file=sys.stderr)
+            return 1
+        print("changed:", *files or ["nothing"], sep="\n  ", file=sys.stderr)
+    print(f"smoke={str(needed(event, files, skip)).lower()}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) == 3 and argv[0] == "run":
         if argv[1] not in PINS:
             print(f"{argv[1]}: no provider (one of {', '.join(PINS)})", file=sys.stderr)
             return 2
         return run(argv[1], Path(argv[2]))
+    if len(argv) >= 2 and argv[0] == "needed":
+        return main_needed(argv[1:])
     print(USAGE, file=sys.stderr)
     return 2
 

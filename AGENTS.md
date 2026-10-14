@@ -72,8 +72,8 @@ short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each
 hook's confirmation under `-n auto`, the comment there says by how much); only tests set
 either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
-`LADO_TMUX_SOCKET`, `TMUX` and `LADO_CONTAINER` for the test run, so the tests run in an
-agent's shell (or LADO's image) as is,
+`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER` and `LADO_REPOS` for the test run, so the
+tests run in an agent's shell (or LADO's image) as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
 login shell (tests of the shell set their own `SHELL`). It also sets
 `LADO_NO_UPDATE_CHECK=1`, so no test looks on PyPI; the tests of the update check switch it
@@ -158,16 +158,35 @@ delivered instead of the human's message and the turn error, in code, never a sk
 failed smoke keeps its evidence as a failed live test does. `make test-smoke
 [PROVIDER=...]`; not in `make check`, which has no CLI.
 
-CI runs `ruff format --check`, `ruff check`, the unit tests (in parallel, `-n auto`) and the
-integration tests (in one process, `-n0`) on Python 3.10 and 3.13, the Node tests, in one
-job on Python 3.13 `make dist` (the web UI built and in both the sdist and the wheel) and
-the UI e2e tests (on two workers, `-n 2`), and in its job `smoke` the smoke tests on Linux
-and macOS, one cell per (system, provider), none stopping the others. The worker counts are
-for GitHub's 4-vCPU runners, where `-n auto` is four workers: four integration tests at
-once (each its own tmux, agents and session loop), or four UI tests (each with a Chromium
-and a `lado server`), starve each other past LADO's short test timers; the unit tests run
-mostly in process and keep `-n auto` (`tests/test_ci_workflow.py` pins the three
-commands). A cell is
+CI (`.github/workflows/ci.yml`) runs on each pull request, each push to main, daily on main
+(03:47 UTC, `schedule`) and by hand (`workflow_dispatch`). Its jobs: `unit (<python>)`,
+`ruff format --check`, `ruff check` and the unit tests (in parallel, `-n auto`) on Python
+3.10 and 3.13; `integration (<python>, <k>)`, the integration tests in three shards per
+Python, each in one process (`-n0 --shard K/3`); `js`, the Node tests; `ui (<k>)`, the UI
+e2e tests in two shards on Python 3.13 (on two workers, `-n 2 --shard K/2`), the first also
+`make dist` (the web UI built and in both the sdist and the wheel), the second building only
+the bundle; `changes`, whether the run needs the smoke; `smoke <os> <provider>`, the smoke
+tests on Linux and macOS, one cell per (system, provider), none stopping the others; and
+`ci-ok`, the one check the ruleset of main requires. `--shard K/N` (`tests/shard.py`, also
+locally) keeps the tests whose node id's CRC-32 modulo N is K - 1, so each test is in
+exactly one shard, always the same, and deselects the rest. The worker counts are for
+GitHub's 4-vCPU runners, where `-n auto` is four workers: four integration tests at once
+(each its own tmux, agents and session loop), or four UI tests (each with a Chromium and a
+`lado server`), starve each other past LADO's short test timers; the unit tests run mostly
+in process and keep `-n auto` (`tests/test_ci_workflow.py` pins the commands). The smoke
+runs on every push, schedule and dispatch, and on a pull request unless every file it
+changes (`git diff --name-only --no-renames base...head`) is on the skip list in ci.yml
+(`web/`, `docs/`, `openspec/`, `tests/ui/`, `tests/js/`, the top-level Markdown documents,
+`.github/dependabot.yml`): `scripts/smoke_ci.py needed` answers for `changes`, and the
+smoke's job-level `if` skips it, never the triggers' paths (the run and `ci-ok` would not
+report). No path of that list may be or hold `src/`, `scripts/`, `tests/` (but `tests/ui/`
+and `tests/js/`), `pyproject.toml`, `uv.lock` or `.github/workflows/`
+(`tests/test_ci_workflow.py`). `ci-ok` needs every other job and runs whatever their
+results (`if: always()`, both kept by a test: a skipped required check counts as passed);
+`scripts/ci_ok.py` fails it unless each succeeded, the smoke skipped only when `changes`
+said it is not needed, a cancelled job a failure. A pull request's new run cancels its
+older one; a run of another event is alone in its group (its run id), never cancelled.
+GitHub mails a red scheduled run to whoever last changed its cron line. A cell is
 `scripts/smoke_ci.py run <provider> <out>`: it installs the CLI with `npm install -g
 --prefix ~/.local` at its pin, runs `uv run pytest -m smoke -n0 -v -k <provider>` into
 `<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
@@ -236,6 +255,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `git` (after `tmux`, `check_git`) is the folder check's own look, `runtime.git_version`:
     `FAIL` with the core's text and hint when git is missing or does not run, `WARN` below
     `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
+    `Repositories folder` (after `git`, `check_repos_folder`, only while `LADO_REPOS` is
+    set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
+    that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
+    there on some Pythons) or a value that is not absolute (which `clone.repos_folder`
+    ignores).
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
@@ -275,8 +299,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `CONTAINER_UPDATE`, `docker compose pull && docker compose up -d`, instead of `lado
     update`: `available_line`), whether LADO runs in its container (`in_container`:
     `LADO_CONTAINER` set, not empty, not `0`, which only the image sets; never guessed from
-    `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report, and the
-    UI server), the installer (`installer`: by this
+    `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report (its
+    `Server:` line says `in a container` instead of loopback or open to the network), and
+    the UI server, whose `run.serve` and `lado ui` pass it to `run.Listening.of`), the
+    installer (`installer`: by this
     LADO's `sys.prefix`, a uv tool with `uv-receipt.toml` or pipx with
     `pipx_metadata.json` of lado from an index, else None,
     also for an editable, folder, git or URL install of lado; its `command` installs
@@ -461,7 +487,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `is_url` (`https://`, `http://`, `ssh://`, `git://`, `file://`, or the scp form only
     with a user; anything else, `/srv/app.git` too, is a folder), `Address` (host and path
     by which two URLs are `same_repo`; scheme, user and port aside; local ones by real
-    path), `default_folder` (`DEFAULT_PARENT`/<repo>, `~/lado`), `check_target` (a
+    path), `repos_folder` (the one reader of `REPOS`, `LADO_REPOS`, the folder of the
+    human's repositories that LADO's image sets: `~` expanded, None when unset, empty or
+    not absolute; read at each call), `default_folder` (`default_parent()`/<repo>: the
+    repositories folder, else `DEFAULT_PARENT`, `~/lado`), `check_target` (a
     `Target`: `new`, `empty`, `same_repo`, `other_repo` with a free `~/lado/<owner>-<repo>`
     beside it, `not_empty`, `not_folder`; only `CAN_CLONE` lets a clone start, and LADO
     changes nothing in a folder of another state: no clone over it, no fetch, no branch
@@ -941,6 +970,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     default name and whether a session has it, and `provider`, the core's
     `runtime.suggested_provider` with the server's `shutil.which`, a
     `ProviderSuggestion` of name and reason or none), `/api/folders/recent`,
+    `/api/repos-folder` (in `app.py`; `ReposFolder`, `clone.repos_folder` or none: where
+    an empty Where starts),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
     `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default);
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
@@ -979,7 +1010,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `bug_report.BROWSER_LINE`'s shape is 422; it reads only, so not under
     `Guard.changes`);
     `run.py`: the lock, `server.json`, the host and port (`--host`, 127.0.0.1 by default;
-    `Listening`: the local link, the remote one and the warning for the address taken),
+    `Listening`: the local link, the remote one and the warning for the address taken; in a
+    container, `container=update.in_container()`, no remote link and no warning but a
+    `note`, `CONTAINER_NOTE`, as the port's publication decides who reaches it; `lado ui`
+    there prints the link and `OPEN_ON_HOST` and opens no browser),
     the background start and stop (`stop` returns once the server's process has ended, not
     only its lock: `_gone` reaps a child of its own), server.log's bound (`rotate` at a background start,
     `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). `static/`:
@@ -1482,7 +1516,7 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
 `uv run lado start <repo>` runs the working copy (a repository without commits is refused:
 make a first commit). `lado start <git-url> [<folder>] [--branch NAME]` clones the URL's
 branch (the remote's default without `--branch`) into the folder, a full path, by default
-`~/lado/<repo>`, then starts there as `lado start <folder>` does: the folder must be new or
+`$LADO_REPOS/<repo>` (an absolute `LADO_REPOS`), else `~/lado/<repo>`, then starts there as `lado start <folder>` does: the folder must be new or
 empty (a clone of the same repository there is refused with the `lado start <folder>` that
 uses it as it is; LADO never fetches into or switches a folder that exists), and a name a
 session of another folder has is refused before the clone (`runtime.check_name`). git's
@@ -1773,13 +1807,15 @@ Six layers; each change gets tests at the lowest layer that can catch its bugs:
    `lado server` on a free port, with sessions of the fake agent, isolated like the
    integration tests; only what needs a browser. Each test saves a screenshot of every
    screen it checks to `<temp dir>/lado-ui-shots/<test>.png` (the `shot` fixture), outside
-   the tree, for the reviewer. In `make check` and in CI (one job, with `make dist`).
+   the tree, for the reviewer. In `make check` and in CI (two shards, the first with
+   `make dist`).
 5. **Smoke** (`make test-smoke`, marker `smoke`): each provider's real CLI with real tmux,
    hooks, `lado mcp` and SQLite, and a local endpoint that answers 401 instead of a model
    (Commands): the platform half of the live tests, without their model half. Needed for a
    change in how LADO starts, configures or talks to a CLI on some system. Never in the
-   default run or `make check` (it needs the CLIs); in CI on Linux and macOS (job `smoke`),
-   and in WSL2 in the Windows probe, a job per provider.
+   default run or `make check` (it needs the CLIs); in CI on Linux and macOS (job `smoke`:
+   every push to main, daily, and each pull request that changes a file off the skip list;
+   Commands), and in WSL2 in the Windows probe, a job per provider.
 6. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
    message; then the session stops and no process is left. Never in the default run and

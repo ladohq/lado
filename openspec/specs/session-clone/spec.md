@@ -31,7 +31,8 @@ SHALL name a URL through `runtime.public_remote` (no password or token).
 
 ### Requirement: The default folder of a clone
 
-A clone's folder SHALL be, unless the human gives one, `~/lado/<repo>`: `<repo>` is the
+A clone's folder SHALL be, unless the human gives one, `<parent>/<repo>`: `<parent>` is
+the repositories folder (`LADO_REPOS`) when one is set, else `~/lado`; `<repo>` is the
 URL's last path segment without a trailing `/` or `.git`. A given folder SHALL be a full
 path (`~` allowed); a relative one SHALL be refused as the window refuses it today. The
 folders above it SHALL be made when missing.
@@ -39,6 +40,11 @@ folders above it SHALL be made when missing.
 #### Scenario: Default folder
 - **WHEN** the URL is `https://github.com/ladohq/marketplace.git/` and no folder is given
 - **THEN** the folder is `~/lado/marketplace`
+
+#### Scenario: Default folder in the repositories folder
+- **WHEN** `LADO_REPOS=/Users/me/repos` and the human clones `git@github.com:acme/app.git`
+  with no folder, by `lado start` or the New session window
+- **THEN** the folder is `/Users/me/repos/app`, and the window's Clone into shows it
 
 ### Requirement: The target folder is checked before any clone
 
@@ -150,7 +156,7 @@ MiB/s`).
 ### Requirement: lado start clones a git URL
 
 `lado start <git-url> [<folder>] [--branch NAME]` SHALL check the folder (default
-`~/lado/<repo>`), then the session's name (default the folder's name, as for a folder),
+the clone's default folder, `~/lado/<repo>` or `$LADO_REPOS/<repo>`), then the session's name (default the folder's name, as for a folder),
 clone the branch (the remote's default without `--branch`) with git's own progress lines
 on stderr, then start the session as `lado start <folder>` does. A folder that is not
 `new` or `empty` SHALL be refused with its text and nothing cloned; for `same_repo` the

@@ -250,8 +250,11 @@ $ git log --all --format='%h %an %s'
 The main repository is fine on the host, and the worker's commit is in it (its branch).
 The worktree is not usable from the host, and a `git worktree prune` there (or a `git gc`
 once `gc.worktreePruneExpire`, three months by default, has passed:
-<https://git-scm.com/docs/git-gc>) drops git's record of it, after which LADO's finish
-must treat the worktree as gone (`runtime.gone`). Files the container writes are the host
+<https://git-scm.com/docs/git-gc>) drops git's record of it, in the container too, as the
+repository is shared. The folder stays. LADO's `runtime.gone` judges a worktree by its
+folder only, so it does not count it as gone. Finishing the worker, or ending its run,
+then calls `git worktree remove`, and git refuses with `fatal: '<path>' is not a working
+tree` (the reviewer reproduced this in a scratch repository; BACKLOG.md). Files the container writes are the host
 user's on Docker Desktop for Mac (uid 501 here; the container sees its own uid 1000 for
 everything under `/projects`).
 
@@ -365,14 +368,23 @@ Each: its cause, what the user sees, ways out with their cost.
      `~/.claude/.credentials.json`, <https://docs.anthropic.com/en/docs/claude-code/iam>).
   2. A token in the environment: `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` (its
      help: "Set up a long-lived authentication token (requires Claude subscription)"),
-     `OPENAI_API_KEY` or `codex login --with-api-key` for Codex with an API key. Catch:
-     compose's `environment:` does not reach the agents. LADO builds an agent's environment
-     from the login shell started with a few variables only (AGENTS.md, How agents talk;
-     `agent_env.resolve`). Called inside the container with `-e LADO_PROBE=1 -e
-     CLAUDE_CODE_OAUTH_TOKEN=dummy`, it gave neither, but `SSH_AUTH_SOCK` and what
-     `/etc/profile.d/lado.sh` exports. The token must be in a file the login shell reads
-     (`~/.profile` on the volume, or a profile script reading a Docker secret). Cost: a
-     long-lived token in a file; the image must document where.
+     `OPENAI_API_KEY` or `codex login --with-api-key` for Codex with an API key. Catch: by
+     default compose's `environment:` does not reach the agents. LADO builds an agent's
+     environment from the login shell, started with a few variables only (AGENTS.md, How
+     agents talk; `agent_env.resolve`). Called inside the container with `-e LADO_PROBE=1
+     -e CLAUDE_CODE_OAUTH_TOKEN=dummy`, it passed neither of them. It did pass
+     `SSH_AUTH_SOCK` and what `/etc/profile.d/lado.sh` exports. Two ways to get the token
+     to the agents:
+     - `LADO_AGENT_ENV=inherit` in the image's environment. The agents then get the
+       environment of the process that starts them, compose's variables included
+       (`agent_env.resolve` takes `os.environ`; LADO's own hints suggest it, `INHERIT_HINT`).
+       The processes that start agents are the UI server, the container's command, and
+       `docker exec ... lado start`. It also makes `/etc/profile.d` unneeded for `PATH`.
+       Not run here. Cost: agents see the whole environment of whatever starts them, every
+       other secret in compose's `environment:` too, and a `docker exec -e` adds to it.
+     - Put the token in a file the login shell reads: `~/.profile` on the volume, or a
+       profile script that reads a Docker secret. Cost: a long-lived token in a file, and
+       the image must document where it goes.
   3. LADO carries Codex's `auth.json` into each agent's `CODEX_HOME` (the BACKLOG entry):
      needed for Codex with a ChatGPT login in any setup, not only Docker. Cost: S/M.
 
@@ -418,7 +430,8 @@ login or config was mounted):
   subscription in a file. Not run here: it needs the human's token.
 
 Recommendation: log in inside once (way 1). Use a token from the host only when the user
-already has one. Mount the host's files only on Linux, and only for OpenCode and Kilo.
+already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's profile
+(way 2). Mount the host's files only on Linux, and only for OpenCode and Kilo.
 
 ### 5.2 The project's own toolchains
 
@@ -444,6 +457,8 @@ already has one. Mount the host's files only on Linux, and only for OpenCode and
 - **User sees**: in the UI, paths like `/projects/demo`; the folder picker shows the
   container's root (H2); on the host, a worker's worktree is `prunable` and its folder is
   not a git repository (H6); an IDE on the host cannot open a worker's worktree as git.
+  After a `git worktree prune` or `git gc` on the host, finishing that worker or ending
+  its run fails with git's `is not a working tree` (H6).
 - **Ways out**:
   1. Mount the projects at the same path as on the host (`-v $HOME/lado:$HOME/lado`, the
      `~/lado` of `clone.DEFAULT_PARENT`). Every stored path and git link is then right on
@@ -492,7 +507,7 @@ already has one. Mount the host's files only on Linux, and only for OpenCode and
   container's hostname (`http://lado:8765`, cli.py), which works nowhere; `lado ui`
   inside prints the link instead of opening it.
 - **Ways out**:
-  1. A setting (`LADO_IN_CONTAINER` or a `--published` address) that words the warning for
+  1. A setting (`LADO_CONTAINER`, which the image sets, or a `--published` address) that words the warning for
      a container and prints the host's link. Cost: S, code in cli.py and server/run.py.
   2. The launcher on the host prints or opens the link (`docker exec ... lado ui
      --no-open`). Cost: part of the launcher (section 8).
@@ -506,8 +521,8 @@ already has one. Mount the host's files only on Linux, and only for OpenCode and
   back on the old version; `update-result.json` says `running`.
 - **Ways out**:
   1. `lado update` and the UI's update refuse in a container and name the way (`docker
-     compose pull && docker compose up -d`). Cost: S; how LADO knows it is in one (an
-     environment variable the image sets).
+     compose pull && docker compose up -d`). Cost: S; LADO knows it is in one by
+     `LADO_CONTAINER`, which the image sets.
   2. A supervisor process (tini plus a small loop, or s6) that keeps the container up
      while the server restarts. Cost: the update still lives only until the next
      recreation.
@@ -627,7 +642,7 @@ already has one. Mount the host's files only on Linux, and only for OpenCode and
 
 | Way | Removes | Leaves | Cost |
 |---|---|---|---|
-| Docker image (this report) | tmux, git, uv, Node.js, the CLIs; WSL setup by hand on Windows | Docker itself, logins inside, toolchains, paths, updates from outside | L (image, CI for two architectures, launcher, five code changes) |
+| Docker image (this report) | tmux, git, uv, Node.js, the CLIs; WSL setup by hand on Windows | Docker itself, logins inside, toolchains, paths, updates from outside | L (image, CI for two architectures, launcher, four changes of LADO's code: tasks 2, 3, 4 and 6 of section 8) |
 | One-command install script (`curl ... \| sh`): installs what `lado doctor` would print (brew or apt, uv, Node.js, LADO, a chosen CLI) | the typing and the order of docs/install.md, most failures of "If something goes wrong" | Homebrew on macOS, WSL on Windows, the CLI's login | S/M |
 | Homebrew formula (`brew install lado` with tmux, uv, node as dependencies) | three steps on macOS | the CLI and its login; macOS and Linuxbrew only | S |
 | Desktop app (ROADMAP stage 7) | the terminal entirely; the UI as an app | the runtime's dependencies, unless it bundles them (or a container) | L, planned |
@@ -656,8 +671,9 @@ tracker is.
    5.6 for a server published on the host's loopback; the picker's start folder. Size S.
    Depends on nothing.
 5. **«Образ Docker для LADO»** — the image (from this prototype: projects at the host's
-   path, any uid, tini, a stop that runs `lado stop --all`, a documented file the login
-   shell reads for `CLAUDE_CODE_OAUTH_TOKEN`), compose file, multi-arch build
+   path, any uid, tini, a stop that runs `lado stop --all`, and a documented way to pass
+   `CLAUDE_CODE_OAUTH_TOKEN`, either `LADO_AGENT_ENV=inherit` or the login shell's
+   profile, section 5.1), compose file, multi-arch build
    and publishing in the release workflow (GHCR), a docs/install.md section, a smoke test
    of the image in CI. Size L. Depends on 2, 3, 4.
 6. **«Возобновление сессий при старте контейнера»** — resume the sessions that ran when

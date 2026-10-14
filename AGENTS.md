@@ -28,6 +28,8 @@ make dist               # uv build, and check that the sdist and the wheel ship 
 make check              # lint, the plugin, the web UI, then unit, integration and UI tests one after another
 make test-live          # uv run pytest -m live: real agent CLIs and models; PROVIDER=claude|codex|kilo|opencode
 make test-smoke         # uv run pytest -m smoke: real agent CLIs, a local endpoint instead of a model; PROVIDER=...
+make docker             # LADO's image lado:local from the working copy: the web UI's bundle, one wheel, docker build
+make test-container     # uv run pytest -m container -n0: the image with real Docker, no model (make docker first)
 ```
 
 The web UI needs Node (npm) to build; users of the wheel do not. `make browser` (part of
@@ -156,7 +158,27 @@ no process. Codex CLI starts its session only on its first input and runs no hoo
 turn that ends on an API error (BACKLOG.md): its smoke checks that `runtime.FIRST_INPUT` is
 delivered instead of the human's message and the turn error, in code, never a skip. A
 failed smoke keeps its evidence as a failed live test does. `make test-smoke
-[PROVIDER=...]`; not in `make check`, which has no CLI.
+[PROVIDER=...]`; not in `make check`, which has no CLI. The 401 endpoint is
+`tests/fake_endpoint.py` (standard library only), also a script, `python fake_endpoint.py
+<port> <log file>`, for the container tests.
+
+Container tests (`tests/container/`, marker `container`) run LADO's image (`docker/`) with
+real Docker and no model, driving the `docker` CLI from the host against an image built
+already (`make docker`; `LADO_TEST_IMAGE`, else `lado:local`); they skip when Docker does
+not run or the image is missing. Each container, volume and compose project a test makes is
+named `lado-test-<hex>`, runs with `LADO_TELEMETRY=0` and `LADO_NO_UPDATE_CHECK=1` and is
+removed after it, also on a failure (the session's teardown fails when one is left). They
+check: one `docker run` serves `/api/health` (the wheel's version) and the UI on its
+`LADO_PORT` (8765 without it), with the container note in `docker logs` and `lado ui
+--no-open`'s link on that port; `lado doctor` has no `[FAIL]`, says `in a container`, Claude
+Code `ok` and the other CLIs `info`; Node 22 and `npx` in a login shell; a Claude Code
+session against the fake endpoint, run inside the container on its own loopback and given
+through `~/.profile`, gets its supervisor to idle, the window's process is the `claude`
+binary itself (`/proc/<pid>/exe`), and `lado doctor` run with exactly that process's
+environment (`/proc/<pid>/environ`) says `in a container`; `docker/compose.yaml` serves on
+its `LADO_PORT` and refuses without `LADO_PROJECTS`. A failed test keeps the container's
+`docker logs` and LADO's logs in `real_clis.EVIDENCE`. `make test-container`; not in `make
+check`.
 
 CI (`.github/workflows/ci.yml`) runs on each pull request, each push to main, daily on main
 (03:47 UTC, `schedule`) and by hand (`workflow_dispatch`). Its jobs: `unit (<python>)`,
@@ -166,7 +188,11 @@ Python, each in one process (`-n0 --shard K/3`); `js`, the Node tests; `ui (<k>)
 e2e tests in two shards on Python 3.13 (on two workers, `-n 2 --shard K/2`), the first also
 `make dist` (the web UI built and in both the sdist and the wheel), the second building only
 the bundle; `changes`, whether the run needs the smoke; `smoke <os> <provider>`, the smoke
-tests on Linux and macOS, one cell per (system, provider), none stopping the others; and
+tests on Linux and macOS, one cell per (system, provider), none stopping the others;
+`container (<arch>)`, LADO's image on amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`),
+each on its native runner: `make docker`, then `scripts/smoke_ci.py container <out>` (the
+container tests with the smoke cell's pass rule, so a skip is red; the artifact
+`container-<arch>`), on every run whatever it changes, pushing nothing anywhere; and
 `ci-ok`, the one check the ruleset of main requires. `--shard K/N` (`tests/shard.py`, also
 locally) keeps the tests whose node id's CRC-32 modulo N is K - 1, so each test is in
 exactly one shard, always the same, and deselects the rest. The worker counts are for
@@ -180,7 +206,7 @@ changes (`git diff --name-only --no-renames base...head`) is on the skip list in
 `.github/dependabot.yml`): `scripts/smoke_ci.py needed` answers for `changes`, and the
 smoke's job-level `if` skips it, never the triggers' paths (the run and `ci-ok` would not
 report). No path of that list may be or hold `src/`, `scripts/`, `tests/` (but `tests/ui/`
-and `tests/js/`), `pyproject.toml`, `uv.lock` or `.github/workflows/`
+and `tests/js/`), `docker/`, `pyproject.toml`, `uv.lock` or `.github/workflows/`
 (`tests/test_ci_workflow.py`). `ci-ok` needs every other job and runs whatever their
 results (`if: always()`, both kept by a test: a skipped required check counts as passed);
 `scripts/ci_ok.py` fails it unless each succeeded, the smoke skipped only when `changes`
@@ -197,8 +223,8 @@ its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the sa
 (`tests/test_ci_workflow.py`). No secret anywhere.
 Every `uses:` of every workflow, GitHub's own actions too, is a full commit SHA followed by
 `# vX.Y.Z`, the release it is (`tests/test_workflow_security.py`); Dependabot
-(`.github/dependabot.yml`) updates those pins, the uv and the web UI's npm dependencies
-weekly, minor and patch in one pull request per ecosystem, a release once it is 7 days old.
+(`.github/dependabot.yml`) updates those pins, the uv and the web UI's npm dependencies and
+the base images of `docker/Dockerfile` (pinned by digest) weekly, minor and patch in one pull request per ecosystem, a release once it is 7 days old.
 `claude.yml` (the `@claude` reviewer) starts its job only for an author who is the
 repository's `OWNER`, `MEMBER` or `COLLABORATOR`. Vulnerability reports: SECURITY.md.
 Live tests are not in CI: they run locally, at release only, every provider (Claude Code with
@@ -1033,8 +1059,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
 - `scripts/check_lock.py`: the Makefile's machine-wide test-run lock (Commands).
   `scripts/check_groups.py`: `make check`'s test groups, one after another (Commands).
-  `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke, and
-  the CLIs' pins (Commands); standard library only.
+  `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke
+  (`run`), a cell of CI's job `container` (`container`), and the CLIs' pins (Commands);
+  standard library only.
   `scripts/release_check.py`: the Release workflow's check that a final release is the code
   of its last release candidate (docs/release.md); standard library only.
   `scripts/check_telemetry.py`: the Release workflow's check that the region of
@@ -1049,6 +1076,23 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   only, nothing of `lado` imported (its CHANGELOG items through `release_notes.section`).
 - `tests/real_clis.py`: what the live and the smoke tests share (isolation, `with_model`,
   the trust dialogs, the agents' processes, the evidence of a failed test).
+  `tests/fake_endpoint.py`: the 401 model API of the smoke and container tests.
+  `tests/container/`: the container tests (Commands).
+- `docker/`: LADO's image, built from a checkout by `make docker` (`lado:local`; nothing
+  publishes it yet). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39), Node 22 and npm from
+  the official `node` image, uv from its own, every base pinned by digest; LADO from the one
+  wheel of the build context (`Dockerfile.dockerignore`, an allowlist: `dist/lado-*.whl`
+  and `profile.sh`), Claude Code alone at `smoke_ci.py`'s `PINS["claude"]` (`ARG
+  CLAUDE_VERSION`), programs under `/opt`, the user `lado` (uid 1000) with its home a
+  volume; `lado server --host 0.0.0.0 --port $LADO_PORT` (8765) under tini. The
+  environment is set twice with the same values (`tests/test_docker.py`): in `ENV` for the
+  server and `docker exec`, and in `profile.sh`, the image's `/etc/profile.d/lado.sh`, for
+  the agents, whose environment comes from the login shell (`LADO_CONTAINER=1`,
+  `LADO_REPOS=/projects`, `PATH`, `CLAUDE_CONFIG_DIR`, `DISABLE_AUTOUPDATER`, `LANG`).
+  `compose.yaml`: the same image (`LADO_IMAGE`), one `LADO_PORT` both inside and published
+  as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at `/projects`, no
+  container name (a second one: `-p lado-2`). The research prototype in
+  `docs/research/docker-install/` is evidence only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
 ## How agents talk
@@ -1794,7 +1838,7 @@ the UI alike.
 
 ## Testing
 
-Six layers; each change gets tests at the lowest layer that can catch its bugs:
+Seven layers; each change gets tests at the lowest layer that can catch its bugs:
 
 1. **Unit** (`make test`): pure logic, tmux replaced by a recorder. Default for everything.
    The server's API is tested in process with FastAPI's test client; the web UI's
@@ -1826,6 +1870,10 @@ Six layers; each change gets tests at the lowest layer that can catch its bugs:
    `hooks.log`, each agent's config folder and cwd, and each tmux window's screen, taken
    before teardown. A passing test keeps nothing; the folder is never cleaned by the tests.
    A timed-out wait names what it waited for and the agents' statuses and last messages.
+7. **Container** (`make test-container`, marker `container`): LADO's image (`docker/`) as
+   one `docker run` starts it, with real Docker and no model (Commands). Needed for a change
+   of `docker/` or of how LADO behaves in a container's environment. Never in the default
+   run or `make check`; in CI on amd64 and arm64 (job `container`, every run).
 
 What must be green before a release (CI, the Windows probe, `make test-live`):
 [docs/release.md](docs/release.md).

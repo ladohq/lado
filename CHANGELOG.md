@@ -13,6 +13,10 @@
   says the server runs in a container. `LADO_REPOS` names the folder of your repositories:
   the New session window suggests its subfolders in an empty Where, a clone by URL goes
   there by default (`lado start <git-url>` too), and `lado doctor` shows it.
+- LADO's Docker image is in the repository (`docker/`): LADO from the build's wheel and
+  Claude Code, started with one `docker run` (or `docker/compose.yaml`, whose `LADO_PORT`
+  sets the port inside and on the host alike). `make docker` builds it from a checkout; CI
+  builds and tests it on amd64 and arm64. It is not published yet.
 
 ## 0.38.0 (2026-10-14)
 

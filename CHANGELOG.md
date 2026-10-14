@@ -19,6 +19,9 @@
   the Flows tab: green forward, orange back, so a `ready` after a review's `changes` no
   longer turns orange. A step back has a return icon, and hovering an outcome says where
   the step goes and, for a step back, which states run again.
+- Selecting text in the UI shows a small bar to copy it or quote it into the composer; a
+  quote from an artifact names it and its lines. Code blocks and messages have a copy
+  button that shows on hover.
 
 ## 0.38.0 (2026-10-14)
 

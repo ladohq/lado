@@ -113,7 +113,7 @@ number (T3). Not checked in Docker by hand: no image yet.
 
 ### Stage 1. The image in the repository and in CI (walking skeleton)
 
-**T3. Dockerfile in the repository, the image's build and smoke test in CI** (M; LAD-64)
+**T3. Dockerfile in the repository, the image's build and smoke test in CI** (M; LAD-64, done: pull request #50)
 The prototype in a lasting place (`docker/`), with Claude Code only; built in CI on amd64
 and arm64 (GitHub has arm runners); smoke: the container starts, `lado doctor` is green,
 `/api/health` answers, a session with a fake endpoint (as in the existing smoke tests)
@@ -130,27 +130,38 @@ LAD-60), and `docker/` is not on the smoke's skip list. The session smoke may be
 Check: a green CI job on both architectures; `lado doctor` run by an agent says "in a
 container"; by hand on a Mac, the link from `docker logs` opens in the host's browser, and
 a second container with `LADO_PORT=8766` and its own volume runs beside the first.
+Result: `docker/` holds the image, an optional compose file and `profile.sh`; one
+`docker run` with no other file starts LADO (every default is in the image), and compose
+is the same kept in a file. `make docker` builds `lado:local` from the working copy. A new
+test layer, container (`tests/container/`, `make test-container`), runs real Docker
+against the built image; CI's job `container` runs it on amd64 and arm64, and `ci-ok`
+needs it. Checked by the human on a Mac: two containers side by side, each UI in its own
+browser tab. Not checked: a Linux host with a uid other than 1000 (T4), Claude Code's
+login and a real model in the container (T8, T10).
 
-**T4. Projects at the host's path** (S)
-Compose mounts the projects folder at the same path as on the host and sets
-`LADO_REPOS` to it (the UI's start folder and the default clone folder, from T2);
-`safe.directory` for it.
-Check: a worker in the container commits; on the host `git -C <the worker's worktree>
-status` works and `git worktree list` says no `prunable`.
+**T4. The host's projects folder: the same path and the same owner** (M; LAD-69; T4
+and T5 of the first plan in one task)
+The projects folder is mounted at the same path as on the host, and `LADO_REPOS` names it
+(compose from `LADO_PROJECTS`; `docker run` with the host's path and the variable);
+`safe.directory` for it. On Docker Engine (Linux) the entrypoint gives the user `lado`
+the uid and gid of the projects folder's owner; with owner 0 (as Docker Desktop shows it)
+it changes nothing; the home volume moves to the new uid. One task, since T4's check (a
+worker commits into the host's folder) fails on a Linux CI runner (uid 1001, the image's
+user 1000) until T5's part is done: apart, T4's test would need a work-around T5 removes.
+Check: tests of the container layer, on amd64 and arm64: a worker in the container
+commits into the host's folder; on the host `git -C <the worker's worktree> status`
+works and `git worktree list` says no `prunable`; on the Linux runner the files an agent
+makes belong to the runner's user; a container made again with another uid works with the
+same home volume. By hand on a Mac: a session in the UI in a project of that folder.
 
-**T5. File owner on Linux (uid)** (S/M)
-On Docker Engine (Linux) the entrypoint gives the user `lado` the uid and gid of the
-projects folder's owner; with owner 0 (as Docker Desktop shows it) it changes nothing; the
-home volume moves to the new uid.
-Check: a smoke test in CI on a Linux runner (uid 1001): the files an agent makes belong to
-the runner's user.
+**T5.** Merged into T4 (LAD-69).
 
 **T6. Stopping and resuming the container's sessions** (M)
 On `docker stop` LADO records the sessions that ran and stops them properly (the agents'
 config folders removed, `lado doctor` without warnings); when the container starts it
 resumes them. Also: a new image on an old volume migrates `lado.db` with a backup.
-Check: a test "session, `docker compose down`, `up`, the session runs again"; a test "an
-old schema on the volume".
+Check: tests of the container layer: "session, `docker compose down`, `up`, the session
+runs again"; "an old schema on the volume".
 
 ### Stage 2. A programmer can use it (from the documentation)
 
@@ -160,6 +171,9 @@ no new secrets. The tags leave room for images with other agents.
 Check: `docker pull` on a Mac and on Linux after a release candidate.
 
 **T8. Section "Install with Docker" in docs/install.md and a ready compose file** (S)
+Decided here, with T7: which way the documentation leads with, `docker run` or compose
+(the image needs no file since LAD-64), and so which update line LADO prints in a
+container (now `docker compose pull && docker compose up -d`, from T1).
 Download the compose file, one command, Claude Code's login, open the UI; how to remove it.
 Check: the human follows the instructions from scratch on a clean volume.
 
@@ -218,7 +232,7 @@ Check: on a Mac a double click opens the UI.
 
 ```
 T1, T2 ──┐
-         ├─> T3 ─> T4 ─> T5 ─> T6 ─> T7 ─> T8 ─> T11
+         ├─> T3 ─> T4 (with T5) ─> T6 ─> T7 ─> T8 ─> T11
          │          └─> T9, T10 (after T3)
 T12, T13: independent of the image (useful for the usual install too)
 T14: after T7

@@ -64,10 +64,15 @@ at the start of every step.
   - `make test-live`: real models, run only at a release, Claude Code only with the
     human's yes;
   - `make test-smoke`: needs the real CLIs; CI runs it.
-- What CI proves: on every push, `ruff format --check`, `ruff check`, the unit and
-  integration tests on Python 3.10 and 3.13, the Node tests, `make dist` with the UI e2e
-  tests, and the smoke tests on Linux and macOS per provider. A green CI is the full
-  `make check` plus the smoke.
+- What CI proves: on every pull request and push to main, `ruff format --check`,
+  `ruff check`, the unit tests and the integration tests (three shards per Python) on
+  Python 3.10 and 3.13, the Node tests, `make dist` and the UI e2e tests (two shards). The
+  smoke tests on Linux and macOS per provider run on every push to main, daily on main,
+  and on each pull request that changes a file off ci.yml's skip list (`web/`, `docs/`,
+  `openspec/`, `tests/ui/`, `tests/js/`, the top-level Markdown documents,
+  `.github/dependabot.yml`). The one required check is `ci-ok`: green means the full
+  `make check` plus the smoke, but for a pull request within the skip list, where the
+  smoke was skipped.
 - CI time ceiling: 40 minutes
 
 ## External reviewer

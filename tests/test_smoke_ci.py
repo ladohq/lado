@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from agent_helpers import init_repo
 
 from lado import providers
 from lado.providers import claude, codex, kilo, opencode
@@ -214,3 +215,143 @@ def test_an_unknown_provider_is_refused(tmp_path):
     done, _, ran = run_cell(tmp_path, "gemini")
     assert done.returncode != 0 and "gemini: no provider (one of " in done.stderr
     assert ran == ""
+
+
+# Whether a run needs the smoke (`needed`, ci.yml's job `changes`).
+
+SKIP = "web/\ndocs/\ntests/ui/\nREADME.md\n"
+
+
+@pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])
+def test_outside_a_pull_request_the_smoke_always_runs(event):
+    assert smoke_ci.needed(event, [], smoke_ci.skip_list(SKIP)) is True
+    assert smoke_ci.needed(event, ["docs/x.md"], smoke_ci.skip_list(SKIP)) is True
+
+
+@pytest.mark.parametrize(
+    "files, needed",
+    [
+        (["web/src/App.tsx", "docs/design/ui.md", "tests/ui/test_x.py"], False),
+        (["README.md"], False),
+        (["src/lado/runtime.py", "docs/design/ui.md"], True),
+        (["NEW.md"], True),
+        # An exact path is no folder prefix, and a folder takes only what is under it.
+        (["README.md.orig"], True),
+        (["webby/x"], True),
+        (["tests/ui_helpers.py"], True),
+        ([], True),
+    ],
+)
+def test_a_pull_request_skips_the_smoke_only_when_every_file_is_on_the_list(files, needed):
+    assert smoke_ci.needed("pull_request", files, smoke_ci.skip_list(SKIP)) is needed
+
+
+@pytest.mark.parametrize("text", ["", "\n  \n"])
+def test_an_empty_skip_list_is_refused(text):
+    with pytest.raises(ValueError, match="empty skip list"):
+        smoke_ci.skip_list(text)
+
+
+def test_the_skip_list_takes_one_path_per_line_and_drops_blanks():
+    assert smoke_ci.skip_list("  web/\n\nREADME.md  \n") == ["web/", "README.md"]
+
+
+def git(repo, *args) -> str:
+    done = subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    )
+    return done.stdout.strip()
+
+
+def run_needed(repo, *args, skip=SKIP):
+    env = {**os.environ, "SMOKE_SKIP": skip}
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "needed", *args],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+@pytest.fixture
+def pr(tmp_path):
+    """A repository; the test adds the base's and the pull request's commits."""
+    return init_repo(tmp_path / "repo")
+
+
+def commit(repo, path, text="y\n") -> str:
+    file = repo / path
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_text(text)
+    git(repo, "add", path)
+    git(repo, "commit", "-q", "-m", path)
+    return git(repo, "rev-parse", "HEAD")
+
+
+def test_needed_prints_false_for_a_docs_only_pull_request(pr):
+    base = commit(pr, "README.md", "base\n")
+    commit(pr, "docs/a.md")
+    head = commit(pr, "web/src/b.tsx")
+    done = run_needed(pr, "pull_request", base, head)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == "smoke=false\n"
+    # It says why, on stderr: the files it went by.
+    assert "docs/a.md" in done.stderr and "web/src/b.tsx" in done.stderr
+
+
+def test_needed_prints_true_when_one_file_is_off_the_list(pr):
+    base = commit(pr, "README.md", "base\n")
+    commit(pr, "docs/a.md")
+    head = commit(pr, "src/lado/x.py")
+    done = run_needed(pr, "pull_request", base, head)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == "smoke=true\n"
+
+
+def test_a_file_moved_from_code_into_docs_needs_the_smoke(pr):
+    """A rename names both sides: the code it took away counts too."""
+    commit(pr, "src/lado/x.py", "a\n" * 20)
+    base = commit(pr, "README.md", "base\n")
+    (pr / "docs").mkdir()
+    git(pr, "mv", "src/lado/x.py", "docs/x.py")
+    git(pr, "commit", "-q", "-m", "move")
+    head = git(pr, "rev-parse", "HEAD")
+    done = run_needed(pr, "pull_request", base, head)
+    assert done.stdout == "smoke=true\n", done.stderr
+
+
+def test_needed_diffs_from_the_merge_base(pr):
+    """base...head: what main gained since the branch left it is not the pull request's."""
+    git(pr, "checkout", "-q", "-b", "topic")
+    head = commit(pr, "docs/a.md")
+    git(pr, "checkout", "-q", "main")
+    moved = commit(pr, "src/lado/x.py")
+    done = run_needed(pr, "pull_request", moved, head)
+    assert done.stdout == "smoke=false\n", done.stderr
+
+
+def test_needed_outside_a_pull_request_needs_no_diff(pr):
+    done = run_needed(pr, "push")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == "smoke=true\n"
+
+
+def test_needed_fails_on_a_git_error_instead_of_answering(pr):
+    done = run_needed(pr, "pull_request", "0" * 40, "1" * 40)
+    assert done.returncode != 0
+    assert done.stdout == ""
+
+
+def test_needed_refuses_an_empty_list(pr):
+    done = run_needed(pr, "push", skip="")
+    assert done.returncode != 0
+    assert "empty skip list" in done.stderr
+
+
+@pytest.mark.parametrize("args", [[], ["pull_request"], ["pull_request", "a"], ["push", "a"]])
+def test_needed_with_wrong_arguments_is_a_usage_error(pr, args):
+    done = run_needed(pr, *args)
+    assert done.returncode == 2
+    assert "usage:" in done.stderr

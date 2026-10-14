@@ -149,6 +149,19 @@ def test_gates_are_counted_with_their_answer_and_the_leads_advice(lado_home):
         assert "secret" not in str(row)
 
 
+@pytest.mark.parametrize("closed", ["cancelled", "overridden"])
+def test_a_gate_closed_by_no_answer_of_the_human_is_no_agreement(lado_home, closed):
+    """A run cancelled or set past its gate: the gate closes, but no human chose against
+    the lead's advice."""
+    _session()
+    run = _run()
+    _start_run(dataclass_waiting(run), _gate(run))
+    [gate] = state.open_gates(SESSION)
+    assert state.recommend(state.GATE, gate.id, "fine", "approve", False)
+    _close(dataclass_waiting(run), closed, gate.id)
+    assert _rows()[-1] == (state.USAGE_GATE_CLOSE, closed, None, None)
+
+
 def dataclass_waiting(run: state.Run) -> state.Run:
     return state.Run(**{**run.__dict__, "status": state.WAITING})
 
@@ -306,6 +319,21 @@ def test_the_migration_fills_usage_as_the_triggers_did(lado_home):
     assert not any("usage" in name for name in names)
     assert state.migrate() == state.SCHEMA_VERSION
     assert _comparable(_rows(with_time=True)) == _comparable(live)
+
+
+def test_the_migration_counts_no_agreement_for_a_gate_closed_by_no_answer(lado_home):
+    _session()
+    for name, closed in (("task/a", "cancelled"), ("task/b", "overridden"), ("task/c", "approve")):
+        run = _run(name)
+        _start_run(dataclass_waiting(run), _gate(run))
+        gate = state.open_gate(SESSION, name)
+        assert state.recommend(state.GATE, gate.id, "fine", "approve", False)
+        _close(dataclass_waiting(run), closed, gate.id)
+    live = [r for r in _rows() if r[0] == state.USAGE_GATE_CLOSE]
+    assert [r[3] for r in live] == [None, None, 1]
+    agent_helpers.previous_schema()
+    state.migrate()
+    assert [r for r in _rows() if r[0] == state.USAGE_GATE_CLOSE] == live
 
 
 def test_the_migration_keys_an_older_spawned_event_with_no_kit(lado_home):

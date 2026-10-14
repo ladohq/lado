@@ -109,7 +109,8 @@ agents per provider, runs = `run_start`, gates = `gate_open`, turn_errors), from
 `usage_summary(since) -> dict[str, Counter]`: per kind, a `collections.Counter` of keys
 (with `None` for none), plus per-provider counters for `agent`, `agent_ended` and
 `turn_error`, and for `turn_error` per provider and kind; and the agreement (`agrees` 1
-and not NULL). One query, `GROUP BY kind, key, provider, agrees`. `usage_start()`: the
+and not NULL; NULL also for a gate closed by no answer of the human, `cancelled` or
+`overridden`, which counts as closed but never in the agreement). One query, `GROUP BY kind, key, provider, agrees`. `usage_start()`: the
 smallest `created_at` of `usage`, cut to seconds, or None.
 
 ### D7. `stats.py` builds the lines, `cmd_stats` prints them

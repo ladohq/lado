@@ -571,6 +571,11 @@ FLOW_CANCEL = "flow_cancel"
 FLOW_SET = "flow_set"  # the human forced the run into a state
 GATE_OPEN = "gate_open"  # the run waits for the human; detail: "#<id> <kind> at <state>: ..."
 GATE_ANSWER = "gate_answer"  # the gate closed; detail: "#<id> <answer>[: <comment>]"
+# How a gate is closed when the human gave no answer at it: its run was cancelled, or the
+# human set the run past it (`lado flow-set`). A loop limit's `cancel` is an answer.
+GATE_CANCELLED = "cancelled"
+GATE_OVERRIDDEN = "overridden"
+GATE_UNANSWERED = (GATE_CANCELLED, GATE_OVERRIDDEN)
 # Session events, by LADO.
 SESSION_STOP = "session_stop"  # detail: what was dropped
 SESSION_RESUME = "session_resume"  # detail: what changed
@@ -745,8 +750,11 @@ def _events_select(row: str) -> str:
 
 
 def _gate_close_select(row: str) -> str:
+    """A gate's close agrees with the lead only as the human's answer: one closed by no
+    answer (GATE_UNANSWERED) or with no recommended choice has no agreement."""
     agrees = (
-        f"CASE WHEN {row}.recommended_choice IS NULL THEN NULL"
+        f"CASE WHEN {row}.recommended_choice IS NULL"
+        f" OR {row}.answer IN ({_sql_list(GATE_UNANSWERED)}) THEN NULL"
         f" ELSE {row}.answer = {row}.recommended_choice END"
     )
     at = f"coalesce({row}.answered_at, {row}.created_at)"

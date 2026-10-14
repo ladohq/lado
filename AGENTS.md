@@ -820,7 +820,8 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     added, a resume, an agent spawned (key `<role>@<kit>`, with its provider), its process
     ended by itself, a turn error (key the error's kind), a run started, ended or cancelled
     (key `<flow>@<kit>`), a gate opened (its kind) or closed (its answer, and whether it is
-    the lead's recommended choice), a question to the human, a message failed or dropped.
+    the lead's recommended choice; none when closed by no answer of the human,
+    `GATE_UNANSWERED`: `cancelled`, `overridden`), a question to the human, a message failed or dropped.
     Only `USAGE_TRIGGERS` write it (one per `USAGE_SOURCES` entry, on `sessions`, `events`,
     `gates` and `messages`), in the writer's transaction; the migration fills it once from
     the rows kept (`usage_from_history`, the same `USAGE_SOURCES`), and `lado forget`
@@ -1622,8 +1623,8 @@ number, exit 2), from lado.db's `usage` table (`state.py`, schema 27) and LADO's
 journal: sessions started and resumed; agents started per agent CLI and per role
 (`<role>@<kit>`, `@?` for one spawned before 0.38.0, with a note), agents ended by
 themselves, turn errors per CLI and kind; flow runs started per flow, ended, cancelled;
-gates opened per kind, closed per answer, and how many closes with a recommended choice
-took it; questions to the human; messages failed and dropped; LADO's own errors. A
+gates opened per kind, closed per answer, and how many of the human's answers with a
+recommended choice took it (a cancelled or overridden gate is closed, never in that); questions to the human; messages failed and dropped; LADO's own errors. A
 breakdown lists the larger first, then by name, and wraps under itself. The first line
 names the period in UTC and says nothing is sent; `Earliest record:` follows with `--all`
 or when the earliest row is later than the period's start. It reads only, opens no

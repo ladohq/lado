@@ -46,8 +46,10 @@ def _groups(usage: state.Usage, errors: int) -> list[str]:
     roles = _parts(usage.keys[state.USAGE_AGENT])
     agrees = usage.agrees[state.USAGE_GATE_CLOSE]
     advised = sum(agrees.values())
+    # "12 of 14": the count reads on into its text, one space between.
     advice = (
-        _line("answered as the lead advised", agrees[1], f"of {advised} with a recommended choice")
+        _line("answered as the lead advised", agrees[1])
+        + f" of {advised} with a recommended choice"
         if advised
         else _line("answered as the lead advised", None, "no recommended choice")
     )

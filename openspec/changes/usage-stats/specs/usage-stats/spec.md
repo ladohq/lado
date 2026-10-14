@@ -10,7 +10,8 @@ role with its kit, with its provider), an `ended` event (`agent_ended`, with the
 with the agent's provider), a `flow_start`, `flow_end` or `flow_cancel` event
 (`run_start`, `run_end`, `run_cancel`, key the run's flow with its kit), a gate added (`gate_open`,
 key its kind), a gate's answer set (`gate_close`, key the answer, and whether it is the
-lead's recommended choice, none without one), a question added (`question`), and a
+lead's recommended choice, none without one and none for a gate closed by no answer of
+the human: `cancelled` with its run, `overridden` by `lado flow-set`), a question added (`question`), and a
 message whose state becomes `failed` (`message_failed`) or `dropped`
 (`message_dropped`). A role and a flow SHALL be keyed with the kit they come from,
 `<role>@<kit>` and `<flow>@<kit>`, since two kits may name a role or a flow alike: the
@@ -69,7 +70,8 @@ and the count of LADO's own errors in `errors.jsonl` and its `.1`: sessions star
 resumed; agents started, per provider and per role; agents ended by themselves, per
 provider; turns ended on an error, per provider and per error kind; flow runs started (per
 flow), ended and cancelled; gates opened (per kind), closed (per answer) and how many
-closes agreed with the lead of those that had a recommended choice; roles and flows by
+closes agreed with the lead of the human's answers that had a recommended choice (a gate
+closed by no answer of the human counts as closed, never in the agreement); roles and flows by
 their kit-qualified keys, with a note that `@?` marks a role whose kit was not recorded
 when one is shown; questions asked of the
 human; messages failed and dropped. A count of 0 SHALL be printed as `0`, and a breakdown
@@ -101,6 +103,12 @@ only its latest part.
 - **WHEN** in the period four gates closed, three with a recommended choice, two of them
   answered as recommended
 - **THEN** the output says 2 of 3 agreed with the lead
+
+#### Scenario: A gate closed by no answer of the human
+- **WHEN** a gate with the lead's recommended choice is closed because its run was
+  cancelled, and another because the human set its run past it with `lado flow-set`
+- **THEN** both count among the gates closed (`cancelled 1, overridden 1`) and neither
+  counts in the agreement with the lead
 
 #### Scenario: Bad options
 - **WHEN** the human runs `lado stats --days 0`, `lado stats --days x` or

@@ -94,7 +94,7 @@ def test_the_lines_of_a_month(lado_home):
         "Gates and questions",
         "  gates opened                 17  approval 15, choice 1, loop 1",
         "  gates closed                 16  approve 12, reject 3, cancelled 1",
-        "  answered as the lead advised 12  of 14 with a recommended choice",
+        "  answered as the lead advised 12 of 14 with a recommended choice",
         "  questions to you             23",
         "Messages",
         "  failed to deliver             1",
@@ -176,10 +176,13 @@ def test_the_agreement_counts_only_the_closes_with_a_recommended_choice(lado_hom
         _times(2, "gate_close", "approve", agrees=1)
         + _times(1, "gate_close", "approve", agrees=0)
         + _times(1, "gate_close", "reject")
+        + _times(1, "gate_close", "cancelled")  # closed by no answer: no agreement
+        + _times(1, "gate_close", "overridden")
     )
-    assert "  answered as the lead advised  2  of 3 with a recommended choice" in stats.lines(
-        30, NOW
-    )
+    out = stats.lines(30, NOW)
+    assert "  answered as the lead advised  2 of 3 with a recommended choice" in out
+    at = out.index("  gates closed                  6  approve 3, cancelled 1, overridden 1,")
+    assert out[at + 1] == " " * stats.BREAKDOWN + "reject 1"  # still counted as closed
 
 
 @pytest.mark.parametrize("args", [["--days", "0"], ["--days", "x"], ["--days", "7", "--all"]])

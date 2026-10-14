@@ -7,7 +7,6 @@
   session or repository names, nor message texts; a link opens GitHub's new issue form
   filled in with it (the terminal asks first), and nothing is sent until you submit it.
   `errors.jsonl` now keeps each error's scrubbed form too. API: `GET /api/bug-report`.
-
 - UI: the expanded waiting card covers the session's chat (on Needs you, the page) instead
   of the whole window, so an artifact opened from it shows over it; Esc closes that
   artifact first, then folds the card. On Needs you an artifact opens over the page,

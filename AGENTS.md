@@ -296,8 +296,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     one capture of an unexpected exception (never raises; `state.SchemaError` is none): a
     JSON line in `LADO_HOME/errors.jsonl` (mode 600; time, version, where, type, message,
     traceback, session, agent, and the scrubbed form's `chain`, `stack`, `fingerprint` and
-    `provider`, which a bug report reads; LADO 0.37's lines lack them), and, only while
-    sending is on, a scrubbed event in
+    `provider`, which a bug report reads; LADO 0.37's lines lack them, and so does a line
+    whose `scrub` failed: that line is still written and nothing of it queued, and the
+    scrub's failure is an error of its own at `telemetry:scrub`, `SCRUB_FAILED`, once,
+    `_scrubbed`), and, only while sending is on, a scrubbed event in
     `LADO_HOME/telemetry/outbox/` (`scrub`: types, LADO's own frames as
     `lado/<file>:<function>:<line>`, others `<external>`, `where`, provider, `fingerprint`;
     never a text, path or name), at most `OUTBOX_MAX` (200), further ones counted in

@@ -97,6 +97,7 @@ FIELDS: dict[str, int] = {
 
 PACKAGE = Path(__file__).resolve().parent
 EXTERNAL = "<external>"
+SCRUB_FAILED = "telemetry:scrub"  # where a failure of `scrub` itself is recorded
 
 
 @dataclasses.dataclass(frozen=True)
@@ -339,30 +340,52 @@ def record(
 ) -> None:
     """An unexpected exception of a LADO process: a line in errors.jsonl, and, while sending
     is on, a queued error event. `state.SchemaError` is the upgrade path's refusal, no error.
-    Never raises."""
+    Never raises. When `scrub` fails, the line is written without the scrubbed form and
+    nothing of it is queued (`_scrubbed`)."""
     if isinstance(exc, db.SchemaError):
         return
     with contextlib.suppress(Exception):
-        scrubbed = scrub(where, exc, provider)
-        line = _journal(where, exc, scrubbed, session, agent)
-        if state().on:
-            _queue({**scrubbed, "at": line["at"], "lado": line["lado"]})
+        scrubbed = _scrubbed(where, exc, provider, queue=True)
+        _queue_scrubbed(scrubbed, _journal(where, exc, scrubbed, session, agent))
+
+
+def _scrubbed(where: str, exc: BaseException, provider: str | None, queue: bool) -> dict | None:
+    """The exception's scrubbed form, or None when `scrub` fails: that failure is then an
+    error of its own at `telemetry:scrub`, journaled, and queued only with `queue`. Once:
+    when its own scrub fails too, its line goes without one. Never raises."""
+    try:
+        return scrub(where, exc, provider)
+    except Exception as failure:
+        scrubbed = None
+        with contextlib.suppress(Exception):
+            scrubbed = scrub(SCRUB_FAILED, failure, None)
+        with contextlib.suppress(Exception):
+            line = _journal(SCRUB_FAILED, failure, scrubbed)
+            if queue:
+                _queue_scrubbed(scrubbed, line)
+        return None
+
+
+def _queue_scrubbed(scrubbed: dict | None, line: dict) -> None:
+    """Queue the error of a journal line while sending is on; never one without its scrubbed
+    form."""
+    if scrubbed is not None and state().on:
+        _queue({**scrubbed, "at": line["at"], "lado": line["lado"]})
 
 
 def _journal(
     where: str,
     exc: BaseException,
-    scrubbed: dict | None = None,
+    scrubbed: dict | None,
     session: str | None = None,
     agent: str | None = None,
 ) -> dict:
     """Append the exception's line to errors.jsonl; the line. It holds the scrubbed form
     too (`chain`, `stack`, `fingerprint`, `provider`), the only fields a bug report reads
-    besides the time, version, where and type."""
+    besides the time, version, where and type; with None (`scrub` failed) the line goes
+    without those four, as LADO 0.37 wrote it. It never scrubs itself."""
     import lado
 
-    if scrubbed is None:
-        scrubbed = scrub(where, exc, None)
     line = {
         "at": format_time(now()),
         "lado": lado.__version__,
@@ -372,11 +395,9 @@ def _journal(
         "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
         "session": session,
         "agent": agent,
-        "chain": scrubbed["chain"],
-        "stack": scrubbed["stack"],
-        "fingerprint": scrubbed["fingerprint"],
-        "provider": scrubbed["provider"],
     }
+    if scrubbed is not None:
+        line.update({key: scrubbed[key] for key in ("chain", "stack", "fingerprint", "provider")})
     bounded_append(journal_path(), json.dumps(line) + "\n", mode=0o600)
     return line
 
@@ -431,9 +452,9 @@ def dropped() -> int:
 
 def _journal_only(where: str, exc: BaseException) -> None:
     """A journal line and nothing queued: the sender's own failure, so a broken sender
-    cannot feed itself."""
+    cannot feed itself; a failing `scrub` is journaled only too."""
     with contextlib.suppress(Exception):
-        _journal(where, exc)
+        _journal(where, exc, _scrubbed(where, exc, None, queue=False))
 
 
 # What was sent and tried: sent.json.

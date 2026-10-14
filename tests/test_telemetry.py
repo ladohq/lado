@@ -177,6 +177,91 @@ def test_record_never_raises(tmp_path, monkeypatch):
     telemetry.record("loop", _raise(KeyError("x")))  # no exception
 
 
+SCRUBBED = {"chain", "stack", "fingerprint", "provider"}
+LINE = {"at", "lado", "where", "type", "message", "traceback", "session", "agent"}
+
+
+@pytest.fixture
+def scrub_fails_for(monkeypatch):
+    """`scrub` raises a TypeError for the exceptions a test names, or for all with None."""
+    scrub = telemetry.scrub
+    failing: list = []
+
+    def broken(where, exc, provider):
+        if failing == [None] or exc in failing:
+            raise TypeError("scrub broke")
+        return scrub(where, exc, provider)
+
+    monkeypatch.setattr(telemetry, "scrub", broken)
+    return failing
+
+
+def _line_and_failure():
+    """The journal's two lines: the error's, then the scrub's failure (written first)."""
+    failure, line = _journal()
+    assert failure["where"] == "telemetry:scrub"
+    return line, failure
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_a_failing_scrub_keeps_the_line_and_is_an_error_of_its_own(
+    telemetry_on, monkeypatch, scrub_fails_for, on
+):
+    if not on:
+        monkeypatch.setenv("LADO_TELEMETRY", "0")
+    exc = _raise(KeyError("w1"))
+    scrub_fails_for.append(exc)
+    telemetry.record("hook:turn_end", exc, "claude", session="s", agent="w1")
+    line, failure = _line_and_failure()
+    assert set(line) == LINE
+    assert (line["where"], line["type"], line["message"]) == ("hook:turn_end", "KeyError", "'w1'")
+    assert (line["session"], line["agent"]) == ("s", "w1")
+    assert "Traceback" in line["traceback"] and line["lado"] and line["at"]
+    assert set(failure) == LINE | SCRUBBED
+    assert (failure["where"], failure["type"]) == ("telemetry:scrub", "TypeError")
+    assert any(frame.startswith("lado/telemetry.py:") for frame in failure["stack"])
+    if on:
+        [event] = telemetry.queued()
+        assert (event["where"], event["type"]) == ("telemetry:scrub", "TypeError")
+        assert event["fingerprint"] == failure["fingerprint"]
+    else:
+        assert telemetry.queued() == []
+
+
+def test_a_scrub_that_always_fails_leaves_two_bare_lines(telemetry_on, scrub_fails_for):
+    scrub_fails_for.append(None)
+    telemetry.record("loop", _raise(KeyError("x")))  # no exception, no recursion
+    line, failure = _line_and_failure()
+    assert set(line) == set(failure) == LINE
+    assert (line["where"], failure["where"]) == ("loop", "telemetry:scrub")
+    assert telemetry.queued() == []
+
+
+def test_the_sender_s_own_failure_survives_a_failing_scrub(telemetry_on, scrub_fails_for):
+    exc = _raise(ZeroDivisionError())
+    scrub_fails_for.append(exc)
+    telemetry._journal_only("telemetry:send", exc)
+    line, failure = _line_and_failure()
+    assert set(line) == LINE and line["where"] == "telemetry:send"
+    assert set(failure) == LINE | SCRUBBED and failure["where"] == "telemetry:scrub"
+    assert telemetry.queued() == []
+
+
+def test_a_line_without_its_scrub_reads_as_a_kind_without_frames(
+    telemetry_on, monkeypatch, scrub_fails_for
+):
+    from lado import bug_report
+
+    monkeypatch.setenv("LADO_TELEMETRY", "0")
+    exc = _raise(KeyError("w1"))
+    scrub_fails_for.append(exc)
+    telemetry.record("hook:turn_end", exc, "claude")
+    kinds = {kind.where: kind for kind in bug_report.kinds(bug_report.errors())}
+    bare = kinds["hook:turn_end"]
+    assert (bare.type, bare.provider, bare.count, bare.stack) == ("KeyError", None, 1, [])
+    assert kinds["telemetry:scrub"].stack
+
+
 def test_schema_error_is_never_recorded(telemetry_on):
     telemetry.record("loop", _raise(state.SchemaError("another schema")))
     assert _journal() == [] and telemetry.queued() == []

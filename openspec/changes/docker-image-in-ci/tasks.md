@@ -21,14 +21,15 @@ tests' code and the commit.
 ## 3. The image and its compose file
 
 - [ ] 3.1 Unit tests first, `tests/test_docker.py`: Claude Code's default is
-  `PINS["claude"]`, no other CLI, bases pinned by digest, no piped install script,
-  `profile.sh` and `ENV` the same, tini and the server's command, the context's allowlist,
+  `PINS["claude"]`, no other CLI, Node 22 from the official image's stage, bases pinned by
+  digest, no piped install script, `profile.sh` and `ENV` the same, tini and the server's command, the context's allowlist,
   compose's port line, no container name, `LADO_PROJECTS` required, nothing only Docker
   Desktop has, Dependabot's `docker` entry. Plan, Task 3.
 - [ ] 3.2 `docker/Dockerfile`, `docker/Dockerfile.dockerignore`, `docker/profile.sh`,
   `docker/compose.yaml` (D1-D7), `make docker`, `.github/dependabot.yml` (D12). `uv run
   pytest tests/test_docker.py -n0`; with Docker, `make docker` builds, and the image prints
-  the wheel's `lado --version` and `claude --version` 2.1.295.
+  the wheel's `lado --version`, `claude --version` 2.1.295 (a native binary), `node
+  --version` 22 and `npx --version`.
 
 ## 4. The Container test layer
 
@@ -36,9 +37,10 @@ tests' code and the commit.
 - [ ] 4.2 Container tests (layer 7), `tests/container/`: `docker run` serves `/api/health`
   with the wheel's version and the UI on its `LADO_PORT`, the note in `docker logs`, `lado
   ui --no-open`'s link; 8765 without `LADO_PORT`; `lado doctor` clean, `in a container`,
-  Claude Code ok and the other CLIs info; a Claude Code session against the fake endpoint
-  idle, the agent's process environment holding `LADO_CONTAINER=1` and its `lado doctor`
-  saying `in a container` (D9, D10); compose on its `LADO_PORT` and refusing without
+  Claude Code ok and the other CLIs info; `node` 22 and `npx` in a login shell; a Claude
+  Code session against the fake endpoint idle, the pane's process being the `claude` binary
+  itself, its environment holding `LADO_CONTAINER=1` and its `lado doctor` saying `in a
+  container` (D9, D10); compose on its `LADO_PORT` and refusing without
   `LADO_PROJECTS`. Plan, Task 4. With Docker: `make docker && make test-container`; `make
   test` collects none of them.
 

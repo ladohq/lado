@@ -57,7 +57,8 @@ library), GitHub Actions.
   behind, or later runs pile them up (Task 4: removal in each fixture's `finally`, and the
   session fixture's teardown asserts `docker ps -a --filter name=lado-test-` is empty).
 - The agent's environment check must read the CLI's own process, not the pane's shell
-  (Task 4: `agent_pid`, the pane's process or its nearest descendant naming `claude`).
+  (Task 4: `agent_pid`: the pane's process, whose `/proc/<pid>/exe` must be the file the
+  `claude` command names; Claude Code 2.x is a native binary).
 
 ---
 
@@ -443,6 +444,11 @@ def test_claude_codes_default_is_its_pin():
     assert arg == f"ARG CLAUDE_VERSION={_pins()['claude'][1]}"
 
 
+def test_node_22_comes_from_the_official_image():
+    [stage] = [l for l in lines() if l.startswith("FROM node:")]
+    assert stage.startswith("FROM node:22-bookworm-slim@sha256:") and stage.endswith(" AS node")
+
+
 def test_no_other_agent_cli():
     for package, _, _ in _pins().values():
         if package != "@anthropic-ai/claude-code":
@@ -453,7 +459,7 @@ def unpinned(text: str) -> list[str]:
     bad = []
     for line in text.splitlines():
         m = re.match(r"\s*(FROM|COPY\s+(?:--\S+\s+)*--from=)(\S+)", line)
-        if m and m.group(2) != "uv" and "@sha256:" not in m.group(2):
+        if m and m.group(2) not in ("uv", "node") and "@sha256:" not in m.group(2):
             bad.append(line.strip())
     return bad
 
@@ -463,7 +469,8 @@ def test_every_base_image_is_pinned_by_digest():
 
 
 def test_an_unpinned_base_is_named():
-    assert unpinned("FROM node:22-bookworm-slim\n") == ["FROM node:22-bookworm-slim"]
+    assert unpinned("FROM debian:bookworm-slim\n") == ["FROM debian:bookworm-slim"]
+    assert unpinned("COPY --from=node:22-bookworm-slim /x /x\n") != []
 
 
 def test_no_piped_install_script():
@@ -548,6 +555,7 @@ Run: `uv run pytest tests/test_docker.py -n0 -v` → errors: no `docker/Dockerfi
 - [ ] **Step 3: Look up the digests**
 
 ```bash
+docker buildx imagetools inspect debian:bookworm-slim --format '{{json .Manifest.Digest}}'
 docker buildx imagetools inspect node:22-bookworm-slim --format '{{json .Manifest.Digest}}'
 docker buildx imagetools inspect ghcr.io/astral-sh/uv:0.12.3 --format '{{json .Manifest.Digest}}'
 ```
@@ -590,7 +598,8 @@ export LANG=en_US.UTF-8
 # Another port: -e LADO_PORT=8766 -p 127.0.0.1:8766:8766. compose.yaml runs the same image.
 
 FROM ghcr.io/astral-sh/uv:0.12.3@sha256:<digest> AS uv
-FROM node:22-bookworm-slim@sha256:<digest>
+FROM node:22-bookworm-slim@sha256:<digest> AS node
+FROM debian:bookworm-slim@sha256:<digest>
 
 # tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
 # the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg).
@@ -605,13 +614,19 @@ RUN apt-get update \
  && apt-get update && apt-get install -y --no-install-recommends gh \
  && rm -rf /var/lib/apt/lists/*
 
-# The base image's user node (uid 1000) becomes lado. Programs live under /opt, outside
-# the home volume, so a new image replaces them; the home volume keeps only state
-# (LADO_HOME, Claude Code's login). /projects is LADO_REPOS, the human's projects.
+# Node 22 and npm from the official image, no NodeSource script: npm installs Claude Code,
+# and the agents and kits' MCP servers run node and npx.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# The user lado (uid 1000, as the prototype). Programs live under /opt, outside the home
+# volume, so a new image replaces them; the home volume keeps only state (LADO_HOME,
+# Claude Code's login). /projects is LADO_REPOS, the human's projects.
 COPY --from=uv /uv /usr/local/bin/uv
 COPY docker/profile.sh /etc/profile.d/lado.sh
-RUN groupmod -n lado node \
- && usermod -l lado -d /home/lado -m -s /bin/bash node \
+RUN useradd --create-home --uid 1000 --shell /bin/bash lado \
  && mkdir -p /opt/uv /opt/agents /projects \
  && chown lado:lado /opt/uv /opt/agents /projects
 
@@ -628,7 +643,9 @@ RUN uv tool install --python 3.13 /tmp/wheel/lado-*.whl \
  && rm -rf /tmp/wheel /home/lado/.cache
 
 # Claude Code only, at the version LADO is tested with (scripts/smoke_ci.py's PINS;
-# tests/test_docker.py keeps them the same). Its update check is off (DISABLE_AUTOUPDATER).
+# tests/test_docker.py keeps them the same): a native binary that the package's
+# postinstall puts in place of its `claude` command. Its update check is off
+# (DISABLE_AUTOUPDATER).
 ARG CLAUDE_VERSION=2.1.295
 RUN npm install -g --prefix /opt/agents "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
  && npm cache clean --force
@@ -647,9 +664,8 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["sh", "-c", "exec lado server --host 0.0.0.0 --port \"$LADO_PORT\""]
 ```
 
-If `node`'s home has no `.profile` after the move (`ls -a /home/lado` in the image), add
-`cp /etc/skel/.profile /etc/skel/.bashrc /home/lado/` to the user's `RUN`, owned by
-`lado`: the container tests append to `~/.profile`.
+`useradd --create-home` copies `/etc/skel` (`.profile`, `.bashrc`): the container tests
+append to `~/.profile`.
 
 - [ ] **Step 7: Write `docker/compose.yaml`**
 
@@ -725,8 +741,11 @@ docker: ## LADO's image $(LADO_IMAGE) from the working copy: the web UI's bundle
 Run: `uv run pytest tests/test_docker.py -n0 -v` → all passed.
 Run (Docker installed): `make docker` → the build's context transfer is a few hundred KB
 (one wheel, one script), the image is built. Then
-`docker run --rm lado:local lado --version` prints the wheel's version, and
-`docker run --rm lado:local claude --version` prints `2.1.295`.
+`docker run --rm lado:local lado --version` prints the wheel's version,
+`docker run --rm lado:local claude --version` prints `2.1.295`, and
+`docker run --rm lado:local sh -c 'node --version && npx --version && file -L "$(command -v claude)"'`
+prints `v22...`, npm's version and an ELF executable (`file` may be missing: then
+`head -c4` gives `\x7fELF`).
 
 - [ ] **Step 10: Commit**
 
@@ -902,7 +921,6 @@ def container(request):
 LADO_PORT, `lado doctor` is clean and says `in a container`, a Claude Code agent gets to
 idle and knows it runs in a container, and the compose file publishes one port number."""
 
-import collections
 import json
 import os
 import secrets
@@ -961,27 +979,24 @@ def test_lado_doctor_is_clean_in_the_container(container):
         assert any(l.startswith(f"[info] {other}:") for l in printed), doctor.stdout
 
 
+def test_node_and_npx_are_on_the_login_shells_path(container):
+    shell = container.exec("bash", "-lc", "node --version && npx --version")
+    node, npx = shell.stdout.split()
+    assert node.startswith("v22.") and npx
+
+
 def agent_pid(container, session: str, window: str) -> int:
-    """The agent CLI's own process: the window's pane process (lado.agent_env execs the CLI
-    in place), else the nearest descendant whose command line names claude. By the command
-    line, not the process name: an npm-installed CLI may run as `node .../claude`."""
-    pane = int(container.exec(
+    """The agent CLI's own process: the window's pane process, as lado.agent_env execs the
+    CLI in place and Claude Code 2.x is a native binary. Checked, never guessed: its
+    executable must be the file the `claude` command names."""
+    pane = container.exec(
         "tmux", "-L", "lado", "display-message", "-p", "-t", f"{session}:{window}",
         "#{pane_pid}",
-    ).stdout)
-    table = container.exec("ps", "-A", "-o", "pid=,ppid=,args=").stdout.splitlines()
-    args, children = {}, {}
-    for line in table:
-        pid, ppid, command = line.split(None, 2)
-        args[int(pid)] = command
-        children.setdefault(int(ppid), []).append(int(pid))
-    todo = collections.deque([pane])
-    while todo:  # nearest first: a hook below the CLI may name claude too
-        pid = todo.popleft()
-        if "claude" in args.get(pid, ""):
-            return pid
-        todo.extend(children.get(pid, []))
-    raise AssertionError(f"no claude process under pane {pane}: {table}")
+    ).stdout.strip()
+    running = container.exec("readlink", f"/proc/{pane}/exe").stdout.strip()
+    claude = container.sh('readlink -f "$(command -v claude)"').stdout.strip()
+    assert running == claude, f"pane process {pane} runs {running}, not claude ({claude})"
+    return int(pane)
 
 
 def test_a_claude_session_gets_to_idle_and_knows_the_container(container):
@@ -1081,9 +1096,9 @@ session fixture's leftover check covers it.
 
 - [ ] **Step 4: Run them**
 
-Run: `uv run pytest -m container -n0 -v --collect-only -q` → 6 tests collected; without
+Run: `uv run pytest -m container -n0 -v --collect-only -q` → 7 tests collected; without
 Docker they skip (`docker does not run`). With Docker: `make docker && make
-test-container` → 6 passed. Run `make test` too: the default run collects none of them.
+test-container` → 7 passed. Run `make test` too: the default run collects none of them.
 
 - [ ] **Step 5: Commit**
 
@@ -1259,7 +1274,7 @@ git commit -m "CI builds LADO's image on amd64 and arm64 and runs the container 
 
 Run: `make lint` → clean. Run: `make test` → passed (report the count). Run: `openspec
 validate --specs --strict` and `openspec validate docker-image-in-ci --strict` → valid.
-When Docker runs locally: `make docker && make test-container` → 6 passed. When Claude
+When Docker runs locally: `make docker && make test-container` → 7 passed. When Claude
 Code is installed: `uv run pytest -m smoke -n0 -v -k claude` → passed (the moved endpoint).
 
 - [ ] **Step 4: Commit and push; CI**

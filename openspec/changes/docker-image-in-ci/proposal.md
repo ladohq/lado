@@ -28,7 +28,8 @@ command and gets a working environment; each release publishes the images (T7).
   tini; the image sets `LADO_CONTAINER=1` and `LADO_REPOS=/projects` in its environment
   and, for the agents, whose environment comes from the login shell, in
   `/etc/profile.d/lado.sh` too, with the programs' `PATH`, `CLAUDE_CONFIG_DIR` and Claude
-  Code's update check off. git, tmux, gh and an ssh client are in it.
+  Code's update check off. Node.js 22 with npm (for the agents and kits' MCP servers run by `npx`), git, tmux, gh and
+  an ssh client are in it.
 - `docker/compose.yaml`: an optional compose file of the same image. One variable,
   `LADO_PORT` (8765 by default), is both the server's port in the container and the
   published one, `127.0.0.1:${LADO_PORT}:${LADO_PORT}`; `LADO_PROJECTS` (required) is the

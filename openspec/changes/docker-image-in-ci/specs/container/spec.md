@@ -63,7 +63,8 @@ update check off; an agent's environment comes from the user's login shell
 
 ### Requirement: The image carries Claude Code only, at its tested version
 
-The image SHALL install Claude Code and no other agent CLI, at the version
+The image SHALL install Claude Code and no other agent CLI, with Node.js 22 and npm on the
+agents' `PATH`, at the version
 `scripts/smoke_ci.py`'s `PINS` gives it (its provider's `TESTED_VERSION`), as the default of
 its build argument; a unit test SHALL keep the two the same. Its base images SHALL be
 pinned by digest, and Dependabot SHALL update them.
@@ -84,6 +85,12 @@ pinned by digest, and Dependabot SHALL update them.
 - **WHEN** a container of the image runs `lado doctor`
 - **THEN** Claude Code is `ok` at its pin, and Codex, OpenCode and Kilo are `info`, not
   installed
+
+#### Scenario: An agent runs npx
+
+- **WHEN** an agent's login shell in a container of the image runs `node --version` and
+  `npx --version`
+- **THEN** both answer, Node with major version 22
 
 ### Requirement: The compose file publishes one port number
 

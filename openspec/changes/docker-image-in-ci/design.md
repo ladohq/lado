@@ -30,6 +30,12 @@ Options for how a user starts it (the human chose 3): compose only (two steps: a
 defaults are all inside, run by one `docker run`, with an optional compose file beside it
 (chosen; which one the documentation leads with is T7/T8's).
 
+Claude Code 2.1.295's npm package (read in its tarballs, 2026-10-15) is a wrapper of a
+native binary: `bin/claude.exe` is a stub that its postinstall (`install.cjs`, run by Node)
+replaces with the ELF binary of a per-platform package (`@anthropic-ai/claude-code-linux-x64`,
+`-linux-arm64`, ...; `engines: node >=22`). Node runs the install only; the CLI's process is
+the binary itself.
+
 Against ROADMAP.md and AGENTS.md: no code under `src/` changes, so the neutral core is
 untouched; the image carries one provider by the human's decision (plan, section 0), and
 the layer's test is Claude Code's only, said in the spec; one source of truth for the CLI's
@@ -52,14 +58,18 @@ silently: a container cell that skips fails.
   `cd web && npm ci --no-audit --no-fund && npm run build`, `rm -rf dist && uv build
   --wheel` (one wheel, the bundle in it), then that `docker build`; not `make dist`, whose
   `make web` repeats the ui job's checks.
-- **D3. Base image `node:22-bookworm-slim`, pinned `@sha256:`.** Claude Code needs Node; the
-  official image brings it without NodeSource's script, on the prototype's Debian 12 (tmux
-  3.3a, git 2.39). Its user `node` (uid 1000) is renamed `lado` with home `/home/lado`
-  (`usermod -l lado -d /home/lado -m node`, `groupmod -n lado node`), keeping the
-  prototype's uid. uv comes from `COPY --from=ghcr.io/astral-sh/uv:<version>@sha256:...
-  /uv /usr/local/bin/uv`, its documented way, no `curl | sh`. LADO's Python is uv's 3.13
-  under `/opt/uv/python`. gh comes from GitHub's apt repository with its signed keyring, as
-  the prototype; apt packages: `ca-certificates curl git tmux tini procps less openssh-client
+- **D3. Base `debian:bookworm-slim`, Node 22 from the official image, user `lado` made
+  anew.** All pinned `@sha256:`. Debian 12 as the prototype (tmux 3.3a, git 2.39). Node 22
+  and npm stay in the image for the agents and for kits' MCP servers run by `npx` (the
+  human's decision, 2026-10-15): `COPY --from=node:22-bookworm-slim@sha256:...
+  /usr/local/bin/node /usr/local/bin/node` and `/usr/local/lib/node_modules/npm`, then
+  `ln -s` of `npm` and `npx` (`../lib/node_modules/npm/bin/npm-cli.js`, `npx-cli.js`) in
+  `/usr/local/bin`; no NodeSource script, and no `node` user, as Debian's base has none:
+  `useradd --create-home --uid 1000 --shell /bin/bash lado`, the prototype's way and uid.
+  uv comes from `COPY --from=ghcr.io/astral-sh/uv:<version>@sha256:... /uv
+  /usr/local/bin/uv`, its documented way, no `curl | sh`. LADO's Python is uv's 3.13 under
+  `/opt/uv/python`. gh comes from GitHub's apt repository with its signed keyring, as the
+  prototype; apt packages: `ca-certificates curl git tmux tini procps less openssh-client
   locales gh` (curl fetches the keyring, a binary `.gpg`, so no gnupg; it stays for the
   agents).
 - **D4. Programs under `/opt`, state in the home volume.** As the prototype: LADO in
@@ -113,9 +123,10 @@ silently: a container cell that skips fails.
   claude --permission-mode bypassPermissions --no-attach`; the supervisor's status is read
   with the image's Python (`state.get_agent("smoke", "supervisor").status`) until `idle`
   (120 s). The agent's process is the supervisor window's pane process (`tmux -L lado
-  display-message -p -t smoke:supervisor '#{pane_pid}'`; `lado.agent_env` execs the CLI in
-  place) when its command line names `claude`, else the nearest descendant whose command line
-  does (`ps -o pid=,ppid=,args=`: an npm-installed CLI may run as `node .../claude`); `lado doctor` then runs with exactly its environment, `xargs -0 sh -c 'exec env
+  display-message -p -t smoke:supervisor '#{pane_pid}'`): `lado.agent_env` execs the CLI in
+  place, and Claude Code 2.x is a native binary, not a Node script (Context). The test
+  asserts it: `readlink /proc/<pid>/exe` must be the file `readlink -f "$(command -v
+  claude)"` names, else it fails naming both; no search for a likely process. `lado doctor` then runs with exactly its environment, `xargs -0 sh -c 'exec env
   -i "$@" lado doctor' _ < /proc/<pid>/environ`, and its LADO line must end with `in a
   container`; the environment must hold `LADO_CONTAINER=1`. Then `lado stop --all`.
 - **D11. CI job `container`.** Matrix `arch: [amd64, arm64]` with `runner: ubuntu-24.04` /

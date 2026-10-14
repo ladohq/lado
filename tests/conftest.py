@@ -86,10 +86,8 @@ def _no_statistics(request, lado_home):
     yield
     if "telemetry_on" in request.fixturenames:
         return
-    folder = lado_home / "telemetry"
-    outbox = folder / "outbox"
-    left = [folder / "sent.json"] if (folder / "sent.json").exists() else []
-    left += sorted(outbox.iterdir()) if outbox.is_dir() else []
+    sent, outbox = lado_home / "telemetry" / "sent.json", lado_home / "telemetry" / "outbox"
+    left = ([sent] if sent.exists() else []) + (sorted(outbox.iterdir()) if outbox.is_dir() else [])
     if left:
         pytest.fail(
             f"the test sent or queued statistics without telemetry_on: {left[0]}",

@@ -20,5 +20,6 @@ def test_lado_processes_of_a_test_send_no_statistics():
         [sys.executable, "-m", "lado.cli", "telemetry", "status"],
         capture_output=True,
         text=True,
-        check=True,    )
+        check=True,
+    )
     assert "statistics: off: LADO_TELEMETRY=0 is set" in result.stdout

@@ -38,7 +38,7 @@
   reason, `On the host:` and the command with Copy; with `container` false neither the
   pill nor the label. Then `SystemPanel.tsx` to the mockup
   (`task/lad-59/mockup-container.html`, option A). `make web`.
-- [ ] 3.4 UI e2e (`tests/ui/test_system_panel.py`, `uv run pytest -m ui
+- [x] 3.4 UI e2e (`tests/ui/test_system_panel.py`, `uv run pytest -m ui
   tests/ui/test_system_panel.py`): a `lado server` started with `LADO_CONTAINER=1` and a
   local index (`LADO_UPDATE_INDEX`) that has a newer version: the panel shows the pill, the
   block without Update… and the command; a screenshot of it (`shot`) as a run artifact.

@@ -1,6 +1,6 @@
 """The system panel in the browser (docs/design/ui.md, System panel): `live` opens it, the
-system info is copied for an issue, and a newer LADO (here a local index) marks `live` and
-gives the panel its Update block."""
+system info is copied for an issue, a newer LADO (here a local index) marks `live` and
+gives the panel its Update block, and in a container the panel says so."""
 
 import re
 
@@ -125,3 +125,35 @@ def test_a_newer_lado_marks_live_and_the_panel_offers_the_update(
     check.scroll_into_view_if_needed()
     expect(check).to_be_in_viewport()
     shot(page, "scrolled")
+
+
+@pytest.fixture
+def container_server(monkeypatch, published, request):
+    """The server of LADO's image: started with LADO_CONTAINER, and PyPI has 99.0.0 before
+    its first look."""
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    published(**{"99.0.0": "2026-10-04"})
+    return request.getfixturevalue("server")
+
+
+def test_in_a_container_the_panel_says_so_and_names_the_hosts_command(
+    page: Page, container_server, shot
+):
+    page.set_viewport_size({"width": 1280, "height": 720})
+    log_in(page, container_server)
+    page.get_by_role("button", name="System: LADO 99.0.0 is available").click()
+    panel = page.get_by_role("dialog", name="System")
+    pill = panel.locator(".system-head .pill")
+    expect(pill).to_have_text("container")
+    expect(pill).to_have_attribute(
+        "title", "LADO runs in a Docker container (LADO_CONTAINER): a new image updates it"
+    )
+    update = panel.get_by_role("region", name="Update")
+    expect(update).to_contain_text("99.0.0 is out")
+    expect(update).to_contain_text("LADO runs in a container: a new image updates it")
+    expect(update.get_by_role("button", name="Update…")).to_have_count(0)
+    expect(update.get_by_text("On the host:")).to_be_visible()
+    expect(update.locator("pre")).to_have_text("docker compose pull && docker compose up -d")
+    expect(update.get_by_role("button", name="Copy commands")).to_be_visible()
+    expect(panel.get_by_text("Running")).to_be_visible()
+    shot(page)

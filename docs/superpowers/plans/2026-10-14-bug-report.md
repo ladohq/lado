@@ -123,14 +123,14 @@ the repository's style, `(LAD-33)` at the end).
 
 ## Task 7: UI e2e (D10)
 
-**Files:** `tests/ui/test_bug_report.py`.
+**Files:** `tests/ui/test_report_bug_page.py`.
 
 1. On a session's page (fake agent), click **Report a bug** on the rail: the page
    `/report` shows `### LADO system info` and `- Browser:`, and the link's `href` starts
    with `https://github.com/ladohq/lado/issues/new?title=` (never followed). Copy text
    shows "Report copied". The rail collapsed still shows the icon with its tooltip.
    `shot` of the page and of the collapsed rail.
-2. `uv run pytest -m ui tests/ui/test_bug_report.py`; commit; attach the screenshots to
+2. `uv run pytest -m ui tests/ui/test_report_bug_page.py`; commit; attach the screenshots to
    the build report.
 
 ## Task 8: docs (D11)
@@ -153,7 +153,7 @@ the repository's style, `(LAD-33)` at the end).
 
 Before the build report: `make lint`, `make test` (`-n auto`), `uv run pytest -m
 integration -n auto tests/integration/test_telemetry_processes.py`, `uv run pytest -m ui
-tests/ui/test_bug_report.py tests/ui/test_system_panel.py tests/ui/test_layout.py`, `make
+tests/ui/test_report_bug_page.py tests/ui/test_system_panel.py tests/ui/test_layout.py`, `make
 web`, `openspec validate bug-report --strict` and `openspec validate --specs --strict`.
 CI runs the rest.
 
@@ -164,7 +164,7 @@ CI runs the rest.
 | bug-report: holds the system info and errors, nothing that names the user's work | `test_bug_report.py` (privacy, no errors, browser line) |
 | bug-report: groups the errors of the last 30 days by kind | `test_bug_report.py` (grouping, window, 0.37 line, frames) |
 | bug-report: the issue link fits GitHub's bound | `test_bug_report.py` (40 kinds, title) |
-| bug-report: nothing leaves without the human | `test_cli_bug_report.py` (no open without `y`, the `BROWSER` guard), `test_server_bug_report.py`, `tests/ui/test_bug_report.py` (link never followed) |
+| bug-report: nothing leaves without the human | `test_cli_bug_report.py` (no open without `y`, the `BROWSER` guard), `test_server_bug_report.py`, `tests/ui/test_report_bug_page.py` (link never followed) |
 | bug-report: `lado bug-report` prints and asks | `test_cli_bug_report.py` |
-| bug-report: the UI shows Report a bug on every page | `ReportBug.test.tsx`, the rail's vitest, `tests/ui/test_bug_report.py` |
+| bug-report: the UI shows Report a bug on every page | `ReportBug.test.tsx`, the rail's vitest, `tests/ui/test_report_bug_page.py` |
 | error-journal (modified): the line holds the scrubbed form | `test_telemetry.py`, `tests/integration/test_telemetry_processes.py` |

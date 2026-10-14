@@ -35,8 +35,9 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 - [x] 6.1 `BugIcon`, the rail's Report a bug above Settings, route `/report`,
   `ReportBug.tsx` to the mockup's variant A; vitest. Check: `make web`.
-- [x] 6.2 UI e2e `tests/ui/test_bug_report.py` with screenshots. Check: `uv run pytest -m
-  ui tests/ui/test_bug_report.py`.
+- [x] 6.2 UI e2e `tests/ui/test_report_bug_page.py` with screenshots (not
+  `test_bug_report.py`: the unit test's basename, which pytest refuses twice). Check: `uv
+  run pytest -m ui tests/ui/test_report_bug_page.py`.
 
 ## 7. Docs (D11)
 
@@ -46,6 +47,6 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 ## 8. Regression
 
 - [ ] 8.1 `make lint`, `make test`, the integration file of 1.1, `uv run pytest -m ui
-  tests/ui/test_bug_report.py tests/ui/test_system_panel.py tests/ui/test_layout.py`,
+  tests/ui/test_report_bug_page.py tests/ui/test_system_panel.py tests/ui/test_layout.py`,
   `make web`, `openspec validate bug-report --strict`, `openspec validate --specs
   --strict`.

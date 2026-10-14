@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.38.0 (unreleased)
+## 0.38.0 (2026-10-14)
 
 - `lado stats` prints how you used LADO on this machine in the last 30 days (`--days N`,
   `--all`): sessions, agents per agent CLI and per role (with its kit), turn errors, flow

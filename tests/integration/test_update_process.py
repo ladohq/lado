@@ -327,8 +327,9 @@ def api(url: str, path: str, body: dict | None = None):
 
 def update_from_the_ui(url: str) -> tuple[dict, dict, dict]:
     """POST /api/update as the page does, then wait as U2 waits: for a server started after
-    the one before and a result of this update that no longer runs. The health before, the
-    health after and the UpdateInfo after."""
+    the one before, a result of this update that no longer runs and its lock released
+    (`running` false: the result is written under the lock). The health before, the health
+    after and the UpdateInfo after."""
     before = api(url, "/api/health")[1]
     status, started = api(url, "/api/update", {"to": NEW})
     assert status == 202
@@ -336,7 +337,9 @@ def update_from_the_ui(url: str) -> tuple[dict, dict, dict]:
     def back():
         health = api(url, "/api/health")
         info = api(url, "/api/update")
-        if not health or not info or health[1]["started_at"] <= before["started_at"]:
+        if not health or not info or info[1]["running"]:
+            return None
+        if health[1]["started_at"] <= before["started_at"]:
             return None
         last = info[1]["last"]
         if not last or last["id"] != started["id"] or last["outcome"] == "running":

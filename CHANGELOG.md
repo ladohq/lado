@@ -2,6 +2,8 @@
 
 ## 0.39.0 (unreleased)
 
+- After an update from the UI, the System panel no longer says an update is running and
+  keeps its Update… button: the page's wait ends once the update has released its lock.
 - In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and
   the UI's update refuse at once, stopping nothing, and name the way to update there:
   `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System
@@ -13,6 +15,10 @@
   says the server runs in a container. `LADO_REPOS` names the folder of your repositories:
   the New session window suggests its subfolders in an empty Where, a clone by URL goes
   there by default (`lado start <git-url>` too), and `lado doctor` shows it.
+- The UI colours a flow step's outcome by the order its flow declares, in the chat as in
+  the Flows tab: green forward, orange back, so a `ready` after a review's `changes` no
+  longer turns orange. A step back has a return icon, and hovering an outcome says where
+  the step goes and, for a step back, which states run again.
 - LADO's Docker image is in the repository (`docker/`): LADO from the build's wheel and
   Claude Code, started with one `docker run` (or `docker/compose.yaml`, whose `LADO_PORT`
   sets the port inside and on the host alike). `make docker` builds it from a checkout; CI

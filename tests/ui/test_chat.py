@@ -9,6 +9,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_artifacts_tab import MANY, MEASURE_TABLES
+from test_flows_tab import BACK, FORWARD, STAY, read_out, reviewed_session, tone, tooltip_lines
 from test_gates import gated_session
 from test_images import png
 from test_main_screen import log_in, running_session
@@ -518,6 +519,38 @@ def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_
     expect(long.get_by_role("button", name="Show less")).to_have_attribute("aria-expanded", "true")
     long.scroll_into_view_if_needed()
     shot(page, "opened")
+
+
+def test_a_flow_step_is_green_forward_and_orange_with_the_icon_back_and_says_where_it_goes(
+    page: Page, server, repo, shot
+):
+    """ready, changes, ready, again: the second ready stays green after the changes, as the
+    flow declares review after build; hovering each says where it goes (AC-1, AC-2, AC-4)."""
+    session = reviewed_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    group = page.get_by_role("log", name="Chat with the session").get_by_role(
+        "list", name="Flow run reviewed/x"
+    )
+    chips = group.locator(".run-outcome")
+    expect(chips).to_have_text(["ready", "changes", "ready", "again"])
+    expect(chips.nth(0)).to_have_class("run-outcome forward")
+    expect(chips.locator("svg")).to_have_count(2)
+    assert read_out(group) == [
+        "ready, a step forward",
+        "changes, a step back",
+        "ready, a step forward",
+        "again, a step back",
+    ]
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        assert [tone(chips.nth(n)) for n in range(4)] == ["done", "human", "done", "human"]
+        chips.nth(1).hover()
+        expect(page.get_by_role("tooltip")).to_be_visible()
+        shot(page, f"{theme}-back")
+        page.mouse.move(0, 0)
+    page.emulate_media(color_scheme="light")
+    assert [tooltip_lines(page, chips.nth(n)) for n in range(4)] == [FORWARD, BACK, FORWARD, STAY]
 
 
 def long_session(repo) -> tuple[str, int]:

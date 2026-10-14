@@ -75,10 +75,12 @@ const messageOf = (error: unknown) => (error instanceof ApiError ? error.message
 
 // Whether the update `waiting` is over: its result, no longer running, and a server started
 // after the one before; or the same server, when the update ended before it started (a
-// failed result with no log: nothing was stopped).
+// failed result with no log: nothing was stopped). In both, the update's lock is released
+// (`running` false): the result is written under it, and the answer that ends the wait is
+// the one the panel keeps.
 export function finished(waiting: Waiting, health: Health, update: UpdateInfo): boolean {
   const last = update.last;
-  if (last?.id !== waiting.id || last.outcome === "running") return false;
+  if (update.running || last?.id !== waiting.id || last.outcome === "running") return false;
   const notStarted = last.outcome === "failed" && last.log === null;
   return notStarted || Date.parse(health.started_at) > Date.parse(waiting.before);
 }

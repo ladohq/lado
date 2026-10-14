@@ -987,15 +987,32 @@ Built in the chat task (2026-10-03):
   13 px, at the text's column): a small avatar of the actor (an agent's colour, "Y" for
   `human`, a grey "L" for `lado`), its name muted ("You" for the human), then by kind: a
   `flow` move as chips, the state it left (mono, muted) → the state it entered (mono) and
-  the outcome, green (`--done`) forward and orange (`--human`) back; `flow_start`
+  the outcome, green (`--done`) forward and orange (`--human`) with a return icon back
+  (below); `flow_start`
   "started", `gate_open` "waits for you" (orange; the gate's line is under it),
   `flow_end` "ended" (green), `flow_cancel` "cancelled", `flow_set` "set by you", each with
   the core's `detail` as it is, cut by CSS on one line (the UI parses no detail); a
   `flow` event whose detail is no move shows its detail. The time on the right, always
-  seen. `gate_answer` is no line: the human's answer is their move. A move goes back when
-  it stays in its state or enters a state its run left earlier **in the loaded window**
-  (`goesBack`): when earlier pages load, a move's colour may turn from green to orange;
-  its outcome is always written. The **human's answer to a gate** is one line: their
+  seen. `gate_answer` is no line: the human's answer is their move. A **move's direction**
+  (LAD-62, 2026-10-14, mockup `mockup-outcome-colour.html`) is one rule for the chat and
+  Flows (`flowSteps.direction`), by the run's flow alone (`RunInfo.states`, of the
+  session's runs the chat watches), never by which other events are loaded: a move goes
+  back when it leads to a state the flow declares no later than the state it left (a stay
+  in its state too), else forward. A step back's outcome has a return icon before its
+  word; a screen reader hears `<outcome>, a step back` / `a step forward`, from hidden
+  text (`.visually-hidden`) right after the chip, as the icon is decorative and the chips
+  are no tab stops (an `aria-label` on a plain span is not allowed, and Chromium drops
+  it); the chip's own text stays its outcome. Hovering a forward or back
+  outcome shows the UI's tooltip (`Tooltip.tsx`; `OutcomeChip` and its text are shared
+  with Flows): `Forward in the flow, to <to>`, or `Back: the work returns to <to>` and,
+  muted in the mono face, `Runs again: <to> › … › <from>`, the shortest way through the
+  flow's outcomes from the state returned to to the state left (`flowSteps.runsAgain`,
+  breadth-first, ties by the declared order; no way, no line). Never the whole flow: a
+  branched flow does not fit one line. Without the flow (the runs not loaded, the run's
+  `problem`, a state not in it) the outcome is neutral: the `--raised` ground, no icon, no
+  tooltip. Kit authors: declare a flow's states in the order its work goes, branches
+  before the state they join, as the UI reads that order as forward. Its outcome is
+  always written. The **human's answer to a gate** is one line: their
   `flow` move (only the human's answers write a `flow` event as `human`; `lado flow-set`
   writes `flow_set`), with the answer's comment under it (Markdown with `breaks`), from the
   `GateInfo` of its run answered by `human` in the state the run left or entered (a loop
@@ -1401,10 +1418,12 @@ M2, P1–P3 of round 3, F3 and U1–U3).
 - **The wait** (U2), under the top bar: "Updating to X · The server is restarting · m:ss".
   The page polls `/api/health` and `/api/update` every 2 s and ends on both: a server whose
   `started_at` is newer than the one before, and `UpdateInfo.last` with the id the 202
-  answered and an outcome other than `running`. So it ends after a rollback too, where the
-  version is the same; when the version changed, the version banner offers the reload. An
-  update that ended before it started (a failed result of that id with no log) ends the
-  wait on the same server. After 5 minutes it says "The server did not come back. See <update.log>; start it with
+  answered and an outcome other than `running`, and in either case `running` false: the
+  result is written while the update still holds its lock, and the `UpdateInfo` that ends
+  the wait is the one the System panel keeps (LAD-57: before, it could say an update runs,
+  without Update…). So it ends after a rollback too, where the version is the same; when
+  the version changed, the version banner offers the reload. An update that ended before
+  it started (a failed result of that id with no log) ends the wait on the same server. After 5 minutes it says "The server did not come back. See <update.log>; start it with
   `lado ui`" and goes on polling. The page cannot learn the steps while the server is gone.
 - **The result** (U3), under the top bar, from `UpdateInfo.last`, also after a reload:
   ok; partial with the sessions that did not resume and their `lado start`; failed, rolled
@@ -1716,7 +1735,9 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     time), turned by the switch. A step's line: time, a dot (green; orange for a way back,
     a step whose `target` the flow declares no later than its state, or the human's
     answer; none is a way back without the flow), who (a link while it lives; the human
-    is "you"), `<from> [outcome] → <to>` (a way back's outcome orange), "flow-set" or
+    is "you"), `<from> [outcome] → <to>` (a way back's outcome orange with the return
+    icon, and the outcome's tooltip and the direction read out, by the chat's one rule: Flow
+    events in Look of the feed), "flow-set" or
     "loop limit" for an override, and the summary on one line. It opens to its facts
     (Who, From, Outcome, To, Step took: the time since the run's previous event) and the
     note's whole body as Markdown, as in the chat ("No comment." for the human's answer

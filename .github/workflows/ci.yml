@@ -4,9 +4,23 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The whole CI on main once a day, the smoke with it: the pull requests that skip the
+  # smoke do not leave a CLI's breakage unseen for long. GitHub mails a red scheduled run
+  # to whoever last changed this cron line.
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
 
+# A pull request's new run cancels its older one; any other run (a push to main, the
+# schedule, a dispatch) is alone in its group, its run id, and is never cancelled.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The ruleset of main requires one check, ci-ok (the last job), whatever the jobs are named.
 jobs:
-  check:
+  unit:
+    name: unit (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -21,9 +35,27 @@ jobs:
       - run: uv run ruff format --check
       - run: uv run ruff check
       - run: uv run pytest -n auto
+
+  # The integration tests in three shards per Python (tests/shard.py: by a stable hash of
+  # each test's node id), each on a runner of its own.
+  integration:
+    name: integration (${{ matrix.python-version }}, ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: sudo apt-get install -y tmux
+      - run: uv sync --locked
       # One process: on this 4-vCPU runner, -n auto's four integration tests at once (each
       # its own tmux, agents and session loop) starve each other past LADO's short test timers.
-      - run: uv run pytest -m integration -n0
+      - run: uv run pytest -m integration -n0 --shard ${{ matrix.shard }}/3
 
   js:
     runs-on: ubuntu-latest
@@ -35,9 +67,15 @@ jobs:
       - run: node --test tests/js/*.test.mjs
 
   # The web UI: types, unit tests and build (make web), the bundle in both the sdist and the
-  # wheel (make dist), and the browser tests against a real lado server.
+  # wheel (make dist), once, in shard 1; and the browser tests against a real lado server in
+  # two shards (tests/shard.py), shard 2 building only the bundle they serve.
   ui:
+    name: ui (${{ matrix.shard }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -50,17 +88,58 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: sudo apt-get install -y tmux
       - run: uv sync --locked
-      - run: make dist
+      - if: matrix.shard == 1
+        run: make dist
+      - name: web UI bundle
+        if: matrix.shard != 1
+        run: cd web && npm ci --no-audit --no-fund && npm run build
       - run: uv run playwright install --with-deps chromium
       # Two workers: a Chromium and a lado server each, on this 4-vCPU runner; -n auto's
       # four starve LADO's short test timers.
-      - run: uv run pytest -m ui -n 2
+      - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/2
+
+  # Whether this run needs the smoke (scripts/smoke_ci.py needed): always but on a pull
+  # request whose every changed file is on this skip list. No path here may be or hold one
+  # the smoke runs (tests/test_ci_workflow.py refuses src/, scripts/, tests/ but tests/ui/
+  # and tests/js/, pyproject.toml, uv.lock and .github/workflows/).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      smoke: ${{ steps.needed.outputs.smoke }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: needed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          SMOKE_SKIP: |
+            web/
+            docs/
+            openspec/
+            tests/ui/
+            tests/js/
+            README.md
+            CHANGELOG.md
+            AGENTS.md
+            BACKLOG.md
+            ROADMAP.md
+            SECURITY.md
+            .github/dependabot.yml
+        run: |
+          if [ "$EVENT" = pull_request ]; then set -- "$BASE" "$HEAD"; else set --; fi
+          python3 scripts/smoke_ci.py needed "$EVENT" "$@" >> "$GITHUB_OUTPUT"
 
   # Each provider's real CLI with LADO on Linux and macOS, no model: the smoke tests
   # (tests/smoke/), one cell per (system, provider), the CLI at its pin
   # (scripts/smoke_ci.py's PINS; tests/test_ci_workflow.py keeps the matrix the same).
+  # Skipped by its condition, never by the triggers: ci-ok still reports.
   smoke:
     name: smoke ${{ matrix.os }} ${{ matrix.provider }}
+    needs: changes
+    if: needs.changes.outputs.smoke == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -97,3 +176,16 @@ jobs:
           name: smoke-${{ matrix.os }}-${{ matrix.provider }}
           path: ${{ runner.temp }}/smoke
           retention-days: 5
+
+  # The one check the ruleset of main requires: red unless every other job succeeded, the
+  # smoke skipped only when changes said it is not needed (scripts/ci_ok.py). It runs
+  # whatever their results: a skipped required check counts as passed.
+  ci-ok:
+    if: always()
+    needs: [unit, integration, ui, js, changes, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_ok.py

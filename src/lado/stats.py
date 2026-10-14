@@ -42,8 +42,8 @@ def lines(days: int | None, now: datetime.datetime | None = None) -> list[str]:
 
 
 def _groups(usage: state.Usage, errors: int) -> list[str]:
-    keys, providers = usage.keys, usage.providers
-    roles = _parts(keys[state.USAGE_AGENT])
+    providers = usage.providers
+    roles = _parts(usage.keys[state.USAGE_AGENT])
     agrees = usage.agrees[state.USAGE_GATE_CLOSE]
     advised = sum(agrees.values())
     advice = (
@@ -56,10 +56,12 @@ def _groups(usage: state.Usage, errors: int) -> list[str]:
         _line("started", usage.count(state.USAGE_SESSION)),
         _line("resumed", usage.count(state.USAGE_RESUME)),
         "Agents",
-        _line("started", usage.count(state.USAGE_AGENT), _parts(providers[state.USAGE_AGENT])),
-        *_wrapped(_line("by role", None, roles), roles),
+        *_counted_parts(
+            "started", usage.count(state.USAGE_AGENT), _parts(providers[state.USAGE_AGENT])
+        ),
+        *_counted_parts("by role", None, roles),
         *([" " * BREAKDOWN + NO_KIT_NOTE] if any(NO_KIT in p for p in roles) else []),
-        _line(
+        *_counted_parts(
             "ended by themselves",
             usage.count(state.USAGE_AGENT_ENDED),
             _parts(providers[state.USAGE_AGENT_ENDED]),
@@ -99,7 +101,8 @@ def _counted(usage: state.Usage, label: str, kind: str) -> list[str]:
     return _counted_parts(label, usage.count(kind), _parts(usage.keys[kind]))
 
 
-def _counted_parts(label: str, count: int, parts: list[str]) -> list[str]:
+def _counted_parts(label: str, count: int | None, parts: list[str]) -> list[str]:
+    """A count (None: none shown) with its breakdown, wrapped."""
     return _wrapped(_line(label, count, ", ".join(parts)), parts)
 
 
@@ -117,9 +120,8 @@ def _name(name: str | None) -> str:
     return UNKNOWN if name is None else name
 
 
-def _line(label: str, count: int | None, breakdown: str | list[str] = "") -> str:
+def _line(label: str, count: int | None, text: str = "") -> str:
     shown = "" if count is None else str(count)
-    text = breakdown if isinstance(breakdown, str) else ", ".join(breakdown)
     line = f"  {label:<{LABEL}}{shown:>3}"
     return f"{line}  {text}" if text else line
 

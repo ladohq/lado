@@ -1,0 +1,36 @@
+# LADO's image (Dockerfile) with compose: the same as one `docker run`, kept in a file.
+#
+#   LADO_PROJECTS=~/projects docker compose up -d           # from this folder
+#   docker compose exec lado lado ui --no-open               # the UI's link with its token
+#
+# LADO_PORT (8765) is the server's port in the container and the one published on this
+# computer's loopback, always the same number. A second LADO beside the first, with its
+# own container and home volume:
+#
+#   LADO_PROJECTS=~/projects LADO_PORT=8766 docker compose -p lado-2 up -d
+#   docker compose -p lado-2 exec lado lado ui --no-open
+#
+# LADO_IMAGE names the image (lado:local, which `make docker` builds).
+name: lado
+
+services:
+  lado:
+    image: ${LADO_IMAGE:-lado:local}
+    hostname: lado
+    environment:
+      LADO_PORT: ${LADO_PORT:-8765}
+    ports:
+      # This computer only: the UI's token is the one guard.
+      - "127.0.0.1:${LADO_PORT:-8765}:${LADO_PORT:-8765}"
+    volumes:
+      # LADO_HOME (~/.lado) and Claude Code's login and config.
+      - home:/home/lado
+      # The human's projects (LADO_REPOS in the image).
+      - ${LADO_PROJECTS:?set LADO_PROJECTS to your projects folder}:/projects
+    extra_hosts:
+      # A local model on the host: Docker Desktop has it already, a Linux host needs it.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  home:

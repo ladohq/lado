@@ -1,4 +1,4 @@
-.PHONY: help lint fmt test test-integration test-js test-live test-smoke test-ui web web-types dist browser check _check _test-ui
+.PHONY: help lint fmt test test-integration test-js test-live test-smoke test-ui test-container web web-types dist docker browser check _check _test-ui
 
 # Unit and integration tests run on one pytest worker per CPU (pytest-xdist). To debug a
 # test serially, with its output in order: make test PYTEST_ARGS=-n0 (or any pytest options).
@@ -62,6 +62,13 @@ dist: web ## build the sdist and the wheel into dist/ and check that both ship t
 	@unzip -l dist/*.whl | grep -qE ' lado/server/static/.*inter-[a-z-]+-400-normal[^/]*\.woff2$$' \
 		|| { echo "the wheel has no Inter 400 font (lado/server/static/**/inter-*-400-normal*.woff2)"; exit 1; }
 	@echo "dist/: the sdist and the wheel ship the web UI's bundle"
+
+LADO_IMAGE ?= lado:local
+
+docker: ## LADO's image $(LADO_IMAGE) from the working copy: the web UI's bundle, one wheel, the image
+	cd web && npm ci --no-audit --no-fund && npm run build
+	rm -rf dist && uv build --wheel
+	docker build -f docker/Dockerfile -t $(LADO_IMAGE) .
 
 browser: ## install Chromium for the UI tests (Playwright)
 	uv run playwright install chromium

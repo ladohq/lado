@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Health, SystemInfo, UpdateInfo, UpdatePlan, UpdateResultInfo } from "./api";
 import { App } from "./App";
 import { FakeEventSource, stubDialogs } from "./fakes";
-import { browserLine, checkLine, GIVE_UP_MS, POLL_MS, shortHome, when } from "./SystemPanel";
+import { browserLine, checkLine, finished, GIVE_UP_MS, POLL_MS, shortHome, when, type Waiting } from "./SystemPanel";
 import { BUNDLE_VERSION } from "./version";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
@@ -551,4 +551,17 @@ test("an update that did not start ends the wait on the same server and says why
   expect(screen.getByRole("alert", { name: "Update result" }).textContent).toContain(
     `The update to 99.0.0 failed: the update did not start: cannot look up LADO's versions on PyPI. LADO ${BUNDLE_VERSION} runs.`,
   );
+});
+
+test("the wait ends only once the update's lock is released", () => {
+  const waiting: Waiting = { id: "u-1", to: "99.0.0", before: STARTED, log: "", since: 0 };
+  const restarted: Health = { ok: true, version: BUNDLE_VERSION, started_at: "2026-10-09T10:05:00.000+00:00" };
+  const same: Health = { ok: true, version: BUNDLE_VERSION, started_at: STARTED };
+  const rolledBack = result({ outcome: "rolled_back" });
+  // The result is written under the lock: the server says an update runs a moment longer.
+  expect(finished(waiting, restarted, info({ last: rolledBack, running: true }))).toBe(false);
+  expect(finished(waiting, restarted, info({ last: rolledBack, running: false }))).toBe(true);
+  const notStarted = result({ outcome: "failed", log: null });
+  expect(finished(waiting, same, info({ last: notStarted, running: true }))).toBe(false);
+  expect(finished(waiting, same, info({ last: notStarted, running: false }))).toBe(true);
 });

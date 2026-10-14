@@ -29,13 +29,15 @@ instructions"):
   `build-report`, the integrator's note); the agent searches the tracker for an open task
   on that test, names it when there is one, and otherwise proposes a task to the human at
   once with `ask_human` (as LAD-57) and goes on without waiting; the task is created only
-  on the human's "yes, create". Red after the second rerun follows kit sdlc's "A red
-  check". No automatic retry inside pytest.
+  on the human's "yes, create". The reviewer has no tracker: it leaves the search and the
+  proposal to the supervisor with `send_message`. Red after the second rerun follows kit
+  sdlc's "A red check". No automatic retry inside pytest.
 - **Extra instructions**, Integrator, a new item (R6): after merging `origin/<target>` into
   the run's branch, the integrator runs none of the settings' Checks locally but
   `openspec validate --specs --strict`, then pushes and waits for the pull request's CI.
-  A red CI follows the kit's step 3 as written: the merge commit stays, a cause in the
-  work goes back to the developer, who fixes on top.
+  A red CI follows the kit's step 3 as written, after the Review trap's reruns for a job
+  red with no cause in the work: the merge commit stays, a cause in the work goes back to
+  the developer, who fixes on top.
 
 ## Acceptance criteria
 
@@ -46,14 +48,16 @@ instructions"):
   (the developer's `build-report`, the integrator's note).
 - AC-3: For a flake the agent searches the tracker for an open task on that test and names
   it; without one it proposes a task with `ask_human` at once, goes on without waiting, and
-  creates it only on the human's "yes, create".
+  creates it only on the human's "yes, create". The reviewer, which has no tracker, leaves
+  the search and the proposal to the supervisor with `send_message`.
 - AC-4: The entry forbids an automatic retry inside pytest and sends a job still red after
   the second rerun to kit sdlc's "A red check".
 - AC-5: Extra instructions, Integrator, say that after merging `origin/<target>` the
   integrator runs no local Check but `openspec validate --specs --strict`, then pushes and
   waits for the pull request's CI.
 - AC-6: The same item keeps the kit's rule for a red CI: the merge commit stays and a cause
-  in the work goes back to the developer as `conflicts`.
+  in the work goes back to the developer as `conflicts`, after the Review trap's reruns for
+  a job red with no cause in the work.
 - AC-7: No other part of `.lado/sdlc.md` changes ("What CI proves" in particular), and no
   file outside `.lado/sdlc.md` and this change.
 

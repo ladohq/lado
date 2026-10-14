@@ -14,8 +14,9 @@
     test in the ledger (the developer in `build-report`, the integrator in its note);
     search the tracker for an open task on that test and name it when there is one,
     otherwise propose a task to the human at once with `ask_human` (as LAD-57), go on
-    without waiting, and create it only on their "yes, create". Red after the second
-    rerun follows kit sdlc's "A red check".
+    without waiting, and create it only on their "yes, create"; the reviewer, who has no
+    tracker, leaves the search and the proposal to the supervisor with `send_message`.
+    Red after the second rerun follows kit sdlc's "A red check".
   ```
 
   Check: by reading against AC-1-AC-4; "What CI proves" and every other section of the
@@ -31,9 +32,10 @@
   - After merging `origin/<target>` into the run's branch (the kit's Merge, step 2), run
     none of the settings' **Checks** locally but `openspec validate --specs --strict`
     (CI does not run it); with it green, push and wait for the pull request's CI, which
-    runs the rest. A red CI then follows step 3 as written: the merge commit stays, and
-    a cause in the work is `conflicts`, fixed by the developer on top. This replaces
-    step 2's local run of the Checks on this project.
+    runs the rest. A red CI then follows step 3 as written, after the Review trap's
+    reruns for a CI job red with no cause in the work: the merge commit stays, and a
+    cause in the work is `conflicts`, fixed by the developer on top. This replaces step
+    2's local run of the Checks on this project.
   ```
 
   Check: by reading against AC-5, AC-6.

@@ -30,9 +30,9 @@ the tests' code and the commit.
 
 ## 4. Container tests of the path and the owner
 
-- [ ] 4.1 Helpers: a given home volume, a projects volume of a given owner, the Claude
+- [x] 4.1 Helpers: a given home volume, a projects volume of a given owner, the Claude
   session's setup shared with `test_image.py` (D9). Plan, Task 4.
-- [ ] 4.2 Container tests (layer 7), `tests/container/test_projects.py`: a worker's
+- [x] 4.2 Container tests (layer 7), `tests/container/test_projects.py`: a worker's
   worktree on the host (status, no `prunable`, files and commit objects the host user's,
   the agent's `LADO_REPOS`); the projects owner's uid, no sudo left, `docker exec lado ui`,
   a restart under 8 s keeping the uid; recreated with another uid and the same home; owner

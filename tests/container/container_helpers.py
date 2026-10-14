@@ -51,14 +51,16 @@ def health(port: int, timeout: float = 90) -> dict:
             time.sleep(0.5)
 
 
-def run_container(name: str, *args: str) -> None:
-    """The image as one `docker run` starts it, with a home volume of its own (`<name>-home`)."""
-    docker("run", "-d", "--name", name, *QUIET, "-v", f"{name}-home:/home/lado", *args, IMAGE)
+def run_container(name: str, *args: str, home: str | None = None) -> None:
+    """The image as one `docker run` starts it, with the home volume `home`, by default one
+    of its own (`<name>-home`)."""
+    home = home or f"{name}-home"
+    docker("run", "-d", "--name", name, *QUIET, "-v", f"{home}:/home/lado", *args, IMAGE)
 
 
-def remove_container(name: str) -> None:
+def remove_container(name: str, home: str | None = None) -> None:
     docker("rm", "-f", name, check=False)
-    docker("volume", "rm", f"{name}-home", check=False)
+    docker("volume", "rm", home or f"{name}-home", check=False)
 
 
 class Container:
@@ -82,3 +84,78 @@ class Container:
     def logs(self) -> str:
         done = docker("logs", self.name, check=False)
         return done.stdout + done.stderr
+
+    def agent_status(self, session: str, agent: str) -> str:
+        return self.python(
+            f"from lado import state; a = state.get_agent({session!r}, {agent!r}); "
+            "print(a.status if a else 'gone')"
+        )
+
+
+ENDPOINT_PORT = 8399  # the fake model API, on the container's own loopback
+KEY = "container-fake-key-0123456789abcdef"  # no account's key: the endpoint takes none
+
+
+def claude_session(container: Container, repo: str, session: str = "smoke") -> None:
+    """A Claude Code session of LADO on `repo` in `container`, against the fake model API on
+    the container's own loopback; returns once its supervisor is idle."""
+    endpoint = str(ROOT / "tests" / "fake_endpoint.py")
+    docker("cp", endpoint, f"{container.name}:/tmp/fake_endpoint.py")
+    docker(
+        "exec", "-d", container.name, PYTHON, "-I", "/tmp/fake_endpoint.py",
+        str(ENDPOINT_PORT), "/tmp/endpoint.jsonl",
+    )  # fmt: skip
+    # Claude Code pointed at it through the login shell, as a human gives a token; its
+    # first-run screens, the bypass mode's disclaimer and the repository's trust done.
+    container.sh(
+        "cat >> ~/.profile <<'EOF'\n"
+        f"export ANTHROPIC_BASE_URL=http://127.0.0.1:{ENDPOINT_PORT}\n"
+        f"export ANTHROPIC_AUTH_TOKEN={KEY}\n"
+        "export CLAUDE_CODE_MAX_RETRIES=0\n"
+        "export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n"
+        "EOF"
+    )
+    container.write(
+        "/home/lado/.claude/.claude.json",
+        json.dumps(
+            {
+                "hasCompletedOnboarding": True,
+                "bypassPermissionsModeAccepted": True,
+                "projects": {repo: {"hasTrustDialogAccepted": True}},
+            }
+        ),
+    )
+    started = container.exec(
+        "lado", "start", repo, "--name", session, "--provider", "claude",
+        "--permission-mode", "bypassPermissions", "--no-attach", check=False,
+    )  # fmt: skip
+    assert started.returncode == 0, started.stdout + started.stderr
+    wait_status(container, session, "supervisor", "idle")
+
+
+def wait_status(container: Container, session: str, agent: str, want: str, timeout=120) -> None:
+    status, deadline = "", time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = container.agent_status(session, agent)
+        if status == want:
+            return
+        time.sleep(0.5)
+    raise AssertionError(f"{agent} is {status}, not {want}")
+
+
+def agent_pid(container: Container, session: str, window: str) -> int:
+    """The agent CLI's own process: the window's pane process, as lado.agent_env execs the
+    CLI in place and Claude Code 2.x is a native binary. Checked, never guessed: its
+    executable must be the file the `claude` command names."""
+    pane = container.exec(
+        "tmux", "-L", "lado", "display-message", "-p", "-t", f"{session}:{window}", "#{pane_pid}"
+    ).stdout.strip()
+    running = container.exec("readlink", f"/proc/{pane}/exe").stdout.strip()
+    claude = container.sh('readlink -f "$(command -v claude)"').stdout.strip()
+    assert running == claude, f"pane process {pane} runs {running}, not claude ({claude})"
+    return int(pane)
+
+
+def agent_environ(container: Container, session: str, window: str) -> list[str]:
+    pid = agent_pid(container, session, window)
+    return container.exec("cat", f"/proc/{pid}/environ").stdout.split("\0")

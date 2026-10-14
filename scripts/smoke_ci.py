@@ -1,6 +1,7 @@
 """One cell of LADO's smoke tests in CI: a provider's CLI on one system, no model.
 
     python scripts/smoke_ci.py run <provider> <out>
+    python scripts/smoke_ci.py container <out>
     python scripts/smoke_ci.py needed <event> [<base> <head>]
 
 `run` does one (system, provider) cell of ci.yml's job `smoke` or of the Windows probe's WSL
@@ -10,6 +11,11 @@ PROVIDER=<provider>` does. Its output goes to the terminal and to
 `<out>/smoke-<provider>.log`. The cell passes only when pytest exits 0 and its last summary
 line has a `passed` and no `skipped` (a missing CLI skips). A failing cell copies the
 test's evidence into `<out>/evidence`.
+
+`container` is a cell of ci.yml's job `container`: it installs nothing (LADO's image, which
+`make docker` built before, has its own CLI) and runs `uv run pytest -m container -n0 -v`
+into `<out>/container.log`, with `run`'s pass rule (the container tests skip without Docker
+or the image) and evidence.
 
 `needed` answers ci.yml's job `changes`: whether this run needs the smoke. It prints
 `smoke=true` or `smoke=false` (a line for `$GITHUB_OUTPUT`) and, on stderr, the files it
@@ -42,7 +48,7 @@ PINS = {
 
 # pytest's last line, e.g. `===== 1 failed, 2 passed in 10.00s (0:00:10) =====`.
 SUMMARY = re.compile(r"^=+ .* in [0-9.]+s\b.*=+$")
-USAGE = "usage: smoke_ci.py run <provider> <out> | needed <event> [<base> <head>]"
+USAGE = "usage: smoke_ci.py run <provider> <out> | container <out> | needed <event> [<base> <head>]"
 
 
 def summary(log: str) -> str:
@@ -70,12 +76,24 @@ def run(provider: str, out: Path) -> int:
     if cli is None or subprocess.run([cli, "--version"], env=env).returncode != 0:
         print(f"{command} --version failed after the install", file=sys.stderr)
         return 1
+    tests = ["uv", "run", "pytest", "-m", "smoke", "-n0", "-v", "-k", provider]
+    return cell(tests, out / f"smoke-{provider}.log", out, f"smoke {provider}", env)
+
+
+def container(out: Path) -> int:
+    """The container tests against the image `make docker` built (ci.yml's job
+    `container`): no CLI to install, the image has its own."""
+    tests = ["uv", "run", "pytest", "-m", "container", "-n0", "-v"]
+    return cell(tests, out / "container.log", out, "container")
+
+
+def cell(tests: list[str], log: Path, out: Path, name: str, env: dict | None = None) -> int:
+    """Run one cell's pytest command: its output to the terminal and to `log`; 0 only by the
+    pass rule; on red, the tests' evidence copied into `<out>/evidence`."""
     # Where a failing test keeps its evidence (tests/real_clis.py, EVIDENCE).
     evidence = Path(tempfile.gettempdir(), "lado-live-evidence")
     shutil.rmtree(evidence, ignore_errors=True)
     out.mkdir(parents=True, exist_ok=True)
-    log = out / f"smoke-{provider}.log"
-    tests = ["uv", "run", "pytest", "-m", "smoke", "-n0", "-v", "-k", provider]
     print("$", " ".join(tests), flush=True)
     with (
         log.open("w") as kept,
@@ -91,7 +109,7 @@ def run(provider: str, out: Path) -> int:
     line = summary(log.read_text())
     if passed(line, code):
         return 0
-    print(f"smoke {provider}: not passed (exit {code}): {line or 'no summary'}", file=sys.stderr)
+    print(f"{name}: not passed (exit {code}): {line or 'no summary'}", file=sys.stderr)
     if evidence.is_dir():
         shutil.copytree(evidence, out / "evidence", dirs_exist_ok=True)
     return 1
@@ -157,6 +175,8 @@ def main(argv: list[str]) -> int:
             print(f"{argv[1]}: no provider (one of {', '.join(PINS)})", file=sys.stderr)
             return 2
         return run(argv[1], Path(argv[2]))
+    if len(argv) == 2 and argv[0] == "container":
+        return container(Path(argv[1]))
     if len(argv) >= 2 and argv[0] == "needed":
         return main_needed(argv[1:])
     print(USAGE, file=sys.stderr)

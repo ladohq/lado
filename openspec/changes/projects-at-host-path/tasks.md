@@ -41,9 +41,9 @@ the tests' code and the commit.
 
 ## 5. Docs and the regression run
 
-- [ ] 5.1 AGENTS.md (Layout `docker/`, Commands' container tests) and CHANGELOG.md 0.39.0
+- [x] 5.1 AGENTS.md (Layout `docker/`, Commands' container tests) and CHANGELOG.md 0.39.0
   (D11). Plan, Task 5.
-- [ ] 5.2 Regression: `make lint`, `make test`, `openspec validate --specs --strict`,
+- [x] 5.2 Regression: `make lint`, `make test`, `openspec validate --specs --strict`,
   `openspec validate projects-at-host-path --strict`; with Docker `make test-container`.
 - [ ] 5.3 The pull request's CI: `container (amd64)`, `container (arm64)` and `ci-ok`
   green (the Linux runner's uid 1001 is AC-3), the jobs' times in the build report.

@@ -28,7 +28,12 @@
 - LADO's Docker image is in the repository (`docker/`): LADO from the build's wheel and
   Claude Code, started with one `docker run` (or `docker/compose.yaml`, whose `LADO_PORT`
   sets the port inside and on the host alike). `make docker` builds it from a checkout; CI
-  builds and tests it on amd64 and arm64. It is not published yet.
+  builds and tests it on amd64 and arm64. It is not published yet. Your projects folder is
+  mounted at its own path (`-v "$P:$P" -e LADO_REPOS="$P"`; compose does it for
+  `LADO_PROJECTS`), so a worker's worktree made in the container works on the host too,
+  and on Linux the container's user takes the folder owner's uid, so the files the agents
+  write are yours. `docker logs` warns when that folder is not mounted or not writable.
+- `lado doctor` warns when LADO may not write in its repositories folder (`LADO_REPOS`).
 
 ## 0.38.0 (2026-10-14)
 

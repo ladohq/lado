@@ -178,7 +178,17 @@ session against the fake endpoint, run inside the container on its own loopback 
 through `~/.profile`, gets its supervisor to idle, the window's process is the `claude`
 binary itself (`/proc/<pid>/exe`), and `lado doctor` run with exactly that process's
 environment (`/proc/<pid>/environ`) says `in a container`; `docker/compose.yaml` serves on
-its `LADO_PORT` and refuses without `LADO_PROJECTS`. A test that fails in its setup or its
+its `LADO_PORT`, its `lado doctor` names the projects at the host's path as `LADO_REPOS`,
+and it refuses without `LADO_PROJECTS`. The projects (`test_projects.py`): with the test's
+folder mounted at its own path, a worker spawned in the container commits in its worktree,
+and on the host `git status` works there, `git worktree list` has no `prunable`, the file
+and the commit's object belong to the host's user (uid 1001 on GitHub's runner), and the
+worker's process has the container's `LADO_REPOS`; a projects volume owned by 2001
+(`projects_volume`) makes `lado` uid 2001, its home too, leaves no sudo rule, `docker exec
+lado ui` works, and a restart (under 8 s) keeps the uid; the same home volume in a new
+container with projects of 2002 is 2002's, with `lado doctor` clean and `lado ls` working;
+an owner of 0 keeps 1000 and warns in `docker logs`, as does a `LADO_REPOS` not mounted. A
+test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
 anything can fail, and its finalizer runs after the failure's report. `make test-container`; not in `make
@@ -289,8 +299,9 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     `Repositories folder` (after `git`, `check_repos_folder`, only while `LADO_REPOS` is
     set and not empty): `OK` for a folder, `INFO` for one not made yet, `WARN` for a path
     that is no folder or LADO may not look at (one `stat`, never `exists()`, which raises
-    there on some Pythons) or a value that is not absolute (which `clone.repos_folder`
-    ignores).
+    there on some Pythons), a folder LADO may not write in (a probe file made and removed,
+    never `os.access`: a Docker Desktop bind mount shows its root as 0:0) or a value that
+    is not absolute (which `clone.repos_folder` ignores).
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
     kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
@@ -1093,17 +1104,31 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
 - `docker/`: LADO's image, built from a checkout by `make docker` (`lado:local`; nothing
   publishes it yet). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39), Node 22 and npm from
   the official `node` image, uv from its own, every base pinned by digest; LADO from the one
-  wheel of the build context (`Dockerfile.dockerignore`, an allowlist: `dist/lado-*.whl`
-  and `profile.sh`), Claude Code alone at `smoke_ci.py`'s `PINS["claude"]` (`ARG
-  CLAUDE_VERSION`), programs under `/opt`, the user `lado` (uid 1000) with its home a
-  volume; `lado server --host 0.0.0.0 --port $LADO_PORT` (8765) under tini. The
-  environment is set twice with the same values (`tests/test_docker.py`): in `ENV` for the
-  server and `docker exec`, and in `profile.sh`, the image's `/etc/profile.d/lado.sh`, for
-  the agents, whose environment comes from the login shell (`LADO_CONTAINER=1`,
-  `LADO_REPOS=/projects`, `PATH`, `CLAUDE_CONFIG_DIR`, `DISABLE_AUTOUPDATER`, `LANG`).
+  wheel of the build context (`Dockerfile.dockerignore`, an allowlist: `dist/lado-*.whl`,
+  `profile.sh` and `entrypoint.sh`), Claude Code alone at `smoke_ci.py`'s
+  `PINS["claude"]` (`ARG CLAUDE_VERSION`), programs under `/opt`, the user `lado` (uid
+  1000 in the image) with its home a volume; `lado server --host 0.0.0.0 --port
+  $LADO_PORT` (8765) under tini and `entrypoint.sh` (`/usr/local/bin/lado-entrypoint`).
+  The human's projects are mounted at the host's own path and named by `LADO_REPOS`
+  (`/projects` by default), so git's absolute worktree links and LADO's stored paths hold
+  on the host too. The entrypoint, at a container's first start (the marker
+  `/etc/lado/first-start`), reruns itself as root by `sudo -E` through
+  `/etc/sudoers.d/lado-entrypoint`, a rule for it alone; that run deletes the rule and the
+  marker first, gives `lado` the uid and gid of `LADO_REPOS`'s owner unless it is 0
+  (Docker Desktop shows a bind mount so; `usermod -o`, `groupmod -o`), `chown -R`s the home
+  when anything there has another owner, writes `LADO_REPOS` to
+  `/etc/profile.d/lado-repos.sh` for the agents, and drops back to `lado` (`setpriv`, PATH
+  as before sudo). Every start then warns in `docker logs` about a `LADO_REPOS` that is no
+  folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's.
+  git's system config has `safe.directory = *`. The environment is set twice with the same
+  values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
+  `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
+  comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
+  `DISABLE_AUTOUPDATER`, `LANG`; `LADO_REPOS` is the entrypoint's `lado-repos.sh`).
   `compose.yaml`: the same image (`LADO_IMAGE`), one `LADO_PORT` both inside and published
-  as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at `/projects`, no
-  container name (a second one: `-p lado-2`). The research prototype in
+  as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at that same path
+  and as `LADO_REPOS`, no container name (a second one: `-p lado-2`). The research
+  prototype in
   `docs/research/docker-install/` is evidence only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 

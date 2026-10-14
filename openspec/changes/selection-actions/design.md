@@ -47,8 +47,10 @@ Held against AGENTS.md's Design principles and ROADMAP:
 
 `SelectionBar.tsx` is mounted once in the shell (`Shell.tsx`) and listens to the document's
 `selectionchange` (and `pointerup`, `keyup`). It shows only when the selection is not
-collapsed and its anchor and focus have the same closest `[data-quote]` ancestor that is
-not inside `input`, `textarea`, `[contenteditable]` or `.xterm`. The area's attributes say
+blank and lies in one area: the closest `[data-quote]` ancestor of its start, not inside
+`input`, `textarea`, `[contenteditable]` or `.xterm`, holding its end too, or the
+selection takes no text past that area (a triple click on an area's last line ends at the
+next block's start, which is another area or the composer). The area's attributes say
 what a quote needs: `data-quote="text"` (a message, note, card), `data-quote="markdown"`
 plus `data-quote-artifact="<full name>"` and `data-quote-earlier` when the record is not the
 latest, `data-quote="code"` with the same artifact attributes on the text viewer (each row

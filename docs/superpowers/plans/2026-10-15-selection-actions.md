@@ -179,8 +179,9 @@ export const QuoteIcon = () => (
 `COPIED_MS`, `CopyIcon`, `QuoteIcon`.
 
 - [ ] Step 1: vitest — `SelectionBar.test.tsx` for its pure helper
-  `areaOf(selection): HTMLElement | null` (same closest `[data-quote]` for both ends; null
-  inside `input`, `textarea`, `[contenteditable]`, `.xterm`, or for two areas) and
+  `areaOf(selection): HTMLElement | null` (the closest `[data-quote]` of the start, holding
+  the end or with no text taken past it, as a triple click on a last line; null inside
+  `input`, `textarea`, `[contenteditable]`, `.xterm`, or for text of two areas) and
   `quoteOf(area, range): string` (text area → `blockquote(range.toString())`; markdown →
   lead + blockquote; code → lead with the rows' `data-line` span + `fenced` of the rows'
   `td.line` text, the first cut at the range's start offset, the last at its end).

@@ -23,8 +23,9 @@ code and Copy message both, hidden until hover, always shown on touch screens.
 - **Areas** (D1). Each component that renders readable text marks its root with
   `data-quote` (`text`, `markdown`, `code`) and `data-quote-session`; an artifact's body
   also `data-quote-artifact` and, for an older record, `data-quote-earlier`; the text
-  viewer's rows `data-line`. The bar shows only for a selection whose both ends have the
-  same closest area.
+  viewer's rows `data-line`. The bar shows only for a selection that lies in one area: the
+  closest area of its start holds its end, or the selection takes no text past it (a
+  triple click on an area's last line ends at the next block's start).
 
   | Component | Area |
   |---|---|

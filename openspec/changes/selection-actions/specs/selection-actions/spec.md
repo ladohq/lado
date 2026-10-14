@@ -2,8 +2,9 @@
 
 ### Requirement: Selected text in a readable area shows the selection bar
 
-When the human selects text whose start and end both lie in one readable area of the web
-UI, the UI SHALL show the selection bar: two icon buttons with no visible label, Copy (two
+When the human selects text that lies in one readable area of the web UI (its start and
+end in that area, or its end past it with no text taken there, as a triple click on the
+area's last line selects), the UI SHALL show the selection bar: two icon buttons with no visible label, Copy (two
 sheets) and Quote in reply (a speech bubble with quote marks), each named by its
 accessible name and the UI's tooltip ("Copy", "Quote in reply"). The readable areas SHALL
 be: the messages of the session's chat and of an agent's page, the waiting card's
@@ -21,6 +22,11 @@ becomes empty SHALL hide it. Pressing a button of the bar SHALL keep the selecti
   message in session lad-67's chat
 - **THEN** a bar with the Copy and Quote in reply icons shows above the selection, and
   hovering the second shows the tooltip "Quote in reply"
+
+#### Scenario: A triple click on a message's last line
+- **WHEN** the human triple-clicks the last paragraph of the supervisor's message, which
+  the browser selects up to the start of the next row
+- **THEN** the bar shows, and Quote in reply quotes only that paragraph
 
 #### Scenario: Esc
 - **WHEN** the bar shows and the human presses Esc

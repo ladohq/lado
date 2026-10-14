@@ -176,6 +176,25 @@ def test_a_failed_check_is_kept_in_the_cache_until_the_next_day(
     assert update.check().error == failed.error  # no new look before a day has passed
 
 
+@pytest.mark.parametrize(
+    "value, inside", [(None, False), ("", False), ("0", False), ("1", True), ("yes", True)]
+)
+def test_lado_runs_in_a_container_only_when_lado_container_says_so(monkeypatch, value, inside):
+    if value is None:
+        monkeypatch.delenv("LADO_CONTAINER", raising=False)
+    else:
+        monkeypatch.setenv("LADO_CONTAINER", value)
+    assert update.in_container() is inside
+
+
+def test_the_line_of_a_newer_version_names_the_image_in_a_container(published, monkeypatch):
+    published(**{"99.0.0": "2026-10-04"})
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    assert update.available_line(update.check()) == (
+        "LADO 99.0.0 is available: docker compose pull && docker compose up -d"
+    )
+
+
 def test_no_check_when_switched_off(published, monkeypatch, lado_home):
     published(**{"99.0.0": "2026-10-04"})
     monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")

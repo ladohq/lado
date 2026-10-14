@@ -1,6 +1,6 @@
 ## 1. The predicate and the refusal
 
-- [ ] 1.1 Unit tests first (layer 1), red before the code: `tests/test_update.py`:
+- [x] 1.1 Unit tests first (layer 1), red before the code: `tests/test_update.py`:
   `in_container` for unset, empty, `0`, `1`, `yes`; `available_line` in and out of a
   container. `tests/test_self_update.py`: `refusal` gives `CONTAINER` with its `why` in a
   container, `AGENT` first inside an agent in a container, `CONTAINER` before `RUNNING`
@@ -12,7 +12,7 @@
   `update.lock` pid, `update.json` or `update.log` written, the result file as it was
   without `--id`, and nothing stopped (`runtime.stop_session` and the server's stop
   replaced by recorders that must stay uncalled).
-- [ ] 1.2 `update.py`: `in_container()`, `CONTAINER_UPDATE`; `available_line` names the
+- [x] 1.2 `update.py`: `in_container()`, `CONTAINER_UPDATE`; `available_line` names the
   command in a container (D1, D4). `self_update.py`: kind `CONTAINER` in `refusal` (D2).
   `cli._update`: raise for it before `_unfinished_update` (D2). `make lint`, `make test`.
 

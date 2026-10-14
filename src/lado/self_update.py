@@ -38,6 +38,7 @@ LOCK_WAIT = 0.1  # seconds an update tries to take the lock: `refusal()` holds i
 TAIL = 20  # lines of update.log the result keeps
 
 AGENT = "agent"
+CONTAINER = "container"
 RUNNING = "running"
 NO_INSTALLER = "no installer"
 
@@ -93,16 +94,21 @@ def running_pid() -> int | None:
 
 @dataclass(frozen=True)
 class Refusal:
-    kind: str  # AGENT, RUNNING or NO_INSTALLER
+    kind: str  # AGENT, CONTAINER, RUNNING or NO_INSTALLER
     why: str
 
 
 def refusal(installer: update.Installer | None) -> Refusal | None:
     """Why this LADO cannot update itself now, for the CLI and the UI alike: inside an
-    agent, while an update runs, or with no installer (`installer()` found none)."""
+    agent, in LADO's container (`update.in_container`), while an update runs, or with no
+    installer (`installer()` found none)."""
     agent = os.environ.get("LADO_AGENT")
     if agent:
         return Refusal(AGENT, f'lado update is for the human; agent "{agent}" cannot use it')
+    if update.in_container():
+        return Refusal(
+            CONTAINER, "LADO runs in a container: a new image updates it, not lado update"
+        )
     pid = running_pid()
     if pid is not None:
         return Refusal(RUNNING, f"an update is running, pid {pid}")

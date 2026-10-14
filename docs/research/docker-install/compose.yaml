@@ -1,0 +1,35 @@
+# LAD-52 prototype: evidence for docs/research/docker-install.md, not a shipped artifact.
+#
+#   LADO_PROJECTS=~/lado-projects docker compose -f docs/research/docker-install/compose.yaml up -d --build
+#   docker exec -it lado lado ui --no-open
+name: lado-research
+
+services:
+  lado:
+    build: .
+    image: lado-research:prototype
+    container_name: lado
+    hostname: lado
+    ports:
+      # The host's loopback only: the UI's token is the one guard (D5).
+      - "127.0.0.1:8765:8765"
+    volumes:
+      # LADO_HOME (~/.lado) and every CLI's login and config.
+      - home:/home/lado
+      # The human's projects, the one folder shared with the host.
+      - ${LADO_PROJECTS:?set LADO_PROJECTS to the projects folder}:/projects
+      # Docker Desktop's way to the host's ssh agent (macOS, Windows).
+      - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+    environment:
+      SSH_AUTH_SOCK: /run/host-services/ssh-auth.sock
+    # The socket is root:root, mode 660, inside the container (H8): lado reads it through
+    # the root group.
+    group_add:
+      - "0"
+    extra_hosts:
+      # Docker Desktop has it already; a Linux host's Docker Engine needs this line.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  home:

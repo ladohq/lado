@@ -1,12 +1,12 @@
 ## 1. Prototype
 
-- [ ] 1.1 Write the prototype's Dockerfile and compose file under
+- [x] 1.1 Write the prototype's Dockerfile and compose file under
   `docs/research/docker-install/` (design D2-D5). Check: the image builds for
   linux/arm64.
-- [ ] 1.2 Run H1 and H2 (doctor, the UI from the host's browser, a session from the New
+- [x] 1.2 Run H1 and H2 (doctor, the UI from the host's browser, a session from the New
   session window, an agent's terminal). Check: results with evidence in a draft of
   section 4.
-- [ ] 1.3 Run H5-H8 (local model, worker on the bind mount, restart and recreate, push
+- [x] 1.3 Run H5-H8 (local model, worker on the bind mount, restart and recreate, push
   with the host's ssh agent on a scratch repository). Check: as 1.2.
 - [ ] 1.4 Ask the human once, with exact steps, for the Claude Code and Codex logins; run
   H3 and H4. Check: as 1.2; the volumes with logins removed after the run.

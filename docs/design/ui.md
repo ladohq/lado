@@ -935,7 +935,10 @@ Built in the chat task (2026-10-03):
   while each tab it shows is one of them, so a new tab (a new gate, an agent with no tab
   asking) restores it with no event to watch and the shown tab the human's, and a question
   added to a tab that is there leaves it minimized (the tab's count says so). A restore
-  forgets the keys. Expanding a minimized card shows it whole, and folding it brings it
+  forgets the keys. Once the chat has both its open questions and its gates loaded, the
+  keys narrow to the tabs there are and go with the last one (never earlier: the gates may
+  load after the questions), so an agent whose tab went away has a new tab when it asks
+  again (review of LAD-54, F1). Expanding a minimized card shows it whole, and folding it brings it
   back minimized. Minimizing changes nothing of what waits: Needs you's count and the
   notifications are as before, and Needs you shows the card whole, with neither control.
   An icon button

@@ -286,12 +286,15 @@ def update_state(checked: update.Check | None) -> UpdateInfo:
     refused = self_update.refusal(installer)
     available = checked.available if checked else None
     by_hand = []
-    if available and refused and refused.kind == self_update.NO_INSTALLER:
+    if available and refused and refused.kind == self_update.CONTAINER:
+        by_hand = [update.CONTAINER_UPDATE]
+    elif available and refused and refused.kind == self_update.NO_INSTALLER:
         release = update.Release(available, checked.released or "")
         by_hand = self_update.plan(release).by_hand()
     return UpdateInfo(
         current=lado.__version__,
         prerelease=update.prerelease(lado.__version__),
+        container=update.in_container(),
         latest=checked.latest if checked else None,
         available=available,
         available_prerelease=available is not None and update.prerelease(available),
@@ -367,15 +370,16 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
     def start_update(given: UpdateAsk) -> UpdateStarted:
         """Start `lado update --yes <to>` as a process of its own, which stops this server
         within seconds; 409 when `to` is not the plan's version or this LADO cannot update
-        itself now (an update runs, no installer). Its result carries the id answered."""
+        itself now (in a container, an update runs, no installer: refused before PyPI). Its
+        result carries the id answered."""
+        refused = self_update.refusal(update.installer())
+        if refused:
+            raise HTTPException(409, refused.why)
         plan = latest_plan()
         if plan.to.version != given.to:
             raise HTTPException(
                 409, f"LADO {plan.to.version} is the version to update to, not {given.to}"
             )
-        refused = self_update.refusal(plan.installer)
-        if refused:
-            raise HTTPException(409, refused.why)
         id = uuid.uuid4().hex
         requested = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
         self_update.start_detached(given.to, id)

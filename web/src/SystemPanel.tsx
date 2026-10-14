@@ -304,6 +304,11 @@ function SystemPanel({
               pre-release
             </span>
           )}
+          {info?.container && (
+            <span className="pill dim" title="LADO runs in a Docker container (LADO_CONTAINER): a new image updates it">
+              container
+            </span>
+          )}
         </span>
         <span className="system-links">
           <span role="status" className="row-note">
@@ -443,7 +448,8 @@ function ProviderRow({ provider }: { provider: ProviderInfo }) {
   );
 }
 
-// A newer LADO (P2), or why this one cannot update itself here (P3: by hand).
+// A newer LADO (P2), or why this one cannot update itself here (P3: by hand, or in a
+// container the host's command).
 function UpdateBlock({ info, onAsk }: { info: UpdateInfo; onAsk: () => void }) {
   const version = info.available!;
   const released = info.released ? ` · ${new Date(`${info.released}T12:00:00`).toLocaleDateString([], { day: "numeric", month: "short" })}` : "";
@@ -473,7 +479,7 @@ function UpdateBlock({ info, onAsk }: { info: UpdateInfo; onAsk: () => void }) {
       {!info.can_update && info.why_not && <p className="system-why">{info.why_not}.</p>}
       {!info.can_update && info.by_hand.length > 0 && (
         <div className="system-by-hand">
-          <span>By hand:</span>
+          <span>{info.container ? "On the host:" : "By hand:"}</span>
           <CopyButton
             label="Copy commands"
             copied="Commands copied"

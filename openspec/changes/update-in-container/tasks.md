@@ -27,13 +27,13 @@
 
 ## 3. The API and the System panel
 
-- [ ] 3.1 Unit tests first, `tests/test_server_system.py`: `GET /api/update` in a
+- [x] 3.1 Unit tests first, `tests/test_server_system.py`: `GET /api/update` in a
   container: `can_update` false, `why_not` the reason, `by_hand` `[the command]`,
   `container` true; outside one `container` false; `POST /api/update` 409 with the reason
   and `self_update.start_detached` not called.
-- [ ] 3.2 `server/models.py`: `UpdateInfo.container`; `server/app.py`: `update_state` (D3).
+- [x] 3.2 `server/models.py`: `UpdateInfo.container`; `server/app.py`: `update_state` (D3).
   `make web-types`, commit `web/openapi.json` and `web/src/api.gen.ts`.
-- [ ] 3.3 vitest first, `web/src/SystemPanel.test.tsx`: with `container` true the head
+- [x] 3.3 vitest first, `web/src/SystemPanel.test.tsx`: with `container` true the head
   has a `container` pill with its tooltip; with an update out, no Update… button, the
   reason, `On the host:` and the command with Copy; with `container` false neither the
   pill nor the label. Then `SystemPanel.tsx` to the mockup

@@ -86,6 +86,7 @@ function info(more: Partial<UpdateInfo> = {}): UpdateInfo {
   return {
     current: BUNDLE_VERSION,
     prerelease: false,
+    container: false,
     latest: BUNDLE_VERSION,
     available: null,
     available_prerelease: false,
@@ -357,6 +358,59 @@ test("without an installer the panel shows the commands by hand and no Update bu
     "lado server stop\n/x/.venv/bin/pip install lado==99.0.0\nlado ui",
   );
   expect(within(block).getByRole("button", { name: "Copy commands" })).toBeTruthy();
+});
+
+test("in a container the head says so and the Update block names the host's command, no Update button", async () => {
+  update = info({
+    container: true,
+    latest: "99.0.0",
+    available: "99.0.0",
+    can_update: false,
+    why_not: "LADO runs in a container: a new image updates it, not lado update",
+    by_hand: ["docker compose pull && docker compose up -d"],
+  });
+  serve();
+  open();
+  const box = await panel();
+  const pill = await waitFor(() => {
+    const found = box.querySelector(".system-head .pill");
+    expect(found?.textContent).toBe("container");
+    return found!;
+  });
+  expect(pill.getAttribute("title")).toBe(
+    "LADO runs in a Docker container (LADO_CONTAINER): a new image updates it",
+  );
+  const block = within(box).getByRole("region", { name: "Update" });
+  expect(within(block).queryByRole("button", { name: "Update…" })).toBeNull();
+  expect(block.textContent).toContain("LADO runs in a container: a new image updates it, not lado update.");
+  expect(block.querySelector(".system-by-hand > span")!.textContent).toBe("On the host:");
+  expect(block.querySelector("pre")!.textContent).toBe("docker compose pull && docker compose up -d");
+  expect(within(block).getByRole("button", { name: "Copy commands" })).toBeTruthy();
+});
+
+test("in a container on the latest version the head has the pill and there is no Update block", async () => {
+  update = info({ container: true, can_update: false, why_not: "LADO runs in a container: a new image updates it, not lado update" });
+  serve();
+  open();
+  const box = await panel();
+  await waitFor(() => expect(box.querySelector(".system-head .pill")?.textContent).toBe("container"));
+  expect(within(box).queryByRole("region", { name: "Update" })).toBeNull();
+});
+
+test("outside a container the commands by hand are By hand and there is no container pill", async () => {
+  update = info({
+    latest: "99.0.0",
+    available: "99.0.0",
+    can_update: false,
+    why_not: "LADO runs from /x/.venv, not a uv tool or pipx install of lado from PyPI; lado update does not upgrade it",
+    by_hand: ["lado ui"],
+  });
+  serve();
+  open();
+  const box = await panel();
+  const block = await within(box).findByRole("region", { name: "Update" });
+  expect(block.querySelector(".system-by-hand > span")!.textContent).toBe("By hand:");
+  expect(box.querySelector(".system-head .pill")).toBeNull();
 });
 
 test("Update… shows the plan, starts the update and waits for a restarted server, also of the same version", async () => {

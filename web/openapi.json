@@ -42,7 +42,7 @@
       },
       "post": {
         "summary": "Start Update",
-        "description": "Start `lado update --yes <to>` as a process of its own, which stops this server\nwithin seconds; 409 when `to` is not the plan's version or this LADO cannot update\nitself now (an update runs, no installer). Its result carries the id answered.",
+        "description": "Start `lado update --yes <to>` as a process of its own, which stops this server\nwithin seconds; 409 when `to` is not the plan's version or this LADO cannot update\nitself now (in a container, an update runs, no installer: refused before PyPI). Its\nresult carries the id answered.",
         "operationId": "start_update_api_update_post",
         "requestBody": {
           "content": {
@@ -6633,6 +6633,10 @@
             "type": "boolean",
             "title": "Prerelease"
           },
+          "container": {
+            "type": "boolean",
+            "title": "Container"
+          },
           "latest": {
             "anyOf": [
               {
@@ -6733,6 +6737,7 @@
         "required": [
           "current",
           "prerelease",
+          "container",
           "latest",
           "available",
           "available_prerelease",

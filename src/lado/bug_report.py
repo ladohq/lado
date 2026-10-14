@@ -33,7 +33,7 @@ WARNING = (
 )
 PLACEHOLDER = "<!-- What did you do, what did you expect, and what happened instead? -->"
 WHAT_HAPPENED = f"### What happened\n\n{PLACEHOLDER}\n"
-NO_ERRORS = "No LADO errors in the last 30 days."
+NO_ERRORS = f"No LADO errors in the last {WINDOW.days} days."
 # The shape of the UI's browser line (web/src/SystemPanel.tsx, browserLine): the only text
 # of a request that gets into a report.
 BROWSER_LINE = re.compile(r"- Browser: [A-Za-z0-9 .]{1,40} on [A-Za-z ]{1,20}")
@@ -145,9 +145,10 @@ def _kind_lines(kind: Kind) -> list[str]:
 
 def _errors_section(found: list[Kind], shown: int) -> str:
     if not found:
-        return f"### LADO errors (last 30 days)\n{NO_ERRORS}\n"
+        return f"### LADO errors (last {WINDOW.days} days)\n{NO_ERRORS}\n"
     total = len(found)
-    lines = [f"### LADO errors (last 30 days, {total} {'kind' if total == 1 else 'kinds'})"]
+    kinds_ = f"{total} {'kind' if total == 1 else 'kinds'}"
+    lines = [f"### LADO errors (last {WINDOW.days} days, {kinds_})"]
     for kind in found[:shown]:
         lines.extend(_kind_lines(kind))
     if shown < total:

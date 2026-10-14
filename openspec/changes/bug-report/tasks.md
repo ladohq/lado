@@ -9,7 +9,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 2. System info (D6)
 
-- [ ] 2.1 `doctor.ServerState`, `doctor.report(system, server)` with the `not running` and
+- [x] 2.1 `doctor.ServerState`, `doctor.report(system, server)` with the `not running` and
   `running` lines; `/api/system` unchanged. Check: `uv run pytest tests/test_doctor.py
   tests/test_server_system.py -n auto`.
 

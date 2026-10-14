@@ -404,7 +404,7 @@ def create_app(token: str, port: int, static: Path = STATIC, host: str = "127.0.
             sessions=SessionCounts(**facts.sessions),
             last=models.update_result_info(facts.last),
             telemetry=models.telemetry_info(facts.statistics or telemetry.state()),
-            report=doctor.report(facts, open_to_network, up),
+            report=doctor.report(facts, doctor.ServerState(open_to_network, up)),
         )
 
     @app.get("/api/telemetry", dependencies=[Depends(guard)])

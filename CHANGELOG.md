@@ -2,6 +2,14 @@
 
 ## 0.38.0 (unreleased)
 
+- `lado stats` prints how you used LADO on this machine in the last 30 days (`--days N`,
+  `--all`): sessions, agents per agent CLI and per role (with its kit), turn errors, flow
+  runs, gates and how often you answered as the lead advised, questions, undelivered
+  messages and LADO's own errors. It sends nothing.
+- LADO now keeps an anonymous local record of these counts (no names, paths or texts),
+  filled from your existing history at the upgrade, so `lado forget` no longer makes them
+  smaller; the statistics report counts from it with the same fields. `lado log` names an
+  agent's kit in its `spawned` line.
 - `lado bug-report` and **Report a bug** on the UI's left menu: a report for a new GitHub
   issue, with the system info and LADO's errors of the last 30 days by kind, and no paths,
   session or repository names, nor message texts; a link opens GitHub's new issue form

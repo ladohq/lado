@@ -566,7 +566,9 @@ def _kits(usable: bool) -> dict:
     return {"named": sorted(named), "other": other}
 
 
-def _lado_errors(since: str) -> int:
+def lado_errors(since: str) -> int:
+    """LADO's own errors recorded from `since` (format_time) on, in errors.jsonl and its
+    `.1`: the report's count and `lado stats`'. The journal keeps only its latest part."""
     count = 0
     for path in (journal_path().with_name("errors.jsonl.1"), journal_path()):
         with contextlib.suppress(OSError), open(path) as lines:
@@ -619,7 +621,7 @@ def report(
         fields["db"] = "unreadable"
     else:
         fields.update(counts)
-    fields["lado_errors"] = _lado_errors(format_time(since))
+    fields["lado_errors"] = lado_errors(format_time(since))
     fields["errors_dropped"] = dropped() if drops is None else drops
     return {
         "event": DAILY,

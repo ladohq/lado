@@ -2970,8 +2970,8 @@ def test_start_and_spawn_record_spawned_events(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, "kilo")
     runtime.spawn_worker("s", "task", provider="claude")
     assert [(e.agent, e.kind, e.detail) for e in state.list_events("s")] == [
-        ("supervisor", "spawned", "role supervisor, provider kilo"),
-        ("worker", "spawned", "role worker, provider claude"),
+        ("supervisor", "spawned", "role supervisor, kit default, provider kilo"),
+        ("worker", "spawned", "role worker, kit default, provider claude"),
     ]
 
 

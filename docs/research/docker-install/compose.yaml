@@ -1,7 +1,7 @@
 # LAD-52 prototype: evidence for docs/research/docker-install.md, not a shipped artifact.
 #
 #   LADO_PROJECTS=~/lado-projects docker compose -f docs/research/docker-install/compose.yaml up -d --build
-#   docker exec -it lado lado ui --no-open
+#   docker exec lado lado ui --no-open
 name: lado-research
 
 services:
@@ -18,7 +18,8 @@ services:
       - home:/home/lado
       # The human's projects, the one folder shared with the host.
       - ${LADO_PROJECTS:?set LADO_PROJECTS to the projects folder}:/projects
-      # Docker Desktop's way to the host's ssh agent (macOS, Windows).
+      # Docker Desktop's way to the host's ssh agent (macOS, Windows) only: on a Linux
+      # host's Docker Engine, mount "$SSH_AUTH_SOCK" instead (report, 5.5).
       - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
     environment:
       SSH_AUTH_SOCK: /run/host-services/ssh-auth.sock

@@ -26,7 +26,7 @@ and created in the tracker only on the human's yes.
      (LADO_HOME, each CLI's login and config, the projects folder), its port, how it is
      started (a compose file or one `docker run`), and how the human reaches it (the web
      UI from the host's browser, the agents' terminals in the UI).
-  4. **Hands-on checks**: one row per check H1-H8 of the design (what was done, the
+  4. **Hands-on checks**: one row per check H1-H9 of the design (what was done, the
      result `works` / `works with a workaround` / `does not work` / `not checked`, the
      evidence: a command and its output, or a screenshot).
   5. **Difficulties**: each with its cause, what the user would see, and 1-3 ways out
@@ -57,7 +57,7 @@ and created in the tracker only on the human's yes.
 
 - Desk research of every difficulty in section 5 and of the platforms and alternatives.
 - A prototype image built and run on this Mac (Docker Desktop 4.88, arm64), with the
-  hands-on checks H1-H8 of the design.
+  hands-on checks H1-H9 of the design.
 - The human's part in the checks: opening the login links of Claude Code (subscription)
   and Codex (ChatGPT login) and signing in. The developer asks the human for it when the
   image is ready.
@@ -82,7 +82,7 @@ and created in the tracker only on the human's yes.
 - AC-1: `docs/research/docker-install.md` exists, in English, with the eight sections of
   What Changes in that order, and its Summary gives a verdict and the three largest
   difficulties.
-- AC-2: Section 4 has a row for each of H1-H8 with a result and its evidence; a check not
+- AC-2: Section 4 has a row for each of H1-H9 with a result and its evidence; a check not
   done says `not checked` and why.
 - AC-3: Section 5 covers each difficulty listed in What Changes, each with its cause, what
   the user sees and at least one way out with its cost; every claim about LADO's own

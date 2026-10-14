@@ -60,6 +60,9 @@ Each is run on the prototype on this Mac and recorded in the report's section 4.
 - H8. `git push` and `gh` from inside with the host's ssh agent (Docker Desktop's
   `/run/host-services/ssh-auth.sock`) on a scratch repository, never on the project's
   remote.
+- H9. Added after the human read the report: a version manager (mise) in the home volume
+  installs a project's toolchain by its version files; the agents' `PATH` finds it, and
+  it survives recreating the container.
 
 ## Risks
 

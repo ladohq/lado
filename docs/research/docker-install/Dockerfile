@@ -3,7 +3,7 @@
 # picks this file up.
 #
 #   docker compose -f docs/research/docker-install/compose.yaml up -d --build
-#   docker exec -it lado lado ui --no-open        # the UI's link with its token
+#   docker exec lado lado ui --no-open            # the UI's link with its token
 
 FROM debian:bookworm-slim
 

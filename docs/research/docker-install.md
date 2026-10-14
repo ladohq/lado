@@ -17,19 +17,20 @@ prototype image on a Mac (Apple silicon, Docker Desktop, engine 29.7.2, linux/ar
 
 ## 1. Summary
 
-**Verdict: worth building as a second way in, not the default.** LADO and the four CLIs
-run in one container, reached through the web UI; sessions, workers, a Claude Code
-subscription login, restarts and resumes work (H1-H3, H5-H7). On Windows, or for a user
-with Docker, it is one command instead of seven steps; on macOS and Linux a one-command
-install script removes most of the same pain far cheaper (section 7). Largest difficulties:
+**Verdict: build it as LADO's main way in, as it isolates the agents from the user's
+machine; a one-command install script stays for those without Docker (section 7).** One
+image, to publish on GHCR (5.16), holds LADO and four CLIs behind the web UI: sessions,
+workers, a Claude Code login, restarts, resumes and a project's toolchain from mise work
+(H1-H3, H5-H7, H9). It isolates the agents from the host, not from each other; a
+container per session is the next step (5.14). Largest difficulties:
 
-1. **Toolchains**: agents build and test with what the image holds; a Python, Go or Java
-   project needs its own toolchain added, which a non-programmer cannot do (5.2).
-2. **Paths seen twice**: git links worktrees by the container's absolute paths; on the
-   host a worker's worktree is `prunable`, and `git worktree prune` drops it (H6, 5.3).
-3. **Updates and logins**: `lado update` inside kills itself (H7); each CLI's login is
-   made inside, Codex's not carried to its agents, and the host's logged-in CLI cannot be
-   reused, its macOS login being in the keychain (5.1).
+1. **Toolchains**: a thin image with mise in the home volume (H9), and a project's dev
+   container where it has one (5.2).
+2. **Files and paths**: git links worktrees by the container's paths (H6, 5.3); on a
+   Linux host the files need the host user's uid (5.4).
+3. **Updates and logins**: `lado update` inside kills itself (H7); CLIs log in inside,
+   and only a Linux host's login files can be mounted (a Mac keeps Claude Code's in the
+   keychain); a first-start wizard in the UI should replace `docker exec` (5.1).
 
 ## 2. Today and with Docker
 
@@ -53,15 +54,20 @@ docker exec -it lado claude          # log in to a CLI once (section 5.1)
 docker exec lado lado ui --no-open   # the UI's link, opened in the host's browser
 ```
 
-A product would hide these behind one script or a desktop shortcut (section 8). The user
-still has to know where the projects folder is and that agents see only it.
+The prototype builds its image on the first `up`. A product would ship a ready image
+(5.16), so the user builds nothing. It would also hide these commands behind a script or
+a desktop shortcut, and the login behind a wizard in the UI (section 8). The user still
+has to know where the projects folder is and that agents see only it.
 
 ## 3. The prototype
 
 Files: [Dockerfile](docker-install/Dockerfile) and
-[compose.yaml](docker-install/compose.yaml), as they were when the checks ran (one
-change during the checks: `group_add` for H8, which the checks after it ran with).
-Evidence, not a product: no build or CI picks them up.
+[compose.yaml](docker-install/compose.yaml), as they were when the checks ran. One change
+was made during the checks: `group_add` for H8, and the checks after it ran with it.
+After the review, two comments changed, not the files' behaviour: the ssh socket line is
+marked as Docker Desktop's only, and the Dockerfile's usage line lost a needless `-it`.
+H9 ran on the same image, with mise installed into the home volume at run time (not in
+the Dockerfile). Evidence, not a product: no build or CI picks them up.
 
 - **Base**: `debian:bookworm-slim`, which gives tmux 3.3a and git 2.39.5 (`lado doctor`
   wants 3.3 and 2.31, docs/install.md). Python 3.11 comes from Debian as a dependency
@@ -104,6 +110,7 @@ Evidence, not a product: no build or CI picks them up.
 | H6 | A worker commits on the bind-mounted repository; the host's view of it | works with a workaround | [H6](#h6-a-worker-on-the-bind-mount) |
 | H7 | Container stopped and started; recreated from the image; `lado update` inside | works (restart, recreate); `lado update` does not work | [H7](#h7-restart-recreate-update) |
 | H8 | The host's ssh agent, `git push`, `gh` from inside | works with a workaround | [H8](#h8-ssh-agent-push-gh) |
+| H9 | mise in the home volume installs a project's Go and Python; the agents' `PATH` finds them; they survive recreating the container | works with a workaround | [H9](#h9-a-toolchain-from-mise) |
 
 ### H1: image and lado doctor
 
@@ -349,6 +356,47 @@ auth login` inside, which keeps the token in `~/.config/gh/hosts.yml` on the vol
 plain file when no keyring is there (<https://cli.github.com/manual/gh_auth_login>; not
 run).
 
+### H9: a toolchain from mise
+
+A fresh container of the same image, with an empty home volume and a scratch projects
+folder; no login. mise (<https://mise.jdx.dev/>) was installed as the user `lado` with its
+script, into `~/.local/bin` on the home volume. Its shims folder went first on `PATH` in
+`~/.profile`, which the login shell reads, so the agents get it too. A project with a
+`.tool-versions`:
+
+```
+$ docker exec lado bash -lc 'curl -fsSL https://mise.run | sh'
+mise: installed successfully to /home/lado/.local/bin/mise
+# ~/.profile: export PATH="$HOME/.local/share/mise/shims:$PATH"
+$ cd /projects/gotest && echo "go 1.23.4" > .tool-versions && mise install
+mise ✓ go@1.23.4  9.6s  go1.23.4.linux-arm64.tar.gz
+$ go version
+go version go1.23.4 linux/arm64
+```
+
+The agents' environment, as LADO builds it (`agent_env.resolve()` called inside the
+container), had `/home/lado/.local/share/mise/shims` first on its `PATH`, and `go` was
+found there. After `docker compose up -d --force-recreate`, `go version` in the project
+still said `go1.23.4`: the tools are on the home volume (`~/.local/share/mise`, 267 MB
+with Go and one Python; mise's data folder, <https://mise.jdx.dev/directories.html>). No
+root and no new image were needed.
+
+Three catches:
+
+- **Outside a project that names a version, a shim fails.** In `/tmp`, `go version` said
+  `mise ERROR No version is set for shim: go`. An agent works in its worktree, which has
+  the project's committed `.tool-versions`, so this hits only a version file that is not
+  committed.
+- **Other tools' version files are read only once enabled.** `.python-version` with
+  `3.12.7` gave `python: command not found` until `mise settings add
+  idiomatic_version_file_enable_tools python` (mise's "idiomatic version files",
+  <https://mise.jdx.dev/configuration.html>).
+- **Some prebuilt versions are refused.** Python 3.12.7 then failed with `No GitHub
+  artifact attestations found for python@3.12.7`. `3.13` installed 3.13.16 in 5.7 s.
+
+Not checked: a LADO agent itself installing a tool when it meets `command not found`. The
+volume was removed after the check.
+
 ## 5. Difficulties
 
 Each: its cause, what the user sees, ways out with their cost.
@@ -433,6 +481,34 @@ Recommendation: log in inside once (way 1). Use a token from the host only when 
 already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's profile
 (way 2). Mount the host's files only on Linux, and only for OpenCode and Kilo.
 
+**First start and models.** Nothing comes from the host: the agents' settings live only
+on the container's `home` volume, which is empty at the first start. A user with no agent
+CLI on the host is in the same place as one with all four, and needs only the logins.
+Then:
+
+- Claude Code and Codex work after their login on their default model (H3 for Claude
+  Code; Codex from its documentation, <https://developers.openai.com/codex/auth>).
+- OpenCode and Kilo need a provider first: an account or a key (`opencode auth login`,
+  `kilo auth login`), or a local model, as LM Studio in H5.
+
+Where each keeps its model:
+
+- Claude Code: `model` in `~/.claude/settings.json`
+  (<https://code.claude.com/docs/en/settings>), or `/model` in a session.
+- Codex: `model` and `model_provider` in `~/.codex/config.toml`; LADO carries these into
+  each agent's own config (providers/codex.py, `CARRIED`).
+- OpenCode and Kilo: `model` and the provider in their global config,
+  `~/.config/opencode/opencode.json` and `~/.config/kilo/kilo.json` (H5;
+  <https://opencode.ai/docs/config/>).
+
+Today the user changes a model in the agent's terminal in the UI, or by editing the file
+through `docker exec`, which a non-programmer will not do. Way out: **a first-start
+wizard in the UI**. It would let the user choose an agent and log in, showing the CLI's
+link and code in the UI instead of a `docker exec` terminal. It would then let them pick
+the model, or for OpenCode and Kilo the provider and model, and write that to the agent's
+settings. Cost: M/L, code in LADO's server and UI. It helps the native install as well
+(section 8).
+
 ### 5.2 The project's own toolchains
 
 - **Cause**: an agent builds and tests the project with the programs of the container: the
@@ -441,12 +517,25 @@ already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's pr
 - **User sees**: the agent reports `command not found` for the project's build or test,
   or installs it with `npm`/`pip` into the container, where it is lost on recreation.
 - **Ways out**:
-  1. A "full" image with common toolchains (build-essential, Python's venv, Go, Java).
-     Cost: several GB more, and still not every project.
-  2. A documented derived image (`FROM lado` plus the project's `apt-get install`).
-     Cost: needs a programmer, against the goal.
-  3. The project's own dev container (section 7) with LADO added to it. Cost: the project
-     must have one.
+  1. **A thin image and a version manager in the home volume** (recommended). The image
+     ships mise (or asdf) with its shims on the login shell's `PATH`. The agent installs
+     Python, Node.js, Go or Java by the project's own files (`.tool-versions`, and once
+     enabled `.nvmrc`, `.python-version`), and the tools stay on the home volume through
+     a recreation, with no root (H9). Cost: S inside the image task. The agents' role or
+     LADO's instructions should say to install a missing tool with mise (not checked:
+     H9). It does not cover apt packages (system libraries, compilers' headers) or
+     databases.
+  2. **The project's own dev container** (<https://containers.dev/>): LADO added to the
+     project's `.devcontainer` as a Dev Container Feature, so the project's image brings
+     its tools. Cost: M; ideal for projects that have one, and a programmer's way.
+  3. **Tests that start the project's containers** (its compose, Testcontainers) need
+     Docker in the container: Docker in Docker, or the host's socket, which gives up the
+     isolation (5.9).
+  4. **Nix** (<https://nixos.org/>) describes a project's whole toolchain, apt's part too. Cost: hard to keep up;
+     not for a first step.
+
+  A "full" image with common toolchains is a dead end: several GB more, and still not
+  every project. A derived image (`FROM lado` plus `apt-get install`) needs a programmer.
 
 ### 5.3 Paths of the container against the host
 
@@ -481,12 +570,37 @@ already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's pr
 - **User sees**: on a Linux host whose user is not uid 1000, files the agents wrote are
   owned by uid 1000, and git inside refuses the host's repositories as "dubious
   ownership".
+  Files may even be ones the user cannot change or delete without `sudo`.
 - **Ways out**:
-  1. Run the container as the host's uid (`user: "${UID}:${GID}"`); the image must then
-     work for any uid (home, `/opt` readable). Cost: a little image work.
-  2. Rootless Docker or user namespace remapping
-     (<https://docs.docker.com/engine/security/userns-remap/>). Cost: setup a
-     non-programmer will not do.
+  1. **The image takes the uid of the projects' owner** (recommended). At start, as root,
+     its entrypoint reads the owner of `/projects` and gives the user `lado` that uid and
+     gid, then drops to it (tools such as fixuid or gosu). Files the agents write are then
+     the host user's. VS Code Dev Containers do the same on Linux by default:
+     `updateRemoteUserUID` "the user's UID/GID will be updated to match the local user's
+     UID/GID to avoid permission problems with bind mounts", default `true`
+     (<https://containers.dev/implementors/json_reference/>). Cost: S inside the image
+     task; the home volume's files must follow the new uid (a `chown` of the volume when
+     the uid changes). Not checked here: it needs a Linux host.
+  2. **Rootless Podman with `--userns=keep-id`**, which maps "the current user's UID:GID
+     ... to the same values in the container"
+     (<https://docs.podman.io/en/latest/markdown/podman-run.1.html>), or rootless Docker
+     or user namespace remapping (<https://docs.docker.com/engine/security/userns-remap/>).
+     Cost: another install, for prepared users only.
+  3. **Projects in a volume instead of a bind mount**, as Dev Containers' "Clone
+     Repository in Container Volume" ("an isolated, local Docker named volume instead of
+     binding to the local filesystem", with "improved performance on Windows and macOS",
+     <https://code.visualstudio.com/remote/advancedcontainers/improve-performance>) and
+     GitHub Codespaces do. Gains: no ownership problem, no paths seen twice (5.3), git
+     about 14 times faster on a Mac (5.11), and stricter isolation: nothing of the host's
+     disk is mounted. Costs: the files are not in Finder or Explorer; the user reaches
+     them through LADO's UI, git (push, pull) or an editor that attaches to the
+     container. The UI then must show the work and hand it out (files, a diff, a
+     download). Cost: M/L of UI work.
+
+  Recommendation: by default a bind mount with the uid taken from the projects' owner, so
+  the user sees the files as before; projects in a volume as an option. If isolation
+  becomes the main goal, the volume is the stricter default to weigh, together with a
+  container per session (5.14).
 
 ### 5.5 Git credentials and push
 
@@ -527,6 +641,19 @@ already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's pr
      while the server restarts. Cost: the update still lives only until the next
      recreation.
   3. The CLIs too: updated only with a new image (they are pinned; self-update off).
+
+**The agents' versions in the image.** Recommended: the versions LADO is tested with (each
+provider's `TESTED_VERSION`, the pins of `scripts/smoke_ci.py`), not the newest at build
+time, and a new image with each LADO release. Why: the image is reproducible, `lado
+doctor` warns about no version, and LADO's hooks depend on each CLI's behaviour, which
+changes between versions (the providers' comments name the version each claim was checked
+with, AGENTS.md, How agents talk). A user may install a newer CLI into the home volume
+(`npm install -g --prefix ~/.local`), and it survives a recreation. But that is a step in a
+terminal, and the versions then drift from what LADO was tested with.
+
+The four CLIs take 1.8 GB of the 2.46 GB (section 3). Images with one agent each (for
+example `lado:claude`, `lado:opencode`) would be about 1.0-1.2 GB: 2.46 GB less the other three CLIs (sizes in section 3). Cost: a build matrix in
+the release workflow.
 
 ### 5.8 The container's life
 
@@ -572,7 +699,7 @@ already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's pr
   1.91 s; the home volume 0.03 s and 0.14 s. About 14 times slower for git's writes.
 - **Ways out**:
   1. Projects on a volume (fast) and the host reaches them through git only (push, pull).
-     Cost: the user cannot open the files in a host editor directly.
+     Cost: the user cannot open the files in a host editor directly (5.4, way 3).
   2. Accept it: an agent's turn is dominated by the model, not by git. Cost: none for
      small repositories.
 
@@ -608,6 +735,18 @@ already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's pr
   isolation that is the image's gain here.
   The UI's port must stay on the host's loopback (compose.yaml), as the server inside
   listens on every address.
+- **Levels of isolation**:
+  1. *One container for everything* (this prototype). The agents are kept from the host,
+     but not from each other: every agent of every session sees all projects under
+     `/projects`, every login on the home volume and LADO_HOME's `lado.db`.
+  2. *A container per session or project*. Each session's agents see only its
+     repository and the logins given to it. This fits LADO better than a container per
+     agent: an agent's hooks, `lado mcp` and the session loop are LADO processes beside it,
+     on its tmux server and `lado.db` (5.1, "Agents on the host"). A per-agent container
+     would cut those links. Cost: L. LADO would start containers (so the UI server needs
+     Docker's socket or a helper on the host), and keep a session's state where its
+     container and the UI both reach it. This is a direction for ROADMAP after the first
+     image, not part of it (section 8).
 
 ### 5.15 LADO's machine logic in a container
 
@@ -620,6 +759,33 @@ already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's pr
   field for it would need docs/telemetry.md's list and `FIELDS_VERSION` bumped.
 - `lado uninstall` inside removes LADO_HOME and tries the program; for the image the way
   is `docker compose down -v` and removing the image.
+
+### 5.16 Publishing the image
+
+- **Cause**: the user should pull a ready image, not build one (the prototype's build took
+  113 s and needs the Dockerfile).
+- **Ways out**:
+  1. **GitHub Container Registry, `ghcr.io/ladohq/lado`** (recommended). "GitHub Packages
+     usage is free for public packages", and "Container image storage and bandwidth for
+     the Container registry is currently free", with at least a month's notice before
+     that changes (<https://docs.github.com/en/billing/concepts/product-billing/github-packages>).
+     A workflow pushes with its own `GITHUB_TOKEN` and `permissions: packages: write`
+     (<https://docs.github.com/en/packages/managing-github-packages-using-github-actions-workflows/publishing-and-installing-a-package-with-github-actions>),
+     so the release workflow needs no account and no secret: LADO's CI has none
+     (AGENTS.md, Commands). Cost: a job in the release workflow.
+  2. **Docker Hub**. A public repository is free, but needs a Docker account or
+     organisation and its token as the first secret of LADO's CI. Anonymous pulls are
+     limited to 100 per 6 hours per IPv4 address or IPv6 /64 subnet, 200 for a logged-in
+     free user (<https://docs.docker.com/docker-hub/usage/pulls/>), which an office
+     behind one address can reach. The Docker-Sponsored Open Source programme lifts the
+     limits, for projects "in active development with no pathway to commercialization"
+     (<https://docs.docker.com/docker-hub/repos/manage/trusted-content/dsos-program/>);
+     whether LADO fits is the maintainers' call. Gain: Docker Desktop's search finds
+     images there by name.
+
+  Recommendation: GHCR first; the same image can later also be pushed to Docker Hub for
+  its search, with no change for the users of GHCR. Both need the two architectures
+  (5.12). Figures as of 2026-10-14.
 
 ## 6. Platforms
 
@@ -642,41 +808,70 @@ already has one, passed with `LADO_AGENT_ENV=inherit` or in the login shell's pr
 
 | Way | Removes | Leaves | Cost |
 |---|---|---|---|
-| Docker image (this report) | tmux, git, uv, Node.js, the CLIs; WSL setup by hand on Windows | Docker itself, logins inside, toolchains, paths, updates from outside | L (image, CI for two architectures, launcher, four changes of LADO's code: tasks 2, 3, 4 and 6 of section 8) |
+| Docker image (this report) | tmux, git, uv, Node.js, the CLIs; WSL setup by hand on Windows; the agents' reach into the host's home | Docker itself, logins inside, apt-level toolchains, paths, updates from outside | L (the image with mise and the uid fix, GHCR for two architectures, launcher, and LADO's code in tasks 1, 2, 3, 5, 7 and 8 of section 8) |
 | One-command install script (`curl ... \| sh`): installs what `lado doctor` would print (brew or apt, uv, Node.js, LADO, a chosen CLI) | the typing and the order of docs/install.md, most failures of "If something goes wrong" | Homebrew on macOS, WSL on Windows, the CLI's login | S/M |
 | Homebrew formula (`brew install lado` with tmux, uv, node as dependencies) | three steps on macOS | the CLI and its login; macOS and Linuxbrew only | S |
 | Desktop app (ROADMAP stage 7) | the terminal entirely; the UI as an app | the runtime's dependencies, unless it bundles them (or a container) | L, planned |
 | The host's agent CLI, already logged in, used by the image (section 5.1) | the login step | macOS and Windows binaries do not run in the container; Claude Code's macOS login is in the keychain; agents on the host means the native install | none to build; mounting logins costs the sandbox |
 | Dev container (<https://containers.dev/>): LADO as a feature added to a project's `.devcontainer` | the toolchain problem (5.2): the project's own image | the user must use VS Code or a devcontainer CLI; per project | M |
+| Container per session or project (5.14) | what one container leaves open: one session's agents reaching other projects and the logins | LADO starting containers; state shared between them and the UI | L, after the image |
 
-**Recommendation**: build the one-command install script first: it serves the macOS and
-Linux users who are most of LADO's users today, with the least maintenance, and it is
-reused inside the Docker image. Then the Docker image, aimed at Windows users and at those
-who want the agents sandboxed, with the fixes it needs (section 8). The desktop app of
-stage 7 can later bundle the same image or script instead of its own installer.
+**Recommendation**: make the Docker image LADO's main way in. The reason is that it
+isolates the agents from the user's machine, a goal of the product, and on Windows it also
+replaces the WSL setup. Its toolchains (5.2), file ownership and paths (5.3, 5.4) and
+updates (5.7) are part of the first image, not later work. The one-command install script
+stays as the fallback for those who will not run Docker (a company without Docker
+Desktop's licence, 5.13; a project that needs the host's Docker, 5.9). It is smaller and
+can come after the image. The Dev Container Feature serves projects that have their own
+dev container. A container per session is the next step of isolation, on ROADMAP. The
+desktop app of stage 7 can later bundle the image instead of its own installer.
 
 ## 8. Proposed tasks
 
 Drafts; none is created in the tracker without the human's yes. Titles in Russian, as the
-tracker is.
+tracker is. In the order of the verdict: what the first image needs, the image, what makes
+it usable without a terminal, then the fallback and the next steps.
 
-1. **«Установочный скрипт одной командой»** — `install.sh`: by the system, brew or apt,
-   uv, Node.js, LADO, an agent CLI of the user's choice, then `lado doctor`. Size M.
-   Depends on nothing.
-2. **«Перенос логина Codex в агентов»** — the BACKLOG entry: carry `auth.json` into each
-   Codex agent's `CODEX_HOME`. Size S/M. Depends on nothing; needed by task 5 for Codex.
-3. **«lado update в контейнере»** — refuse `lado update` and the UI's update when an image
-   sets `LADO_CONTAINER`, naming the image's way. Size S. Depends on nothing.
-4. **«Ссылки и предупреждение UI-сервера в контейнере»** — the warning and the links of
-   5.6 for a server published on the host's loopback; the picker's start folder. Size S.
-   Depends on nothing.
-5. **«Образ Docker для LADO»** — the image (from this prototype: projects at the host's
-   path, any uid, tini, a stop that runs `lado stop --all`, and a documented way to pass
-   `CLAUDE_CODE_OAUTH_TOKEN`, either `LADO_AGENT_ENV=inherit` or the login shell's
-   profile, section 5.1), compose file, multi-arch build
-   and publishing in the release workflow (GHCR), a docs/install.md section, a smoke test
-   of the image in CI. Size L. Depends on 2, 3, 4.
-6. **«Возобновление сессий при старте контейнера»** — resume the sessions that ran when
-   the container stopped. Size M. Depends on 5.
-7. **«Лаунчер Docker для не-программистов»** — a script or shortcut per system that runs
-   compose, waits, opens the UI's link and the logins. Size M. Depends on 5.
+1. **«lado update в контейнере»** — refuse `lado update` and the UI's update when an image
+   sets `LADO_CONTAINER`, naming the image's way (5.7). Size S. Depends on nothing.
+2. **«Ссылки и предупреждение UI-сервера в контейнере»** — the warning and the links of
+   5.6 for a server published on the host's loopback; the picker's start folder (5.3).
+   Size S. Depends on nothing.
+3. **«Перенос логина Codex в агентов»** — the BACKLOG entry: carry `auth.json` into each
+   Codex agent's `CODEX_HOME` (5.1). Size S/M. Depends on nothing; needed by task 4 for
+   Codex.
+4. **«Образ Docker для LADO»** — the image from this prototype, with:
+   - a thin base and mise with its shims on the login shell's `PATH`, and the agents told
+     to install a missing tool with it (5.2, H9);
+   - the projects mounted at the host's path (5.3); an entrypoint that gives `lado` the
+     uid of the projects' owner (5.4); `safe.directory` for `/projects` in the image's git
+     config (H6);
+   - tini, and a stop that runs `lado stop --all` (5.8);
+   - a documented way to pass `CLAUDE_CODE_OAUTH_TOKEN`: `LADO_AGENT_ENV=inherit` or the
+     login shell's profile (5.1);
+   - the CLIs at their `TESTED_VERSION`, a new image per LADO release, and perhaps images
+     with one agent each (5.7);
+   - the compose file (the ssh socket line per system, 5.5), a build for amd64 and arm64
+     published to GHCR by the release workflow with `GITHUB_TOKEN` (5.12, 5.16);
+   - a docs/install.md section, and a smoke test of the image in CI.
+
+   Size L. Depends on 1, 2, 3.
+5. **«Мастер первого запуска в UI»** — choose an agent, log in with the CLI's link and
+   code shown in the UI, choose the model (for OpenCode and Kilo the provider and model),
+   written to the agent's settings (5.1, "First start and models"). Size M/L. Depends on
+   nothing; useful for the native install too, and in the image after task 4.
+6. **«Лаунчер Docker для не-программистов»** — a script or shortcut per system that runs
+   compose, waits, and opens the UI's link. Size M. Depends on 4.
+7. **«Возобновление сессий при старте контейнера»** — resume the sessions that ran when
+   the container stopped (5.8). Size M. Depends on 4.
+8. **«Проекты в томе Docker»** — an option of the image to keep the projects in a volume:
+   cloning there from the UI, and the UI showing and handing out the work (files, diff,
+   download) (5.4, way 3). Size M/L. Depends on 4.
+9. **«LADO как Dev Container Feature»** — LADO and an agent CLI added to a project's own
+   `.devcontainer` (5.2, way 2). Size M. Depends on 4 (the same install steps).
+10. **«Установочный скрипт одной командой»** — the fallback without Docker: `install.sh`
+    by the system, brew or apt, uv, Node.js, LADO, an agent CLI of the user's choice, then
+    `lado doctor`. Size M. Depends on nothing.
+11. **«Контейнер на сессию»** — a ROADMAP item, not a task yet: each session's agents in
+    a container of their own, seeing only its repository and the logins given to it
+    (5.14). Size L, with its own research first. Depends on 4 and 8.

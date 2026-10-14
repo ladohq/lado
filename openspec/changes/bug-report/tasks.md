@@ -46,7 +46,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-bug-report-design.md`.
 
 ## 8. Regression
 
-- [ ] 8.1 `make lint`, `make test`, the integration file of 1.1, `uv run pytest -m ui
+- [x] 8.1 `make lint`, `make test`, the integration file of 1.1, `uv run pytest -m ui
   tests/ui/test_report_bug_page.py tests/ui/test_system_panel.py tests/ui/test_layout.py`,
   `make web`, `openspec validate bug-report --strict`, `openspec validate --specs
   --strict`.

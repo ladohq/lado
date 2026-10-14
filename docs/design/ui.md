@@ -89,7 +89,8 @@ later desktop app and a later cloud setup; the UI is its client.
 - A newer LADO: `GET /api/update` (`UpdateInfo`: `current`, `latest`, `available`,
   `released`, `checked_at`, `error`; `running`, an update holds `update.lock`;
   `can_update` and `why_not`, from `self_update.refusal`, the CLI's too; `by_hand`, the
-  commands without an installer; `last`, the latest `update-result.json`) gives what the
+  commands without an installer, in a container `update.CONTAINER_UPDATE`; `container`,
+  `update.in_container`; `last`, the latest `update-result.json`) gives what the
   daily update check found (`lado.update.check`, the rule `lado ls` and `lado doctor`
   share; a plain `def`, so its look at PyPI holds up no other request). Asked each time the
   change feed opens; a newer version marks `live` (System panel, below); no line under the
@@ -99,7 +100,8 @@ later desktop app and a later cloud setup; the UI is its client.
   plain `def`). `POST /api/update {to}` (under `Guard.changes`) starts a detached `lado
   update --yes <to> --id <id>` of the server's own LADO (`self_update.start_detached`,
   its own process group) and answers 202 with that id, the time and update.log's path; 409
-  when `to` is not the plan's version or `refusal` says no. The update stops this server
+  when `refusal` says no (asked first, before PyPI) or `to` is not the plan's version. The
+  update stops this server
   within seconds and starts it again, on the same host and port. `GET /api/health` has
   `started_at`, the server's start, kept in its memory only: a restart shows also when the
   version stayed the same (a rollback). `GET /api/system` (`SystemInfo`) is the system
@@ -1355,7 +1357,13 @@ M2, P1–P3 of round 3, F3 and U1–U3).
 - **A newer LADO** (P2): an Update block on top, `0.33.0 is out · 12 Oct`, What's new (the
   GitHub release of its tag) and **Update…**. Without an installer (P3) the block says
   why (`why_not`) and shows the commands by hand with Copy, and no button; with
-  `can_update` false for another reason (an update runs) it says that reason.
+  `can_update` false for another reason (an update runs) it says that reason. In a
+  container (LAD-59, mockup `task/lad-59/mockup-container.html`, option A) it says why
+  (a new image updates LADO) and shows `docker compose pull && docker compose up -d`
+  under `On the host:` instead of `By hand:`, with Copy and no button.
+- **In a container** (`UpdateInfo.container`, `LADO_CONTAINER`): a grey `container` pill
+  beside `LADO X.Y.Z` in the header, its tooltip saying a new image updates it; from
+  `UpdateInfo`, which the header has first, not the slower `/api/system`.
 - **A pre-release** (LAD-31, mockup `task/lad-31/mockup-prerelease.html`): a LADO on a
   release candidate has a grey `pre-release` pill beside `LADO X.Y.ZrcN` in the header
   (`UpdateInfo.prerelease`; its tooltip says that newer release candidates and the release

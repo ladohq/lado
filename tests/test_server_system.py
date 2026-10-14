@@ -176,6 +176,28 @@ def test_update_says_whether_this_lado_can_update_itself(client, installed, monk
     assert info["by_hand"][-1] == f"{update.prefix() / 'bin' / 'pip'} install lado=={NEW}"
 
 
+def test_update_in_a_container_names_the_image_and_cannot_update(client, installed, monkeypatch):
+    assert ok(client.get("/api/update"))["container"] is False
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    info = ok(client.get("/api/update"))
+    assert (info["container"], info["can_update"], info["available"]) == (True, False, NEW)
+    assert info["why_not"] == "LADO runs in a container: a new image updates it, not lado update"
+    assert info["by_hand"] == ["docker compose pull && docker compose up -d"]
+
+
+def test_the_update_is_refused_in_a_container_before_pypi(
+    client, installed, spawned, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_UPDATE_INDEX", str(tmp_path / "missing.json"))
+    answer = client.post("/api/update", json={"to": NEW})
+    assert answer.status_code == 409
+    assert answer.json()["detail"] == (
+        "LADO runs in a container: a new image updates it, not lado update"
+    )
+    assert spawned == []
+
+
 def test_update_says_an_update_runs_and_the_last_result(client, installed):
     update.write_result(update.Result("running", __version__, NEW, "2026-10-09T10:00:00+00:00"))
     with open(state.home() / "update.lock", "a") as held:

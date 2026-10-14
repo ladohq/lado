@@ -485,8 +485,20 @@ def read_result() -> Result | None:
     )
 
 
+CONTAINER_UPDATE = "docker compose pull && docker compose up -d"  # what updates it there
+
+
+def in_container() -> bool:
+    """Whether LADO runs in its container: only the image says so, by `LADO_CONTAINER` (set,
+    not empty, not `0`). There the UI server is the main process, so an update that stops
+    it ends the container; a new image updates LADO instead."""
+    return os.environ.get("LADO_CONTAINER", "") not in ("", "0")
+
+
 def available_line(checked: Check | None) -> str | None:
-    """`LADO X is available: lado update` when the check found a newer release."""
+    """`LADO X is available: lado update` when the check found a newer release, with the
+    container's command in a container."""
     if checked is None or checked.available is None:
         return None
-    return f"LADO {checked.available} is available: lado update"
+    how = CONTAINER_UPDATE if in_container() else "lado update"
+    return f"LADO {checked.available} is available: {how}"

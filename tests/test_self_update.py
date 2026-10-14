@@ -165,6 +165,65 @@ def test_the_refusals_name_an_agent_and_another_install(install, tmp_path, monke
     assert refused.why == 'lado update is for the human; agent "w1" cannot use it'
 
 
+CONTAINER_LINE = (
+    "lado: LADO runs in a container: a new image updates it, not lado update; "
+    "on the host: docker compose pull && docker compose up -d\n"
+)
+
+
+def test_the_refusal_in_a_container_comes_after_an_agent_and_before_the_rest(install, monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    for installer in (update.installer(), None):  # before NO_INSTALLER too
+        refused = self_update.refusal(installer)
+        assert refused.kind == self_update.CONTAINER
+        assert refused.why == "LADO runs in a container: a new image updates it, not lado update"
+    with open(state.home() / "update.lock", "a") as held:  # before RUNNING
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert self_update.refusal(update.installer()).kind == self_update.CONTAINER
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    assert self_update.refusal(update.installer()).kind == self_update.AGENT
+
+
+@pytest.mark.parametrize("args", [["--yes"], ["0.36.0"], ["--yes", NEW, "--id", "u-9"]])
+def test_lado_update_in_a_container_refuses_at_once_and_stops_nothing(
+    install, session, monkeypatch, tmp_path, capsys, args
+):
+    """The container's main process is the UI server: stopping it would kill the update.
+    So the refusal comes before PyPI (a missing index would be another error), the lock,
+    update.json, update.log and every stop."""
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_UPDATE_INDEX", str(tmp_path / "missing.json"))
+    stopped = []
+    monkeypatch.setattr(self_update.runtime, "stop_session", lambda *a, **k: stopped.append(a))
+    monkeypatch.setattr(self_update.server_run, "stop", lambda *a, **k: stopped.append(a))
+    update.write_result(update.Result("ok", "0.1.0", __version__, "2026-10-09T10:00:00+00:00"))
+    before = (state.home() / "update-result.json").read_text()
+    capsys.readouterr()
+    assert main(["update", *args]) == 1
+    assert capsys.readouterr().err == CONTAINER_LINE
+    assert stopped == [] and install.called() == []
+    assert not state.get_session(session).stopped_at
+    for name in ("update.json", "update.log"):
+        assert not (state.home() / name).exists(), name
+    lock = state.home() / "update.lock"  # `--id`'s result is written under the lock: no pid
+    assert not lock.exists() or lock.read_text() == ""
+    if "--id" in args:  # the UI's update learns why by its id
+        done = result()
+        assert (done.id, done.outcome, done.log) == ("u-9", "failed", None)
+        assert done.reason.startswith("the update did not start: LADO runs in a container")
+    else:
+        assert (state.home() / "update-result.json").read_text() == before
+
+
+def test_lado_update_inside_an_agent_in_a_container_is_the_agents_refusal(
+    install, monkeypatch, capsys
+):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    assert main(["update", "--yes"]) == 1
+    assert 'agent "w1" cannot use it' in capsys.readouterr().err
+
+
 def test_lado_db_is_backed_up_before_the_installer_and_only_one_backup_is_kept(install, session):
     backups = state.home() / "backups"
     backups.mkdir()

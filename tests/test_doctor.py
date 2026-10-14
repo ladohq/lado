@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import re
 import time
@@ -205,6 +206,48 @@ def test_lado_check_says_this_lado_is_a_pre_release(published, monkeypatch):
     monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
     assert doctor.check_lado() == doctor.Check(
         "LADO", doctor.OK, "0.37.0rc2 (pre-release) (no update check: LADO_NO_UPDATE_CHECK=1)"
+    )
+
+
+def test_lado_check_says_lado_runs_in_a_container(published, monkeypatch):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", "0.38.0", raising=False)
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    published(**{"0.38.0": "2026-10-04"})
+    assert doctor.check_lado() == doctor.Check(
+        "LADO", doctor.OK, "0.38.0, the latest version, in a container"
+    )
+    published(**{"0.38.0": "2026-10-04", "0.39.0": "2026-10-06"})
+    update.cache_path().unlink()  # the next look reads the new index
+    assert doctor.check_lado() == doctor.Check(
+        "LADO",
+        doctor.WARN,
+        "0.38.0, in a container",
+        "LADO 0.39.0 is available: docker compose pull && docker compose up -d",
+    )
+    monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
+    assert doctor.check_lado() == doctor.Check(
+        "LADO", doctor.OK, "0.38.0 (no update check: LADO_NO_UPDATE_CHECK=1), in a container"
+    )
+
+
+def test_system_info_and_the_report_say_lado_runs_in_a_container(monkeypatch):
+    import lado
+
+    monkeypatch.setattr(lado, "__version__", "0.38.0", raising=False)
+    server = doctor.ServerState(False, 0)
+    outside = doctor.system_info(which=lambda cmd: cmd)
+    assert outside.container is False
+    assert "in a container" not in doctor.report(outside, server)
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    inside = doctor.system_info(which=lambda cmd: cmd)
+    assert inside.container is True
+    uv_tool = dataclasses.replace(inside, installer="uv tool")
+    assert "- LADO 0.38.0 (uv tool, in a container), Python " in doctor.report(uv_tool, server)
+    none = dataclasses.replace(inside, installer=None)
+    assert "- LADO 0.38.0 (no uv tool or pipx install, in a container), Python " in (
+        doctor.report(none, server)
     )
 
 

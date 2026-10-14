@@ -40,7 +40,8 @@ export interface paths {
          * Start Update
          * @description Start `lado update --yes <to>` as a process of its own, which stops this server
          *     within seconds; 409 when `to` is not the plan's version or this LADO cannot update
-         *     itself now (an update runs, no installer). Its result carries the id answered.
+         *     itself now (in a container, an update runs, no installer: refused before PyPI). Its
+         *     result carries the id answered.
          */
         post: operations["start_update_api_update_post"];
         delete?: never;
@@ -2470,6 +2471,8 @@ export interface components {
             current: string;
             /** Prerelease */
             prerelease: boolean;
+            /** Container */
+            container: boolean;
             /** Latest */
             latest: string | null;
             /** Available */

@@ -12,8 +12,16 @@ from agent_helpers import init_repo, no_maintenance_env, write_index
 TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
 
 # An agent's shell has these set (its session, its LADO home, its tmux): the tests run there
-# as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess.
-for _var in ("LADO_AGENT", "LADO_SESSION", "LADO_HOME", "LADO_TMUX_SOCKET", "TMUX"):
+# as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess. LADO's
+# image sets LADO_CONTAINER: a test that wants a container sets it itself.
+for _var in (
+    "LADO_AGENT",
+    "LADO_SESSION",
+    "LADO_HOME",
+    "LADO_TMUX_SOCKET",
+    "TMUX",
+    "LADO_CONTAINER",
+):
     os.environ.pop(_var, None)
 
 # No git command of the test run (the tests', LADO's, the agents') starts background gc or

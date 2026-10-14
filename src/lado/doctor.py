@@ -292,15 +292,17 @@ def _megabytes(size: int) -> str:
 
 
 def check_lado() -> Check:
-    """This LADO's version and whether a newer one is out (update.check: once a day)."""
+    """This LADO's version, whether a newer one is out (update.check: once a day) and
+    whether it runs in a container."""
     checked = update.check()
     version = update.shown(lado.__version__)
+    where = ", in a container" if update.in_container() else ""
     if checked is None:
-        return Check("LADO", OK, f"{version} (no update check: LADO_NO_UPDATE_CHECK=1)")
+        return Check("LADO", OK, f"{version} (no update check: LADO_NO_UPDATE_CHECK=1){where}")
     hints = [h for h in (update.available_line(checked), checked.error) if h]
     if hints:
-        return Check("LADO", WARN, version, "; ".join(hints))
-    return Check("LADO", OK, f"{version}, the latest version")
+        return Check("LADO", WARN, f"{version}{where}", "; ".join(hints))
+    return Check("LADO", OK, f"{version}, the latest version{where}")
 
 
 @dataclass(frozen=True)
@@ -334,6 +336,7 @@ class System:
     check: update.Check | None
     last: update.Result | None
     statistics: telemetry.State | None = None  # whether LADO sends usage statistics
+    container: bool = False  # update.in_container()
 
 
 def statistics_line(found: telemetry.State) -> str:
@@ -421,6 +424,7 @@ def system_info(which: Callable[[str], str | None] = shutil.which) -> System:
         check=update.check(),
         last=update.read_result(),
         statistics=telemetry.state(),
+        container=update.in_container(),
     )
 
 
@@ -447,6 +451,8 @@ def report(system: System, server: ServerState | None) -> str:
     name, token or message (the human's rule), only whether the server runs and is open
     to the network and whether LADO_HOME is set."""
     installer = system.installer or "no uv tool or pipx install"
+    if system.container:
+        installer += ", in a container"
     lines = [
         "### LADO system info",
         f"- LADO {update.shown(system.version)} ({installer}), Python {system.python}",

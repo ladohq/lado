@@ -417,6 +417,7 @@ class UpdateInfo(BaseModel):
 
     current: str
     prerelease: bool  # `current` is a pre-release (a release candidate)
+    container: bool  # LADO runs in its container (update.in_container): a new image updates it
     # The latest release this LADO is offered (update.offered: a final release's newest final,
     # a pre-release's newest of all); None before a look found one or with the check off.
     latest: str | None
@@ -428,7 +429,9 @@ class UpdateInfo(BaseModel):
     running: bool  # an update holds its lock
     can_update: bool
     why_not: str | None  # why it cannot
-    by_hand: list[str]  # without an installer: the commands that update to `available`
+    # Without an installer: the commands that update to `available`; in a container the
+    # host's `docker compose` command.
+    by_hand: list[str]
     last: UpdateResultInfo | None
 
 

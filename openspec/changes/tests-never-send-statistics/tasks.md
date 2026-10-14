@@ -38,6 +38,6 @@
 
 ## 4. Regression
 
-- [ ] 4.1 `make lint`, `make test`, `openspec validate tests-never-send-statistics
+- [x] 4.1 `make lint`, `make test`, `openspec validate tests-never-send-statistics
   --strict`, `openspec validate --specs --strict` (AC-8). The integration, UI and smoke
   layers get the guard through the conftest; CI runs them.

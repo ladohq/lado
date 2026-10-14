@@ -110,7 +110,10 @@ that no process started after it, an agent included, can become root through it.
 the image's entrypoint was replaced, the rule stays; the root step SHALL then run no
 program chosen by its caller's environment (its commands by a fixed PATH or full paths,
 the caller's PATH given back only after the drop to `lado`), so that the rule runs only
-that step's own work. A
+that step's own work. A container whose settings forbid becoming root (no-new-privileges,
+capabilities dropped) SHALL start as before, `lado` with uid 1000 and the agents'
+`LADO_REPOS` the image's `/projects`, with one warning line in `docker logs`; a step of the
+root run that fails SHALL be a warning line, and the server SHALL start anyway. A
 restart of the same container SHALL keep the uid it took. A folder `LADO_REPOS` that is no
 folder in the container, or one `lado` may not write in, SHALL be named in `docker logs`
 with one warning line, and the server SHALL start anyway.
@@ -146,6 +149,15 @@ with one warning line, and the server SHALL start anyway.
 - **WHEN** the container runs with `--entrypoint`, so the sudo rule stays, and `lado` runs
   the entrypoint through it with a `setpriv` of its own first on the PATH it hands over
 - **THEN** that `setpriv` does not run, and the command runs as `lado`
+
+#### Scenario: The container may not become root
+
+- **WHEN** the container runs with `--security-opt no-new-privileges` or `--cap-drop ALL`
+  and projects owned by uid 2001
+- **THEN** the server answers `/api/health`, `id -u` prints 1000, and `docker logs` has a
+  line `lado: warning: the container may not become root (no-new-privileges or dropped
+  capabilities): lado keeps uid 1000 instead of the owner's of <path>, and the agents'
+  LADO_REPOS is /projects`
 
 #### Scenario: A restart
 

@@ -2,12 +2,13 @@
 # LADO's image: between tini and the command (the UI server). Three phases, by who runs it:
 #
 # 1. lado at a container's first start (the marker is there): reruns itself as root through
-#    the sudo rule for this script alone.
+#    the sudo rule for this script alone, when the container lets it become root; else it
+#    warns and goes on as phase 3 with uid 1000 (no-new-privileges, `--cap-drop`).
 # 2. root: deletes that rule and the marker before anything else, so no process started
 #    later, an agent included, can become root through them; gives lado the uid and gid of
 #    LADO_REPOS's owner (not uid 0: Docker Desktop shows a bind mount so; not gid 0, root's
 #    group), gives lado its home volume, writes LADO_REPOS for the agents' login shells,
-#    and drops back to lado. Where the entrypoint was replaced, the rule stays: this phase
+#    and drops back to lado; a step of these that fails is a warning. Where the entrypoint was replaced, the rule stays: this phase
 #    runs nothing by its caller's PATH, so the rule still runs only this script's steps.
 # 3. lado with no marker (after phase 2, or a restart, which keeps the uid taken): warns in
 #    `docker logs` about a LADO_REPOS that is not mounted or not writable, then runs the
@@ -17,6 +18,27 @@ SELF=/usr/local/bin/lado-entrypoint
 RULE=/etc/sudoers.d/lado-entrypoint
 MARK=/etc/lado/first-start
 
+# Give lado uid $1 and gid $2 (not 0, root's group: lado keeps its own). -o: the host's ids
+# may be taken in the image already (gid 100 is users).
+take_owner() {
+    if [ "$2" != 0 ] && [ "$2" != "$(id -g lado)" ]; then
+        groupmod -o -g "$2" lado && usermod -g "$2" lado || return 1
+    fi
+    if [ "$1" != "$(id -u lado)" ]; then
+        usermod -o -u "$1" lado || return 1
+    fi
+}
+
+# Whether sudo can make this process root: not under no-new-privileges, and with the
+# capabilities the root phase uses in the bounding set (CHOWN, DAC_OVERRIDE, FOWNER,
+# SETGID, SETUID), which `--cap-drop` takes away.
+may_become_root() {
+    status=$(cat /proc/self/status) || return 1
+    case $status in *"NoNewPrivs:	1"*) return 1 ;; esac
+    bounding=$(printf '%s\n' "$status" | sed -n 's/^CapBnd:[[:space:]]*//p')
+    [ -n "$bounding" ] && [ $((0x$bounding & 0xcb)) = $((0xcb)) ]
+}
+
 if [ "$(id -u)" = 0 ]; then
     PATH=/usr/sbin:/usr/bin:/sbin:/bin
     rm -f "$RULE" "$MARK"
@@ -24,32 +46,28 @@ if [ "$(id -u)" = 0 ]; then
     # caller set any variable: nothing here runs by the caller's PATH, which comes back
     # only after the drop to lado.
     saved=${LADO_ENTRYPOINT_PATH:-$PATH}
+    # A step below that fails is a warning, and the server starts as lado all the same: a
+    # container that stopped here would only restart into the same failure.
     repos=${LADO_REPOS:-/projects}
     if [ -d "$repos" ]; then
         owner=$(stat -c '%u %g' "$repos")
         uid=${owner% *}
         gid=${owner#* }
-        if [ "$uid" != 0 ]; then
-            # -o: the host's ids may be taken in the image already (gid 100 is users). A
-            # group 0 is root's: lado keeps its own.
-            if [ "$gid" != 0 ] && [ "$gid" != "$(id -g lado)" ]; then
-                groupmod -o -g "$gid" lado
-                usermod -g "$gid" lado
-            fi
-            if [ "$uid" != "$(id -u lado)" ]; then
-                usermod -o -u "$uid" lado
-            fi
+        if [ "$uid" != 0 ] && ! take_owner "$uid" "$gid"; then
+            echo "lado: warning: could not give lado the uid and gid of LADO_REPOS's owner ($uid:$gid): it keeps $(id -u lado):$(id -g lado)" >&2
         fi
     fi
     # usermod moves only the files the old uid owned: a home volume of an earlier container
     # with another uid follows only so.
-    if [ -n "$(find /home/lado \( ! -user lado -o ! -group lado \) -print -quit)" ]; then
-        chown -R lado:lado /home/lado
+    if [ -n "$(find /home/lado \( ! -user lado -o ! -group lado \) -print -quit)" ] &&
+        ! chown -R lado:lado /home/lado; then
+        echo "lado: warning: could not give lado everything under /home/lado" >&2
     fi
     # The agents' environment comes from the login shell, not the container's.
     quoted=$(printf '%s' "$repos" | sed "s/'/'\\\\''/g")
-    printf "export LADO_REPOS='%s'\n" "$quoted" >/etc/profile.d/lado-repos.sh
-    chmod 644 /etc/profile.d/lado-repos.sh
+    if ! printf "export LADO_REPOS='%s'\n" "$quoted" >/etc/profile.d/lado-repos.sh; then
+        echo "lado: warning: could not write LADO_REPOS for the agents: theirs stays /projects" >&2
+    fi
     # sudo replaced PATH by its secure_path and set its own variables.
     unset LADO_ENTRYPOINT_PATH SUDO_COMMAND SUDO_USER SUDO_UID SUDO_GID
     export HOME=/home/lado USER=lado LOGNAME=lado
@@ -57,8 +75,12 @@ if [ "$(id -u)" = 0 ]; then
 fi
 
 if [ -e "$MARK" ] && [ "$(id -un 2>/dev/null)" = lado ]; then
-    export LADO_ENTRYPOINT_PATH="$PATH"
-    exec sudo -E -n "$SELF" "$@"
+    if may_become_root; then
+        export LADO_ENTRYPOINT_PATH="$PATH"
+        exec sudo -E -n "$SELF" "$@"
+    fi
+    # The image's /etc/profile.d/lado-repos.sh, which only root writes, keeps /projects.
+    echo "lado: warning: the container may not become root (no-new-privileges or dropped capabilities): lado keeps uid $(id -u) instead of the owner's of ${LADO_REPOS:-/projects}, and the agents' LADO_REPOS is /projects" >&2
 fi
 
 repos=${LADO_REPOS:-/projects}

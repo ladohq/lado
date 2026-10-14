@@ -181,6 +181,19 @@ def test_the_root_phase_takes_no_command_from_the_callers_path():
 def test_the_entrypoint_writes_lado_repos_for_the_agents():
     assert "/etc/profile.d/lado-repos.sh" in ENTRYPOINT
     assert "export LADO_REPOS=" in ENTRYPOINT
+    # The image's own, for a container that may not become root.
+    assert any(
+        """printf "export LADO_REPOS='/projects'\\n" > /etc/profile.d/lado-repos.sh""" in line
+        for line in lines()
+    )
+
+
+def test_the_entrypoint_goes_on_without_root():
+    """A container that may not become root (no-new-privileges, `--cap-drop`) does not try
+    sudo: the first start checks first, so the server starts as uid 1000."""
+    phase1 = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[0]
+    assert phase1.index("if may_become_root; then") < phase1.index("exec sudo -E -n")
+    assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
 @pytest.fixture(scope="module")

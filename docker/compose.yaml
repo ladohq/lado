@@ -1,7 +1,8 @@
 # LADO's image (Dockerfile) with compose: the same as one `docker run`, kept in a file.
 #
 #   export LADO_PROJECTS=~/projects     # every compose command of this file needs it;
-#                                       # the container sees it at this same path
+#                                       # the container sees it at this same path, so
+#                                       # it is absolute (e.g. $PWD/projects, not ./)
 #   docker compose up -d                # from this folder
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
 #

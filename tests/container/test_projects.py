@@ -18,6 +18,11 @@ NOT_MOUNTED = (
     "mount the host's folder at this same path"
 )
 NOT_WRITABLE = "lado: warning: LADO may not write in LADO_REPOS {}"
+NO_ROOT = (
+    "lado: warning: the container may not become root (no-new-privileges or dropped "
+    "capabilities): lado keeps uid 1000 instead of the owner's of {}, and the agents' "
+    "LADO_REPOS is /projects"
+)
 
 
 def git(*args: str) -> subprocess.CompletedProcess:
@@ -143,6 +148,20 @@ def test_a_skipped_entrypoint_leaves_its_rule_harmless(start):
         check=False,
     )
     assert done.stdout.strip() == "1000", done.stdout + done.stderr
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [["--security-opt", "no-new-privileges"], ["--cap-drop", "ALL"]],
+    ids=["no-new-privileges", "cap-drop-all"],
+)
+def test_a_container_that_may_not_become_root_starts_as_1000(start, projects_volume, setting):
+    """A container whose settings forbid root (Kubernetes' allowPrivilegeEscalation: false,
+    the restricted Pod Security) starts as before this change, uid 1000, and says why."""
+    c = served(start, *setting, "-v", f"{projects_volume(2001, 2001)}:/srv/projects",
+               "-e", "LADO_REPOS=/srv/projects")  # fmt: skip
+    assert c.exec("id", "-u").stdout.strip() == "1000"
+    assert NO_ROOT.format("/srv/projects") in c.logs().splitlines(), c.logs()
 
 
 def test_lado_repos_not_mounted_warns(start):

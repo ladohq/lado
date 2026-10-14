@@ -66,7 +66,14 @@ it follows the folder.
   "/usr/local/bin/lado-entrypoint"]`, `CMD` unchanged (the script ends with `exec "$@"`).
   POSIX `sh`, no bashisms. Phases, chosen by who runs it:
   1. As `lado` while the marker `/etc/lado/first-start` exists: `exec sudo -E -n
-     /usr/local/bin/lado-entrypoint "$@"`.
+     /usr/local/bin/lado-entrypoint "$@"`, only when the container lets it become root,
+     checked before (`/proc/self/status`: no `NoNewPrivs: 1`, and `CapBnd` has CHOWN,
+     DAC_OVERRIDE, FOWNER, SETGID and SETUID). Otherwise (`--security-opt
+     no-new-privileges`, Kubernetes' `allowPrivilegeEscalation: false`, `--cap-drop`) one
+     warning line and phase 3 as uid 1000, as the image ran before this change; the
+     agents' `LADO_REPOS` stays the image's `/projects` (its default `lado-repos.sh`). A
+     failing sudo after `exec` could not be caught, and the container would restart into
+     it (review finding F4).
   2. As root: set a fixed `PATH=/usr/sbin:/usr/bin:/sbin:/bin`, remove
      `/etc/sudoers.d/lado-entrypoint` and the marker first, then D3 and D4, then `exec
      /usr/bin/setpriv --reuid=lado --regid=lado --init-groups -- /usr/bin/env
@@ -76,9 +83,13 @@ it follows the folder.
   3. As `lado` with no marker (after phase 2, or on a restart, where `USER lado` resolves
      to the uid taken before): D5's checks, then `exec "$@"`.
   Phase 1 is only for the user named `lado` (`id -un`): a container started with
-  `--user <uid>` goes to phase 3 as that uid. A failing step of phase 2 stops the container with its message (`set -eu`): the rule
-  and the marker are gone already, so the next start is phase 3 with uid 1000, and the
-  human sees why in `docker logs`.
+  `--user <uid>` goes to phase 3 as that uid; `--user root` goes through phase 2, so its
+  command runs as `lado` too (root in a running container: `docker exec -u 0`). A failing
+  step of phase 2 after the rule's removal (`groupmod`/`usermod`, the home's `chown -R`,
+  writing `lado-repos.sh`) is one warning line in `docker logs` and the start goes on as
+  `lado`: a container stopped there would only restart into the same failure, and the
+  doctor's and the start's write check name what follows from it. Only the removal of
+  the rule and the marker stops the container when it fails (`set -eu`).
 - **D3. The uid and gid.** `stat -c '%u %g' "$LADO_REPOS"`; when it is no folder, or the
   uid is 0, or uid and gid are `lado`'s already, nothing changes. Else, for a gid that is
   not 0 and not `lado`'s, `groupmod -o -g <gid> lado` and `usermod -g <gid> lado` (gid 0

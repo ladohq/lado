@@ -15,6 +15,10 @@
   says the server runs in a container. `LADO_REPOS` names the folder of your repositories:
   the New session window suggests its subfolders in an empty Where, a clone by URL goes
   there by default (`lado start <git-url>` too), and `lado doctor` shows it.
+- The UI colours a flow step's outcome by the order its flow declares, in the chat as in
+  the Flows tab: green forward, orange back, so a `ready` after a review's `changes` no
+  longer turns orange. A step back has a return icon, and hovering an outcome says where
+  the step goes and, for a step back, which states run again.
 
 ## 0.38.0 (2026-10-14)
 

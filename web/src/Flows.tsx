@@ -13,6 +13,7 @@ import type { GateInfo, NoteInfo, RunEventInfo, RunInfo } from "./api";
 import { AgentName } from "./Agents";
 import { Attachments } from "./Attachments";
 import { Body, clock, since } from "./ChatText";
+import { direction, OutcomeChip } from "./flowSteps";
 import { GateCard, gateTitle } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { filterGroups, ListGroup, type Entry as ListEntry } from "./ListPage";
@@ -505,20 +506,12 @@ function History({ session, run, lists }: { session: string; run: RunInfo; lists
   );
 }
 
-// A step goes back when it leads to a state the flow declares no later than the one it
-// left; unknown without the flow (its problem).
-function goesBack(run: RunInfo, note: NoteInfo): boolean {
-  const order = run.states.map((one) => one.name);
-  const from = order.indexOf(note.state);
-  const to = order.indexOf(note.target);
-  return from >= 0 && to >= 0 && to <= from;
-}
-
 // One line of the history. A step: when, a dot (green; orange for a way back or the human's
-// answer), who, `from [outcome] → to` and its summary, which opens its facts and its note's
-// body. A note kept before LADO 0.18 has only its state; the human's flow-set has no
-// outcome; a loop limit's answer is the human's override with one. The start, end and
-// cancel are one line each (a blue dot), never opened.
+// answer), who, `from [outcome] → to` (the outcome green forward, orange with the return
+// icon back, and its tooltip: flowSteps.tsx, as in the chat) and its summary, which opens
+// its facts and its note's body. A note kept before LADO 0.18 has only its state; the
+// human's flow-set has no outcome; a loop limit's answer is the human's override with one.
+// The start, end and cancel are one line each (a blue dot), never opened.
 function Row({
   session,
   run,
@@ -569,7 +562,10 @@ function Row({
   }
   const note = entry.note!;
   const human = note.actor === "human";
-  const back = !run.problem && goesBack(run, note);
+  // The step's direction by the flow's order (flowSteps.tsx), as in the chat; unknown
+  // without the flow (its problem): no way back then.
+  const states = run.problem ? null : run.states;
+  const back = states !== null && direction(states, note.state, note.target) === "back";
   const label = note.kind === "override" ? (note.outcome ? "loop limit" : "flow-set") : "";
   const who = note.actor && (human ? "you" : <AgentName session={session} name={note.actor} />);
   const facts: [string, ReactNode][] = [
@@ -600,7 +596,13 @@ function Row({
               {note.outcome && (
                 <>
                   {" "}
-                  <span className={`feed-chip${back ? " back" : ""}`}>{note.outcome}</span>
+                  <OutcomeChip
+                    states={states}
+                    from={note.state}
+                    to={note.target}
+                    outcome={note.outcome}
+                    base="feed-chip"
+                  />
                 </>
               )}
               {note.target && ` → ${note.target}`}

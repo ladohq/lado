@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, SessionInfo, WaitingItem } from "./api";
+import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, RunInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
 import { clock, day, dayName } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
@@ -109,6 +109,7 @@ function serve(
   answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } },
   events: RunEventInfo[] = [],
   gates: GateInfo[] = [],
+  runs: RunInfo[] = [],
 ) {
   const posted: Posted[] = [];
   const queries: Record<string, string>[] = [];
@@ -130,7 +131,8 @@ function serve(
       return new Response(JSON.stringify(gates));
     }
     if (path === "/api/waiting") return new Response(JSON.stringify(waitingOf(chat, gates)));
-    if (path.endsWith("/agents") || path.endsWith("/runs")) return new Response("[]");
+    if (path.endsWith("/runs")) return new Response(JSON.stringify(runs));
+    if (path.endsWith("/agents")) return new Response("[]");
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetch);
@@ -695,6 +697,49 @@ test("the agents' messages to each other show behind a switch that loads the win
 const runGroups = (log: HTMLElement) => within(log).getAllByRole("list", { name: /^Flow run / });
 const kept = (line: HTMLElement, name: string) => line.querySelector(`.${name}`)?.textContent;
 
+// A run of a flow that declares these states, each with its outcomes.
+function flowRun(name: string, states: [string, Record<string, string>][], more: Partial<RunInfo> = {}): RunInfo {
+  return {
+    name,
+    flow: "feature",
+    kit: { name: "lado-dev", version: "0.11.1", source: "project" },
+    task: "show messages once",
+    state: states[0][0],
+    status: "active",
+    reason: "",
+    acting: "w1",
+    visits: {},
+    gate: null,
+    worktree: "/w",
+    branch: `lado/lado/${name.replace("/", "-")}`,
+    language: "",
+    created_at: "2026-10-03T11:59:00Z",
+    since: "2026-10-03T11:59:00Z",
+    ended_at: null,
+    states: states.map(([state, outcomes]) => ({
+      name: state,
+      kind: Object.keys(outcomes).length ? "work" : "end",
+      agent: null,
+      gate: null,
+      ask: null,
+      outcomes,
+      max_visits: null,
+      reads: [],
+      produces: [],
+    })),
+    problem: null,
+    ...more,
+  };
+}
+
+const FEATURE: [string, Record<string, string>][] = [
+  ["design", { ready: "architecture" }],
+  ["architecture", { changes: "design", approved: "build" }],
+  ["build", { ready: "review" }],
+  ["review", { approved: "done", changes: "build", again: "review" }],
+  ["done", {}],
+];
+
 test("a run's events in a row are one group under the run's name, which links to the run; each line says who and what", async () => {
   serve(
     [message(1, "human", "supervisor", "start it", { created_at: "2026-10-03T12:00:00Z" })],
@@ -710,6 +755,8 @@ test("a run's events in a row are one group under the run's name, which links to
       event(12, "flow_set", "at review: by hand", "2026-10-03T12:00:03Z", { actor: "human" }),
       event(13, "flow_cancel", "no longer needed", "2026-10-03T12:00:04Z", { actor: "supervisor" }),
     ],
+    [],
+    [flowRun("feature/x", FEATURE)],
   );
   open();
   const log = await chat();
@@ -732,7 +779,7 @@ test("a run's events in a row are one group under the run's name, which links to
     "ready",
     expect.stringContaining("forward"),
   ]);
-  expect(changes.querySelector(".run-outcome")?.className).toContain("back"); // design was left before
+  expect(changes.querySelector(".run-outcome")?.className).toContain("back"); // the flow declares design first
   expect(kept(changes, "run-actor")).toBe("architect");
   expect([odd.querySelector(".run-state"), kept(odd, "run-detail")]).toEqual([null, "moved somehow"]);
   expect([kept(waits, "run-chip"), kept(waits, "run-detail"), kept(waits, "run-actor")]).toEqual([
@@ -754,6 +801,97 @@ test("a run's events in a row are one group under the run's name, which links to
   const end = within(log).getAllByRole("listitem").at(-1)!;
   expect([kept(end, "run-chip"), kept(end, "run-detail")]).toEqual(["ended", "at done"]);
   expect(runGroups(log)).toHaveLength(2); // it joins the group above
+});
+
+// A step's direction by its run's flow (flowSteps.tsx): the same as the Flows tab's.
+
+const outcome = (line: HTMLElement) => line.querySelector<HTMLElement>(".run-outcome")!;
+
+test("ready, changes and ready again: both ready forward and green, changes back with the icon, by the flow's order", async () => {
+  serve(
+    [],
+    undefined,
+    [
+      event(6, "flow", "build -ready-> review", "2026-10-03T11:59:30Z"),
+      event(7, "flow", "review -changes-> build", "2026-10-03T11:59:40Z", { actor: "reviewer" }),
+      event(8, "flow", "build -ready-> review", "2026-10-03T11:59:50Z"),
+      event(9, "flow", "review -again-> review", "2026-10-03T11:59:55Z", { actor: "reviewer" }),
+    ],
+    [],
+    [flowRun("feature/x", FEATURE)],
+  );
+  open();
+  const log = await chat();
+  await waitFor(() => expect(log.querySelectorAll(".run-outcome.forward")).toHaveLength(2));
+  const lines = within(log).getAllByRole("listitem");
+  const [ready, changes, again, stays] = lines.map(outcome);
+  expect([ready, changes, again, stays].map((one) => one.className)).toEqual([
+    "run-outcome forward",
+    "run-outcome back",
+    "run-outcome forward",
+    "run-outcome back",
+  ]);
+  // The direction is read out with the line's text (a name on a plain span is dropped), and
+  // shown by the colour and the icon only.
+  expect(lines.map((line) => line.textContent)).toEqual(
+    ["ready, a step forward", "changes, a step back", "ready, a step forward", "again, a step back"].map((said) =>
+      expect.stringContaining(said),
+    ),
+  );
+  expect(lines.map((line) => line.querySelector(".visually-hidden")?.textContent)).toEqual(
+    Array(4).fill(expect.stringMatching(/^, a step /)),
+  );
+  expect([ready, changes, again, stays].map((one) => one.querySelector("svg") !== null)).toEqual([false, true, false, true]);
+  expect(changes.textContent).toBe("changes");
+});
+
+test("hovering a step's outcome says where it goes, and for a step back what runs again", async () => {
+  serve(
+    [],
+    undefined,
+    [event(6, "flow", "build -ready-> review", "2026-10-03T11:59:30Z"), event(7, "flow", "review -changes-> build", "2026-10-03T11:59:40Z")],
+    [],
+    [flowRun("feature/x", FEATURE)],
+  );
+  open();
+  const log = await chat();
+  await waitFor(() => expect(log.querySelectorAll(".run-outcome.back")).toHaveLength(1));
+  const [ready, changes] = within(log).getAllByRole("listitem").map(outcome);
+  const lines = async () =>
+    [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  fireEvent.mouseEnter(ready);
+  expect(await lines()).toEqual(["Forward in the flow, to review"]);
+  fireEvent.mouseLeave(ready);
+  fireEvent.mouseEnter(changes);
+  expect(await lines()).toEqual(["Back: the work returns to build", "Runs again: build › review"]);
+  fireEvent.mouseLeave(changes);
+});
+
+test("a step of a run whose flow cannot be read, or that is not loaded, is neutral: no colour, icon, name or tooltip", async () => {
+  serve(
+    [],
+    undefined,
+    [
+      event(6, "flow", "review -changes-> build", "2026-10-03T11:59:30Z"),
+      event(7, "flow", "review -changes-> build", "2026-10-03T11:59:40Z", { run: "fix/y" }),
+    ],
+    [],
+    [flowRun("feature/x", FEATURE, { states: [], problem: "not JSON" })],
+  );
+  open();
+  const log = await chat();
+  await waitFor(() => expect(log.querySelectorAll(".run-outcome")).toHaveLength(2));
+  for (const line of within(log).getAllByRole("listitem")) {
+    const one = outcome(line);
+    expect([one.className, one.querySelector("svg"), line.textContent]).toEqual([
+      "run-outcome",
+      null,
+      expect.not.stringContaining("a step"),
+    ]);
+    fireEvent.mouseEnter(one);
+  }
+  await new Promise((done) => setTimeout(done, 400)); // past the tooltip's delay
+  expect(screen.queryByRole("tooltip")).toBeNull();
 });
 
 test("events of two runs in a row are two groups, each under its run's name", async () => {

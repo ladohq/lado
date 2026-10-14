@@ -2681,7 +2681,9 @@ h3 {
   font-weight: 600;
 }
 
-/* A move forward and a run's end went well; a move back and a gate's wait are orange. */
+/* A move forward and a run's end went well; a move back (with the return icon, below) and a
+   gate's wait are orange. An outcome whose direction is not known keeps the --raised
+   ground. */
 .run-outcome.forward,
 .run-flow_end .run-chip {
   background: var(--done-ground);
@@ -5490,9 +5492,31 @@ h3 {
   white-space: nowrap;
 }
 
+/* A step back (flowSteps.tsx): orange, with the return icon. */
 .feed-chip.back {
   background: var(--human-ground);
   color: var(--human);
+}
+
+/* A flow step's outcome, in the chat and the Flows tab: a step back's return icon before the
+   word (flowSteps.tsx), and the tooltip's way that runs again in the mono face. */
+.run-outcome,
+.feed-chip {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.run-outcome .icon,
+.feed-chip .icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.2;
+}
+
+.step-way {
+  font: 11.5px/1.6 var(--mono);
 }
 
 /* The Kits page (docs/design/ui.md, Kits; mockup C1): the tabs, search and source chips over

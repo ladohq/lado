@@ -1,9 +1,10 @@
 // A text as Markdown (docs/design/ui.md, Look of the feed): GitHub-flavoured Markdown in
 // every body, the human's line breaks kept, no raw HTML, footnotes of one body its own.
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
 
 import { Body } from "./ChatText";
+import { stubLegacyCopy, unstubLegacyCopy } from "./fakes";
 
 afterEach(cleanup);
 
@@ -25,6 +26,31 @@ test("the human's text keeps its single line breaks and still renders a table", 
   const body = shown(`first\nsecond\n\n${TABLE}`, true);
   expect(body.querySelector("p")!.querySelectorAll("br")).toHaveLength(1);
   expect(body.querySelectorAll("tbody tr")).toHaveLength(2);
+});
+
+test("a fenced code block has Copy code, which copies its code exactly; inline code has none", async () => {
+  const written: string[] = [];
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text: string) => void written.push(text) },
+  });
+  const body = render(<Body text={"Run `make` or:\n\n```sh\nuv run pytest -m ui\n  --tb=short\n```"} />);
+  const buttons = body.getAllByRole("button", { name: "Copy code" });
+  expect(buttons).toHaveLength(1);
+  expect(buttons[0].closest(".code-block")?.querySelector("pre")).toBeTruthy();
+  fireEvent.click(buttons[0]);
+  expect(await body.findByText("Copied")).toBeTruthy();
+  expect(written).toEqual(["uv run pytest -m ui\n  --tb=short"]);
+  delete (navigator as { clipboard?: unknown }).clipboard;
+});
+
+test("when no copy works, the code to copy by hand keeps its lines", async () => {
+  stubLegacyCopy(false);
+  const body = render(<Body text={"```\nfirst\nsecond\n```"} />);
+  fireEvent.click(body.getByRole("button", { name: "Copy code" }));
+  const field = (await body.findByRole("textbox", { name: "Code" })) as HTMLTextAreaElement;
+  expect(field.value).toBe("first\nsecond");
+  unstubLegacyCopy();
 });
 
 test("a column's alignment reaches its cells", () => {

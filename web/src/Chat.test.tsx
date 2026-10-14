@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GateInfo, MessageInfo, MessagePage, RunEventInfo, RunInfo, SessionInfo, WaitingItem } from "./api";
 import { App } from "./App";
+import { messageText } from "./Chat";
 import { clock, day, dayName } from "./ChatText";
 import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
 import { storeAgentMessages } from "./prefs";
@@ -605,7 +606,7 @@ test("an agent's message to the human shows its summary in bold and its whole bo
   const summary = within(card).getByRole("heading");
   expect([summary.textContent, summary.className]).toEqual(["report", expect.stringContaining("lead")]);
   expect(within(card).getByText("line 30")).toBeTruthy();
-  expect(within(card).queryByRole("button")).toBeNull();
+  expect(within(card).queryByRole("button", { name: /Show/ })).toBeNull();
   expect(card.querySelector("details")).toBeNull();
 });
 
@@ -624,6 +625,29 @@ test("a longer text shows its first 12 lines and Show more, which shows it all i
     expect(within(card).getByText("line 31")).toBeTruthy();
     expect(within(card).getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe("true");
   }
+});
+
+test.each([
+  ["the human's, its whole text", message(1, "human", "supervisor", "Раунд 1", { body: "Раунд 1\nи ещё" }), "Раунд 1\nи ещё"],
+  ["the human's of one line", message(1, "human", "supervisor", "go"), "go"],
+  ["an agent's, summary and body", message(1, "analyst", "human", "Раунд 1", { body: "1. Какие действия?" }), "Раунд 1\n\n1. Какие действия?"],
+  ["an agent's whose body repeats its summary", message(1, "analyst", "human", "Раунд 1", { body: "Раунд 1\n\nдалее" }), "Раунд 1\n\nдалее"],
+  ["an agent's without a body", message(1, "analyst", "human", "Раунд 1"), "Раунд 1"],
+])("a message's copied text: %s", (_, one, text) => {
+  expect(messageText(one)).toBe(text);
+});
+
+test("each message's head has Copy message, also a row that continues its group", async () => {
+  serve([
+    message(1, "supervisor", "human", "merged w1", { body: "All checks pass." }),
+    message(2, "supervisor", "human", "next"),
+  ]);
+  open();
+  const log = await chat();
+  const [first, second] = await within(log).findAllByRole("article");
+  expect(within(first).getByRole("button", { name: "Copy message" }).closest(".feed-head")).toBeTruthy();
+  expect(second.classList.contains("continued")).toBe(true);
+  expect(within(second).getByRole("button", { name: "Copy message" })).toBeTruthy();
 });
 
 test("an agent's summary that its body's first line repeats is not drawn", async () => {
@@ -1394,13 +1418,15 @@ test("at the top the chat loads the earlier page and keeps what the human sees i
     return plain(path, init);
   });
   FakeIntersectionObserver.show();
-  expect(within(log).getByRole("status").textContent).toBe("Loading earlier messages…");
+  // The feed's own status, not a Copy message's.
+  const loading = () => within(log).queryAllByRole("status").filter((one) => !one.closest(".copy-button"));
+  expect(loading().map((one) => one.textContent)).toEqual(["Loading earlier messages…"]);
   FakeIntersectionObserver.show(); // one load at a time
   release();
   await within(log).findByText("note 1");
   expect(queries.slice(1)).toEqual([{ with: "human", limit: "50", before: "21" }]);
   expect(log.scrollTop).toBe(2000); // 20 messages above the one that was at the top
-  expect(within(log).queryByRole("status")).toBeNull();
+  expect(loading()).toEqual([]);
   expect(within(log).getByText(historyStart())).toBeTruthy();
 });
 

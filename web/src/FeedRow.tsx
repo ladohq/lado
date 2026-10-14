@@ -2,12 +2,13 @@
 // head (who, a muted part, the time) and what the row holds. The one place that draws who
 // wrote an entry, in the chat and on Needs you; a question's, a gate's or a message's own
 // content comes as children. A row that continues a group (Chat.tsx, feedRows) has no head
-// and no letter; its time stands where the avatar would.
+// and no letter; its time stands where the avatar would. A message's row has Copy message.
 import type { ReactNode } from "react";
 
 import { HUMAN, LADO } from "./api";
 import { clock } from "./ChatText";
-import { GateIcon } from "./icons";
+import { CopyButton } from "./Copy";
+import { CopyIcon, GateIcon } from "./icons";
 import { quoteArea } from "./quote";
 
 // The avatars' colours, --avatar-1 … --avatar-6 in tokens.css.
@@ -68,6 +69,7 @@ export function FeedRow({
   id,
   className = "",
   session,
+  copy,
   children,
 }: {
   kind: RowKind;
@@ -79,9 +81,21 @@ export function FeedRow({
   id?: string;
   className?: string;
   session?: string; // its text is a readable area of the selection bar, of this session
+  copy?: string; // what Copy message copies; without it, no Copy message
   children: ReactNode;
 }) {
   const time = <time dateTime={at}>{clock(at)}</time>;
+  // In the head, or at a continued row's top right; shown on hover (styles.css).
+  const copier = copy !== undefined && (
+    <CopyButton
+      label="Copy message"
+      copied="Copied"
+      text={copy}
+      field={{ title: "Message to copy", label: "Message" }}
+      icon={<CopyIcon />}
+      className="copy-icon-button"
+    />
+  );
   const classes = ["feed-row", kind === "human" && "mine", continued && "continued", className].filter(Boolean);
   return (
     <article className={classes.join(" ")} id={id} aria-label={label}>
@@ -92,8 +106,10 @@ export function FeedRow({
             <span className="feed-who">{who}</span>
             {aside && <span className="feed-aside">{aside}</span>}
             {time}
+            {copier}
           </header>
         )}
+        {continued && copier && <div className="feed-copy">{copier}</div>}
         {children}
       </div>
     </article>

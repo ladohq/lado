@@ -76,7 +76,8 @@ export function CopyField({
   style?: CSSProperties;
   onClose: () => void;
 }) {
-  const field = useRef<HTMLInputElement>(null);
+  const field = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const lines = text.split("\n").length; // a text of more lines (a code block) keeps them
   useEffect(() => {
     field.current?.focus();
     field.current?.select();
@@ -94,7 +95,11 @@ export function CopyField({
         onClose();
       }}
     >
-      <input ref={field} type="text" readOnly aria-label={label} value={text} />
+      {lines > 1 ? (
+        <textarea ref={field} readOnly aria-label={label} value={text} rows={Math.min(lines, 8)} />
+      ) : (
+        <input ref={field} type="text" readOnly aria-label={label} value={text} />
+      )}
       <p className="muted">Press ⌘C / Ctrl+C to copy</p>
     </div>
   );

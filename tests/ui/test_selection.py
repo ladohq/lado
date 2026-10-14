@@ -263,3 +263,66 @@ def test_the_bar_stands_below_on_a_touch_screen(browser: Browser, server, repo, 
         shot(phone, full_page=False)
     finally:
         context.close()
+
+
+CODE = "Run it:\n\n```sh\nuv run pytest -m ui\n  --tb=short\n```"
+
+
+def coded_session(repo) -> str:
+    """A running session whose supervisor wrote to the human a message with a code block,
+    then one of a summary and a body."""
+    session = running_session(repo)
+    runtime.send_message(session, "supervisor", "human", "the command", CODE)
+    runtime.send_message(session, "supervisor", "human", "Раунд 1", "1. Какие действия?")
+    return session
+
+
+def test_copy_buttons_show_on_hover(page: Page, server, repo, shot):
+    session = coded_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    chat = page.get_by_role("log", name="Chat with the session")
+    first = chat.get_by_role("article").filter(has_text="the command")
+    second = chat.get_by_role("article").filter(has_text="Раунд 1")
+    expect(second).to_be_visible()
+    page.mouse.move(5, 5)
+    copy_code = first.get_by_role("button", name="Copy code")
+    copy_message = second.get_by_role("button", name="Copy message")
+    # The button with its note: what the hover rule shows and hides.
+    code_box = first.locator(".code-block > .copy-icon-button")
+    message_box = second.locator(".copy-icon-button")
+    expect(code_box).to_have_css("opacity", "0")
+    expect(message_box).to_have_css("opacity", "0")
+    shot(page, "hidden")
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=server["url"])
+    first.locator(".code-block").hover()
+    expect(code_box).to_have_css("opacity", "1")
+    copy_code.click()
+    expect(first.locator(".code-block").get_by_role("status")).to_have_text("Copied")
+    assert page.evaluate("navigator.clipboard.readText()") == "uv run pytest -m ui\n  --tb=short"
+    second.hover()
+    expect(message_box).to_have_css("opacity", "1")
+    shot(page, "shown")
+    copy_message.click()
+    expect(message_box.get_by_role("status")).to_have_text("Copied")  # a continued row's
+    assert page.evaluate("navigator.clipboard.readText()") == "Раунд 1\n\n1. Какие действия?"
+
+
+def test_copy_buttons_always_show_on_a_touch_screen(browser: Browser, server, repo, shot):
+    session = coded_session(repo)
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
+    try:
+        phone = context.new_page()
+        log_in(phone, server)
+        phone.goto(f"{server['url']}/sessions/{session}")
+        chat = phone.get_by_role("log", name="Chat with the session")
+        expect(chat.get_by_role("button", name="Copy code")).to_be_visible()
+        boxes = chat.locator(".copy-icon-button")
+        expect(boxes).to_have_count(3)  # Copy code, and Copy message of each message
+        for box in boxes.all():
+            expect(box).to_have_css("opacity", "1")
+        shot(phone, full_page=False)
+    finally:
+        context.close()

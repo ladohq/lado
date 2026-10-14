@@ -714,6 +714,15 @@ function MessageText({ message }: { message: MessageInfo }) {
   );
 }
 
+// What Copy message copies, by MessageText's rule: the human's text; an agent's summary,
+// unless its body's first line says it, and its body after a blank line.
+export function messageText(message: MessageInfo): string {
+  const { summary, body } = message;
+  if (message.from === HUMAN) return body || summary;
+  if (!body) return summary;
+  return repeatsSummary(summary, body) ? body : `${summary}\n\n${body}`;
+}
+
 function Message({ session, message, continued }: { session: string; message: MessageInfo; continued: boolean }) {
   const mine = message.from === HUMAN;
   const between = !withHuman(message);
@@ -729,6 +738,7 @@ function Message({ session, message, continued }: { session: string; message: Me
       id={messageAnchor(message.id)}
       className={`chat-message${between ? " between" : ""}`}
       session={session}
+      copy={messageText(message)}
     >
       <MessageText message={message} />
       {mine && <ImagePreviews session={session} attachments={message.attachments} />}

@@ -17,9 +17,12 @@ import {
   type FinishPreviewInfo,
   type RunInfo,
 } from "./api";
+import { messageText } from "./Chat";
 import { clock, Preview, since } from "./ChatText";
 import { Composer } from "./Composer";
+import { CopyButton } from "./Copy";
 import { isOpen } from "./Flows";
+import { CopyIcon } from "./icons";
 import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } from "./live";
 import { ListPage, type Entry } from "./ListPage";
 import { agentPath, runPath, sessionPath } from "./paths";
@@ -346,6 +349,14 @@ function AgentMessages({ session, name, from }: { session: string; name: string;
                 <time dateTime={one.created_at}>{clock(one.created_at)}</time> {one.from} → {one.to}
               </span>{" "}
               · {one.summary} · <span className="muted">{one.state}</span>
+              <CopyButton
+                label="Copy message"
+                copied="Copied"
+                text={messageText(one)}
+                field={{ title: "Message to copy", label: "Message" }}
+                icon={<CopyIcon />}
+                className="copy-icon-button"
+              />
             </li>
           ))}
         </ol>

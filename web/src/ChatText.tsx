@@ -4,6 +4,9 @@ import { useId, useState } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { CopyButton } from "./Copy";
+import { CopyIcon } from "./icons";
+
 // The characters a line that is not blank counts for: a text of n such lines may have
 // n * CHARS_PER_LINE characters before it is long, and a cut one shows as many.
 const CHARS_PER_LINE = 200;
@@ -89,10 +92,30 @@ function lineBreaks() {
 // only by a double tilde ("5~10 min" stays text).
 const GFM: [typeof remarkGfm, { singleTilde: boolean }] = [remarkGfm, { singleTilde: false }];
 // A table in a frame of its own, which scrolls sideways when the table is wider than the body.
+// The text of a node of Markdown's HTML tree, as its code shows it.
+type Hast = { type: string; value?: string; children?: Hast[] };
+const textOf = (node: Hast | undefined): string =>
+  node?.type === "text" ? (node.value ?? "") : (node?.children ?? []).map(textOf).join("");
+
 const COMPONENTS: Components = {
   table: ({ node: _node, ...props }) => (
     <div className="md-table">
       <table {...props} />
+    </div>
+  ),
+  // A code block with Copy code at its top right, shown on hover (styles.css): its code
+  // exactly, without the line break Markdown ends it with.
+  pre: ({ node, ...props }) => (
+    <div className="code-block">
+      <pre {...props} />
+      <CopyButton
+        label="Copy code"
+        copied="Copied"
+        text={textOf(node as Hast | undefined).replace(/\n$/, "")}
+        field={{ title: "Code to copy", label: "Code" }}
+        icon={<CopyIcon />}
+        className="copy-icon-button"
+      />
     </div>
   ),
 };

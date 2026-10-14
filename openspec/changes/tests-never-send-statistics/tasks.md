@@ -29,10 +29,10 @@
 
 ## 3. Docs
 
-- [ ] 3.1 `docs/telemetry.md`: a paragraph, LADO's own tests (every layer, live included)
+- [x] 3.1 `docs/telemetry.md`: a paragraph, LADO's own tests (every layer, live included)
   and the release checks never send: the suite runs with `LADO_TELEMETRY=0`, checked for
   every test, and the RC's scratch install too. Check: read through.
-- [ ] 3.2 `AGENTS.md`, Commands (the tests' environment, the sentence on
+- [x] 3.2 `AGENTS.md`, Commands (the tests' environment, the sentence on
   `LADO_TELEMETRY=0`): the autouse guard checks it before each test and, after one without
   `telemetry_on`, that nothing was sent or queued. Check: read through.
 

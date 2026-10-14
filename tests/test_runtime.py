@@ -947,6 +947,33 @@ def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
     assert fake_tmux[-1][0] == "send_text"  # confirmed, so not delivered again
 
 
+def test_a_sweep_during_a_turns_end_cannot_type_the_hooks_batch(repo, fake_tmux, monkeypatch):
+    """The session loop may sweep at any moment outside the turn-end hook's transaction:
+    the hook makes the agent idle and takes its queue in one, so the sweep never sees it
+    idle with the queue the hook prints."""
+    _session_with_worker(repo)
+    _hook("SessionStart", "w1")
+    _hook("UserPromptSubmit", "w1", {"prompt": "go"})
+    runtime.send_message("s", "supervisor", "w1", "one more thing")
+    hand_over = runtime.hand_over
+    swept = []
+
+    def loop_sweeps_first(session, recipient, *args, **kwargs):
+        if not swept:  # the hook's hand-over; the sweep's own goes straight on
+            swept.append(recipient)
+            runtime.sweep(session, recipient)
+        return hand_over(session, recipient, *args, **kwargs)
+
+    monkeypatch.setattr(runtime, "hand_over", loop_sweeps_first)
+    typed_before = len([c for c in fake_tmux if c[0] == "send_text"])
+    out = _hook("Stop", "w1")
+    assert swept == ["w1"]
+    assert "[from supervisor] one more thing" in out["reason"]
+    [message] = [m for m in state.list_messages("s") if m.summary == "one more thing"]
+    assert (message.channel, message.attempts) == (state.HOOK_OUTPUT, 1)
+    assert len([c for c in fake_tmux if c[0] == "send_text"]) == typed_before
+
+
 def test_a_message_the_loop_types_in_while_it_is_sent_is_reported_sent(
     repo, fake_tmux, monkeypatch
 ):

@@ -6,6 +6,7 @@ and the fake agent: tests/integration/test_agent_terminal_socket.py."""
 import asyncio
 import json
 import queue
+import threading
 import time
 
 import pytest
@@ -30,6 +31,7 @@ class FakeTerminal:
         self.written: list[bytes] = []
         self.size = self.window = (80, 24)
         self.closed = False
+        self.changed = threading.Condition()
 
     def read(self, timeout: float = 0.25) -> bytes | None:
         try:
@@ -40,10 +42,20 @@ class FakeTerminal:
     def write(self, data: bytes) -> None:
         if self.mode != terminal.CONTROL:
             raise terminal.ReadOnly("view")
-        self.written.append(data)
+        with self.changed:
+            self.written.append(data)
+            self.changed.notify_all()
 
     def resize(self, size: tuple[int, int]) -> None:
-        self.size = size
+        with self.changed:
+            self.size = size
+            self.changed.notify_all()
+
+    def wait(self, done, timeout: float = 5.0) -> None:
+        """Wait until `done()` holds: the socket's input and output are separate tasks, so
+        no output frame says that the input was written."""
+        with self.changed:
+            assert self.changed.wait_for(done, timeout), (self.written, self.size)
 
     def follow_window(self) -> tuple[int, int] | None:
         if self.window == self.size:
@@ -200,8 +212,7 @@ def test_control_takes_input_and_resize(client, session, terms):
         ws.send_text(json.dumps({"type": "input", "data": "ls\r"}))
         ws.send_text(json.dumps({"type": "resize", "cols": 120, "rows": 40}))
         ws.send_text(json.dumps({"type": "input", "data": "é"}))
-        terms[0].output.put(b"done")  # in order: once this comes, the input was taken
-        assert ws.receive_bytes() == b"done"
+        terms[0].wait(lambda: len(terms[0].written) == 2 and terms[0].size == (120, 40))
     assert terms[0].written == [b"ls\r", "é".encode()]
     assert terms[0].size == (120, 40)
 

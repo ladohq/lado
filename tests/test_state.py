@@ -4,6 +4,7 @@ import datetime
 import json
 import re
 import sqlite3
+import time
 from pathlib import Path
 
 import agent_helpers
@@ -710,6 +711,50 @@ def test_only_an_agent_that_takes_input_has_its_queue_taken(lado_home, status, t
     assert bool(moved) is taken
 
 
+def _turn_end_take():
+    """A turn-end hook's hand-over: idle, and the queue by the hook's output."""
+    return state.take_pending(
+        "s", "w1", state.SENT, state.BUSY, True, state.HOOK_OUTPUT, become=state.IDLE
+    )
+
+
+def test_take_pending_becomes_idle_and_takes_in_one_commit(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    state.queue_message("s", "supervisor", "w1", "hi", "")
+    commits = []
+    opened = state._open
+
+    def counted():
+        db = opened()
+        db.set_trace_callback(lambda sql: sql == "COMMIT" and commits.append(sql))
+        return db
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(state, "_open", counted)
+        taken = _turn_end_take()
+    assert [m.channel for m in taken] == [state.HOOK_OUTPUT]
+    assert commits == ["COMMIT"]
+    assert state.get_agent("s", "w1").status == state.BUSY
+    assert _status_events() == ["idle", "busy"]
+
+
+def test_take_pending_becomes_idle_with_nothing_to_take(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    assert _turn_end_take() == []
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert _status_events() == ["idle"]
+
+
+def test_take_pending_keeps_the_status_when_a_batch_is_unconfirmed(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    state.queue_message("s", "supervisor", "w1", "first", "")
+    state.take_pending("s", "w1", state.SENT, state.BUSY, True, state.HOOK_OUTPUT)
+    later = state.queue_message("s", "supervisor", "w1", "second", "")
+    assert _turn_end_take() == []
+    assert state.get_agent("s", "w1").status == state.IDLE  # committed, not rolled back
+    assert state.get_message("s", later).state == state.PENDING
+
+
 # Where `idle` may be named in LADO's code (file, the function or module-level name around
 # it): its definitions, the one setter, the API's list of statuses and the text of a failed
 # turn. Anywhere else, asking for idle would leave `background` out: ask accepts_input or
@@ -1051,6 +1096,22 @@ def test_a_gate_opens_with_the_run_that_waits_at_it(lado_home):
             "feature/x",
         ),
     ]
+
+
+def test_a_gate_and_its_event_share_one_time(lado_home, monkeypatch):
+    """The chat shows an event before a gate only at the same time: a millisecond that
+    turns between the two rows put the gate above the move that opened it."""
+    add_event = state._add_event
+
+    def late(db, session, agent, kind, *args, **kwargs):
+        if kind == state.GATE_OPEN:
+            time.sleep(0.005)  # the millisecond turns between the gate and its event
+        return add_event(db, session, agent, kind, *args, **kwargs)
+
+    monkeypatch.setattr(state, "_add_event", late)
+    _, gate = _waiting(lado_home)
+    [opened] = [e for e in state.list_events("s") if e.kind == state.GATE_OPEN]
+    assert opened.created_at == state.get_gate(gate.id).created_at
 
 
 def test_a_run_has_one_open_gate(lado_home):

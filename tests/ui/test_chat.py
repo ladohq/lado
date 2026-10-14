@@ -110,6 +110,20 @@ def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
         "the question",
         session,
     )
+    # LADO asks the supervisor for its recommendation in a transaction after the
+    # question's; recommending earlier, the request would set it back to asked and the
+    # supervisor's turn on it mark it missing. So first that turn must have ended.
+    agent_helpers.wait_for(
+        lambda: state.get_message(session, question.id).recommendation_state == state.REC_MISSING,
+        "the question's request handled",
+        session,
+    )
+    queued = [
+        m.summary
+        for m in state.list_messages(session)
+        if m.recipient == "supervisor" and m.state in (state.PENDING, state.SENT)
+    ]
+    assert queued == []
     runtime.recommend(
         session,
         "supervisor",

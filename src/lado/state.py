@@ -1465,11 +1465,19 @@ def _add_event(
     kind: str,
     detail: str,
     run: str | None = None,
+    at: str | None = None,
 ) -> None:
-    db.execute(
-        "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
-        (session, agent, kind, detail, run),
-    )
+    if at is None:
+        db.execute(
+            "INSERT INTO events (session, agent, kind, detail, run) VALUES (?, ?, ?, ?, ?)",
+            (session, agent, kind, detail, run),
+        )
+    else:  # the time of a row written with it (_open_gate)
+        db.execute(
+            "INSERT INTO events (session, agent, kind, detail, run, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (session, agent, kind, detail, run, at),
+        )
 
 
 def end_reasons(session: str) -> dict[str, str]:
@@ -1715,7 +1723,10 @@ def _open_gate(db: sqlite3.Connection, gate: Gate) -> None:
     )
     gate.id = cur.lastrowid or 0
     detail = f"#{gate.id} {gate.kind} at {gate.state}: {gate.question}"
-    _add_event(db, gate.session, LADO, GATE_OPEN, detail, gate.run)
+    # The gate's own time: the chat shows an event before a gate of the same time, and a
+    # millisecond that turned between the two rows put the gate above its run's move.
+    at = db.execute("SELECT created_at FROM gates WHERE id = ?", (gate.id,)).fetchone()[0]
+    _add_event(db, gate.session, LADO, GATE_OPEN, detail, gate.run, at)
 
 
 def _close_gate(
@@ -2374,19 +2385,24 @@ def take_pending(
     status: str | None = None,
     idle_only: bool = False,
     channel: str | None = None,
+    become: str | None = None,
 ) -> list[Message]:
     """Move all pending messages for `recipient` to `mark`, by `channel`, and return them,
     oldest first; when there are any and `status` is given, set the recipient's status too.
     `idle_only`: take none unless the recipient takes input (ACCEPTS_INPUT: idle or
     background) and no message handed over to it is unconfirmed. Every hand-over to an
     agent takes them so (lado.runtime.hand_over): an agent never has more than one batch of
-    sent messages at a time.
+    sent messages at a time. `become`: set this status first, in the same transaction, and
+    keep it whether or not anything is taken (a hook's switch to idle or background:
+    lado.hooks._idle).
 
     Runs in one write transaction, so two concurrent callers never get the same message,
     and no one sees the messages moved without the status that goes with them.
     """
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        if become:
+            _set_status(db, session, recipient, become)
         if (
             idle_only
             and not db.execute(
@@ -2396,7 +2412,7 @@ def take_pending(
                 (session, recipient, SENT),
             ).fetchone()
         ):
-            db.execute("ROLLBACK")
+            db.execute("COMMIT" if become else "ROLLBACK")
             return []
         rows = db.execute(
             f"SELECT {MESSAGE_COLUMNS} FROM messages"

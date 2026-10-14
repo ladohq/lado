@@ -10,6 +10,9 @@ import shutil
 import socket
 import sqlite3
 import stat
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -461,6 +464,48 @@ def test_stop_without_a_server_kills_nobody(capsys, monkeypatch):
     assert "not running" in capsys.readouterr().out
     assert killed == []
     assert not server_run.info_path().exists()
+
+
+def test_stop_waits_for_the_process_after_its_lock(monkeypatch):
+    """The server frees its lock a moment before its process ends: stop waits for both."""
+    lives = iter([True, True, False])  # the pid lives two polls after the lock is free
+    monkeypatch.setattr(server_run, "running", lambda: {"pid": 4242})
+    monkeypatch.setattr(server_run.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(server_run, "_held", lambda: False)
+    monkeypatch.setattr(server_run, "_gone", lambda pid: not next(lives))
+    assert server_run.stop() == {"pid": 4242}
+    assert next(lives, "polled to the end") == "polled to the end"
+
+
+def test_stop_names_a_process_that_outlives_its_lock(monkeypatch):
+    monkeypatch.setattr(server_run, "STOP_TIMEOUT", 0.2)
+    monkeypatch.setattr(server_run, "running", lambda: {"pid": 4242})
+    monkeypatch.setattr(server_run.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(server_run, "_held", lambda: False)
+    monkeypatch.setattr(server_run, "_gone", lambda pid: False)
+    with pytest.raises(runtime.LadoError, match=r"pid 4242\) did not end in 0.2s"):
+        server_run.stop()
+
+
+def test_gone_reaps_a_child_and_reads_another_process():
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    deadline = time.monotonic() + 5
+    while not server_run._gone(child.pid):
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    with pytest.raises(ChildProcessError):  # reaped: no zombie left
+        os.waitpid(child.pid, os.WNOHANG)
+    assert not server_run._gone(os.getpid())  # alive, not our child
+
+
+def test_gone_takes_a_process_it_may_not_signal_as_gone(monkeypatch):
+    """A pid of another user is no longer our server's (reused after its end)."""
+
+    def refused(pid, sig):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(server_run.os, "kill", refused)
+    assert server_run._gone(1)
 
 
 def test_a_second_server_names_the_running_one(capsys):

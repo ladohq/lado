@@ -123,6 +123,7 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "ran_seconds": 0,
             "running_since": "2026-10-05T10:00:00.000Z",
             "stopped_at": None,
+            "title": None,
         },
         {
             "name": "t",
@@ -138,6 +139,7 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "ran_seconds": 1800,
             "running_since": None,
             "stopped_at": "2026-10-05T10:30:00.500Z",
+            "title": None,
         },
     ]
 

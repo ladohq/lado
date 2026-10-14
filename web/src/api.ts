@@ -44,6 +44,10 @@ export type AgentInfo = components["schemas"]["AgentInfo"];
 
 export const getSessions = () => get<SessionInfo[]>("/api/sessions");
 
+// Set the session's title, or clear it with null; the answer is the session as stored.
+export const setSessionTitle = (session: string, title: string | null) =>
+  post<SessionInfo>(`/api/sessions/${encodeURIComponent(session)}/title`, { title }, "PUT");
+
 export type WaitingItem = components["schemas"]["WaitingItem"];
 
 // What waits for the human in every session not stopped, oldest first (Needs you).

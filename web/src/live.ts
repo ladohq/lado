@@ -625,6 +625,12 @@ export class Live {
     );
   }
 
+  // A session as the server answered the human's change of it (its title): in the list at
+  // once, as the feed's item of it would be.
+  sessionChanged(item: SessionInfo) {
+    this.apply({ kind: "sessions", session: item.name, key: "", op: "update", item });
+  }
+
   private apply(change: Change) {
     const list = change.kind as ListName;
     if (list in this.watched && this.watched[list].has(change.session)) this.applyList(list, change);

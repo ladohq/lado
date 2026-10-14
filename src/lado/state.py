@@ -19,7 +19,7 @@ from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
-SCHEMA_VERSION = 27
+SCHEMA_VERSION = 28
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -868,6 +868,12 @@ def usage_from_history(db: sqlite3.Connection) -> None:
 SCHEMA += ";\n".join([USAGE, USAGE_TIME, *USAGE_TRIGGERS]) + ";\n"
 MIGRATIONS[26] = [USAGE, USAGE_TIME, usage_from_history, *USAGE_TRIGGERS]
 
+# A session's title, from version 28 on: a label for the human over its name, which stays
+# its identifier (lado.runtime.set_title is the one rule of what it is). NULL: no title.
+SESSIONS_TITLE = "ALTER TABLE sessions ADD COLUMN title TEXT"
+SCHEMA += SESSIONS_TITLE + ";\n"
+MIGRATIONS[27] = [SESSIONS_TITLE]
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -905,6 +911,7 @@ class Session:
     without: list[str] = field(default_factory=list)  # switched-off agents, skills, MCP
     stopped_at: str | None = None  # UTC; None while it runs
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
+    title: str | None = None  # the human's label over the name; None for none
 
 
 @dataclass(frozen=True)
@@ -1225,6 +1232,14 @@ def get_session(name: str) -> Session | None:
     with connect() as db:
         row = db.execute("SELECT * FROM sessions WHERE name = ?", (name,)).fetchone()
     return _session(row) if row else None
+
+
+def set_title(name: str, title: str | None) -> bool:
+    """Store the session's title (None: no title) as it is given; lado.runtime.set_title
+    decides what a title is. False when there is no such session."""
+    with connect() as db:
+        changed = db.execute("UPDATE sessions SET title = ? WHERE name = ?", (title, name)).rowcount
+    return changed == 1
 
 
 def delete_session(name: str) -> None:
@@ -3157,4 +3172,5 @@ def _session(row: sqlite3.Row) -> Session:
         json.loads(row["switched_off"]),
         row["stopped_at"],
         row["created_at"],
+        row["title"],
     )

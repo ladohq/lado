@@ -2464,6 +2464,56 @@
         }
       }
     },
+    "/api/sessions/{name}/title": {
+      "put": {
+        "summary": "Set Title",
+        "description": "Set or clear the session's title, as `lado title` does; its name stays. The\nanswer is the session as stored, before the feed brings it.",
+        "operationId": "set_title_api_sessions__name__title_put",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TitleChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{name}/forget-preview": {
       "get": {
         "summary": "Forget Preview",
@@ -4431,6 +4481,10 @@
           "max_message": {
             "type": "integer",
             "title": "Max Message"
+          },
+          "max_title": {
+            "type": "integer",
+            "title": "Max Title"
           }
         },
         "type": "object",
@@ -4442,7 +4496,8 @@
           "max_files",
           "image_limit",
           "image_max_side",
-          "max_message"
+          "max_message",
+          "max_title"
         ],
         "title": "Limits",
         "description": "What the composer checks before an upload and how it marks a file, all the core's\n(lado.artifacts, lado.runtime): the UI keeps no copy."
@@ -6154,6 +6209,17 @@
               }
             ],
             "title": "Stopped At"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
         "type": "object",
@@ -6170,7 +6236,8 @@
           "without",
           "ran_seconds",
           "running_since",
-          "stopped_at"
+          "stopped_at",
+          "title"
         ],
         "title": "SessionInfo"
       },
@@ -6607,6 +6674,27 @@
         ],
         "title": "TelemetryPreview",
         "description": "What the next send posts (lado.telemetry.preview): the daily report, also when it\nis not due yet, and the queued errors, one event per kind."
+      },
+      "TitleChange": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "TitleChange",
+        "description": "A session's new title; None or empty clears it (runtime.set_title's rule)."
       },
       "TmuxInfo": {
         "properties": {

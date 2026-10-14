@@ -4787,3 +4787,61 @@ def test_a_spawn_whose_kits_expect_a_missing_command_is_refused(repo, fake_tmux,
     assert len(fake_tmux) == windows
     assert runtime.git(str(repo), "branch", "--list", "lado/s/*").strip() == ""
     assert not (repo / ".lado" / "worktrees" / "s").exists()
+
+
+def _titled(title: str | None = None) -> None:
+    state.add_session(state.Session("s", "/r", None, "claude"))
+    if title is not None:
+        state.set_title("s", title)
+
+
+@pytest.mark.parametrize(
+    "text, stored",
+    [
+        ("Review", "Review"),
+        ("  Ревью kit-sdlc  ", "Ревью kit-sdlc"),
+        ("   ", None),
+        ("", None),
+        (None, None),
+        ("s", None),
+        ("  s ", None),
+        ("x" * 80, "x" * 80),
+        ("  " + "я" * 80 + " ", "я" * 80),
+        ("🚀" * 80, "🚀" * 80),
+        ("🚀 launch", "🚀 launch"),
+    ],
+)
+def test_set_title_stores_what_the_rule_says(text, stored):
+    _titled("Old")
+    assert runtime.set_title("s", text) == stored
+    assert state.get_session("s").title == stored
+
+
+@pytest.mark.parametrize(
+    "text, reason",
+    [
+        ("x" * 81, "a title is at most 80 characters"),
+        ("  " + "я" * 81, "a title is at most 80 characters"),
+        ("a\nb", "a title is one line"),
+        ("a\tb", "a title is one line"),
+        ("a\x00b", "a title is one line"),
+        ("a\x7fb", "a title is one line"),
+    ],
+)
+def test_set_title_refuses_and_changes_nothing(text, reason):
+    _titled("Old")
+    with pytest.raises(runtime.LadoError, match=f"^{reason}$"):
+        runtime.set_title("s", text)
+    assert state.get_session("s").title == "Old"
+
+
+def test_set_title_of_an_unknown_session_is_refused():
+    with pytest.raises(runtime.NoSuchSession, match='unknown session "nope"'):
+        runtime.set_title("nope", "x")
+
+
+def test_set_title_works_on_a_stopped_session():
+    _titled()
+    state.stop_session("s")
+    assert runtime.set_title("s", "Review") == "Review"
+    assert state.get_session("s").title == "Review"

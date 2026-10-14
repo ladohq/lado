@@ -1078,6 +1078,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{name}/title": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Title
+         * @description Set or clear the session's title, as `lado title` does; its name stays. The
+         *     answer is the session as stored, before the feed brings it.
+         */
+        put: operations["set_title_api_sessions__name__title_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{name}/forget-preview": {
         parameters: {
             query?: never;
@@ -1712,6 +1733,8 @@ export interface components {
             image_max_side: number;
             /** Max Message */
             max_message: number;
+            /** Max Title */
+            max_title: number;
         };
         /** MarketplaceChange */
         MarketplaceChange: {
@@ -2315,6 +2338,8 @@ export interface components {
             running_since: string | null;
             /** Stopped At */
             stopped_at: string | null;
+            /** Title */
+            title: string | null;
         };
         /**
          * SessionKitInfo
@@ -2465,6 +2490,14 @@ export interface components {
             errors: {
                 [key: string]: unknown;
             }[];
+        };
+        /**
+         * TitleChange
+         * @description A session's new title; None or empty clears it (runtime.set_title's rule).
+         */
+        TitleChange: {
+            /** Title */
+            title: string | null;
         };
         /** TmuxInfo */
         TmuxInfo: {
@@ -4533,6 +4566,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Stopped"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_title_api_sessions__name__title_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TitleChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInfo"];
                 };
             };
             /** @description Validation Error */

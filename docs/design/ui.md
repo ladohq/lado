@@ -1307,7 +1307,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   shows, and always on a device without hover (`@media (hover: none)`), one CSS rule for
   every `RowMenu`. It holds
   actions on the entry only, and only ones that work now; no placeholders for features
-  that do not exist (no Rename, Pin or colour until they do). **Copy link** copies the
+  that do not exist (no Pin or colour until they do). **Rename…** comes first: it edits
+  the session's title in the row (Session title, below). **Copy link** copies the
   session page's address (`location.origin` + its path), says "Link copied" in the row
   (`role="status"`, outside the menu, which closes; the focus goes back to ⋯) and goes
   after 2 s; only when neither the Clipboard API nor the legacy copy works (above) a
@@ -1340,6 +1341,8 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
   higher. The Shell knows nothing of sessions: `SessionHead` draws itself into the top
   bar's slot (`useTopBar`); while the sessions load or a session is not found nothing
   claims the bar and it keeps the title "Sessions".
+- The head's first items: the status dot, the title (or the name), the name when there is
+  a title, the pencil **Rename session**, the run time (Session title, below).
 - The head's facts, left to right: where (the folder, then its git: the origin
   remote short, `github.com/ladohq/lado`, without scheme, user and `.git`, and `· <branch>`),
   the kits, the CLI (its permission mode is in its tooltip, below; decided 2026-10-08,
@@ -1372,6 +1375,51 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 - Known limit: the server finds the CLI on its own PATH (`shutil.which`), as
   `/api/providers` and the folder check do; agents get their login shell's PATH, so the
   version shown may differ from theirs.
+
+### Session title (decided 2026-10-15, LAD-66)
+
+A session's name is its identifier (the address, the CLI, its tmux session, its branches
+and worktrees), so "renaming" a session gives it a **title**, a label over the name
+(mockup `task/lad-66/mockup-rename.html`, variant A, both entry points; renaming the
+identifier itself was turned down for its cost). The title is `SessionInfo.title`, set by
+`PUT /api/sessions/{name}/title` or `lado title`, through the core's one rule
+(`runtime.set_title`: one line, at most `Limits.max_title`, 80, characters after the trim;
+empty or equal to the name is no title; a bad one is refused, never cut). It comes through
+the change feed, so a title set anywhere shows without a reload. The UI names a session
+through one function (`sessionLabel.ts`: the title, else the name).
+
+Where it shows:
+
+| Place | With a title | Without |
+|---|---|---|
+| list row | the title in bold; the grey line starts with the name, `lado-2 · 3 agents · 1h 12m` (every kind of grey line) | as before |
+| collapsed list's icon | its letters from the title, its accessible name the title | as before |
+| row's and icon's card | first line `<b>title</b> · lado-2 · <status> · …` | as before |
+| session head | `<h1>` the title, then the name small and grey (`.session-name-id`), then the pencil | `<h1>` the name, then the pencil |
+| browser tab | `<title> · LADO` (`(n)` before it when something waits) | the name |
+| Needs you | the session's line: the title, then the name in grey | the name |
+| notification | `LADO · <title>` | `LADO · <name>` |
+
+The list's search keeps a session whose title or name holds the text (case ignored). The
+session region's accessible name (`Session <name>`), the address and Copy link keep the
+name.
+
+Where it is set (`TitleEdit.tsx`, one field for both):
+
+- **Head**: the pencil **Rename session** after the title (and the name), shown on the
+  title's hover, its own focus, and always on a device without hover; a double click on
+  the title does the same. The title becomes a field of its room (a third of the bar),
+  holding the title (empty without one, the name as placeholder), selected; under it
+  `Enter to save · Esc to cancel · empty shows the name`.
+- **List**: **Rename…**, first in the row's ⋯, turns the row into the same field (no link
+  while it edits), with `lado-2 · Enter to save · Esc to cancel` under it.
+- Enter or leaving the field saves, Esc cancels and sends nothing (nor does the blur after
+  it); the same text as stored sends nothing. While it saves the field is read-only. Over
+  the limit (counted in characters, as the server does): `<n> characters, the limit is 80`
+  under the field, nothing sent. A refusal: the server's text under the field
+  (`role="alert"`), the field kept open with the text. The answer, the session as stored,
+  is shown at once, before the feed's item. After it closes the focus goes back to the
+  pencil or the ⋯.
 
 ### System panel (decided 2026-10-09, feature/system-panel)
 

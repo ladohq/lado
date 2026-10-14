@@ -891,6 +891,13 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     step that makes it again (tests/test_usage.py compares both forms). `usage_summary`
     (a `Usage`: per kind by key, provider, both, and agreement) and `usage_start` are
     `lado stats`'; `usage_counts` the report's.
+    From schema 28 a session keeps an optional title, `sessions.title` (`SESSIONS_TITLE`;
+    NULL for none; `state.set_title` stores it as given): a label for the human over its
+    name, which stays its identifier. `runtime.set_title` is the one rule of what a title
+    is (trimmed, one line with no Cc character, at most `runtime.MAX_TITLE`, 80,
+    characters; empty or equal to the name is none; a bad one is refused, never cut), for
+    `lado title` and `PUT /api/sessions/{name}/title` alike; `SessionInfo.title` carries
+    it, through the existing journal of `sessions`, and `Limits.max_title` the limit.
   - `fingerprint.py`: a read-only agent's git fingerprint (Read-only roles, below): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's
@@ -1639,6 +1646,15 @@ and is checked as before.
 store's `remove_session` first, which also removes content files no record refers to that
 are more than an hour old; the output counts the artifacts); it refuses a running one, and
 one with open runs unless `--force`; worktrees and branches stay on disk and are listed.
+
+`lado title <session>` prints a session's title (or `<session> has no title`); `lado title
+<session> TEXT` sets it and `--clear` clears it (both together exit 2), through
+`runtime.set_title`, printing `<session>: title "<title>"` or that it has none; for a
+running or stopped session alike, the name and everything named by it unchanged. Setting
+or clearing is refused inside an agent (`LADO_AGENT` set), as `lado answer` is; reading is
+not. `lado ls` prints the title, quoted, after the name. The UI sets it too (the pencil in
+the session's head, Rename… in the list; docs/design/ui.md, Session title). A title is
+never set at the start and by no MCP tool.
 
 `lado uninstall [--dry-run] [--keep-data] [--yes]` removes LADO (`uninstall.py`): it prints
 its plan and asks `Uninstall? [y/N]` (`--yes` is required without a terminal; `--dry-run`

@@ -10,7 +10,7 @@ Design doc: `docs/superpowers/specs/2026-10-14-usage-stats-design.md`.
 
 ## 2. Reading it (D5, D6, D9)
 
-- [ ] 2.1 `usage_counts` from `usage` (same shape), `usage_summary`, `usage_start`;
+- [x] 2.1 `usage_counts` from `usage` (same shape), `usage_summary`, `usage_start`;
   `telemetry.lado_errors`; the report counts a forgotten session. Check: `uv run pytest
   tests/test_usage.py tests/test_telemetry.py tests/test_cli_telemetry.py -n auto`.
 

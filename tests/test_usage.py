@@ -340,3 +340,73 @@ def test_the_migration_makes_usage_as_a_new_database_has_it(lado_home):
     state.migrate()
     with state.connect() as db:
         assert [tuple(row) for row in db.execute(USAGE_OBJECTS)] == fresh
+
+
+# Reading it.
+
+
+def _write(*rows: tuple) -> None:
+    """Rows of usage as its triggers write them: (kind, key, provider, agrees, created_at)."""
+    with state.connect() as db:
+        db.executemany(
+            "INSERT INTO usage (kind, key, provider, agrees, created_at) VALUES (?, ?, ?, ?, ?)",
+            rows,
+        )
+
+
+OLD, NEW = "2026-09-01 10:00:00.500", "2026-10-13 08:00:00.250"
+
+
+def test_usage_summary_counts_a_period_by_key_provider_and_agreement(lado_home):
+    _write(
+        ("session", None, None, None, OLD),
+        ("session", None, None, None, NEW),
+        ("agent", "developer@sdlc", "claude", None, NEW),
+        ("agent", "developer@sdlc", "codex", None, NEW),
+        ("agent", "supervisor@default", "claude", None, NEW),
+        ("agent", "developer@?", "claude", None, OLD),
+        ("turn_error", "overloaded", "claude", None, NEW),
+        ("turn_error", "overloaded", "claude", None, NEW),
+        ("turn_error", "APIError", "kilo", None, NEW),
+        ("gate_close", "approve", None, 1, NEW),
+        ("gate_close", "approve", None, 0, NEW),
+        ("gate_close", "reject", None, None, NEW),
+    )
+    usage = state.usage_summary("2026-10-01 00:00:00")
+    assert usage.keys["session"] == {None: 1}
+    assert usage.keys["agent"] == {"developer@sdlc": 2, "supervisor@default": 1}
+    assert usage.providers["agent"] == {"claude": 2, "codex": 1}
+    assert usage.provider_keys["turn_error"] == {
+        ("claude", "overloaded"): 2,
+        ("kilo", "APIError"): 1,
+    }
+    assert usage.keys["gate_close"] == {"approve": 2, "reject": 1}
+    assert usage.agrees["gate_close"] == {1: 1, 0: 1}
+    assert usage.count("agent") == 3 and usage.count("question") == 0
+    assert state.usage_summary("0000-01-01 00:00:00").count("agent") == 4
+
+
+def test_usage_start_is_the_earliest_row_to_the_second(lado_home):
+    assert state.usage_start() is None
+    _write(("session", None, None, None, NEW), ("question", None, None, None, OLD))
+    assert state.usage_start() == "2026-09-01 10:00:00"
+
+
+def test_usage_counts_keeps_the_reports_shape(lado_home):
+    _write(
+        ("session", None, None, None, NEW),
+        ("resume", None, None, None, NEW),
+        ("agent", "developer@sdlc", "claude", None, NEW),
+        ("agent", "developer@?", None, None, NEW),  # no provider: counted by none
+        ("agent", "worker@default", "codex", None, OLD),
+        ("run_start", "task@sdlc", None, None, NEW),
+        ("gate_open", "approval", None, None, NEW),
+        ("turn_error", "overloaded", "claude", None, NEW),
+    )
+    assert state.usage_counts("2026-10-01 00:00:00") == {
+        "sessions": 2,
+        "agents": {"claude": 1},
+        "runs": 1,
+        "gates": 1,
+        "turn_errors": 1,
+    }

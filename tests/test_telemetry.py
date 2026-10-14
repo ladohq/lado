@@ -263,8 +263,6 @@ def _db_with_usage():
             ("a", state.SPAWNED, state.spawned_detail("worker", "default", "codex"), old),
             ("a", state.SESSION_RESUME, "", new),
             ("b", state.FLOW_START, "", new),
-            ("b", state.GATE_OPEN, "", new),
-            ("b", state.GATE_OPEN, "", old),
             ("c", state.TURN_ERROR, "overloaded", new),
         ]
         for session, kind, detail, at in rows:
@@ -272,6 +270,12 @@ def _db_with_usage():
                 "INSERT INTO events (session, agent, kind, detail, created_at) "
                 "VALUES (?, 'x', ?, ?, ?)",
                 (session, kind, detail, at),
+            )
+        for run, at in (("f/x", new), ("f/y", old)):  # a gate counts by its row (USAGE_TRIGGERS)
+            db.execute(
+                "INSERT INTO gates (session, run, state, kind, question, options, created_at)"
+                " VALUES ('b', ?, 'ok', 'approval', 'Ship?', '[]', ?)",
+                (run, at),
             )
 
 
@@ -307,6 +311,19 @@ def test_report_counts_window(telemetry_on, monkeypatch):
     assert event["distinct_id"] == props["install"]
     assert set(props) - {"$process_person_profile", "$geoip_disable"} <= set(telemetry.FIELDS)
     assert "db" not in props
+
+
+def test_report_counts_a_forgotten_session(telemetry_on, monkeypatch):
+    monkeypatch.setattr(telemetry, "_providers", dict)
+    _db_with_usage()
+    _sent(report_at="2026-10-12T09:00:00Z")
+    before = telemetry.report(NOW)["properties"]
+    for name in ("a", "b", "c"):
+        state.delete_session(name)
+    after = telemetry.report(NOW)["properties"]
+    assert after["agents"] == before["agents"] == {"claude": 2, "codex": 1}
+    keys = ("sessions", "runs", "gates", "turn_errors")
+    assert [after[k] for k in keys] == [before[k] for k in keys] == [3, 1, 1, 1]
 
 
 def test_report_first_one_counts_a_day(telemetry_on, monkeypatch):

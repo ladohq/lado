@@ -11,6 +11,7 @@ import re
 import sqlite3
 import time
 import uuid
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
@@ -710,11 +711,13 @@ def _events_select(row: str) -> str:
     """kind, key, provider, agrees and time of a counted event `row`. An agent's provider
     is its latest spawn's (the agent may be forgotten since, as a stop does); a run's flow
     is keyed with the run's kit."""
-    kind = f"CASE {row}.kind " + " ".join(
-        f"WHEN '{event}' THEN '{usage}'" for event, usage in USAGE_EVENTS.items()
+    kind = (
+        f"CASE {row}.kind "
+        + " ".join(f"WHEN '{event}' THEN '{usage}'" for event, usage in USAGE_EVENTS.items())
+        + " END"
     )
-    spawned_key, spawned_provider = _spawned_sql(row)
-    _, spawn_provider = _spawned_sql("s")
+    role, provider_of_row = _spawned_sql(row)
+    _, provider_of_spawn = _spawned_sql("s")
     detail = f"{row}.detail"
     error_kind = (
         f"CASE WHEN instr({detail}, ': ') > 0 THEN substr({detail}, 1, instr({detail}, ': ') - 1)"
@@ -725,20 +728,20 @@ def _events_select(row: str) -> str:
         f" WHERE r.session = {row}.session AND r.name = {row}.run)"
     )
     agent_provider = (
-        f"(SELECT {spawn_provider} FROM events s WHERE s.session = {row}.session"
+        f"(SELECT {provider_of_spawn} FROM events s WHERE s.session = {row}.session"
         f" AND s.agent = {row}.agent AND s.kind = '{SPAWNED}' AND s.id < {row}.id"
         " ORDER BY s.id DESC LIMIT 1)"
     )
     key = (
-        f"CASE WHEN {row}.kind = '{SPAWNED}' THEN {spawned_key}"
+        f"CASE WHEN {row}.kind = '{SPAWNED}' THEN {role}"
         f" WHEN {row}.kind = '{TURN_ERROR}' THEN {error_kind}"
         f" WHEN {row}.kind IN ({_sql_list(_RUN_EVENTS)}) THEN {flow} END"
     )
     provider = (
-        f"CASE WHEN {row}.kind = '{SPAWNED}' THEN {spawned_provider}"
+        f"CASE WHEN {row}.kind = '{SPAWNED}' THEN {provider_of_row}"
         f" WHEN {row}.kind IN ('{ENDED}', '{TURN_ERROR}') THEN {agent_provider} END"
     )
-    return f"{kind} END, {key}, {provider}, NULL, {row}.created_at"
+    return f"{kind}, {key}, {provider}, NULL, {row}.created_at"
 
 
 def _gate_close_select(row: str) -> str:
@@ -1666,35 +1669,59 @@ def add_event(
         _add_event(db, session, agent, kind, detail, run)
 
 
+@dataclass
+class Usage:
+    """The usage table's rows of a period, counted per kind (USAGE_KINDS): by key, by
+    provider, by both, and a gate close's agreement with the lead (1 or 0; a close
+    without a recommended choice is not in it)."""
+
+    keys: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    providers: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    provider_keys: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    agrees: dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+
+    def count(self, kind: str) -> int:
+        return sum(self.keys[kind].values())
+
+
+def usage_summary(since: str) -> Usage:
+    """The usage of the period from `since` (UTC, `YYYY-MM-DD HH:MM:SS`) on. Reads only."""
+    usage = Usage()
+    with connect() as db:
+        rows = db.execute(
+            "SELECT kind, key, provider, agrees, count(*) FROM usage WHERE created_at >= ?"
+            " GROUP BY kind, key, provider, agrees",
+            (since,),
+        ).fetchall()
+    for kind, key, provider, agrees, n in rows:
+        usage.keys[kind][key] += n
+        usage.providers[kind][provider] += n
+        usage.provider_keys[kind][provider, key] += n
+        if agrees is not None:
+            usage.agrees[kind][agrees] += n
+    return usage
+
+
+def usage_start() -> str | None:
+    """The time of the usage table's earliest row, UTC to the second; None for none."""
+    with connect() as db:
+        return db.execute("SELECT substr(min(created_at), 1, 19) FROM usage").fetchone()[0]
+
+
 def usage_counts(since: str) -> dict:
     """What happened from `since` (UTC, `YYYY-MM-DD HH:MM:SS`) on, for the daily report
     (lado.telemetry): sessions started or resumed, agents spawned per provider, flow runs
-    started, gates opened, turns ended on an error. Reads only; a forgotten session's rows
-    are gone."""
-    with connect() as db:
-
-        def count(kind: str) -> int:
-            query = "SELECT count(*) FROM events WHERE kind = ? AND created_at >= ?"
-            return db.execute(query, (kind, since)).fetchone()[0]
-
-        started = db.execute(
-            "SELECT count(*) FROM sessions WHERE created_at >= ?", (since,)
-        ).fetchone()[0]
-        agents: dict[str, int] = {}
-        spawned = db.execute(
-            "SELECT detail FROM events WHERE kind = ? AND created_at >= ?", (SPAWNED, since)
-        )
-        for (detail,) in spawned:
-            provider = spawned_provider(detail)
-            if provider:
-                agents[provider] = agents.get(provider, 0) + 1
-        return {
-            "sessions": started + count(SESSION_RESUME),
-            "agents": agents,
-            "runs": count(FLOW_START),
-            "gates": count(GATE_OPEN),
-            "turn_errors": count(TURN_ERROR),
-        }
+    started, gates opened, turns ended on an error. Reads only the usage table, so a
+    forgotten session is still counted."""
+    usage = usage_summary(since)
+    agents = usage.providers[USAGE_AGENT]
+    return {
+        "sessions": usage.count(USAGE_SESSION) + usage.count(USAGE_RESUME),
+        "agents": {provider: n for provider, n in agents.items() if provider},
+        "runs": usage.count(USAGE_RUN_START),
+        "gates": usage.count(USAGE_GATE_OPEN),
+        "turn_errors": usage.count(USAGE_TURN_ERROR),
+    }
 
 
 def _add_event(

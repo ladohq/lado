@@ -27,7 +27,8 @@ from lado import runtime
 URL = re.compile(r"(https?|ssh|git|file)://(.+)", re.IGNORECASE)
 # user@host:path, git's scp form; a bare host:path would take a folder with a colon.
 SCP = re.compile(r"([^\s@/:]+)@([^\s@/:]+):(.+)")
-DEFAULT_PARENT = "~/lado"  # a clone's folder is DEFAULT_PARENT/<repo> unless given
+DEFAULT_PARENT = "~/lado"  # a clone's folder is <parent>/<repo> unless given: default_parent
+REPOS = "LADO_REPOS"  # the folder of the human's repositories (LADO's image sets it)
 
 
 LIST_TIMEOUT = 20  # seconds a listing of the remote's branches may take
@@ -118,16 +119,31 @@ class Address:
         return self.host == other.host and self._segments() == other._segments()
 
 
+def repos_folder() -> Path | None:
+    """The folder of the human's repositories, `LADO_REPOS` with `~` expanded; None when it
+    is unset, empty or not a full path (`lado doctor` says why it is ignored)."""
+    value = os.environ.get(REPOS, "")
+    folder = Path(os.path.expanduser(value)) if value else None
+    return folder if folder is not None and folder.is_absolute() else None
+
+
+def default_parent() -> Path:
+    """Where a clone goes when the human gives no folder: the repositories folder, else
+    ~/lado."""
+    return repos_folder() or Path(os.path.expanduser(DEFAULT_PARENT))
+
+
 def default_folder(url: str) -> Path:
-    """The folder a clone of `url` goes to when the human gives none: ~/lado/<repo>; a URL
-    that names no repository has none (it would be ~/lado itself)."""
+    """The folder a clone of `url` goes to when the human gives none: <parent>/<repo>
+    (`default_parent`); a URL that names no repository has none (it would be the parent
+    itself)."""
     name = Address.parse(url).repo_name
     if not name:
         raise CloneError(
             "no_repo_name",
             f"{runtime.public_remote(url)} names no repository: give the folder to clone into",
         )
-    return Path(os.path.expanduser(DEFAULT_PARENT)) / name
+    return default_parent() / name
 
 
 class CloneError(runtime.LadoError):

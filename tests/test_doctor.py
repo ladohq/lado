@@ -63,6 +63,50 @@ def test_all_checks_pass_when_tools_are_on_path(monkeypatch):
     assert all(c.level == doctor.OK for c in checks)
 
 
+def test_no_repositories_folder_line_without_the_variable(monkeypatch):
+    monkeypatch.delenv("LADO_REPOS", raising=False)
+    assert doctor.check_repos_folder() is None
+    monkeypatch.setenv("LADO_REPOS", "")
+    assert doctor.check_repos_folder() is None
+
+
+def test_the_repositories_folder_line(tmp_path, monkeypatch):
+    name = "Repositories folder"
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
+    assert doctor.check_repos_folder() == doctor.Check(name, doctor.OK, f"{tmp_path} (LADO_REPOS)")
+    missing = tmp_path / "repos"
+    monkeypatch.setenv("LADO_REPOS", str(missing))
+    assert doctor.check_repos_folder() == doctor.Check(
+        name, doctor.INFO, f"{missing} (LADO_REPOS), not made yet: the first clone makes it"
+    )
+    afile = tmp_path / "file"
+    afile.write_text("")
+    monkeypatch.setenv("LADO_REPOS", str(afile))
+    assert doctor.check_repos_folder() == doctor.Check(
+        name, doctor.WARN, f"LADO_REPOS is not a folder: {afile}"
+    )
+    monkeypatch.setenv("LADO_REPOS", "code")
+    assert doctor.check_repos_folder() == doctor.Check(
+        name,
+        doctor.WARN,
+        "LADO_REPOS is not an absolute path: code; LADO ignores it",
+        "set it to a full path, e.g. ~/repos or /Users/me/repos",
+    )
+
+
+def test_the_checks_hold_the_repositories_folder_only_when_it_is_set(tmp_path, monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+
+    def names():
+        return [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+
+    assert "Repositories folder" not in names()
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path))
+    found = names()
+    assert found[found.index("git") + 1] == "Repositories folder"
+
+
 @pytest.mark.parametrize(
     ("version", "hint"),
     [

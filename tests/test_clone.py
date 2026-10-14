@@ -42,6 +42,31 @@ def test_default_folder(tmp_path, monkeypatch):
     assert clone.default_folder("file:///srv/app.git") == tmp_path / "lado" / "app"
 
 
+@pytest.mark.parametrize("value", [None, "", "code", "./code"])
+def test_no_repositories_folder(value, monkeypatch):
+    if value is None:
+        monkeypatch.delenv("LADO_REPOS", raising=False)
+    else:
+        monkeypatch.setenv("LADO_REPOS", value)
+    assert clone.repos_folder() is None
+
+
+def test_the_repositories_folder_expands_the_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("LADO_REPOS", "~/code")
+    assert clone.repos_folder() == tmp_path / "code"
+    monkeypatch.setenv("LADO_REPOS", "/srv/repos")
+    assert clone.repos_folder() == Path("/srv/repos")
+
+
+def test_the_default_folder_is_in_the_repositories_folder(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "repos"))
+    assert clone.default_folder("git@github.com:acme/app.git") == tmp_path / "repos" / "app"
+    monkeypatch.setenv("LADO_REPOS", "code")  # relative: ignored
+    assert clone.default_folder("git@github.com:acme/app.git") == tmp_path / "lado" / "app"
+
+
 def test_address_parts():
     ssh = clone.Address.parse("ssh://deploy@Git.Example.com:2222/~/team/app.git")
     assert (ssh.scheme, ssh.user, ssh.host, ssh.port) == ("ssh", "deploy", "git.example.com", 2222)

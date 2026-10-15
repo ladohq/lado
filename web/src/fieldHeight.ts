@@ -10,9 +10,9 @@ export const MOST_LINES = 8;
 export const CARD_LINES = 3;
 
 // The field as tall as its text, from `least` lines to `most`, then it scrolls inside. Lines
-// count by the field's computed line height; its padding and border come on top.
-export function grow(field: HTMLTextAreaElement | null, least: number, most: number) {
-  if (!field) return;
+// count by the field's computed line height; its padding and border come on top. Returns
+// the height it set, in pixels.
+export function grow(field: HTMLTextAreaElement, least: number, most: number): number {
   const style = getComputedStyle(field);
   const line = parseFloat(style.lineHeight) || 20;
   const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
@@ -20,8 +20,10 @@ export function grow(field: HTMLTextAreaElement | null, least: number, most: num
   const top = line * most + padding;
   field.style.height = "auto";
   const height = field.scrollHeight;
-  field.style.height = `${Math.max(line * least + padding, Math.min(height, top)) + border}px`;
+  const set = Math.max(line * least + padding, Math.min(height, top)) + border;
+  field.style.height = `${set}px`;
   field.style.overflowY = height > top ? "auto" : "hidden";
+  return set;
 }
 
 // `grow` on each change of the text. A field with the focus that grew brings its lower edge
@@ -32,8 +34,7 @@ export function useGrow(field: RefObject<HTMLTextAreaElement | null>, text: stri
   useLayoutEffect(() => {
     const box = field.current;
     if (!box) return;
-    grow(box, least, most);
-    const height = parseFloat(box.style.height) || 0;
+    const height = grow(box, least, most);
     if (height > before.current && before.current > 0 && document.activeElement === box) {
       box.scrollIntoView?.({ block: "nearest" });
     }

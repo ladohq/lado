@@ -20,6 +20,14 @@ a {
   color: var(--action);
 }
 
+/* The room a field keeps around it for its ring when a box that scrolls brings it into view
+   (scroll-margin), and the waiting card's list on every side, as it scrolls and so cuts
+   what is outside: the largest ring, the outline below (2 px at a 2 px offset); the 3 px
+   ring of .waiting-field:focus and of .marked fits in it. */
+:root {
+  --ring-room: 4px;
+}
+
 :focus-visible {
   outline: 2px solid var(--action);
   outline-offset: 2px;
@@ -3571,8 +3579,10 @@ h3 {
   flex-direction: column;
   gap: 14px;
   min-height: 0;
-  margin: 0;
-  padding: 0 6px 4px 0; /* room below for a field's focus ring */
+  /* The room for a ring (--ring-room), pulled back at the top and the left, so the items
+     stand where they would without it; the bottom keeps it, above the Send row. */
+  margin: calc(-1 * var(--ring-room)) 0 0 calc(-1 * var(--ring-room));
+  padding: var(--ring-room) 6px var(--ring-room) var(--ring-room);
   overflow: auto;
   list-style: none;
 }
@@ -3656,7 +3666,7 @@ h3 {
   font-size: 14px;
   line-height: 1.5;
   resize: none;
-  scroll-margin-bottom: 4px; /* its focus ring in view as it grows (fieldHeight.ts) */
+  scroll-margin: var(--ring-room); /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 .waiting-field:focus {
@@ -4029,7 +4039,7 @@ h3 {
   font-size: 14px;
   line-height: 1.5;
   resize: none;
-  scroll-margin-bottom: 4px; /* its focus ring in view as it grows (fieldHeight.ts) */
+  scroll-margin: var(--ring-room); /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 /* The composer (Composer.tsx): one frame with the paperclip, the field, as tall as its text,

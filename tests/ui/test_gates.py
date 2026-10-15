@@ -139,6 +139,141 @@ def test_a_gates_long_comment_grows_to_8_lines_and_stays_above_the_send_row(
     shot(page, full_page=False)
 
 
+# The ring an item draws around itself (a field's focus outline or box-shadow ring, a
+# marked question's ring), against what its clipping boxes (`clips`, selectors of its
+# ancestors) show of it: how far the ring stays inside the visible area of each on each side
+# (a negative number is the part cut), and the ring's width, read from the computed style.
+MEASURE_RING = """(item, clips) => {
+  const style = getComputedStyle(item);
+  const outline = style.outlineStyle === 'none' ? 0
+    : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+  const shadow = style.boxShadow === 'none' ? '' : style.boxShadow.replace(/rgba?\\([^)]*\\)/g, '');
+  const lengths = (shadow.match(/-?[\\d.]+px/g) || []).map(parseFloat);
+  const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
+  const ring = Math.max(outline, spread + blur + Math.max(Math.abs(x), Math.abs(y)));
+  const shown = clips.map(selector => {
+    const el = item.closest(selector);
+    const r = el.getBoundingClientRect();
+    const left = r.left + el.clientLeft, top = r.top + el.clientTop;
+    return {left, top, right: left + el.clientWidth, bottom: top + el.clientHeight};
+  });
+  const box = item.getBoundingClientRect();
+  return {
+    ring,
+    left: box.left - ring - Math.max(...shown.map(s => s.left)),
+    top: box.top - ring - Math.max(...shown.map(s => s.top)),
+    right: Math.min(...shown.map(s => s.right)) - box.right - ring,
+    bottom: Math.min(...shown.map(s => s.bottom)) - box.bottom - ring,
+  };
+}"""
+
+# What clips an item of the waiting card: its scrolling list and the panel around it.
+IN_WAITING_CARD = (".waiting-list", ".waiting-panel")
+
+
+def assert_ring_whole(item, ring: float, clips=IN_WAITING_CARD) -> None:
+    """The item draws a ring of `ring` px, and its clipping boxes show it whole on all four
+    sides."""
+    got = item.evaluate(MEASURE_RING, list(clips))
+    assert got["ring"] == ring, got
+    cut = {side: got[side] for side in ("left", "top", "right", "bottom") if got[side] < -0.5}
+    assert not cut, got
+
+
+def comment_field(page: Page, session: str):
+    panel = waiting_card(page, session).get_by_role("tabpanel")
+    return panel.get_by_role("textbox", name="Comment for the next step (optional)")
+
+
+def test_a_gates_comment_with_the_focus_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: the comment's focus ring (the UI's outline, 4 px out) is whole on the left,
+    the top, the right and the bottom, within the card's list."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    field = comment_field(page, session)
+    field.click()
+    expect(field).to_be_focused()
+    assert_ring_whole(field, 4)
+    shot(page, full_page=False)
+
+
+def test_a_gates_long_comment_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: a comment of 12 lines, 8 lines high and scrolled into view, keeps its ring
+    whole on all four sides."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    field = comment_field(page, session)
+    field.fill(TWELVE_LINES)
+    expect(field).to_be_focused()
+    assert_long_field_fits(field)
+    assert_ring_whole(field, 4)
+    shot(page, full_page=False)
+
+
+def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: in a window 600 px wide the comment's focus ring is whole too."""
+    page.set_viewport_size({"width": 600, "height": 900})
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    field = comment_field(page, session)
+    field.click()
+    expect(field).to_be_focused()
+    assert_ring_whole(field, 4)
+    shot(page, full_page=False)
+
+
+def test_a_gates_long_comment_on_the_flows_tab_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: on the Flows tab's gate card, a comment of 12 lines grows to the page's lower
+    edge and is scrolled into view with its focus ring whole: the run's page (`.list-main`)
+    scrolls there, not the waiting card's list."""
+    page.set_viewport_size({"width": 1280, "height": 640})
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
+    card = page.get_by_role("region", name="Now").get_by_role("article", name="Gate #1", exact=True)
+    field = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    field.fill(TWELVE_LINES)
+    expect(field).to_be_focused()
+    # Grown past the window's lower edge, so the page scrolled to bring it into view.
+    assert page.locator(".list-main").evaluate("main => main.scrollTop") > 0
+    assert_ring_whole(field, 4, clips=(".list-main",))
+    shot(page, full_page=False)
+
+
+# Where a gate's tab puts its question, its comment field and its Send row: their left
+# edges from the panel's, and the Send row's top from the panel's.
+MEASURE_PLACES = """panel => {
+  const frame = panel.getBoundingClientRect();
+  const at = el => el.getBoundingClientRect();
+  return {
+    question: at(panel.querySelector('.waiting-gate').firstElementChild).left - frame.left,
+    field: at(panel.querySelector('.answer textarea')).left - frame.left,
+    send: at(panel.querySelector('.waiting-send')).top - frame.top,
+  };
+}"""
+
+# The list's room as it was before LAD-78, for the comparison.
+BEFORE_RING_ROOM = ".waiting-list { padding: 0 6px 4px 0 !important; margin: 0 !important; }"
+
+
+def test_the_room_for_the_ring_moves_nothing_on_a_gates_tab(page: Page, server, repo, shot):
+    """LAD-78: the question and the comment field start as far from the panel's left edge
+    as before the list kept room for the ring, and the Send row stands where it stood."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = waiting_card(page, session).locator(".waiting-panel")
+    expect(comment_field(page, session)).to_be_visible()
+    now = panel.evaluate(MEASURE_PLACES)
+    shot(page, full_page=False)
+    page.add_style_tag(content=BEFORE_RING_ROOM)
+    before = panel.evaluate(MEASURE_PLACES)
+    assert now == before
+
+
 def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     session = gated_session(repo)
     log_in(page, server)

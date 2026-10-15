@@ -193,7 +193,8 @@ same, and the compose file's header has the steps back. Left for T7: `lado:previ
 one name per machine, so a second compose project overwrites it (G2); a stale hint in a
 fixture of `web/src/SystemPanel.test.tsx` (H2).
 
-**T6b. Stopping and resuming the container's sessions** (M; LAD-74)
+**T6b. Stopping and resuming the container's sessions** (M; LAD-74, done: pull request
+#65, in 0.40.0)
 On `docker stop` LADO records the sessions that ran and stops them properly (the agents'
 config folders removed, `lado doctor` without warnings); when the container starts it
 resumes them. Today a restart shows them as "tmux session is gone", resumed by hand from
@@ -201,6 +202,17 @@ the UI. Needs its own design: what `docker stop` means, which sessions resume, w
 the workers.
 Check: a test of the container layer: "session, `docker compose down`, `up`, the session
 runs again".
+Result: on SIGTERM the server in a container marks its running sessions stopped in one
+transaction with `resume_at_start` (schema 29), then kills their tmux and removes the
+agents' config folders, well within Docker's ten seconds; at the next start the database
+is migrated first, then the marked sessions, and those whose tmux went with a container
+killed without SIGTERM, are resumed one by one. Sessions the human stopped stay stopped; a
+failed resume is not retried; workers are not restarted (the supervisor gets "session
+resumed" with the open runs). The human's decisions: container only, no chat message.
+Review: F1 (a resume dropped `lado start`'s warnings) fixed; F4, F5 declined (minor).
+Left: the check by hand on a Mac and the live tests go with 0.40.0's release candidate,
+whose image update from 0.39.0 checks the migration to schema 29 and the resume at once;
+the non-atomic first creation of `lado.db` is in BACKLOG.
 
 ### Stage 2. A programmer can use it (from the documentation)
 
@@ -233,8 +245,10 @@ final) before the GitHub release. All four CLIs stayed in T7: the image grew fro
 an update is a new version and `up -d`, the way back the version before; a test checks
 that a second LADO is left alone. In a container LADO names only the new version's image,
 no command (the human's decision: the documentation gives them, T8). The human's check
-by hand passed. Open until the first release candidate (0.39.0rc1), the workflow's first
-run:
+by hand passed. Checked on 0.39.0rc1 and 0.39.0 (both Release runs green, the package made public,
+`0.39.0` and `latest` pulled for amd64 and arm64 with no login); the image's checks of each
+release candidate now live in docs/release.md, sections 4.5 and 4.6 (pull request #68).
+What was open until then:
 - the run green, the image built on both architectures (if buildx's two outputs fail on
   the runner, `--provenance=false` is the RC's fix, the review's E1);
 - an org admin makes the package `ghcr.io/ladohq/lado` public once (GitHub makes it
@@ -267,8 +281,8 @@ change.
 Check: an agent in the container installs Go from `.tool-versions` by itself and builds
 the project; after the container is made again, Go is still there.
 
-**T10. Secrets and access: one place for secrets, and git** (M; widened 2026-10-15 by the
-human's decision, done right after T6b, before T8)
+**T10. Secrets and access: one place for secrets, and git** (M; LAD-76; widened
+2026-10-15 by the human's decision, done right after T6b, before T8)
 Without it the container cannot be used for real work: an agent has no git identity to
 commit with, and a kit whose MCP server needs a variable (sdlc's tracker:
 `YOUGILE_API_KEY`) refuses to start, as nothing puts it in the agents' environment.
@@ -324,6 +338,10 @@ Check: on a Mac a double click opens the UI.
   needed without Docker too; checked live with the human's Codex account (2026-10-15).
   Then a Codex session in the container, by hand. Not now: the human does not want to
   debug Codex yet.
+- **Resume all, outside a container** (S): after a machine's reboot or a tmux server
+  killed, "Resume all" in the UI or `lado start --all`, on T6b's `resume_at_start`. Left
+  out of T6b by the human's decision: outside a container the server starts often and a
+  gone tmux may be the human's own doing.
 - **Projects in a Docker volume** (M/L): faster and better isolated, but needs a UI for
   files and diffs.
 - **LADO as a Dev Container Feature** (M).

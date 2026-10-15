@@ -14,6 +14,27 @@
 #   docker compose -p lado-2 exec lado lado ui --no-open
 #
 # LADO_IMAGE names the image (lado:local, which `make docker` builds).
+#
+# A new image upgrades the home volume's lado.db at its start, after a copy of it in
+# ~/.lado/backups/lado.db.schema-<N>, N its schema before (`docker compose logs lado`
+# names it); an older image refuses the upgraded lado.db. `docker compose pull` gives the
+# image's name to the new one, and Docker may then remove the old image (its containerd
+# image store does). Before you update, keep a name for the image you run:
+#
+#   docker tag "$(docker compose images -q lado)" lado:previous
+#   docker compose pull && docker compose up -d
+#
+# Back to the image you had before, lado:previous, with that copy (what LADO did since the
+# upgrade is lost); when a migration failed, lado.db is as it was, and the last command
+# alone does it:
+#
+#   docker compose down
+#   LADO_IMAGE=lado:previous docker compose run --rm lado sh -c 'cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp backups/lado.db.schema-<N> lado.db'
+#   LADO_IMAGE=lado:previous docker compose up -d
+#
+# Then keep LADO_IMAGE=lado:previous set (in .env next to this file) until you update
+# again, and remove it before the update's commands: an `up -d` without it starts the
+# newer image, which upgrades lado.db again; a pull with it finds no lado:previous to pull.
 name: lado
 
 services:

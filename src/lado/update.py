@@ -485,7 +485,12 @@ def read_result() -> Result | None:
     )
 
 
-CONTAINER_UPDATE = "docker compose pull && docker compose up -d"  # what updates it there
+# What updates it there, as docker/compose.yaml's header says: the image it runs kept as
+# lado:previous first, the way back a failed migration names (runtime._migrate).
+CONTAINER_UPDATE = (
+    'docker tag "$(docker compose images -q lado)" lado:previous'
+    " && docker compose pull && docker compose up -d"
+)
 
 
 def in_container() -> bool:

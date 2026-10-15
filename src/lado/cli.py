@@ -1650,6 +1650,8 @@ def main(argv: list[str] | None = None) -> int:
         # A folder's or a clone's hint: what the human can do. The notes: what undoing a
         # failed start could not do (runtime._undo).
         hint = exc.hint if isinstance(exc, (runtime.FolderProblem, clone.CloneError)) else None
+        if isinstance(exc, runtime.MigrationFailed) and not removes:
+            telemetry.record(f"cli:{_where(args)}", exc.__cause__)  # LADO's bug, no traceback
         lines = [str(exc), *([hint.line()] if hint else [])]
         for line in [*lines, *getattr(exc, "__notes__", [])]:
             print(f"lado: {line}", file=sys.stderr)

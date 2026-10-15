@@ -317,7 +317,7 @@ def test_the_migration_fills_usage_as_the_triggers_did(lado_home):
     names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
     db.close()
     assert not any("usage" in name for name in names)
-    assert state.migrate() == state.SCHEMA_VERSION
+    assert state.migrate().after == state.SCHEMA_VERSION
     assert _comparable(_rows(with_time=True)) == _comparable(live)
 
 

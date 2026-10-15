@@ -153,7 +153,10 @@ def test_in_a_container_the_panel_says_so_and_names_the_hosts_command(
     expect(update).to_contain_text("LADO runs in a container: a new image updates it")
     expect(update.get_by_role("button", name="Update…")).to_have_count(0)
     expect(update.get_by_text("On the host:")).to_be_visible()
-    expect(update.locator("pre")).to_have_text("docker compose pull && docker compose up -d")
+    expect(update.locator("pre")).to_have_text(
+        'docker tag "$(docker compose images -q lado)" lado:previous && '
+        "docker compose pull && docker compose up -d"
+    )
     expect(update.get_by_role("button", name="Copy commands")).to_be_visible()
     expect(panel.get_by_text("Running")).to_be_visible()
     shot(page)

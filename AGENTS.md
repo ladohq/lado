@@ -190,7 +190,15 @@ container with projects of 2002 is 2002's, with `lado doctor` clean and `lado ls
 an owner of 0 keeps 1000 and warns in `docker logs`, as does a `LADO_REPOS` not mounted; a
 gid of 0 is not taken; with the entrypoint replaced (the sudo rule left), a `setpriv`
 first on the PATH its caller hands over does not run as root; with no-new-privileges,
-`--cap-drop ALL` or `--read-only` the server starts as uid 1000 and `docker logs` says why. A
+`--cap-drop ALL` or `--read-only` the server starts as uid 1000 and `docker logs` says why.
+A new image on an old home volume (`test_migration.py`; `old_home` seeds a volume with a
+`lado.db` this checkout's `lado.state` made on the host, a stopped session in it, at the
+schema before by `previous_schema`): the server migrates it, `/api/health` answers,
+`backups/lado.db.schema-<N>` is there, `docker logs` has the upgrade line and `lado ls`
+lists the session; a lado.db whose last step fails (its column there already) exits the
+container with the message and no traceback in `docker logs`, its schema kept; compose's
+header steps, run as written (`lado:previous` a tag of the run's prefix, kept of the image
+under test), name the running image, put the backup's schema back and start that tag. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -341,8 +349,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     UI's `GET /api/update` alike; the file keeps the kind it looked for, `pre`, and one of
     the other kind, or without the key for a pre-release, is stale;
     `LADO_NO_UPDATE_CHECK=1`: no look and no line; in a container it names
-    `CONTAINER_UPDATE`, `docker compose pull && docker compose up -d`, instead of `lado
-    update`: `available_line`), whether LADO runs in its container (`in_container`:
+    `CONTAINER_UPDATE`, `docker tag "$(docker compose images -q lado)" lado:previous &&
+    docker compose pull && docker compose up -d`, the two update commands of
+    docker/compose.yaml's header (`tests/test_docker.py`), instead of `lado update`:
+    `available_line`), whether LADO runs in its container (`in_container`:
     `LADO_CONTAINER` set, not empty, not `0`, which only the image sets; never guessed from
     `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report (its
     `Server:` line says `in a container` instead of loopback or open to the network), and
@@ -828,7 +838,21 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     applies `MIGRATIONS`, called by `runtime.migrate_if_safe` (the CLI before each command
     but `doctor`, `mcp`, `hook`, `loop` and `stop`), which refuses while a session runs (not
     stopped, tmux session alive on this socket), names them and asks for `lado stop --all`,
-    and by `runtime.stop_session` and `stop_all` (`lado stop`, below). A LADO upgraded in
+    and by `runtime.stop_session` and `stop_all` (`lado stop`, below), all through
+    `runtime._migrate`. Before its first step, inside its write lock, `migrate` copies
+    lado.db by SQLite's backup API (`state.copy_db`, also `self_update.restore`'s; a
+    connection of its own reads it) to `backups/lado.db.schema-<N>` (N the schema before;
+    `.tmp`, then a rename), then removes every other `lado.db.schema-*` (one it cannot
+    stays, no failure) and leaves `lado
+    update`'s `lado.db.<version>`; it returns a `Migrated` (before, after, backup), which
+    `_migrate` says on stderr (`lado: upgraded lado.db from schema N to M; its backup is
+    <path>`, a container's `docker logs`). A backup it cannot write is `BackupFailed`,
+    nothing migrated, a `LadoError`; a step that fails is `MigrationFailed`, the
+    transaction rolled back, `runtime.MigrationFailed`: one message with the backup and the
+    way back (`LADO_IMAGE=lado:previous docker compose up -d` in a container, the name
+    compose.yaml's header has the human keep, else the LADO
+    you had before) and `lado bug-report`, its cause journaled by `cli.main`, no traceback
+    (openspec capability schema-migration). A LADO upgraded in
     place under a running session: that session's hooks write the SchemaError's text
     (`lado stop --all`, then `lado start`) to `hooks.log`, its tools return it as their
     error, its loop ends with it in `loop.log`, and the UI server answers 503. An older
@@ -1139,7 +1163,13 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `DISABLE_AUTOUPDATER`, `LANG`; `LADO_REPOS` is the entrypoint's `lado-repos.sh`).
   `compose.yaml`: the same image (`LADO_IMAGE`), one `LADO_PORT` both inside and published
   as `127.0.0.1:${LADO_PORT}:${LADO_PORT}`, `LADO_PROJECTS` (required) at that same path
-  and as `LADO_REPOS`, no container name (a second one: `-p lado-2`). The research
+  and as `LADO_REPOS`, no container name (a second one: `-p lado-2`); its header keeps the
+  running image as `lado:previous` before an update (`docker tag "$(docker compose images
+  -q lado)" lado:previous`: a pull moves the name, and Docker's containerd store then
+  removes the old image) and gives the steps back to it with a migration's backup
+  (`docker compose down`, the backup copied over lado.db by `lado:previous`'s `docker
+  compose run`, `up -d`); `tests/test_docker.py`'s `keep_previous` and `way_back` read
+  them, the container tests run them. The research
   prototype in
   `docs/research/docker-install/` is evidence only.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.

@@ -2,6 +2,15 @@
 
 ## 0.39.0 (unreleased)
 
+- Before LADO upgrades `lado.db` to a newer schema, by any command and wherever it runs (a
+  new Docker image on an old home volume, a LADO upgraded by hand), it copies it to
+  `LADO_HOME/backups/lado.db.schema-<N>` and says so on stderr (in a container: `docker
+  logs`). When the copy cannot be written, nothing is upgraded. A migration that fails is
+  one message, without a traceback: `lado.db` is unchanged, where its backup is, and how
+  to go back (in a container `LADO_IMAGE=lado:previous docker compose up -d`).
+  `docker/compose.yaml`'s header says to keep the image you run as `lado:previous` before
+  `docker compose pull`, which moves its name and after which Docker may remove it, and
+  gives the steps back to it after a migration that succeeded.
 - A session can have a title, shown in the UI over its name (the list, the head, the
   browser tab, Needs you and notifications), the name small beside it: set it with the
   pencil in the session's head, Rename… in the session list's ⋯, or `lado title <session>
@@ -12,7 +21,9 @@
   keeps its Update… button: the page's wait ends once the update has released its lock.
 - In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and
   the UI's update refuse at once, stopping nothing, and name the way to update there:
-  `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System
+  `docker tag "$(docker compose images -q lado)" lado:previous && docker compose pull &&
+  docker compose up -d` on the host, which keeps the image you ran as `lado:previous` for
+  the way back. `lado doctor`, the System
   panel (a `container` mark beside the version) and the system info for an issue say that
   LADO runs in a container.
 - In a container the UI server no longer warns that it is open to other machines: it notes

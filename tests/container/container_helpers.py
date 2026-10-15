@@ -62,6 +62,39 @@ def run_container(
     )  # fmt: skip
 
 
+def seed_home(volume: str, lado_db: bytes) -> None:
+    """A new home volume `volume` whose ~/.lado/lado.db is `lado_db` (made on the host), as
+    an older image left it: the image's home in it as a first mount copies it, then the
+    file, all of it lado's (uid 1000)."""
+    subprocess.run(
+        [
+            "docker", "run", "--rm", "-i", "-u", "0", "--entrypoint", "sh",
+            "-v", f"{volume}:/home/lado", IMAGE, "-c",
+            "mkdir -p /home/lado/.lado && cat > /home/lado/.lado/lado.db "
+            "&& chown -R 1000:1000 /home/lado/.lado",
+        ],
+        input=lado_db, capture_output=True, check=True, timeout=120,
+    )  # fmt: skip
+
+
+def schema(volume: str) -> int:
+    """The schema of lado.db in the home volume `volume`, read by a container of its own
+    that runs no LADO command, so nothing migrates it. As root, since the entrypoint may
+    have given the home to the projects' owner (uid 1001 on GitHub's runner), and
+    immutable, so it writes nothing there (no -shm or -wal of root's): no LADO may run on
+    the volume meanwhile."""
+    done = docker(
+        "run", "--rm", "-u", "0", "--entrypoint", PYTHON, "-v", f"{volume}:/home/lado", IMAGE,
+        "-c",
+        "import sqlite3; db = sqlite3.connect("
+        "'file:/home/lado/.lado/lado.db?immutable=1', uri=True); "
+        "print(db.execute('PRAGMA user_version').fetchone()[0])",
+        check=False,
+    )  # fmt: skip
+    assert done.returncode == 0, done.stdout + done.stderr
+    return int(done.stdout.strip())
+
+
 def remove_container(name: str, home: str | None = None) -> None:
     docker("rm", "-f", name, check=False)
     docker("volume", "rm", home or f"{name}-home", check=False)

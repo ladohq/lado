@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from lado import update
+
 ROOT = Path(__file__).parents[1]
 DOCKER = ROOT / "docker"
 DOCKERFILE = (DOCKER / "Dockerfile").read_text()
@@ -197,9 +199,12 @@ def test_the_entrypoint_goes_on_without_root():
     assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
+COMPOSE_TEXT = (DOCKER / "compose.yaml").read_text()
+
+
 @pytest.fixture(scope="module")
 def compose() -> dict:
-    return yaml.safe_load((DOCKER / "compose.yaml").read_text())
+    return yaml.safe_load(COMPOSE_TEXT)
 
 
 def test_compose_publishes_one_port_number_on_loopback(compose):
@@ -242,6 +247,58 @@ def test_the_compose_headers_commands_all_have_the_projects_folder():
             commands += 1
             assert exported or "LADO_PROJECTS=" in line, line
     assert commands >= 4
+
+
+PREVIOUS = "lado:previous"  # the name the header keeps the image before an update by
+
+
+def header_steps(heading: str) -> list[str]:
+    """The commands of compose.yaml's header after the paragraph that says `heading`, in
+    order: the lines after that paragraph's end up to the next empty one."""
+    lines = [line.lstrip("#").strip() for line in COMPOSE_TEXT.splitlines()]
+    start = next(i for i, line in enumerate(lines) if heading in line)
+    end = next(i for i in range(start, len(lines)) if not lines[i])
+    first = next(i for i in range(end + 1, len(lines)) if lines[i])
+    return lines[first : lines.index("", first)]
+
+
+def keep_previous() -> str:
+    """The header's command that names the image a running container uses, before an update
+    moves its tag: Docker may remove an image no tag names (its containerd store does)."""
+    keep, update = header_steps("Before you update, keep a name")
+    assert update == "docker compose pull && docker compose up -d"
+    return keep
+
+
+def way_back() -> list[str]:
+    """The commands of compose.yaml's header that go back to the image before."""
+    return header_steps("Back to the image you had before")
+
+
+def test_the_compose_header_keeps_a_name_for_the_image_before_an_update():
+    assert keep_previous() == f'docker tag "$(docker compose images -q lado)" {PREVIOUS}'
+
+
+def test_lados_own_update_hint_is_the_compose_headers_update():
+    """`lado ls`, `lado doctor`, `lado update`'s refusal and the System panel name the same
+    commands as the header, the image kept as lado:previous first."""
+    keep, update_step = header_steps("Before you update, keep a name")
+    assert update.CONTAINER_UPDATE == f"{keep} && {update_step}"
+
+
+def test_the_compose_header_says_to_keep_lado_image_after_going_back():
+    """A later `up -d` without it would start the newer image, which migrates again."""
+    header = " ".join(line.lstrip("#").strip() for line in COMPOSE_TEXT.splitlines())
+    assert "keep LADO_IMAGE=lado:previous set (in .env next to this file)" in header
+
+
+def test_the_compose_header_says_how_to_go_back_to_the_backup():
+    down, restore, up = way_back()
+    assert down == "docker compose down"
+    assert restore.startswith(f"LADO_IMAGE={PREVIOUS} docker compose run --rm lado sh -c '")
+    assert "rm -f lado.db-wal lado.db-shm" in restore
+    assert "cp backups/lado.db.schema-<N> lado.db" in restore
+    assert up == f"LADO_IMAGE={PREVIOUS} docker compose up -d"
 
 
 def test_compose_mounts_nothing_only_docker_desktop_has(compose):

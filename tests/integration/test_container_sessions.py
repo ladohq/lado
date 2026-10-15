@@ -129,16 +129,6 @@ def test_the_container_stops_its_sessions_and_resumes_them_at_its_start(
     assert not (lado_home / "agents" / "s").exists()
     loop_ended("s")
     told = [m for m in state.list_messages("s") if m.id > last and m.sender == state.LADO]
-    print("EVENTS", [(e.agent, e.kind, e.detail) for e in state.list_events("s")][-12:])
-    print(
-        "MSG", [(m.id, m.sender, m.recipient, m.summary, m.state) for m in state.list_messages("s")]
-    )
-    print("LAST", last)
-    print(
-        (lado_home / "hooks.log").read_text()
-        if (lado_home / "hooks.log").exists()
-        else "nohookslog"
-    )
     assert told == []  # nothing about the dying agents
     [stop] = [e for e in state.list_events("s") if e.kind == state.SESSION_STOP]
     assert stop.detail.endswith("; the container stopped")

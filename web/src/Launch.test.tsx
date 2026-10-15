@@ -1682,14 +1682,36 @@ test("a window whose page goes away during a clone cancels it at once with a bea
   await cloneReady();
   window.dispatchEvent(new Event("pagehide"));
   expect(beacon).not.toHaveBeenCalled(); // no clone yet
-  fireEvent.click(cloneButton());
-  await screen.findByRole("button", { name: "Cancel clone" });
-  window.dispatchEvent(new Event("pagehide"));
-  expect(beacon).toHaveBeenCalledWith("/api/clones/j1/cancel");
-  state = "done";
-  await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 });
-  window.dispatchEvent(new Event("pagehide"));
-  expect(beacon).toHaveBeenCalledTimes(1);
+  // The page may go away at the very DOM change that shows the clone running, or its end,
+  // before any later task of React's scheduler: the beacons are counted right there.
+  let atRunning: number | null = null;
+  let atEnd: number | null = null;
+  const leaveAt = new MutationObserver(() => {
+    if (atRunning === null && screen.queryByRole("button", { name: "Cancel clone" })) {
+      window.dispatchEvent(new Event("pagehide"));
+      atRunning = beacon.mock.calls.length;
+    }
+    if (atEnd === null && screen.queryByRole("region", { name: "Session marketplace" })) {
+      window.dispatchEvent(new Event("pagehide"));
+      atEnd = beacon.mock.calls.length;
+    }
+  });
+  leaveAt.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+  try {
+    fireEvent.click(cloneButton());
+    await screen.findByRole("button", { name: "Cancel clone" });
+    expect(atRunning).toBe(1);
+    expect(beacon).toHaveBeenCalledWith("/api/clones/j1/cancel");
+    window.dispatchEvent(new Event("pagehide"));
+    expect(beacon).toHaveBeenCalledTimes(2);
+    state = "done";
+    await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 });
+    expect(atEnd).toBe(2);
+    window.dispatchEvent(new Event("pagehide"));
+    expect(beacon.mock.calls).toEqual([["/api/clones/j1/cancel"], ["/api/clones/j1/cancel"]]);
+  } finally {
+    leaveAt.disconnect();
+  }
 });
 
 test("a clone that ended while the window was away is offered as a folder, not refused (F18)", async () => {

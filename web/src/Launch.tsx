@@ -2,7 +2,7 @@
 // rail's Launch, the session list's "+", and in its Resume mode from a stopped session's
 // Resume. What a folder is, which kits and providers there are and whether a name is taken
 // all come from the server; the window decides nothing the core decides.
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 import {
@@ -223,9 +223,12 @@ function LaunchDialog({
   }, []);
 
   // A page that goes away (tab closed or reloaded) cancels its running clone at once; the
-  // server's clone.ABANDONED is only the fallback for a window that could not say so.
+  // server's clone.ABANDONED is only the fallback for a window that could not say so. A
+  // layout effect: the listener is there in the very commit that shows the clone running
+  // and gone in the one that shows its end; a passive effect runs a task later, when a
+  // page that went away in between has cancelled nothing.
   const runningId = job?.state === "running" ? job.id : null;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (runningId === null) return;
     const leave = () => cancelCloneOnLeave(runningId);
     window.addEventListener("pagehide", leave);

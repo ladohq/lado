@@ -13,7 +13,7 @@ library: hooks import it.
 import unicodedata
 
 HIDDEN = frozenset({"Cc", "Zl", "Zp", "Cf"})
-JOINER = "‍"
+JOINER = "\u200d"
 
 
 def hidden(char: str) -> bool:

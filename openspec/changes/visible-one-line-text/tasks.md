@@ -7,10 +7,10 @@
 
 ## 2. Refused: the title and agents' one-line texts (D2, D4)
 
-- [ ] 2.1 `runtime.set_title` through `text.first_hidden`; tests: U+202E, U+2028, U+200B
+- [x] 2.1 `runtime.set_title` through `text.first_hidden`; tests: U+202E, U+2028, U+200B
   refused with the named character and the title unchanged, a ZWJ emoji title stored.
   Check: `uv run pytest tests/test_runtime.py -n auto -k title`.
-- [ ] 2.2 `runtime._check_summary` (summary, question) and `ask_human`'s choices; tests per
+- [x] 2.2 `runtime._check_summary` (summary, question) and `ask_human`'s choices; tests per
   text. Check: `uv run pytest tests/test_runtime.py tests/test_mcp_server.py -n auto -k
   "summary or question or choice"`.
 - [ ] 2.3 `runs.advance`'s `note_summary` and `artifacts._line` (title, summary); tests.
@@ -18,7 +18,7 @@
 
 ## 3. Cleaned: the human's texts (D2, D3, D5)
 
-- [ ] 3.1 `runtime._human_text` through `text.one_line` (the chat message and an own
+- [x] 3.1 `runtime._human_text` through `text.one_line` (the chat message and an own
   answer), the body kept when the line was cleaned; tests: U+2028 and U+202E in the first
   line, the body holds the text as written.
   Check: `uv run pytest tests/test_runtime.py -n auto -k "human or answer"`.

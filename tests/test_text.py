@@ -2,8 +2,20 @@ import pytest
 
 from lado import text
 
-HIDDEN = ["\t", "\n", "\x00", "\x1b", "\x7f", " ", " ", "‮", "⁦", "​", "﻿"]
-FAMILY = "\U0001f468‍\U0001f469‍\U0001f467"
+HIDDEN = [
+    "\t",
+    "\n",
+    "\x00",
+    "\x1b",
+    "\x7f",
+    "\u2028",
+    "\u2029",
+    "\u202e",
+    "\u2066",
+    "\u200b",
+    "\ufeff",
+]
+FAMILY = "\U0001f468\u200d\U0001f469\u200d\U0001f467"
 
 
 @pytest.mark.parametrize("char", HIDDEN)
@@ -18,16 +30,16 @@ def test_visible_text_has_nothing_hidden(visible):
 
 
 def test_the_zero_width_joiner_is_not_hidden():
-    assert not text.hidden("‍")
+    assert not text.hidden("\u200d")
 
 
 def test_the_first_hidden_character_is_found():
-    assert text.first_hidden("a​b‮c") == "​"
+    assert text.first_hidden("a\u200bb\u202ec") == "\u200b"
 
 
 def test_a_character_is_named_by_its_code_point_and_name():
-    assert text.named("‮") == "U+202E RIGHT-TO-LEFT OVERRIDE"
-    assert text.named(" ") == "U+2028 LINE SEPARATOR"
+    assert text.named("\u202e") == "U+202E RIGHT-TO-LEFT OVERRIDE"
+    assert text.named("\u2028") == "U+2028 LINE SEPARATOR"
     assert text.named("\t") == "U+0009"
     assert text.named("\U000e0001") == "U+E0001 LANGUAGE TAG"
 
@@ -38,15 +50,15 @@ def test_a_character_is_named_by_its_code_point_and_name():
         ("a\tb", "a b"),
         ("a\nb", "a b"),
         ("a\x1b[31mb", "a [31mb"),
-        ("a b", "a b"),
-        ("a b", "a b"),
-        ("ab‮cd", "abcd"),
-        ("ab⁦cd⁩", "abcd"),
-        ("a​b", "ab"),
-        ("﻿ab", "ab"),
+        ("a\u2028b", "a b"),
+        ("a\u2029b", "a b"),
+        ("ab\u202ecd", "abcd"),
+        ("ab\u2066cd\u2069", "abcd"),
+        ("a\u200bb", "ab"),
+        ("\ufeffab", "ab"),
         (f"Семья {FAMILY}", f"Семья {FAMILY}"),
         ("  a  b  ", "a  b"),
-        ("​\t", ""),
+        ("\u200b\t", ""),
     ],
 )
 def test_one_line_cleans_hidden_characters(given, line):

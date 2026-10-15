@@ -2374,14 +2374,18 @@ def stop_for_container() -> list[str]:
             if tmux.has_session(name):
                 tmux.kill_session(name)
         except tmux.TmuxError as error:
-            print(
-                f'lado: could not kill the tmux session of "{name}": {error}',
-                file=sys.stderr,
-                flush=True,
-            )
-        terminal.close_viewers(name)
+            _say_failed("kill the tmux session", name, error)
+        try:
+            terminal.close_viewers(name)
+        except tmux.TmuxError as error:
+            _say_failed("close the UI's terminals", name, error)
         providers.base.remove_session_config_dirs(name)
     return names
+
+
+def _say_failed(what: str, session: str, error: Exception) -> None:
+    """One line on stderr for a step of the container's stop that failed; the rest goes on."""
+    print(f'lado: could not {what} of "{session}": {error}', file=sys.stderr, flush=True)
 
 
 def resume_at_start(

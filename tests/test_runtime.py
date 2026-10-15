@@ -27,6 +27,7 @@ from lado import (
     runtime,
     state,
     telemetry,
+    terminal,
     tmux,
 )
 from lado.providers import base
@@ -2503,6 +2504,26 @@ def test_a_kill_that_fails_does_not_keep_the_containers_stop_from_the_rest(
         'lado: could not kill the tmux session of "a": server exited unexpectedly\n'
     )
     assert state.get_session("a").stopped_at and state.get_session("a").resume_at_start
+
+
+def test_viewers_that_cannot_be_closed_do_not_keep_the_containers_stop_from_the_rest(
+    repo, fake_tmux, lado_home, monkeypatch, capsys
+):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+
+    def close(session):
+        if session == "a":
+            raise tmux.TmuxError("server exited unexpectedly")
+        fake_tmux.append(("close_viewers", session))
+
+    monkeypatch.setattr(terminal, "close_viewers", close)
+    assert runtime.stop_for_container() == ["a", "b"]
+    assert ("kill_session", "b") in fake_tmux and ("close_viewers", "b") in fake_tmux
+    assert _config_folders(lado_home) == []
+    assert capsys.readouterr().err == (
+        'lado: could not close the UI\'s terminals of "a": server exited unexpectedly\n'
+    )
 
 
 def test_the_containers_stop_without_lado_db_makes_nothing(lado_home):

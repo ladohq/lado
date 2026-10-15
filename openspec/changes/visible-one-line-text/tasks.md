@@ -33,4 +33,4 @@
 - [x] 4.1 `grep -rn '"Cc"' src/lado` finds only `text.py`.
 - [x] 4.2 AGENTS.md (Layout: `text.py`; `lado title`'s rule), `docs/design/ui.md` (the
   human's text), CHANGELOG.md (a line under `## 0.40.0 (unreleased)`).
-- [ ] 4.3 Regression: `make lint`, `make test`, `openspec validate --specs --strict`.
+- [x] 4.3 Regression: `make lint`, `make test`, `openspec validate --specs --strict`.

@@ -13,6 +13,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
 from collections.abc import Callable, Iterator, Sequence
@@ -2383,12 +2384,14 @@ def stop_for_container() -> list[str]:
     return names
 
 
-def resume_at_start(report: Callable[[str], object], stopping=None) -> None:
+def resume_at_start(
+    report: Callable[[str], object], stopping: threading.Event | None = None
+) -> None:
     """The container's start: resume, one at a time, each session its stop marked and each
     one not stopped whose tmux session is gone (the container ended without its stop), in
     creation order, and `report` a line for each. One that fails gives up its mark (and is
     stopped), so the next start does not try it again; the others go on. Nothing more once
-    `stopping` (a threading.Event) is set."""
+    `stopping` is set."""
     for sess in state.resumable():
         if stopping is not None and stopping.is_set():
             return

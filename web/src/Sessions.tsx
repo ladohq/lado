@@ -983,15 +983,12 @@ function StartedNotice({ name }: { name: string }) {
 // with the composer.
 function Activity({ session, stopped }: { session: string; stopped: boolean }) {
   const [agentMessages, setAgentMessages] = useState(storedAgentMessages);
-  const tip = agentMessages ? (
+  const tip = (
     <>
-      <div className="tooltip-line">Messages between agents: shown</div>
-      <div className="tooltip-line">Click to show only your conversation with the agents.</div>
-    </>
-  ) : (
-    <>
-      <div className="tooltip-line">Messages between agents: hidden</div>
-      <div className="tooltip-line">Click to also show what agents write to each other.</div>
+      <div className="tooltip-line">Messages between agents: {agentMessages ? "shown" : "hidden"}</div>
+      <div className="tooltip-line">
+        {agentMessages ? "Click to show only your conversation with the agents." : "Click to also show what agents write to each other."}
+      </div>
     </>
   );
   return (

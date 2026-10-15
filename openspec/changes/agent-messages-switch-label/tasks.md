@@ -45,6 +45,6 @@
 
 ## 4. Regression
 
-- [ ] 4.1 `make web` (vitest, tsc, build; no API change), `make lint`, `uv run pytest -m
+- [x] 4.1 `make web` (vitest, tsc, build; no API change), `make lint`, `uv run pytest -m
   ui tests/ui/test_chat.py tests/ui/test_layout.py tests/ui/test_agents_tab.py`,
   `openspec validate agent-messages-switch-label --strict` (AC-5).

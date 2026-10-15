@@ -9,6 +9,7 @@ from playwright.sync_api import Page, expect
 from test_main_screen import log_in
 
 from lado import __version__, state
+from lado.update import prerelease
 
 pytestmark = pytest.mark.ui
 
@@ -141,8 +142,12 @@ def test_in_a_container_the_panel_says_so_and_names_no_command(page: Page, conta
     log_in(page, container_server)
     page.get_by_role("button", name="System: LADO 99.0.0 is available").click()
     panel = page.get_by_role("dialog", name="System")
-    pill = panel.locator(".system-head .pill")
-    expect(pill).to_have_text("container")
+    # The working copy's version may be a release candidate, whose own pill comes first.
+    pills = panel.locator(".system-head .pill")
+    expect(pills).to_have_text(
+        ["pre-release", "container"] if prerelease(__version__) else ["container"]
+    )
+    pill = pills.filter(has_text=re.compile("^container$"))
     expect(pill).to_have_attribute(
         "title", "LADO runs in a Docker container (LADO_CONTAINER): a new image updates it"
     )

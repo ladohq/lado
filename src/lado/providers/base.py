@@ -1,11 +1,13 @@
 """The provider interface: what LADO needs from an agent CLI (Claude Code, Codex, ...)."""
 
+import os
 import shlex
 import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from lado import agent_env as outside_env
 from lado import interpreter, state, tmux
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
@@ -220,13 +222,19 @@ def lado_command(*args: str) -> list[str]:
 
 
 def agent_env(agent: state.Agent) -> dict[str, str]:
-    return {
+    env = {
         "LADO_HOME": str(state.home()),
         "LADO_SESSION": agent.session,
         "LADO_AGENT": agent.name,
         # Hooks and the MCP server type messages into agents' windows on the same tmux server.
         "LADO_TMUX_SOCKET": tmux.socket(),
     }
+    # A supervisor's `lado mcp` launches workers from the same outside folder; its
+    # environment is its login shell's, which may not name the folder.
+    folder = os.environ.get(outside_env.ENV_DIR_VAR)
+    if folder:
+        env[outside_env.ENV_DIR_VAR] = folder
+    return env
 
 
 def configs_root() -> Path:

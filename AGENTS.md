@@ -1307,7 +1307,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   doctor` (`Variables from outside`: the names, never a value; the bug report has none). A
   name LADO or the provider sets for the launch keeps their value and is named in that
   launch's warnings, `spawn_worker`'s too (`LADO sets <name> for <provider>`). Unset,
-  empty or missing, there is no layer. A tmux window starts with its server's environment, so the
+  empty or missing, there is no layer. A launching process with `LADO_ENV_DIR` set gives
+  it to the agent and its `lado mcp` among LADO's variables (`providers.agent_env`), so a
+  supervisor's `spawn_worker` and `start_session` read the same folder, also when the login
+  shell does not name it. A tmux window starts with its server's environment, so the
   window runs `lado.agent_env <file> <argv>` (`interpreter.run_module`): it reads that environment from a file
   in the agent's config folder (`env.json`, mode 600 also when it was there before, removed
   once read; the one file under `LADO_HOME/agents/` that holds the values of a kit's MCP

@@ -683,6 +683,7 @@ def start_session(
         _write_lead_skills(agent, env.lead_skills())
         launch = _launch_command(agent_cli, agent, sess, spec)
         started.warnings += launch.warnings
+        started.warnings += _outside_warnings(agent, launch, files=True)
         started.warnings += _first_hook_blocker(agent_cli, agent, base_env, launch)
         # The first new-session on a socket starts LADO's tmux server, whose audit session
         # its agents inherit (lado.gui_session).
@@ -804,7 +805,8 @@ def spawn_worker(
         summary = f"flow {run.name}: step {run.state}" if has_step else "your task"
         state.queue_message(session, state.LADO, worker, summary, text)
         launch = _launch_command(agent_cli, agent, sess, spec)
-        held = launch.warnings + _first_hook_blocker(agent_cli, agent, base_env, launch)
+        held = launch.warnings + _outside_warnings(agent, launch, files=False)
+        held += _first_hook_blocker(agent_cli, agent, base_env, launch)
         tmux.new_window(session, worker, str(worktree), _command(agent, base_env, launch))
     except Exception as error:
         # The worker never ran: leave nothing that says it did, so the run's step still
@@ -2708,6 +2710,21 @@ def _launch_env(
     """The agent CLI's environment: `base_env`, LADO's variables and its provider's, in that
     order."""
     return {**base_env, **providers.agent_env(agent), **launch.env}
+
+
+def _outside_warnings(agent: state.Agent, launch: providers.Launch, *, files: bool) -> list[str]:
+    """The outside folder's lines for one launch (lado.agent_env.outside): its files not
+    used (`files`: a session's start or resume only, as the folder is the same for every
+    agent), and each of its names LADO or the provider sets for this launch, which keep
+    their value (_launch_env)."""
+    found = agent_env.outside()
+    lines = list(found.unused) if files else []
+    ours = {**providers.agent_env(agent), **launch.env}
+    lines += [
+        f"variable file {name} in {found.folder} not used: LADO sets {name} for {agent.provider}"
+        for name in sorted(found.values.keys() & ours.keys())
+    ]
+    return lines
 
 
 def _command(agent: state.Agent, base_env: dict[str, str], launch: providers.Launch) -> list[str]:

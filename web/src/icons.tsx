@@ -38,6 +38,14 @@ export const FindIcon = () => (
   </Icon>
 );
 
+// Two speech bubbles facing each other: the messages between agents.
+export const BetweenIcon = () => (
+  <Icon>
+    <path d="M3 4.5h10.5v7.5H8.25L5.25 14.5V12H3z" />
+    <path d="M16.5 9H21v7.5h-2.25V19l-3-2.5H10.5V15" />
+  </Icon>
+);
+
 // A plus in a square: a new session.
 export const LaunchIcon = () => (
   <Icon>

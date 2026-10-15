@@ -491,7 +491,7 @@ const MESSAGES = [
   message(30, "supervisor", "reviewer", "2026-10-04T10:59:00.000Z", { summary: "not about developer" }),
 ];
 
-test("an agent's page has its latest 10 messages of its own lifetime, and All in Activity shows agent messages", async () => {
+test("an agent's page has its latest 10 messages of its own lifetime, and All in Activity shows the messages between agents", async () => {
   serve({ messages: MESSAGES });
   open("/sessions/lado/agents/developer");
   const region = await page("developer");
@@ -509,7 +509,7 @@ test("an agent's page has its latest 10 messages of its own lifetime, and All in
   fireEvent.click(within(box).getByRole("button", { name: "All in Activity" }));
   expect(address()).toBe("/sessions/lado/activity");
   expect(localStorage.getItem("lado.agentMessages")).toBe("shown");
-  expect((screen.getByRole("checkbox", { name: "Show agent messages" }) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByRole("button", { name: "Messages between agents" }).getAttribute("aria-pressed")).toBe("true");
 });
 
 test("a message from the feed keeps the page at the latest 10, the new one last", async () => {

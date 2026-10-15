@@ -686,7 +686,7 @@ test("an agents' message to each other is one muted line of its summary; its bod
   expect(within(short).getByRole("heading").textContent).toBe("done");
 });
 
-test("the agents' messages to each other show behind a switch that loads the window of all messages and is remembered", async () => {
+test("the agents' messages to each other show behind a toggle that loads the window of all messages and is remembered", async () => {
   const { queries } = serve([
     message(1, "human", "supervisor", "merge w1"),
     message(2, "supervisor", "w1", "please merge", { body: "details" }),
@@ -697,9 +697,10 @@ test("the agents' messages to each other show behind a switch that loads the win
   await within(log).findByText("merged");
   expect(headings(log)).toEqual(["merge w1", "merged"]);
   expect(queries).toEqual([{ with: "human", limit: "50" }]);
-  const toggle = screen.getByRole("checkbox", { name: "Show agent messages" });
-  expect((toggle as HTMLInputElement).checked).toBe(false);
+  const toggle = screen.getByRole("button", { name: "Messages between agents" });
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
   fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
   await within(log).findByText("please merge");
   expect(headings(log)).toEqual(["merge w1", "please merge", "merged"]);
   expect(queries.at(-1)).toEqual({ limit: "50" });
@@ -716,7 +717,37 @@ test("the agents' messages to each other show behind a switch that loads the win
   open();
   const again = await chat();
   await within(again).findByText("please merge");
-  expect((screen.getByRole("checkbox", { name: "Show agent messages" }) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByRole("button", { name: "Messages between agents" }).getAttribute("aria-pressed")).toBe("true");
+});
+
+test("the toggle for messages between agents is an icon at the team row's end whose tooltip says its state", async () => {
+  serve([message(1, "human", "supervisor", "merge w1")]);
+  open();
+  await chat();
+  const row = document.querySelector(".team-row")!;
+  const toggle = within(row as HTMLElement).getByRole("button", { name: "Messages between agents" });
+  expect(row.lastElementChild).toBe(toggle);
+  expect(toggle.querySelector("svg")).toBeTruthy();
+  expect(toggle.textContent).toBe("");
+  expect(screen.queryByText(/Show agent messages/)).toBeNull();
+  const lines = async () =>
+    [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  fireEvent.mouseEnter(toggle);
+  expect(await lines()).toEqual(["Messages between agents: hidden", "Click to also show what agents write to each other."]);
+  expect(toggle.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
+  fireEvent.mouseLeave(toggle);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.click(toggle);
+  fireEvent.focus(toggle); // the keyboard's focus: at once
+  expect([...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent)).toEqual([
+    "Messages between agents: shown",
+    "Click to show only your conversation with the agents.",
+  ]);
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.focus(toggle);
+  fireEvent.blur(toggle);
+  expect(screen.queryByRole("tooltip")).toBeNull();
 });
 
 // Flow events (docs/design/ui.md, Flow events): a run's events in a group under its name.

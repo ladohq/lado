@@ -13,7 +13,7 @@ import time
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import closing, contextmanager, suppress
 from dataclasses import astuple, dataclass, field, replace
 from pathlib import Path
 
@@ -1181,33 +1181,101 @@ def pending_migration() -> tuple[int, list[str]] | None:
     return version, [row[0] for row in rows]
 
 
-def migrate() -> int | None:
+def backups() -> Path:
+    """Where copies of lado.db go: a migration's and `lado update`'s."""
+    return home() / "backups"
+
+
+def copy_db(source: Path, target: Path) -> None:
+    """`source` into `target` by SQLite's backup API, never a file copy: lado.db runs in WAL
+    mode, and its -wal file would outlive a copy."""
+    with closing(sqlite3.connect(source, timeout=10)) as src:
+        with closing(sqlite3.connect(target, timeout=10)) as dst:
+            src.backup(dst)
+
+
+@dataclass(frozen=True)
+class Migrated:
+    """What migrate() did: lado.db's schema before and after, and where its copy from before
+    is."""
+
+    before: int
+    after: int
+    backup: Path
+
+
+class MigrationError(RuntimeError):
+    """migrate() did not upgrade lado.db, which keeps its schema `before`; its __cause__ is
+    why."""
+
+    def __init__(self, before: int, after: int, backup: Path, reason: str):
+        super().__init__(reason)
+        self.before, self.after, self.backup, self.reason = before, after, backup, reason
+
+
+class BackupFailed(MigrationError):
+    """The copy before the migration could not be written: nothing was migrated."""
+
+
+class MigrationFailed(MigrationError):
+    """A step of the migration failed: its transaction rolled back; the backup is there."""
+
+
+def migrate() -> Migrated | None:
     """Upgrade an older lado.db to SCHEMA_VERSION in one transaction: the only place that
-    applies MIGRATIONS. The new version, or None when there was nothing to migrate (no
-    lado.db, or not an older schema). Its caller makes sure no session runs
-    (lado.runtime)."""
-    if not (home() / "lado.db").exists():
+    applies MIGRATIONS, so every path that migrates backs lado.db up first, to
+    backups/lado.db.schema-<the version before> (an earlier lado.db.schema-* goes; the
+    copies `lado update` keeps stay). None when there was nothing to migrate (no lado.db,
+    or not an older schema). Its caller makes sure no session runs (lado.runtime).
+    BackupFailed and MigrationFailed leave lado.db as it was."""
+    live = home() / "lado.db"
+    if not live.exists():
         return None
     conn = _open()
     try:
         conn.execute("BEGIN IMMEDIATE")
         # Read the version inside the lock: another process may have just migrated.
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        before = version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version not in MIGRATIONS:
             conn.execute("ROLLBACK")
             return None
-        while version in MIGRATIONS:
-            for statement in MIGRATIONS[version]:
-                if callable(statement):  # a step of data that SQL alone cannot change
-                    statement(conn)
-                else:
-                    conn.execute(statement)
-            version += 1
-        conn.execute(f"PRAGMA user_version = {version}")
-        conn.execute("COMMIT")
-        return version
+        backup = _back_up(live, before)
+        try:
+            while version in MIGRATIONS:
+                for statement in MIGRATIONS[version]:
+                    if callable(statement):  # a step of data that SQL alone cannot change
+                        statement(conn)
+                    else:
+                        conn.execute(statement)
+                version += 1
+            conn.execute(f"PRAGMA user_version = {version}")
+            conn.execute("COMMIT")
+        except Exception as exc:
+            raise MigrationFailed(
+                before, SCHEMA_VERSION, backup, f"{type(exc).__name__}: {exc}"
+            ) from exc
+        return Migrated(before, version, backup)
     finally:
-        conn.close()
+        conn.close()  # rolls back a transaction still open
+
+
+def _back_up(live: Path, version: int) -> Path:
+    """lado.db, as committed, into backups/lado.db.schema-<version>, while migrate() holds
+    the write lock: a connection of its own reads it (WAL lets it), as a backup from the
+    locked connection would wait for its own lock."""
+    backup = backups() / f"lado.db.schema-{version}"
+    written = backup.with_name(f"{backup.name}.tmp")
+    try:
+        backup.parent.mkdir(exist_ok=True)
+        written.unlink(missing_ok=True)
+        copy_db(live, written)
+        written.replace(backup)
+        for other in backup.parent.glob("lado.db.schema-*"):
+            if other != backup:
+                other.unlink()
+    except (OSError, sqlite3.Error) as exc:
+        raise BackupFailed(version, SCHEMA_VERSION, backup, str(exc)) from exc
+    return backup
 
 
 def add_session(session: Session) -> bool:

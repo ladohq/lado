@@ -54,7 +54,7 @@ def log_path() -> Path:
 
 
 def backups() -> Path:
-    return state.home() / "backups"
+    return state.backups()
 
 
 class UpdateRefused(runtime.LadoError):
@@ -577,11 +577,8 @@ class _Update:
 
 
 def restore(source: Path, target: Path) -> None:
-    """`source` into `target` by SQLite's backup API: into the live file, never a file
-    copy, since lado.db runs in WAL mode and its -wal file would outlive a copy."""
-    with contextlib.closing(sqlite3.connect(source)) as src:
-        with contextlib.closing(sqlite3.connect(target, timeout=10)) as dst:
-            src.backup(dst)
+    """`source` into `target`, the live file too (state.copy_db)."""
+    state.copy_db(source, target)
 
 
 def _install(installer: update.Installer, version: str, say: Say, verb: str = "Upgrading") -> int:

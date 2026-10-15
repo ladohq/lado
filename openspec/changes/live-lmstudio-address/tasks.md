@@ -16,8 +16,8 @@
 
 ## 2. Checks
 
-- [ ] 2.1 `make lint` and `make test` green (counts in the build report).
-- [ ] 2.2 Live on LM Studio (`lms server start`; `lms load qwen/qwen3.5-35b-a3b
+- [x] 2.1 `make lint` and `make test` green (counts in the build report).
+- [x] 2.2 Live on LM Studio (`lms server start`; `lms load qwen/qwen3.5-35b-a3b
   --context-length 65536 -y`): `make test-live PROVIDER=kilo` and `make test-live
   PROVIDER=opencode` pass, no test skipped; LM Studio's log has no `Unexpected endpoint`
   for their requests. A skip is no pass: report it as not run. Never Claude Code's live

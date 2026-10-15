@@ -3542,7 +3542,7 @@ h3 {
   gap: 14px;
   min-height: 0;
   margin: 0;
-  padding: 0 6px 0 0;
+  padding: 0 6px 4px 0; /* room below for a field's focus ring */
   overflow: auto;
   list-style: none;
 }
@@ -3626,6 +3626,7 @@ h3 {
   font-size: 14px;
   line-height: 1.5;
   resize: none;
+  scroll-margin-bottom: 4px; /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 .waiting-field:focus {
@@ -3998,6 +3999,7 @@ h3 {
   font-size: 14px;
   line-height: 1.5;
   resize: none;
+  scroll-margin-bottom: 4px; /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 /* The composer (Composer.tsx): one frame with the paperclip, the field, as tall as its text,

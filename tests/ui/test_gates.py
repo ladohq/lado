@@ -83,6 +83,61 @@ def gated_session(repo) -> str:
     return session
 
 
+TWELVE_LINES = "\n".join(f"line {n} of the answer" for n in range(1, 13))
+
+# A text field in the waiting card: its height in lines (by its line height, without its
+# padding and border), whether it scrolls inside and shows its last line (the caret's, after a
+# fill), and its lower edge against the card's list, the Send row and the window.
+MEASURE_FIELD = """field => {
+  const style = getComputedStyle(field);
+  const line = parseFloat(style.lineHeight);
+  const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const box = field.getBoundingClientRect();
+  const list = field.closest('.waiting-list').getBoundingClientRect();
+  const send = field.closest('[role=tabpanel]').querySelector('.waiting-send').getBoundingClientRect();
+  return {
+    lines: Math.round(((field.clientHeight - padding) / line) * 10) / 10,
+    scrolls: field.scrollHeight > field.clientHeight + 1,
+    atEnd: field.scrollTop + field.clientHeight >= field.scrollHeight - 1,
+    resize: style.resize,
+    inList: box.top >= list.top - 1 && box.bottom <= list.bottom + 1,
+    aboveSend: box.bottom <= send.top + 1,
+    inWindow: box.top >= 0 && box.bottom <= window.innerHeight,
+  };
+}"""
+
+
+def measured(field) -> dict:
+    return field.evaluate(MEASURE_FIELD)
+
+
+def assert_long_field_fits(field) -> None:
+    """A field with 12 lines: 8 lines high, scrolled to its last line, its lower edge within
+    the card's list, above the Send row and within the window."""
+    got = measured(field)
+    want = {"lines": 8, "scrolls": True, "atEnd": True, "resize": "none"}
+    assert {key: got[key] for key in want} == want, got
+    assert got["inList"] and got["aboveSend"] and got["inWindow"], got
+
+
+def test_a_gates_long_comment_grows_to_8_lines_and_stays_above_the_send_row(
+    page: Page, server, repo, shot
+):
+    """LAD-70: the comment for the next step grows with its text from 3 lines to 8, then
+    scrolls; its lower edge stays above the Send row and within the window."""
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = waiting_card(page, session).get_by_role("tabpanel")
+    field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
+    expect(field).to_be_visible()
+    assert measured(field)["lines"] == 3
+    field.fill(TWELVE_LINES)
+    expect(field).to_be_focused()
+    assert_long_field_fits(field)
+    shot(page, full_page=False)
+
+
 def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     session = gated_session(repo)
     log_in(page, server)

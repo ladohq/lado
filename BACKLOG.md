@@ -249,6 +249,23 @@ status change of the fake agent under load overwrites the status the test set.
 Wanted: the test does not rely on nobody else changing the agent's status (or waits for it).
 Found: 2026-10-04, feature/flows-list (review).
 
+## Two first opens of lado.db at once can leave it half made
+
+Size: S. Why here: a fresh LADO_HOME refused for good, with "stop all LADO sessions and
+delete it" as the only way out.
+
+`state.connect` makes a missing lado.db with `executescript(SCHEMA)` and then sets
+`user_version`, with no lock around it: a second connection in that moment sees tables
+with version 0 and raises "incompatible schema (version 0)", and a second maker fails on
+a table that exists, so the file stays at version 0 with tables. Seen in CI (run
+38770622361, container amd64, `test_recreated_with_another_owner_keeps_the_home`): the
+container start resume thread of LAD-74 opened lado.db while the server made it; LAD-74
+now keeps that thread from opening a missing one, but any two processes that first open
+a new LADO_HOME at once (a hook and the CLI, two CLIs) can still do it.
+Wanted: make the schema in one `BEGIN IMMEDIATE` transaction, the version checked again
+inside it, so the second maker waits and finds it made.
+Found: 2026-10-15, feature/lad-74-container-session-restart.
+
 ## Local test runs do not catch a commit without a git identity
 
 Size: S. Why here: catches locally what now shows only in CI.

@@ -12,6 +12,9 @@
 # volume keeps LADO's state, and the new version upgrades its lado.db after a backup. Back:
 # the same with the version before (putting lado.db's backup back: compose.yaml's header).
 # A second LADO: another --name, home volume and port; updating one leaves the other.
+# Sessions: `docker stop` stops the container's sessions, as `lado stop` would, and `docker
+# start` (or a new container on the same home volume) resumes them; sessions stopped by
+# hand stay stopped. Each resumed session's supervisor takes one model turn at the start.
 #
 # The projects are mounted at the host's own path and named by LADO_REPOS, so a worker's
 # worktree made here is one on the host too; on Linux the container's user takes the

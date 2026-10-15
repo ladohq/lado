@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.40.0 (unreleased)
+
+- LADO's container takes its sessions with it: `docker compose down` or `stop`, `docker
+  stop`, or Docker's own end stops every running session as `lado stop` would (`docker
+  logs`: `lado: the container stops: stopped sessions "app"; they resume at its start`),
+  and the container's next start, after a new image's migration too, resumes them, as it
+  does the sessions of a container that was killed (`lado: resumed session "app" at the
+  container's start`). Sessions stopped by hand stay stopped; a session that cannot be
+  resumed stays stopped with the reason in `docker logs` and is not tried again. Each
+  resumed supervisor takes one model turn at the start and starts the workers its open
+  flow runs need. Outside a container nothing changes. lado.db goes to schema 29.
+- Upgrade: schema 29, restart running sessions after the update (lado update does it).
+
 ## 0.39.0 (2026-10-15)
 
 - Every release publishes LADO's Docker image, `docker pull ghcr.io/ladohq/lado:<version>`

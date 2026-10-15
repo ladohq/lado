@@ -62,6 +62,30 @@ def bound_log() -> None:
     telemetry.trim(log_path())
 
 
+def resume_sessions(application) -> threading.Thread | None:
+    """In a container: resume its sessions in the background while the server serves
+    (runtime.resume_at_start), each line on stderr (docker logs), until the server stops
+    (`application.state.stopping`). The thread; None outside a container."""
+    from lado import runtime, update
+
+    if not update.in_container():
+        return None
+
+    def say(line: str) -> None:
+        print(line, file=sys.stderr, flush=True)
+
+    def resume() -> None:
+        try:
+            runtime.resume_at_start(say, application.state.stopping)
+        except Exception as error:  # one resume's failure is its own line; this is the rest
+            telemetry.record("server:resume", error)
+            say(f"lado: could not resume the sessions: {type(error).__name__}: {error}")
+
+    thread = threading.Thread(target=resume, daemon=True)
+    thread.start()
+    return thread
+
+
 def housekeeping(stop: threading.Event) -> None:
     """A running server's chores, at its start and every telemetry.KICK_EVERY until `stop`:
     server.log's bound, and the statistics sender when something is due."""
@@ -233,8 +257,9 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
                 f"lado: warning: the web UI's bundle is missing: {app.BUILD_HINT}", file=sys.stderr
             )
         # No access log: it would write the login link, token included, to server.log.
+        application = app.create_app(token, bound, host=listens)
         config = uvicorn.Config(
-            app.create_app(token, bound, host=listens),
+            application,
             log_level="info",
             access_log=False,
             timeout_graceful_shutdown=SHUTDOWN_GRACE,
@@ -267,6 +292,8 @@ def serve(host: str, port: int | None, new_token: bool) -> int:
         signal.signal(signal.SIGTERM, _exit)
         stop = threading.Event()
         threading.Thread(target=housekeeping, args=(stop,), daemon=True).start()
+        # The socket listens already: /api/health answers while the sessions come back.
+        resume_sessions(application)
         try:
             server.run(sockets=[sock])
         except KeyboardInterrupt:

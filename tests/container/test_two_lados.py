@@ -11,7 +11,18 @@ import subprocess
 
 import pytest
 from conftest import QUIET_OVERRIDE, keep
-from container_helpers import IMAGE, ROOT, Container, docker, free_port, health, new_name
+from container_helpers import (
+    IMAGE,
+    ROOT,
+    Container,
+    agent_pid,
+    claude_session,
+    docker,
+    free_port,
+    git_repo,
+    health,
+    new_name,
+)
 
 pytestmark = pytest.mark.container
 
@@ -104,3 +115,28 @@ def test_updating_one_lado_leaves_the_other_as_it_is(folder):
         before["Config"]["Image"],
     )
     assert health(second.port)["ok"] is True
+
+
+def test_stopping_one_lado_leaves_the_others_sessions(folder):
+    first, second = folder("first"), folder("second")
+    containers = []
+    for each in (first, second):
+        each.run("up", "-d")
+        health(each.port)
+        container = Container(f"{each.project}-lado-1", each.port)
+        git_repo(container, "/home/lado/repo")
+        claude_session(container, "/home/lado/repo", "app")
+        containers.append(container)
+    other = containers[1]
+    pid = agent_pid(other, "app", "supervisor")
+    first.run("down")
+    assert (
+        other.exec("tmux", "-L", "lado", "has-session", "-t", "=app", check=False).returncode == 0
+    )
+    assert agent_pid(other, "app", "supervisor") == pid  # the same process
+    assert other.agent_status("app", "supervisor") == "idle"
+    stopped = other.python(
+        "from lado import state; print([s.name for s in state.list_sessions() if s.stopped_at])"
+    )
+    assert stopped == "[]"
+    assert "the container stops" not in other.logs()

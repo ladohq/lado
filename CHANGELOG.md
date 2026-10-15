@@ -15,6 +15,15 @@
   of the team's row, "Messages between agents", whose tooltip says whether the messages
   agents write to each other are shown and what a click does; the agents' chips no longer
   wrap for it in a narrow column.
+- One-line texts may hold no hidden characters: a session's title, an agent's message
+  summary, question and choices, `note_summary` and artifact title or summary are refused
+  when they hold a line or paragraph separator, a bidi control (U+202A–U+202E,
+  U+2066–U+2069) or a zero-width character (U+200B, U+FEFF), as they were for control
+  characters, and the error names it (`a title is one line of visible text: U+202E
+  RIGHT-TO-LEFT OVERRIDE is not allowed`); an emoji joined by U+200D stays. The human's
+  chat message, gate comment, `lado flow-set` reason and uploaded file name are cleaned of
+  them for their one-line form, and the whole text stays in the body (a `lado flow-set`
+  note now keeps the whole reason too).
 - Upgrade: schema 29, restart running sessions after the update (lado update does it).
 
 ## 0.39.0 (2026-10-15)

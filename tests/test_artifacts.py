@@ -183,9 +183,25 @@ def test_names_at_the_limits_are_taken(session):
 @pytest.mark.parametrize("field", ["title", "summary"])
 def test_a_title_and_a_summary_are_one_line_of_at_most_200_characters(session, field):
     artifacts.write(session, "supervisor", "plan", content="x", **{field: "t" * 200})
-    for bad in ("t" * 201, "two\nlines"):
-        with pytest.raises(artifacts.ArtifactError, match=f"{field} must be one line of at most"):
-            artifacts.write(session, "supervisor", "plan", content="x", **{field: bad})
+    with pytest.raises(artifacts.ArtifactError, match=f"{field} must be one line of at most"):
+        artifacts.write(session, "supervisor", "plan", content="x", **{field: "t" * 201})
+
+
+@pytest.mark.parametrize("field", ["title", "summary"])
+@pytest.mark.parametrize(
+    ("bad", "named"),
+    [
+        ("two\nlines", "U+000A"),
+        ("plan\N{ZERO WIDTH NO-BREAK SPACE}", "U+FEFF ZERO WIDTH NO-BREAK SPACE"),
+        ("plan\N{LINE SEPARATOR}b", "U+2028 LINE SEPARATOR"),
+        ("plan\N{RIGHT-TO-LEFT OVERRIDE}", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+    ],
+)
+def test_a_title_or_summary_with_a_hidden_character_is_refused(session, field, bad, named):
+    reason = f"{field} must be one line of visible text: {named} is not allowed"
+    with pytest.raises(artifacts.ArtifactError, match=f"^{re.escape(reason)}$"):
+        artifacts.write(session, "supervisor", "plan", content="x", **{field: bad})
+    assert artifacts.of_session(session) == []
 
 
 def test_a_record_over_the_limit_is_refused_with_the_limit(session, tmp_path, monkeypatch):

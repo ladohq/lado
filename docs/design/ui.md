@@ -907,7 +907,16 @@ Built in the chat task (2026-10-03):
   (Markdown, muted) and chips, its choices as 32 px buttons (one picked, `--action` on
   `--action-ground`; a second click unpicks), **Other…** (only for a question with a free
   answer: a field "Your own answer") and **Skip** (a field "Why you skip it (optional)");
-  the three exclude each other, and a pick is kept per question across tab switches. The
+  the three exclude each other, and a pick is kept per question across tab switches.
+  **Fields** (decided 2026-10-15, LAD-70, mockup `task/lad-70/mockup-answer-field.html`,
+  option A; before, one row for an own answer and a skip's comment, two for a gate's
+  comment, with a resize handle that grew the field under the Send row and off the
+  screen): those two and a gate's comment for the next step, as wide as their question,
+  open 3 lines high, grow with their text to 8 (the composer's rule, `fieldHeight.ts`),
+  then scroll inside, with no resize handle, in every view of the card and on the Flows
+  tab's gate card alike; while the human types and the field grows, its lower edge comes
+  into view (`scrollIntoView({block: "nearest"})`: the card's list scrolls, else the
+  page), the list keeping room below it for the field's focus ring. The
   Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
   once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
   answered" beside it until then; it posts the tab in one request (`POST …/answers`), and

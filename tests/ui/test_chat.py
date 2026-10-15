@@ -10,7 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_artifacts_tab import MANY, MEASURE_TABLES
 from test_flows_tab import BACK, FORWARD, STAY, read_out, reviewed_session, tone, tooltip_lines
-from test_gates import gated_session
+from test_gates import TWELVE_LINES, assert_long_field_fits, gated_session, measured
 from test_images import png
 from test_main_screen import log_in, running_session
 
@@ -95,6 +95,33 @@ def test_the_supervisor_asks_twice_and_the_human_answers_both_in_one_tab(
     expect(cards.nth(1).locator(".question-answer")).to_contain_text("8123")
     expect(page.get_by_role("article", name="Message from you")).to_have_count(2)  # the asks
     shot(page, "answered")
+
+
+def test_an_own_answer_field_grows_to_8_lines_within_the_card_and_the_expanded_card(
+    page: Page, server, repo, shot
+):
+    """LAD-70: Other…'s field opens 3 lines high, grows with its text to 8, then scrolls;
+    its lower edge stays within the card's list and the window, also in the expanded card,
+    where it stays above the Send row."""
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship it?", "Long details.\n" * 12, ["yes", "no"])
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Other…").click()
+    field = card.get_by_role("textbox", name="Your own answer")
+    field.fill("short")
+    assert measured(field)["lines"] == 3
+    field.fill(TWELVE_LINES)
+    assert_long_field_fits(field)
+    shot(page, "card", full_page=False)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    field = card.get_by_role("textbox", name="Your own answer")
+    field.fill("")
+    field.fill(TWELVE_LINES)
+    assert_long_field_fits(field)
+    shot(page, "expanded", full_page=False)
 
 
 def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(

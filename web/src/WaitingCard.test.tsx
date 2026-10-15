@@ -257,6 +257,34 @@ test("typing keeps the focus and every character", () => {
   expect((within(card()).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement).value).toBe("ma");
 });
 
+// A field's height by its text, jsdom having no layout: its scrollHeight `content`, its
+// line 20 pixels (the rule's own when the style has none) and no padding.
+function grows(field: HTMLTextAreaElement, content: number, value: string) {
+  Object.defineProperty(field, "scrollHeight", { configurable: true, get: () => content });
+  fireEvent.change(field, { target: { value } });
+  return [field.style.height, field.style.overflowY];
+}
+
+test("an own answer, a skip's comment and a gate's comment grow with their text from 3 lines to 8, then scroll", () => {
+  show({
+    questions: [question(5, "w1"), question(6, "w1")],
+    gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")],
+  });
+  const [one, two] = within(card()).getAllByRole("listitem");
+  fireEvent.click(within(one).getByRole("button", { name: "Other…" }));
+  const own = within(one).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement;
+  expect(grows(own, 20, "short")).toEqual(["60px", "hidden"]);
+  expect(grows(own, 100, "five\nlines")).toEqual(["100px", "hidden"]);
+  expect(grows(own, 400, "many\nlines\n".repeat(10))).toEqual(["160px", "auto"]);
+  fireEvent.click(within(two).getByRole("button", { name: "Skip" }));
+  const skip = within(two).getByRole("textbox", { name: "Why you skip it (optional)" }) as HTMLTextAreaElement;
+  expect(grows(skip, 400, "many\nlines\n".repeat(10))).toEqual(["160px", "auto"]);
+  fireEvent.click(tab("task/lad-27 1"));
+  const comment = within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement;
+  expect(grows(comment, 20, "fine")).toEqual(["60px", "hidden"]);
+  expect(grows(comment, 400, "many\nlines\n".repeat(10))).toEqual(["160px", "auto"]);
+});
+
 function given(choice: string | null, text = "Long: the short one loses data"): RecommendationInfo {
   return { state: "given", text, choice, disagrees: false, by: "w1", at: "2026-10-03T12:01:00.000Z" };
 }

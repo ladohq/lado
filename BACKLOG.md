@@ -1892,6 +1892,20 @@ Found: 2026-10-14, feature/lad-44-flake-races (design, from the smoke's evidence
 
 # P3: maybe never
 
+## A field that grows with its text keeps its height when its width changes
+
+Size: S. Why here: the composer has done so since it grew; the height is right again at
+the next key, and a field only gets narrower when the window does or the card folds.
+
+`useGrow` (`web/src/fieldHeight.ts`), shared by the composer, the waiting card's fields and
+a gate's comment, sizes a field on each change of its text only. A field made narrower
+(the window, the waiting card folded back from expanded) wraps into more lines but keeps
+its height. While it is under its most lines it does not scroll (`overflow-y: hidden`),
+so its last lines are hidden until the human types again.
+Wanted: the height sized again when the field's width changes (a `ResizeObserver` on the
+field).
+Found: 2026-10-15, review of fix/lad-70-answer-field-height (E2).
+
 ## A worktree git has forgotten while its folder stays makes finish fail
 
 Size: S. Why here: only a `git worktree prune` or a `git gc` that prunes, or a hand

@@ -267,12 +267,27 @@ change.
 Check: an agent in the container installs Go from `.tool-versions` by itself and builds
 the project; after the container is made again, Go is still there.
 
-**T10. Secrets and git access** (S)
-Claude's token (`CLAUDE_CODE_OAUTH_TOKEN`) through a file the login shell reads, not
-through `inherit`; the ssh agent without the root group (Mac and Linux); `gh auth login`
-in the container, in the documentation.
-Check: an agent runs `git push` to a test remote and `gh api user`, with no manual step
-but the login.
+**T10. Secrets and access: one place for secrets, and git** (M; widened 2026-10-15 by the
+human's decision, done right after T6b, before T8)
+Without it the container cannot be used for real work: an agent has no git identity to
+commit with, and a kit whose MCP server needs a variable (sdlc's tracker:
+`YOUGILE_API_KEY`) refuses to start, as nothing puts it in the agents' environment.
+- One place for secrets on the home volume: a file the login shell reads (mode 600), or
+  Docker secrets read by a profile script; never `LADO_AGENT_ENV=inherit` nor compose's
+  `environment:` (no secret in `docker inspect`). It holds every variable: Claude's token
+  (`CLAUDE_CODE_OAUTH_TOKEN`), `GH_TOKEN`, kits' keys, model providers' keys.
+- git's identity (`user.name`, `user.email`): the image has none; the container tests
+  set it with `-c`.
+- git over https: a credential helper (`gh auth setup-git`, or the token).
+- `gh auth login` in the container, its token on the volume (research H8: not run).
+- The host's ssh agent without the root group (Mac and Linux).
+- OpenCode's and Kilo's login (`auth.json` in their data folders, or providers' keys), now
+  that they are in the image (T7). Codex's stays T15.
+If it grows, it splits into T10a (secrets and kits) and T10b (git: identity, ssh, https,
+gh).
+Check: an agent commits under the human's name, pushes over ssh and over https to a test
+remote, runs `gh api user`; a session of a kit that needs `YOUGILE_API_KEY` starts; no
+secret in `docker inspect`; no manual step but the logins.
 
 **T11. A check on Windows and on a real Linux** (S, manual)
 Docker Desktop with WSL2, the whole scenario of T8, a speed measurement (section 5). On a
@@ -322,8 +337,8 @@ Check: on a Mac a double click opens the UI.
 
 ```
 T1, T2 ──┐
-         ├─> T3 ─> T4 (with T5) ─> T6a ─> T7 ─> T6b ─> T8 ─> T11
-         │          └─> T9, T10 (after T3)
+         ├─> T3 ─> T4 (with T5) ─> T6a ─> T7 ─> T6b ─> T10 ─> T8 ─> T11
+         │          └─> T9 (after T3)
 T12, T13: independent of the image (useful for the usual install too)
 T14: after T7
 ```

@@ -2131,10 +2131,21 @@ def test_message_errors(repo, fake_tmux):
     [
         ("", "summary is empty"),
         ("  ", "summary is empty"),
-        ("done\nall tests pass", "summary must be one line; put the details in body"),
-        ("done\tall", "summary must be one line without control characters"),
-        ("done\x1b[31m", "summary must be one line without control characters"),
-        ("done all", "summary must be one line"),
+        (
+            "done\nall tests pass",
+            "summary must be one line of visible text: U+000A is not allowed; "
+            "put the details in body",
+        ),
+        ("done\tall", "summary must be one line of visible text: U+0009 is not allowed"),
+        ("done\x1b[31m", "summary must be one line of visible text: U+001B is not allowed"),
+        (
+            "done\u2028tests pass",
+            "summary must be one line of visible text: U+2028 LINE SEPARATOR is not allowed; "
+            "put the details in body",
+        ),
+        ("done\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE is not allowed"),
+        ("\u200bdone", "U+200B ZERO WIDTH SPACE is not allowed"),
+        ("done\u2028all", "summary must be one line"),
         ("x" * 201, "summary is 201 characters, the limit is 200; put the details in body"),
     ],
 )
@@ -3927,7 +3938,14 @@ def test_the_humans_text_reaches_the_supervisor_as_a_message(repo, fake_tmux):
 @pytest.mark.parametrize(
     ("text", "summary", "body"),
     [
-        ("look at\tthis\x1b[0m now", "look at this [0m now", ""),
+        ("look at\tthis\x1b[0m now", "look at this [0m now", "look at\tthis\x1b[0m now"),
+        (
+            "fix it\N{LINE SEPARATOR}now \N{RIGHT-TO-LEFT OVERRIDE}please",
+            "fix it now please",
+            "fix it\N{LINE SEPARATOR}now \N{RIGHT-TO-LEFT OVERRIDE}please",
+        ),
+        ("\N{ZERO WIDTH SPACE}ok\nmore", "ok", "\N{ZERO WIDTH SPACE}ok\nmore"),
+        ("Семья 👨\N{ZERO WIDTH JOINER}👩", "Семья 👨\N{ZERO WIDTH JOINER}👩", ""),
         ("first line\nsecond line", "first line", "first line\nsecond line"),
         ("x" * 250, "x" * 199 + "…", "x" * 250),
     ],
@@ -4052,7 +4070,16 @@ def test_a_question_without_choices_takes_a_free_answer(repo, fake_tmux):
     ("question", "choices", "free", "reason"),
     [
         ("", None, True, "question is empty"),
-        ("a\nb", None, True, "question must be one line; put the details in details"),
+        (
+            "a\nb",
+            None,
+            True,
+            "question must be one line of visible text: U+000A is not allowed; "
+            "put the details in details",
+        ),
+        ("a\u2029b?", None, True, "U+2029 PARAGRAPH SEPARATOR is not allowed"),
+        ("ok?", ["yes\u202e"], True, "a choice must be one line of visible text: U+202E"),
+        ("ok?", ["\ufeffno"], True, "U+FEFF ZERO WIDTH NO-BREAK SPACE is not allowed"),
         ("x" * 201, None, True, "question is 201 characters, the limit is 200"),
         ("ok?", [], False, "no choices and no free answer: the human could not answer"),
         ("ok?", list("abcdefg"), True, "7 choices, the limit is 6"),
@@ -5127,6 +5154,8 @@ def _titled(title: str | None = None) -> None:
         ("  " + "я" * 80 + " ", "я" * 80),
         ("🚀" * 80, "🚀" * 80),
         ("🚀 launch", "🚀 launch"),
+        ("Семья 👨\u200d👩\u200d👧", "Семья 👨\u200d👩\u200d👧"),
+        ("代码 review", "代码 review"),
     ],
 )
 def test_set_title_stores_what_the_rule_says(text, stored):
@@ -5140,10 +5169,16 @@ def test_set_title_stores_what_the_rule_says(text, stored):
     [
         ("x" * 81, "a title is at most 80 characters"),
         ("  " + "я" * 81, "a title is at most 80 characters"),
-        ("a\nb", "a title is one line"),
-        ("a\tb", "a title is one line"),
-        ("a\x00b", "a title is one line"),
-        ("a\x7fb", "a title is one line"),
+        ("a\nb", "a title is one line of visible text: U\\+000A is not allowed"),
+        ("a\tb", "a title is one line of visible text: U\\+0009 is not allowed"),
+        ("a\x00b", "a title is one line of visible text: U\\+0000 is not allowed"),
+        ("a\x7fb", "a title is one line of visible text: U\\+007F is not allowed"),
+        ("a\u2028b", "a title is one line of visible text: U\\+2028 LINE SEPARATOR is not allowed"),
+        (
+            "abc\u202edef",
+            "a title is one line of visible text: U\\+202E RIGHT-TO-LEFT OVERRIDE is not allowed",
+        ),
+        ("\u200b", "a title is one line of visible text: U\\+200B ZERO WIDTH SPACE is not allowed"),
     ],
 )
 def test_set_title_refuses_and_changes_nothing(text, reason):

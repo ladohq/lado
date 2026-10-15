@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 
 from lado import artifacts, flows, kits, providers, runtime, state, tmux
+from lado import text as visible
 from lado.runtime import SUPERVISOR, LadoError
 
 LADO = state.LADO
@@ -56,7 +57,9 @@ def start(
     if not task:
         raise LadoError("task is empty; say what the run is for")
     language = (language or "").strip()
-    if "\n" in language or len(language) > LANGUAGE_LIMIT:
+    if (char := visible.first_hidden(language)) is not None:
+        raise LadoError(f"human_language is one line {visible.refusal(char)}")
+    if len(language) > LANGUAGE_LIMIT:
         raise LadoError(
             f'human_language is a language name or code such as "ru", at most '
             f"{LANGUAGE_LIMIT} characters"
@@ -124,7 +127,11 @@ def advance(
         valid = ", ".join(current.outcomes)
         raise LadoError(f'unknown outcome "{outcome}" for step {run.state}; valid: {valid}')
     note = (note or "").strip()
-    if "\n" in note or len(note) > NOTE_LIMIT:
+    if (char := visible.first_hidden(note)) is not None:
+        raise LadoError(
+            f"note_summary must be one line {visible.refusal(char)}; put the details in note_body"
+        )
+    if len(note) > NOTE_LIMIT:
         raise LadoError(
             f"note_summary must be one line of at most {NOTE_LIMIT} characters; "
             "put the details in note_body"
@@ -196,7 +203,8 @@ def answer(
     comment = (comment or "").strip()
     closes = (by, word, comment, found.id)  # nothing is written unless it is still open
     if found.kind == LOOP and word == CANCEL:
-        _cancel(run, f"loop limit: {comment}" if comment else "loop limit", by, closes)
+        line = visible.one_line(comment)
+        _cancel(run, f"loop limit: {line}" if line else "loop limit", by, closes)
         _tell_supervisor(run, f"cancelled by the human at {found.state} (loop limit)", comment)
         return _run(session, run.name)
     flow = flow_of(run)
@@ -291,15 +299,15 @@ def canonical_option(gate: state.Gate, given: str) -> str:
 
 
 def _answer_note(outcome: str, comment: str, gate: state.Gate) -> tuple[str, str]:
-    """The next step's note: "<outcome>: <comment>", and in the body the whole comment if
-    the note could not hold it, and the note that led to the gate."""
-    first = comment.splitlines()[0] if comment else ""
+    """The next step's note: "<outcome>: <comment's first line>", cleaned of hidden
+    characters (`lado.text`), and in the body the whole comment if the note is not exactly
+    it (more lines, cleaned or cut), and the note that led to the gate."""
+    first = visible.one_line(comment.split("\n", 1)[0])
     note = f"{outcome}: {first}" if first else outcome
     body = []
     if len(note) > NOTE_LIMIT:
         note = note[: NOTE_LIMIT - 1] + "…"
-        body.append(comment)
-    elif comment != first:
+    if comment and note != f"{outcome}: {comment}":
         body.append(comment)
     if gate.note or gate.note_body:
         body.append(f"Note before the gate: {gate.note}\n{gate.note_body}".rstrip())
@@ -320,7 +328,9 @@ def force(session: str, run_name: str, target: str, reason: str) -> state.Run:
     reason = reason.strip()
     if not reason:
         raise LadoError("give a reason")
-    noted = dataclasses.replace(run, note=f"set by the human: {reason}"[:NOTE_LIMIT], note_body="")
+    note = f"set by the human: {visible.one_line(reason)}"[:NOTE_LIMIT]
+    whole = note == f"set by the human: {reason}"
+    noted = dataclasses.replace(run, note=note, note_body="" if whole else reason)
     after, events, gate = _enter(noted, flow, target, limit=False)
     forced = (HUMAN, state.FLOW_SET, f"{run.state} -> {target}: {reason}")
     closes = (HUMAN, state.GATE_OVERRIDDEN, reason, None)

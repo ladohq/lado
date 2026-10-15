@@ -281,3 +281,68 @@ edge, nor a window of 900 px or less.
 #### Scenario: A narrow window
 - **WHEN** the window is 800 px wide
 - **THEN** there is no edge above the card, and "Minimize the card" works
+
+### Requirement: The card's text fields grow with their text and stay in view
+
+The waiting card's text fields, an own answer (Other…), the comment of a Skip and a gate's
+comment for the next step, SHALL open 3 lines high, SHALL grow with their text up to
+8 lines and then scroll inside, and SHALL have no resize handle; each SHALL be as wide as
+its question. While the human types in one of them, its lower edge with the caret SHALL
+stay in view within the card: when the field grows past the card's visible list, the list
+SHALL scroll by as much. A gate's comment field SHALL grow the same way wherever the
+gate's panel shows.
+
+#### Scenario: A short own answer
+- **WHEN** the human picks Other… and types one short line
+- **THEN** the field is 3 lines high
+
+#### Scenario: A long own answer
+- **WHEN** the human types an answer of 12 lines in the field of Other…
+- **THEN** the field is 8 lines high, scrolls inside, and its lower edge with the caret
+  is within the card's list and within the window
+
+#### Scenario: The expanded card
+- **WHEN** the card is expanded and the human types an answer of 12 lines
+- **THEN** the field is 8 lines high and its lower edge is above the Send row and within
+  the window
+
+#### Scenario: A gate's comment
+- **WHEN** the human types a comment of 12 lines on a gate's tab
+- **THEN** the field is 8 lines high, scrolls inside, and its lower edge is above the Send
+  row and within the window
+
+### Requirement: A ring around an item of the card shows whole
+
+The waiting card SHALL show the ring drawn around one of its items whole, on all four
+sides: the focus ring of a gate's comment for the next step, of an own answer and of a
+Skip's comment, and the ring of a question the human came to from the feed. Neither the
+card's scrolling list nor the panel around it SHALL cut a ring at rest, while the human
+types, or after the list scrolled a field into view. The questions, the fields and the
+Send row SHALL stay where they were before this rule.
+
+#### Scenario: A gate's comment with the focus
+- **WHEN** the human clicks into the comment field on a gate's tab
+- **THEN** the field's focus ring is whole on the left, the top, the right and the bottom,
+  within the card's list
+
+#### Scenario: A long gate's comment
+- **WHEN** the human types a comment of 12 lines on a gate's tab
+- **THEN** the field, 8 lines high and scrolled into view, has its focus ring whole on all
+  four sides
+
+#### Scenario: An own answer with the focus
+- **WHEN** the human picks Other… on a question and its field gets the focus
+- **THEN** the field's focus ring is whole on all four sides
+
+#### Scenario: The first question marked
+- **WHEN** the human comes to the card's first question from its line in the feed
+- **THEN** the question's ring is whole on all four sides, its top too
+
+#### Scenario: A narrow window
+- **WHEN** the window is 600 px wide and the comment field on a gate's tab has the focus
+- **THEN** the field's focus ring is whole on all four sides
+
+#### Scenario: Nothing moves
+- **WHEN** a gate's tab is shown
+- **THEN** its question and its comment field start as far from the panel's left edge as
+  before, and the Send row stands where it stood

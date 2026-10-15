@@ -10,7 +10,13 @@ import pytest
 from playwright.sync_api import Page, expect
 from test_artifacts_tab import MANY, MEASURE_TABLES
 from test_flows_tab import BACK, FORWARD, STAY, read_out, reviewed_session, tone, tooltip_lines
-from test_gates import gated_session
+from test_gates import (
+    TWELVE_LINES,
+    assert_long_field_fits,
+    assert_ring_whole,
+    gated_session,
+    measured,
+)
 from test_images import png
 from test_main_screen import log_in, running_session
 
@@ -95,6 +101,66 @@ def test_the_supervisor_asks_twice_and_the_human_answers_both_in_one_tab(
     expect(cards.nth(1).locator(".question-answer")).to_contain_text("8123")
     expect(page.get_by_role("article", name="Message from you")).to_have_count(2)  # the asks
     shot(page, "answered")
+
+
+def test_an_own_answer_field_grows_to_8_lines_within_the_card_and_the_expanded_card(
+    page: Page, server, repo, shot
+):
+    """LAD-70: Other…'s field opens 3 lines high, grows with its text to 8, then scrolls;
+    its lower edge stays within the card's list and the window, also in the expanded card,
+    where it stays above the Send row."""
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship it?", "Long details.\n" * 12, ["yes", "no"])
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Other…").click()
+    field = card.get_by_role("textbox", name="Your own answer")
+    field.fill("short")
+    assert measured(field)["lines"] == 3
+    field.fill(TWELVE_LINES)
+    assert_long_field_fits(field)
+    shot(page, "card", full_page=False)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    field = card.get_by_role("textbox", name="Your own answer")
+    field.fill("")
+    field.fill(TWELVE_LINES)
+    assert_long_field_fits(field)
+    shot(page, "expanded", full_page=False)
+
+
+def test_an_own_answer_with_the_focus_shows_its_ring_whole(page: Page, server, repo, shot):
+    """LAD-78: Other…'s field, focused, has its 3 px ring whole on all four sides."""
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship it?", None, ["yes", "no"])
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Other…").click()
+    field = card.get_by_role("textbox", name="Your own answer")
+    field.focus()
+    expect(field).to_be_focused()
+    assert_ring_whole(field, 3)
+    shot(page, full_page=False)
+
+
+def test_the_first_question_marked_from_the_feed_shows_its_ring_whole(
+    page: Page, server, repo, shot
+):
+    """LAD-78: the card's first question, come to from its line in the feed, has its ring
+    whole on all four sides, its top too."""
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Ship it?", None, ["yes", "no"])
+    asked = [m.id for m in state.list_messages(session) if m.kind == state.QUESTION][0]
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/activity#message-{asked}")
+    item = waiting_card(page, session).locator(f'[data-item="{asked}"]')
+    expect(item).to_have_class(re.compile(r"\bmarked\b"))
+    # Its ring grows in for 0.3 s: measured once it is whole.
+    expect(item).to_have_css("box-shadow", re.compile(r" 3px$"))
+    assert_ring_whole(item, 3)
+    shot(page, full_page=False)
 
 
 def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
@@ -499,7 +565,22 @@ def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_
     expect(cards.nth(0).locator(".question-answer .chat-body")).to_have_text("closest to Slack")
     expect(cards.nth(1).locator(".chosen")).to_have_text("✓ yes")
     expect(cards.nth(1).locator(".question-answer")).not_to_contain_text("yes")
-    page.get_by_role("checkbox", name="Show agent messages").check()
+    toggle = page.get_by_role("button", name="Messages between agents")
+    expect(toggle).to_have_attribute("aria-pressed", "false")
+    toggle.hover()
+    expect(page.get_by_role("tooltip")).to_contain_text("Messages between agents: hidden")
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-toggle-tooltip", full_page=False)  # the pointer stays on it
+    page.emulate_media(color_scheme="light")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    page.mouse.move(0, 0)
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-toggle-pressed")
+    page.emulate_media(color_scheme="light")
     between = chat.get_by_role("article", name="Message from supervisor to w1")
     expect(between.locator("summary")).to_contain_text("please review the branch")
     assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")  # no sideways scroll

@@ -20,6 +20,14 @@ a {
   color: var(--action);
 }
 
+/* The room a field keeps around it for its ring when a box that scrolls brings it into view
+   (scroll-margin), and the waiting card's list on every side, as it scrolls and so cuts
+   what is outside: the largest ring, the outline below (2 px at a 2 px offset); the 3 px
+   ring of .waiting-field:focus and of .marked fits in it. */
+:root {
+  --ring-room: 4px;
+}
+
 :focus-visible {
   outline: 2px solid var(--action);
   outline-offset: 2px;
@@ -2388,11 +2396,41 @@ h3 {
   min-height: 0;
 }
 
-/* The switch keeps its place at the row's end; the chips wrap beside it. */
+/* The toggle Messages between agents keeps its place at the row's end; the chips wrap
+   beside it. */
 .team-row {
   display: flex;
   align-items: flex-start;
   gap: 8px 16px;
+}
+
+/* Messages between agents: quiet as a tab's tool button, pressed as a pressed team chip
+   (LAD-77, mockup-placement.html variant Б). */
+.icon-button.between-toggle {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -1px; /* centred on the 24 px chips */
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.icon-button.between-toggle:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.icon-button.between-toggle[aria-pressed="true"] {
+  border-color: var(--action);
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--action);
+  color: var(--action);
+}
+
+.between-toggle .icon {
+  width: 18px;
+  height: 18px;
 }
 
 .team {
@@ -3541,8 +3579,10 @@ h3 {
   flex-direction: column;
   gap: 14px;
   min-height: 0;
-  margin: 0;
-  padding: 0 6px 0 0;
+  /* The room for a ring (--ring-room), pulled back at the top and the left, so the items
+     stand where they would without it; the bottom keeps it, above the Send row. */
+  margin: calc(-1 * var(--ring-room)) 0 0 calc(-1 * var(--ring-room));
+  padding: var(--ring-room) 6px var(--ring-room) var(--ring-room);
   overflow: auto;
   list-style: none;
 }
@@ -3624,7 +3664,9 @@ h3 {
   color: var(--ink);
   font: inherit;
   font-size: 14px;
-  resize: vertical;
+  line-height: 1.5;
+  resize: none;
+  scroll-margin: var(--ring-room); /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 .waiting-field:focus {
@@ -3995,7 +4037,9 @@ h3 {
   color: var(--ink);
   font: inherit;
   font-size: 14px;
-  resize: vertical;
+  line-height: 1.5;
+  resize: none;
+  scroll-margin: var(--ring-room); /* its focus ring in view as it grows (fieldHeight.ts) */
 }
 
 /* The composer (Composer.tsx): one frame with the paperclip, the field, as tall as its text,

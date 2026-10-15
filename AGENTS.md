@@ -718,6 +718,18 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     templates from it (`expand`; an unset name is one line on stderr and exit 1) and execs
     the server. Only the standard library; `VARIABLE`, `references` and `expand` are the
     one parser of `${NAME}`, also kits.py's.
+  - `text.py`: the one rule of a line of visible text (openspec capability visible-text):
+    a character is hidden when its Unicode category is Cc, Zl, Zp or Cf, but U+200D ZERO
+    WIDTH JOINER (`hidden`, `first_hidden`). A one-line field its writer gives is refused
+    naming the first one (`named`: `U+XXXX NAME`; `refusal`, the words after `... one
+    line`): the session's title, `send_message`'s summary, `ask_human`'s question and
+    choices, `flow_advance`'s `note_summary`, `flow_start`'s `human_language`,
+    `write_artifact`'s title and summary. A line
+    LADO takes from the human's longer text is cleaned (`one_line`: Cf removed, the others
+    a space), the whole text kept in the body whenever the line is not exactly it: the
+    human's chat message and own answer (`runtime._human_text`), a gate's comment and a
+    `lado flow-set` reason as the next step's note, a loop limit's cancel reason, an
+    uploaded file's title. No other copy of the check. Only the standard library.
   - `terminal.py`: an agent's terminal for the UI (design in
     [docs/design/ui.md](docs/design/ui.md), section Terminal): `open` (a viewer tmux session
     with the agent's window linked in and a `tmux attach` on a pty), `NoTerminal`,
@@ -995,10 +1007,11 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     From schema 28 a session keeps an optional title, `sessions.title` (`SESSIONS_TITLE`;
     NULL for none; `state.set_title` stores it as given): a label for the human over its
     name, which stays its identifier. `runtime.set_title` is the one rule of what a title
-    is (trimmed, one line with no Cc character, at most `runtime.MAX_TITLE`, 80,
-    characters; empty or equal to the name is none; a bad one is refused, never cut), for
-    `lado title` and `PUT /api/sessions/{name}/title` alike; `SessionInfo.title` carries
-    it, through the existing journal of `sessions`, and `Limits.max_title` the limit.
+    is (trimmed, one line with no hidden character, `text.py`, at most
+    `runtime.MAX_TITLE`, 80, characters; empty or equal to the name is none; a bad one is
+    refused, never cut), for `lado title` and `PUT /api/sessions/{name}/title` alike;
+    `SessionInfo.title` carries it, through the existing journal of `sessions`, and
+    `Limits.max_title` the limit.
     From schema 29 a session keeps whether the container's stop stopped it,
     `sessions.resume_at_start` (`SESSIONS_RESUME_AT_START`; not in the API):
     `state.stop_for_container` marks every session not stopped as `stop_session` does, with
@@ -1862,7 +1875,10 @@ one with open runs unless `--force`; worktrees and branches stay on disk and are
 `lado title <session>` prints a session's title (or `<session> has no title`); `lado title
 <session> TEXT` sets it and `--clear` clears it (both together exit 2), through
 `runtime.set_title`, printing `<session>: title "<title>"` or that it has none; for a
-running or stopped session alike, the name and everything named by it unchanged. Setting
+running or stopped session alike, the name and everything named by it unchanged. A title
+with a hidden character (a line break, a tab, a line separator, a bidi control, a
+zero-width space; `text.py`) is refused naming it (`a title is one line of visible text:
+U+202E RIGHT-TO-LEFT OVERRIDE is not allowed`). Setting
 or clearing is refused inside an agent (`LADO_AGENT` set), as `lado answer` is; reading is
 not. `lado ls` prints the title, quoted, after the name. The UI sets it too (the pencil in
 the session's head, Rename… in the list; docs/design/ui.md, Session title). A title is

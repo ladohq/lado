@@ -5,13 +5,14 @@
 // names the gate (gateTitle). The answer goes through the server to runs.answer, as
 // `lado answer` and the popup do; the panel changes only when the feed brings the closed
 // gate, whoever answered it.
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { answerGate, ApiError, type GateInfo } from "./api";
 import { size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
 import { clock, Preview } from "./ChatText";
+import { CARD_LINES, MOST_LINES, useGrow } from "./fieldHeight";
 import { useLive } from "./live";
 import { quoteArea } from "./quote";
 import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
@@ -86,6 +87,8 @@ export function GatePanel({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const primary = primaryOf(gate.options, gate.recommendation);
+  const commentField = useRef<HTMLTextAreaElement>(null);
+  useGrow(commentField, comment, CARD_LINES, MOST_LINES);
 
   async function answer(option: string) {
     setBusy(true);
@@ -111,9 +114,10 @@ export function GatePanel({
   );
   const field = (
     <textarea
+      ref={commentField}
       aria-label="Comment for the next step (optional)"
       placeholder="Comment for the next step (optional)"
-      rows={2}
+      rows={CARD_LINES}
       value={comment}
       disabled={inTab && stopped}
       onChange={(event) => setComment(event.target.value)}

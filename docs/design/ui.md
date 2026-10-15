@@ -747,10 +747,13 @@ Built in the chat task (2026-10-03):
   and typed into no window (`runtime.post`). It is sent only by the server's API
   (`runtime.write_as_human`): an agent's MCP tools always send as the agent, and `human`
   and `lado` are names no agent may take (`state.RESERVED`, checked by `spawn_worker`).
-  The human's text: its first line, tabs and control characters made spaces, is the
-  summary, cut to 200 characters with "…"; the whole text is the body when it has more
-  lines or the line was cut; over 8000 characters it is refused. It goes through the queue,
-  confirmation and retries like an agent's; if it fails, `lado` tells the human in one line.
+  The human's text: its first line, cleaned of hidden characters (`lado.text`: control
+  characters, tabs and line or paragraph separators made spaces, format characters such
+  as bidi controls and zero-width spaces removed, but the zero width joiner), is the
+  summary, cut to 200 characters with "…"; the whole text is the body when the summary is
+  not exactly it (more lines, cleaned or cut); over 8000 characters it is refused. It goes
+  through the queue, confirmation and retries like an agent's; if it fails, `lado` tells
+  the human in one line.
   Messages to `human` are never dropped: stop, finish and `drop_undelivered` leave them as
   they are and do not count them (`state.UNRECEIVED`).
 - **Questions**: `ask_human(question, details, choices, free_answer)`, for every agent; at
@@ -904,7 +907,24 @@ Built in the chat task (2026-10-03):
   (Markdown, muted) and chips, its choices as 32 px buttons (one picked, `--action` on
   `--action-ground`; a second click unpicks), **Other…** (only for a question with a free
   answer: a field "Your own answer") and **Skip** (a field "Why you skip it (optional)");
-  the three exclude each other, and a pick is kept per question across tab switches. The
+  the three exclude each other, and a pick is kept per question across tab switches.
+  **Fields** (decided 2026-10-15, LAD-70, mockup `task/lad-70/mockup-answer-field.html`,
+  option A; before, one row for an own answer and a skip's comment, two for a gate's
+  comment, with a resize handle that grew the field under the Send row and off the
+  screen): those two and a gate's comment for the next step, as wide as their question,
+  open 3 lines high, grow with their text to 8 (the composer's rule, `fieldHeight.ts`),
+  then scroll inside, with no resize handle, in every view of the card and on the Flows
+  tab's gate card alike; while the human types and the field grows, its lower edge comes
+  into view (`scrollIntoView({block: "nearest"})`: the card's list scrolls, else the
+  page). A ring around an item of the card shows whole (decided 2026-10-16, LAD-78,
+  mockup `task/lad-78/mockup-focus-ring.html`; before, the list kept room only below and
+  on the right, and cut the left side of a field's focus ring and the top of a question
+  marked at its top): the list keeps `--ring-room` (4 px, the largest ring: the
+  `:focus-visible` outline of a gate's comment; the 3 px ring of a focused own answer or
+  skip's comment and of a marked question) on every side and pulls itself back by as much
+  at the top and the left, so the items and the Send row stand where they would without
+  it, and a field scrolled into view keeps that room at whichever edge (`scroll-margin`;
+  also the Flows tab's gate card, whose run page scrolls it into view). The
   Send row, always shown: **Send answer to <agent>** / **Send <n> answers to <agent>**, on
   once each question has a choice, own words that are not blank, or Skip, with "<k> of <n>
   answered" beside it until then; it posts the tab in one request (`POST …/answers`), and
@@ -1158,10 +1178,19 @@ Built in the layout task (2026-10-03, schema 14):
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
   (Flow events in Look of the feed), the kinds shown as lines named in one list in the UI
   (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_answer` is not in it, the human's move stands for
-  it); and behind the switch **Show agent
-  messages** (off by default, remembered in the browser) the agents' messages to each
-  other. The chat shows a window of messages (Message windows above): the latest 50 with
-  the human, with the switch on the latest 50 of all; the switch changes the window.
+  it); and behind the toggle **Messages between agents** (not pressed by default,
+  remembered in the browser) the agents' messages to each other. The toggle is an icon
+  button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
+  muted unpressed, the pressed team chip's border with the icon in the action colour when
+  `aria-pressed`), its name the same in both states; the UI's tooltip says the state and
+  what a click does: "Messages between agents: hidden" / "Click to also show what agents
+  write to each other.", pressed "Messages between agents: shown" / "Click to show only
+  your conversation with the agents." (decided 2026-10-15, LAD-77: the checkbox "Show
+  agent messages" did not say what it adds and its label made the chips wrap in a narrow
+  column; mockups `task/lad-77/mockup-placement.html` variant Б and
+  `task/lad-77/mockup-agent-messages.html` for the texts). The chat shows a window of
+  messages (Message windows above): the latest 50 with the human, with the toggle pressed
+  the latest 50 of all; the toggle changes the window.
   A message's text shows as Message text in Look of the feed says. The feed takes the
   page's height and scrolls by itself, the composer under it.
 - **Pages of the chat** (feature/chat-paging, the human's choice 2026-10-04: loaded by
@@ -1418,10 +1447,11 @@ and worktrees), so "renaming" a session gives it a **title**, a label over the n
 (mockup `task/lad-66/mockup-rename.html`, variant A, both entry points; renaming the
 identifier itself was turned down for its cost). The title is `SessionInfo.title`, set by
 `PUT /api/sessions/{name}/title` or `lado title`, through the core's one rule
-(`runtime.set_title`: one line, at most `Limits.max_title`, 80, characters after the trim;
-empty or equal to the name is no title; a bad one is refused, never cut). It comes through
-the change feed, so a title set anywhere shows without a reload. The UI names a session
-through one function (`sessionLabel.ts`: the title, else the name).
+(`runtime.set_title`: one line of visible text, `lado.text`, at most `Limits.max_title`,
+80, characters after the trim; empty or equal to the name is no title; a bad one is
+refused, never cut). It comes through the change feed, so a title set anywhere shows
+without a reload. The UI names a session through one function (`sessionLabel.ts`: the
+title, else the name).
 
 Where it shows:
 
@@ -1711,7 +1741,8 @@ checks.
 ### Activity
 
 A session's tab: the chat with the human (The human in the session, above), flow
-transitions as they happen, agent-to-agent messages behind a switch; the team as chips;
+transitions as they happen, agent-to-agent messages behind the toggle Messages between
+agents; the team as chips;
 the selected agent's terminal on the right. Built (Layout task); the notes of each step
 are in Flows.
 
@@ -1756,7 +1787,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   from and to it, only in its lifetime (a name is used again: one request,
   `agent=<name>&since=<spawned_at>&limit=10`; the server and the feed's rule filter, the
   page does not), and
-  **All in Activity**, which turns Show agent messages on.
+  **All in Activity**, which presses Messages between agents.
 - **Finish…** asks in a dialog with what the preview says: the branch and worktree go,
   or, for a worker of a run that keeps its worktree, only its window closes. A refusal
   shows its reason and **Discard work…**, which asks again with what is lost (commits not

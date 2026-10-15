@@ -26,6 +26,29 @@
   `LADO_SSH_AGENT` without root's group. compose now refuses to start without the
   `secrets` folder: `mkdir -m 700 secrets` next to compose.yaml. The headers say how
   Claude Code, OpenCode and Kilo log in.
+- A tab of the web UI closed or reloaded the very moment its clone shows running now
+  cancels the clone at once too; before, the server cancelled it only after 150 s.
+- The fields of the web UI's waiting card where the human writes, an own answer, a
+  skip's comment and a gate's comment for the next step, open 3 lines high and grow with
+  the text up to 8 lines, then scroll inside, like the composer. They have no resize
+  handle any more, which grew a field under the Send button and off the screen; while
+  the human types, the field's lower edge stays in view.
+- The web UI's waiting card no longer cuts the focus ring of a gate's comment field on
+  its left side, nor the ring of an own answer or of a question the human came to from
+  the feed: the ring shows whole on every side, and nothing in the card moves.
+- The UI's Activity tab: the checkbox "Show agent messages" is now a small icon at the end
+  of the team's row, "Messages between agents", whose tooltip says whether the messages
+  agents write to each other are shown and what a click does; the agents' chips no longer
+  wrap for it in a narrow column.
+- One-line texts may hold no hidden characters: a session's title, an agent's message
+  summary, question and choices, `note_summary` and artifact title or summary are refused
+  when they hold a line or paragraph separator, a bidi control (U+202A–U+202E,
+  U+2066–U+2069) or a zero-width character (U+200B, U+FEFF), as they were for control
+  characters, and the error names it (`a title is one line of visible text: U+202E
+  RIGHT-TO-LEFT OVERRIDE is not allowed`); an emoji joined by U+200D stays. The human's
+  chat message, gate comment, `lado flow-set` reason and uploaded file name are cleaned of
+  them for their one-line form, and the whole text stays in the body (a `lado flow-set`
+  note now keeps the whole reason too).
 - Upgrade: schema 29, restart running sessions after the update (lado update does it).
 
 ## 0.39.0 (2026-10-15)

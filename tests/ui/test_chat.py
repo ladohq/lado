@@ -874,9 +874,9 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
     settles_at(page, other_card, 230)
     page.goto(f"{server['url']}/sessions/{session}")
     expect(card.get_by_role("tabpanel")).to_be_visible()
-    # The keys move it by steps.
+    # The keys move it by steps, after a click on the edge.
     laid_out(edge)
-    edge.focus()
+    edge.click()
     page.keyboard.press("ArrowUp")
     settles_at(page, card, 270)
     # A double click: the stylesheet's height, half the chat.

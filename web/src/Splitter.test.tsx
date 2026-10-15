@@ -177,6 +177,14 @@ test("a press on the edge selects no text and starts no drag of the browser's ow
   expect(fireEvent.pointerDown(splitter(), { clientY: 600 })).toBe(false); // default prevented
 });
 
+// The prevented default takes the browser's focus on a press away, so the press gives it.
+test("a press on the edge focuses it, so the arrow keys work after a click", () => {
+  render(<Column edge="right" />);
+  fireEvent.pointerDown(splitter(), { clientX: 600 });
+  fireEvent.pointerUp(splitter());
+  expect(document.activeElement).toBe(splitter());
+});
+
 test("the side edges take no up and down keys", () => {
   render(<Column edge="right" />);
   fireEvent.keyDown(splitter(), { key: "ArrowUp" });

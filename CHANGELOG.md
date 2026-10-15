@@ -21,7 +21,9 @@
   keeps its Update… button: the page's wait ends once the update has released its lock.
 - In a container (`LADO_CONTAINER`, which LADO's Docker image will set), `lado update` and
   the UI's update refuse at once, stopping nothing, and name the way to update there:
-  `docker compose pull && docker compose up -d` on the host. `lado doctor`, the System
+  `docker tag "$(docker compose images -q lado)" lado:previous && docker compose pull &&
+  docker compose up -d` on the host, which keeps the image you ran as `lado:previous` for
+  the way back. `lado doctor`, the System
   panel (a `container` mark beside the version) and the system info for an issue say that
   LADO runs in a container.
 - In a container the UI server no longer warns that it is open to other machines: it notes

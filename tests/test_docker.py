@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from lado import update
+
 ROOT = Path(__file__).parents[1]
 DOCKER = ROOT / "docker"
 DOCKERFILE = (DOCKER / "Dockerfile").read_text()
@@ -275,6 +277,19 @@ def way_back() -> list[str]:
 
 def test_the_compose_header_keeps_a_name_for_the_image_before_an_update():
     assert keep_previous() == f'docker tag "$(docker compose images -q lado)" {PREVIOUS}'
+
+
+def test_lados_own_update_hint_is_the_compose_headers_update():
+    """`lado ls`, `lado doctor`, `lado update`'s refusal and the System panel name the same
+    commands as the header, the image kept as lado:previous first."""
+    keep, update_step = header_steps("Before you update, keep a name")
+    assert update.CONTAINER_UPDATE == f"{keep} && {update_step}"
+
+
+def test_the_compose_header_says_to_keep_lado_image_after_going_back():
+    """A later `up -d` without it would start the newer image, which migrates again."""
+    header = " ".join(line.lstrip("#").strip() for line in COMPOSE_TEXT.splitlines())
+    assert "keep LADO_IMAGE=lado:previous set (in .env next to this file)" in header
 
 
 def test_the_compose_header_says_how_to_go_back_to_the_backup():

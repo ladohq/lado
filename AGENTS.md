@@ -349,8 +349,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     UI's `GET /api/update` alike; the file keeps the kind it looked for, `pre`, and one of
     the other kind, or without the key for a pre-release, is stale;
     `LADO_NO_UPDATE_CHECK=1`: no look and no line; in a container it names
-    `CONTAINER_UPDATE`, `docker compose pull && docker compose up -d`, instead of `lado
-    update`: `available_line`), whether LADO runs in its container (`in_container`:
+    `CONTAINER_UPDATE`, `docker tag "$(docker compose images -q lado)" lado:previous &&
+    docker compose pull && docker compose up -d`, the two update commands of
+    docker/compose.yaml's header (`tests/test_docker.py`), instead of `lado update`:
+    `available_line`), whether LADO runs in its container (`in_container`:
     `LADO_CONTAINER` set, not empty, not `0`, which only the image sets; never guessed from
     `/.dockerenv`; the one answer for the CLI, `lado doctor`'s LADO line and report (its
     `Server:` line says `in a container` instead of loopback or open to the network), and

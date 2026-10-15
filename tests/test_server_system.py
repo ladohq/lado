@@ -182,7 +182,10 @@ def test_update_in_a_container_names_the_image_and_cannot_update(client, install
     info = ok(client.get("/api/update"))
     assert (info["container"], info["can_update"], info["available"]) == (True, False, NEW)
     assert info["why_not"] == "LADO runs in a container: a new image updates it, not lado update"
-    assert info["by_hand"] == ["docker compose pull && docker compose up -d"]
+    assert info["by_hand"] == [
+        'docker tag "$(docker compose images -q lado)" lado:previous && '
+        "docker compose pull && docker compose up -d"
+    ]
 
 
 def test_the_update_is_refused_in_a_container_before_pypi(

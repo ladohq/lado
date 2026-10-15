@@ -32,6 +32,9 @@
 #   LADO_IMAGE=lado:previous docker compose run --rm lado sh -c 'cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp backups/lado.db.schema-<N> lado.db'
 #   LADO_IMAGE=lado:previous docker compose up -d
 #
+# Then keep LADO_IMAGE=lado:previous set (in .env next to this file) until you update
+# again, and remove it before the update's commands: an `up -d` without it starts the
+# newer image, which upgrades lado.db again; a pull with it finds no lado:previous to pull.
 name: lado
 
 services:

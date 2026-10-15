@@ -26,6 +26,11 @@ Tests first in each section; each task is one commit.
 - [x] 3.1 `docker/compose.yaml` header (D5); `tests/test_docker.py` checks the block
   names `lado.db.schema-` and `LADO_IMAGE`.
 
+- [x] 3.2 Keeping `lado:previous` (review of PR #58): the header keeps the running image
+  as `lado:previous` before `docker compose pull` and goes back by that name, says to keep
+  `LADO_IMAGE` set after going back, and `update.CONTAINER_UPDATE` is the header's update
+  commands (`tests/test_docker.py`); the tests that pin its text follow it.
+
 ## 4. Container tests
 
 - [x] 4.1 Helper: a home volume seeded with a `lado.db` made on the host (D6).

@@ -167,7 +167,8 @@ def test_the_refusals_name_an_agent_and_another_install(install, tmp_path, monke
 
 CONTAINER_LINE = (
     "lado: LADO runs in a container: a new image updates it, not lado update; "
-    "on the host: docker compose pull && docker compose up -d\n"
+    'on the host: docker tag "$(docker compose images -q lado)" lado:previous && '
+    "docker compose pull && docker compose up -d\n"
 )
 
 

@@ -47,10 +47,13 @@ applies `MIGRATIONS` (`state.migrate`) neither keeps a copy nor says how to go b
 
 Changed: `src/lado/state.py` (`migrate`: the backup and the result), `src/lado/runtime.py`
 (`migrate_if_safe` and `stop_all`'s migration: the line, the failure's message),
-`docker/compose.yaml` (header); tests `tests/test_state.py` / `tests/test_runtime.py` (or
-the files that test `migrate` and `migrate_if_safe`), `tests/container/` (a new test file);
-AGENTS.md (Layout: `state.py`'s schema changes, `docker/`), CHANGELOG.md. Capabilities:
-new `schema-migration`; `container` gains a requirement. No schema change, no MCP tool, no
+`docker/compose.yaml` (header), `src/lado/update.py` (`CONTAINER_UPDATE`: the header's
+update commands, the image kept as `lado:previous` first); tests `tests/test_state.py` /
+`tests/test_runtime.py` (or the files that test `migrate` and `migrate_if_safe`),
+`tests/container/` (a new test file), the tests that pin `CONTAINER_UPDATE`'s text;
+AGENTS.md (Layout: `state.py`'s schema changes, `docker/`, `update.py`), CHANGELOG.md,
+docs/design/ui.md. Capabilities: new `schema-migration`; `container` gains a requirement
+and three of its requirements name the new update command. No schema change, no MCP tool, no
 CLI option. Version: a feature, so a minor; 0.39.0 is unreleased and a minor already, so
 it goes into 0.39.0's notes with no further bump.
 

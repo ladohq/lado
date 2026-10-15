@@ -1480,8 +1480,9 @@ M2, P1–P3 of round 3, F3 and U1–U3).
   why (`why_not`) and shows the commands by hand with Copy, and no button; with
   `can_update` false for another reason (an update runs) it says that reason. In a
   container (LAD-59, mockup `task/lad-59/mockup-container.html`, option A) it says why
-  (a new image updates LADO) and shows `docker compose pull && docker compose up -d`
-  under `On the host:` instead of `By hand:`, with Copy and no button.
+  (a new image updates LADO) and shows `update.CONTAINER_UPDATE` (`docker tag "$(docker
+  compose images -q lado)" lado:previous && docker compose pull && docker compose up -d`,
+  the image you ran kept for the way back; LAD-71) under `On the host:` instead of `By hand:`, with Copy and no button.
 - **In a container** (`UpdateInfo.container`, `LADO_CONTAINER`): a grey `container` pill
   beside `LADO X.Y.Z` in the header, its tooltip saying a new image updates it; from
   `UpdateInfo`, which the header has first, not the slower `/api/system`.

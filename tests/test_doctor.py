@@ -305,7 +305,8 @@ def test_lado_check_says_lado_runs_in_a_container(published, monkeypatch):
         "LADO",
         doctor.WARN,
         "0.38.0, in a container",
-        "LADO 0.39.0 is available: docker compose pull && docker compose up -d",
+        'LADO 0.39.0 is available: docker tag "$(docker compose images -q lado)" lado:previous'
+        " && docker compose pull && docker compose up -d",
     )
     monkeypatch.setenv("LADO_NO_UPDATE_CHECK", "1")
     assert doctor.check_lado() == doctor.Check(

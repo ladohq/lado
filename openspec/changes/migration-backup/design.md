@@ -46,7 +46,12 @@ update: `docker tag "$(docker compose images -q lado)" lado:previous`, then `doc
 pull && docker compose up -d`. The way back uses that name: `docker compose down`;
 `LADO_IMAGE=lado:previous docker compose run --rm lado sh -c 'cd ~/.lado && rm -f
 lado.db-wal lado.db-shm && cp backups/lado.db.schema-<N> lado.db'`; `LADO_IMAGE=lado:previous
-docker compose up -d` (after a failed migration the last alone). The container test runs
+docker compose up -d` (after a failed migration the last alone), and says to keep
+`LADO_IMAGE=lado:previous` set (in `.env`) until the next update, removed before it.
+LADO's own update hint in a container, `update.CONTAINER_UPDATE` (`lado ls`, `lado
+doctor`, `lado update`'s refusal, the System panel's `by_hand`), is the header's two update
+commands joined by `&&`, so whoever updates by LADO's word keeps `lado:previous` too; a
+test holds both the same. The container test runs
 these commands, the tag of this run's prefix in place of `lado:previous` and the image
 under test as the one kept, and checks the schema of `lado.db` and the image that runs.
 

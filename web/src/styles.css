@@ -754,6 +754,7 @@ h3 {
   width: 8px;
   cursor: col-resize;
   touch-action: none;
+  user-select: none;
 }
 
 .splitter::after {
@@ -772,6 +773,27 @@ h3 {
 
 .splitter:focus-visible {
   outline: none;
+}
+
+/* The edge above a block (Splitter's "top": the waiting card's): in the flow of its column,
+   8 px high over the column's gaps, the line across it. */
+.splitter-top {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  flex: none;
+  width: auto;
+  height: 8px;
+  cursor: row-resize;
+}
+
+.splitter-top::after {
+  top: 3px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: auto;
+  height: 2px;
 }
 
 .sessions > .splitter {
@@ -3447,6 +3469,61 @@ h3 {
   color: var(--ink);
 }
 
+/* Minimize (in a session's chat only) and Expand, side by side at the right of the tabs. */
+.waiting-actions {
+  display: flex;
+  flex: none;
+  align-self: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.waiting-actions .waiting-expand {
+  margin-left: 0;
+}
+
+/* The edge above the card in a session's chat (Splitter's "top"): in the chat's gap over
+   the card, taking no room of its own. */
+.waiting-card > .splitter-top {
+  margin: -9px 0 1px;
+}
+
+/* Minimized: its tabs, none shown, and the shown tab's question on one muted line on the
+   "waits for you" ground; a click on it restores the card. */
+.waiting-line {
+  display: block;
+  width: 100%;
+  padding: 9px 16px;
+  overflow: hidden;
+  border: 1px solid var(--human);
+  border-radius: 0 10px 10px 10px;
+  background: var(--human-ground);
+  color: var(--muted);
+  font: 14px var(--sans);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.waiting-line:hover {
+  color: var(--ink);
+}
+
+/* The height the human gave it by its edge (--waiting-height, WaitingCard.tsx): its panel
+   and list fill it. Not on a narrow window, which scrolls and has no edge. */
+@media (min-width: 901px) {
+  .chat > .waiting-card.sized {
+    height: var(--waiting-height);
+    max-height: none;
+  }
+
+  .waiting-card.sized .waiting-panel,
+  .waiting-card.sized .waiting-list {
+    flex: 1;
+  }
+}
+
 .waiting-panel {
   display: flex;
   flex-direction: column;
@@ -4399,7 +4476,8 @@ h3 {
   /* The page's columns stack: their edges go. The artifact panel, drawn inside the session
      page, keeps its own. */
   .terminals > .splitter,
-  .sessions > .splitter {
+  .sessions > .splitter,
+  .waiting-card > .splitter-top {
     display: none;
   }
 }
@@ -7402,6 +7480,20 @@ del.kit-mcp-name {
   height: 2.5px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+
+/* On a top edge the grip lies across it, its dots in a row. */
+.splitter-top .splitter-grip {
+  top: -1px;
+  left: 50%;
+  flex-direction: row;
+  width: 34px;
+  height: 10px;
+  margin: 0 0 0 -17px;
+}
+
+.splitter-top[data-dragging]::after {
+  background: var(--action);
 }
 
 .artifact-panel > .splitter[data-dragging]::after {

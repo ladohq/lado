@@ -3,7 +3,7 @@ import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { columnWidth, FakeResizeObserver } from "./fakes";
-import { fitWidth, Splitter, useWidth } from "./Splitter";
+import { fitWidth, Splitter, useHeight, useWidth } from "./Splitter";
 
 const BOUNDS = { initial: 300, min: 200, max: 500 };
 
@@ -12,8 +12,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// A column with the splitter on its `edge`; what it changes is kept as `changed`.
-function Column({ edge, start = 300 }: { edge: "left" | "right"; start?: number }) {
+// A column with the splitter on its `edge` (a block's height for "top"); what it changes is
+// kept as its width.
+function Column({ edge, start = 300 }: { edge: "left" | "right" | "top"; start?: number }) {
   const [width, setWidth] = useState(start);
   return (
     <div data-testid="column" style={{ width }}>
@@ -111,6 +112,86 @@ test("a double click puts the width back to its default", () => {
   expect(width()).toBe(300);
 });
 
+test("a splitter that resets itself calls onReset on a double click instead", () => {
+  const changed = vi.fn();
+  const reset = vi.fn();
+  render(
+    <Splitter label="Resize the column" edge="top" width={450} bounds={BOUNDS} onChange={changed} onReset={reset} />,
+  );
+  fireEvent.doubleClick(splitter());
+  expect([changed.mock.calls, reset.mock.calls.length]).toEqual([[], 1]);
+});
+
+test("a top edge is horizontal: up makes its block taller, by the keys and by the pointer's y", () => {
+  render(<Column edge="top" />);
+  expect(splitter().getAttribute("aria-orientation")).toBe("horizontal");
+  expect(splitter().className).toContain("splitter-top");
+  expect(splitter().title).toBe("Resize the column: drag, or double-click for the default height");
+  fireEvent.keyDown(splitter(), { key: "ArrowUp" });
+  expect(width()).toBe(340);
+  fireEvent.keyDown(splitter(), { key: "ArrowDown" });
+  fireEvent.keyDown(splitter(), { key: "ArrowDown" });
+  expect(width()).toBe(260);
+  fireEvent.keyDown(splitter(), { key: "ArrowLeft" }); // not its keys
+  fireEvent.keyDown(splitter(), { key: "ArrowRight" });
+  expect(width()).toBe(260);
+  fireEvent.pointerDown(splitter(), { clientX: 500, clientY: 600 });
+  fireEvent.pointerMove(splitter(), { clientX: 100, clientY: 550 });
+  expect(width()).toBe(310);
+  fireEvent.pointerMove(splitter(), { clientX: 100, clientY: 900 });
+  expect(width()).toBe(200);
+  fireEvent.pointerUp(splitter());
+  fireEvent.doubleClick(splitter());
+  expect(width()).toBe(300);
+});
+
+test("a drag says so to onChange and calls onEnd when let go or cancelled; the keys are no drag", () => {
+  const changed: [number, boolean | undefined][] = [];
+  const ended = vi.fn();
+  render(
+    <Splitter
+      label="Resize the column"
+      edge="top"
+      width={300}
+      bounds={BOUNDS}
+      onChange={(value, dragging) => changed.push([value, dragging])}
+      onEnd={ended}
+    />,
+  );
+  fireEvent.keyDown(splitter(), { key: "ArrowUp" });
+  fireEvent.pointerDown(splitter(), { clientY: 600 });
+  fireEvent.pointerMove(splitter(), { clientY: 590 });
+  expect(ended).not.toHaveBeenCalled();
+  fireEvent.pointerUp(splitter());
+  fireEvent.pointerDown(splitter(), { clientY: 600 });
+  fireEvent.pointerCancel(splitter());
+  expect(changed).toEqual([
+    [340, false],
+    [310, true],
+  ]);
+  expect(ended).toHaveBeenCalledTimes(2);
+});
+
+test("a press on the edge selects no text and starts no drag of the browser's own", () => {
+  render(<Column edge="top" />);
+  expect(fireEvent.pointerDown(splitter(), { clientY: 600 })).toBe(false); // default prevented
+});
+
+// The prevented default takes the browser's focus on a press away, so the press gives it.
+test("a press on the edge focuses it, so the arrow keys work after a click", () => {
+  render(<Column edge="right" />);
+  fireEvent.pointerDown(splitter(), { clientX: 600 });
+  fireEvent.pointerUp(splitter());
+  expect(document.activeElement).toBe(splitter());
+});
+
+test("the side edges take no up and down keys", () => {
+  render(<Column edge="right" />);
+  fireEvent.keyDown(splitter(), { key: "ArrowUp" });
+  fireEvent.keyDown(splitter(), { key: "ArrowDown" });
+  expect(width()).toBe(300);
+});
+
 // A box measured by useWidth that is drawn only once `shown`: first something else is.
 function Measured({ shown }: { shown: boolean }) {
   const [ref, width] = useWidth<HTMLDivElement>();
@@ -133,6 +214,24 @@ test("useWidth measures an element drawn after the first render, and the one tha
   columnWidth(1000); // laid out at once, as it is observed
   render(<Measured shown />);
   expect(screen.getByTestId("box").textContent).toBe("width 1000");
+});
+
+// A box measured by useHeight.
+function Tall() {
+  const [ref, height] = useHeight<HTMLDivElement>();
+  return (
+    <div ref={ref} data-testid="box">
+      {height === null ? "not measured" : `height ${height}`}
+    </div>
+  );
+}
+
+test("useHeight measures an element's height", () => {
+  columnWidth(null);
+  render(<Tall />);
+  expect(screen.getByTestId("box").textContent).toBe("not measured");
+  FakeResizeObserver.resize(() => 700, () => 420);
+  expect(screen.getByTestId("box").textContent).toBe("height 420");
 });
 
 test("a column is narrowed to the room there is, but never under its least width", () => {

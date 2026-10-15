@@ -306,6 +306,9 @@ test("an open question is one line in the feed whose arrow leads to its tab; it 
   // The card stands between the feed and the composer.
   const section = screen.getByRole("region", { name: "Chat" });
   expect([...section.children].map((one) => one.className.split(" ")[0])).toEqual(["chat-feed", "waiting-card", "composer"]);
+  // In the chat it minimizes, and the edge above it resizes it.
+  expect(within(card).getByRole("button", { name: "Minimize the card" })).toBeTruthy();
+  expect(within(card).getByRole("separator", { name: "Resize the card" })).toBeTruthy();
   scrolled.mockClear();
   fireEvent.click(within(line).getByRole("button", { name: "Answer question #5" }));
   await waitFor(() => expect(card.querySelector('[data-item="5"]')?.className).toContain("marked"));
@@ -967,6 +970,28 @@ const gateTab = async () => within(await waitingCard()).findByRole("tabpanel");
 function gateChanged(item: GateInfo) {
   return { kind: "gates", session: "lado", key: String(item.id), op: "update", item };
 }
+
+test("a card minimized before a reload stays so while the session's gates still load after its questions", async () => {
+  localStorage.setItem("lado.waitingMinimized.lado", JSON.stringify(["gate:1", "agent:w1"]));
+  const { fetch } = serve([question(5)], undefined, [], [gate(1)]);
+  let release = () => {};
+  const gatesLater = new Promise<void>((resolve) => (release = resolve));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.startsWith("/api/sessions/") && path.endsWith("/gates")) await gatesLater;
+      return fetch(path, init);
+    }),
+  );
+  open();
+  const card = await waitingCard();
+  await within(card).findByRole("tab", { name: "w1 1" });
+  expect(card.classList.contains("minimized")).toBe(true);
+  release();
+  await within(card).findByRole("tab", { name: "feature/x 1" });
+  expect(card.classList.contains("minimized")).toBe(true);
+  expect(JSON.parse(localStorage.getItem("lado.waitingMinimized.lado") ?? "null")).toEqual(["gate:1", "agent:w1"]);
+});
 
 test("an open gate is a line in the feed and a tab of the card: its question, the note that led to it and the artifacts it reads", async () => {
   serve([], undefined, [], [gate(1)]);

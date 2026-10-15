@@ -130,6 +130,20 @@ export const ExpandIcon = ({ expanded }: { expanded: boolean }) => (
   </Icon>
 );
 
+// A line low in the square, as a window's minimize: the waiting card to one line.
+export const MinimizeIcon = () => (
+  <Icon>
+    <path d="M6 17h12" />
+  </Icon>
+);
+
+// A window: a minimized waiting card back whole.
+export const RestoreIcon = () => (
+  <Icon>
+    <rect x="5" y="7" width="14" height="11" rx="2" />
+  </Icon>
+);
+
 export const CollapseIcon = ({ collapsed }: { collapsed: boolean }) => (
   <Icon>
     <rect x="3.5" y="4.5" width="17" height="15" rx="2" />

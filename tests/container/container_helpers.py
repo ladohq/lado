@@ -27,9 +27,14 @@ def new_name() -> str:
 
 
 def docker(*args: str, check: bool = True, timeout: float = 120, **kw):
-    return subprocess.run(
-        ["docker", *args], capture_output=True, text=True, check=check, timeout=timeout, **kw
-    )
+    """`docker <args>`; with `check`, a failure raises with docker's own words (stderr),
+    which a CalledProcessError's message leaves out."""
+    done = subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout, **kw)
+    if check and done.returncode != 0:
+        raise AssertionError(
+            f"docker {' '.join(args)}: exit {done.returncode}\n{done.stderr}{done.stdout}"
+        )
+    return done
 
 
 def free_port() -> int:

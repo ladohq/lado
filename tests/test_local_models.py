@@ -127,6 +127,27 @@ def test_the_opencode_config_has_lmstudio_and_the_model():
     assert model["limit"]["context"] == 65536
 
 
+@pytest.mark.parametrize("provider", ["opencode", "kilo"])
+@pytest.mark.parametrize(
+    "given, expected",
+    [(None, "http://127.0.0.1:1234/v1"), ("http://127.0.0.1:9/", "http://127.0.0.1:9/v1")],
+)
+def test_opencode_and_kilo_reach_lmstudio_under_v1(
+    monkeypatch, tmp_path, provider, given, expected
+):
+    if given is None:
+        monkeypatch.delenv("LADO_LIVE_LMSTUDIO_URL", raising=False)
+    else:
+        monkeypatch.setenv("LADO_LIVE_LMSTUDIO_URL", given)
+    model = f"lmstudio/{MODEL}"
+    variables = local_models.write_lmstudio_config(provider, model, tmp_path)
+    [(name, path)] = variables.items()
+    assert name == local_models.CONFIG_VARIABLES[provider]
+    config = json.loads(open(path).read())
+    assert config["model"] == model
+    assert config["provider"]["lmstudio"]["options"]["baseURL"] == expected
+
+
 def test_the_opencode_config_of_another_provider_has_only_the_model():
     config = local_models.opencode_config("opencode/big-pickle", "http://127.0.0.1:1234")
     assert config == {"model": "opencode/big-pickle"}

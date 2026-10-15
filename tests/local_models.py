@@ -161,6 +161,14 @@ def write_endpoint_config(provider: str, model: str, folder: Path) -> dict[str, 
     return {CONFIG_VARIABLES[provider]: str(path)}
 
 
+def write_lmstudio_config(provider: str, model: str, folder: Path) -> dict[str, str]:
+    """Write OpenCode's or Kilo's config for LM Studio in `folder`, at its OpenAI-compatible
+    API under /v1. The variables to set."""
+    path = folder / f"{provider}-config.json"
+    path.write_text(json.dumps(opencode_config(model, f"{lmstudio_url()}/v1")))
+    return {CONFIG_VARIABLES[provider]: str(path)}
+
+
 class BridgeError(Exception):
     pass
 

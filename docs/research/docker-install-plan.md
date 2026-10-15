@@ -172,7 +172,7 @@ a real model in the container work. Learned:
 
 **T5.** Merged into T4 (LAD-69).
 
-**T6a. A new image on an old volume: `lado.db` migrated with a backup** (S; LAD-71)
+**T6a. A new image on an old volume: `lado.db` migrated with a backup** (S; LAD-71, done: pull request #58)
 `lado server` already migrates `lado.db` at the container's start (tmux is empty after a
 restart, so no session runs), but with no backup: only `lado update` makes one, and it is
 refused in a container. Before the migration LADO backs `lado.db` up as `lado update`
@@ -181,6 +181,15 @@ old image with the backup. A blocker before publishing (T7): the first image upd
 a release must work.
 Check: a test of the container layer: a volume with an old schema, the new image starts,
 the database is migrated, the backup is there, the UI answers, the old sessions show.
+Result: the backup is taken before every migration of `lado.db`, in or out of a container
+(`state.migrate`, the one place migrations run): `backups/lado.db.schema-<N>`, one kept. A
+backup that cannot be written stops the migration; a failed migration rolls back and says
+in one message what failed, where the backup is and how to go back. The update in a
+container became two steps: the image before is tagged `lado:previous` (after `docker
+compose pull` it has no name otherwise), then `pull` and `up -d`; LADO's own hint says the
+same, and the compose file's header has the steps back. Left for T7: `lado:previous` is
+one name per machine, so a second compose project overwrites it (G2); a stale hint in a
+fixture of `web/src/SystemPanel.test.tsx` (H2).
 
 **T6b. Stopping and resuming the container's sessions** (M)
 On `docker stop` LADO records the sessions that ran and stops them properly (the agents'
@@ -193,10 +202,23 @@ runs again".
 
 ### Stage 2. A programmer can use it (from the documentation)
 
-**T7. Publishing the image to GHCR in the release workflow** (S/M)
+**T7. Publishing the image to GHCR in the release workflow** (S/M; LAD-73; done before
+T6b)
 `ghcr.io/ladohq/lado:<version>` and `latest`, two architectures, through `GITHUB_TOKEN`,
-no new secrets. The tags leave room for images with other agents.
-Check: `docker pull` on a Mac and on Linux after a release candidate.
+no new secrets. The tags leave room for images with other agents. Built from the wheel
+the release puts on PyPI and run through the container tests before it is pushed; a
+release candidate gets its own tag only, `latest` only a final release. Compose takes the
+published image by default. The update and the way back go by version tags: with a
+version in `LADO_IMAGE` the image before always has a name, so `lado:previous` (T6a,
+one per machine) can go, and several containers on one host update apart. LADO's
+update hint (`update.CONTAINER_UPDATE`) and the compose header change together; H2 of
+LAD-71 fixed on the way. Moved before T6b: T6a removed the blocker, T6b is a comfort
+(sessions resume by hand from the UI after a restart), the first image can come with
+the release 0.39.0, and a published image spares the checks by hand `make docker` from a
+branch.
+Check: `docker pull` on a Mac and on Linux after a release candidate; an update to another
+version and back by the compose header keeps the sessions; two containers on one host
+update apart.
 
 **T8. Section "Install with Docker" in docs/install.md and a ready compose file** (S)
 Decided here, with T7: which way the documentation leads with, `docker run` or compose
@@ -267,7 +289,7 @@ Check: on a Mac a double click opens the UI.
 
 ```
 T1, T2 ──┐
-         ├─> T3 ─> T4 (with T5) ─> T6a ─> T6b ─> T7 ─> T8 ─> T11
+         ├─> T3 ─> T4 (with T5) ─> T6a ─> T7 ─> T6b ─> T8 ─> T11
          │          └─> T9, T10 (after T3)
 T12, T13: independent of the image (useful for the usual install too)
 T14: after T7

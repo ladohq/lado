@@ -13,7 +13,8 @@
 #
 # LADO_PORT (8765) is the server's port in the container and the one published on this
 # computer's loopback, always the same number. LADO_IMAGE, when set, runs another image
-# instead of the version's (lado:local, which `make docker` builds).
+# instead of the version's (lado:local, which `make docker` builds); an older Compose
+# still asks for LADO_VERSION beside it.
 #
 # To update, set the new LADO_VERSION in .env, then (compose pulls that version's image):
 #

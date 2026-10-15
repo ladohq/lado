@@ -63,6 +63,7 @@ def folder(request, tmp_path):
                 "COMPOSE_PROJECT_NAME": project,
                 "LADO_PORT": str(free_port()),
                 "LADO_IMAGE": tag,
+                "LADO_VERSION": "test",  # asked for by Compose v2 also beside LADO_IMAGE
                 "LADO_PROJECTS": str(projects),
             },
         )

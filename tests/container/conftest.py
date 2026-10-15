@@ -160,6 +160,8 @@ def compose(request, tmp_path) -> Compose:
     env = {
         **os.environ,
         "LADO_IMAGE": IMAGE,
+        # Compose v2 (GitHub's runners) asks for LADO_VERSION also when LADO_IMAGE wins.
+        "LADO_VERSION": "test",
         "LADO_PORT": str(port),
         "LADO_PROJECTS": str(tmp_path),
     }

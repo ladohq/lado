@@ -69,10 +69,10 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     right = panel.bounding_box()
     assert right["x"] >= chat["x"] + chat["width"]  # beside the chat, not under it
     assert right["height"] > 600  # the page's height
-    # The switch stays on the team's row: the feed keeps its height.
-    switch = page.get_by_role("checkbox", name="Show agent messages").bounding_box()
+    # The toggle stays on the team's row: the feed keeps its height.
+    toggle = page.get_by_role("button", name="Messages between agents").bounding_box()
     first = chips.first.bounding_box()
-    assert switch["y"] < first["y"] + first["height"]
+    assert toggle["y"] < first["y"] + first["height"]
     shot(page, "terminal")
 
     chips.first.click()  # back to the supervisor's tab; w1's keeps its socket
@@ -82,6 +82,43 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     )
     panel.get_by_role("tab", name="w1").click()
     expect(view.locator(".term")).to_have_attribute("data-link", "open")
+
+
+def test_three_chips_and_the_toggle_stand_on_one_line_beside_the_open_terminal(
+    page: Page, server, repo, shot
+):
+    """The chat column narrow, as the terminal panel opens beside it: the agents' three chips
+    and the toggle Messages between agents stay on the team's first line (LAD-77, AC-4)."""
+    session = running_session(repo)
+    for name in ("analyst", "developer"):
+        runtime.spawn_worker(session, f"Work as {name}", name=name)
+    for name in ("analyst", "developer"):
+        agent_helpers.wait_for(
+            lambda name=name: state.get_agent(session, name).status == state.IDLE,
+            f"{name} idle",
+            session,
+        )
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = page.get_by_role("complementary", name="Terminals")
+    expect(panel.get_by_role("tabpanel", name="supervisor").locator(".term")).to_have_attribute(
+        "data-link", "open"
+    )
+    chips = page.get_by_role("group", name="Team").get_by_role("button")
+    expect(chips).to_have_count(3)
+    toggle = page.get_by_role("button", name="Messages between agents")
+    expect(toggle).to_have_attribute("aria-pressed", "false")
+    column = page.get_by_role("region", name="Chat").bounding_box()
+    assert column["width"] <= 484  # narrow: the terminal panel takes the rest
+    first = chips.first.bounding_box()
+    line = first["y"] + first["height"]
+    last = chips.last.bounding_box()
+    box = toggle.bounding_box()
+    assert last["y"] < line  # the last chip did not wrap
+    assert box["y"] < line  # nor did the toggle
+    assert box["x"] >= last["x"] + last["width"]  # at the row's end
+    assert box["x"] + box["width"] <= column["x"] + column["width"]
+    shot(page)
 
 
 BUILD = """\
@@ -165,7 +202,10 @@ def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_t
     plain = team.get_by_role("button").first.bounding_box()
     # In the team's own wrapping row, after the supervisor's chips.
     assert frame.evaluate("e => e.parentElement.getAttribute('aria-label')") == "Team"
-    assert frame.bounding_box()["y"] >= plain["y"]
+    # On their line now that the toggle is small (LAD-77), the taller frame centred on it.
+    box = frame.bounding_box()
+    assert box["y"] + box["height"] >= plain["y"] + plain["height"]
+    assert box["x"] > plain["x"]
 
     chip.click()
     expect(chip).to_have_attribute("aria-pressed", "true")

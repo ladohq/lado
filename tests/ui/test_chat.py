@@ -499,7 +499,22 @@ def test_each_message_says_its_text_once_runs_are_groups_and_replies_are_in_the_
     expect(cards.nth(0).locator(".question-answer .chat-body")).to_have_text("closest to Slack")
     expect(cards.nth(1).locator(".chosen")).to_have_text("✓ yes")
     expect(cards.nth(1).locator(".question-answer")).not_to_contain_text("yes")
-    page.get_by_role("checkbox", name="Show agent messages").check()
+    toggle = page.get_by_role("button", name="Messages between agents")
+    expect(toggle).to_have_attribute("aria-pressed", "false")
+    toggle.hover()
+    expect(page.get_by_role("tooltip")).to_contain_text("Messages between agents: hidden")
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-toggle-tooltip", full_page=False)  # the pointer stays on it
+    page.emulate_media(color_scheme="light")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    page.mouse.move(0, 0)
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        shot(page, f"{theme}-toggle-pressed")
+    page.emulate_media(color_scheme="light")
     between = chat.get_by_role("article", name="Message from supervisor to w1")
     expect(between.locator("summary")).to_contain_text("please review the branch")
     assert chat.evaluate("feed => feed.scrollWidth <= feed.clientWidth")  # no sideways scroll

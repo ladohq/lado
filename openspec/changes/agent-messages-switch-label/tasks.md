@@ -23,7 +23,7 @@
 
 ## 2. Tests in the browser
 
-- [ ] 2.1 `tests/ui/test_chat.py`: the button instead of the checkbox; before clicking
+- [x] 2.1 `tests/ui/test_chat.py`: the button instead of the checkbox; before clicking
   it, hover it, expect the tooltip's "Messages between agents: hidden", and save a
   screenshot (`shot`), then one with it pressed, light and dark. `tests/ui/test_layout.py`
   (the terminal panel open, the column narrow): the button is on the chips' first line

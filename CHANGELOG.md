@@ -11,6 +11,10 @@
   resumed stays stopped with the reason in `docker logs` and is not tried again. Each
   resumed supervisor takes one model turn at the start and starts the workers its open
   flow runs need. Outside a container nothing changes. lado.db goes to schema 29.
+- The UI's Activity tab: the checkbox "Show agent messages" is now a small icon at the end
+  of the team's row, "Messages between agents", whose tooltip says whether the messages
+  agents write to each other are shown and what a click does; the agents' chips no longer
+  wrap for it in a narrow column.
 - Upgrade: schema 29, restart running sessions after the update (lado update does it).
 
 ## 0.39.0 (2026-10-15)

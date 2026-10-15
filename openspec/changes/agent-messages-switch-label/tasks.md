@@ -32,13 +32,13 @@
 
 ## 3. Docs
 
-- [ ] 3.1 `docs/design/ui.md`: the Activity tab's paragraph describes the button
+- [x] 3.1 `docs/design/ui.md`: the Activity tab's paragraph describes the button
   (Messages between agents, its icon, pressed look, the tooltip's texts; decided
   2026-10-15, LAD-77, mockups `task/lad-77/mockup-placement.html` variant Б and
   `task/lad-77/mockup-agent-messages.html` for the texts), and the agent's page's **All
   in Activity** presses Messages between agents. `grep -rn "Show agent messages"` over
   `web/src`, `tests`, `docs/design` finds nothing. Check: read through against the code.
-- [ ] 3.2 `CHANGELOG.md` under `## 0.40.0 (unreleased)`: a line: the Activity tab's
+- [x] 3.2 `CHANGELOG.md` under `## 0.40.0 (unreleased)`: a line: the Activity tab's
   "Show agent messages" checkbox is now a small icon at the end of the team's row,
   "Messages between agents", with a tooltip that says what it shows; the agents' chips
   no longer wrap for it.

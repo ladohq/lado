@@ -139,8 +139,8 @@ needs it. Checked by the human on a Mac: two containers side by side, each UI in
 browser tab. Not checked: a Linux host with a uid other than 1000 (T4), Claude Code's
 login and a real model in the container (T8, T10).
 
-**T4. The host's projects folder: the same path and the same owner** (M; LAD-69; T4
-and T5 of the first plan in one task)
+**T4. The host's projects folder: the same path and the same owner** (M; LAD-69, done: pull
+request #56; T4 and T5 of the first plan in one task)
 The projects folder is mounted at the same path as on the host, and `LADO_REPOS` names it
 (compose from `LADO_PROJECTS`; `docker run` with the host's path and the variable);
 `safe.directory` for it. On Docker Engine (Linux) the entrypoint gives the user `lado`
@@ -153,15 +153,43 @@ commits into the host's folder; on the host `git -C <the worker's worktree> stat
 works and `git worktree list` says no `prunable`; on the Linux runner the files an agent
 makes belong to the runner's user; a container made again with another uid works with the
 same home volume. By hand on a Mac: a session in the UI in a project of that folder.
+Result: `docker/entrypoint.sh` gives `lado` the projects owner's uid and gid once, at the
+first start (a one-shot sudo rule, then `setpriv`); hardened starts (`no-new-privileges`,
+`--cap-drop ALL`, `--read-only`) keep uid 1000 with a warning. The human's check by hand
+on a Mac passed in full, a real agent with Claude Code's login included: so the login and
+a real model in the container work. Learned:
+- The check by hand was hard to get through: an image built from another branch, compose
+  run outside `docker/`, `LADO_PROJECTS` set in another terminal, `~/...` typed in the
+  UI's folder field (in the container `~` is `/home/lado`). A user will trip the same way
+  (T8, T14).
+- Not checked: rootless Docker, Podman, seccomp, AppArmor, SELinux, where the entrypoint's
+  root step may fail and the container not start (T11).
+- Open minor findings: `docker run --user root --cap-drop ALL` does not start (F12); an
+  owner change that half failed is not tried again (F13). Both rare and loud: documented
+  in T8.
+- `/opt` stays uid 1000's after the uid changes: an agent's global install (`npm i -g`,
+  `uv tool install`) fails on a Linux host (T9).
 
 **T5.** Merged into T4 (LAD-69).
 
-**T6. Stopping and resuming the container's sessions** (M)
+**T6a. A new image on an old volume: `lado.db` migrated with a backup** (S; LAD-71)
+`lado server` already migrates `lado.db` at the container's start (tmux is empty after a
+restart, so no session runs), but with no backup: only `lado update` makes one, and it is
+refused in a container. Before the migration LADO backs `lado.db` up as `lado update`
+does; a failed migration says in `docker logs` what happened and how to go back to the
+old image with the backup. A blocker before publishing (T7): the first image update after
+a release must work.
+Check: a test of the container layer: a volume with an old schema, the new image starts,
+the database is migrated, the backup is there, the UI answers, the old sessions show.
+
+**T6b. Stopping and resuming the container's sessions** (M)
 On `docker stop` LADO records the sessions that ran and stops them properly (the agents'
 config folders removed, `lado doctor` without warnings); when the container starts it
-resumes them. Also: a new image on an old volume migrates `lado.db` with a backup.
-Check: tests of the container layer: "session, `docker compose down`, `up`, the session
-runs again"; "an old schema on the volume".
+resumes them. Today a restart shows them as "tmux session is gone", resumed by hand from
+the UI. Needs its own design: what `docker stop` means, which sessions resume, what of
+the workers.
+Check: a test of the container layer: "session, `docker compose down`, `up`, the session
+runs again".
 
 ### Stage 2. A programmer can use it (from the documentation)
 
@@ -175,12 +203,17 @@ Decided here, with T7: which way the documentation leads with, `docker run` or c
 (the image needs no file since LAD-64), and so which update line LADO prints in a
 container (now `docker compose pull && docker compose up -d`, from T1).
 Download the compose file, one command, Claude Code's login, open the UI; how to remove it.
+From LAD-69's check by hand: one command to start, with no "go to this folder and set this
+variable in this terminal" (an `.env` file beside the compose file, or the launcher); the
+UI in a container warns when a session's folder is outside `LADO_REPOS` (the host does
+not see it); F12 and F13 described.
 Check: the human follows the instructions from scratch on a clean volume.
 
 **T9. Project toolchains through mise** (S)
 mise in the image, its shims on the login shell's PATH, its data on the home volume; in
 the agents' instructions: "a tool is missing: install it through mise from the project's
-files".
+files". Tools go to the home volume, never `/opt`, which stays uid 1000's after T4's uid
+change.
 Check: an agent in the container installs Go from `.tool-versions` by itself and builds
 the project; after the container is made again, Go is still there.
 
@@ -191,8 +224,10 @@ in the container, in the documentation.
 Check: an agent runs `git push` to a test remote and `gh api user`, with no manual step
 but the login.
 
-**T11. A check on Windows** (S, manual)
-Docker Desktop with WSL2, the whole scenario of T8, a speed measurement (section 5).
+**T11. A check on Windows and on a real Linux** (S, manual)
+Docker Desktop with WSL2, the whole scenario of T8, a speed measurement (section 5). On a
+real Linux host: Docker Engine, rootless Docker, and Podman where possible, with SELinux
+or AppArmor on (LAD-69's "Not checked").
 Check: a report with figures and screenshots; what is found goes into tasks of its own.
 
 > After stage 2 the Docker install works for someone not afraid of a terminal. A good
@@ -232,7 +267,7 @@ Check: on a Mac a double click opens the UI.
 
 ```
 T1, T2 ──┐
-         ├─> T3 ─> T4 (with T5) ─> T6 ─> T7 ─> T8 ─> T11
+         ├─> T3 ─> T4 (with T5) ─> T6a ─> T6b ─> T7 ─> T8 ─> T11
          │          └─> T9, T10 (after T3)
 T12, T13: independent of the image (useful for the usual install too)
 T14: after T7

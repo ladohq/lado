@@ -14,6 +14,16 @@
 #   docker compose -p lado-2 exec lado lado ui --no-open
 #
 # LADO_IMAGE names the image (lado:local, which `make docker` builds).
+#
+# A new image upgrades the home volume's lado.db at its start, after a copy of it in
+# ~/.lado/backups/lado.db.schema-<N>, N its schema before (`docker compose logs lado`
+# names it). An older image refuses the upgraded lado.db. Back to the image you had before,
+# <older>, with that copy (what LADO did since the upgrade is lost):
+#
+#   docker compose down
+#   LADO_IMAGE=<older> docker compose run --rm lado sh -c 'cd ~/.lado && rm -f lado.db-wal lado.db-shm && cp backups/lado.db.schema-<N> lado.db'
+#   LADO_IMAGE=<older> docker compose up -d
+#
 name: lado
 
 services:

@@ -23,7 +23,7 @@ Tests first in each section; each task is one commit.
 
 ## 3. Compose's way back
 
-- [ ] 3.1 `docker/compose.yaml` header (D5); `tests/test_docker.py` checks the block
+- [x] 3.1 `docker/compose.yaml` header (D5); `tests/test_docker.py` checks the block
   names `lado.db.schema-` and `LADO_IMAGE`.
 
 ## 4. Container tests

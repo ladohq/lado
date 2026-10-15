@@ -197,9 +197,12 @@ def test_the_entrypoint_goes_on_without_root():
     assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
+COMPOSE_TEXT = (DOCKER / "compose.yaml").read_text()
+
+
 @pytest.fixture(scope="module")
 def compose() -> dict:
-    return yaml.safe_load((DOCKER / "compose.yaml").read_text())
+    return yaml.safe_load(COMPOSE_TEXT)
 
 
 def test_compose_publishes_one_port_number_on_loopback(compose):
@@ -242,6 +245,25 @@ def test_the_compose_headers_commands_all_have_the_projects_folder():
             commands += 1
             assert exported or "LADO_PROJECTS=" in line, line
     assert commands >= 4
+
+
+def way_back() -> list[str]:
+    """The commands of compose.yaml's header that go back to the image before, in order:
+    the lines after `Back to the image you had before` up to the next empty one."""
+    lines = [line.lstrip("#").strip() for line in COMPOSE_TEXT.splitlines()]
+    start = next(i for i, line in enumerate(lines) if "Back to the image you had before" in line)
+    end = next(i for i in range(start, len(lines)) if not lines[i])
+    first = next(i for i in range(end + 1, len(lines)) if lines[i])
+    return lines[first : lines.index("", first)]
+
+
+def test_the_compose_header_says_how_to_go_back_to_the_backup():
+    down, restore, up = way_back()
+    assert down == "docker compose down"
+    assert restore.startswith("LADO_IMAGE=<older> docker compose run --rm lado sh -c '")
+    assert "rm -f lado.db-wal lado.db-shm" in restore
+    assert "cp backups/lado.db.schema-<N> lado.db" in restore
+    assert up == "LADO_IMAGE=<older> docker compose up -d"
 
 
 def test_compose_mounts_nothing_only_docker_desktop_has(compose):

@@ -14,9 +14,9 @@ Every task merges straight into `main`, with no epic.
 | Question | Decision |
 |---|---|
 | Platforms of the first version | Mac and Linux. Windows is a manual check with a speed measurement (T11); until then it is not called supported |
-| Image | One image with Claude Code only (~1 GB instead of 2.5). The other CLIs later, as tasks of their own |
+| Image | One image with Claude Code only (~1 GB instead of 2.5). The other CLIs later, as tasks of their own. Changed 2026-10-15 (the human): one image with all four CLIs (~2.5 GB), from T7 on; mixed sessions (a worker on another CLI than the supervisor) work in one container |
 | Project path | The host's path |
-| Codex | Not in the first version (follows from an image with Claude only) |
+| Codex | Not in the first version (follows from an image with Claude only). Changed 2026-10-15: in the image from T7, as a CLI installed; its ChatGPT login reaching the agents is T15, later (the human: no Codex debugging now) |
 | Epic | None; each task goes straight into `main` |
 
 ## 1. What the research showed (short)
@@ -210,7 +210,11 @@ the release puts on PyPI and run through the container tests before it is pushed
 release candidate gets its own tag only, `latest` only a final release. Compose takes the
 published image by default. The update and the way back go by version tags: with a
 version in `LADO_IMAGE` the image before always has a name, so `lado:previous` (T6a,
-one per machine) can go, and several containers on one host update apart. LADO's
+one per machine) can go, and several containers on one host update apart.
+The image holds all four agent CLIs at their pins (`scripts/smoke_ci.py`'s `PINS`), the
+human's decision of 2026-10-15: OpenCode and Kilo worked in the prototype (H5); Codex is
+installed only, its login is T15. If adding the three CLIs slows T7 down (build time,
+container tests), they go to a task of their own right after it. LADO's
 update hint (`update.CONTAINER_UPDATE`) and the compose header change together; H2 of
 LAD-71 fixed on the way. Moved before T6b: T6a removed the blocker, T6b is a comfort
 (sessions resume by hand from the UI after a restart), the first image can come with
@@ -274,8 +278,11 @@ Check: on a Mac a double click opens the UI.
 
 ### Stage 4. Later
 
-- **Other CLIs in the image**: OpenCode and Kilo (they worked in the prototype, H5; low
-  risk); Codex: first carrying its login into the agents (S/M, needed without Docker too).
+- **T15. Codex's login reaches the agents** (S/M): LADO carries Codex's `auth.json` into
+  each agent's `CODEX_HOME` (BACKLOG.md, "Codex agents cannot log in"; research 5.1),
+  needed without Docker too; checked live with the human's Codex account (2026-10-15).
+  Then a Codex session in the container, by hand. Not now: the human does not want to
+  debug Codex yet.
 - **Projects in a Docker volume** (M/L): faster and better isolated, but needs a UI for
   files and diffs.
 - **LADO as a Dev Container Feature** (M).

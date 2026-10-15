@@ -100,6 +100,32 @@ def schema(volume: str) -> int:
     return int(done.stdout.strip())
 
 
+def sessions(volume: str) -> dict[str, tuple[bool, bool]]:
+    """Each session of lado.db in the home volume `volume`: whether it is stopped and whether
+    it is marked to resume at the container's start. Read as schema() reads, with no LADO
+    running on the volume."""
+    done = docker(
+        "run", "--rm", "-u", "0", "--entrypoint", PYTHON, "-v", f"{volume}:/home/lado", IMAGE,
+        "-c",
+        "import json, sqlite3; db = sqlite3.connect("
+        "'file:/home/lado/.lado/lado.db?immutable=1', uri=True); "
+        "print(json.dumps({n: [s is not None, bool(m)] for n, s, m in db.execute("
+        "'SELECT name, stopped_at, resume_at_start FROM sessions')}))",
+        check=False,
+    )  # fmt: skip
+    assert done.returncode == 0, done.stdout + done.stderr
+    return {name: tuple(row) for name, row in json.loads(done.stdout).items()}
+
+
+def on_volume(volume: str, script: str) -> None:
+    """`script` in sh as lado (uid 1000) with the home volume `volume` at /home/lado, no
+    LADO running on it."""
+    docker(
+        "run", "--rm", "-u", "1000", "--entrypoint", "sh", "-v", f"{volume}:/home/lado",
+        IMAGE, "-c", script,
+    )  # fmt: skip
+
+
 def remove_container(name: str, home: str | None = None) -> None:
     docker("rm", "-f", name, check=False)
     docker("volume", "rm", home or f"{name}-home", check=False)
@@ -138,15 +164,36 @@ ENDPOINT_PORT = 8399  # the fake model API, on the container's own loopback
 KEY = "container-fake-key-0123456789abcdef"  # no account's key: the endpoint takes none
 
 
-def claude_session(container: Container, repo: str, session: str = "smoke") -> None:
-    """A Claude Code session of LADO on `repo` in `container`, against the fake model API on
-    the container's own loopback; returns once its supervisor is idle."""
+def fake_endpoint(container: Container) -> None:
+    """The fake model API on the container's own loopback, started (again: a container's
+    start runs only its command) and answering."""
     endpoint = str(ROOT / "tests" / "fake_endpoint.py")
     docker("cp", endpoint, f"{container.name}:/tmp/fake_endpoint.py")
     docker(
         "exec", "-d", container.name, PYTHON, "-I", "/tmp/fake_endpoint.py",
         str(ENDPOINT_PORT), "/tmp/endpoint.jsonl",
     )  # fmt: skip
+    deadline = time.monotonic() + 30
+    probe = f"import socket; socket.create_connection(('127.0.0.1', {ENDPOINT_PORT}), 1)"
+    while container.exec(PYTHON, "-c", probe, check=False).returncode != 0:
+        if time.monotonic() > deadline:
+            raise AssertionError("the fake model API did not answer in the container")
+        time.sleep(0.2)
+
+
+def git_repo(container: Container, path: str) -> None:
+    """A repository with one commit at `path` in the container, lado's."""
+    container.sh(
+        f"git init -q -b main {path} && git -C {path} -c user.name=lado "
+        "-c user.email=lado@example.com commit -q --allow-empty -m first"
+    )
+
+
+def claude_session(container: Container, repo: str, session: str = "smoke", *more: str) -> None:
+    """A Claude Code session of LADO on `repo` in `container`, against the fake model API on
+    the container's own loopback; returns once its supervisor is idle. Claude Code trusts
+    the `more` repositories too, for the sessions start_claude starts there after."""
+    fake_endpoint(container)
     # Claude Code pointed at it through the login shell, as a human gives a token; its
     # first-run screens, the bypass mode's disclaimer and the repository's trust done.
     container.sh(
@@ -163,10 +210,16 @@ def claude_session(container: Container, repo: str, session: str = "smoke") -> N
             {
                 "hasCompletedOnboarding": True,
                 "bypassPermissionsModeAccepted": True,
-                "projects": {repo: {"hasTrustDialogAccepted": True}},
+                "projects": {r: {"hasTrustDialogAccepted": True} for r in (repo, *more)},
             }
         ),
     )
+    start_claude(container, repo, session)
+
+
+def start_claude(container: Container, repo: str, session: str) -> None:
+    """Another Claude Code session in a container claude_session set up; returns once its
+    supervisor is idle."""
     started = container.exec(
         "lado", "start", repo, "--name", session, "--provider", "claude",
         "--permission-mode", "bypassPermissions", "--no-attach", check=False,

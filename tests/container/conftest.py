@@ -93,18 +93,22 @@ def projects_volume(request):
 
 @pytest.fixture
 def old_home(request, tmp_path, monkeypatch):
-    """`old_home(volume=None, broken=False)`: a home volume (by default a new name of this
-    run's prefix) whose lado.db has the schema before this LADO's and a stopped session
-    "old", made on the host by this checkout's own lado.state, as the image's LADO is; with
+    """`old_home(volume=None, broken=False, running=False)`: a home volume (by default a new
+    name of this run's prefix) whose lado.db has the schema before this LADO's and a
+    session "old", stopped unless `running` (then as a container killed while it ran left
+    it), made on the host by this checkout's own lado.state, as the image's LADO is; with
     `broken` the schema's number is set back but the last step's change is there, so the
     migration fails. Its schema before, and the volume, removed after the test."""
 
-    def make(volume: str | None = None, broken: bool = False) -> tuple[str, int]:
+    def make(
+        volume: str | None = None, broken: bool = False, running: bool = False
+    ) -> tuple[str, int]:
         volume = volume or f"{new_name()}-home"
         request.addfinalizer(lambda: docker("volume", "rm", "-f", volume, check=False))
         monkeypatch.setenv("LADO_HOME", str(tmp_path / f"host-{volume}"))
         state.add_session(state.Session("old", "/home/lado/repo", None, "claude"))
-        state.stop_session("old")
+        if not running:
+            state.stop_session("old")
         before = state.SCHEMA_VERSION - 1
         if broken:
             with state.connect() as db:

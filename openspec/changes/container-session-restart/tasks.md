@@ -42,14 +42,14 @@ Tests first in each section; each task is one commit. The plan with the code is
 - [x] 5.1 `tests/test_docker.py`, then the headers of `docker/compose.yaml` and
   `docker/Dockerfile` (sessions follow the container, the model turn). `uv run pytest
   tests/test_docker.py -n0`.
-- [ ] 5.2 `tests/container/test_sessions.py`: compose down/up with a hand-stopped session
+- [x] 5.2 `tests/container/test_sessions.py`: compose down/up with a hand-stopped session
   beside, `docker kill`/start, three sessions within ten seconds, a new image migrates then
   resumes (`old_home(running=True)`); `test_two_lados.py`: down of one leaves the other's
   session (D11, D12). `make docker && make test-container`.
 
 ## 6. Documents and regression
 
-- [ ] 6.1 AGENTS.md (Layout, Commands) and CHANGELOG.md under the version open in main.
+- [x] 6.1 AGENTS.md (Layout, Commands) and CHANGELOG.md under the version open in main.
 - [ ] 6.2 Regression: `make lint`, `make test`, the changed integration files with `-m
   integration`, `openspec validate --specs --strict`, `make docker && make
   test-container`; CI's `ci-ok` on the pull request.

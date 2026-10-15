@@ -184,7 +184,17 @@ it), runs `ghcr.io/ladohq/lado:<LADO_VERSION>` with it and `LADO_IMAGE` when tha
 Two LADOs (`test_two_lados.py`): two compose projects, each a folder of its own with a copy
 of compose.yaml and its own `.env` (`COMPOSE_PROJECT_NAME`, `LADO_PORT`, `LADO_IMAGE` a tag
 of the run's prefix, `LADO_PROJECTS`), no `-f` or `-p`; a new image reference in the first's
-`.env` and its `up -d` leave the second's container id, start time and image as they were.
+`.env` and its `up -d` leave the second's container id, start time and image as they were;
+`docker compose down` of the first leaves the second's session running, its supervisor the
+same process, and its `lado.db` with no session stopped.
+The sessions (`test_sessions.py`): `docker compose stop` with a Claude Code session and one
+stopped by hand exits 0 with the stop's line naming only the first, both stopped in
+`lado.db` and only the first marked; `start` (and `down`, then `up -d`) resumes it with the
+resumed line and its supervisor idle, the other stays stopped, and `lado doctor` warns about
+no agent config folder; `docker kill`, then `docker start`, resumes it too; three sessions
+stop within Docker's default ten seconds with exit 0, all marked; a new image on a home
+volume with a session not stopped (`old_home(running=True)`) prints the upgrade line before
+the resumed line.
 The projects (`test_projects.py`): with the test's
 folder mounted at its own path, a worker spawned in the container commits in its worktree,
 and on the host `git status` works there, `git worktree list` has no `prunable`, the file
@@ -975,6 +985,13 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     characters; empty or equal to the name is none; a bad one is refused, never cut), for
     `lado title` and `PUT /api/sessions/{name}/title` alike; `SessionInfo.title` carries
     it, through the existing journal of `sessions`, and `Limits.max_title` the limit.
+    From schema 29 a session keeps whether the container's stop stopped it,
+    `sessions.resume_at_start` (`SESSIONS_RESUME_AT_START`; not in the API):
+    `state.stop_for_container` marks every session not stopped as `stop_session` does, with
+    the mark, in one transaction (its `session_stop` detail ends `; the container
+    stopped`), `resume_session` clears it in the update that takes the session, and
+    `give_up_resume` clears it, stopping a session not stopped (`session_gone` first);
+    `resumable` lists the marked and the not stopped ones.
   - `fingerprint.py`: a read-only agent's git fingerprint (Read-only roles, below): `take`
     (HEAD and checked-out branch of its worktree, the session repo's current branch, tags,
     stash, each changed or new file not ignored and not under `.lado/` with its content's
@@ -1100,7 +1117,18 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
     there prints the link and `OPEN_ON_HOST` and opens no browser),
     the background start and stop (`stop` returns once the server's process has ended, not
     only its lock: `_gone` reaps a child of its own), server.log's bound (`rotate` at a background start,
-    `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). `static/`:
+    `housekeeping`'s `bound_log` and `telemetry.kick` every `KICK_EVERY`). Only in a
+    container (`update.in_container()`), the sessions go with the server (openspec change
+    container-session-restart): `app.Server.shutdown` first sets `app.state.stopping`
+    and runs `runtime.stop_for_container` (mark every running session, then kill each
+    one's tmux session, close its viewers, remove its config folders; nothing without
+    lado.db), before `Hub.close` and uvicorn's wait, so open streams cannot eat Docker's
+    grace period, and prints `lado: the container stops: stopped sessions ...` on stderr;
+    `serve`, once the socket listens, starts `run.resume_sessions`, a thread that runs
+    `runtime.resume_at_start`: the marked sessions and those not stopped whose tmux is
+    gone, one at a time, by `start_session(resume=True, reason=runtime.AT_START)`, a line
+    each on stderr, a failure given up (`state.give_up_resume`), nothing more once
+    `stopping` is set. Outside a container neither runs. `static/`:
     the built bundle, git-ignored. A session's status (`lado ls`, the API) comes from
     `runtime.session_status`, how long it ran from `runtime.session_time`: spans from its
     `created_at` or a `session_resume` to the next `session_gone` or `session_stop` (an end
@@ -1175,6 +1203,10 @@ schema migration, the patch for fixes and docs only. The rest: [docs/release.md]
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
   `DISABLE_AUTOUPDATER`, `LANG`; `LADO_REPOS` is the entrypoint's `lado-repos.sh`).
+  The sessions go with the container (`server/`, above): its stop stops them with a mark,
+  and its start resumes them after the migration; tini sends the stop's SIGTERM to `lado
+  server`, its one child, and the default grace period is kept (no `stop_grace_period`).
+  Both headers say so, with the supervisor's model turn per resumed session.
   `compose.yaml`: the same image, `ghcr.io/ladohq/lado:${LADO_VERSION}` (required, no
   default: the tag of a version never moves, so the image before an update keeps its name;
   `LADO_IMAGE` replaces it, `lado:local` and the tests), one `LADO_PORT` both inside and

@@ -21,6 +21,15 @@
   to go back (in a container: the image of the version you ran before on the same home
   volume). `docker/compose.yaml`'s header gives the steps back after a migration that
   succeeded.
+- LADO's container takes its sessions with it: `docker compose down` or `stop`, `docker
+  stop`, or Docker's own end stops every running session as `lado stop` would (`docker
+  logs`: `lado: the container stops: stopped sessions "app"; they resume at its start`),
+  and the container's next start, after a new image's migration too, resumes them, as it
+  does the sessions of a container that was killed (`lado: resumed session "app" at the
+  container's start`). Sessions stopped by hand stay stopped; a session that cannot be
+  resumed stays stopped with the reason in `docker logs` and is not tried again. Each
+  resumed supervisor takes one model turn at the start and starts the workers its open
+  flow runs need. Outside a container nothing changes. lado.db goes to schema 29.
 - A session can have a title, shown in the UI over its name (the list, the head, the
   browser tab, Needs you and notifications), the name small beside it: set it with the
   pencil in the session's head, Rename… in the session list's ⋯, or `lado title <session>

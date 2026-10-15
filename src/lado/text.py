@@ -39,11 +39,10 @@ def refusal(char: str) -> str:
 def one_line(text: str) -> str:
     """`text` with each hidden Cf character removed and each other one made a space, its
     ends stripped."""
-    kept = []
-    for char in text:
-        if hidden(char):
-            if unicodedata.category(char) != "Cf":
-                kept.append(" ")
-        else:
-            kept.append(char)
-    return "".join(kept).strip()
+    return "".join(_cleaned(char) for char in text).strip()
+
+
+def _cleaned(char: str) -> str:
+    if not hidden(char):
+        return char
+    return "" if unicodedata.category(char) == "Cf" else " "

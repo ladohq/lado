@@ -1,16 +1,16 @@
 ## 1. The LM Studio config of the test
 
-- [ ] 1.1 `tests/local_models.py`: `write_lmstudio_config(provider, model, folder)` writes
+- [x] 1.1 `tests/local_models.py`: `write_lmstudio_config(provider, model, folder)` writes
   `<folder>/<provider>-config.json` with `opencode_config(model, f"{lmstudio_url()}/v1")`
   and returns `{CONFIG_VARIABLES[provider]: str(path)}`, as `write_endpoint_config` does
   for the endpoint. Check: `uv run pytest -n0 tests/test_local_models.py`.
-- [ ] 1.2 `tests/test_local_models.py`: for `kilo` and `opencode`, with
+- [x] 1.2 `tests/test_local_models.py`: for `kilo` and `opencode`, with
   `LADO_LIVE_LMSTUDIO_URL` unset and set to `http://127.0.0.1:9/`, the returned variable is
   the CLI's, the file's `model` is the given one and
   `provider.lmstudio.options.baseURL` is `http://127.0.0.1:1234/v1` and
   `http://127.0.0.1:9/v1`. Check: red once against a `write_lmstudio_config` that drops
   `/v1`, then green with `uv run pytest -n0 tests/test_local_models.py`.
-- [ ] 1.3 `tests/live/conftest.py`: the LM Studio branch of `live_provider` for OpenCode
+- [x] 1.3 `tests/live/conftest.py`: the LM Studio branch of `live_provider` for OpenCode
   and Kilo sets the variables `write_lmstudio_config` returns, with no inline config left.
   Check: `make lint`, `uv run pytest -m live --collect-only -q tests/live` collects.
 

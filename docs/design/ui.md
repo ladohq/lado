@@ -607,7 +607,9 @@ Sessions for now. The UI's texts are in English.
   360 px: in a narrower window the list and the panel are drawn narrower, but their chosen
   widths stay remembered for a wider window. A drag captures the pointer, so it goes on
   over an iframe and ends on the release or a cancel. The artifact panel's edge is the
-  same component (Artifacts, The panel).
+  same component (Artifacts, The panel), and so is the edge above the waiting card in a
+  session's chat (The waiting card, Height): `edge="top"`, horizontal, a `row-resize`
+  cursor, ↑ / ↓, the pointer's y, its grip's dots in a row (since LAD-54).
 - **The window never scrolls** on a wide window: `html` and `body` do not scroll or bounce
   (`overflow: hidden`, `overscroll-behavior: none`) and the frame is the window's height;
   only regions inside scroll (the session list, the feed, the session's column, a page's
@@ -918,7 +920,40 @@ Built in the chat task (2026-10-03):
   which answer at once. **Look**: the panel on `--human-ground` in a 1 px `--human` frame,
   radius `0 10px 10px 10px`; the shown tab lies on it, tinted with 10 % of its colour, its
   text `--ink` 600; the others `--raised` and `--muted`. **Height**: at most half the
-  chat's; the list scrolls inside, the tabs and the Send row stay in view. An icon button
+  chat's; the list scrolls inside, the tabs and the Send row stay in view. In a session's
+  chat on a window wider than 900 px, the edge above the card is a splitter (decided
+  2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
+  card could not be made smaller, and the human talking a gate over with the supervisor
+  read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
+  card a height from its least one (`WAITING_MIN`, 166 px: its head, two lines of its list
+  and its Send row) to the room it shares with the feed less the feed's 160 px
+  (`FEED_MIN`); a double click forgets it, back to the stylesheet's half. The height is one
+  value for every session, as the columns' widths are (`lado.waitingHeight`); a chat too
+  short for it shows the card lower and keeps the chosen height. Dragged down past the
+  least height, the card stays at it and minimizes (below) when the edge is let go, while
+  the edge still holds the pointer, so the release lands on no line or tab of the
+  minimized card (`Splitter`'s `onEnd`); ↓ past it minimizes at once. The card keeps its
+  height for the restore. No edge
+  while the card is minimized or expanded, on Needs you, or on a narrow window, whose page
+  scrolls. **Minimize** (LAD-54, screens 2 and 2a: the pair of icons): in a session's chat
+  only, an icon button left of the expand one, in its style, "Minimize the card" (a line,
+  `MinimizeIcon`). Minimized, the card is its tabs, none shown, and one button-line on the
+  "waits for you" ground with the shown tab's first item's question (a gate's question, an
+  agent's first question), muted, cut with an ellipsis: no answer buttons, choices or
+  fields; the icon is "Restore the card" (a window, `RestoreIcon`; `aria-expanded`). That
+  icon or the line restores it, the focus then on Minimize; a tab restores it and shows
+  itself. The browser keeps, per session, the keys of the tabs the card had when it was
+  minimized (`lado.waitingMinimized.<session>`): it stays minimized, also across a reload,
+  while each tab it shows is one of them, so a new tab (a new gate, an agent with no tab
+  asking) restores it with no event to watch and the shown tab the human's, and a question
+  added to a tab that is there leaves it minimized (the tab's count says so). A restore
+  forgets the keys. Once the chat has both its open questions and its gates loaded, the
+  keys narrow to the tabs there are and go with the last one (never earlier: the gates may
+  load after the questions), so an agent whose tab went away has a new tab when it asks
+  again (review of LAD-54, F1). Expanding a minimized card shows it whole, and folding it brings it
+  back minimized. Minimizing changes nothing of what waits: Needs you's count and the
+  notifications are as before, and Needs you shows the card whole, with neither control.
+  An icon button
   at the right of the tabs (`ExpandIcon`, no text; "Expand the card", the UI's Tooltip;
   `aria-expanded`) shows it in its place over its page's area, never over the whole
   window, nothing dimmed, no modal (decided 2026-10-13, LAD-48, mockup

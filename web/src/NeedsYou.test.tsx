@@ -213,6 +213,17 @@ test("what waits shows by session: its name, In the chat, its waiting card, then
   expect(within(w2).queryByRole("link")).toBeNull();
 });
 
+test("Needs you shows a card minimized in its chat whole, with no minimize icon and no edge", async () => {
+  localStorage.setItem("lado.waitingMinimized.lado", JSON.stringify(["gate:1"]));
+  waiting = [waits.gate("lado", gate(1))];
+  open();
+  const lado = await card("lado");
+  expect(lado.classList.contains("minimized")).toBe(false);
+  expect(within(lado).getByRole("tabpanel")).toBeTruthy();
+  expect(within(lado).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
+  expect(within(lado).queryByRole("separator")).toBeNull();
+});
+
 test("a titled session's line shows its title, then its name in grey; the links keep the name", async () => {
   sessions = [session("lado", undefined, { title: "Ревью kit-sdlc" }), session("api")];
   waiting = [waits.gate("lado", gate(1)), waits.question("api", question(5))];

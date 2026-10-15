@@ -14,10 +14,15 @@ import {
   storedFlowsGroups,
   storedSessionGroups,
   storeFlowsGroups,
+  storedMinimized,
   storedSessionsList,
+  storedWaitingHeight,
+  storeMinimized,
   storePanel,
   storeSessionGroups,
   storeSessionsList,
+  storeWaitingHeight,
+  WAITING_MIN,
 } from "./prefs";
 
 function narrow(matches: boolean) {
@@ -149,6 +154,33 @@ test("Take control asks until the human says not to ask again", () => {
   expect(storedAskControl()).toBe(false);
 });
 
+test("the waiting card's height is one value, none at first; a broken one is none", () => {
+  expect(storedWaitingHeight()).toBeNull();
+  storeWaitingHeight(230);
+  expect(localStorage.getItem("lado.waitingHeight")).toBe("230");
+  expect(storedWaitingHeight()).toBe(230);
+  storeWaitingHeight(null); // back to the default
+  expect(localStorage.getItem("lado.waitingHeight")).toBeNull();
+  for (const bad of ["tall", "", String(WAITING_MIN - 1), "-5", "Infinity"]) {
+    localStorage.setItem("lado.waitingHeight", bad);
+    expect(storedWaitingHeight()).toBeNull();
+  }
+});
+
+test("the minimized waiting card's tabs are kept per session, and dropped", () => {
+  expect(storedMinimized("lad-46")).toBeNull();
+  storeMinimized("lad-46", ["gate:812", "agent:supervisor"]);
+  expect(localStorage.getItem("lado.waitingMinimized.lad-46")).toBe('["gate:812","agent:supervisor"]');
+  expect(storedMinimized("lad-46")).toEqual(["gate:812", "agent:supervisor"]);
+  expect(storedMinimized("docs-site")).toBeNull();
+  storeMinimized("lad-46", null);
+  expect(localStorage.getItem("lado.waitingMinimized.lad-46")).toBeNull();
+  for (const bad of ["{", '{"a":1}', '["gate:1",2]', "null", "3"]) {
+    localStorage.setItem("lado.waitingMinimized.lad-46", bad);
+    expect(storedMinimized("lad-46")).toBeNull();
+  }
+});
+
 test("without browser storage every default holds and nothing breaks", () => {
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
     throw new Error("denied");
@@ -156,6 +188,15 @@ test("without browser storage every default holds and nothing breaks", () => {
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw new Error("denied");
   });
+  vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+    throw new Error("denied");
+  });
+  storeWaitingHeight(230);
+  storeWaitingHeight(null);
+  storeMinimized("lad-46", ["gate:812"]);
+  storeMinimized("lad-46", null);
+  expect(storedWaitingHeight()).toBeNull();
+  expect(storedMinimized("lad-46")).toBeNull();
   storePanel({ width: 600, collapsed: true });
   storeSessionsList({ width: 300, collapsed: true });
   storeAskControl(false);

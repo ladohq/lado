@@ -37,6 +37,10 @@
 - Selecting text in the UI shows a small bar to copy it or quote it into the composer; a
   quote from an artifact names it and its lines. Code blocks and messages have a copy
   button that shows on hover.
+- UI: in a session's chat the waiting card can be minimized to one line, so the chat has
+  the room while you talk a gate over with the supervisor; it comes back by itself when
+  something new waits. Its top edge can be dragged to give it another height. Both are
+  remembered in the browser.
 
 ## 0.38.0 (2026-10-14)
 

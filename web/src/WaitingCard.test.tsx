@@ -9,8 +9,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GateInfo, MessageInfo, RecommendationInfo, RunInfo } from "./api";
 import { avatar } from "./FeedRow";
-import { FakeEventSource } from "./fakes";
+import { columnWidth, FakeEventSource, FakeResizeObserver } from "./fakes";
 import { Live, LiveContext } from "./live";
+import { WAITING_MIN } from "./prefs";
 import { sendQuote, takePending } from "./quotes";
 import { runColours } from "./Team";
 import { WaitingCard, waitingTabs, type Focus } from "./WaitingCard";
@@ -72,12 +73,14 @@ type Props = {
   stopped?: boolean;
   focus?: Focus;
   at?: string; // the address, the session's Activity tab by default
+  chat?: { feed: number | null; loaded: boolean }; // in a session's chat (none on Needs you)
 };
 
 let posted: { path: string; body: unknown }[] = [];
 let answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } };
 
 beforeEach(() => {
+  localStorage.clear();
   posted = [];
   answer = { status: 200, body: { result: "sent" } };
   FakeEventSource.all = [];
@@ -111,6 +114,7 @@ function Card(props: Props) {
           runs={props.runs === undefined ? [] : props.runs}
           stopped={props.stopped ?? false}
           focus={props.focus ?? null}
+          chat={props.chat}
         />
       </MemoryRouter>
     </LiveContext.Provider>
@@ -461,4 +465,226 @@ test("the expanded card folds itself when nothing waits any more", async () => {
   expect(screen.queryByRole("region", { name: "What waits for you in s" })).toBeNull();
   view.rerender(<Card questions={[question(6, "w1")]} />);
   expect(isExpanded()).toBe(false);
+});
+
+// Minimized and resized: only in a session's chat (`chat`).
+const IN_CHAT = { feed: null, loaded: true };
+const GATE_812 = gate(812, "task/lad-52", "2026-10-03T12:00:01.000Z", {
+  question: "Archive the change and merge the pull request?",
+});
+const iconButton = (name: string) => within(card()).getByRole("button", { name });
+const line = () => card().querySelector<HTMLButtonElement>(".waiting-line");
+const isMinimized = () => card().classList.contains("minimized");
+const edge = () => within(card()).queryByRole("separator", { name: "Resize the card" });
+
+test("in a session's chat the card minimizes to its tabs and one line; the icon, the line or a tab restores it", async () => {
+  const questions = [question(5, "supervisor", { summary: "Merge now?" })];
+  show({ questions, gates: [GATE_812], chat: IN_CHAT });
+  // The pair of icons: Minimize left of Expand.
+  const icons = within(card().querySelector(".waiting-actions") as HTMLElement).getAllByRole("button");
+  expect(icons.map((one) => one.getAttribute("aria-label"))).toEqual(["Minimize the card", "Expand the card"]);
+  fireEvent.click(tab("task/lad-52 1"));
+  fireEvent.click(iconButton("Minimize the card"));
+  expect(isMinimized()).toBe(true);
+  // Its tabs, none shown, and the shown tab's question on one line; no panel, no buttons.
+  expect(within(card()).getAllByRole("tab")).toEqual([tab("task/lad-52 1"), tab("supervisor 1")]);
+  expect(selected()).toEqual([]);
+  expect(line()?.textContent).toBe("Archive the change and merge the pull request?");
+  expect(within(card()).queryByRole("tabpanel")).toBeNull();
+  expect(within(card()).queryByRole("button", { name: "Approve" })).toBeNull();
+  expect(within(card()).queryByRole("textbox")).toBeNull();
+  expect(edge()).toBeNull();
+  const restore = iconButton("Restore the card");
+  expect(restore.getAttribute("aria-expanded")).toBe("false");
+  expect(document.activeElement).toBe(restore);
+  // The icon restores, the focus on Minimize.
+  fireEvent.click(restore);
+  expect(isMinimized()).toBe(false);
+  expect(selected()).toEqual([tab("task/lad-52 1")]);
+  expect(iconButton("Minimize the card").getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(iconButton("Minimize the card"));
+  // The line restores, the focus on Minimize.
+  fireEvent.click(iconButton("Minimize the card"));
+  fireEvent.click(line()!);
+  expect(isMinimized()).toBe(false);
+  expect(within(card()).getByRole("button", { name: "Approve" })).toBeTruthy();
+  expect(document.activeElement).toBe(iconButton("Minimize the card"));
+  // A tab restores and shows itself.
+  fireEvent.click(iconButton("Minimize the card"));
+  fireEvent.click(tab("supervisor 1"));
+  expect(isMinimized()).toBe(false);
+  expect(selected()).toEqual([tab("supervisor 1")]);
+});
+
+test("a minimized agent's tab shows its first question on the line", () => {
+  show({ questions: [question(5, "w1", { summary: "First?" }), question(6, "w1", { summary: "Second?" })], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  expect(line()?.textContent).toBe("First?");
+});
+
+test("a new tab restores a minimized card, the shown tab kept; a question added to a tab does not", () => {
+  const view = show({ questions: [question(5, "supervisor")], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(tab("task/lad-52 1"));
+  fireEvent.click(iconButton("Minimize the card"));
+  // One more question in the supervisor's tab: still minimized, the tab's count says so.
+  const more = [question(5, "supervisor"), question(6, "supervisor")];
+  view.rerender(<Card questions={more} gates={[GATE_812]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(true);
+  expect(tab("supervisor 2")).toBeTruthy();
+  // A gate of another run: restored, with the tab the human chose.
+  const other = gate(813, "task/lad-53", "2026-10-03T12:00:09.000Z");
+  view.rerender(<Card questions={more} gates={[GATE_812, other]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(false);
+  expect(within(card()).getAllByRole("tab")).toHaveLength(3);
+  expect(selected()).toEqual([tab("task/lad-52 1")]);
+  expect(localStorage.getItem("lado.waitingMinimized.s")).toBeNull(); // forgotten
+  // An agent with no tab before asks: restored too.
+  fireEvent.click(iconButton("Minimize the card"));
+  view.rerender(<Card questions={[...more, question(7, "developer")]} gates={[GATE_812, other]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(false);
+});
+
+test("an agent whose tab went away asks again: a new tab, so a minimized card restores itself", () => {
+  const view = show({ questions: [question(5, "supervisor")], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  view.rerender(<Card questions={[]} gates={[GATE_812]} chat={IN_CHAT} />); // answered elsewhere
+  expect(isMinimized()).toBe(true);
+  expect(JSON.parse(localStorage.getItem("lado.waitingMinimized.s") ?? "null")).toEqual(["gate:812"]);
+  view.rerender(<Card questions={[question(9, "supervisor")]} gates={[GATE_812]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(false);
+});
+
+test("when nothing waits any more the minimized card is forgotten, so the next question shows whole", () => {
+  const view = show({ questions: [question(5, "supervisor")], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  view.rerender(<Card questions={[]} chat={IN_CHAT} />);
+  expect(localStorage.getItem("lado.waitingMinimized.s")).toBeNull();
+  view.rerender(<Card questions={[question(9, "supervisor")]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(false);
+});
+
+test("what waits not loaded yet forgets nothing of a minimized card", () => {
+  localStorage.setItem("lado.waitingMinimized.s", JSON.stringify(["gate:812", "agent:supervisor"]));
+  const loading = { feed: null, loaded: false };
+  // The questions came, the gates not yet: then both.
+  const view = show({ questions: [question(5, "supervisor")], gates: [], chat: loading });
+  expect(isMinimized()).toBe(true);
+  view.rerender(<Card questions={[question(5, "supervisor")]} gates={[GATE_812]} chat={IN_CHAT} />);
+  expect(isMinimized()).toBe(true);
+  expect(JSON.parse(localStorage.getItem("lado.waitingMinimized.s") ?? "null")).toEqual(["gate:812", "agent:supervisor"]);
+  // Nothing loaded: nothing forgotten either.
+  view.rerender(<Card questions={[]} gates={[]} chat={loading} />);
+  expect(localStorage.getItem("lado.waitingMinimized.s")).not.toBeNull();
+});
+
+test("a minimized card stays minimized when it is drawn again (a reload), while its tabs are the same or fewer", () => {
+  const view = show({ questions: [question(5, "supervisor")], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  const stored = JSON.parse(localStorage.getItem("lado.waitingMinimized.s") ?? "null");
+  expect(stored).toEqual(["gate:812", "agent:supervisor"]);
+  view.unmount();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT }); // the question was answered elsewhere
+  expect(isMinimized()).toBe(true);
+  fireEvent.click(iconButton("Restore the card"));
+  expect(localStorage.getItem("lado.waitingMinimized.s")).toBeNull();
+});
+
+test("a minimized card expands whole; folding it brings it back minimized", async () => {
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Minimize the card"));
+  fireEvent.click(iconButton("Expand the card"));
+  await waitFor(() => expect(isExpanded()).toBe(true));
+  expect(isMinimized()).toBe(false);
+  expect(within(card()).getByRole("button", { name: "Approve" })).toBeTruthy();
+  expect(within(card()).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
+  fireEvent.keyDown(document, { key: "Escape" });
+  await waitFor(() => expect(isExpanded()).toBe(false));
+  expect(isMinimized()).toBe(true);
+  expect(document.activeElement).toBe(iconButton("Expand the card"));
+});
+
+test("on Needs you (no chat) the card has no minimize icon and no edge, whatever its chat keeps", () => {
+  localStorage.setItem("lado.waitingMinimized.s", JSON.stringify(["gate:812"]));
+  localStorage.setItem("lado.waitingHeight", "230");
+  show({ questions: [], gates: [GATE_812] });
+  expect(isMinimized()).toBe(false);
+  expect(within(card()).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
+  expect(edge()).toBeNull();
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("");
+});
+
+test("in the chat an edge above the card sets its height in its bounds, kept for every session; a double click forgets it", () => {
+  columnWidth(null);
+  show({ questions: [], gates: [GATE_812], chat: { feed: 400, loaded: true } });
+  FakeResizeObserver.resize(
+    () => 800,
+    () => 300, // the card, laid out by the stylesheet
+  );
+  const separator = edge()!;
+  expect(separator.getAttribute("aria-orientation")).toBe("horizontal");
+  // As laid out until the human moves it: the card and the feed share 700 px, the feed keeps 160.
+  expect([separator.getAttribute("aria-valuenow"), separator.getAttribute("aria-valuemax")]).toEqual(["300", "540"]);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("");
+  fireEvent.keyDown(separator, { key: "ArrowDown" });
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("260px");
+  expect(localStorage.getItem("lado.waitingHeight")).toBe("260");
+  fireEvent.pointerDown(separator, { clientY: 500 });
+  fireEvent.pointerMove(separator, { clientY: 100 });
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("540px"); // no higher
+  fireEvent.pointerUp(separator);
+  fireEvent.doubleClick(separator);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("");
+  expect(localStorage.getItem("lado.waitingHeight")).toBeNull();
+});
+
+test("dragged below the least height the card minimizes when the edge is let go, not before; the keys at once", () => {
+  columnWidth(null);
+  const view = show({ questions: [], gates: [GATE_812], chat: { feed: 400, loaded: true } });
+  FakeResizeObserver.resize(
+    () => 800,
+    () => 300,
+  );
+  let separator = edge()!;
+  fireEvent.pointerDown(separator, { clientY: 100 });
+  fireEvent.pointerMove(separator, { clientY: 400 }); // 0: below its least height
+  expect(isMinimized()).toBe(false);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe(`${WAITING_MIN}px`);
+  fireEvent.pointerMove(separator, { clientY: 150 }); // back up before the release
+  fireEvent.pointerUp(separator);
+  expect(isMinimized()).toBe(false);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("250px");
+  fireEvent.pointerDown(separator, { clientY: 100 });
+  fireEvent.pointerMove(separator, { clientY: 400 });
+  fireEvent.pointerUp(separator);
+  expect(isMinimized()).toBe(true);
+  expect(document.activeElement).toBe(iconButton("Restore the card"));
+  // The keys: below the least height minimizes at once.
+  fireEvent.click(iconButton("Restore the card"));
+  view.rerender(<Card questions={[]} gates={[GATE_812]} chat={{ feed: 400, loaded: true }} />);
+  separator = edge()!;
+  for (let i = 0; i < 3 && !isMinimized(); i++) fireEvent.keyDown(edge()!, { key: "ArrowDown" });
+  expect(isMinimized()).toBe(true);
+});
+
+test("a stored height too tall for the chat shows lower and is kept; dragged below the least height the card minimizes", () => {
+  localStorage.setItem("lado.waitingHeight", "600");
+  columnWidth(null);
+  show({ questions: [], gates: [GATE_812], chat: { feed: 160, loaded: true } });
+  FakeResizeObserver.resize(
+    () => 800,
+    () => 400,
+  );
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("400px"); // 160 + 400 - 160
+  expect(localStorage.getItem("lado.waitingHeight")).toBe("600");
+  const separator = edge()!;
+  fireEvent.pointerDown(separator, { clientY: 100 });
+  fireEvent.pointerMove(separator, { clientY: 100 + 400 - WAITING_MIN });
+  expect(isMinimized()).toBe(false);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe(`${WAITING_MIN}px`);
+  fireEvent.pointerMove(separator, { clientY: 100 + 400 - WAITING_MIN + 1 });
+  expect(isMinimized()).toBe(false); // until the edge is let go
+  fireEvent.pointerUp(separator);
+  expect(isMinimized()).toBe(true);
+  expect(localStorage.getItem("lado.waitingHeight")).toBe(String(WAITING_MIN)); // kept for the restore
+  expect(document.activeElement).toBe(iconButton("Restore the card"));
 });

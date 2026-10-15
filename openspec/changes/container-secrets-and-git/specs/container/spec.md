@@ -18,11 +18,12 @@ processes that launch agents), so the agents get the variables of the files moun
   read every variable given to it.
 
 #### Scenario: A kit that needs a variable starts
-- **WHEN** a container runs with a folder holding `LADO_TEST_KEY` mounted at
-  `/run/secrets`, and a session starts there with a kit whose MCP server has
-  `env: {KEY: ${LADO_TEST_KEY}}`
-- **THEN** the session starts, its supervisor's process has `LADO_TEST_KEY` with the
-  file's value, and `docker inspect` of the container does not contain the value
+- **WHEN** a container runs with a folder holding `TEST_KIT_KEY` mounted at
+  `/run/secrets`, and a session starts there with a kit whose role's MCP server has
+  `env: {KEY: ${TEST_KIT_KEY}}`
+- **THEN** the session and a worker of that role start, its supervisor's process has
+  `TEST_KIT_KEY` with the file's value, and `docker inspect` of the container does not
+  contain the value
 
 #### Scenario: compose without the folder
 - **WHEN** `docker compose up -d` runs in a folder without `secrets/` and without
